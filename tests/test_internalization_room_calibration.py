@@ -26,6 +26,7 @@ from app.core.config import get_settings
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -102,6 +103,7 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech))
     monkeypatch.setattr(sessions_api, "prepare_opening", _nothing)
     monkeypatch.setattr(sessions_api, "settle_coverage", _nothing)
     monkeypatch.setattr(sessions_api, "heard_speech", _heard_speech)

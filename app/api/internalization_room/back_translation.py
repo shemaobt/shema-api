@@ -14,6 +14,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
+from app.services.internalization_room.clip_flight import fly
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
@@ -23,7 +24,7 @@ from app.services.internalization_room.takes import (
     store_take,
     takes_of,
 )
-from app.services.internalization_room.voice_handles import clip_url
+from app.services.internalization_room.voice_handles import clip_url, turn_clip_url
 
 router = APIRouter()
 
@@ -348,7 +349,9 @@ async def _finished(
         finding = room.the_finding_that_leads(state)
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
+            audio_url=(
+                turn_clip_url(session.id, state.verdict.clip_key) if state.verdict.clip_key else ""
+            ),
             fixed_line=state.verdict.fixed_line,
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
@@ -368,28 +371,24 @@ async def _finished(
         takes=takes,
         settings=get_settings(),
     )
-    with stage("voice"):
-        voiced = (
-            None
-            if verdict.outcome.fixed_line
-            else (
-                await room.synthesize_facilitator_speech(verdict.said, language=session.language)
-            )[0]
-        )
+    clip_key = ""
+    if not verdict.outcome.fixed_line:
+        clip_key, voice = room.facilitator_speech_to_come(verdict.said, language=session.language)
+        fly(clip_key, voice)
     with stage("db_write"):
         session = await room.save_the_spoken_verdict(
             db,
             session,
             state,
             said=verdict.said,
-            clip_key=voiced.key if voiced else "",
+            clip_key=clip_key,
             outcome=verdict.outcome,
             told_back=verdict.told_back,
         )
 
     return BackTranslationVerdictResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=turn_clip_url(session.id, clip_key) if clip_key else "",
         fixed_line=verdict.outcome.fixed_line,
         checked=verdict.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,

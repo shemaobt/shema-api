@@ -23,8 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.sessions import create_session, get_session
-from app.services.internalization_room.voice_handles import clip_url
+from app.services.internalization_room.voice_handles import turn_clip_url
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
 
@@ -84,6 +85,7 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
     )
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(voice))
 
     async with (
         rival_factory() as one,
@@ -124,7 +126,11 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
     )
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _CountingVoice())
+    voice = _CountingVoice()
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
+    monkeypatch.setattr(
+        sessions_api.room, "facilitator_speech_to_come", voiced_through(voice, lambda _: VOICED_AS)
+    )
 
     async with room_client(db_session, monkeypatch, per_request=rival_factory) as tablet:
         first = asyncio.create_task(_ask_for_the_opening(tablet, session.id))
@@ -138,7 +144,7 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
 
     assert first.cancelled()
     assert resent.status_code == 200, resent.text[:300]
-    assert resent.json()["audio_url"] == clip_url(VOICED_AS)
+    assert resent.json()["audio_url"] == turn_clip_url(session.id, VOICED_AS)
 
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
@@ -150,21 +156,14 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
 async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_not_only_its_wait(
     db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    voicing_ms = 60
-
-    async def _slow_voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
-        await asyncio.sleep(voicing_ms / 1000)
-        entry = SynthesizedSpeech(
-            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key=VOICED_AS
-        )
-        return entry, False
-
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _GuideStillThinking()
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
     )
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _slow_voice)
+    monkeypatch.setattr(
+        sessions_api.room, "facilitator_speech_to_come", voiced_through(_CountingVoice())
+    )
 
     async with (
         rival_factory() as one,
@@ -181,7 +180,6 @@ async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_no
 
     assert resent.status_code == 200, resent.text[:300]
     timing = dict(re.findall(r"(\w+);dur=(\d+)", resent.headers["Server-Timing"]))
-    assert int(timing.get("voice", -1)) >= voicing_ms, (
+    assert "db_write" in timing, (
         "o reenvio que se juntava ao turno em voo só dizia quanto esperou, nunca em quê"
     )
-    assert "db_write" in timing

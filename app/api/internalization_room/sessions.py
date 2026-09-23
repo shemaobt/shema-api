@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
 import logging
 import re
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable
 from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
@@ -40,6 +42,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
+from app.services.internalization_room.clip_flight import fly
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -58,8 +61,7 @@ from app.services.internalization_room.turn_dedup import (
     answered_turn,
     remember_turn,
 )
-from app.services.internalization_room.voice_handles import clip_url
-from app.services.platform.tts import SpeechKey, Upload
+from app.services.internalization_room.voice_handles import clip_url, turn_clip_url
 from app.services.project.facilitated_scope import facilitated_project_ids
 from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
@@ -71,95 +73,72 @@ router = APIRouter()
 _SEGMENT_ROLES = ("panorama", "scene")
 
 
-async def _clip_or_none(text: str, *, language: str, uploads: list[Upload]) -> str | None:
-    try:
-        entry, _ = await room.synthesize_facilitator_speech(
-            text, language=language, uploads=uploads
-        )
-    except Exception:
-        logger.warning("A movement of the opening could not be voiced; sending it whole")
-        return None
-    return entry.key
-
-
-async def _voice_the_turn(
-    outcome: room.TurnOutcome,
-    *,
-    language: str,
-    uploads: list[Upload],
-) -> tuple[SpeechKey | None, list[SpokenSegment]]:
-    """The turn's audio: the opening's two movements, or the whole line on its own.
-
-    An opening synthesizes its whole line exactly once, always: started beside its two
-    movements, awaited on the reply's path only when a movement will not synthesize — it
-    then stands in for both, with no segments — and otherwise left to finish in the
-    background, so `_say_it_again` finds it in the bucket. A refused movement so costs the
-    slowest of the three syntheses, not the movements and then the whole line in a row. A
-    turn without movements speaks only its whole line, as it always has.
-    """
+def _voice_the_turn(
+    outcome: room.TurnOutcome, *, language: str
+) -> list[tuple[str, asyncio.Task[bytes]]]:
     if outcome.fixed_line:
-        return None, []
-    if not outcome.movements:
-        entry, _ = await room.synthesize_facilitator_speech(
-            outcome.speech, language=language, uploads=uploads
-        )
-        return entry, []
-
-    whole = _start_the_whole_line(outcome.speech, language)
-    parts = await asyncio.gather(
-        *(_clip_or_none(part, language=language, uploads=uploads) for part in outcome.movements)
-    )
-    keys = [key for key in parts if key is not None]
-    if len(keys) != len(_SEGMENT_ROLES):
-        return await whole, []
-
-    whole.add_done_callback(_log_a_whole_line_left_uncached)
-    return SpeechKey(keys[0], cached=False), [
-        SpokenSegment(role=role, audio_url=clip_url(key))
-        for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
+        return []
+    return [
+        _voice_in_flight(text, language=language) for text in (outcome.speech, *outcome.movements)
     ]
 
 
-_PENDING_WHOLE_LINE_TASKS: set[asyncio.Task[SpeechKey]] = set()
+def _addresses(
+    voiced: list[tuple[str, asyncio.Task[bytes]]], url_of: Callable[[str], str]
+) -> tuple[str, list[SpokenSegment]]:
+    if not voiced:
+        return "", []
+    (whole, _), *parts = voiced
+    if not parts:
+        return url_of(whole), []
+    return url_of(parts[0][0]), [
+        SpokenSegment(role=role, audio_url=url_of(key))
+        for role, (key, _) in zip(_SEGMENT_ROLES, parts, strict=True)
+    ]
 
 
-def _start_the_whole_line(text: str, language: str) -> asyncio.Task[SpeechKey]:
-    """Voice an opening's whole line on a task of its own, beside its two movements.
-
-    Held in `_PENDING_WHOLE_LINE_TASKS` so nothing collects the task mid-flight — an
-    `asyncio.Task` with no other reference is fair game for the garbage collector the
-    moment the event loop looks away, and a reply that got both movements leaves it behind.
-    No `uploads` list: whether the reply will wait for this task is not known when it
-    starts, and the caller's list has already been gathered by the time a task left behind
-    finishes, so appending to it would lose the upload rather than defer it.
-    `synthesize_facilitator_speech` uploads its own clip when it is not given one, which is
-    exactly what lets `_say_it_again` find it later.
-    """
-    task = asyncio.create_task(_the_whole_line(text, language))
-    _PENDING_WHOLE_LINE_TASKS.add(task)
-    task.add_done_callback(_PENDING_WHOLE_LINE_TASKS.discard)
-    return task
+async def _kept_before(deadline: float, flights: list[asyncio.Task[bytes]]) -> None:
+    try:
+        async with asyncio.timeout_at(deadline):
+            landed = await asyncio.gather(
+                *(asyncio.shield(flight) for flight in flights), return_exceptions=True
+            )
+    except TimeoutError as spent:
+        raise UpstreamServiceError("a voz desta fala não ficou pronta a tempo") from spent
+    failed = next((result for result in landed if isinstance(result, BaseException)), None)
+    if failed is not None:
+        raise UpstreamServiceError("a voz desta fala não pôde ser feita") from failed
 
 
-async def _the_whole_line(text: str, language: str) -> SpeechKey:
-    entry, _ = await room.synthesize_facilitator_speech(text, language=language)
-    return entry
+async def _both_movements_kept(
+    movements: list[str], flights: list[asyncio.Task[bytes]], *, language: str, deadline: float
+) -> bool:
+    try:
+        async with asyncio.timeout_at(deadline):
+            kept = await asyncio.gather(
+                *(
+                    _kept_or_made_again(text, flight, language=language)
+                    for text, flight in zip(movements, flights, strict=True)
+                )
+            )
+    except TimeoutError:
+        return False
+    return all(kept)
 
 
-def _log_a_whole_line_left_uncached(task: asyncio.Task[SpeechKey]) -> None:
-    """A whole line nobody waits for fails into the log, never into the reply.
+async def _kept_or_made_again(text: str, flight: asyncio.Task[bytes], *, language: str) -> bool:
+    with contextlib.suppress(Exception):
+        await asyncio.shield(flight)
+        return True
+    with contextlib.suppress(Exception):
+        await asyncio.shield(_voice_in_flight(text, language=language)[1])
+        return True
+    return False
 
-    Reading `exception()` also marks the error as retrieved, so asyncio does not report it
-    again, traceback and all, when the task is collected.
-    """
-    if task.cancelled():
-        return
-    error = task.exception()
-    if error is not None:
-        logger.warning(
-            "the opening's whole line could not be cached in the background: %s",
-            type(error).__name__,
-        )
+
+def _voice_in_flight(text: str, *, language: str) -> tuple[str, asyncio.Task[bytes]]:
+    key, voice = room.facilitator_speech_to_come(text, language=language)
+    return key, fly(key, voice)
 
 
 async def _write_the_turn(
@@ -169,10 +148,10 @@ async def _write_the_turn(
     outcome: room.TurnOutcome,
     turn: room.ComprehensionTurn | None,
     opening: bool,
-) -> IRSession:
+) -> tuple[IRSession, bool]:
     with stage("db_write"):
         if opening:
-            await room.append_opening(
+            landed = await room.append_opening(
                 db,
                 session,
                 guide_response=outcome.speech,
@@ -181,8 +160,8 @@ async def _write_the_turn(
                 state=turn.state if turn is not None else None,
                 commit=False,
             )
-            return session
-        return await room.append_exchange(
+            return session, landed
+        written = await room.append_exchange(
             db,
             session,
             team_utterance=outcome.transcript,
@@ -192,11 +171,7 @@ async def _write_the_turn(
             state=turn.state if turn is not None else None,
             commit=False,
         )
-
-
-async def _upload(uploads: list[Upload]) -> None:
-    with stage("upload"):
-        await asyncio.gather(*(upload() for upload in uploads))
+        return written, True
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -608,12 +583,15 @@ async def a_person_arrived(
     )
 
 
-async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnResponse:
+async def _say_it_again(
+    session: IRSession, *, turn_id: str | None, deadline: float
+) -> TurnResponse:
     """Where the room already was, for a team walking back in.
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
-    The synthesiser is content-addressed, so the very same words come straight back out of
-    the bucket — this costs one lookup and no waiting.
+    The answer goes out only once that line is kept in the bucket: a line still being voiced
+    is joined, a missing one is made once, both inside the turn's own bound, and a line that
+    cannot be kept in time is a 502 rather than an address that would only 404.
     """
     last = next(
         (
@@ -623,14 +601,13 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         ),
         "",
     )
-    voiced = (
-        (await room.synthesize_facilitator_speech(last, language=session.language))[0]
-        if last
-        else None
-    )
+    key = ""
+    if last:
+        key, voice = room.facilitator_speech_to_come(last, language=session.language)
+        await _kept_before(deadline, [fly(key, voice)])
     return TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=clip_url(key) if key else "",
         transcript="",
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
@@ -661,13 +638,6 @@ async def take_turn(
     as an opening had the Guide introduce itself and lay the whole passage out a second time —
     against a probe already waiting for a free retell, which the Validator then rejected, so
     the room answered a returning team with a canned line.
-
-    The turn is voiced before any of it is written down. A probe is the room's authorization
-    to assess the answer that comes next, so committing one for a turn whose synthesis then
-    failed points that authorization at a question the team was never asked, and leaves the
-    ledger holding evidence for an exchange that was never recorded. Speaking first costs
-    nothing in the other direction: a clip reaches the team only as the handle in this
-    response, so a request that fails after synthesis hands the app nothing to play.
 
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
@@ -752,7 +722,7 @@ async def _answer_the_turn(
     transcript = speech_heard.text
 
     if file is None and not opening:
-        return await _say_it_again(session, turn_id=turn_id)
+        return await _say_it_again(session, turn_id=turn_id, deadline=deadline)
 
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
@@ -813,20 +783,22 @@ async def _answer_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    uploads: list[Upload] = []
-    try:
-        with stage("voice"):
-            voiced, segments = await _voice_the_turn(
-                outcome, language=session.language, uploads=uploads
-            )
-    except BaseException:
-        if uploads:
-            await _upload(uploads)
-        raise
-    session, _ = await asyncio.gather(
-        _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening),
-        _upload(uploads),
+    voiced = _voice_the_turn(outcome, language=session.language)
+    if len(voiced) > 1 and not await _both_movements_kept(
+        outcome.movements,
+        [flight for _, flight in voiced[1:]],
+        language=session.language,
+        deadline=deadline,
+    ):
+        voiced = voiced[:1]
+    session, landed = await _write_the_turn(
+        db, session, outcome=outcome, turn=turn, opening=opening
     )
+    if landed:
+        audio_url, segments = _addresses(voiced, partial(turn_clip_url, session.id))
+    else:
+        await _kept_before(deadline, [flight for _, flight in voiced[:1]])
+        audio_url, segments = _addresses(voiced, clip_url)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -841,7 +813,7 @@ async def _answer_the_turn(
 
     reply = TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=audio_url,
         fixed_line=outcome.fixed_line,
         transcript=outcome.transcript,
         peer_cue=outcome.peer_cue,

@@ -20,10 +20,10 @@ import json
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from functools import partial
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -34,8 +34,6 @@ from app.services.platform.voices import language_hint, resolve_voice
 logger = logging.getLogger(__name__)
 
 MIME_TYPE = "audio/mpeg"
-
-Upload = Callable[[], Awaitable[None]]
 
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
 
@@ -65,6 +63,9 @@ class SpeechKey:
     cached: bool
 
 
+Voicing = Callable[[], Coroutine[Any, Any, bytes]]
+
+
 class SpeechStore(Protocol):
     """The bucket seam: tests pass an in-memory dict, no GCS."""
 
@@ -73,6 +74,8 @@ class SpeechStore(Protocol):
     async def exists(self, key: str) -> bool: ...
 
     async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes: ...
 
 
 def forget_what_is_kept() -> None:
@@ -158,8 +161,7 @@ async def synthesize_speech(
     if cached is not None:
         return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
-    audio = await voiced()
-    await _cache_quietly(speech_store, key, audio)
+    audio, _ = await _try_to_keep(speech_store, key, await voiced())
     return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
 
 
@@ -174,7 +176,6 @@ async def synthesize_speech_key(
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
-    uploads: list[Upload] | None = None,
 ) -> SpeechKey:
     key, speech_store, voiced = _addressed(
         text,
@@ -190,14 +191,52 @@ async def synthesize_speech_key(
     if _is_kept(key) or await speech_store.exists(key):
         return SpeechKey(key, cached=True)
 
-    audio = await voiced()
+    audio, kept = await _try_to_keep(speech_store, key, await voiced())
+    if not kept:
+        raise UpstreamServiceError("the clip could not be kept")
     _remember_fresh(key, audio)
-    upload = partial(_cache_quietly, speech_store, key, audio)
-    if uploads is None:
-        await upload()
-    else:
-        uploads.append(upload)
     return SpeechKey(key, cached=False)
+
+
+def speech_to_come(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None = None,
+    model: str | None = None,
+    voice_settings: Mapping[str, float | bool] | None = None,
+    api_key: str | None = None,
+    settings: Settings | None = None,
+    client: httpx.AsyncClient | None = None,
+    store: SpeechStore | None = None,
+) -> tuple[str, Voicing]:
+    key, speech_store, voiced = _addressed(
+        text,
+        language=language,
+        voice_id=voice_id,
+        model=model,
+        voice_settings=voice_settings,
+        api_key=api_key,
+        settings=settings,
+        client=client,
+        store=store,
+    )
+    return key, partial(_voice_once, key, speech_store, voiced)
+
+
+async def _voice_once(
+    key: str, store: SpeechStore, voiced: Callable[[], Awaitable[bytes]]
+) -> bytes:
+    try:
+        audio = await fetch_clip(key, store=store)
+    except Exception:
+        logger.warning("a clip could not be read back; voicing it: key=%s", key)
+        audio = None
+    if audio is None:
+        audio = await store.put_once(key, await voiced(), MIME_TYPE)
+        _mark_kept(key)
+    _remember_fresh(key, audio)
+    return audio
 
 
 def warm_connection_in_background(*, api_key: str, settings: Settings | None = None) -> None:
@@ -285,19 +324,24 @@ async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
     return await store.get(key)
 
 
-async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
-    """Store the clip, but never fail the request over it.
+async def _try_to_keep(store: SpeechStore, key: str, audio: bytes) -> tuple[bytes, bool]:
+    """Write the clip once, never raising, and say whether the bucket kept it.
 
-    We already paid ElevenLabs for these bytes. A missing bucket or a wrong IAM binding is
-    an infrastructure problem — throwing a 500 here would bill the synthesis and hand the
-    caller nothing.
+    The bytes that come back are the bucket's when it kept them — the first rendering
+    written under the key, which may not be the caller's — and the caller's own when the
+    write failed. What a failed write means is the caller's to decide, because it differs:
+    `synthesize_speech` hands the audio straight back, so the bytes already paid for are
+    still worth serving; `synthesize_speech_key` hands back only a key, and a key the bucket
+    never kept is an address every instance answers with a 404, so it raises and the room
+    reports an outage instead.
     """
     try:
-        await store.put(key, audio, MIME_TYPE)
+        kept = await store.put_once(key, audio, MIME_TYPE)
     except Exception:
         logger.exception("failed to cache TTS clip key=%s", key)
-        return
+        return audio, False
     _mark_kept(key)
+    return kept, True
 
 
 async def _synthesize(

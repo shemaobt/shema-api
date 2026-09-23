@@ -32,6 +32,7 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -121,6 +122,9 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, mode
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
     monkeypatch.setattr(sessions_api, "heard_speech", _slow_hearing)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _slow_voice)
+    monkeypatch.setattr(
+        sessions_api.room, "facilitator_speech_to_come", voiced_through(_slow_voice)
+    )
     monkeypatch.setattr(sessions_api, "settle_coverage", _settles_nothing)
     monkeypatch.setattr(
         llm.anthropic, "AsyncAnthropic", lambda **_: SimpleNamespace(messages=models)
@@ -187,9 +191,11 @@ async def test_a_voiced_turn_answers_with_how_long_each_of_its_stages_took(
     assert timing["stt"] >= HEARING_MS, "o tempo do speech-to-text não era medido"
     assert timing["guide"] >= GUIDE_MS, "o tempo do Guia só existia somado ao do Validador"
     assert timing["validator"] >= VALIDATOR_MS
-    assert timing["voice"] >= VOICE_MS, "a voz e o GCS nunca tinham sido cronometrados"
+    assert "voice" not in timing and "upload" not in timing, (
+        "a resposta esperava a ElevenLabs e o GCS; a voz agora é feita enquanto o tablet a pede"
+    )
     assert "db_write" in timing, "a escrita no banco nunca tinha sido cronometrada"
-    assert timing["total"] >= HEARING_MS + GUIDE_MS + VALIDATOR_MS + VOICE_MS
+    assert timing["total"] >= HEARING_MS + GUIDE_MS + VALIDATOR_MS
 
     lines = _timing_lines(caplog)
     assert len(lines) == 1, "um turno falado deixa uma linha só"
@@ -238,7 +244,7 @@ async def test_a_redrafted_turn_counts_every_draft_and_every_reading_not_only_th
     assert timing["validator"] >= 2 * VALIDATOR_MS
 
 
-async def test_a_turn_whose_voice_breaks_still_says_how_long_it_waited_before_breaking(
+async def test_a_turn_whose_write_breaks_still_says_how_long_it_waited_before_breaking(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -246,11 +252,10 @@ async def test_a_turn_whose_voice_breaks_still_says_how_long_it_waited_before_br
 ) -> None:
     from app.api.internalization_room import sessions as sessions_api
 
-    async def _voice_down(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
-        await asyncio.sleep(VOICE_MS / 1000)
-        raise RuntimeError("the voice service is down")
+    async def _the_database_goes_away(*_: Any, **__: Any) -> IRSession:
+        raise RuntimeError("the database went away")
 
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice_down)
+    monkeypatch.setattr(sessions_api.room, "append_exchange", _the_database_goes_away)
 
     with caplog.at_level(logging.INFO):
         answered = await _the_team_answers(client, waiting_room.id)
@@ -258,7 +263,7 @@ async def test_a_turn_whose_voice_breaks_still_says_how_long_it_waited_before_br
     assert answered.status_code == 500
     lines = _timing_lines(caplog)
     assert len(lines) == 1, "o turno que quebrava não deixava tempo nenhum para trás"
-    assert re.search(r" stt=\d+ms guide=\d+ms validator=\d+ms voice=\d+ms total=\d+ms", lines[0])
+    assert re.search(r" stt=\d+ms guide=\d+ms validator=\d+ms db_write=\d+ms total=\d+ms", lines[0])
 
 
 async def test_the_tablets_timings_of_its_last_turn_reach_the_same_log_as_the_servers(

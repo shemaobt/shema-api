@@ -34,6 +34,7 @@ from app.services.internalization_room import llm
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import WriteOnceBucket, voiced_through
 
 MODEL = "claude-fable-5-1"
 
@@ -215,6 +216,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
         return HeardSpeech(text=TEAM_ANSWER)
 
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech))
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
 
     test_app = FastAPI()
@@ -383,64 +385,47 @@ async def test_a_broken_microphone_is_answered_the_same_way_as_a_broken_model(
     )
 
 
-class _EmptyBucket:
-    """A bucket that never has the clip, so a request that reaches it always calls out."""
-
-    async def get(self, key: str) -> bytes | None:
-        return None
-
-    async def exists(self, key: str) -> bool:
-        return False
-
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        return None
-
-
-async def test_a_broken_voice_is_answered_the_same_way_as_a_broken_microphone(
+async def test_a_broken_voice_reaches_the_tablet_as_the_same_502_on_its_clip(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
-    db_session: AsyncSession,
+    caplog: pytest.LogCaptureFixture,
     spoken: list[str],
 ) -> None:
     """ElevenLabs speaks the turn as well as it hears one: a dropped connection on the way
-    out gets the same 502 and the same intact session as an outage on the way in, never the
-    turn rendered as an utterance nobody heard finish."""
+    out is the same 502 an outage on the way in is. The turn is answered before its voice
+    exists, so that 502 comes on the clip the tablet asks for, never as a clip it cannot
+    play."""
+    from app.api.internalization_room import voice as voice_api
     from app.core.config import get_settings
     from app.services.internalization_room.synthesize_facilitator_speech import (
-        synthesize_facilitator_speech as real_synthesize_facilitator_speech,
+        facilitator_speech_to_come,
     )
     from app.services.platform import tts as tts_module
 
     _the_models_answer(monkeypatch, GUIDE_LINE)
     session_id = await _a_room_opening_a_passage(client)
     assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
-    before = await get_session(db_session, session_id)
-    status_before, messages_before = before.status, list(before.messages or [])
-    spoken_before = list(spoken)
 
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
-    monkeypatch.setattr(
-        sessions_api.room, "synthesize_facilitator_speech", real_synthesize_facilitator_speech
-    )
-    monkeypatch.setattr(tts_module, "_default_store", lambda _cfg: _EmptyBucket())
-    monkeypatch.setattr(
-        tts_module,
-        "_make_client",
-        lambda: SimpleNamespace(post=AsyncMock(side_effect=httpx.ConnectError("boom"))),
-    )
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", facilitator_speech_to_come)
+    bucket = WriteOnceBucket()
+    monkeypatch.setattr(tts_module, "_default_store", lambda _cfg: bucket)
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _cfg: bucket)
+    post = AsyncMock(side_effect=httpx.ConnectError("boom"))
+    monkeypatch.setattr(tts_module, "_make_client", lambda: SimpleNamespace(post=post))
 
-    answered = await _the_team_answers(client, session_id)
+    with caplog.at_level(logging.WARNING):
+        answered = await _the_team_answers(client, session_id)
+        heard = await client.get(answered.json()["audio_url"], headers={"X-Room-Key": KEY})
 
-    assert answered.status_code == 502, (
-        f"uma queda no ElevenLabs ao falar virava 500, não 502: {answered.text[:300]}"
+    assert answered.status_code == 200, answered.text[:300]
+    assert heard.status_code == 502, (
+        f"uma queda no ElevenLabs ao falar virava 500, não 502: {heard.text[:300]}"
     )
-    body = answered.json()
-    assert body["code"] == "UPSTREAM_ERROR"
-    assert spoken == spoken_before, "uma fala que falhou não entra na lista do que foi dito"
-    after = await get_session(db_session, session_id)
-    assert after.status == status_before, "a queda do TTS não muda o estado da sessão"
-    assert list(after.messages or []) == messages_before, (
-        "um turno que não terminou de falar não grava exchange nenhuma"
+    assert heard.json()["code"] == "UPSTREAM_ERROR"
+    assert post.await_count == 2, "a queda tem de vir da ElevenLabs: o voo do turno e a re-síntese"
+    assert "a clip could not be voiced: UpstreamServiceError" in caplog.text, (
+        "a conexão que caía chegava crua ao voo, não como a queda que é"
     )
 
 

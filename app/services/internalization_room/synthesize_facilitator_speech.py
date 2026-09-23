@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from functools import partial
 from typing import TypeVar
 
@@ -15,7 +15,8 @@ from app.services.platform.tts import (
     SpeechKey,
     SpeechStore,
     SynthesizedSpeech,
-    Upload,
+    Voicing,
+    speech_to_come,
     synthesize_speech,
     synthesize_speech_key,
 )
@@ -37,7 +38,6 @@ async def synthesize_facilitator_speech(
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
     settings: Settings | None = None,
-    uploads: list[Upload] | None = None,
 ) -> tuple[SpeechKey, bool]:
     """Speak one facilitator line in the internalization room's own voice.
 
@@ -71,12 +71,27 @@ async def synthesize_facilitator_speech(
     paid ElevenLabs again for a sentence it had just spoken.
     """
     speak = _in_the_rooms_voice(synthesize_speech_key, text, language=language, settings=settings)
-    speech = await speak(client=client, store=store, uploads=uploads)
-    _VOICED_HERE[speech.key] = None
-    _VOICED_HERE.move_to_end(speech.key)
+    speech = await speak(client=client, store=store)
+    _remember_voiced_here(speech.key)
+    return speech, speech.cached
+
+
+def facilitator_speech_to_come(text: str, *, language: str | None) -> tuple[str, Voicing]:
+    key, voice = _in_the_rooms_voice(speech_to_come, text, language=language, settings=None)()
+
+    async def voiced() -> bytes:
+        audio = await voice()
+        _remember_voiced_here(key)
+        return audio
+
+    return key, voiced
+
+
+def _remember_voiced_here(key: str) -> None:
+    _VOICED_HERE[key] = None
+    _VOICED_HERE.move_to_end(key)
     if len(_VOICED_HERE) > _VOICED_HERE_KEPT:
         _VOICED_HERE.popitem(last=False)
-    return speech, speech.cached
 
 
 async def render_facilitator_speech(
@@ -87,12 +102,12 @@ async def render_facilitator_speech(
 
 
 def _in_the_rooms_voice(
-    speak: Callable[..., Awaitable[T]],
+    speak: Callable[..., T],
     text: str,
     *,
     language: str | None,
     settings: Settings | None,
-) -> Callable[..., Awaitable[T]]:
+) -> Callable[..., T]:
     cfg = settings or get_settings()
     spoken = normalize(language) or floor(cfg)
     return partial(

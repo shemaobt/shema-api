@@ -369,6 +369,8 @@ async def append_exchange(
     if outcome is not None:
         guide["outcome"] = _containment_of(outcome)
         guide["redrafts"] = outcome.redrafts
+        if outcome.movements:
+            guide["movements"] = outcome.movements
         if outcome.used_fail_safe:
             guide.update(
                 category=outcome.fixed_line[:1],

@@ -26,8 +26,18 @@ def _direct_calls(endpoint) -> set:
     GCS read — a call the dependant tree above never sees. Its name still shows up in the
     function's own bytecode, resolved against the module it was imported into.
     """
-    names = getattr(getattr(endpoint, "__code__", None), "co_names", ())
-    scope = getattr(endpoint, "__globals__", {})
+    called = _called_by(endpoint)
+    return called | {
+        inner
+        for helper in called
+        if getattr(helper, "__module__", None) == getattr(endpoint, "__module__", None)
+        for inner in _called_by(helper)
+    }
+
+
+def _called_by(function) -> set:
+    names = getattr(getattr(function, "__code__", None), "co_names", ())
+    scope = getattr(function, "__globals__", {})
     return {scope[name] for name in names if callable(scope.get(name))}
 
 

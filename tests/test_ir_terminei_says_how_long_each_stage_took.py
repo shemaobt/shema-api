@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import llm, usage
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import (
     a_piece_still_to_be_told,
     played_every_part,
@@ -82,11 +83,12 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
     monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: models)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _slow_voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(_slow_voice))
     async with room_client(db_session, monkeypatch) as door:
         yield door
 
 
-async def test_terminei_says_how_long_the_reading_the_verdict_and_the_voice_each_took(
+async def test_terminei_says_how_long_the_reading_and_the_verdict_took_without_the_voice(
     client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
 ) -> None:
     session, parts = await rehearsed_in_parts(db_session, 1)
@@ -104,9 +106,11 @@ async def test_terminei_says_how_long_the_reading_the_verdict_and_the_voice_each
     assert spent["analyst"] >= ANALYST_MS
     assert spent["guide"] >= GUIDE_MS
     assert spent["validator"] >= VALIDATOR_MS
-    assert spent["voice"] >= VOICE_MS, "a voz do veredito não era medida"
+    assert "voice" not in spent, (
+        "o terminei esperava a voz do veredito; ela agora é feita enquanto o tablet a pede"
+    )
     assert "db_write" in spent, "a gravação do veredito não era medida"
-    assert spent["total"] >= ANALYST_MS + GUIDE_MS + VALIDATOR_MS + VOICE_MS
+    assert spent["total"] >= ANALYST_MS + GUIDE_MS + VALIDATOR_MS
 
 
 def _stages(caplog: pytest.LogCaptureFixture) -> dict[str, int]:

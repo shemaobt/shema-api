@@ -216,12 +216,7 @@ async def save_the_spoken_verdict(
     outcome: TurnOutcome,
     told_back: str,
 ) -> IRSession:
-    """Write the turn the room just spoke: the exchange, the verdict and the state behind it.
-
-    Called once the words exist as audio, or once the caller has decided there will be none.
-    A verdict stored before its clip would be served back by the repeat-press guard as a turn
-    the team heard, when what they heard was the error.
-    """
+    """Write the turn the room just spoke: the exchange, the verdict and the state behind it."""
     session = await append_exchange(
         db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
     )

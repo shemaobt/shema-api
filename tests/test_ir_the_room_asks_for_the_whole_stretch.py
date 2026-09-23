@@ -34,6 +34,7 @@ from app.services.internalization_room.fail_safe import FailSafe, first, localiz
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import (
     a_piece_still_to_be_told,
     heard_every_part,
@@ -196,6 +197,7 @@ def room(monkeypatch: pytest.MonkeyPatch) -> Room:
         return (type("Voiced", (), {"key": f"clipe-{len(heard.said)}"})(), 0)
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(_voice))
     return heard
 
 

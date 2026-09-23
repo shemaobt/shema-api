@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRTakeKind
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
@@ -111,6 +112,7 @@ def consulted(monkeypatch: pytest.MonkeyPatch) -> Consulted:
     monkeypatch.setattr(bt_service, "call_agent", _analyst)
     monkeypatch.setattr(turn_module, "call_agent", _verdict)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(_voice))
     return tally
 
 

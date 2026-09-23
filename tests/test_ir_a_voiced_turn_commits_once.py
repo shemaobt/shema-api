@@ -1,4 +1,3 @@
-import asyncio
 import json
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
@@ -6,10 +5,8 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.exceptions import UpstreamServiceError
 from app.core.room_enums import CoverageStatus, HaltKind
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTurn
 from app.services.internalization_room.coverage import initial_state
@@ -24,8 +21,9 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
     unattend,
 )
-from app.services.platform.tts import SynthesizedSpeech, Upload
+from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import fully_supported_comprehension
+from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 
@@ -59,20 +57,7 @@ def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
 
 
 class _Voice:
-    def __init__(self) -> None:
-        self.the_bucket_is_down = False
-        self.written = asyncio.Event()
-
-    async def _the_bucket_refuses_once_the_turn_is_written(self) -> None:
-        await asyncio.wait_for(self.written.wait(), timeout=1)
-        raise UpstreamServiceError("the bucket is down")
-
-    async def __call__(
-        self, text: str, *, uploads: list[Upload] | None = None, **_: Any
-    ) -> tuple[SynthesizedSpeech, bool]:
-        if self.the_bucket_is_down and uploads is not None:
-            self.the_bucket_is_down = False
-            uploads.append(self._the_bucket_refuses_once_the_turn_is_written)
+    async def __call__(self, text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
         entry = SynthesizedSpeech(
             audio=b"audio",
             mime_type="audio/mpeg",
@@ -106,6 +91,7 @@ async def client(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
     )
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(voice))
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
     monkeypatch.setattr(sessions_api, "settle_coverage", _settled_later)
     async with room_client(db_session, monkeypatch) as c:
@@ -173,7 +159,12 @@ def _in_a_transaction_while_thinking(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", thinks
     )
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", speaks)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(speaks))
     return held
+
+
+def _the_requests_own(held: dict[str, bool]) -> dict[str, bool]:
+    return {leg: open_ for leg, open_ in held.items() if leg != "voice"}
 
 
 async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
@@ -308,47 +299,6 @@ async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exch
     ], "a resposta lembrada em duplicata voltava a transação e levava a troca junto"
 
 
-async def test_a_turn_whose_clip_never_reached_the_bucket_is_not_written_and_its_resend_is(
-    client: httpx.AsyncClient,
-    waiting_room: IRSession,
-    voice: _Voice,
-    rival_factory: async_sessionmaker[AsyncSession],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.api.internalization_room import sessions as sessions_api
-
-    append = sessions_api.room.append_exchange
-
-    async def append_then_say_so(*args: Any, **kwargs: Any) -> IRSession:
-        appended = await append(*args, **kwargs)
-        voice.written.set()
-        return appended
-
-    monkeypatch.setattr(sessions_api.room, "append_exchange", append_then_say_so)
-    voice.the_bucket_is_down = True
-
-    failed = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
-
-    assert failed.status_code >= 500, failed.text[:300]
-    async with rival_factory() as fresh:
-        after = await get_session(fresh, waiting_room.id)
-        remembered = (await fresh.execute(select(IRTurn))).scalars().all()
-    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [FIRST_QUESTION], (
-        "a troca ficava gravada sem a equipe ter ouvido nada"
-    )
-    assert remembered == []
-
-    resent = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
-
-    assert resent.status_code == 200, resent.text[:300]
-    async with rival_factory() as fresh:
-        after = await get_session(fresh, waiting_room.id)
-    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [
-        FIRST_QUESTION,
-        GUIDE_LINE,
-    ], "o reenvio repetia o turno e gravava a troca duas vezes"
-
-
 async def test_the_models_think_with_the_database_let_go_not_with_the_read_still_open(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
@@ -362,7 +312,7 @@ async def test_the_models_think_with_the_database_let_go_not_with_the_read_still
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
-    assert held == {"stt": False, "guide": False, "validator": False, "voice": False}, (
+    assert _the_requests_own(held) == {"stt": False, "guide": False, "validator": False}, (
         "a leitura da sessão abria a transação e a conexão ficava presa pelo STT, pelo Guia,"
         " pelo Validador e pela voz"
     )
@@ -388,7 +338,7 @@ async def test_a_tablets_turn_with_an_id_lets_go_of_the_read_its_credential_open
     )
 
     assert answered.status_code == 200, answered.text[:300]
-    assert held == {"stt": False, "guide": False, "validator": False, "voice": False}, (
+    assert _the_requests_own(held) == {"stt": False, "guide": False, "validator": False}, (
         "a credencial lia o aparelho na sessão do pedido, o turno corria noutra, e a do pedido"
         " ficava presa na transação até o fim"
     )
@@ -432,7 +382,7 @@ async def test_an_opening_the_room_voices_live_is_composed_with_the_database_let
     opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
 
     assert opened.status_code == 200, opened.text[:300]
-    assert held == {"guide": False, "validator": False, "voice": False}, (
+    assert _the_requests_own(held) == {"guide": False, "validator": False}, (
         "a abertura ao vivo compunha e falava com a leitura da sessão ainda aberta"
     )
 
@@ -474,7 +424,7 @@ async def test_an_opening_the_tablet_names_is_composed_with_every_session_let_go
     )
 
     assert opened.status_code == 200, opened.text[:300]
-    assert held == {"guide": False, "validator": False, "voice": False}, (
+    assert _the_requests_own(held) == {"guide": False, "validator": False}, (
         "a abertura com turn_id corria numa sessão própria que ninguém olhava, com a leitura"
         " ainda aberta nela"
     )

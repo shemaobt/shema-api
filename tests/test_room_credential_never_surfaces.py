@@ -91,7 +91,10 @@ def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_b
     for the exact leak this file exists to catch — and, in the transcript audit, for the
     question's transcript."""
     paths = {route.path for route in room_app_routes()}
-    assert any(path.endswith("/voice/{handle}") for path in paths), (
+    assert {
+        "/api/internalization-room/voice/{handle}",
+        "/api/internalization-room/voice/{session_id}/{handle}",
+    } <= paths, (
         "a rota do clipe chama require_room_caller direto no corpo, sem Depends, e a "
         "auditoria parou de enxergá-la"
     )

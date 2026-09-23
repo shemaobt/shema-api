@@ -23,6 +23,7 @@ from app.services.internalization_room.sessions import (
     resolve_pericope,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 
 PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -67,6 +68,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         return None
 
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech))
     monkeypatch.setattr(sessions_api, "prepare_opening", _no_prepared_opening)
 
     test_app = FastAPI()

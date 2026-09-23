@@ -15,6 +15,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import (
     a_piece_still_to_be_told,
     played_every_part,
@@ -58,6 +59,7 @@ def held(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str,
     monkeypatch.setattr(bt_service, "call_agent", analyst)
     monkeypatch.setattr(turn_module, "call_agent", speaker)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(voice))
     return seen
 
 
@@ -71,7 +73,8 @@ async def test_the_verdict_is_read_and_voiced_with_the_database_let_go_not_held_
     )
 
     assert answered.status_code == 200, answered.text
-    assert held == {"analyst": False, "guide": False, "validator": False, "voice": False}, (
+    held.pop("voice", None)
+    assert held == {"analyst": False, "guide": False, "validator": False}, (
         "as leituras do terminei abriam a transação e a conexão ficava presa pelo analista,"
         " pelo Falante, pelo Validador e pela voz"
     )

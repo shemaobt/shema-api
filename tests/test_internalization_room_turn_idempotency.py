@@ -18,6 +18,7 @@ from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session, get_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
 
@@ -86,6 +87,7 @@ def fan_out(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     voice = _CountingVoice()
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(voice))
 
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)
 

@@ -10,12 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER, require_room_caller
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, UpstreamServiceError
+from app.db.models.internalization_room import IRSession
+from app.services import internalization_room as room
+from app.services.internalization_room.clip_flight import fly, in_flight
 from app.services.internalization_room.questions import AUDIO_MIME
 from app.services.internalization_room.synthesize_facilitator_speech import voiced_here
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform.storage import GcsPlatformStore
-from app.services.platform.tts import MIME_TYPE, SpeechStore, etag_of, fetch_clip
+from app.services.platform.tts import MIME_TYPE, SpeechStore, Voicing, etag_of, fetch_clip
 
 logger = logging.getLogger(__name__)
 
@@ -133,18 +136,21 @@ async def clip(
     x_range: str | None = Header(default=None, alias="Range"),
     x_if_range: str | None = Header(default=None, alias="If-Range"),
 ) -> Response:
-    """Serve one synthesized line by the handle a turn handed out.
+    """Serve one synthesized line by its handle alone, only as the bucket already keeps it.
+
+    The lines handed out this way are made before the handle is: a prepared opening, a
+    passage's name, a line said again, an opening the record dropped. So this route voices
+    nothing and joins no flight — with no session it cannot tell whose line a handle is,
+    and a turn's own line is served by `turn_clip`. A bucket that cannot be read is a 502,
+    an outage, not a missing clip.
 
     The key behind the handle is content-addressed, so these bytes can never change: the
     app may keep them for as long as it has room, and a line it has already heard costs
-    nothing to hear again. The key names the words, though, not one rendering of them: two
-    instances missing the same clip at once can each synthesize it, and the unconditional
-    put lets the second overwrite the first while the first still serves its own copy. So
-    the ETag hashes the bytes actually served, and an `If-Range` resume that lands on the
-    other rendering gets the whole clip, never a slice spliced onto the first. A bare
-    `Range`, with no `If-Range`, is still served off whichever rendering this instance
-    holds; the app always resumes with `If-Range`, and the write-once put that leaves one
-    rendering per key is ENG-996's.
+    nothing to hear again. The key names the words, though, not one rendering of them. The
+    bucket keeps the first rendering written under a key and memory keeps only what the
+    bucket confirmed, and the ETag still hashes the bytes actually served, so an `If-Range`
+    resume that lands on another rendering gets the whole clip, never a slice spliced onto
+    the first.
 
     The device check runs beside the read, not before it — the two are independent, and a
     tablet that is still welcome pays for whichever one is slower, not their sum. But the
@@ -160,18 +166,91 @@ async def clip(
     A 416 is the one answer decided by the `Range` header alone, so it is sent `no-store`:
     stored as immutable under the handle, it kept a tablet refusing a clip it can play.
     """
+    return await _serve(
+        handle,
+        None,
+        arrived=arrived,
+        db=db,
+        x_device_credential=x_device_credential,
+        x_room_key=x_room_key,
+        x_range=x_range,
+        x_if_range=x_if_range,
+    )
+
+
+@router.get("/voice/{session_id}/{handle}")
+async def turn_clip(
+    session_id: str,
+    handle: str,
+    arrived: float = Depends(_arrived),
+    db: AsyncSession = Depends(get_db),
+    x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
+    x_room_key: str | None = Header(default=None),
+    x_range: str | None = Header(default=None, alias="Range"),
+    x_if_range: str | None = Header(default=None, alias="If-Range"),
+) -> Response:
+    """Serve a line the session said, making it if nothing holds it.
+
+    The session is resolved against the caller's team, and the handle has to be one of that
+    session's lines — the Guide's words or one of the opening's two movements — before any
+    flight, memory or bucket is consulted; anything else is a 404. A line still being
+    voiced on this instance is joined, not voiced again. When no flight, memory or bucket
+    holds it, the line is made once from the session's words, and a line that cannot be
+    made is a 502, which the app treats as an outage. Neither the wait on a flight nor the
+    making outlasts the turn's own bound; running out is a 502 too, and the shielded flight
+    still lands for the next request. A bucket read that fails counts as a miss.
+
+    One re-synthesis per GET, not per line: requests racing on one line join the same
+    flight. With the bucket refusing every write, nothing is ever confirmed, so each GET
+    pays one synthesis and answers 502 — bounded per request, not across a tablet's
+    retries, and accepted.
+    """
+    return await _serve(
+        handle,
+        session_id,
+        arrived=arrived,
+        db=db,
+        x_device_credential=x_device_credential,
+        x_room_key=x_room_key,
+        x_range=x_range,
+        x_if_range=x_if_range,
+    )
+
+
+async def _serve(
+    handle: str,
+    session_id: str | None,
+    *,
+    arrived: float,
+    db: AsyncSession,
+    x_device_credential: str | None,
+    x_room_key: str | None,
+    x_range: str | None,
+    x_if_range: str | None,
+) -> Response:
     cfg = get_settings()
     key = from_handle(handle, settings=cfg)
+    flight = in_flight(key) if key is not None and session_id is not None else None
     read_task: asyncio.Task[tuple[bytes | None, int]] | None = None
-    if key is not None and not _SPECULATIVE_READS.locked():
+    if key is not None and flight is None and not _SPECULATIVE_READS.locked():
         await _SPECULATIVE_READS.acquire()
         read_task = _speculate(key, store=GcsPlatformStore(cfg))
 
     gate_passed = False
+    voice: Voicing | None = None
     try:
-        await require_room_caller(
+        caller = await require_room_caller(
             db, x_device_credential=x_device_credential, x_room_key=x_room_key
         )
+        if session_id is not None and key is not None:
+            session = (
+                await room.get_session_for_room_caller(db, session_id, caller.project_id)
+                if caller is not None and caller.project_id is not None
+                else await room.get_session(db, session_id)
+            )
+            voice = _voice_of(session, key)
+            if voice is None:
+                raise NotFoundError("No such clip")
         gate_passed = True
     finally:
         if not gate_passed and read_task is not None:
@@ -185,10 +264,26 @@ async def clip(
         raise NotFoundError("No such clip")
 
     authed = time.monotonic()
-    if read_task is None:
-        audio, gcs_ms = await _timed_fetch_clip(key, store=GcsPlatformStore(cfg))
+    deadline = asyncio.get_running_loop().time() + cfg.internalization_room_turn_bound_ms / 1000
+    flight_ms = 0
+    if flight is not None:
+        audio, gcs_ms = await _landed(flight, deadline), 0
+        flight_ms = _ms(authed, time.monotonic())
     else:
-        audio, gcs_ms = await read_task
+        try:
+            audio, gcs_ms = await (read_task or _timed_fetch_clip(key, store=GcsPlatformStore(cfg)))
+        except Exception as error:
+            if voice is None:
+                raise UpstreamServiceError("o clipe não pôde ser lido") from error
+            audio, gcs_ms = None, 0
+    if audio is None and voice is not None:
+        flying = time.monotonic()
+        try:
+            async with asyncio.timeout_at(deadline):
+                audio = await asyncio.shield(fly(key, voice))
+        except Exception as error:
+            raise UpstreamServiceError("a voz desta fala não pôde ser feita") from error
+        flight_ms += _ms(flying, time.monotonic())
 
     etag = etag_of(audio) if audio is not None else ""
     byte_range: ByteRange | None = None
@@ -208,8 +303,9 @@ async def clip(
         served = f"{byte_range.start}-{byte_range.end}"
 
     logger.info(
-        "[voice-get] auth=%sms gcs=%sms bytes=%s same_instance=%s range=%s",
+        "[voice-get] auth=%sms flight=%sms gcs=%sms bytes=%s same_instance=%s range=%s",
         _ms(arrived, authed),
+        flight_ms,
         gcs_ms,
         len(audio or b""),
         "yes" if voiced_here(key) else "no",
@@ -248,6 +344,29 @@ async def clip(
             "Accept-Ranges": "bytes",
         },
     )
+
+
+def _voice_of(session: IRSession, key: str) -> Voicing | None:
+    for message in reversed(session.messages or []):
+        if message.get("role") != "guide":
+            continue
+        for text in (message.get("text", ""), *message.get("movements", [])):
+            if not text.strip():
+                continue
+            line_key, voice = room.facilitator_speech_to_come(text, language=session.language)
+            if line_key == key:
+                return voice
+    return None
+
+
+async def _landed(flight: asyncio.Task[bytes], deadline: float) -> bytes | None:
+    try:
+        async with asyncio.timeout_at(deadline):
+            return await asyncio.shield(flight)
+    except TimeoutError as spent:
+        raise UpstreamServiceError("a voz desta fala não ficou pronta a tempo") from spent
+    except Exception:
+        return None
 
 
 def _media_type(key: str) -> str:

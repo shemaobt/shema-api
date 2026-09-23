@@ -103,6 +103,9 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/finish"): (
         "test_internalization_room_back_translation_ownership.py"
     ),
+    ("GET", f"{PREFIX}/voice/{{session_id}}/{{handle}}"): (
+        "test_ir_a_turns_voice_is_refused_to_another_team.py"
+    ),
 }
 
 
