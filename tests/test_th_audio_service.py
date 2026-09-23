@@ -151,7 +151,7 @@ async def test_transcribe_audio_treats_a_dropped_connection_as_upstream_too(
 async def test_transcribe_audio_requires_api_key() -> None:
     s = Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="")
     client = _stub_client(_stt_response("ignored"))
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await transcribe_audio(b"abc", filename="x.wav", settings=s, client=client)
 
 
