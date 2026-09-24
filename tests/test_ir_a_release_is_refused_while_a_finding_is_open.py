@@ -31,21 +31,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
-from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake
-from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.db.models.internalization_room import IRSession, IRTake
 from app.services.internalization_room.segments import capture_segment, retire_every_segment
 from app.services.internalization_room.sessions import (
-    apply_coverage,
     back_translation_of,
     create_session,
     save_back_translation,
-    save_comprehension,
 )
 from tests.alembic_harness import columns_of, run_alembic, scalar
 from tests.baker import (
@@ -69,7 +60,6 @@ from tests.release_harness import (
     ready_session,
     releases_of,
     reported_playback,
-    supported_comprehension,
     team_headers,
     team_release,
     the_one_part_of,
@@ -231,26 +221,6 @@ async def test_the_facilitator_forces_the_release_and_the_row_says_so(client, db
     assert [finding["kind"] for finding in row.forced_open_findings] == ["addition"]
     assert row.forced_open_findings[0]["note"] == THE_FINDING
     assert row.forced_open_findings[0]["chunk"] == 1
-
-
-async def _comprehension_in_conflict(db: AsyncSession, session: IRSession) -> None:
-    """A critical unit the team answered two ways, leaving the floor and the rehearsal
-    exactly where they were."""
-    state = supported_comprehension(session.pericope)
-    critical = next(
-        checkpoint for checkpoint in checkpoints_for(session.pericope) if checkpoint.critical
-    )
-    state.ledger = [
-        *state.ledger,
-        EvidenceObservation(
-            id="ev-conflito",
-            unit_id=critical.id,
-            probe_id="probe-conflito",
-            method=EvidenceMethod.MICRO_TELLBACK,
-            result=EvidenceResult.CONFLICT,
-        ),
-    ]
-    await save_comprehension(db, session, state)
 
 
 async def _the_floor_not_met(db: AsyncSession, session: IRSession) -> None:
@@ -888,36 +858,3 @@ async def test_the_migration_adds_the_four_columns_both_ways(applied_database):
         "recusa um server_default que inventasse um facilitador para quem nunca forçou nada"
     )
     assert await scalar(applied_database, f"SELECT count(*) FROM {TABLE}", {}) == 1
-
-
-async def test_a_checked_and_heard_telling_back_is_released_though_no_scene_was_reported_practised(
-    client, db_session
-):
-    project, credential = await a_claimed_device(db_session)
-    session = await ready_session(db_session, project_id=project.id)
-    await save_comprehension(db_session, session, ComprehensionState())
-
-    released = await client.post(team_release(session.id), headers=team_headers(credential))
-
-    assert released.status_code == 200, released.text
-    assert released.json()["blockers"] == [], (
-        "a equipe conferida, que ouviu tudo e aprovou, parava esperando uma pessoa porque "
-        "ninguém disse 'pronto' depois de um convite"
-    )
-    assert released.json()["version"] == 1
-
-
-async def test_a_critical_unit_in_conflict_no_longer_holds_the_passage_back(client, db_session):
-    """ENG-734, session 86a0cbbd: a conflict on a critical unit refused the release, and no
-    door in the room could clear it."""
-    project, credential = await a_claimed_device(db_session)
-    session = await ready_session(db_session, project_id=project.id)
-    await _comprehension_in_conflict(db_session, session)
-
-    released = await client.post(team_release(session.id), headers=team_headers(credential))
-    settled = await apply_coverage(db_session, session.id, dict(session.coverage_state or {}))
-
-    assert released.status_code == 200, released.text
-    assert released.json()["blockers"] == []
-    assert released.json()["version"] == 1
-    assert settled.status is IRSessionStatus.DONE

@@ -15,7 +15,6 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     SupersededAttempt,
 )
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.release import (
     FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
@@ -33,7 +32,6 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sessions import (
     create_session,
     save_back_translation,
-    save_comprehension,
 )
 from tests.release_harness import (
     CLIP_MS,
@@ -411,7 +409,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     await reported_playback(
         db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
-    await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
     await db_session.commit()
 

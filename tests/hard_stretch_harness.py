@@ -34,7 +34,6 @@ from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import build_internalization_release
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import supported_comprehension
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
@@ -190,8 +189,8 @@ async def attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -
 async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """Everything `build_internalization_release` asks for besides the telling-back itself.
 
-    What the caller told back is left exactly as they told it: only comprehension, coverage
-    and the playback report are added here, and none of them is what these cases are about —
+    What the caller told back is left exactly as they told it: only coverage and the
+    playback report are added here, and none of them is what these cases are about —
     they are about which takes the packet lists, and under which numbers.
 
     The analyst is stood in for rather than run, which is what `analysed_segment_ids` below has
@@ -202,7 +201,6 @@ async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, A
     them on a gate they are not watching (ENG-882).
     """
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await full_room.save_comprehension(db, session, supported_comprehension(P))
 
     told_back = await full_room.final_segments(db, session.id)
     state = full_room.back_translation_of(session)

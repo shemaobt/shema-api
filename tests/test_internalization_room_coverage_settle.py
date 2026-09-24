@@ -19,16 +19,6 @@ from app.services.internalization_room import sessions as service
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.classify_coverage import _parse, classify_coverage
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus, initial_state
 from app.services.internalization_room.coverage_channel import subscribe
 from app.services.internalization_room.release import (
@@ -42,23 +32,6 @@ P = "P03"
 
 def _settings() -> Settings:
     return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
-
-
-def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
-    ledger = [
-        EvidenceObservation(
-            id=f"ev-{index}",
-            unit_id=checkpoint.id,
-            probe_id=f"probe-{index}",
-            method=EvidenceMethod.MICRO_TELLBACK,
-            result=EvidenceResult.DEMONSTRATED,
-        )
-        for index, checkpoint in enumerate(checkpoints_for(pericope))
-    ]
-    return ComprehensionState(
-        ledger=ledger,
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
 
 
 def _whole_passage_engaged(pericope: str) -> str:
@@ -169,9 +142,6 @@ async def test_a_passage_settled_from_decisions_closes_the_session(
 ) -> None:
     patch_classifier(_whole_passage_engaged(P))
     session = await service.create_session(db_session, pericope=P)
-    session = await service.save_comprehension(
-        db_session, session, _fully_supported_comprehension(P)
-    )
 
     settled = await classify_coverage(
         coverage_state=initial_state(P),
@@ -228,9 +198,6 @@ async def test_a_classifier_still_answering_the_retired_status_moves_nothing(
     """
     patch_classifier(_whole_passage_partially_engaged(P))
     session = await service.create_session(db_session, pericope=P)
-    session = await service.save_comprehension(
-        db_session, session, _fully_supported_comprehension(P)
-    )
 
     settled = await classify_coverage(
         coverage_state=initial_state(P),

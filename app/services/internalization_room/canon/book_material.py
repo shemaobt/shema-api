@@ -193,10 +193,10 @@ def require_walkable(meaning_map: MeaningMap) -> None:
 
     The completion floor is every concrete element of the map engaged — each scene, being,
     place, object, time, significant absence, *and preserved element*. A passage with no
-    withholdings recorded gets a coverage spine with no `preserved:` beads and a
-    comprehension pack with no `preserved_element` checkpoints, meets that shortened floor,
-    and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
-    passage; running costs Refine a false assurance, which is the more expensive of the two.
+    withholdings recorded gets a coverage spine with no `preserved:` beads, meets that
+    shortened floor, and hands Refine a package asserting a floor nobody verified. Refusing
+    costs the team a passage; running costs Refine a false assurance, which is the more
+    expensive of the two.
 
     The three signals are read separately on purpose. Ruth's passages past the edge happen to
     carry both — no preservation layer *and* a pending survey — but agreement is not either

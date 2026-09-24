@@ -15,7 +15,6 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
 from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
@@ -133,12 +132,7 @@ def models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def target_checkpoint() -> str:
-    return next(checkpoint for checkpoint in checkpoints_for(P) if checkpoint.critical).id
-
-
-@pytest.fixture()
-async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSession:
+async def waiting_room(db_session: AsyncSession) -> IRSession:
     """A room that has asked its question and is waiting on the answer."""
     session = await create_session(db_session, language="pt", pericope=P)
     return await append_exchange(

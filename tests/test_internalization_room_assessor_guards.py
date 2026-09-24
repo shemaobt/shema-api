@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
 from app.services.internalization_room.run_turn import TurnOutcome
@@ -50,6 +49,7 @@ RETIRED_MODULES = (
     "app.services.internalization_room.comprehension.no_report",
     "app.services.internalization_room.comprehension.probe",
     "app.services.internalization_room.comprehension.practice",
+    "app.services.internalization_room.comprehension",
     "app.services.internalization_room.oral_decision",
 )
 
@@ -64,18 +64,6 @@ def test_no_module_of_the_probe_machinery_can_be_imported() -> None:
         alive.append(name)
 
     assert not alive, f"the probe machinery is back: {alive}"
-
-
-def test_no_field_of_the_session_remembers_the_probe_machinery() -> None:
-    retired = {
-        "assessor_failures",
-        "stt_recovery",
-        "no_report_attempts",
-        "adaptive_free_retell_attempted",
-        "active_probe",
-    }
-
-    assert not retired & set(ComprehensionState.model_fields)
 
 
 def test_no_turn_can_carry_a_call_for_a_person() -> None:

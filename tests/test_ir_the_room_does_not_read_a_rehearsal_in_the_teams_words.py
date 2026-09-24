@@ -7,12 +7,10 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
-    save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX
@@ -68,11 +66,8 @@ async def test_the_teams_word_after_an_invitation_changes_nothing_the_room_store
 
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
     session = await create_session(db_session, language="pt", pericope=P)
-    session = await save_comprehension(
-        db_session,
-        session,
-        ComprehensionState(practiced_scene_ids=["S1"], invited_scene_id="S2"),
-    )
+    session.comprehension = {"practiced_scene_ids": ["S1"], "invited_scene_id": "S2"}
+    await db_session.commit()
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response=INVITATION
     )

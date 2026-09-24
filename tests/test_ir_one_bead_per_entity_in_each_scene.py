@@ -14,7 +14,6 @@ from app.services.internalization_room.canon.elements import (
     scene_of,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
-from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
 from app.services.internalization_room.coverage import CoverageStatus, initial_state
 
 P01 = "P01"
@@ -120,29 +119,6 @@ def test_the_room_asks_once_about_the_missing_act_of_god_not_twice() -> None:
         "The narrator tells us how long it was, but says nothing of any child."
     )
     assert by_key["preserved:R10"].label.startswith("WITHHELD_PAIRING_PER_SOURCE_DISCIPLINE")
-
-
-def test_coverage_and_comprehension_agree_about_how_many_silences_ruth_1_has() -> None:
-    folded_into_the_spine = {
-        element.key: element.label
-        for element in elements_for(P01)
-        if element.kind is ElementKind.ABSENCE
-    }
-    folded_into_the_checkpoints = {
-        f"absence:{checkpoint.scene_id[1:]}": checkpoint.canonical["related_audit_notes"]
-        for checkpoint in checkpoints_for(P01)
-        if checkpoint.kind == "significant_absence"
-    }
-
-    assert set(folded_into_the_spine) == set(folded_into_the_checkpoints)
-    for key, notes in folded_into_the_checkpoints.items():
-        for note in notes:
-            assert note in folded_into_the_spine[key], f"{key} folds {note[:40]!r} on one side only"
-    assert {c.source_id for c in checkpoints_for(P01) if c.kind == "preserved_element"} == {
-        "R3",
-        "R5",
-        "R10",
-    }
 
 
 def test_ruth_1_strings_forty_four_beads_axes_first() -> None:

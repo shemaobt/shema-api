@@ -24,7 +24,6 @@ from app.services.internalization_room.coverage import CoverageStatus, floor_met
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 from tests.baker import (
-    fully_supported_comprehension,
     keep_a_take,
     make_language,
     make_project,
@@ -126,9 +125,6 @@ async def test_a_team_that_closed_the_tablet_mid_passage_finishes_it_on_the_seco
     thursday = await room.create_session(db_session, project_id=team.id)
     assert thursday.pericope == FIRST, "a passagem inacabada deixou de ser a da equipe"
 
-    thursday = await room.save_comprehension(
-        db_session, thursday, fully_supported_comprehension(FIRST)
-    )
     thursday = await room.apply_coverage(db_session, thursday.id, dict.fromkeys(rest, ENGAGED))
 
     assert floor_met(thursday.coverage_state, FIRST), (
