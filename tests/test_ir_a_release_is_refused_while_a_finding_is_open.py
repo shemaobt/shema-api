@@ -223,11 +223,6 @@ async def test_the_facilitator_forces_the_release_and_the_row_says_so(client, db
     assert row.forced_open_findings[0]["chunk"] == 1
 
 
-async def _the_floor_not_met(db: AsyncSession, session: IRSession) -> None:
-    session.coverage_state = {}
-    await db.commit()
-
-
 async def _no_rehearsal_audio(db: AsyncSession, session: IRSession) -> None:
     await db.execute(delete(IRTake).where(IRTake.session_id == session.id))
     await db.commit()
@@ -257,7 +252,6 @@ async def _a_wordless_stretch(db: AsyncSession, session: IRSession) -> None:
 @pytest.mark.parametrize(
     ("blocker", "break_it"),
     [
-        ("coverage_floor_not_met", _the_floor_not_met),
         ("no_rehearsal_audio", _no_rehearsal_audio),
         ("no_telling_back", _nothing_told_back),
         ("telling_back_never_analysed", _never_analysed),
@@ -270,8 +264,8 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
     """A dispute is forceable; missing material is not.
 
     The open finding and the unheard part are the two things a person can disagree about
-    after looking at them. A coverage floor nobody reached, a rehearsal nobody recorded, a
-    stretch nobody told back: there is nothing there to overrule, and a code that waived them
+    after looking at them. A rehearsal nobody recorded, a stretch nobody told back: there is
+    nothing there to overrule, and a code that waived them
     would let the Desk mint a packet out of a session that never happened.
     """
     project, _credential = await a_claimed_device(db_session)

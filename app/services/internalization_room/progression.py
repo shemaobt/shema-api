@@ -9,14 +9,16 @@ move one.
 **Derived, and what it is derived from moved.** A team's position is still a function of the
 book's order and of what the team did, and there is still no pointer anybody writes: nothing
 stores "this team is on P02". What it reads is no longer only the coverage events — it is the
-sessions that ended and the rehearsals kept in them, and both of those are records of things
-that happened rather than a computation that can be re-run to another answer.
+sessions that ended, the rehearsals kept in them and the releases the team approved, and all
+of those are records of things that happened rather than a computation that can be re-run to
+another answer.
 
 **The team's own recording is the mechanism.** A passage is closed when the team has a
 session on it that both met the coverage floor — `sessions.session_is_done`, whose instant is
-stamped on the row as `ir_sessions.ended_at` — and holds the rehearsal they recorded there.
-The floor alone closes nothing here, and nothing here counts beads. Why the stamp and not
-the status they are written together with is on `finished_passages`.
+stamped on the row as `ir_sessions.ended_at` — and holds the rehearsal they recorded there, or
+when the team approved a release of it, as the tablet already counts it. The floor alone
+closes nothing here, and nothing here counts beads. Why the stamp and not the status they are
+written together with is on `finished_passages`.
 
 **Reaching the rehearsal and finishing the passage are two facts, and this module wants the
 second.** `session_is_done` is the first: it is the signal the room reads to let a team into
@@ -56,26 +58,26 @@ the canon undoes that. So a re-vendor that renames a bead leaves the closed pass
 and the beads it added are not offered to a team that has already moved past them. Whether
 they should be is a question about re-work, which nothing in the product asks for yet.
 
-**A passage that never closes is a wall, and no one is told.** Classification runs on an
-LLM off the voice path and fails silently: the tracker is left untouched and the turn moves
-on. More turns give more chances, which handles a transient failure and does nothing for an
+**A floor that is never met no longer walls the passage.** Classification runs on an LLM
+off the voice path and fails silently: the tracker is left untouched and the turn moves on.
+More turns give more chances, which handles a transient failure and does nothing for an
 element that is systematically hard to classify — Ruth 1's five preservation rules being the
-natural candidates, since a team engages them by *noticing a silence*. Then the passage never
-closes, the team never advances, and nothing raises a hand. There is deliberately no
-facilitator override: unsticking belongs to the team, through the app. What is owed here is
-that the condition be **detectable**, and it is — the team holds its passage, ages into
-`stalled` on the work queue, and `GET /facilitator/teams/{id}/coverage` names the exact beads
-still below the floor. Turning that into someone being *told* is ENG-482 (CS-06).
+natural candidates, since a team engages them by *noticing a silence*. Such a session never
+stamps `ended_at`, but the release does not ask for the floor, so the team that records, tells
+back and approves closes the passage anyway, and so does a facilitator's force over her two
+gates. A team whose passage nobody approves holds it, ages into `stalled` on the work
+queue, and `GET /facilitator/teams/{id}/coverage` names the exact beads still below the
+floor. Turning that into someone being *told* is ENG-482 (CS-06).
 """
 
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import PericopePosition, PericopeStanding
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
@@ -188,6 +190,13 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     rehearsal itself arriving — a kept ``ensaio`` take on that same session. "O fecho ('gravem
     o ensaio') é decisão do Guia", Marcia, answer 8.
 
+    **Or an approved release**, read off ``ir_releases``' own ``project_id`` and ``pericope``
+    whichever session minted it. Her passage menu calls a passage final on its approval and
+    the tablet closes the necklace on it, and the approval can come before the classifier
+    paints the last bead, when ``ended_at`` is still empty. A release cannot exist without a
+    kept rehearsal — ``no_rehearsal_audio`` is not forceable — so this half adds no passage
+    the team did not record.
+
     **The stamp and not the status**, though the two are written together. ``mark_needs_person``
     overwrites the status with no guard on what it was, and the retell warning it raises only
     ever reaches a session that has already recorded — the back-translation route refuses one
@@ -202,7 +211,8 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     The ids are passed in hand and never as a subquery, for the reason `furthest_by_passage`
     records at length: the planner reaches the index with the ids and sequentially scans
     without them, so the cost becomes the size of the installation rather than the size of
-    the answer. An empty roll is answered without asking the database anything.
+    the answer. Both halves take them, and ``uq_ir_releases_version`` starts with
+    ``project_id``. An empty roll is answered without asking the database anything.
 
     A team with no finished passage is absent rather than present and empty, which is what
     the caller reads as "nothing closed yet".
@@ -210,14 +220,18 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     if not project_ids:
         return {}
     result = await db.execute(
-        select(IRSession.project_id, IRSession.pericope)
-        .join(IRTake, IRTake.session_id == IRSession.id)
-        .where(
-            IRSession.project_id.in_(project_ids),
-            IRSession.ended_at.is_not(None),
-            IRTake.kind == IRTakeKind.ENSAIO,
+        union(
+            select(IRSession.project_id, IRSession.pericope)
+            .join(IRTake, IRTake.session_id == IRSession.id)
+            .where(
+                IRSession.project_id.in_(project_ids),
+                IRSession.ended_at.is_not(None),
+                IRTake.kind == IRTakeKind.ENSAIO,
+            ),
+            select(IRRelease.project_id, IRRelease.pericope).where(
+                IRRelease.project_id.in_(project_ids)
+            ),
         )
-        .distinct()
     )
     closed: dict[str, Finished] = {}
     for project_id, pericope in result.all():

@@ -8,8 +8,9 @@ down so there is one definition to agree to; nobody has agreed to the number yet
 A session ends in exactly one of two ways, and in both ``ended_at`` is the moment of the
 team's **last activity** — never the moment the end was noticed.
 
-*Completed.* The completion floor is met and the session closes. That is an event at an
-instant, so the instant is stamped on the row.
+*Completed.* The completion floor is met and the session closes, or the team approves a
+release of it. Either is an event at an instant, so the instant is stamped: the floor's on
+the session row, the approval's on the first release the session minted.
 
 *Abandoned.* Nothing has happened for longer than ``SESSION_IDLE_LIMIT``. Nothing happened,
 so nothing is stamped: the end is derived here, from the last activity.
@@ -76,14 +77,17 @@ def last_activity(session: IRSession) -> datetime:
     return as_utc(session.updated_at)
 
 
-def end_of(session: IRSession, *, at: datetime) -> SessionEnd:
+def end_of(session: IRSession, *, at: datetime, released_at: datetime | None = None) -> SessionEnd:
     """The one place a session's end, state and length are decided.
 
     ``at`` is the caller's clock rather than this module's, so the rule is a pure function
-    of two timestamps and a test needs no clock to patch.
+    of its timestamps and a test needs no clock to patch. ``released_at`` is when the first
+    release this session minted was approved; a later version does not move the end.
     """
     if session.ended_at is not None:
         return _over(session, as_utc(session.ended_at), SessionState.COMPLETE)
+    if released_at is not None:
+        return _over(session, as_utc(released_at), SessionState.COMPLETE)
 
     stopped = last_activity(session)
     if as_utc(at) - stopped > SESSION_IDLE_LIMIT:
