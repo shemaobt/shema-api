@@ -5,8 +5,10 @@ session-resume work (ENG-435), which says the server is the authority on session
 leaves the staleness limit "agreed with the backend". This is the backend's half, written
 down so there is one definition to agree to; nobody has agreed to the number yet.
 
-A session ends in exactly one of two ways, and in both ``ended_at`` is the moment of the
-team's **last activity** — never the moment the end was noticed.
+A session ends in exactly one of two ways: *Abandoned* reads ``ended_at`` as the team's
+**last activity**, and *Completed* reads it as the instant the closing event happened —
+met once, and not moved by whatever the team does afterward — never the moment either end
+was noticed.
 
 *Completed.* The completion floor is met and the session closes, or the team approves a
 release of it. Either is an event at an instant, so the instant is stamped: the floor's on
