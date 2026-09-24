@@ -15,6 +15,7 @@ from app.services.internalization_room.canon.book_material import build_book_mat
 from app.services.internalization_room.coverage import counts
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.run_turn import TurnOutcome, run_panorama_turn
 from app.services.internalization_room.sessions import (
     book_of,
@@ -29,6 +30,7 @@ VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 OV = "OV-Ruth"
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
+VENDOR = Path(__file__).parents[1] / "app/services/internalization_room/prompts/vendor"
 
 
 def _settings() -> Settings:
@@ -180,6 +182,41 @@ async def test_the_panorama_is_grounded_on_the_book_material(patch_agent) -> Non
     speaker_system = agent.systems[0]
     assert "THE BOOK OF RUTH" in speaker_system
     assert "PRESERVATION NOTES" in speaker_system
+
+
+async def test_the_panorama_speaks_from_her_body_whole_not_from_a_copy_missing_her_opening(
+    patch_agent,
+) -> None:
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+    material = build_book_material("Ruth")
+    lines = (VENDOR / "book_overview_system_prompt.md").read_text(encoding="utf-8").splitlines()
+    begin = lines.index("`=== BEGIN SYSTEM PROMPT ===`")
+    end = lines.index("`=== END SYSTEM PROMPT ===`")
+    hers = "\n".join(lines[begin + 1 : end]).strip()
+
+    await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="o que é esse livro?",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=material,
+        settings=_settings(),
+    )
+
+    speaker_system = agent.systems[0].replace(CACHE_BREAK, "")
+    assert speaker_system == (
+        hers.replace("{{BOOK_NAME}}", "Ruth")
+        .replace("{{SESSION_LANGUAGE}}", "Portuguese")
+        .replace("{{BOOK_MATERIAL}}", material)
+    ), "o panorama falava de uma cópia nossa, sem a seção de abertura dela"
+    assert (
+        "quando\nquiserem falar comigo, toquem no círculo; toquem de novo quando terminarem"
+        in speaker_system
+    ), "a frase do círculo (K1) saía do corpo dela"
+    assert "**Written for a voice, not a page.**" in speaker_system
 
 
 async def test_the_validator_judges_against_the_same_material(patch_agent) -> None:

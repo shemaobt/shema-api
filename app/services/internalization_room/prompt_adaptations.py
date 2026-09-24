@@ -12,11 +12,19 @@ class Adaptation(NamedTuple):
 
 
 HER_FILES: dict[str, str] = {
+    "book_panorama": "book_overview_system_prompt.md",
     "coverage_classifier": "classifier_system_prompt.md",
     "validator": "validator_system_prompt.md",
 }
 
-ADAPTATIONS: tuple[Adaptation, ...] = ()
+ADAPTATIONS: tuple[Adaptation, ...] = (
+    Adaptation(
+        "book_panorama",
+        "quando\nquiserem falar comigo, toquem no círculo; toquem de novo quando terminarem",
+        "quando\nquiserem falar comigo, toquem no círculo; toquem de novo quando terminarem",
+        "PENDING — K1, asked in ENG-975 (r4:52)",
+    ),
+)
 
 
 def adapt(key: str, body: str, rows: tuple[Adaptation, ...]) -> str:
