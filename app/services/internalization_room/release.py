@@ -6,12 +6,12 @@ scenes practiced, the semantic evidence events and their open points, the tellin
 with its findings and playback report, and every superseded attempt clearly marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
-partial artifact — because a package missing the comprehension it was built on, the coverage
-floor, the rehearsal audio, the telling-back, the analyst's reading of it, a stretch nobody
-told back or a recording nobody told back would look downstream exactly like a finished one; so
-would one composed for a panorama, which is not a draft of a passage at all. Those eight are
-missing material, and nothing overrules them: there is nothing in a rehearsal nobody recorded
-for anybody to overrule.
+partial artifact — because a package missing the coverage floor, the rehearsal audio, the
+telling-back, the analyst's reading of it, a stretch nobody told back or a recording nobody
+told back would look downstream exactly like a finished one; so would one composed for a
+panorama, which is not a draft of a passage at all. Those seven are missing material, and
+nothing overrules them: there is nothing in a rehearsal nobody recorded for anybody to
+overrule.
 
 The other two are Marcia's gate — an open finding the telling-back still carries, and a part
 of the rehearsal the team never heard through — and they are a dispute rather than a hole.
@@ -441,8 +441,6 @@ async def compose_internalization_release(
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
     parts = current_parts(takes)
 
-    if readiness.evaluation.outcome.value == "needs_more_work":
-        blockers.append("comprehension_needs_more_work")
     if not floor_met(session.coverage_state or {}, session.pericope):
         blockers.append("coverage_floor_not_met")
     if not ensaio_takes:

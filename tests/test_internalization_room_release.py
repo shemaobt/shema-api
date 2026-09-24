@@ -58,7 +58,6 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
         await build_internalization_release(db_session, session)
 
     assert set(blocked.value.blockers) >= {
-        "comprehension_needs_more_work",
         "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
@@ -437,10 +436,7 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
-        "comprehension_needs_more_work",
-        "coverage_floor_not_met",
-    }
+    assert "coverage_floor_not_met" in blocked.value.blockers
 
 
 async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
