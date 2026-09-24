@@ -44,7 +44,6 @@ from app.services.internalization_room.sessions import (
     create_session,
     get_session,
     retire_the_part_recorded_again,
-    save_comprehension,
 )
 from app.services.internalization_room.takes import take_by_id
 from tests.hard_stretch_harness import MemoryStore
@@ -54,7 +53,6 @@ from tests.release_harness import (
     TABLET,
     P,
     ensaio_take,
-    supported_comprehension,
 )
 
 PART_MS = 61000
@@ -334,7 +332,6 @@ async def rehearsed_in_parts(
     """
     session = await create_session(db, pericope=P, project_id=project_id, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P))
 
     parts = []
     for index in range(count):
@@ -398,7 +395,6 @@ async def rehearsed_in_parts_of(
     session.coverage_state = merge(
         initial_state(pericope), pericope_num=pericope, engaged=element_keys(pericope)
     )
-    await save_comprehension(db, session, supported_comprehension(pericope))
 
     parts = []
     told = 0

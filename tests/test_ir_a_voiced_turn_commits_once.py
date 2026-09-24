@@ -21,11 +21,9 @@ from app.services.internalization_room.sessions import (
     create_session,
     get_session,
     mark_needs_person,
-    save_comprehension,
     unattend,
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
-from tests.baker import fully_supported_comprehension
 from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 
@@ -514,7 +512,6 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    await save_comprehension(db_session, waiting_room, fully_supported_comprehension(P))
     await mark_needs_person(db_session, waiting_room, kind=HaltKind.BLOCKING)
 
     async def a_visit_and_then_the_last_settle_close_the_passage() -> None:

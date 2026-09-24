@@ -8,15 +8,15 @@ machinery which produces that should not exist.
 
 These tests do not describe behaviour that was built. They describe absence, and they are
 the only thing standing between the absence and someone rebuilding it a piece at a time:
-no module of it can be imported, no field of a session remembers it, no purpose is left to
-hand the Guide, no block of it reaches either model, and no count of failed calls can end
-an interview. Named symbol by symbol rather than matched by prefix, the way the retired
-acousteme surface is named: the package around them is alive, and a prefix guard here would
-be widened until it meant nothing.
+no module of it can be imported, no purpose is left to hand the Guide, no block of it
+reaches either model, and no count of failed calls can end an interview. Named module by
+module rather than matched by prefix, the way the retired acousteme surface is named, and
+the package that held them is named whole now that it is gone whole.
 """
 
 import dataclasses
 import importlib
+import importlib.util
 import json
 import sys
 from typing import Any
@@ -27,14 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
+from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
-    save_comprehension,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -51,6 +49,7 @@ RETIRED_MODULES = (
     "app.services.internalization_room.comprehension.no_report",
     "app.services.internalization_room.comprehension.probe",
     "app.services.internalization_room.comprehension.practice",
+    "app.services.internalization_room.comprehension",
     "app.services.internalization_room.oral_decision",
 )
 
@@ -59,24 +58,14 @@ def test_no_module_of_the_probe_machinery_can_be_imported() -> None:
     alive = []
     for name in RETIRED_MODULES:
         try:
-            importlib.import_module(name)
+            spec = importlib.util.find_spec(name)
         except ModuleNotFoundError:
+            continue
+        if spec is None or spec.origin is None:
             continue
         alive.append(name)
 
     assert not alive, f"the probe machinery is back: {alive}"
-
-
-def test_no_field_of_the_session_remembers_the_probe_machinery() -> None:
-    retired = {
-        "assessor_failures",
-        "stt_recovery",
-        "no_report_attempts",
-        "adaptive_free_retell_attempted",
-        "active_probe",
-    }
-
-    assert not retired & set(ComprehensionState.model_fields)
 
 
 def test_no_turn_can_carry_a_call_for_a_person() -> None:
@@ -106,7 +95,7 @@ async def _a_room_that_has_asked_something(db: AsyncSession) -> IRSession:
 
 async def _the_team_answers(
     db: AsyncSession, session: IRSession, text: str, *, heard_as: str | None = None
-) -> tuple[ComprehensionTurn, IRSession]:
+) -> tuple[TurnOutcome, IRSession]:
     """One whole turn as the endpoint runs it, so what one turn leaves the next one reads.
 
     `heard_as` is the language the transcriber was sure it heard; at the room's threshold,
@@ -122,13 +111,12 @@ async def _the_team_answers(
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
-    session = await save_comprehension(db, session, turn.state)
     session = await append_exchange(
         db,
         session,
-        team_utterance=turn.outcome.transcript,
-        guide_response=turn.outcome.speech,
-        outcome=turn.outcome,
+        team_utterance=turn.transcript,
+        guide_response=turn.speech,
+        outcome=turn,
     )
     return turn, session
 
@@ -192,9 +180,9 @@ async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached
         db_session, session, text="é difícil explicar isso em português"
     )
 
-    assert turn.outcome.speech == GUIDE_LINE
-    assert not turn.outcome.used_fail_safe
-    assert not turn.outcome.degraded
+    assert turn.speech == GUIDE_LINE
+    assert not turn.used_fail_safe
+    assert not turn.degraded
     assert models.guide and models.validator
     to_the_guide = _marks_the_app_added(models.guide, GUIDE)
     to_the_validator = _marks_the_app_added(models.validator, VALIDATOR)
@@ -235,13 +223,13 @@ async def test_a_room_whose_model_keeps_failing_always_speaks_the_fourth_a_line(
     spoken = []
     for _ in range(4):
         turn, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-        spoken.append(turn.outcome.fixed_line)
+        spoken.append(turn.fixed_line)
 
     assert spoken == ["A3", "A3", "A3", "A3"], (
         "a escada A era indexada pelo tamanho da conversa e chegava à pausa na terceira; "
         "agora nada conta, e toda tentativa esgotada nomeia a mesma linha"
     )
-    assert turn.outcome.speech == EXHAUSTED_LINE
+    assert turn.speech == EXHAUSTED_LINE
 
 
 async def test_an_exhausted_turn_is_the_fourth_a_line_whatever_came_before(
@@ -264,10 +252,10 @@ async def test_an_exhausted_turn_is_the_fourth_a_line_whatever_came_before(
 
     turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
 
-    assert settled.outcome.speech == GUIDE_LINE
-    assert own_tongue.outcome.fixed_line == ""
-    assert own_tongue.outcome.used_fail_safe is False
-    assert turn.outcome.fixed_line == "A3", (
+    assert settled.speech == GUIDE_LINE
+    assert own_tongue.fixed_line == ""
+    assert own_tongue.used_fail_safe is False
+    assert turn.fixed_line == "A3", (
         "a contagem não zerava num turno que o Validador aprovou nem numa língua materna que "
         "o Guia respondeu, e a terceira falha da sessão virava pausa mesmo assim; agora não "
         "há contagem para zerar"

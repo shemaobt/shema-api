@@ -17,7 +17,6 @@ before anything is asked of the team — frame first, elicit second.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,18 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
-from app.services.internalization_room.sessions import comprehension_of
 from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.turn.speech import speak_back
-
-
-@dataclass
-class ComprehensionTurn:
-    outcome: TurnOutcome
-    state: ComprehensionState
 
 
 async def run_comprehension_turn(
@@ -48,7 +39,7 @@ async def run_comprehension_turn(
     guide_prompt: str,
     validator_prompt: str,
     settings: Settings,
-) -> ComprehensionTurn:
+) -> TurnOutcome:
     """One comprehension turn: what was heard, and what the room says back.
 
     Only the session's very first line is told in two movements. A file-less POST on a session
@@ -58,14 +49,13 @@ async def run_comprehension_turn(
     pericope = session.pericope
     book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
-    state = comprehension_of(session)
 
     transcript = speech.text
     uncertain = speech.uncertain
     mother_tongue = speech.mother_tongue
     empty = not transcript.strip()
 
-    outcome = await speak_back(
+    return await speak_back(
         mother_tongue=mother_tongue,
         take_ms=speech.take_ms,
         session=session,
@@ -81,7 +71,5 @@ async def run_comprehension_turn(
         settings=settings,
     )
 
-    return ComprehensionTurn(outcome=outcome, state=state)
 
-
-__all__ = ["ComprehensionTurn", "current_scene_id", "run_comprehension_turn"]
+__all__ = ["current_scene_id", "run_comprehension_turn"]

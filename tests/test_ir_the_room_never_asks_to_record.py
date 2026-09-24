@@ -22,8 +22,6 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import ROOM_LANGUAGES
@@ -36,7 +34,6 @@ from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
     create_session,
-    save_comprehension,
     session_is_done,
 )
 
@@ -92,12 +89,9 @@ def approve_all(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def _a_passage_worked_through(db_session: AsyncSession, language: str) -> IRSession:
-    """Everything the passage asks for is done: the floor is met and every scene was
-    rehearsed. This is exactly the room the app used to interrupt with its question."""
+    """Everything the passage asks for is done: the floor is met. This is exactly the room
+    the app used to interrupt with its question."""
     session = await create_session(db_session, language=language, pericope=P)
-    session = await save_comprehension(
-        db_session, session, ComprehensionState(practiced_scene_ids=scene_ids_for(P))
-    )
     session = await apply_coverage(
         db_session, session.id, merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     )
@@ -114,11 +108,8 @@ async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> 
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
-    await save_comprehension(db_session, session, turn.state)
-    await append_exchange(
-        db_session, session, team_utterance=utterance, guide_response=turn.outcome.speech
-    )
-    return turn.outcome.speech
+    await append_exchange(db_session, session, team_utterance=utterance, guide_response=turn.speech)
+    return turn.speech
 
 
 async def test_a_passage_worked_through_is_finished_without_a_consent_answer(

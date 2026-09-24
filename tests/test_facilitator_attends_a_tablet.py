@@ -34,7 +34,6 @@ from app.core.enums import ProjectRole
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import sessions as room
-from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     grant_facilitator_app_role,
@@ -438,11 +437,6 @@ async def test_a_tablet_that_never_halted_can_be_marked_and_moves_nowhere(
 
 
 @pytest.fixture()
-def target_checkpoint() -> str:
-    return next(checkpoint for checkpoint in checkpoints_for(P) if checkpoint.critical).id
-
-
-@pytest.fixture()
 def the_models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
     """The Guide drafts and the Validator passes it."""
     monkeypatch.setattr(
@@ -451,7 +445,7 @@ def the_models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-async def waiting_room(db_session: AsyncSession, team_a: Team, target_checkpoint: str):
+async def waiting_room(db_session: AsyncSession, team_a: Team):
     """A room of A's team that has asked its question and is waiting on the answer."""
     session = await room.create_session(
         db_session,

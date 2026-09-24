@@ -120,7 +120,7 @@ async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
         report={"played_by_take": [_covering(part) for part in (a, b, c, d)]},
     )
     heard = await release_packet(db_session, session)
-    assert heard["readiness"] == "ready_for_refine"
+    assert heard["purpose"] == "first_team_rehearsal"
 
     fresh_a = await record_the_part_again(db_session, session, a, sha256="e" * 64)
     await tell_back_about(db_session, session, fresh_a, bridge_take_id="retro-de-novo")
@@ -154,7 +154,7 @@ async def test_a_replaced_part_heard_again_confirms_without_the_others_replayed(
         report={"played_by_take": [_covering(part) for part in (fresh_a, b, c, d)]},
     )
 
-    assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
+    assert (await release_packet(db_session, session))["purpose"] == "first_team_rehearsal"
 
 
 async def test_an_entry_for_a_recording_the_stretches_no_longer_name_is_ignored(
@@ -281,7 +281,7 @@ async def test_the_packet_carries_the_report_per_take(
     )
     packet = await release_packet(db_session, session)
 
-    assert packet["schema_version"] == "tripod.internalization-release.v0.6"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.7"
     assert packet["back_translation"]["played_by_take"] == per_take
     assert "played_ranges" not in packet["back_translation"]
     assert "clip_duration_ms" not in packet["back_translation"]
@@ -376,7 +376,7 @@ async def test_an_honest_report_on_the_current_rehearsal_releases(
 
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
+    assert (await release_packet(db_session, session))["purpose"] == "first_team_rehearsal"
 
 
 async def test_a_fresh_report_after_a_re_record_releases(
@@ -391,7 +391,7 @@ async def test_a_fresh_report_after_a_re_record_releases(
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
+    assert (await release_packet(db_session, session))["purpose"] == "first_team_rehearsal"
 
 
 async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(

@@ -19,7 +19,6 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -269,13 +268,13 @@ async def _land(
     """Write ``values`` to this session's row, refusing the write if another turn got there
     first (ENG-643).
 
-    ``messages`` and ``comprehension`` are both whole-value JSON, computed from whatever the
-    caller had read off ``session`` before calling this — so a plain UPDATE would let a turn
-    that started a moment later, and committed a moment earlier, have its evidence silently
-    written over. The WHERE clause below is the guard: it only lands while ``version`` is
-    still what this ``session`` was read at, and the loser gets a raised conflict instead of
-    a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
-    sound necklace's own document, generalised to whichever columns the caller is writing.
+    ``messages`` is whole-value JSON, computed from whatever the caller had read off
+    ``session`` before calling this — so a plain UPDATE would let a turn that started a moment
+    later, and committed a moment earlier, have its lines silently written over. The WHERE
+    clause below is the guard: it only lands while ``version`` is still what this ``session``
+    was read at, and the loser gets a raised conflict instead of a clean-looking overwrite.
+    Mirrors the compare-and-swap `autosave_state.py` runs for the sound necklace's own
+    document, generalised to whichever columns the caller is writing.
     """
     await db.flush()
     stmt = (
@@ -314,7 +313,6 @@ async def append_exchange(
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
     told_back: str = "",
-    state: ComprehensionState | None = None,
     commit: bool = True,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
@@ -388,8 +386,6 @@ async def append_exchange(
             else_=IRSession.status,
         )
     values["lifted_halt"] = case((nothing_to_put_back, None), else_=IRSession.lifted_halt)
-    if state is not None:
-        values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
 
 
@@ -440,12 +436,6 @@ async def apply_coverage(
     return session
 
 
-def comprehension_of(session: IRSession) -> ComprehensionState:
-    """The comprehension state as stored. A row saved while the room still kept a probe
-    loads as it is: the model ignores a key it no longer declares."""
-    return ComprehensionState.model_validate(session.comprehension or {})
-
-
 async def append_opening(
     db: AsyncSession,
     session: IRSession,
@@ -453,7 +443,6 @@ async def append_opening(
     guide_response: str,
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
-    state: ComprehensionState | None = None,
     commit: bool = True,
 ) -> bool:
     """The opening written as the session's first line, or dropped when the team spoke first.
@@ -481,23 +470,9 @@ async def append_opening(
         guide_response=guide_response,
         outcome=outcome,
         scene=scene,
-        state=state,
         commit=commit,
     )
     return True
-
-
-async def save_comprehension(
-    db: AsyncSession, session: IRSession, state: ComprehensionState
-) -> IRSession:
-    """Write the comprehension alone, in a commit of its own — for seeding a test's session.
-
-    No route writes a turn through this any more: the voiced route (ENG-1021) and the text
-    seam (ENG-1033) hand the state to `append_exchange(state=...)`, so the comprehension and
-    the exchange land in one guarded UPDATE and one commit. A turn written through this and
-    then `append_exchange` is the two-commit pattern both of them removed.
-    """
-    return await _land(db, session, {"comprehension": state.model_dump(mode="json")})
 
 
 def session_is_done(session: IRSession) -> bool:

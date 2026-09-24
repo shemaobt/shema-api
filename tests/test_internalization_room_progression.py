@@ -46,7 +46,6 @@ from app.services.internalization_room.progression import (
     team_standing,
 )
 from tests.baker import (
-    fully_supported_comprehension,
     having_finished_the_passage,
     keep_a_take,
     make_language,
@@ -304,7 +303,6 @@ async def test_a_session_that_reached_the_rehearsal_and_never_recorded_leaves_th
     """
     team = await a_team(db_session, name="Chegou ao ensaio e parou")
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
 
     settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
 
@@ -360,7 +358,6 @@ async def test_a_stretch_told_back_is_not_the_rehearsal_and_closes_nothing(
     """A retro is the team explaining one stretch to the room. The passage is still theirs."""
     team = await a_team(db_session, name="Contou de volta")
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
     settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
 
     await keep_a_take(db_session, settled, kind=IRTakeKind.RETRO)

@@ -15,7 +15,6 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     SupersededAttempt,
 )
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.release import (
     FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
@@ -33,7 +32,6 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sessions import (
     create_session,
     save_back_translation,
-    save_comprehension,
 )
 from tests.release_harness import (
     CLIP_MS,
@@ -87,8 +85,6 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     artifact = await build_internalization_release(db_session, session)
 
     assert artifact["purpose"] == "first_team_rehearsal"
-    assert artifact["readiness"] == "ready_for_refine"
-    assert artifact["comprehension"]["outcome"] == "ready_supported"
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
     assert [entry["played_ranges"] for entry in artifact["back_translation"]["played_by_take"]] == [
@@ -147,21 +143,6 @@ async def test_one_more_stretch_told_changes_the_packet_hash(
     assert before["package_sha256"] != after["package_sha256"], (
         "o mesmo relógio nas duas leituras não pode esconder que o conteúdo mudou"
     )
-
-
-async def test_a_carried_point_travels_with_its_canonical_material(
-    db_session: AsyncSession,
-) -> None:
-    session = await ready_session(db_session, carry_one=True)
-
-    artifact = await build_internalization_release(db_session, session)
-
-    assert artifact["comprehension"]["outcome"] == "ready_with_open_points"
-    point = artifact["comprehension"]["open_points"][0]
-    assert point["reason"] == "carry_to_refine"
-    assert point["checkpoint_kind"] is not None
-    assert point["canonical"] is not None
-    assert artifact["open_questions"] >= 1
 
 
 async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession) -> None:
@@ -381,7 +362,6 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
 
     artifact = await build_internalization_release(db_session, session)
 
-    assert artifact["readiness"] == "ready_for_refine"
     assert artifact["back_translation"]["checked"] is True
     assert artifact["back_translation"]["findings"] == []
 
@@ -429,7 +409,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     await reported_playback(
         db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
-    await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
     await db_session.commit()
 
@@ -666,21 +645,3 @@ async def test_a_superseded_telling_back_is_history_and_counts_nothing(
     assert artifact["back_translation"]["superseded_attempts"][0]["findings"][0]["kind"] == (
         "missing"
     )
-
-
-async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
-    db_session: AsyncSession,
-) -> None:
-    session = await ready_session(db_session, carry_one=True)
-    await reported_playback(
-        db_session, session, await told_back_with_an_open_finding(db_session, session)
-    )
-
-    artifact, blockers = await compose_internalization_release(db_session, session)
-
-    assert set(blockers) <= FORCEABLE_BLOCKERS, (
-        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
-        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
-    )
-
-    assert artifact["open_questions"] == 2

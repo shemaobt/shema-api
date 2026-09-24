@@ -1,8 +1,8 @@
 """The rows a release case needs before it can ask the packet anything.
 
-A session the room would let the team approve — comprehension supported, coverage met, a
-rehearsal recorded, a stretch told back and read, the playback reported — assembled through
-the room's own write paths so every case starts from state the field could produce.
+A session the room would let the team approve — coverage met, a rehearsal recorded, a
+stretch told back and read, the playback reported — assembled through the room's own write
+paths so every case starts from state the field could produce.
 
 Shared by the cases about the artifact, the frozen numbers, the gate a facilitator forces and
 the check block the packet carries, which is why it is here and not in any of them. What a
@@ -37,23 +37,12 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
 )
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
     report_playback,
-    save_comprehension,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
@@ -123,30 +112,6 @@ async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
         select(IRRelease).where(IRRelease.session_id == session_id).order_by(IRRelease.version)
     )
     return list(rows.scalars().all())
-
-
-def supported_comprehension(pericope: str, *, carry_one: bool = False) -> ComprehensionState:
-    checkpoints = list(checkpoints_for(pericope))
-    ledger = []
-    for index, checkpoint in enumerate(checkpoints):
-        result = (
-            EvidenceResult.CARRY_TO_REFINE
-            if carry_one and index == 0
-            else EvidenceResult.DEMONSTRATED
-        )
-        ledger.append(
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=result,
-            )
-        )
-    return ComprehensionState(
-        ledger=list(ledger),
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
 
 
 async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
@@ -334,11 +299,10 @@ async def rehearsed_session(
     project_id: str | None = None,
     language: str | None = None,
     ordinal: int | None = None,
-    **comprehension_kwargs,
 ) -> tuple[IRSession, IRTake]:
     """A session that has done everything a release needs except tell the passage back.
 
-    Comprehension supported, coverage satisfied, the passage rehearsed. The take comes back
+    Coverage satisfied, the passage rehearsed. The take comes back
     beside the session because the stage after this one is told *about* a recording, and a
     case that has to name the part it played cannot find it by guessing.
 
@@ -352,7 +316,6 @@ async def rehearsed_session(
     """
     session = await create_session(db, pericope=P, project_id=project_id, language=language)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
     take = ensaio_take(session.id, ordinal=ordinal, project_id=session.project_id)
     db.add(take)
     await db.commit()
@@ -365,7 +328,6 @@ async def ready_session(
     project_id: str | None = None,
     ordinal: int | None = None,
     tell: Callable[[AsyncSession, IRSession], Awaitable[BackTranslationState]] | None = None,
-    **comprehension_kwargs,
 ):
     """A session carrying everything the packet refuses to travel without.
 
@@ -381,9 +343,7 @@ async def ready_session(
     several stretches passes its own and inherits the rest of the scaffold rather than
     rebuilding it, which is the only part of this that ever differs.
     """
-    session, _take = await rehearsed_session(
-        db, project_id=project_id, ordinal=ordinal, **comprehension_kwargs
-    )
+    session, _take = await rehearsed_session(db, project_id=project_id, ordinal=ordinal)
     await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session
 
@@ -391,14 +351,12 @@ async def ready_session(
 async def a_p02_telling_with_the_swapped_cause(db: AsyncSession, project: Project) -> IRSession:
     """A P02 session ready in every way but one: frase 1 swapped who caused the return.
 
-    Everything the gate asks for is here — comprehension supported, the floor met, a
-    rehearsal recorded, one stretch told back and read by the analyst, the whole part played
-    through. The only thing between this session and Refine is the finding the team stopped
-    answering.
+    Everything the gate asks for is here — the floor met, a rehearsal recorded, one stretch
+    told back and read by the analyst, the whole part played through. The only thing between
+    this session and Refine is the finding the team stopped answering.
     """
     session = await create_session(db, pericope=P02, project_id=project.id)
     session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
-    await save_comprehension(db, session, supported_comprehension(P02))
     rehearsal = IRTake(
         session_id=session.id,
         project_id=project.id,

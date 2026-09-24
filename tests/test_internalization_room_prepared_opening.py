@@ -140,8 +140,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-    from app.services.internalization_room.comprehension.state import ComprehensionState
-    from app.services.internalization_room.live_turn import ComprehensionTurn
     from app.services.internalization_room.run_turn import TurnOutcome
     from app.services.platform.tts import SynthesizedSpeech
 
@@ -150,11 +148,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     async def _panorama_turn(**_: Any) -> TurnOutcome:
         return TurnOutcome(speech=PANORAMA, transcript="")
 
-    async def _comprehension_turn(*_: Any, **__: Any) -> ComprehensionTurn:
-        return ComprehensionTurn(
-            outcome=TurnOutcome(speech=ON_DEMAND, transcript=""),
-            state=ComprehensionState(),
-        )
+    async def _comprehension_turn(*_: Any, **__: Any) -> TurnOutcome:
+        return TurnOutcome(speech=ON_DEMAND, transcript="")
 
     async def _speech(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
         return SynthesizedSpeech(

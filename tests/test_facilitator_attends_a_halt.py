@@ -33,16 +33,6 @@ from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
@@ -683,11 +673,6 @@ async def test_a_hard_stretch_is_a_warning_and_not_a_block(
     assert standing["halt"] == WARNING
 
 
-@pytest.fixture()
-def target_checkpoint() -> str:
-    return next(checkpoint for checkpoint in checkpoints_for(P) if checkpoint.critical).id
-
-
 class _AgreeingModels:
     """A Guide that drafts one short line and a Validator that passes it."""
 
@@ -706,9 +691,7 @@ def the_models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-async def waiting_room(
-    db_session: AsyncSession, facilitator_a: Facilitator, target_checkpoint: str
-):
+async def waiting_room(db_session: AsyncSession, facilitator_a: Facilitator):
     """A room of A's team that has asked its question and is waiting on the answer."""
     session = await room.create_session(
         db_session,
@@ -761,7 +744,6 @@ async def test_undoing_the_mark_on_a_finished_passage_leaves_it_finished(
 ) -> None:
     """`DONE` is terminal, and the undo is not a way back into a closed passage."""
     session = await a_session(db_session, team_id=facilitator_a.team_id, ready_to_close=True)
-    await room.save_comprehension(db_session, session, _ready_comprehension())
     marked = await attend(client, session.id, facilitator_a)
     assert marked.status_code == 200, marked.text[:300]
     assert marked.json()["attended_at"], "não houve carimbo, logo não há limpeza a provar"
@@ -782,23 +764,6 @@ async def test_undoing_the_mark_on_a_finished_passage_leaves_it_finished(
     assert card["state"] == "complete"
 
 
-def _ready_comprehension() -> ComprehensionState:
-    """Calibration, evidence, practice and consent — everything the floor no longer implies."""
-    return ComprehensionState(
-        ledger=[
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-            )
-            for index, checkpoint in enumerate(checkpoints_for(P))
-        ],
-        practiced_scene_ids=scene_ids_for(P),
-    )
-
-
 async def test_a_finished_passage_waits_on_the_queue_without_being_a_halt(
     client: httpx.AsyncClient, db_session: AsyncSession, facilitator_a: Facilitator
 ) -> None:
@@ -817,7 +782,6 @@ async def test_a_finished_passage_waits_on_the_queue_without_being_a_halt(
     session is exactly when it starts being able to fail.
     """
     session = await a_session(db_session, team_id=facilitator_a.team_id, ready_to_close=True)
-    await room.save_comprehension(db_session, session, _ready_comprehension())
     await room.apply_coverage(db_session, session.id, dict.fromkeys(element_keys(P), ENGAGED))
 
     waiting = await queued(client, facilitator_a, session.id)

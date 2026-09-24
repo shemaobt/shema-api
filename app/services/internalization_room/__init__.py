@@ -24,7 +24,6 @@ from app.services.internalization_room.hard_stretches import (
     note_a_hard_stretch,
 )
 from app.services.internalization_room.live_turn import (
-    ComprehensionTurn,
     run_comprehension_turn,
 )
 from app.services.internalization_room.run_turn import (
@@ -54,7 +53,6 @@ from app.services.internalization_room.sessions import (
     apply_coverage,
     attend,
     back_translation_of,
-    comprehension_of,
     create_session,
     get_session,
     get_session_for_facilitator,
@@ -64,7 +62,6 @@ from app.services.internalization_room.sessions import (
     report_playback,
     retire_the_part_recorded_again,
     save_back_translation,
-    save_comprehension,
     session_for_room_caller,
     session_is_done,
     sessions_waiting_on_a_person,
@@ -81,7 +78,6 @@ from app.services.internalization_room.verdict_round import (
 
 __all__ = [
     "BackTranslationState",
-    "ComprehensionTurn",
     "Finding",
     "TellingBackVerdict",
     "TurnOutcome",
@@ -96,7 +92,6 @@ __all__ = [
     "check_the_telling_back",
     "classify_coverage",
     "closing_block",
-    "comprehension_of",
     "correction_to_verify",
     "count_an_empty_telling",
     "create_session",
@@ -128,7 +123,6 @@ __all__ = [
     "run_turn",
     "run_verdict_turn",
     "save_back_translation",
-    "save_comprehension",
     "save_the_spoken_verdict",
     "segment_by_id",
     "segment_for_session",
