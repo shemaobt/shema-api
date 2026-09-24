@@ -143,10 +143,13 @@ async def run() -> int:
             settings=settings,
         )
         verdict, refusal = _parse_verdict(raw)
-        passed = refusal is None and verdict["verdict"] == "pass"
-        held = refusal is None and passed == planted.must_pass
+        if refusal is not None:
+            failed += 1
+            print(f"  ✗ {planted.id} (validator parsed a verdict) — {refusal}")
+            continue
+        held = (verdict["verdict"] == "pass") == planted.must_pass
         expected = "pass" if planted.must_pass else "not pass"
-        said = f"verdict={verdict.get('verdict', refusal)}"
+        said = f"verdict={verdict['verdict']}"
         if planted.uncounted:
             mark = "○" if held else "△"
             print(f"  {mark} {planted.id} — {said} [NOT COUNTED: {planted.uncounted}; {expected}]")

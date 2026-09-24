@@ -25,9 +25,12 @@ TEAM_JUST_SAID = (
 class _Validator:
     """Refuses the drafts it was told to refuse, passes the rest, and keeps every prompt."""
 
-    def __init__(self, refuses: set[str], reply: str | None = None) -> None:
+    def __init__(
+        self, refuses: set[str], reply: str | None = None, garbles: frozenset[str] = frozenset()
+    ) -> None:
         self.refuses = refuses
         self.reply = reply
+        self.garbles = garbles
         self.systems: list[str] = []
 
     async def __call__(self, *, system_prompt: str, **_: Any) -> str:
@@ -35,6 +38,8 @@ class _Validator:
         if self.reply is not None:
             return self.reply
         drafted = next(p for p in planted_drafts.PLANTED if p.draft in system_prompt)
+        if drafted.id.split()[0] in self.garbles:
+            return "não sei"
         if drafted.id.split()[0] in self.refuses:
             return json.dumps({"verdict": "regenerate", "issues": [{"problem": "invented_detail"}]})
         return json.dumps({"verdict": "pass", "issues": []})
@@ -98,6 +103,19 @@ async def test_an_unreadable_reply_is_a_failure_never_a_pass(
     _answers(monkeypatch, _Validator(refuses=set(), reply="não sei"))
 
     assert await planted_drafts.run() == 1
+
+
+async def test_an_unreadable_reply_fails_her_bar_even_on_the_draft_she_does_not_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _answers(
+        monkeypatch,
+        _Validator(refuses={"B6", "B7", "B8", "B13"}, garbles=frozenset({"B12"})),
+    )
+
+    assert await planted_drafts.run() == 1, (
+        "um Validador ilegível no B12 passava calado; no harness dela é falha em qualquer rascunho"
+    )
 
 
 async def test_each_draft_meets_her_validator_with_the_teams_words_as_her_evidence(
