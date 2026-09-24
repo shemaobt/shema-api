@@ -111,28 +111,6 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     return lines[index], f"{kind}{index}"
 
 
-def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
-    """The D line for one more miss, read off how many the room is already answering.
-
-    The ladder used to be indexed by the length of the conversation, so the very first miss
-    could draw the third line and a team heard perfectly for twenty turns met whichever line
-    the count landed on. It walks the run of misses now — the trailing guide turns that
-    answered with a D line — and any turn the room did hear starts it over.
-
-    It stays on the last line rather than wrapping: a fourth miss re-opening with the first
-    line would ask again as if for the first time, and her rule is one D per evidence asked.
-    """
-    misses = 0
-    for message in reversed(messages):
-        if message.get("role") != "guide":
-            continue
-        if message.get("category") != str(FailSafe.INAUDIBLE):
-            break
-        misses += 1
-    last = len(utterances(FailSafe.INAUDIBLE, language_code)) - 1
-    return choose(FailSafe.INAUDIBLE, language_code, turn=min(misses, last))
-
-
 #: Consecutive validation fail-safes before the room stops re-asking and pauses out loud.
 FAILURES_BEFORE_THE_PAUSE = 2
 

@@ -228,7 +228,7 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     assert agent.systems == []
 
 
-async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
+async def test_a_panorama_missing_the_team_again_still_gets_the_first_d_line(
     patch_agent,
 ) -> None:
     agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
@@ -249,7 +249,7 @@ async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
         settings=_settings(),
     )
 
-    assert outcome.fixed_line == "D1", "duas mensagens guardadas davam D2 pela paridade"
+    assert outcome.fixed_line == "D0", "duas mensagens guardadas davam D1 pela paridade"
     assert agent.systems == []
 
 

@@ -98,7 +98,7 @@ async def test_the_first_miss_after_a_heard_conversation_draws_the_first_d_line(
     assert agent.calls == 0
 
 
-async def test_misses_in_a_row_walk_the_three_d_lines_in_order_and_stay_on_the_third(
+async def test_misses_in_a_row_all_draw_the_first_d_line_never_the_second_or_third(
     db_session: AsyncSession, agent: RecordingAgent
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
@@ -106,33 +106,11 @@ async def test_misses_in_a_row_walk_the_three_d_lines_in_order_and_stay_on_the_t
 
     spoken = [m["fixed_line"] for m in session.messages if m.get("role") == "guide"]
 
-    assert spoken == ["D0", "D1", "D2", "D2"], (
+    assert spoken == ["D0", "D0", "D0", "D0"], (
         "a escada rodava com o tamanho da conversa: dois turnos por erro, então a segunda "
-        "falha pulava para D2 e a quarta voltava para D0"
+        "falha pulava para D2 e a quarta voltava para D0; agora nada conta, e toda falta "
+        "pede a mesma primeira linha"
     )
-
-
-async def test_a_turn_the_room_heard_starts_the_d_ladder_over(
-    db_session: AsyncSession, agent: RecordingAgent
-) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
-    session = await _missed(db_session, session, times=2)
-    heard = await _speak(session, messages=list(session.messages))
-    session = await append_exchange(
-        db_session,
-        session,
-        team_utterance=heard.transcript,
-        guide_response=heard.speech,
-        outcome=heard,
-    )
-
-    outcome = await _speak(
-        session, uncertain=True, transcript="mmm ne", messages=list(session.messages)
-    )
-
-    assert heard.used_fail_safe is False
-    assert outcome.fixed_line == "D0"
-    assert outcome.speech == INAUDIBLE_LINES[0]
 
 
 async def test_everything_else_reaches_the_guide_with_the_ledger_in_hand(
