@@ -52,7 +52,6 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-    from app.services.internalization_room.comprehension.state import ComprehensionState
     from app.services.internalization_room.live_turn import ComprehensionTurn
     from app.services.platform.tts import SynthesizedSpeech
 
@@ -71,7 +70,7 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         staged = _Room(client=c, outcome=TurnOutcome(speech=OPENING, transcript=""))
 
         async def _comprehension_turn(*_: Any, **__: Any) -> ComprehensionTurn:
-            return ComprehensionTurn(outcome=staged.outcome, state=ComprehensionState())
+            return ComprehensionTurn(outcome=staged.outcome)
 
         async def _heard(*_: Any, **__: Any) -> HeardSpeech:
             return staged.heard or HeardSpeech(text=staged.outcome.transcript)

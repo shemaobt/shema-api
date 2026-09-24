@@ -25,10 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
-from app.services.internalization_room.sessions import comprehension_of
 from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.turn.speech import speak_back
 
@@ -36,7 +34,6 @@ from app.services.internalization_room.turn.speech import speak_back
 @dataclass
 class ComprehensionTurn:
     outcome: TurnOutcome
-    state: ComprehensionState
 
 
 async def run_comprehension_turn(
@@ -58,7 +55,6 @@ async def run_comprehension_turn(
     pericope = session.pericope
     book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
-    state = comprehension_of(session)
 
     transcript = speech.text
     uncertain = speech.uncertain
@@ -81,7 +77,7 @@ async def run_comprehension_turn(
         settings=settings,
     )
 
-    return ComprehensionTurn(outcome=outcome, state=state)
+    return ComprehensionTurn(outcome=outcome)
 
 
 __all__ = ["ComprehensionTurn", "current_scene_id", "run_comprehension_turn"]

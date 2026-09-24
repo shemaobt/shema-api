@@ -114,7 +114,6 @@ async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> 
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
-    await save_comprehension(db_session, session, turn.state)
     await append_exchange(
         db_session, session, team_utterance=utterance, guide_response=turn.outcome.speech
     )

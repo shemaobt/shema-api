@@ -80,9 +80,7 @@ async def test_an_opening_landing_after_the_teams_first_turn_is_dropped_and_logg
         )
 
         with caplog.at_level(logging.WARNING, logger=SESSIONS_LOGGER):
-            landed = await append_opening(
-                rival_db, late_opening, guide_response=OPENING, state=ComprehensionState()
-            )
+            landed = await append_opening(rival_db, late_opening, guide_response=OPENING)
 
     assert landed is False
     async with rival_factory() as fresh_db:

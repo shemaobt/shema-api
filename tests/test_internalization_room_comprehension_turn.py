@@ -18,9 +18,7 @@ from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
 from app.services.internalization_room.sessions import (
     append_exchange,
-    comprehension_of,
     create_session,
-    save_comprehension,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -295,7 +293,6 @@ async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
         settings=_settings(),
     )
 
-    await save_comprehension(db_session, session, turn.state)
     await append_exchange(
         db_session, session, team_utterance="podemos começar", guide_response=turn.outcome.speech
     )
@@ -345,8 +342,6 @@ async def test_mother_tongue_speech_is_an_ordinary_guide_turn_that_credits_nothi
     assert turn.outcome.room_note == (
         "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição]"
     )
-    assert turn.state.practiced_scene_ids == []
-    assert all(event.kind != "evidence" for event in turn.state.ledger)
 
 
 async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_time(
@@ -375,35 +370,12 @@ async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_tim
             validator_prompt=VALIDATOR,
             settings=_settings(),
         )
-        session = await save_comprehension(db_session, session, turn.state)
         spoken.append(turn.outcome)
 
     inaudible = utterances(FailSafe.INAUDIBLE, "pt")
     assert all(outcome.speech in inaudible for outcome in spoken), [o.speech for o in spoken]
     assert not any("Refine" in outcome.speech for outcome in spoken)
     assert all(outcome.used_fail_safe and outcome.degraded for outcome in spoken)
-
-
-async def test_a_turn_without_a_prior_probe_mints_no_evidence(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="abertura"
-    )
-
-    turn = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(text="Noemi voltou para Belém com Rute"),
-        opening=False,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=_settings(),
-    )
-
-    assert turn.state.ledger == []
-    assert comprehension_of(session).ledger == []
 
 
 _UNUSABLE_SPEECH = (

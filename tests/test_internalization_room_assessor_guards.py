@@ -34,7 +34,6 @@ from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
-    save_comprehension,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -122,7 +121,6 @@ async def _the_team_answers(
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
-    session = await save_comprehension(db, session, turn.state)
     session = await append_exchange(
         db,
         session,

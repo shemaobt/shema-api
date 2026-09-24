@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import text_seam
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.sessions import append_exchange, create_session
+from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
+    KEY,
+    PREFIX,
     a_claimed_device,
     at_the_desk,
     desk_release,
     ready_session,
 )
 from tests.room_harness import room_client
+from tests.text_seam_harness import GUIDE_LINE, RUNNER_KEY, TEAM_LINE, the_models_answer
 
 LEGACY_COMPREHENSION = {
     "ledger": [
@@ -40,6 +49,39 @@ LEGACY_COMPREHENSION = {
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     async with room_client(db_session, monkeypatch) as room:
         yield room
+
+
+@pytest.fixture()
+async def turns(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _heard(audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(text=TEAM_LINE)
+
+    async def _voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
+        entry = SynthesizedSpeech(
+            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/v/m/f/1.mp3"
+        )
+        return entry, False
+
+    async def _settled_later(**_: Any) -> None:
+        return None
+
+    the_models_answer(monkeypatch)
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(sessions_api, "settle_coverage", _settled_later)
+    monkeypatch.setattr(text_seam, "settle_coverage", _settled_later)
+    async with room_client(db_session, monkeypatch, runner_key=RUNNER_KEY) as room:
+        yield room
+
+
+async def _an_august_session(db: AsyncSession):
+    session = await create_session(db, language="pt", pericope="P03")
+    session = await append_exchange(db, session, team_utterance="", guide_response=GUIDE_LINE)
+    session.comprehension = LEGACY_COMPREHENSION
+    await db.commit()
+    return session
 
 
 @pytest.fixture()
@@ -86,3 +128,39 @@ async def test_a_session_holding_an_august_ledger_releases_without_counting_its_
     assert packet["open_questions"] == 0, (
         "o ponto levado ao Refine no ledger de agosto contava como pergunta aberta"
     )
+
+
+async def test_a_voiced_turn_on_an_august_session_leaves_its_comprehension_as_stored(
+    turns, db_session: AsyncSession
+) -> None:
+    session = await _an_august_session(db_session)
+
+    answered = await turns.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers={"X-Room-Key": KEY},
+        files={"file": ("answer.m4a", b"audio", "audio/m4a")},
+    )
+    await db_session.refresh(session)
+
+    assert answered.status_code == 200, answered.text
+    assert session.comprehension == LEGACY_COMPREHENSION, (
+        "o turno falado regravava a coluna de agosto e apagava a sonda que ela guardava"
+    )
+    assert session.messages[-2]["text"] == TEAM_LINE
+
+
+async def test_a_text_seam_turn_on_an_august_session_leaves_its_comprehension_as_stored(
+    turns, db_session: AsyncSession
+) -> None:
+    session = await _an_august_session(db_session)
+
+    answered = await turns.post(
+        f"{PREFIX}/text-seam/turn", json={"sessionId": session.id, "text": TEAM_LINE}
+    )
+    await db_session.refresh(session)
+
+    assert answered.status_code == 200, answered.text
+    assert session.comprehension == LEGACY_COMPREHENSION, (
+        "o turno do text seam regravava a coluna de agosto e apagava a sonda que ela guardava"
+    )
+    assert answered.json()["guideText"] == GUIDE_LINE

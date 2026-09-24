@@ -314,7 +314,6 @@ async def append_exchange(
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
     told_back: str = "",
-    state: ComprehensionState | None = None,
     commit: bool = True,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
@@ -388,8 +387,6 @@ async def append_exchange(
             else_=IRSession.status,
         )
     values["lifted_halt"] = case((nothing_to_put_back, None), else_=IRSession.lifted_halt)
-    if state is not None:
-        values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
 
 
@@ -453,7 +450,6 @@ async def append_opening(
     guide_response: str,
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
-    state: ComprehensionState | None = None,
     commit: bool = True,
 ) -> bool:
     """The opening written as the session's first line, or dropped when the team spoke first.
@@ -481,7 +477,6 @@ async def append_opening(
         guide_response=guide_response,
         outcome=outcome,
         scene=scene,
-        state=state,
         commit=commit,
     )
     return True

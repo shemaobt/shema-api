@@ -94,7 +94,4 @@ async def test_a_text_turn_reaches_the_database_in_one_commit_not_two(
         " com o seu refresh da linha inteira"
     )
     session = await room.get_session(db_session, session_id)
-    assert "ledger" in session.comprehension, (
-        "a comprehension deixava de ser gravada quando o commit separado que a escrevia sumiu"
-    )
     assert [m["text"] for m in session.messages if m["role"] == "guide"][-1] == GUIDE_LINE

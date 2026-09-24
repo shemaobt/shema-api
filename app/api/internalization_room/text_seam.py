@@ -235,7 +235,6 @@ async def take_text_turn(
             guide_response=outcome.speech,
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
-            state=turn.state,
         )
         if _worth_settling(outcome, heard):
             await settle_coverage(
