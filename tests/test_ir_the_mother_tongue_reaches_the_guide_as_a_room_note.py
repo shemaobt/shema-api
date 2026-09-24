@@ -48,7 +48,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "transcript": "a fome chegou",
         "opening": False,
         "empty": False,
-        "uncertain": False,
         "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
@@ -128,7 +127,6 @@ async def test_only_a_take_in_another_language_is_measured_for_its_length(
             text=TERENA,
             language_code=heard_language["code"],
             language_probability=0.99,
-            transcript_confidence=0.9,
         )
 
     measured: list[bytes] = []
@@ -152,19 +150,16 @@ async def test_only_a_take_in_another_language_is_measured_for_its_length(
     assert measured == [b"terena"], "um ffprobe rodava em cada turno, e não só no de língua materna"
 
 
-async def test_words_the_room_could_not_make_out_draw_the_d_line_and_travel_no_further(
+async def test_a_take_with_no_words_draws_the_d_line_and_travels_no_further(
     db_session: AsyncSession, agent: FakeAgent
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
 
-    outcome = await _speak(session, uncertain=True, transcript="mmm ne")
+    outcome = await _speak(session, empty=True, transcript="")
 
     assert outcome.fixed_line == "D0"
     assert outcome.degraded is True
-    assert outcome.transcript == "", (
-        "o palpite do reconhecedor viajava dentro da linha que pedia para repetir e era "
-        "gravado como fala da equipe"
-    )
+    assert outcome.transcript == ""
     assert agent.guide_inputs == []
 
 

@@ -365,7 +365,7 @@ async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_tim
         turn = await run_comprehension_turn(
             db_session,
             session,
-            speech=HeardSpeech(text="mmm ne", transcript_confidence=0.2),
+            speech=HeardSpeech(),
             opening=False,
             guide_prompt=GUIDE,
             validator_prompt=VALIDATOR,
@@ -385,7 +385,6 @@ _UNUSABLE_SPEECH = (
         language_code="und",
         language_probability=0.99,
     ),
-    HeardSpeech(text="mmm ne", transcript_confidence=0.2),
     HeardSpeech(),
 )
 

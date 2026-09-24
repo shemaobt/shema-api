@@ -57,7 +57,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "transcript": "a fome chegou",
         "opening": False,
         "empty": False,
-        "uncertain": False,
         "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
@@ -71,7 +70,7 @@ async def _missed(db: AsyncSession, session: Any, *, times: int) -> Any:
     """That many turns the room could not hear, each written down the way the route does."""
     for _ in range(times):
         outcome = await _speak(
-            session, uncertain=True, transcript="mmm ne", messages=list(session.messages or [])
+            session, empty=True, transcript="", messages=list(session.messages or [])
         )
         session = await append_exchange(
             db,
@@ -90,7 +89,7 @@ async def test_the_first_miss_after_a_heard_conversation_draws_the_first_d_line(
     session = await create_session(db_session, language="pt", pericope=P)
     four_exchanges = [{"role": "guide", "text": "…", "outcome": "pass"}] * 4
 
-    outcome = await _speak(session, uncertain=True, transcript="mmm ne", messages=four_exchanges)
+    outcome = await _speak(session, empty=True, transcript="", messages=four_exchanges)
 
     assert outcome.speech == INAUDIBLE_LINES[0]
     assert outcome.fixed_line == "D0"

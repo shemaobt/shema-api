@@ -37,14 +37,13 @@ async def speak_back(
     transcript: str,
     opening: bool,
     empty: bool,
-    uncertain: bool,
     book: str,
     guide_prompt: str,
     validator_prompt: str,
     pericope: str,
     settings: Settings,
 ) -> TurnOutcome:
-    if not opening and not mother_tongue and (empty or uncertain):
+    if not opening and not mother_tongue and empty:
         line, fixed = choose(FailSafe.INAUDIBLE, session.language)
         return TurnOutcome(
             speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed
