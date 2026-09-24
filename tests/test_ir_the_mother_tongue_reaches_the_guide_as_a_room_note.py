@@ -220,6 +220,25 @@ async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team
     )
 
 
+@pytest.mark.parametrize("words", [{}, {"text": ""}])
+async def test_a_scripted_mother_tongue_turn_needs_no_words_to_hand_the_guide_her_note(
+    seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, words: dict[str, str]
+) -> None:
+    agent = the_models_answer(monkeypatch)
+    session_id = await _an_open_session(seam)
+
+    answered = await seam.post(
+        f"{SEAM}/turn", json={"sessionId": session_id, "motherTongue": 25, **words}
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert agent.guide_inputs[-1] == (
+        "[A equipe falou na língua materna por cerca de 25 segundos; sem transcrição — nenhuma "
+        "palavra chegou até você.]"
+    ), "a costura recusava ou mandava a linha D a um turno na língua materna sem texto"
+    assert answered.json()["transcript"] == ""
+
+
 async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_side(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

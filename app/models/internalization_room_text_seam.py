@@ -29,9 +29,8 @@ class TextTurnRequest(BaseModel):
     text: str | None = None
     #: The session has just opened and the Guide speaks first. Only ever on a fresh session.
     kickoff: bool = False
-    #: The words were spoken in the team's own language, for about this many seconds: they
-    #: enter as the recognizer would have flagged them, a confident detection of a language
-    #: other than the session's, and the room takes the path it already has for that.
+    #: The team spoke in their own language for about this many seconds: the Guide is handed
+    #: her note, with or without text beside it, and no word of the text.
     motherTongue: int | None = None
 
 

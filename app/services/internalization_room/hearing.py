@@ -66,10 +66,11 @@ class HeardSpeech(BaseModel):
     language_probability: float | None = None
     take_ms: int | None = None
     wordless_long_take: bool = False
+    declared_mother_tongue: bool = False
 
     @property
     def mother_tongue(self) -> bool:
-        if self.wordless_long_take:
+        if self.wordless_long_take or self.declared_mother_tongue:
             return True
         detected = (self.language_code or "").strip().lower().split("-")[0]
         spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language)
