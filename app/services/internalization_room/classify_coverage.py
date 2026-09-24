@@ -193,6 +193,7 @@ async def classify_coverage(
     guide_response: str,
     classifier_prompt: str,
     pericope_num: str,
+    opening: bool = False,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
 ) -> dict[str, str]:
@@ -213,7 +214,7 @@ async def classify_coverage(
         SESSION_LANGUAGE=session_language,
         SCENES=_scenes_block(pericope_num),
         COVERAGE_ELEMENTS=_unresolved_block(coverage_state, offered),
-        TEAM_UTTERANCE=team_utterance or _NO_TEAM_UTTERANCE_YET,
+        TEAM_UTTERANCE=team_utterance or (_NO_TEAM_UTTERANCE_YET if opening else ""),
         GUIDE_RESPONSE=guide_response,
     )
 
