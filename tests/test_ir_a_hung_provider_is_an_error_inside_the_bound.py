@@ -121,9 +121,9 @@ async def test_the_guide_and_the_validator_each_carry_the_deadline_and_no_retrie
         "nenhuma chamada tinha relógio: o SDK esperava 600 s por resposta, e a equipe "
         "ficava diante de um círculo que nunca respondia nem falhava"
     )
-    assert options["max_retries"] == 0, (
-        "duas tentativas escondidas do SDK dobravam e triplicavam a espera longa; a "
-        "recuperação honesta agora é um erro que a tela transforma em chamar uma pessoa"
+    assert "max_retries" not in options, (
+        "zerar o retry do SDK deixava a sala sozinha contra uma rejeição passageira: nem o "
+        "SDK nem a sala tentavam de novo, e um 429 de um segundo virava 502 na hora"
     )
 
 

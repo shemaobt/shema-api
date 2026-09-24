@@ -115,7 +115,6 @@ def _client(settings: Settings) -> anthropic.AsyncAnthropic:
         kept[identity] = build(
             api_key=settings.anthropic_api_key,
             default_headers=_workspace_header(settings),
-            max_retries=0,
         )
     return kept[identity]
 
