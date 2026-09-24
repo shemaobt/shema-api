@@ -9,7 +9,7 @@ from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.sessions import back_translation_of, report_playback
-from tests.baker import make_app, make_role
+from tests.baker import having_finished_the_passage, make_app, make_role, open_ir_session
 from tests.release_harness import (
     APP_KEY,
     CLIP_MS,
@@ -122,4 +122,28 @@ async def test_an_open_finding_below_the_floor_is_refused_by_her_gate_alone_and_
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1, (
         "a força do facilitador esbarrava no piso, que não é forçável"
+    )
+
+
+async def test_an_approved_release_closes_the_passage_on_the_desk_and_the_next_one_is_current(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session)
+    await having_finished_the_passage(
+        db_session, await open_ir_session(db_session, pericope="P01", project_id=project.id)
+    )
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    await _told_back_clean_and_heard_through(db_session, session)
+    await _below_the_floor(db_session, session)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
+    book = await client.get(f"/api/facilitator/teams/{project.id}/pericopes", headers=desk)
+
+    assert approved.json()["version"] == 1
+    assert book.status_code == 200, book.text
+    where = {entry["pericope"]: entry["position"] for entry in book.json()}
+    assert (where["P01"], where["P02"], where["P03"]) == ("closed", "closed", "current"), (
+        "o tablet fechava o colar na aprovação e o servidor mantinha a passagem aberta, "
+        "porque só contava o ended_at do piso"
     )
