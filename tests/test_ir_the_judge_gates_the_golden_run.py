@@ -9,11 +9,13 @@ judge's column beside the mechanical one, never one laundered into the other.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from app.services.internalization_room import golden_judge
+from app.services.internalization_room.llm import CACHE_BREAK
 from scripts.sync_doctrine import REPO_ROOT, VENDORED, digest
 from tests.text_seam_harness import A_VERDICT, the_judge_answers
 
@@ -64,6 +66,34 @@ async def test_the_judge_reads_her_prompt_body_with_the_validators_map_and_the_s
     assert asked["user_content"] == (
         "Judge this session now. Return only the JSON object.\n\n" + TRANSCRIPT
     ), "a linha de usuário é a dela, palavra por palavra (run.ts:132)"
+
+
+async def test_the_judge_reads_the_first_marker_pair_the_way_her_loader_does(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Her `extractPromptBody` takes the first standalone pair; the judge's own reader refused two.
+
+    One extractor serves the judge and the room's loader, so a judge file that repeats its
+    marker pair is read as her loader reads it instead of failing the whole golden run.
+    """
+    prompt = tmp_path / "golden_judge_system_prompt.md"
+    prompt.write_text(
+        "`=== BEGIN SYSTEM PROMPT ===`\nJudge in {{SESSION_LANGUAGE}}.\n"
+        "`=== END SYSTEM PROMPT ===`\n"
+        "`=== BEGIN SYSTEM PROMPT ===`\nan example\n`=== END SYSTEM PROMPT ===`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(golden_judge, "HER_PROMPT", prompt)
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P01", language="Brazilian Portuguese", transcript=TRANSCRIPT
+    )
+
+    (asked,) = judge.asked
+    assert asked["system_prompt"].replace(CACHE_BREAK, "") == "Judge in Brazilian Portuguese.", (
+        "o juiz desempacotava exatamente dois marcadores e morria com um par repetido"
+    )
 
 
 async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_on(
