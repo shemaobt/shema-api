@@ -72,6 +72,7 @@ class ScriptTurn:
     team: str | None = None
     kickoff: bool = False
     motherTongue: int | None = None
+    rehearsal: list[str] | None = None
     interrupted: bool = False
     expect: dict[str, Any] = field(default_factory=dict)
 
@@ -193,6 +194,7 @@ def load_script(path: Path) -> Script:
                 team=turn.get("team"),
                 kickoff=bool(turn.get("kickoff")),
                 motherTongue=turn.get("motherTongue"),
+                rehearsal=turn["rehearsal"]["pieces"] if "rehearsal" in turn else None,
                 interrupted=bool(turn.get("interrupted")),
                 expect=turn.get("expect", {}),
             )
@@ -230,6 +232,30 @@ def mother_tongue_note(language: str, seconds: int) -> str:
     )
 
 
+def rehearsal_team_text(language: str, pieces: list[str]) -> str:
+    said = [piece.strip() for piece in pieces if piece.strip()]
+    if len(said) == 1:
+        note = (
+            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue "
+            "a tradução:]"
+            if _portuguese(language)
+            else "[The team rehearsed this scene in their own language and translated the "
+            "scene rehearsal. The translation follows:]"
+        )
+    elif _portuguese(language):
+        note = (
+            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase "
+            f"por frase ({len(said)} frases). Segue a tradução, na ordem:]"
+        )
+    else:
+        note = (
+            "[The team rehearsed this scene in their own language and translated the scene "
+            f"rehearsal phrase by phrase ({len(said)} phrases). The translation follows, in "
+            "order:]"
+        )
+    return f"{note} {' '.join(said)}"
+
+
 def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, Any]:
     body: dict[str, Any] = {"sessionId": session_id}
     if turn.kickoff:
@@ -237,6 +263,8 @@ def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, 
     elif turn.motherTongue:
         body["text"] = mother_tongue_note(script.language, turn.motherTongue)
         body["motherTongue"] = turn.motherTongue
+    elif turn.rehearsal is not None:
+        body["text"] = rehearsal_team_text(script.language, turn.rehearsal)
     else:
         body["text"] = turn.team or ""
     if turn.interrupted:

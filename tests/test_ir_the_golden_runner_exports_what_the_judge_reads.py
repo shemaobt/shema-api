@@ -143,3 +143,59 @@ async def test_a_turn_that_fails_leaves_the_turns_already_played_in_hand(
     assert [(t.idx, t.guide, t.outcome) for t in played] == [(0, GUIDE_LINE, "pass")], (
         "um 500 no último turno jogava fora todos os turnos já pagos, sem nem o id da sessão"
     )
+
+
+def _rehearsals(tmp_path: Path, language: str) -> Path:
+    path = tmp_path / "P01-ensaio-da-cena.json"
+    path.write_text(
+        json.dumps(
+            {
+                "name": "P01-ensaio-da-cena",
+                "pericopeId": "P01",
+                "language": language,
+                "why": "a scene rehearsed twice, the second time in one phrase",
+                "turns": [
+                    {"kickoff": True},
+                    {"rehearsal": {"pieces": [FIRST_PHRASE, " ", f" {LAST_PHRASE} "]}},
+                    {"rehearsal": {"pieces": [LAST_PHRASE]}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+FIRST_PHRASE = "Nos dias em que os juízes julgavam, teve uma fome na terra."
+LAST_PHRASE = "Chegaram nos campos de Moabe e ficaram lá."
+
+
+async def _teams(seam: httpx.AsyncClient, path: Path) -> list[str]:
+    script = load_script(path)
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+    return [p.team for p in played[1:]]
+
+
+async def test_a_scene_rehearsal_reaches_the_room_as_her_note_and_the_translated_phrases(
+    seam, tmp_path
+) -> None:
+    assert await _teams(seam, _rehearsals(tmp_path, "Brazilian Portuguese")) == [
+        "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase por "
+        f"frase (2 frases). Segue a tradução, na ordem:] {FIRST_PHRASE} {LAST_PHRASE}",
+        "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue a "
+        f"tradução:] {LAST_PHRASE}",
+    ], "o turno de ensaio chegava vazio à sala e o juiz lia a nota de abertura no lugar dele"
+
+
+async def test_a_scene_rehearsal_in_an_english_session_carries_her_english_note(
+    seam, tmp_path
+) -> None:
+    assert await _teams(seam, _rehearsals(tmp_path, "English")) == [
+        "[The team rehearsed this scene in their own language and translated the scene "
+        "rehearsal phrase by phrase (2 phrases). The translation follows, in order:] "
+        f"{FIRST_PHRASE} {LAST_PHRASE}",
+        "[The team rehearsed this scene in their own language and translated the scene "
+        f"rehearsal. The translation follows:] {LAST_PHRASE}",
+    ]
