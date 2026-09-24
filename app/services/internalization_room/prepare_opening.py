@@ -58,10 +58,10 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             if pericope is None:
                 logger.info("Nothing left to prepare: the team has closed every passage")
                 return
-            await db.commit()
             coverage_state = await necklace_coverage_state(
                 db, project_id=panorama.project_id, pericope=pericope
             )
+            await db.commit()
             outcome = await run_turn(
                 transcript="",
                 coverage_state=coverage_state,
