@@ -205,6 +205,44 @@ async def test_a_check_of_hers_this_room_does_not_port_is_listed_as_pending_not_
     )
 
 
+async def test_what_her_app_told_the_guide_about_scene_rehearsals_is_pending_on_its_turn(
+    over_the_seam, tmp_path: Path
+) -> None:
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    _script(
+        sessions,
+        "P01-ensaio-da-cena",
+        "P01",
+        [
+            {"kickoff": True, "sceneRehearsals": []},
+            {"team": "Entendemos. Vamos ensaiar."},
+            {
+                "team": "Pronto, mandamos o ensaio da primeira cena.",
+                "sceneRehearsals": ["S1"],
+                "expect": {"no_fail_safe": True, "send_off_ensaio_final": True},
+            },
+        ],
+    )
+    out = tmp_path / "reports"
+
+    await golden_runner.run(_args(sessions, out))
+
+    name = "P01-ensaio-da-cena"
+    played = json.loads((out / f"{name}.{STAMP}.json").read_text(encoding="utf-8"))
+    assert [turn["pending"] for turn in played["turns"]] == [
+        ["sceneRehearsals"],
+        [],
+        ["sceneRehearsals", "send_off_ensaio_final"],
+    ]
+    assert (
+        "Checagens dela que esta sala ainda não porta — PENDING, nenhuma conta como aprovada: "
+        f"{name} turn 0: sceneRehearsals; {name} turn 2: sceneRehearsals, send_off_ensaio_final."
+    ) in (out / "README.md").read_text(encoding="utf-8"), (
+        "a sala nunca soube quais cenas tinham ensaio, e o turno passava como se soubesse"
+    )
+
+
 async def test_a_played_session_is_judged_and_the_verdict_sits_beside_its_transcript(
     over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

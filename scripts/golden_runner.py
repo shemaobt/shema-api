@@ -73,6 +73,7 @@ class ScriptTurn:
     kickoff: bool = False
     motherTongue: int | None = None
     rehearsal: list[str] | None = None
+    sceneRehearsals: list[str] | None = None
     interrupted: bool = False
     expect: dict[str, Any] = field(default_factory=dict)
 
@@ -195,6 +196,7 @@ def load_script(path: Path) -> Script:
                 kickoff=bool(turn.get("kickoff")),
                 motherTongue=turn.get("motherTongue"),
                 rehearsal=turn["rehearsal"]["pieces"] if "rehearsal" in turn else None,
+                sceneRehearsals=turn.get("sceneRehearsals"),
                 interrupted=bool(turn.get("interrupted")),
                 expect=turn.get("expect", {}),
             )
@@ -318,7 +320,10 @@ async def play(
             expect=turn.expect,
             previous_guide=previous_guide,
         )
-        line.pending = unported_checks(turn.expect)
+        line.pending = sorted(
+            unported_checks(turn.expect)
+            + (["sceneRehearsals"] if turn.sceneRehearsals is not None else [])
+        )
         previous_guide = line.guide
         played.append(line)
         for call in line.usage:
