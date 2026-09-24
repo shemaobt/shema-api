@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 
 from pydantic import BaseModel
@@ -70,19 +71,26 @@ class HeardSpeech(BaseModel):
 
     @property
     def mother_tongue(self) -> bool:
-        if self.wordless_long_take or self.declared_mother_tongue:
-            return True
+        return self.declared_mother_tongue or bool(self.reason)
+
+    @property
+    def reason(self) -> str:
+        if self.wordless_long_take:
+            seconds = math.floor((self.take_ms or 0) / 1000 + 0.5)
+            return f"no words in a long take ({seconds} s >= {LONG_WORDLESS_TAKE_MS // 1000} s)"
         detected = (self.language_code or "").strip().lower().split("-")[0]
         spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language)
         if not self.text.strip() or not detected or spoken is None:
-            return False
+            return ""
         if detected not in spoken:
-            return True
-        return (
-            self.language_probability is not None
-            and self.language_probability
-            < get_settings().internalization_room_same_language_min_prob
-        )
+            return f"recognizer heard {detected}, session speaks {self.bridge_language}"
+        minimum = get_settings().internalization_room_same_language_min_prob
+        if self.language_probability is not None and self.language_probability < minimum:
+            return (
+                f"recognizer unsure it was {self.bridge_language} "
+                f"(p={self.language_probability:.2f} < {minimum})"
+            )
+        return ""
 
 
 async def heard(

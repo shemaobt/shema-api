@@ -768,6 +768,19 @@ async def _answer_the_turn(
             language=session.language,
         )
     transcript = speech_heard.text
+    if file is not None:
+        logger.info(
+            "[hearing] session=%s heard=%s p=%s decision=%s reason=%s",
+            session_id,
+            speech_heard.language_code,
+            speech_heard.language_probability,
+            "mother tongue"
+            if speech_heard.mother_tongue
+            else "words"
+            if transcript
+            else "inaudible",
+            speech_heard.reason,
+        )
 
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
