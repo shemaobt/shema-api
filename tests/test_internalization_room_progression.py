@@ -27,7 +27,9 @@ is ENG-482.
 from __future__ import annotations
 
 import itertools
+from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.room_enums import HaltKind
@@ -45,6 +47,7 @@ from app.services.internalization_room.progression import (
     standing,
     team_standing,
 )
+from app.services.internalization_room.session_end import as_utc, end_of
 from tests.baker import (
     having_finished_the_passage,
     keep_a_take,
@@ -331,6 +334,57 @@ async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
     await room.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
 
     assert await active_passage(db_session, project_id=team.id) == SECOND
+
+
+class _FixedClock:
+    """A stand-in for the module's ``datetime``, answering ``now`` from a fixed queue."""
+
+    def __init__(self, instants: list[datetime]) -> None:
+        self._instants = list(instants)
+
+    def now(self, tz=None):
+        return self._instants.pop(0)
+
+
+async def test_a_halt_on_a_finished_session_does_not_restamp_its_ended_at(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The next settle after a halt re-closes the session, but the first instant stays.
+
+    `mark_needs_person` writes the status with no guard on what it was, so a halt reaches a
+    session that already finished. `attend` and a landing turn both put a halted session back
+    to `in_progress`, and the next settle finds the floor still met — it always did, the floor
+    only grows — and used to write a fresh `datetime.now(UTC)` over the one already standing,
+    moving what `finished_passages` and the Desk's `end_of` both read as the close.
+    """
+    team = await a_team(db_session, name="Gravou, a sala parou, e a equipe voltou")
+    first_instant = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    attended_instant = datetime(2026, 9, 10, 8, 5, tzinfo=UTC)
+    resettle_instant = datetime(2026, 9, 10, 9, 0, tzinfo=UTC)
+    monkeypatch.setattr(
+        room, "datetime", _FixedClock([first_instant, attended_instant, resettle_instant])
+    )
+
+    session = await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
+    assert as_utc(session.ended_at) == first_instant
+
+    await room.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+    await room.attend(db_session, session, by="joao")
+    await room.append_exchange(
+        db_session, session, team_utterance="voltamos", guide_response="que bom"
+    )
+    resettled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
+
+    assert resettled.status is IRSessionStatus.DONE
+    assert as_utc(resettled.ended_at) == first_instant, (
+        "o segundo settle regravou o carimbo com um novo agora, movendo o instante"
+    )
+    assert await active_passage(db_session, project_id=team.id) == SECOND
+
+    card = end_of(resettled, at=resettle_instant)
+    assert as_utc(card.ended_at) == first_instant, (
+        "o card do Desk tem que ler o mesmo instante que a progressão leu"
+    )
 
 
 async def test_a_recording_on_a_session_the_room_never_sent_to_rehearse_closes_nothing(
