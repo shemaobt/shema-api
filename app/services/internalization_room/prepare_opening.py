@@ -11,7 +11,11 @@ from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import run_turn
-from app.services.internalization_room.sessions import get_session, is_panorama
+from app.services.internalization_room.sessions import (
+    get_session,
+    is_panorama,
+    necklace_coverage_state,
+)
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -23,8 +27,9 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     """Write and voice the passage's first line while the team is still on the panorama.
 
     The opening is the only turn whose inputs are all known in advance — the team has not
-    spoken, the coverage is untouched, the conversation is empty. Everything after it depends
-    on what they say, so this is the one place where working ahead is possible at all.
+    spoken, the conversation is empty, and the coverage is whatever necklace this team already
+    carries into the passage, nothing this turn could move on its own. Everything after it
+    depends on what they say, so this is the one place where working ahead is possible at all.
 
     Which passage it writes for is resolved from the panorama's own team, so a team six
     passages into the book gets the opening of the passage they are about to enter rather than
@@ -54,9 +59,12 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 logger.info("Nothing left to prepare: the team has closed every passage")
                 return
             await db.commit()
+            coverage_state = await necklace_coverage_state(
+                db, project_id=panorama.project_id, pericope=pericope
+            )
             outcome = await run_turn(
                 transcript="",
-                coverage_state={},
+                coverage_state=coverage_state,
                 messages=[],
                 guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
                 validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),

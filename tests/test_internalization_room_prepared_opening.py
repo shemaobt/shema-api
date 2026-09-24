@@ -347,3 +347,82 @@ async def test_the_ready_line_is_classified_once_and_its_replay_still_promises_i
     assert again.json()["classification_pending"] is True, (
         "o replay do turn_id guardava a promessa antiga, e o tablet que reenviou não esperava"
     )
+
+
+async def test_the_prepared_opening_renders_the_teams_inherited_necklace(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A returning team's prepared opening wrote its ledger from a literal `{}`, never from
+    the necklace this same team already carries — so the Guide's first line always read
+    "nothing yet — the session is just beginning", even for a team most of the way through.
+    """
+    from types import SimpleNamespace
+    from typing import Any
+
+    import httpx
+    from fastapi import FastAPI
+    from httpx import ASGITransport
+
+    from app.api.internalization_room import _deps
+    from app.api.internalization_room import router as room_router
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+    from app.services.internalization_room import prepare_opening as prepare_opening_module
+    from app.services.internalization_room import sessions as room
+    from app.services.internalization_room.canon.elements import element_keys
+    from app.services.internalization_room.coverage import CoverageStatus
+    from app.services.internalization_room.prompt_blocks import coverage_status_block
+    from app.services.internalization_room.run_turn import TurnOutcome
+    from app.services.platform.tts import SynthesizedSpeech
+    from tests.baker import make_language, make_project
+
+    pericope = "P01"
+    language = await make_language(db_session, name="Ledger herdado", code="hld")
+    team = await make_project(db_session, language.id, name="Ledger herdado")
+    keys = element_keys(pericope)
+    tuesday = await room.create_session(db_session, pericope=pericope, project_id=team.id)
+    await room.apply_coverage(db_session, tuesday.id, {keys[0]: CoverageStatus.ENGAGED.value})
+
+    async def _authenticate(*_: Any, **__: Any) -> Any:
+        return SimpleNamespace(id="tablet", project_id=team.id)
+
+    monkeypatch.setattr(_deps, "authenticate_device", _authenticate)
+
+    captured: dict[str, Any] = {}
+
+    async def _run_turn(**kwargs: Any) -> TurnOutcome:
+        captured.update(kwargs)
+        return TurnOutcome(speech="Vamos ficar no começo.", transcript="")
+
+    async def _speech(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
+        return SynthesizedSpeech(
+            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/x.mp3"
+        ), False
+
+    monkeypatch.setattr(prepare_opening_module, "run_turn", _run_turn)
+    monkeypatch.setattr(prepare_opening_module, "synthesize_facilitator_speech", _speech)
+
+    test_app = FastAPI()
+    test_app.include_router(room_router, prefix="/api/internalization-room")
+    register_exception_handlers(test_app)
+
+    async def _get_db() -> Any:
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post(
+            "/api/internalization-room/sessions",
+            headers={"X-Device-Credential": "tablet"},
+            json={"pericope": "OV"},
+        )
+    assert created.status_code == 200, created.text[:200]
+
+    assert captured["coverage_state"] == tuesday.coverage_state, (
+        "a abertura preparada montava o LEDGER a partir de um {} literal, ignorando o colar "
+        "que essa mesma equipe já carrega para a passagem"
+    )
+    assert "WORKED WITH BY THE TEAM (engaged):" in coverage_status_block(
+        captured["coverage_state"], pericope
+    )
