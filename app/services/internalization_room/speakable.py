@@ -162,7 +162,13 @@ def _last_separator_outside_spans(s: str, state: _SpanState) -> tuple[int, int] 
 
 
 def _split_question(sentence: str, state: _SpanState) -> str:
-    sep = _last_separator_outside_spans(sentence, state)  # always scanned: carries the span state
+    """Cut ``sentence`` at its last usable separator when it ends in a question, else return as is.
+
+    The separator scan runs unconditionally, even when the sentence turns out not to end in
+    a question: it is what keeps ``state``'s quote/paren depth correct for the sentence that
+    comes after, since a span can open in one sentence and close in the next.
+    """
+    sep = _last_separator_outside_spans(sentence, state)
     if sep is None or not _ENDS_AS_QUESTION.search(sentence):
         return sentence
     start, end = sep

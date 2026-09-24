@@ -288,45 +288,103 @@ def test_standalone_questions_splits_the_ruled_cases(text: str, expected: str) -
 
 
 _STANDALONE_QUESTIONS_UNTOUCHED = [
-    'Uma coisa curiosa: o nome Belém quer dizer "casa do pão".',
-    "Ficou claro pra vocês quem são as pessoas e o que acontece? "
-    "Se tiver alguma coisa que vocês querem que eu conte de novo, me perguntem.",
-    "Vocês querem que eu repita, ou está claro?",
-    'O que vem à cabeça quando ouvem o nome "Rute"?',
-    'Ele perguntou "onde: aqui ou lá?"',
-    "Vocês lembram (a fome: em Judá)?",
-    "Rute 1–5?",
-    "Vocês leram o guarda-chuva?",
-    "Essa parte ficou clara? se sim, eu continuo.",
-    "Ficou claro pra vocês?",
-    "",
-    # review 2026-09-09: a separator between digits is a time / verse reference / range
-    "Vocês chegaram às 10:30 da manhã?",
-    "Vocês chegaram às 10:30?",
-    "Lembram de Rute 1:5, onde Noemi fica só?",
-    "A sessão vai das 10:30 às 11:15, tudo bem?",
-    "Rute 1 – 5, o que acontece?",
-    "Rute 1 - 5, o que acontece?",
-    # review 2026-09-09: a dash pair is a parenthetical, never a cut
-    "O que Noemi — a sogra — sentiu?",
-    "Como acaba exatamente — quem faz o quê, o que nasce disso — vocês conseguem imaginar?",
-    "A família — pai, mãe e dois filhos — o que aconteceu com ela?",
-    "A família - pai, mãe e dois filhos - o que aconteceu com ela?",
-    # review 2026-09-09: a head that ends with a comma would give ",." — left alone
-    "Pensem, — o que sentiram?",
-    # review 2026-09-09: never inside a span — curly single quotes, a span crossing a sentence end
-    "Ele perguntou ‘onde: aqui ou lá?’",
-    'Ele disse: "fique no meu campo. Aqui: você está segura?"',
-    "Ele disse: “fique no meu campo. Aqui — você está segura?”",
-    "Ele perguntou (onde: aqui ou lá?)",
+    pytest.param(
+        'Uma coisa curiosa: o nome Belém quer dizer "casa do pão".',
+        id="a-colon-introduces-an-explanation-not-a-question",
+    ),
+    pytest.param(
+        "Ficou claro pra vocês quem são as pessoas e o que acontece? "
+        "Se tiver alguma coisa que vocês querem que eu conte de novo, me perguntem.",
+        id="a-question-mark-mid-turn-followed-by-a-plain-statement",
+    ),
+    pytest.param(
+        "Vocês querem que eu repita, ou está claro?",
+        id="a-comma-before-the-question-mark-is-not-a-separator",
+    ),
+    pytest.param(
+        'O que vem à cabeça quando ouvem o nome "Rute"?',
+        id="the-whole-sentence-is-already-one-question",
+    ),
+    pytest.param(
+        'Ele perguntou "onde: aqui ou lá?"',
+        id="a-colon-inside-a-quoted-question-stays-inside-it",
+    ),
+    pytest.param(
+        "Vocês lembram (a fome: em Judá)?",
+        id="a-colon-inside-parentheses-stays-inside-them",
+    ),
+    pytest.param("Rute 1–5?", id="an-en-dash-inside-a-verse-range-is-not-a-separator"),
+    pytest.param("Vocês leram o guarda-chuva?", id="no-separator-at-all"),
+    pytest.param(
+        "Essa parte ficou clara? se sim, eu continuo.",
+        id="the-question-mark-is-not-at-the-end-of-the-sentence",
+    ),
+    pytest.param("Ficou claro pra vocês?", id="a-short-question-with-nothing-to-cut"),
+    pytest.param("", id="an-empty-string"),
+    pytest.param(
+        "Vocês chegaram às 10:30 da manhã?",
+        id="a-colon-between-digits-is-a-time-not-a-separator",
+    ),
+    pytest.param(
+        "Vocês chegaram às 10:30?",
+        id="a-colon-between-digits-with-nothing-after-the-time",
+    ),
+    pytest.param(
+        "Lembram de Rute 1:5, onde Noemi fica só?",
+        id="a-colon-in-a-verse-reference-is-not-a-separator",
+    ),
+    pytest.param(
+        "A sessão vai das 10:30 às 11:15, tudo bem?",
+        id="two-times-in-one-sentence-neither-is-a-separator",
+    ),
+    pytest.param(
+        "Rute 1 – 5, o que acontece?",
+        id="an-en-dash-range-between-digits-is-not-a-separator",
+    ),
+    pytest.param(
+        "Rute 1 - 5, o que acontece?",
+        id="a-spaced-hyphen-range-between-digits-is-not-a-separator",
+    ),
+    pytest.param(
+        "O que Noemi — a sogra — sentiu?",
+        id="a-single-dash-pair-is-a-parenthetical-never-a-cut",
+    ),
+    pytest.param(
+        "Como acaba exatamente — quem faz o quê, o que nasce disso — vocês conseguem imaginar?",
+        id="a-dash-pair-with-a-comma-inside-is-still-a-parenthetical",
+    ),
+    pytest.param(
+        "A família — pai, mãe e dois filhos — o que aconteceu com ela?",
+        id="an-em-dash-pair-around-a-list-is-a-parenthetical",
+    ),
+    pytest.param(
+        "A família - pai, mãe e dois filhos - o que aconteceu com ela?",
+        id="a-spaced-hyphen-pair-around-a-list-is-a-parenthetical",
+    ),
+    pytest.param(
+        "Pensem, — o que sentiram?",
+        id="a-head-that-ends-with-a-comma-is-left-alone",
+    ),
+    pytest.param(
+        "Ele perguntou ‘onde: aqui ou lá?’",
+        id="a-colon-inside-curly-single-quotes-stays-inside-them",
+    ),
+    pytest.param(
+        'Ele disse: "fique no meu campo. Aqui: você está segura?"',
+        id="a-span-crossing-a-sentence-end-still-protects-what-is-inside",
+    ),
+    pytest.param(
+        "Ele disse: “fique no meu campo. Aqui — você está segura?”",
+        id="a-curly-double-quote-span-crossing-a-sentence-end",
+    ),
+    pytest.param(
+        "Ele perguntou (onde: aqui ou lá?)",
+        id="a-colon-inside-parentheses-around-a-whole-question",
+    ),
 ]
 
 
-@pytest.mark.parametrize(
-    "text",
-    _STANDALONE_QUESTIONS_UNTOUCHED,
-    ids=[f"unchanged-{i}" for i in range(len(_STANDALONE_QUESTIONS_UNTOUCHED))],
-)
+@pytest.mark.parametrize("text", _STANDALONE_QUESTIONS_UNTOUCHED)
 def test_standalone_questions_leaves_the_rest_untouched(text: str) -> None:
     assert standalone_questions(text) == text
 
@@ -589,11 +647,11 @@ def test_the_transform_is_idempotent_and_never_drops_gains_or_reorders_a_word(
     assert _word_order(voiced) == _word_order(text), "word order was not preserved end to end"
 
 
-# The D family (couldn't hear / transcription failed) folds a real question after an em
-# dash, in both languages — the one place a fixed line is not a no-op under the new steps.
-# Its shipped clip was recorded reading the flat statement; ENG-1091 tracks the re-render
-# and teaching scripts/render_fixed_voice_lines.py's fingerprint to hash the spoken form
-# instead of the raw one, so `--check` can see this drift on its own next time.
+#: The D family (couldn't hear / transcription failed) folds a real question after an em
+#: dash, in both languages — the one place a fixed line is not a no-op under the new steps.
+#: Its shipped clip was recorded reading the flat statement; ENG-1091 tracks the re-render
+#: and teaching scripts/render_fixed_voice_lines.py's fingerprint to hash the spoken form
+#: instead of the raw one, so `--check` can see this drift on its own next time.
 _FIXED_LINE_QUESTION_SPLITS = {
     (
         "en",
