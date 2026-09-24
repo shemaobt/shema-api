@@ -337,3 +337,16 @@ async def test_two_minutes_the_panorama_heard_no_word_of_are_her_note_not_line_d
     assert agent.guide_inputs == [P06_NOTE], "o panorama respondia 'podem repetir?' ao ensaio"
     assert outcome.fixed_line == ""
     assert outcome.room_note == P06_NOTE
+
+
+async def test_a_wordless_take_keeps_the_language_scribe_heard_it_in_for_the_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+
+    speech = await _heard(_take(116))
+
+    assert (speech.language_code, speech.language_probability) == ("eng", 0.65), (
+        "a tomada do P06 ia para o log como heard=None p=None, o que o Scribe disse dela perdido"
+    )
+    assert speech.reason == "no words in a long take (116 s >= 20 s)"

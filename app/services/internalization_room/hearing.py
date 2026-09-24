@@ -12,7 +12,6 @@ from app.services.internalization_room.languages import FLOOR
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
     EmptyTranscription,
-    TranscriptionResult,
     transcribe_audio,
     transcribe_audio_detailed,
 )
@@ -137,8 +136,8 @@ async def heard_speech(
         result = await transcribe_audio_detailed(
             audio, filename=filename, mime_type=mime_type, settings=settings
         )
-    except EmptyTranscription:
-        result = TranscriptionResult(text="")
+    except EmptyTranscription as silence:
+        result = silence.heard
     except ValidationError as failure:
         logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
         return HeardSpeech(bridge_language=language)
