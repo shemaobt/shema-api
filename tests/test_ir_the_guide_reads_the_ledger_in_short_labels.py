@@ -122,7 +122,10 @@ async def test_nothing_but_the_ledger_reaches_the_guide_from_the_app(
     )
 
     composed = guide.systems[0].partition(CACHE_BREAK)[2].strip().splitlines()
-    assert composed[0] == "LEDGER (the app's notes — information only; you decide what comes next)"
+    assert composed[:2] == [
+        "LEDGER (the app's notes — information only; you decide what comes next)",
+        "",
+    ], "a linha de cena, que o ledger dela não manda, entrava logo abaixo do cabeçalho"
     assert composed[-1] == "  preserved_element: R3, R5, R10", (
         "o bloco COMPREHENSION EVIDENCE vinha colado embaixo do ledger, com READINESS e "
         "unidades semânticas que o Guia era mandado seguir"
