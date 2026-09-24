@@ -46,6 +46,7 @@ async def settle_coverage(
     team_utterance: str,
     guide_response: str,
     pericope_num: str,
+    opening: bool = False,
 ) -> None:
     """Advance the tracker after the reply has already shipped.
 
@@ -72,6 +73,7 @@ async def settle_coverage(
                     guide_response=guide_response,
                     classifier_prompt=classifier_prompt,
                     pericope_num=pericope_num,
+                    opening=opening,
                     session_language=LANGUAGE_NAMES[session.language],
                 )
                 async with AsyncSessionLocal() as db:

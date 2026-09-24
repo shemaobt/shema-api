@@ -333,6 +333,7 @@ async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothin
             "{{GUIDE_RESPONSE}}"
         ),
         pericope_num=P,
+        opening=True,
         session_language="English",
     )
 

@@ -43,7 +43,8 @@ _DECISIONS: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-#: What the classifier's TEAM_UTTERANCE slot carries when nobody has spoken this turn.
+#: What the classifier's TEAM_UTTERANCE slot carries on the opening alone, where the team
+#: truly has not spoken yet; a later turn with no words hands the slot over empty.
 #: Composed in English like every other backend instruction (ENG-822) — only
 #: {{SESSION_LANGUAGE}} carries what language the team speaks.
 _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
@@ -193,6 +194,7 @@ async def classify_coverage(
     guide_response: str,
     classifier_prompt: str,
     pericope_num: str,
+    opening: bool = False,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
 ) -> dict[str, str]:
@@ -213,7 +215,7 @@ async def classify_coverage(
         SESSION_LANGUAGE=session_language,
         SCENES=_scenes_block(pericope_num),
         COVERAGE_ELEMENTS=_unresolved_block(coverage_state, offered),
-        TEAM_UTTERANCE=team_utterance or _NO_TEAM_UTTERANCE_YET,
+        TEAM_UTTERANCE=team_utterance or (_NO_TEAM_UTTERANCE_YET if opening else ""),
         GUIDE_RESPONSE=guide_response,
     )
 

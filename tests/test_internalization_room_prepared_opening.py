@@ -300,17 +300,14 @@ async def test_a_panorama_opened_before_the_preparation_lands_still_opens(
     assert PREPARED not in said
 
 
-async def test_the_ready_line_reaches_the_team_without_ever_reaching_the_classifier(
+async def test_the_ready_line_is_classified_once_and_its_replay_still_promises_it(
     client, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The opening is a turn like any other now, whichever door wrote it.
-
-    The prepared path used to hand every ready line to the classifier unconditionally,
-    before the settle gate the on-demand door reads could ever see it — a second door
-    the rule could not reach through. Coverage is `engaged`-only on the team's screen, so
-    a line the room wrote for itself is not evidence of anything the team heard, whether it
-    was written on demand or ahead of time.
-    """
+    """The opening is a turn like any other, whichever door wrote it: her route classifies
+    the kickoff with no condition (`route.ts:179,185-194`). The app arms its wait for the
+    settled frame only on `classification_pending` (`session_notifier.dart:1212-1219`), so the
+    reply says so, and so does the replay a resent `turn_id` gets — which is not a second
+    turn and is not classified again."""
     from app.api.internalization_room import sessions as sessions_api
 
     settled: list[dict[str, str]] = []
@@ -323,10 +320,30 @@ async def test_the_ready_line_reaches_the_team_without_ever_reaching_the_classif
     panorama = await _create_panorama(client)
     await _park_the_prepared_line(db_session, panorama)
     passage = await _passage_after(client, panorama)
-    await _open_it(client, passage)
+    opened = await client.post(
+        f"{IR}/sessions/{passage}/turns",
+        headers={"X-Room-Key": ROOM_KEY},
+        data={"turn_id": "abertura"},
+    )
+    again = await client.post(
+        f"{IR}/sessions/{passage}/turns",
+        headers={"X-Room-Key": ROOM_KEY},
+        data={"turn_id": "abertura"},
+    )
 
+    assert opened.status_code == again.status_code == 200, opened.text[:200]
     assert await _the_room_said(db_session, passage) == PREPARED
-    assert settled == [], (
-        "a abertura preparada chegava ao classificador por uma porta que o portão da "
-        "abertura ao vivo não lê, e coverage é engaged-only na tela do time"
+    assert [
+        (handed["turn_id"], handed["team_utterance"], handed["guide_response"], handed["opening"])
+        for handed in settled
+    ] == [("abertura", "", PREPARED, True)], (
+        "a abertura preparada nunca chegava ao classificador, e o que o Guia levantou nela "
+        "não ficava registrado como levantado"
+    )
+    assert opened.json()["classification_pending"] is True, (
+        "a resposta da abertura preparada não dizia que o classificador corria, e o app não "
+        "armava a espera pelo quadro de cobertura"
+    )
+    assert again.json()["classification_pending"] is True, (
+        "o replay do turn_id guardava a promessa antiga, e o tablet que reenviou não esperava"
     )

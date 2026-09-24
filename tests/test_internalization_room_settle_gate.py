@@ -7,6 +7,10 @@ away the beads that answer had just earned (session 86a0cbbd, turn 15, the highe
 element in P01).
 """
 
+import json
+import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -14,9 +18,12 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room import background
+from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.sessions import create_session, get_session
 
 IR = "/api/internalization-room"
 ROOM_KEY = "sala-de-teste"
@@ -24,7 +31,7 @@ TEAM = "A fome grande fez a família se mudar."
 FAIL_SAFE = "Tem bastante coisa aqui. Vamos com calma e ficar nesta cena."
 OPENING = "Vamos ficar no começo: uma família sai de Belém por falta de comida."
 INAUDIBLE = "Não consegui ouvir. Podem repetir mais perto do microfone?"
-OFF_BRIDGE = "Podemos continuar na língua da sessão?"
+MOTHER_TONGUE_NOTE = "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição]"
 
 
 @dataclass
@@ -138,129 +145,179 @@ async def test_a_fail_safe_still_hands_over_what_the_team_said(room: _Room, pass
     )
 
 
-async def test_an_opening_names_beads_the_team_never_spoke_toward_and_settles_none_of_them(
+async def test_an_opening_is_classified_once_as_the_turn_the_team_has_not_spoken_in_yet(
     room: _Room, passage: str
 ) -> None:
-    """The turn that used to earn an exception for carrying no utterance at all.
-
-    An opening lays the scene out and names around ten map elements from the Guide's side
-    alone, with nothing from the team behind any of them. Coverage is `engaged`-only on the
-    team's screen now, so a sentence the room wrote for itself is not evidence of anything
-    the team heard, and the gate reads an opening the same way it reads any other turn with
-    nothing said into it.
-    """
+    """Her route classifies every turn that is not a panorama, the kickoff included
+    (`route.ts:179,185-194`). The opening names beads from the Guide's side alone, which her
+    classifier may only mark `surfaced`; the team's necklace counts `engaged`, so the opening
+    reaches the Guide's ledger and the Desk and leaves the team's screen as it was."""
     room.outcome = TurnOutcome(speech=OPENING, transcript="")
 
     await _the_room_opens(room, passage)
 
-    assert room.settled == [], (
-        "a abertura escrita na hora nomeava contas sem que a equipe tivesse dito nada, e "
-        "coverage passou a ser engaged-only na tela do time"
+    assert [
+        (handed["team_utterance"], handed["guide_response"], handed["opening"])
+        for handed in room.settled
+    ] == [("", OPENING, True)], (
+        "a abertura nunca chegava ao classificador, e o que o Guia levantou nela não ficava "
+        "registrado como levantado"
     )
 
 
-async def test_a_turn_nobody_could_be_heard_in_is_not_settled(room: _Room, passage: str) -> None:
-    """An inaudible answer is not the opening it resembles, and settles no more than it did.
-
-    An inaudible answer reaches the gate looking like an opening — an empty utterance and a
-    fail-safe line — and it is not one: the team spoke, the room simply did not catch it.
-    Neither turn here carries anything the team said, and neither reaches the classifier.
-    """
+async def test_a_turn_nobody_could_be_heard_in_is_classified_with_an_empty_slot(
+    room: _Room, passage: str
+) -> None:
+    """An inaudible answer is not the opening it resembles: the team spoke and the room did
+    not catch it. Her classifier is handed what reached the Guide as the team's turn, and on an
+    empty take that is nothing (`oralTurn.ts:70`) — never the opening's placeholder."""
     room.outcome = TurnOutcome(speech=OPENING, transcript="")
     await _the_room_opens(room, passage)
     room.outcome = TurnOutcome(speech=INAUDIBLE, transcript="", used_fail_safe=True, degraded=True)
 
     await _the_team_answers(room, passage)
 
-    assert room.settled == [], (
-        "nem a abertura nem um turno inaudível carregam fala da equipe, e nenhum dos dois "
-        "deveria chegar ao classificador"
+    assert [
+        (handed["team_utterance"], handed["guide_response"], handed["opening"])
+        for handed in room.settled
+    ] == [("", OPENING, True), ("", INAUDIBLE, False)], (
+        "o turno inaudível ficava fora do classificador, ou chegava a ele como se fosse a abertura"
     )
 
 
-async def test_an_opening_the_room_could_not_phrase_hands_over_nothing(
+async def test_an_opening_the_room_could_not_phrase_is_still_classified_as_the_opening(
     room: _Room, passage: str
 ) -> None:
-    """A fail-safe opening is a contentless line, not evidence of anything, opening or not.
-
-    Redrafting runs out on the first turn like any other, so a fail-safe opening is a line
-    the room reaches for when it has nothing to say — `prepare_opening` throws exactly this
-    away rather than keep it. No turn with an empty transcript settles any more, so this one
-    needs no opening-specific reasoning to stay out of the classifier's hands.
-    """
+    """Her route classifies the kickoff with no condition on how the Guide's line came out.
+    A fail-safe line names nothing, so the classifier moves nothing on it."""
     room.outcome = TurnOutcome(speech=FAIL_SAFE, transcript="", used_fail_safe=True, degraded=True)
 
     await _the_room_opens(room, passage)
 
-    assert room.settled == [], (
-        "a abertura em fail-safe entregava ao classificador a mesma linha fixa que o "
-        "turno inaudível tem de manter longe dele"
-    )
+    assert [(handed["guide_response"], handed["opening"]) for handed in room.settled] == [
+        (FAIL_SAFE, True)
+    ], "a abertura em fail-safe ficava fora do classificador, ao contrário da rota dela"
 
 
-async def test_a_transcript_the_hearing_does_not_trust_hands_over_nothing(
+async def test_a_transcript_the_hearing_does_not_trust_is_classified_with_an_empty_slot(
     room: _Room, passage: str
 ) -> None:
-    """Words the room is about to ask the team to repeat are not words to credit beads to.
-
-    `uncertain` exists to under-count and nothing else — an uncertain transcript is repeated,
-    never judged as misunderstanding (`HeardSpeech`). It reaches the gate looking like an
-    answer, because the inaudible outcome carries the transcript forward while the team hears
-    a request to say it again. Coverage only moves forward and feeds the Guide's next prompt,
-    so a bead settled on a word the hearing distrusts cannot be taken back.
-    """
-    room.outcome = TurnOutcome(
-        speech=INAUDIBLE, transcript=TEAM, used_fail_safe=True, degraded=True
-    )
+    """The room asks the team to say it again and keeps none of the distrusted words
+    (`speak_back` answers with an empty transcript), so the classifier reads the Guide's
+    request and an empty team slot — nothing it could credit an `engaged` bead to."""
+    room.outcome = TurnOutcome(speech=INAUDIBLE, transcript="", used_fail_safe=True, degraded=True)
     room.heard = HeardSpeech(text=TEAM, transcript_confidence=0.2)
 
     await _the_team_answers(room, passage)
 
-    assert room.settled == [], (
-        "a cobertura era creditada em cima de palavras que o próprio STT marcou como "
-        "não confiáveis, enquanto a equipe ouvia um pedido para repetir"
+    assert [(handed["team_utterance"], handed["guide_response"]) for handed in room.settled] == [
+        ("", INAUDIBLE)
+    ], (
+        "o turno com transcrição duvidosa ficava fora do classificador, ou levava a ele as "
+        "palavras que a sala pediu para repetir"
     )
 
 
-async def test_an_answer_left_in_another_language_hands_over_nothing(
+async def test_an_answer_in_the_mother_tongue_is_classified_with_the_note_the_guide_read(
     room: _Room, passage: str
 ) -> None:
-    """The room asked for the session's language back; it did not take the answer up.
-
-    Mother-tongue speech is not distrusted the way an uncertain transcript is — it is heard
-    perfectly well and left unengaged, and the team hears the off-bridge fixed line rather
-    than a reply. Settling it would credit beads read against a meaning map in one language
-    from an utterance in another, on a turn the room declined, and coverage does not come
-    back down.
-    """
-    room.outcome = TurnOutcome(
-        speech=OFF_BRIDGE, transcript=TEAM, used_fail_safe=True, fixed_line="off_bridge"
-    )
+    """On a mother-tongue take her classifier reads the room-note, which is what reached the
+    Guide as the team's turn (`oralTurn.ts:14,92`); the transcript is empty on that turn."""
+    room.outcome = TurnOutcome(speech=OPENING, transcript="", room_note=MOTHER_TONGUE_NOTE)
     room.heard = HeardSpeech(
         text=TEAM, language_code="ter", language_probability=0.99, transcript_confidence=0.9
     )
 
     await _the_team_answers(room, passage)
 
-    assert room.settled == [], (
-        "a fala que ficou em outra língua era creditada sem tradução, num turno em que "
-        "a sala pediu para repetir na língua da sessão"
+    assert [handed["team_utterance"] for handed in room.settled] == [MOTHER_TONGUE_NOTE], (
+        "a fala na língua materna ficava fora do classificador, e a nota que o Guia leu "
+        "nunca chegava a ele"
     )
 
 
-async def test_a_turn_with_no_team_utterance_promises_no_classification(
+async def test_a_team_walking_back_in_hears_the_line_again_and_nothing_is_classified_twice(
     room: _Room, passage: str
 ) -> None:
-    """The app waits on what the response says is running, so a turn nobody will classify
-    has to say so, or the tablet sits out a wait for a bead that was never going to move."""
+    """Every turn that appends an exchange is classified once; "say it again" appends none,
+    so the opening it repeats is not handed to the classifier a second time."""
+    room.outcome = TurnOutcome(speech=OPENING, transcript="")
+    await _the_room_opens(room, passage)
+
+    back = await _the_room_opens(room, passage)
+
+    assert [handed["guide_response"] for handed in room.settled] == [OPENING], (
+        "a equipe que voltava à passagem reclassificava a abertura que só ouviu de novo"
+    )
+    assert back.json()["classification_pending"] is False
+
+
+@asynccontextmanager
+async def _handed(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
+    yield db_session
+
+
+async def test_an_opening_naming_the_arc_and_the_tone_leaves_them_surfaced_and_nothing_engaged(
+    room: _Room, passage: str, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Her classifier marks `surfaced` from the Guide alone and `engaged` only from the team
+    (`classifier_system_prompt.md:47-48,56-58`), and the team's necklace counts `engaged`
+    (`colar_overlay.dart:84`): the opening moves the Guide's ledger and the Desk, and the
+    team's screen stays where it was until the team speaks."""
+    from app.api.internalization_room import sessions as sessions_api
+
+    named = [
+        element.key for element in elements_for("P01") if element.kind.value in {"arc", "tone"}
+    ]
+    shown: list[str] = []
+
+    async def _her_classifier(*, system_prompt: str, **_: Any) -> str:
+        shown.append(system_prompt)
+        return json.dumps(
+            {
+                "decisions": [
+                    {"element_id": key, "new_status": "surfaced", "evidence": "o Guia nomeou"}
+                    for key in named
+                ]
+            }
+        )
+
+    monkeypatch.setattr(sessions_api, "settle_coverage", background.settle_coverage)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.classify_coverage"],
+        "call_agent",
+        _her_classifier,
+    )
+    room.outcome = TurnOutcome(speech=OPENING, transcript="")
+
+    await _the_room_opens(room, passage)
+
+    view = coverage_view(await get_session(db_session, passage))
+    assert len(named) == 2
+    assert (view.surfaced, view.engaged) == (2, 0), (
+        "o que o Guia levantou na abertura não ficava registrado como levantado, e os eixos "
+        "do nível 1 só chegavam à barra do piso em turnos posteriores"
+    )
+    assert "(the team has not spoken yet)" in shown[0], (
+        "a abertura chegava ao classificador com o slot da equipe vazio, como um turno em que "
+        "a equipe falou e não foi ouvida"
+    )
+
+
+async def test_an_opening_promises_its_classification_under_the_turn_it_settles(
+    room: _Room, passage: str
+) -> None:
+    """The app arms its wait for the settled frame only on the response's word, so an opening
+    the classifier now reads has to say so, under the turn id the frame will carry."""
     room.outcome = TurnOutcome(speech=OPENING, transcript="")
 
     opened = await _the_room_opens(room, passage)
 
-    assert opened.json()["classification_pending"] is False, (
-        "a resposta não dizia se um classificador estava correndo, e o app esperava "
-        "trinta segundos por uma abertura que nunca chega ao classificador"
+    assert opened.json()["classification_pending"] is True, (
+        "a abertura ia ao classificador sem que a resposta dissesse que ele corria"
     )
+    assert opened.json()["turn_id"] == room.settled[0]["turn_id"] != ""
 
 
 async def test_an_answer_the_classifier_will_read_is_promised_under_the_turn_it_settles(

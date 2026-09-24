@@ -374,21 +374,35 @@ async def test_the_beads_settle_before_the_answer_so_the_next_turn_reads_them(
 ) -> None:
     from app.api.internalization_room import text_seam
 
-    settled: list[tuple[str, str]] = []
+    settled: list[tuple[str, str, bool]] = []
 
-    async def _settle(*, session_id: str, team_utterance: str, guide_response: str, **_: Any):
-        settled.append((team_utterance, guide_response))
+    async def _settle(
+        *, session_id: str, team_utterance: str, guide_response: str, opening: bool, **_: Any
+    ):
+        settled.append((team_utterance, guide_response, opening))
 
     monkeypatch.setattr(text_seam, "settle_coverage", _settle)
     session_id = await _an_open_session(client)
-    assert settled == [], "a abertura é uma frase que a sala escreveu para si; não move conta"
+    assert settled == [("", GUIDE_LINE, True)], (
+        "a costura deixava a abertura fora do classificador, e a rota falada a classifica "
+        "como a dela"
+    )
 
     answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
-
     assert answered.status_code == 200, answered.text
-    assert settled == [(TEAM_LINE, GUIDE_LINE)], (
+    assert settled[1:] == [(TEAM_LINE, GUIDE_LINE, False)], (
         "o classificador rodava atrás da resposta e o turno seguinte lia as contas de antes, "
         "então o bloco de cobertura do Guia não era o que o app mostraria"
+    )
+
+    told = await client.post(
+        f"{SEAM}/turn",
+        json={"sessionId": session_id, "text": HER_RUNNER_NOTE, "motherTongue": 40},
+    )
+    assert told.status_code == 200, told.text
+    assert settled[2:] == [(MOTHER_TONGUE_NOTE, GUIDE_LINE, False)], (
+        "a fala na língua materna ficava fora do classificador na costura, e a nota que o "
+        "Guia leu nunca chegava a ele"
     )
 
 

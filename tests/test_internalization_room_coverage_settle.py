@@ -514,3 +514,40 @@ async def test_a_bead_another_settle_lit_during_the_classifier_survives_this_one
         "o apply_coverage relia a sessão pelo identity map do próprio settle, com o estado "
         "de antes do classificador, e apagava a conta que outro settle acendera nesse meio"
     )
+
+
+async def test_a_later_turn_with_no_words_reaches_the_classifier_empty_not_as_an_opening(
+    patch_classifier,
+) -> None:
+    """Her classifier reads what reached the Guide as the team's turn (`oralTurn.ts:14,92`):
+    on an empty take that is nothing at all. The placeholder is the opening's alone — there
+    the team truly has not spoken yet — and a silence later in the session is not that."""
+    agent = patch_classifier(json.dumps({"decisions": []}))
+
+    await classify_coverage(
+        coverage_state=initial_state(P),
+        team_utterance="",
+        guide_response="Não consegui ouvir. Podem repetir mais perto do microfone?",
+        classifier_prompt=CLASSIFIER,
+        pericope_num=P,
+        settings=_settings(),
+    )
+    later = agent.system
+    await classify_coverage(
+        coverage_state=initial_state(P),
+        team_utterance="",
+        guide_response="Vamos ouvir o começo de Rute.",
+        classifier_prompt=CLASSIFIER,
+        pericope_num=P,
+        opening=True,
+        settings=_settings(),
+    )
+    opening = agent.system
+
+    assert "(the team has not spoken yet)" not in later, (
+        "um turno vazio depois da abertura chegava ao classificador como se a equipe "
+        "ainda não tivesse falado na sessão"
+    )
+    assert "(the team has not spoken yet)" in opening, (
+        "a abertura perdia o marcador e o classificador lia um slot vazio no primeiro turno"
+    )

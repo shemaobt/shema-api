@@ -197,3 +197,33 @@ async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_t
         "a abertura descartada respondia com as contas lidas antes do Guia, e a conta que o"
         " turno da equipe acendeu apagava na tela"
     )
+
+
+async def test_an_opening_dropped_behind_the_teams_turn_is_never_classified(
+    client, db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every turn that appends an exchange is classified, and a dropped opening appends none:
+    the classifier would read a Guide line the record does not hold, after a team turn it
+    never answered."""
+    session = await create_session(db_session, pericope=P, language="pt")
+    settled: list[dict[str, Any]] = []
+
+    async def _record(**handed: Any) -> None:
+        settled.append(handed)
+
+    monkeypatch.setattr(sessions_api, "settle_coverage", _record)
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"],
+        "call_agent",
+        _TeamSpeaksWhileTheGuideThinks(rival_factory, session.id),
+    )
+
+    late = await _ask_for_the_opening(client, session.id)
+
+    assert late.status_code == 200, late.text[:300]
+    assert settled == [], (
+        "a abertura descartada ia ao classificador, que lia uma fala do Guia que o registro "
+        "não guardou"
+    )
+    assert late.json()["classification_pending"] is False

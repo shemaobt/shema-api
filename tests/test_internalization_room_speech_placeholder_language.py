@@ -140,6 +140,7 @@ async def test_the_classifier_sees_the_no_utterance_placeholder_in_english(
         guide_response="o Guia perguntou",
         classifier_prompt=CLASSIFIER,
         pericope_num=P,
+        opening=True,
         session_language=LANGUAGE_NAMES[language_code],
         settings=_settings(),
     )

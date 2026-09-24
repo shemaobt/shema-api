@@ -235,13 +235,14 @@ async def take_text_turn(
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
         )
-        if _worth_settling(outcome, heard):
+        if _worth_settling(session):
             await settle_coverage(
                 session_id=session.id,
                 turn_id=str(uuid.uuid4()),
-                team_utterance=outcome.transcript,
+                team_utterance=outcome.room_note or outcome.transcript,
                 guide_response=outcome.speech,
                 pericope_num=session.pericope,
+                opening=payload.kickoff,
             )
     return TextTurnResponse(
         sessionId=session.id,
