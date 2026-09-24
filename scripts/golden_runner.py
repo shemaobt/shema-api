@@ -11,7 +11,7 @@ and the requests are the same.
         --base-url http://127.0.0.1:8044/api/internalization-room/text-seam \\
         [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>]
 
-One command is the five, as `npm run golden` is on her side; `--only` names one of them and
+One command is all of them, as `npm run golden` is on her side; `--only` names one of them and
 `--script <path>` plays a script from anywhere. Per turn the runner prints the outcome, the
 wall clock and the faults her mechanical checks name, and one `[llm-usage]` line per model
 call the room reported. A session the room refuses — a pericope this canon does not hold — is
@@ -616,7 +616,7 @@ async def rejudge(args: argparse.Namespace) -> int:
     """Her judge over a run already on disk, with the room left alone.
 
     A judge prompt that changes, or a rung that does, changes the verdict and not the
-    transcript; and a run's verdict can be asked for twice without paying the five sessions
+    transcript; and a run's verdict can be asked for twice without paying the sessions
     again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
     pericope names today, and its verdict written under the same name and stamp into `--out`,
     so the file still says which transcript it judged. The mechanical column is the one the

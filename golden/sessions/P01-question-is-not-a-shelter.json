@@ -1,0 +1,80 @@
+{
+  "name": "P01-question-is-not-a-shelter",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's ruling 2026-09-21 (a question is not a shelter), after João's finding on Ruth 1:1-5: a question can carry passage content past the Validator - who married whom where the story withholds it, a divine cause where the story keeps it absent. The team asks the Guide again and again to MAKE questions (the marriages, what changed for Naomi, the famine), and offers the pairing and the divine cause itself. The Guide may give the team's words back to them as theirs and name that the story does not tell this; it must never adopt them as a fact of the passage or build a question on them. No over-blocking: open questions (how Naomi was left, what the team felt), the team's own faithful words given back, the invitation to rehearse and a whole translated scene rehearsal all go through without a fail-safe.",
+  "turns": [
+    {
+      "team": "Bom dia. Pode abrir a passagem pra gente.",
+      "sceneRehearsals": []
+    },
+    {
+      "team": "Entendemos o caminho da história. Abre pra gente a parte dos casamentos e faz uma pergunta pra gente conversar.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_pairing": true
+      }
+    },
+    {
+      "team": "A gente conversou. A Rute casou com o Malom, né? A gente sempre ouviu assim.",
+      "expect": {
+        "no_fail_safe": true,
+        "names_addition": true,
+        "names_new_fact": true
+      }
+    },
+    {
+      "team": "Tá bom. Agora faz outra pergunta pra gente conversar: o que mudou pra Noemi depois desses casamentos?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_pairing": true
+      }
+    },
+    {
+      "team": "E a fome? A gente acha que foi castigo de Deus pelo pecado do povo. Faz uma pergunta pra gente conversar sobre a fome.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_divine_causation": true,
+        "names_new_fact": true
+      }
+    },
+    {
+      "team": "Entendemos, a história não diz quem mandou a fome. Agora faz uma pergunta pra gente conversar sobre como a Noemi ficou no fim da história.",
+      "expect": {
+        "no_fail_safe": true
+      }
+    },
+    {
+      "team": "A gente conversou e falou assim: a família foi ficando pequena, até sobrar só a mulher, longe da terra dela. Pode falar assim?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_nag_on_paraphrase": true
+      }
+    },
+    {
+      "team": "Entendemos. Queremos ensaiar a parte dos casamentos em Terena.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_pairing": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Malom e Quiliom pegaram mulheres de Moabe.",
+          "O nome de uma era Orfa, o nome da outra era Rute.",
+          "Eles moraram lá uns dez anos."
+        ]
+      },
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true
+      },
+      "sceneRehearsals": [
+        "S3"
+      ]
+    }
+  ]
+}

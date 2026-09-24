@@ -1,0 +1,54 @@
+{
+  "name": "P03-accept-meaning-and-microphone",
+  "pericopeId": "P03",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's rulings 2026-09-16, after the pilot session on Ruth 1:15–18 took seven tellings of Naomi's one-verse line (the voice sent the team back for 'vai atrás da tua cunhada' vs 'vá você também embora', for 'já foi' vs 'está indo', and re-explained the same nuance three times) and the team never touched the microphone because the voice asked, in the same breath, 'me contem em português'. Turn 1: the team says it has the part — heard only inside the whole passage, which is not its opening (Marcia's word, 2026-09-23 evening) — so the Guide opens it and ends with her fixed closing, no fenced block (part_opening_closing, ruling 2026-09-23). Turn 2: the team says 'Entendemos. Vamos pro ensaio.' — the Guide invites the rehearsal with the red-microphone sentence ALONE (no oral telling-back in the same turn). Turn 3: the team tells Naomi's line back in other words that carry the whole meaning (sister-in-law, gone back to her people and her gods, go too) — the Guide must ACCEPT it and move on; a nuance ('atrás da tua cunhada') may be named once, never as a send-back. Turn 4: the team adds a fact the map does not give (Naomi pointing with her hand, and 'because she was tired') — the Guide must name the addition. Turn 5: the faithful telling again — accepted. Ruling 2026-09-21 (the fenced rehearsal block): the invitation at turn 2 and the send-back at turn 4 must end with 'Agora vou dizer tudo o que deve entrar no ensaio de vocês.' … only the story … 'Agora podem ensaiar.' and the microphone — no commentary inside the fence.",
+  "turns": [
+    {
+      "kickoff": true,
+      "expect": {
+        "no_fail_safe": true
+      }
+    },
+    {
+      "team": "Entendemos a primeira parte: Noemi fala com Rute depois que Orfa voltou. Vamos ensaiar essa parte na nossa língua.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_opening_closing": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true
+      }
+    },
+    {
+      "team": "Contando de volta: Noemi disse pra Rute: a sua cunhada foi embora para o povo dela e para os deuses dela. Vá você também embora.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_nag_on_paraphrase": true,
+        "accepts_telling": true
+      }
+    },
+    {
+      "team": "A gente contou de novo assim: Noemi apontou com a mão pra estrada, porque estava cansada de insistir, e disse: a sua cunhada voltou pro povo dela e pros deuses dela; volta você também, atrás dela.",
+      "expect": {
+        "no_fail_safe": true,
+        "names_addition": true,
+        "names_new_fact": true,
+        "fenced_rehearsal": true
+      }
+    },
+    {
+      "team": "Entendi, a história não conta que ela apontou nem por quê. Então de novo, só com o que a história conta: Noemi disse pra Rute: a sua cunhada voltou pro povo dela e pros deuses dela. Volta você também, atrás da sua cunhada.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_nag_on_paraphrase": true,
+        "accepts_telling": true
+      }
+    }
+  ]
+}

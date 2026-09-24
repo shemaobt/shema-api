@@ -1,0 +1,67 @@
+{
+  "name": "P01-ensaio-da-cena",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "The translated scene rehearsal (docs/FRASES-E-ENSAIO-DA-CENA-SPEC.md §4): the team rehearses the first scene in Terena and translates that scene rehearsal phrase by phrase; the pieces reach the Guide as one turn behind the room-note. The Guide must read the translation as the team's telling of the scene — name the one real gap (the clan, Ephrathites of Bethlehem of Judah, is missing from the first translation; the sojourn as a foreigner, map Prop 2, is present in both) without inventing anything, and accept the complete second translation without a fail-safe and without sending the team back to rehearse. Ruling 2026-09-21: the invitation (turn 3) and the send-back after the gap (turn 4) end with the fenced rehearsal block + the one microphone instruction. 2026-09-21 (PR-F): the script states the app's SCENE REHEARSALS fact as the live app would — none at the start, S1 on each turn a scene rehearsal of scene 1 arrives (the route counts the arriving rehearsal) — so both drivers, and the judge's APP STATUS line, read what production reads. Ruling 2026-09-23 (prompts/guide_system_prompt.md, 'Opening a part — close it with these words') and Marcia's word that evening (the whole passage is not a part's opening): the team's request to rehearse scene 1, which it has heard only inside the whole passage (turn 2), is answered by opening that part, ending with her fixed closing and no fenced block (part_opening_closing); the fenced block comes on the team's 'Entendemos. Vamos pro ensaio.' (turn 3).",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true
+      }
+    },
+    {
+      "team": "Podem contar a passagem inteira pra gente."
+    },
+    {
+      "team": "Entendemos. Vamos ensaiar a primeira cena na nossa língua.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_opening_closing": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Nos dias em que os juízes julgavam, teve uma fome na terra.",
+          "Um homem de Belém de Judá foi morar de passagem nos campos de Moabe, como estrangeiro, com a mulher e os dois filhos.",
+          "O nome dele era Elimeleque, a mulher era Noemi, e os filhos Malom e Quiliom.",
+          "Chegaram nos campos de Moabe e ficaram lá."
+        ]
+      },
+      "sceneRehearsals": [
+        "S1"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "fenced_rehearsal": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Nos dias em que os juízes julgavam, teve uma fome na terra.",
+          "Um homem de Belém de Judá foi morar de passagem nos campos de Moabe, como estrangeiro, com a mulher e os dois filhos.",
+          "O nome dele era Elimeleque, a mulher era Noemi, e os filhos Malom e Quiliom. Eram efrateus de Belém de Judá.",
+          "Chegaram nos campos de Moabe e ficaram lá."
+        ]
+      },
+      "sceneRehearsals": [
+        "S1"
+      ],
+      "expect": {
+        "no_fail_safe": true
+      }
+    }
+  ]
+}
