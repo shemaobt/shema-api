@@ -256,11 +256,11 @@ The file a release hands to Refine: the rehearsal, the telling-back with its fin
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Blocker**:
-One of the codes a refused approval names, one string each: the gate's ten plus `no_project`. A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
+One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor and comprehension readiness are facts of the ledger, never blockers). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
 _Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
 
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
-A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: comprehension, coverage, audio, a telling-back, its reading and an untold stretch are material, not a dispute.
+A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: audio, a telling-back, its reading and an untold stretch are material, not a dispute.
 _Avoid_: override, bypass, forced approval, Aprovação forçada
 
 **Check block** (`check`):
