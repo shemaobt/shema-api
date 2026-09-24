@@ -43,7 +43,8 @@ _DECISIONS: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-#: What the classifier's TEAM_UTTERANCE slot carries when nobody has spoken this turn.
+#: What the classifier's TEAM_UTTERANCE slot carries on the opening alone, where the team
+#: truly has not spoken yet; a later turn with no words hands the slot over empty.
 #: Composed in English like every other backend instruction (ENG-822) — only
 #: {{SESSION_LANGUAGE}} carries what language the team speaks.
 _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
