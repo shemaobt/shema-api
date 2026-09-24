@@ -118,8 +118,8 @@ async def create_session(
     The necklace is the team's and not this conversation's. A session on a passage the team
     has already worked opens with those beads where the team's own coverage events left them,
     so a tablet closed in the middle of the third scene on Tuesday comes back on Thursday to
-    the beads it filled, and the Guide is handed a REMAINING block naming what is actually
-    left rather than the whole passage again. A bead the events point at that this canon no
+    the beads it filled, and the Guide's ledger names what the team has worked and what is
+    actually left rather than the whole passage again. A bead the events point at that this canon no
     longer serves is dropped rather than carried: the spine is the canon's and the events are
     only laid over it, which is `necklace_of`'s rule (`coverage_events.py`) and `floor_met`'s
     own bias.

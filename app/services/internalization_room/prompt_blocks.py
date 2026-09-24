@@ -10,78 +10,82 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import (
-    CoverageStatus,
-    current_scene,
-    initial_state,
-    remaining,
-)
+from app.services.internalization_room.classify_coverage import _shown_status
+from app.services.internalization_room.coverage import CoverageStatus
 
 
 def _short_label(element: Element, scenes: dict[int, str]) -> str:
     """A label the Guide can say: a scene by its verses, a silence by its scene, a rule by
-    its number, and everything else by the map's own line for it — in the scene it is in,
-    because the team saying "Naomi" in scene 1 does not answer for her in scene 3."""
+    its number, and everything else by the map's own line for it."""
     if element.kind is ElementKind.SCENE and element.scene is not None:
         return scenes[element.scene]
     if element.kind is ElementKind.ABSENCE:
         return f"absence @ S{element.scene}"
     if element.kind is ElementKind.PRESERVED and element.rule_id is not None:
         return element.rule_id
-    if element.scene is not None:
-        return f"{element.label} @ S{element.scene}"
     return element.label
 
 
-_SCENE_LINE = "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED"
+_HER_KIND_NAMES = {
+    ElementKind.ABSENCE: "significant_absence",
+    ElementKind.PRESERVED: "preserved_element",
+}
 
 
-def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> str:
-    """Her three parts, in her order: the scene, what is behind the team, what is not.
+def _by_kind(elements: list[Element], scenes: dict[int, str]) -> list[str]:
+    by_kind: dict[ElementKind, list[str]] = {}
+    for element in elements:
+        by_kind.setdefault(element.kind, []).append(_short_label(element, scenes))
+    return [
+        f"  {_HER_KIND_NAMES.get(kind, kind.value)}: {', '.join(dict.fromkeys(by_kind[kind]))}"
+        for kind in ElementKind
+        if kind in by_kind
+    ]
 
-    Information only (DOCTRINE §2.1): the block says the first scene whose beads are not
-    all closed and what the team has and has not worked; it never says what to do next. No
-    key and no audit kind reaches it — the Guide speaks names, never codes, and it has no
-    screen to check a code against.
+
+def coverage_status_block(
+    coverage_state: dict[str, str], pericope_num: str, current_scene: str | None = None
+) -> str:
+    """Her LEDGER (`src/turn/coverageStatus.ts:18-56`): what the team worked, what the Guide
+    raised and the team has not taken up, and what nobody has touched yet.
+
+    Information only (DOCTRINE §2.1): it never says what to do next. No key and no audit
+    kind reaches it — the Guide speaks names, never codes, and it has no screen to check a
+    code against.
     """
     scenes = {
         scene.number: f"S{scene.number} ({scene.verses})" for scene in load_map(pericope_num).scenes
     }
-    merged = {**initial_state(pericope_num), **coverage_state}
-    covered = [
-        _short_label(element, scenes)
-        for element in elements_for(pericope_num)
-        if merged.get(element.key) == CoverageStatus.ENGAGED
-    ]
-    scene = current_scene(coverage_state, pericope_num)
-    if scene is not None:
-        scene_line = f"{_SCENE_LINE}: {scene}"
-    elif all(
-        merged.get(element.key) == CoverageStatus.ENGAGED
-        for element in elements_for(pericope_num)
-        if element.scene is not None
-    ):
-        scene_line = (
-            f"{_SCENE_LINE}: none — every scene's beads are closed; "
-            "the whole-passage meaning remains"
-        )
-    else:
-        scene_line = f"{_SCENE_LINE}: none yet — no bead is closed; the whole passage is still open"
-    covered_line = "COVERED (engaged): " + (
-        "; ".join(covered) if covered else "(nothing engaged yet — the session is just beginning)"
+    elements = elements_for(pericope_num)
+    status = {element.key: _shown_status(coverage_state, element) for element in elements}
+    engaged = [e for e in elements if status[e.key] == CoverageStatus.ENGAGED]
+    surfaced = [e for e in elements if status[e.key] == CoverageStatus.SURFACED]
+    untouched = [e for e in elements if e not in engaged and e not in surfaced]
+    worked = (
+        "; ".join(dict.fromkeys(_short_label(element, scenes) for element in engaged))
+        if engaged
+        else "(nothing yet — the session is just beginning)"
     )
-    left = remaining(coverage_state, pericope_num)
-    if not left:
-        remaining_lines = ["REMAINING: (none — every element has been worked by the team)"]
-    else:
-        by_kind: dict[ElementKind, list[str]] = {}
-        for element in left:
-            by_kind.setdefault(element.kind, []).append(_short_label(element, scenes))
-        remaining_lines = ["REMAINING (not yet worked by the team, in their own words):"]
-        remaining_lines.extend(
-            f"  {kind}: {', '.join(by_kind[kind])}" for kind in ElementKind if kind in by_kind
-        )
-    return "\n".join([scene_line, "", covered_line, "", *remaining_lines])
+    return "\n".join(
+        [
+            "LEDGER (the app's notes — information only; you decide what comes next)",
+            *([f"SCENE THE LEDGER LAST SAW THE TEAM IN: {current_scene}"] if current_scene else []),
+            "",
+            f"WORKED WITH BY THE TEAM (engaged): {worked}",
+            "",
+            *(
+                ["RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:", *_by_kind(surfaced, scenes), ""]
+                if surfaced
+                else []
+            ),
+            "NOT YET TOUCHED (still deserve a visit before the session ends):",
+            *(
+                _by_kind(untouched, scenes)
+                if untouched
+                else ["  (nothing — everything in the map has been visited)"]
+            ),
+        ]
+    )
 
 
 def meaning_map_block(pericope_num: str, book: str) -> str:

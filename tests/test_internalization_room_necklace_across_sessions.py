@@ -82,7 +82,7 @@ async def test_a_tablet_that_never_said_whose_it_is_still_opens_on_an_empty_neck
 async def test_the_guide_is_handed_only_what_the_team_still_has_left(
     db_session: AsyncSession,
 ) -> None:
-    """The REMAINING block is the whole point of carrying the necklace.
+    """The ledger's NOT YET TOUCHED is the whole point of carrying the necklace.
 
     The Guide is shown this list and nothing else, so a room that opened at `initial_state`
     was told the team had the whole passage still to work and walked them back through parts
@@ -96,8 +96,9 @@ async def test_the_guide_is_handed_only_what_the_team_still_has_left(
     thursday = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
 
     state = thursday.coverage_state
-    left = coverage_status_block(state, FIRST).split("REMAINING")[1]
-    assert left.splitlines()[1:] == ["  preserved: R10"]
+    block = coverage_status_block(state, FIRST)
+    assert "RAISED BY YOU" not in block
+    assert block.split("NOT YET TOUCHED")[1].splitlines()[1:] == ["  preserved_element: R10"]
 
 
 async def test_a_team_that_closed_the_tablet_mid_passage_finishes_it_on_the_second_evening(

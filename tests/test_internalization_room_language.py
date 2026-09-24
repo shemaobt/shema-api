@@ -354,8 +354,8 @@ def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
     fully_engaged = merge(nothing, pericope_num=P, engaged=list(nothing))
 
     assert coverage_status_block(fully_engaged, P).endswith(
-        "REMAINING: (none — every element has been worked by the team)"
+        "  (nothing — everything in the map has been visited)"
     )
-    assert "REMAINING (not yet worked by the team, in their own words):" in (
+    assert "WORKED WITH BY THE TEAM (engaged): (nothing yet — the session is just beginning)" in (
         coverage_status_block(nothing, P)
     )
