@@ -27,6 +27,19 @@ _RECORD = re.compile(r"grav", re.IGNORECASE)
 _THE_MAP = re.compile(r"\bo mapa\b|the map\b", re.IGNORECASE)
 _FAREWELL = re.compile(r"vão com deus|god bless|amém|amen\b", re.IGNORECASE)
 
+_PORTED = frozenset({"no_fail_safe", "no_rehearsal_invite", "no_pairing", "send_off_record"})
+_JUDGED = frozenset(
+    {
+        "opens_more",
+        "no_divine_causation",
+        "no_spoiler",
+        "no_outside_knowledge",
+        "names_gap",
+        "names_addition",
+        "no_nag_on_paraphrase",
+    }
+)
+
 
 def mechanical_checks(
     *, guide: str, outcome: str, expect: dict[str, Any], previous_guide: str
@@ -54,3 +67,7 @@ def mechanical_checks(
     if _FAREWELL.search(guide):
         fails.append("religious farewell of its own")
     return fails
+
+
+def unported_checks(expect: dict[str, Any]) -> list[str]:
+    return sorted(key for key in expect if key not in _PORTED | _JUDGED)

@@ -163,6 +163,48 @@ async def test_one_command_plays_every_session_and_a_refused_one_does_not_stop_t
     )
 
 
+async def test_a_check_of_hers_this_room_does_not_port_is_listed_as_pending_not_passed(
+    over_the_seam, tmp_path: Path
+) -> None:
+    """Her runner checks a key by regex or leaves it to her judge; ours dropped the rest.
+
+    A key nothing here reads used to vanish, so a script that expects the Ensaio Final
+    send-off passed that turn on silence. Every key that is neither ported nor one her
+    `run.ts` lists as judged is now printed as PENDING, in the export and in the README.
+    """
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    _script(
+        sessions,
+        "P01-retelling-gaps-and-additions",
+        "P01",
+        [
+            {
+                "team": "A gente terminou todas as partes.",
+                "expect": {
+                    "no_fail_safe": True,
+                    "names_gap": True,
+                    "send_off_ensaio_final": True,
+                    "no_record_again": True,
+                },
+            }
+        ],
+    )
+    out = tmp_path / "reports"
+
+    await golden_runner.run(_args(sessions, out))
+
+    name = "P01-retelling-gaps-and-additions"
+    played = json.loads((out / f"{name}.{STAMP}.json").read_text(encoding="utf-8"))
+    assert played["turns"][0]["pending"] == ["no_record_again", "send_off_ensaio_final"]
+    assert (
+        "Checagens dela que esta sala ainda não porta — PENDING, nenhuma conta como aprovada: "
+        f"{name} turn 0: no_record_again, send_off_ensaio_final."
+    ) in (out / "README.md").read_text(encoding="utf-8"), (
+        "uma chave que nada lia passava o turno em silêncio"
+    )
+
+
 async def test_a_played_session_is_judged_and_the_verdict_sits_beside_its_transcript(
     over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

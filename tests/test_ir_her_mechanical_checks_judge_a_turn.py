@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from scripts.golden_checks import mechanical_checks
+from scripts.golden_checks import mechanical_checks, unported_checks
 
 #: The demo failure answered the way her 5/5 answered it: opened more, no redirect.
 OPENS_MORE = (
@@ -118,4 +118,34 @@ def test_every_fault_of_one_turn_comes_back_in_her_order() -> None:
         "possible Ruth↔Mahlon pairing voiced (judge must confirm)",
         "says 'o mapa' / 'the map' to the team",
         "religious farewell of its own",
+    ]
+
+
+def test_a_key_neither_ported_nor_judged_by_her_is_pending_whatever_its_name() -> None:
+    """Her `run.ts:21-25` sorts every key into mechanical or judged; the four ported here pass.
+
+    The unknown key stands for the next one she adds: a script key no one here reads is not
+    a check that passed.
+    """
+    expect = {
+        "no_fail_safe": True,
+        "no_rehearsal_invite": True,
+        "no_pairing": True,
+        "send_off_record": True,
+        "opens_more": True,
+        "no_divine_causation": True,
+        "no_spoiler": True,
+        "no_outside_knowledge": True,
+        "names_gap": True,
+        "names_addition": True,
+        "no_nag_on_paraphrase": True,
+        "part_opening_closing": True,
+        "fenced_rehearsal": True,
+        "a_key_she_adds_next_week": True,
+    }
+
+    assert unported_checks(expect) == [
+        "a_key_she_adds_next_week",
+        "fenced_rehearsal",
+        "part_opening_closing",
     ]

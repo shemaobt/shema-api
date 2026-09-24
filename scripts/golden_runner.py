@@ -60,7 +60,7 @@ import httpx
 
 from app.api.internalization_room.text_seam import _collecting_model_calls
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
-from scripts.golden_checks import mechanical_checks
+from scripts.golden_checks import mechanical_checks, unported_checks
 from scripts.sync_doctrine import read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -128,6 +128,7 @@ class Played:
     turnMs: int = 0
     usage: list[Usage] = field(default_factory=list)
     mechanical: list[str] = field(default_factory=list)
+    pending: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -289,6 +290,7 @@ async def play(
             expect=turn.expect,
             previous_guide=previous_guide,
         )
+        line.pending = unported_checks(turn.expect)
         previous_guide = line.guide
         played.append(line)
         for call in line.usage:
@@ -525,6 +527,18 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         )
         lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
+    pending = [
+        f"{result.name} turn {turn.idx}: {', '.join(turn.pending)}"
+        for result in results
+        for turn in result.played
+        if turn.pending
+    ]
+    if pending:
+        lines.append(
+            "Checagens dela que esta sala ainda não porta — PENDING, nenhuma conta como "
+            f"aprovada: {'; '.join(pending)}."
+        )
+        lines.append("")
     if by_role:
         total = sum(by_role.values())
         split = " · ".join(f"{role} US$ {cost:.2f}" for role, cost in sorted(by_role.items()))
