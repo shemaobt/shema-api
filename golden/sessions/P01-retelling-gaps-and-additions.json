@@ -2,14 +2,26 @@
   "name": "P01-retelling-gaps-and-additions",
   "pericopeId": "P01",
   "language": "Brazilian Portuguese",
-  "why": "Honest checking: an omission in a retelling must never pass; an addition (a cause, a pairing, grief) must be named warmly and sent back; a filled silence is a teaching moment. The ending follows Marcia's ruling of 2026-09-21 (docs/ENSAIO-FINAL-SPEC.md §8.1): the team no longer tells the whole passage back. It tells again the LAST parts — the ones its additions had spoiled — first with two small details missing ('o marido de Noemi', 'sem o marido'), then whole, with the first part's 'como estrangeiros, só por um tempo' restored, and says it is satisfied. The last telling is checked as carefully as the first; the guide never asks for the whole passage, and its last word is the Ensaio Final send-off (the orange dot), never 'gravem o ensaio' nor 'traduzam a gravação'. Every telling in this session is ORAL, so the app's SCENE REHEARSALS fact lists every scene under 'none': the send-off must say those scenes have no recording yet. SCREEN NOTE (Stage 1, as built): with no sent scene rehearsal at all the Ensaio Final plan has nothing to join, so the orange dot behind this send-off still opens the record screen of before (its title is not yet 'Ensaio Final') — an open call for Marcia (docs/HANDOFF.md), not something this script can see: a golden session reads the voice, never the screen.",
+  "why": "Honest checking: an omission in a retelling must never pass; an addition (a cause, a pairing, grief) must be named warmly and sent back; a filled silence is a teaching moment. The ending follows Marcia's ruling of 2026-09-21 (docs/ENSAIO-FINAL-SPEC.md §8.1): the team no longer tells the whole passage back. It tells again the LAST parts — the ones its additions had spoiled — first with two small details missing ('o marido de Noemi', 'sem o marido'), then whole, with the first part's 'como estrangeiros, só por um tempo' restored, and says it is satisfied. The last telling is checked as carefully as the first; the guide never asks for the whole passage, and its last word is the Ensaio Final send-off (the orange dot), never 'gravem o ensaio' nor 'traduzam a gravação'. Every telling in this session is ORAL, so the app's SCENE REHEARSALS fact lists every scene under 'none': the send-off must say those scenes have no recording yet. SCREEN NOTE (Stage 1, as built): with no sent scene rehearsal at all the Ensaio Final plan has nothing to join, so the orange dot behind this send-off still opens the record screen of before (its title is not yet 'Ensaio Final') — an open call for Marcia (docs/HANDOFF.md), not something this script can see: a golden session reads the voice, never the screen. Ruling 2026-09-23 (prompts/guide_system_prompt.md, 'Opening a part — close it with these words') and Marcia's word that evening (the whole passage is not a part's opening): the team's request to rehearse the first part, which it has heard only inside the whole passage (turn 1), is answered by opening that part, ending with her fixed closing and no fenced block (part_opening_closing); the fenced block comes on the team's 'Entendemos. Vamos pro ensaio.' (turn 2).",
   "turns": [
     {
       "team": "Bom dia. Estamos prontos. Pode abrir a passagem pra gente.",
       "sceneRehearsals": []
     },
     {
-      "team": "Entendemos. Vamos ensaiar essa parte em Terena."
+      "team": "Entendemos. Vamos ensaiar a primeira parte em Terena.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_opening_closing": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true
+      }
     },
     {
       "team": "Pronto. Contando de volta: teve uma fome e um homem de Belém foi morar em Moabe com a mulher e os filhos.",

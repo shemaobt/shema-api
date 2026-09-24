@@ -24,7 +24,7 @@ TRANSCRIPT = (
 )
 
 
-HER_JUDGE_PROMPT = "cfb3dea3445ba3c9d259f1b3cc3f99e8deb814c2ffc805df46eaf3e7807bbe1c"
+HER_JUDGE_PROMPT = "34b04bc205d445dbe8d6e984db2c51a5a1c056a8a101add45d3a24936f09062b"
 VENDORED_JUDGE_PROMPT = (
     "app/services/internalization_room/prompts/vendor/golden_judge_system_prompt.md"
 )

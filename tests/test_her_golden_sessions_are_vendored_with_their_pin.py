@@ -12,17 +12,17 @@ from __future__ import annotations
 from scripts.sync_doctrine import REPO_ROOT, VENDORED, digest
 
 HER_SESSIONS = {
-    "J01-frame-before-elicit": "39ed5e0dbbc8d6e9e4ae514f5139c8b6c7ef40550b69f10c8196bdc91967201c",
+    "J01-frame-before-elicit": "e23443e62451914a3df25246d93aea0eb056802693db3c8781c6c3f52f17fb6b",
     "P01-opening-and-mother-tongue": (
-        "c5bb60594854dcddad1277b86f9a30859e8c6191b7eb0050f53b273e2c14e235"
+        "bfca62d7fc9d49e35a198a949e3cc5e9a0e0fbf4929a5421f9d32e49540bf641"
     ),
     "P01-retelling-gaps-and-additions": (
-        "6ef17cc8efd7ea0760b7f131ed16ac7adfc95e22af266be7d82b0343efd56fdd"
+        "1afaa11b80a747c4fead63627757d60f489f34f66033c241fddc57aa99e68565"
     ),
     "P01-spoilers-and-boundaries": (
-        "ad47fa35b5c756ec1489e6137b4051b156cbc6c7406ba2dc61c740fd6a859141"
+        "8901b50d7c9114218e1a7a0db7e23746c374dc62a4140bb6e9ffed2eaab9c70d"
     ),
-    "P01-understand-first": "7dbea2e6bdd7f09e2282b7538f557040c4cd1d6f880d154209f30eccdb363278",
+    "P01-understand-first": "b9d88cdb283e69bc7d54ae5d38ee5a5a721903744c70b31281981e276570c905",
 }
 
 

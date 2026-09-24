@@ -21,6 +21,8 @@ an addition never passes  tests/test_internalization_room_back_translation.py::t
 The send-off is always the Ensaio Final  PENDING
 never "record the passage again"  PENDING
 never a claim that a scene was recorded  PENDING
+Opening a part ends with the fixed closing  PENDING
+a request to hear only its story, likewise  PENDING
 no blessings  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_guide_ends_plainly_with_no_blessing_of_its_own
 never "o mapa"  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_team_never_hears_the_words_o_mapa
 ALFE 8th-grade register  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_register_is_eighth_grade_and_the_proclisis_is_the_spoken_one

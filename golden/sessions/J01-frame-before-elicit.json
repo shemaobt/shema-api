@@ -2,7 +2,7 @@
   "name": "J01-frame-before-elicit",
   "pericopeId": "J01",
   "language": "Brazilian Portuguese",
-  "why": "Marcia's 2026-06-30 field bug: the voice asked the team what they remembered about a part it had not opened yet. On a fresh book (Jonah), every part must be opened from the map before anything is elicited; the sailors (July's omission test) must be named as missing when the team leaves them out.",
+  "why": "Marcia's 2026-06-30 field bug: the voice asked the team what they remembered about a part it had not opened yet. On a fresh book (Jonah), every part must be opened from the map before anything is elicited; the sailors (July's omission test) must be named as missing when the team leaves them out. Turn 2 ('Vamos ensaiar isso') carries no part-opening key: right after the whole passage, 'isso' is the whole passage as the team's piece (its telling at turn 3 covers both scenes), an open call for Marcia (docs/HANDOFF.md); the judge reads it. Turn 3's check holds either way: the sailors must be named as missing.",
   "turns": [
     { "kickoff": true,
       "expect": { "no_fail_safe": true, "no_rehearsal_invite": true } },

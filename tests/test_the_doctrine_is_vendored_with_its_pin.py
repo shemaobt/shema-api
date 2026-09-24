@@ -62,8 +62,8 @@ def test_the_pin_names_her_main_not_the_pilot_branch_she_left() -> None:
     assert (pin.repo, pin.branch) == ("shemaobt/Tripod-Internalization", "main"), (
         f"the pin still names {pin.branch}, a branch she no longer edits"
     )
-    assert pin.commit == "17ba6fc10dd062189f61283262ad70cd7cc31552", (
-        f"the pin names {pin.commit[:12]}, not her main of 2026-09-21"
+    assert pin.commit == "a3f3c69e8a8825e8ce9300865edba47980d77c47", (
+        f"the pin names {pin.commit[:12]}, not her main of 2026-09-24"
     )
 
 
