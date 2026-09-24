@@ -1,10 +1,8 @@
 """What a turn leaves behind when the room never gets to speak it.
 
 Read from the endpoint and then from a second database session, because the fact under
-test is durability: a probe and a ledger event committed by a turn that failed before the
-team heard anything are still there on the next request, and the next answer is then
-assessed against a question nobody asked. Re-reading through the request's own session
-would only show its identity map, which is not what survives.
+test is durability. Re-reading through the request's own session would only show its
+identity map, which is not what survives.
 """
 
 import json
@@ -18,12 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.sessions import (
     append_exchange,
-    comprehension_of,
     create_session,
-    save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
 
@@ -146,12 +141,9 @@ def target_checkpoint() -> str:
 async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSession:
     """A room that has asked its question and is waiting on the answer."""
     session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
+    return await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
-    state = comprehension_of(session)
-    state.active_probe = ActiveProbe(id="probe-1", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
-    return await save_comprehension(db_session, session, state)
 
 
 async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
@@ -170,28 +162,6 @@ def _guide_lines(session: IRSession) -> list[str]:
     ]
 
 
-async def test_a_turn_the_room_never_spoke_leaves_no_probe_waiting_on_it(
-    client: httpx.AsyncClient,
-    waiting_room: IRSession,
-    voice: _SynthesisThatCanBreak,
-    models_agree: None,
-    reread,
-) -> None:
-    """A question nobody heard cannot be the one the next answer is judged against.
-
-    The probe is the room's authorization to assess what comes next. Committing a new one
-    for a turn that died before the voice went out points that authorization at a question
-    the team was never asked.
-    """
-    voice.working = False
-
-    await _the_team_answers(client, waiting_room.id)
-
-    after = comprehension_of(await reread(waiting_room.id))
-    assert after.active_probe is not None
-    assert after.active_probe.id == "probe-1"
-
-
 async def test_a_turn_the_room_did_speak_is_remembered_whole(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
@@ -200,17 +170,11 @@ async def test_a_turn_the_room_did_speak_is_remembered_whole(
     reread,
 ) -> None:
     """The counterweight. A room that speaks and forgets is worse than one that remembers
-    too eagerly, so the happy path has to keep every one of the three writes.
-
-    The pair reads the comprehension write from both sides: the question nobody heard leaves
-    its probe standing, and the question the room did speak spends it.
-    """
+    too eagerly, so the happy path has to keep what it spoke."""
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
     session = await reread(waiting_room.id)
-    state = comprehension_of(session)
-    assert state.active_probe is None, "o estado do turno falado tem de ficar gravado"
     assert _guide_lines(session) == [FIRST_QUESTION, GUIDE_LINE]
     assert voice.spoken == [GUIDE_LINE]
 

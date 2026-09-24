@@ -249,5 +249,5 @@ async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
 
     state = comprehension_of(session)
 
-    assert state.active_probe is None
+    assert "active_probe" not in state.model_dump()
     assert state.practiced_scene_ids == ["S1"]

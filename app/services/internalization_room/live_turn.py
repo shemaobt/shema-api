@@ -25,9 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.probe import (
-    select_probe_after_oral_turn,
-)
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
@@ -62,7 +59,6 @@ async def run_comprehension_turn(
     book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
     state = comprehension_of(session)
-    prior_probe = state.active_probe
 
     transcript = speech.text
     uncertain = speech.uncertain
@@ -85,22 +81,7 @@ async def run_comprehension_turn(
         settings=settings,
     )
 
-    final_probe = select_probe_after_oral_turn(
-        outcome="fail_safe" if outcome.used_fail_safe else "pass",
-        prior_probe=prior_probe,
-        next_probe=None,
-        transcript_uncertain=uncertain,
-        transcript_was_mother_tongue=mother_tongue,
-        transcript_empty=empty,
-    )
-
-    new_state = ComprehensionState(
-        ledger=state.ledger,
-        active_probe=final_probe,
-        practiced_scene_ids=state.practiced_scene_ids,
-        invited_scene_id=state.invited_scene_id,
-    )
-    return ComprehensionTurn(outcome=outcome, state=new_state)
+    return ComprehensionTurn(outcome=outcome, state=state)
 
 
 __all__ = ["ComprehensionTurn", "current_scene_id", "run_comprehension_turn"]

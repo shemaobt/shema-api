@@ -1,5 +1,5 @@
-"""The comprehension-aware turn as a whole: probes persist only when voiced, practice is
-spoken as fixed process speech, and mother-tongue speech is a fact the Guide is handed."""
+"""The comprehension-aware turn as a whole: mother-tongue speech is a fact the Guide is
+handed."""
 
 import json
 import sys
@@ -260,7 +260,6 @@ async def test_the_opening_turn_belongs_to_the_guide(
     assert turn.outcome.speech == "Vamos começar pela primeira cena. O que vocês acham?"
     assert turn.outcome.speech != FIXED_PRACTICE_INVITATION
     assert not turn.outcome.used_fail_safe
-    assert turn.state.active_probe is None
 
 
 async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(

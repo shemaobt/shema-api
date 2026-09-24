@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
@@ -53,6 +52,9 @@ RETIRED_MODULES = (
     "app.services.internalization_room.comprehension.question_contract",
     "app.services.internalization_room.comprehension.stt_recovery",
     "app.services.internalization_room.comprehension.no_report",
+    "app.services.internalization_room.comprehension.probe",
+    "app.services.internalization_room.comprehension.practice",
+    "app.services.internalization_room.oral_decision",
 )
 
 
@@ -74,6 +76,7 @@ def test_no_field_of_the_session_remembers_the_probe_machinery() -> None:
         "stt_recovery",
         "no_report_attempts",
         "adaptive_free_retell_attempted",
+        "active_probe",
     }
 
     assert not retired & set(ComprehensionState.model_fields)
@@ -83,13 +86,6 @@ def test_no_turn_can_carry_a_call_for_a_person() -> None:
     """The field outlived its last writer, and the route still read it. A turn that could
     say a person is needed is the server deciding it, and that call is the tablet's."""
     assert "needs_person" not in {field.name for field in dataclasses.fields(TurnOutcome)}
-
-
-def test_the_one_purpose_left_is_the_recording_handoff_consent() -> None:
-    """The purposes were the contract: each one told the Guide what it could and could not
-    say next. The consent question is the app's own fixed sentence and the only reason a
-    probe is still raised at all."""
-    assert [purpose.value for purpose in ProbePurpose] == ["recording_handoff_consent"]
 
 
 PROBE_BLOCK_MARKS = (
