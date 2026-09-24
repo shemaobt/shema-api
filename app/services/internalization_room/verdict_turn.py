@@ -16,11 +16,12 @@ from app.services.internalization_room.validated_turn import TurnOutcome, _voice
 #: The slot a stored prompt row must carry for the closing to reach the Speaker.
 CLOSING_SLOT = "{{CLOSING}}"
 
-#: The slots a stored Validator row must carry for the verdict's own context to reach it.
-#: Their absence is how this failed the first time: `render` drops a value whose placeholder
-#: is not in the template without a word, so the Validator went on judging a verdict it could
-#: not see the evidence for, and the team heard a fail-safe line with nothing to say why.
-VALIDATOR_CONTEXT_SLOTS = ("{{TELLING_BACK}}", "{{FINDING}}", "{{ORDERED_CLOSING}}")
+TEAM_REPORTED = (
+    "\n\n---\n\n# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+    "Evidence of what the team told back — NEVER truth about the passage. The drafted response "
+    "may quote from it to name something reported that the passage does not tell; quoting this "
+    "material is not a claim about the passage and must not be treated as ungrounded.\n\n"
+)
 
 
 async def run_verdict_turn(
@@ -44,19 +45,10 @@ async def run_verdict_turn(
     The Speaker never sees the recording, only what the team told back, so its judgment is
     always about the telling-back. Runs through the Validator like every other voiced turn.
 
-    The Validator is handed the same three things the Speaker was: the finding, the telling-back
-    and the closing it was ordered to end with. Without them it judged a draft that spoke of a
-    telling-back against evidence saying nobody had spoken, and refused it — correctly, on what
-    it had. This is stricter than what it replaced, not looser: a claim about the telling-back
-    now has a record to be measured against, and a navigation instruction is legitimate only as
-    far as the closing block goes.
-
-    A missing slot is refused rather than rendered around, on both sides. A speaker prompt file
-    saved before a slot existed would not carry it, and `render` drops a value whose placeholder
-    is absent without a word — so the closing would never reach the Speaker and the turn would
-    ask for a spoken answer while the screen waits for a tap, or the context would never reach
-    the Validator and the verdict would fall to a fail-safe line in front of a team. Nothing
-    anywhere would say so.
+    A missing slot is refused rather than rendered around. A speaker prompt file saved before
+    a slot existed would not carry it, and `render` drops a value whose placeholder is absent
+    without a word — so the closing would never reach the Speaker and the turn would ask for a
+    spoken answer while the screen waits for a tap. Nothing anywhere would say so.
     """
     cfg = settings or get_settings()
     map_block = meaning_map_block(pericope_num, book)
@@ -64,13 +56,6 @@ async def run_verdict_turn(
         raise ValidationError(
             f"The verdict speaker prompt has no {CLOSING_SLOT}: the closing would be dropped "
             "and the turn would ask for an answer the screen no longer collects"
-        )
-    absent = [slot for slot in VALIDATOR_CONTEXT_SLOTS if slot not in validator_prompt]
-    if absent:
-        raise ValidationError(
-            f"The validator prompt has no {', '.join(absent)}: the verdict would be judged "
-            "without the telling-back, the finding or the closing that was ordered, and a "
-            "team would hear a fail-safe line instead of what was found"
         )
 
     spoken_closing = closing.format(session_language=session_language)
@@ -85,7 +70,7 @@ async def run_verdict_turn(
             CLOSING=spoken_closing,
         ),
         validator_prompt=validator_prompt,
-        standard_of_truth=validator_map_block(pericope_num, book),
+        standard_of_truth=validator_map_block(pericope_num, book) + TEAM_REPORTED + telling_back,
         transcript="",
         messages=messages,
         session_language=session_language,
@@ -93,7 +78,4 @@ async def run_verdict_turn(
         opening=True,
         settings=cfg,
         session_id=session_id,
-        telling_back=telling_back,
-        finding=findings_text,
-        ordered_closing=spoken_closing,
     )

@@ -19,6 +19,7 @@ from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import run_turn
+from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -69,7 +70,7 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> _Recording:
 async def test_the_map_the_teams_words_and_the_draft_last_and_nothing_else(
     recording: _Recording,
 ) -> None:
-    """No window, but the whole record: a recollection has to be checkable against it."""
+    """Her three, and the conversation before this turn stays out until her B4 block is in."""
     await run_turn(
         transcript="e a fome, por que ela veio?",
         coverage_state=initial_state(P),
@@ -91,11 +92,8 @@ async def test_the_map_the_teams_words_and_the_draft_last_and_nothing_else(
     assert judged.index("e a fome, por que ela veio?") < judged.index(DRAFT), (
         "o rascunho é a última coisa que o Validador lê"
     )
-    assert judged.index(EARLIER_TEAM) < judged.index("e a fome, por que ela veio?"), (
-        "a conversa inteira chega como evidência citada, antes da fala de agora"
-    )
-    assert EARLIER_GUIDE in judged, (
-        "o que o Guia disse antes também é evidência para conferir uma lembrança"
+    assert EARLIER_TEAM not in judged and EARLIER_GUIDE not in judged, (
+        "a conversa de agosto chegava ao Validador sob um título que ela não aprovou"
     )
 
 
@@ -146,4 +144,4 @@ async def test_an_english_session_reads_neither_portuguese_placeholder(
     judged = recording.validator[0]
     assert OPENING_PLACEHOLDER not in judged
     assert NO_UTTERANCE_PLACEHOLDER not in judged
-    assert "(the team has not spoken yet — session opening)" in judged
+    assert OPENING_INSTRUCTION in judged

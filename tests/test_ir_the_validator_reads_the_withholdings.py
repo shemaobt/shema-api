@@ -60,10 +60,10 @@ P01_ABSENCES = (
 )
 
 
-#: The two headings the Validator's own prompt puts around the map slot
-#: (`prompts/validator_system_prompt.md:127,131`).
+#: The heading her prompt puts above the map slot (`prompts/vendor/validator_system_prompt.md:121`)
+#: and the one her evidence opens with after it, on the opening these cases render.
 MAP_SLOT = "## The Meaning Map (the only standard of truth)"
-NEXT_SLOT = "## Recent conversation"
+NEXT_SLOT = "## WHAT THE TEAM JUST SAID"
 
 
 #: Her operational sentence for the panorama's preservation header, quoted from

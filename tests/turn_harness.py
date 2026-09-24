@@ -112,16 +112,6 @@ def the_speaker_answers(monkeypatch: pytest.MonkeyPatch, draft: str):
     return agent
 
 
-#: What the room's own closings send the team to do, each with the words the Validator's
-#: brief has to carry before a draft may say it.
-DESTINATIONS = {
-    "aqui na tela": "on screen",
-    "no microfone daquela": "tap the microphone",
-    "gravar o que ainda falta": "record what is still missing",
-    "Ouçam a gravação": "listen to their own recording once more",
-    "no WhatsApp": "on WhatsApp",
-}
-
 #: The words the ordered closing of the checked turn has to carry, named one by one rather
 #: than as the whole constant: the case is that the team is invited to *these two things*, and
 #: an assertion on the constant would agree with whatever it happened to say. Shared because
@@ -145,10 +135,9 @@ class ValidatorReadsOnlyItsOwnPrompt:
     not reproduce that at all, and one answering `regenerate` would be dictating the outcome
     the case claims to observe.
 
-    Three rules, each of them a lookup in its own prompt:
+    Two rules, each of them a lookup in its own prompt:
 
     * a draft that speaks about the telling-back needs the telling-back in front of it;
-    * a draft that sends the team somewhere needs its brief to name that destination;
     * a draft that attributes words to the team needs those words in the telling-back.
 
     The draft under judgment is subtracted from the prompt before any lookup: a draft is
@@ -179,25 +168,16 @@ class ValidatorReadsOnlyItsOwnPrompt:
             issues.append(
                 {
                     "claim": "No que você me contou de volta",
-                    "problem": "conversational_mismatch",
+                    "problem": "invented_detail",
                     "explanation": "nada aqui mostra que a equipe contou alguma coisa de volta",
                 }
             )
-        for destination, warrant in DESTINATIONS.items():
-            if destination in self.draft and warrant not in brief:
-                issues.append(
-                    {
-                        "claim": destination,
-                        "problem": "workflow_policy_violation",
-                        "explanation": "essa navegação não foi a que o app mandou dar",
-                    }
-                )
         for name in self._attributed_names():
             if name not in shown:
                 issues.append(
                     {
                         "claim": name,
-                        "problem": "conversational_mismatch",
+                        "problem": "invented_detail",
                         "explanation": "a equipe não contou isso",
                     }
                 )

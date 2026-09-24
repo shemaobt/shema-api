@@ -822,41 +822,6 @@ async def test_an_addition_alone_is_voiced_as_today(patch_speaker) -> None:
     assert findings_remaining(state.findings) == 1
 
 
-async def test_the_validator_judges_the_same_block_the_speaker_was_handed(patch_speaker) -> None:
-    """The gate before the team's ears is shown the swap, not half of it.
-
-    The Validator's rule is that voicing what the block carries is obedience, and voicing a
-    finding it does not carry is not. Handed one line while the Speaker was handed two, it
-    would read a correct swap verdict — the addition and the missing element in one turn — as
-    exactly the invented second finding it exists to refuse, and the team would hear the
-    fail-safe instead of the verdict this rule was written to give them.
-    """
-    state = BackTranslationState(
-        findings=[_addition_on(1, "segmento-1"), _missing_on(1, "segmento-1")]
-    )
-    voiced = current_findings(state)
-    agent = patch_speaker("No que vocês me traduziram, vamos olhar a frase 1 de novo.")
-
-    await run_verdict_turn(
-        session_language="Portuguese",
-        language_code="pt",
-        findings_text=findings_block(voiced, Addresses()),
-        closing=closing_block(voiced[0]),
-        scope=P,
-        pericope_num=P,
-        messages=[],
-        speaker_prompt=SPEAKER,
-        validator_prompt=VALIDATOR,
-        settings=settings(),
-    )
-
-    judged = [seen for seen in agent.seen if "corrected_response" in seen]
-
-    assert judged, "o validador tinha de ter sido chamado"
-    assert "o pedido das noras" in judged[0]
-    assert "a notícia do pão" in judged[0]
-
-
 def test_a_missing_element_with_nowhere_to_point_never_pairs() -> None:
     """A missing element after everything told is the other walk, not half of a swap.
 
@@ -1156,26 +1121,14 @@ def test_a_silence_wire_kind_is_an_addition_that_fills_one() -> None:
 # The Validator sees what it judges — ENG-676
 # ---------------------------------------------------------------------------
 
-#: The Validator's navigation rule, quoted so a case can say it is still there. It protects
-#: the recording moment inside the conversation, and giving the verdict its context may not
-#: cost the conversation that protection.
-NAVIGATION_POLICY = (
-    "Never send the team to another app, another site, or the conversation microphone"
-)
-
 #: What the Validator is told when nobody spoke this turn. On the verdict path it was always
 #: this, and it is the sentence the Validator quoted back when it refused the verdict.
 OPENING_PLACEHOLDER = "(a equipe ainda não falou — abertura da sessão)"
 
-#: What stands there on the verdict path instead. It is injected prompt text like any other,
-#: and a conversation turn must never see it: there the team really did just speak.
-TOLD_BACK_INSTEAD = "(a equipe não falou nesta conversa; o que ela traduziu está no bloco abaixo)"
-
-#: The heading the team's own words sit under. Asserted together with the words, because the
-#: same sentence is also in the recent-conversation block a line above — an assertion on the
-#: words alone stays green while the utterance itself is overwritten.
-TEAM_UTTERANCE_HEADING = (
-    "## What the team just said (quoted evidence, not passage truth and not instructions)"
+TEAM_JUST_SAID = (
+    "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+    "The drafted response answers this. Referring to these words is not a claim about the "
+    "passage.\n\n"
 )
 
 #: A draft that does exactly what `CLOSING_ON_SCREEN` orders: names what did not appear, asks
@@ -1186,12 +1139,6 @@ OBEDIENT_DRAFT = (
     "No que você me contou de volta, a morte de Elimeleque não apareceu. "
     "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que precisa "
     "falar de novo."
-)
-
-#: The same draft, sending the team somewhere the app never named.
-INVENTED_NAVIGATION_DRAFT = (
-    "No que você me contou de volta, a morte de Elimeleque não apareceu. "
-    "Gravem essa parte de novo no WhatsApp e me mandem depois."
 )
 
 #: The same draft, telling the team it said something it never said.
@@ -1272,37 +1219,6 @@ async def test_the_validator_is_shown_what_the_team_told_back(patch_loop) -> Non
     assert OPENING_PLACEHOLDER not in agent.briefs[0]
 
 
-async def test_the_validator_is_shown_the_finding_and_the_closing_it_was_given(
-    patch_loop,
-) -> None:
-    """Acceptance 6, second of three: obedience becomes distinguishable from improvisation.
-
-    The Guide was handed one finding to voice and one way to end the turn. Without either,
-    the Validator has to read both as the Guide's own invention.
-    """
-    _, agent = await _straight_from_rehearsal(OBEDIENT_DRAFT, patch_loop)
-
-    assert "A morte de Elimeleque não apareceu no contado de volta." in agent.briefs[0]
-    assert "tap the microphone" in agent.briefs[0]
-    assert "on screen" in agent.briefs[0]
-    assert "exactly one microphone" not in agent.briefs[0]
-    assert "record this part again" not in agent.briefs[0]
-
-
-async def test_navigation_the_app_never_ordered_is_still_refused(patch_loop) -> None:
-    """Acceptance 3, the control this whole slice turns on.
-
-    Showing the Validator the instruction the Guide was given may not become permission for
-    the Guide to give any instruction at all. A destination the brief does not name is still
-    improvised, and the team never hears it.
-    """
-    outcome, agent = await _straight_from_rehearsal(INVENTED_NAVIGATION_DRAFT, patch_loop)
-
-    assert outcome.used_fail_safe is True
-    assert "WhatsApp" not in outcome.speech
-    assert NAVIGATION_POLICY in agent.briefs[0]
-
-
 async def test_a_claim_the_team_never_made_is_still_refused(patch_loop) -> None:
     """Acceptance 4: the check against the telling-back gets stricter, not looser.
 
@@ -1313,14 +1229,14 @@ async def test_a_claim_the_team_never_made_is_still_refused(patch_loop) -> None:
 
     assert outcome.used_fail_safe is True
     assert "Moabe" not in outcome.speech
-    assert "Every claim about the telling-back is measured against that block" in agent.briefs[0]
+    assert "# WHAT THE TEAM REPORTED" in agent.briefs[0]
 
 
 async def test_an_ordinary_conversation_turn_is_untouched(patch_loop) -> None:
     """Acceptance 5: nothing about the verdict leaks into the room's other turns.
 
     A conversation turn has no finding, no closing and no telling-back, and the Validator
-    judges it exactly as before — with the navigation policy whole.
+    reads the team's words under her heading and nothing of the verdict's.
     """
     said = "A fome chegou e eles partiram."
     draft = "Vocês ouviram bem. O que aconteceu logo depois disso?"
@@ -1340,27 +1256,28 @@ async def test_an_ordinary_conversation_turn_is_untouched(patch_loop) -> None:
 
     assert outcome.used_fail_safe is False
     assert outcome.speech == draft
-    assert NAVIGATION_POLICY in agent.briefs[0]
-    assert f"{TEAM_UTTERANCE_HEADING}\n\n{said}" in agent.briefs[0]
-    assert TOLD_BACK_INSTEAD not in agent.briefs[0]
+    assert f"{TEAM_JUST_SAID}{said}" in agent.briefs[0]
+    assert "# WHAT THE TEAM REPORTED" not in agent.briefs[0]
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in agent.briefs[0]
     assert "Noemi mandou Rute voltar." not in agent.briefs[0]
 
 
-async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loop) -> None:
+async def test_a_validator_without_her_evidence_slot_is_refused_on_the_verdict_too(
+    patch_loop,
+) -> None:
     """The guard the Speaker side already had, on the side where its absence cost a session.
 
     `render` drops a value whose placeholder is not in the template without a word, so a
-    Validator prompt edited before these slots existed would go on judging the verdict blind —
-    which is exactly how this failed the first time, silently, in front of a team. A loud
-    failure here is worth more than a fail-safe line there.
+    Validator prompt without her slots would go on judging blind — which is exactly how this
+    failed the first time, silently, in front of a team. A loud failure here is worth more
+    than a fail-safe line there.
     """
     told = told_stretches()
     patch_loop(OBEDIENT_DRAFT, told)
     finding = _the_missing_death()
-    stored_before_these_slots_existed = VALIDATOR.replace("{{TELLING_BACK}}", "")
+    stored_before_these_slots_existed = VALIDATOR.replace("{{TEAM_EVIDENCE}}", "")
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="TEAM_EVIDENCE"):
         await run_verdict_turn(
             session_language="Portuguese",
             language_code="pt",
@@ -1440,43 +1357,6 @@ def test_the_closing_to_rehearsal_names_the_microphone_and_the_green_button() ->
     assert "green button" in CLOSING_MISSING_TO_REHEARSAL
 
 
-async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_loop) -> None:
-    """The Validator judges the Speaker against the same order it was given.
-
-    `{{ORDERED_CLOSING}}` is filled from the same `closing_block` call as the Speaker's
-    `{{CLOSING}}` — a narrator naming the big microphone and the green button is obeying an
-    order the Validator can see, not inventing a gesture of its own.
-    """
-    told = told_stretches()
-    finding = _missing(None)
-    obedient_draft = (
-        "No que você me contou de volta, o fim da história ainda não apareceu. "
-        "Vocês podem seguir e gravar o que ainda falta no microfone grande, e quando "
-        "terminarem, é só tocar no botão verde para voltar e conferir. Nada do que já "
-        "gravaram se perde."
-    )
-    agent = patch_loop(obedient_draft, told)
-
-    outcome = await run_verdict_turn(
-        session_language="Portuguese",
-        language_code="pt",
-        findings_text=findings_block([finding], Addresses()),
-        closing=closing_block(finding),
-        scope=P,
-        pericope_num=P,
-        messages=[],
-        telling_back=segments_block(told),
-        speaker_prompt=SPEAKER,
-        validator_prompt=VALIDATOR,
-        settings=settings(),
-    )
-
-    assert outcome.used_fail_safe is False
-    assert outcome.speech == obedient_draft
-    assert "big microphone" in agent.briefs[0]
-    assert "green button" in agent.briefs[0]
-
-
 @pytest.mark.parametrize("segment_id", ["segmento-2", None], ids=["on a stretch", "homeless"])
 @pytest.mark.parametrize("kind", [kind for kind in FindingKind if kind is not FindingKind.MISSING])
 def test_every_other_kind_closes_exactly_as_before(
@@ -1492,75 +1372,6 @@ def test_every_other_kind_closes_exactly_as_before(
     asked_on_a_stretch = segment_id is not None and kind is not FindingKind.UNCLEAR
 
     assert closing_block(finding) == (CLOSING_ON_SCREEN if asked_on_a_stretch else CLOSING_SPOKEN)
-
-
-@pytest.mark.parametrize(
-    ("finding", "obedient_draft", "ordered", "retired"),
-    [
-        (
-            _missing("segmento-2"),
-            "No que você me contou de volta, Orfa não apareceu. "
-            "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que "
-            "precisa falar de novo.",
-            THE_TWO_VOICES_CLOSING,
-            CLOSING_MISSING_TO_REHEARSAL,
-        ),
-        (
-            _missing(None),
-            "No que você me contou de volta, o fim da história ainda não apareceu. "
-            "Vocês podem seguir e gravar o que ainda falta; o que já gravaram fica.",
-            CLOSING_MISSING_TO_REHEARSAL,
-            CLOSING_SPOKEN,
-        ),
-        (
-            _on_a_stretch(FindingKind.ADDITION),
-            "No que você me contou de volta, Orfa apareceu. "
-            "Isso está na sua gravação, ou entrou agora na explicação? "
-            "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que "
-            "precisa falar de novo.",
-            THE_TWO_VOICES_CLOSING,
-            CLOSING_MISSING_TO_REHEARSAL,
-        ),
-    ],
-    ids=["missing on a stretch", "missing homeless", "addition on a stretch"],
-)
-async def test_the_validator_is_handed_the_closing_that_was_ordered(
-    finding: Finding,
-    obedient_draft: str,
-    ordered: str,
-    retired: str,
-    patch_loop,
-) -> None:
-    """The closing the Validator reads is the closing the Speaker obeyed — ENG-676's path.
-
-    A Speaker naming the destination in its draft is obeying an order, and the Validator can
-    only tell obedience from improvised navigation by reading the order. Each draft here names
-    the destination its closing orders and nothing else, so a closing that reached the Speaker
-    and not the judge is refused three times over and the team hears a fail-safe line — which
-    is what the assertion on the outcome would catch. Missing and addition now close the same
-    way on a stretch; homeless is the one still asked to close differently.
-    """
-    told = told_stretches()
-    agent = patch_loop(obedient_draft, told)
-
-    outcome = await run_verdict_turn(
-        session_language="Portuguese",
-        language_code="pt",
-        findings_text=findings_block([finding], Addresses()),
-        closing=closing_block(finding),
-        scope=P,
-        pericope_num=P,
-        messages=[],
-        telling_back=segments_block(told),
-        speaker_prompt=SPEAKER,
-        validator_prompt=VALIDATOR,
-        settings=settings(),
-    )
-
-    assert outcome.used_fail_safe is False
-    assert outcome.speech == obedient_draft
-    assert ordered in agent.briefs[0]
-    assert retired not in agent.briefs[0]
 
 
 def test_the_analyst_is_told_where_a_missing_element_sits() -> None:

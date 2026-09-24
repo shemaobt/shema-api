@@ -8,25 +8,6 @@ import re
 #: apply. The prompt says so in words; this is the same sentence in the slot itself.
 NOT_THIS_TURN = "(not applicable to this turn)"
 
-#: What the Validator is told when nobody spoke this turn. Composed in English like every
-#: other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language the
-#: team speaks. Two cases: the opening turn, where nobody has spoken yet, and the verdict
-#: path, where the team has spoken — outside the conversation, into the telling-back — and
-#: the opening line would say the opposite, which is the sentence the Validator quoted back
-#: when it refused the verdict.
-_NO_TEAM_UTTERANCE: dict[str, str] = {
-    "opening": "(the team has not spoken yet — session opening)",
-    "told_back": (
-        "(the team has not spoken in this conversation; what they translated is in the block below)"
-    ),
-}
-
-
-def _nobody_spoke_this_turn(telling_back: str) -> str:
-    """What stands where the team's utterance would, on a turn that had none."""
-    return _NO_TEAM_UTTERANCE["told_back"] if telling_back else _NO_TEAM_UTTERANCE["opening"]
-
-
 #: What is asked of the Speaker on a turn with no team utterance and nothing to open — the
 #: back-translation verdict, whose whole instruction is already in its system prompt. The
 #: conversation used to reach the model as one block of text, which made a user message by

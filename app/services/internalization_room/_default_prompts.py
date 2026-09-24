@@ -12,7 +12,6 @@ _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 _FILES: dict[IRPromptKey, str] = {
     IRPromptKey.GUIDE: "guide_system_prompt.md",
-    IRPromptKey.VALIDATOR: "validator_system_prompt.md",
     IRPromptKey.BOOK_PANORAMA: "book_overview_system_prompt.md",
     IRPromptKey.BT_ANALYST: "backtranslation_analysis_system_prompt.md",
     IRPromptKey.BT_CORRECTION: "backtranslation_correction_system_prompt.md",
