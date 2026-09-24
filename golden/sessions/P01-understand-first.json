@@ -2,27 +2,80 @@
   "name": "P01-understand-first",
   "pericopeId": "P01",
   "language": "Brazilian Portuguese",
-  "why": "The 2026-09-03 demo failure: the team asks to understand the passage before rehearsing. The guide must open the passage more fully from the map, never redirect, never repeat itself, never invite rehearsal before the team says it has grasped the part.",
+  "why": "The 2026-09-03 demo failure: the team asks to understand the passage before rehearsing. The guide must open the passage more fully from the map, never redirect, never repeat itself, never invite rehearsal before the team says it has grasped the part. The ending follows Marcia's ruling of 2026-09-21 (docs/ENSAIO-FINAL-SPEC.md §8.1): the team no longer tells the whole passage back. It tells the LAST parts — first with two small details missing ('o marido de Noemi', 'uns dez anos'), then whole, with the first part's 'de passagem, como estrangeiros' restored — and says it is satisfied. The guide must never ask for the whole passage, and its last word is the Ensaio Final send-off (the orange dot), never 'gravem o ensaio' nor 'traduzam a gravação'. Every telling in this session is ORAL, so the app's SCENE REHEARSALS fact lists every scene under 'none': the send-off must say those scenes have no recording yet. A close asked for over a telling with a missing event is refused by doctrine, so the send-off is expected only after every part came back whole. SCREEN NOTE (Stage 1, as built): with no sent scene rehearsal at all the Ensaio Final plan has nothing to join, so the orange dot behind this send-off still opens the record screen of before (its title is not yet 'Ensaio Final') — an open call for Marcia (docs/HANDOFF.md), not something this script can see: a golden session reads the voice, never the screen. Ruling 2026-09-23 (prompts/guide_system_prompt.md, 'Opening a part — close it with these words'): when the team asks for the next part (turn 6) the guide opens it, and its last words are Marcia's fixed closing, verbatim, with no fenced block in that turn (part_opening_closing). The script fixes that premise: turn 5's telling lacks 'de passagem, como estrangeiros', so the voice sends scene 1 back and cannot have opened scene 2 on its own. A reminder about scene 1 in that reply (e.g. 'Quando vocês gravarem essa primeira cena no microfone vermelho, lembrem dele.') names the microphone without sending anyone there, and is not an invitation to rehearse. Turns 1-2 are requests to understand the whole passage and the family, and no ending is scripted for them (the closing's last two sentences belong to a part already opened); turn 4 carries no part-opening key: whether the answers of turns 2-3 opened scene 1 is the model's reading — if they did, the fenced block is the answer to turn 4; if scene 1 was heard only inside the whole passage, the guide opens it first, ending with the closing (Marcia's word, 2026-09-23 evening: the whole passage is not a part's opening). The judge reads which one it was. Marcia's ruling (b) of 2026-09-23 evening (prompts/guide_system_prompt.md, 'Opening a part', rule 2): a word of understanding that comes with a question ('Entendi. E …?') is not the team's word to rehearse — the voice answers the question from the map, ends with the closing's last two sentences, and the fence waits for a word that comes with no question left open. Evidence, the live runs of 2026-09-23: at 23:09-42 the voice read the 'Entendi' of turns 3 and 8 as 'já entenderam' and gave the fenced block in those replies ('Mas vocês disseram que já entenderam a primeira parte. Então vamos ensaiar ela primeiro.'), and at 22:47 that of turn 8; at 23:09-38 it answered turn 8 from the map (the two sons married Moabite women, Orfa and Rute, and the story does not say who married whom), said 'Mas isso já é a terceira parte. A gente chega nela daqui a pouco', and ended with the two sentences — what she wants. Turn 8 ('Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?') comes after the opening of scene 2 (turn 6) and the take-up of turn 7, so it expects take_up_closing_if_open: never the fence nor a call to rehearse, and the two sentences whenever scene 2 is still open — in every recorded run; they are not asked for only if the reply to turn 7 checked the team's words as a telling and sent scene 2 back with its fence. Turn 3 ('Entendi. E o que acontece com eles em Moabe?') expects take_up_closing_if_open: never the fence nor a call to rehearse, and the two sentences only when the voice's earlier replies left a part open (going back, the nearest reply that ended with the closing or its last two sentences comes before any fenced block; at 23:09-42 the reply to turn 2 opened scene 1) — two of the three recorded runs (22:47, 23:09-38) stayed with the whole passage through turn 2, and the whole passage keeps its own question. Turn 4 ('Agora sim, a gente entendeu essa primeira parte.') is a word with no question: as before, the fence if scene 1 was opened, its opening first if not. Turn 9's telling of the other parts then follows a reply with no fence: the team rehearsed them on its own, and the voice checks that telling as any other.",
   "turns": [
-    { "team": "Oi. A gente é a equipe Terena. Estamos aqui com o Daniel e o Suzuki. Podemos começar?" },
-    { "team": "Espera. A gente precisa entender melhor antes. Explica de novo o que acontece nessa passagem, com mais detalhe. A gente ainda não entendeu.",
-      "expect": { "no_fail_safe": true, "no_rehearsal_invite": true, "opens_more": true } },
-    { "team": "Tá, mas quem é essa família? De onde eles são e por que saem de lá?",
-      "expect": { "no_fail_safe": true } },
-    { "team": "Entendi. E o que acontece com eles em Moabe?",
-      "expect": { "no_fail_safe": true } },
-    { "team": "Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar." },
-    { "team": "Pronto. Ensaiamos em Terena. Vou contar de volta em português: teve uma fome na terra, nos dias em que os juízes julgavam. Um homem de Belém de Judá foi morar em Moabe com a mulher dele e os dois filhos. O nome dele era Elimeleque, a mulher Noemi, e os filhos Malom e Quiliom. Eles eram efrateus de Belém de Judá.",
-      "expect": { "no_fail_safe": true } },
-    { "team": "E depois? Conta a próxima parte pra gente.",
-      "expect": { "no_fail_safe": true } },
-    { "team": "Aí o Elimeleque morreu e a Noemi ficou com os dois filhos. Mas por que ele morreu? Deus castigou ele por ter saído de Belém?",
-      "expect": { "no_fail_safe": true, "no_divine_causation": true } },
-    { "team": "Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?",
-      "expect": { "no_fail_safe": true, "no_pairing": true } },
-    { "team": "Tá bom. A gente ensaiou tudo em Terena. Agora vou contar a passagem inteira em português: nos dias dos juízes teve fome. Elimeleque foi com Noemi e os filhos Malom e Quiliom pra Moabe. Elimeleque morreu. Os filhos casaram com moabitas, Orfa e Rute. Moraram lá uns dez anos. Depois Malom e Quiliom morreram também, e a mulher ficou sozinha, sem os dois filhos e sem o marido.",
-      "expect": { "no_fail_safe": true } },
-    { "team": "A gente está satisfeito. Pode encerrar.",
-      "expect": { "send_off_record": true } }
+    {
+      "team": "Oi. A gente é a equipe Terena. Estamos aqui com o Daniel e o Suzuki. Podemos começar?",
+      "sceneRehearsals": []
+    },
+    {
+      "team": "Espera. A gente precisa entender melhor antes. Explica de novo o que acontece nessa passagem, com mais detalhe. A gente ainda não entendeu.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "opens_more": true
+      }
+    },
+    {
+      "team": "Tá, mas quem é essa família? De onde eles são e por que saem de lá?",
+      "expect": {
+        "no_fail_safe": true
+      }
+    },
+    {
+      "team": "Entendi. E o que acontece com eles em Moabe?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing_if_open": true
+      }
+    },
+    {
+      "team": "Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar."
+    },
+    {
+      "team": "Pronto. Ensaiamos em Terena. Vou contar de volta em português: teve uma fome na terra, nos dias em que os juízes julgavam. Um homem de Belém de Judá foi morar em Moabe com a mulher dele e os dois filhos. O nome dele era Elimeleque, a mulher Noemi, e os filhos Malom e Quiliom. Eles eram efrateus de Belém de Judá.",
+      "expect": {
+        "no_fail_safe": true
+      }
+    },
+    {
+      "team": "E depois? Conta a próxima parte pra gente.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_opening_closing": true
+      }
+    },
+    {
+      "team": "Aí o Elimeleque morreu e a Noemi ficou com os dois filhos. Mas por que ele morreu? Deus castigou ele por ter saído de Belém?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_divine_causation": true
+      }
+    },
+    {
+      "team": "Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_pairing": true,
+        "take_up_closing_if_open": true
+      }
+    },
+    {
+      "team": "Tá bom. A gente ensaiou as outras partes em Terena. Vou contar de volta em português: Elimeleque morreu, e Noemi ficou com os dois filhos. Os filhos casaram com moabitas, Orfa e Rute. Depois Malom e Quiliom morreram também, e a mulher ficou sozinha, sem os dois filhos e sem o marido.",
+      "expect": {
+        "no_fail_safe": true,
+        "no_whole_retelling_request": true
+      }
+    },
+    {
+      "team": "Tá bom, entendemos. Contando de novo essas partes: Elimeleque, o marido de Noemi, morreu, e Noemi ficou com os dois filhos. Os filhos casaram com moabitas, Orfa e Rute, e moraram lá uns dez anos. Depois Malom e Quiliom morreram também, e a mulher ficou sem os dois filhos e sem o marido. E na primeira parte, a família foi morar em Moabe de passagem, como estrangeiros. Agora estamos satisfeitos.",
+      "expect": {
+        "no_fail_safe": true,
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "send_off_names_unrecorded_scene": true
+      }
+    }
   ]
 }

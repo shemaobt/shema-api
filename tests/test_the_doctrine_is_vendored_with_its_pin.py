@@ -50,6 +50,54 @@ def test_every_vendored_artefact_is_in_the_repo_at_the_sha_the_pin_records() -> 
     assert not drift(pin), f"a vendored artefact no longer matches the pin: {drift(pin)}"
 
 
+def test_the_pin_names_her_main_not_the_pilot_branch_she_left() -> None:
+    """Her current prompts live on her main; the pilot branch stopped moving 279 commits ago.
+
+    Her target of 4 September, restated on 21 September, is that the room runs her current
+    prompts whole. A diff against a copy she no longer edits classifies divergences she has
+    already resolved, so the pin itself has to name the commit her main is at.
+    """
+    pin = read_pin()
+
+    assert (pin.repo, pin.branch) == ("shemaobt/Tripod-Internalization", "main"), (
+        f"the pin still names {pin.branch}, a branch she no longer edits"
+    )
+    assert pin.commit == "a3f3c69e8a8825e8ce9300865edba47980d77c47", (
+        f"the pin names {pin.commit[:12]}, not her main of 2026-09-24"
+    )
+
+
+HER_UNVENDORED_PROMPTS = {
+    "backtranslation_analysis_system_prompt.md": (
+        "82cf8334b1437f50884fc5cd8933b06ed06b01e7fcb085cbb21479e9e48ec8bd"
+    ),
+    "backtranslation_verdict_system_prompt.md": (
+        "265dcbc5b25acefd574739b0f71e3548e8f6e9826a6de3b08728dbb884258ba5"
+    ),
+    "draft_check_system_prompt.md": (
+        "7bbdbd8a7be38f0f5a2a0356d9ea2c82c1c9154153fed9ca2dfce663862dcf74"
+    ),
+}
+
+
+def test_the_three_prompts_of_hers_the_room_never_copied_are_vendored_at_the_pin() -> None:
+    """Her BT analyst, her BT verdict and her draft check are loaded by her loader too.
+
+    A prompt of hers that is not vendored has no bytes here to diff against, so what the room
+    says in its place cannot be audited against her. The digests were read off her git
+    objects at the pinned commit, not off the vendored copy.
+    """
+    pin = read_pin()
+
+    for name, hers in HER_UNVENDORED_PROMPTS.items():
+        vendored = f"app/services/internalization_room/prompts/vendor/{name}"
+        assert VENDORED.get(f"prompts/{name}") == vendored, f"{name} is not vendored"
+        assert pin.digests.get(vendored) == hers, f"the pin does not record her {name}"
+        assert digest((REPO_ROOT / vendored).read_bytes()) == hers, (
+            f"{name}: the vendored bytes are not hers at the pin"
+        )
+
+
 def test_her_guide_prompt_is_vendored_beside_ours_and_not_over_it() -> None:
     """Ours stays where it is, and hers lands next to it, so the difference is one command.
 

@@ -20,10 +20,13 @@ while the bytes and the canon pin the judge's map comes from are the ones her br
 
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,
-when she has ruled. Point it at a checkout of `fia/pilot-2026-09`.
+when she has ruled. Point it at a scratch clone checked out at the commit of her `main` being
+pinned, never at a working clone: the pin records whatever `HEAD` the source is at. A row of
+`prompt_adaptations` whose sentence of hers moved then fails `--check`, and goes back to her.
 
     uv run python scripts/sync_doctrine.py --check             # offline; CI runs this
-    uv run python scripts/sync_doctrine.py --sync --from ~/src/Tripod-Internalization
+    git clone ~/src/Tripod-Internalization /tmp/her && git -C /tmp/her checkout <commit>
+    uv run python scripts/sync_doctrine.py --sync --from /tmp/her
 """
 
 from __future__ import annotations
@@ -31,16 +34,18 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.machinery
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 REPO = "shemaobt/Tripod-Internalization"
-BRANCH = "fia/pilot-2026-09"
+BRANCH = "main"
 
 #: Her path in `Tripod-Internalization` → the path it is vendored to here.
 VENDORED = {
@@ -56,6 +61,15 @@ VENDORED = {
     ),
     "prompts/book_overview_system_prompt.md": (
         "app/services/internalization_room/prompts/vendor/book_overview_system_prompt.md"
+    ),
+    "prompts/backtranslation_analysis_system_prompt.md": (
+        "app/services/internalization_room/prompts/vendor/backtranslation_analysis_system_prompt.md"
+    ),
+    "prompts/backtranslation_verdict_system_prompt.md": (
+        "app/services/internalization_room/prompts/vendor/backtranslation_verdict_system_prompt.md"
+    ),
+    "prompts/draft_check_system_prompt.md": (
+        "app/services/internalization_room/prompts/vendor/draft_check_system_prompt.md"
     ),
     "prompts/fail_safe_utterances.md": (
         "app/services/internalization_room/prompts/vendor/fail_safe_utterances.md"
@@ -429,6 +443,24 @@ def bar_faults(
     return faults
 
 
+def _by_path(path: Path) -> ModuleType:
+    loader = importlib.machinery.SourceFileLoader(path.stem, str(path))
+    module = ModuleType(loader.name)
+    loader.exec_module(module)
+    return module
+
+
+def adaptation_faults(root: Path = REPO_ROOT) -> list[str]:
+    room = root / "app/services/internalization_room"
+    table = _by_path(room / "prompt_adaptations.py")
+    extract = _by_path(room / "prompt_body.py").extract_prompt_body
+    bodies = {
+        key: extract((room / "prompts/vendor" / name).read_text(encoding="utf-8"), name)
+        for key, name in table.HER_FILES.items()
+    }
+    return list(table.faults(bodies, table.ADAPTATIONS))
+
+
 def sync(source: Path) -> int:
     commit = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
@@ -463,7 +495,10 @@ def check() -> int:
     rulings = read_rulings()
     record = read_seam_record()
     missing = (
-        unruled(pin, rulings) + seam_drift(record, model_seam()) + unnamed_rulings(record, rulings)
+        unruled(pin, rulings)
+        + seam_drift(record, model_seam())
+        + unnamed_rulings(record, rulings)
+        + adaptation_faults()
     )
     if missing:
         for line in missing:

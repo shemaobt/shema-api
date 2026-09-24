@@ -5,13 +5,14 @@ from pathlib import Path
 
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room.languages import ROOM_LANGUAGES
+from app.services.internalization_room.prompt_adaptations import ADAPTATIONS, HER_FILES, adapt
+from app.services.internalization_room.prompt_body import extract_prompt_body
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 _FILES: dict[IRPromptKey, str] = {
     IRPromptKey.GUIDE: "guide_system_prompt.md",
     IRPromptKey.VALIDATOR: "validator_system_prompt.md",
-    IRPromptKey.COVERAGE_CLASSIFIER: "classifier_system_prompt.md",
     IRPromptKey.BOOK_PANORAMA: "book_overview_system_prompt.md",
     IRPromptKey.BT_ANALYST: "backtranslation_analysis_system_prompt.md",
     IRPromptKey.BT_CORRECTION: "backtranslation_correction_system_prompt.md",
@@ -31,6 +32,10 @@ _META: dict[IRPromptKey, str] = {
 
 @cache
 def load_prompt(key: IRPromptKey) -> str:
+    if key in HER_FILES:
+        name = HER_FILES[key]
+        hers = (_PROMPTS_DIR / "vendor" / name).read_text(encoding="utf-8")
+        return adapt(key, extract_prompt_body(hers, name), ADAPTATIONS)
     return (_PROMPTS_DIR / _FILES[key]).read_text(encoding="utf-8")
 
 

@@ -94,3 +94,17 @@ def test_the_guide_prompt_is_read_from_its_file_and_nowhere_else(
 
     _default_prompts.load_prompt.cache_clear()
     assert text == literal
+
+
+def test_a_prompt_no_key_loads_is_not_kept_among_the_live_prompts() -> None:
+    """Her draft check lives only as her vendored copy, and the retired assessor's not at all.
+
+    Both files sat in the live directory with no key to load them: the draft check byte-equal
+    to her body, the comprehension-evidence prompt from her abandoned August branch, its key
+    retired with the Assessor. A file there reads as one the room speaks through.
+    """
+    live = _default_prompts._PROMPTS_DIR
+
+    assert not (live / "draft_check_system_prompt.md").exists()
+    assert not (live / "comprehension_evidence_system_prompt.md").exists()
+    assert (live / "vendor/draft_check_system_prompt.md").exists()
