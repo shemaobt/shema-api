@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRRelease, IRSession
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.sessions import back_translation_of, report_playback
@@ -146,4 +148,40 @@ async def test_an_approved_release_closes_the_passage_on_the_desk_and_the_next_o
     assert (where["P01"], where["P02"], where["P03"]) == ("closed", "closed", "current"), (
         "o tablet fechava o colar na aprovação e o servidor mantinha a passagem aberta, "
         "porque só contava o ended_at do piso"
+    )
+
+
+async def test_the_desk_card_reads_an_approved_session_complete_at_its_first_approval(
+    client, db_session, room_app
+):
+    project, credential = await a_claimed_device(db_session)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    await _told_back_clean_and_heard_through(db_session, session)
+    await _below_the_floor(db_session, session)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await client.post(team_release(session.id), headers=team_headers(credential))
+    (first,) = await releases_of(db_session, session.id)
+    first.approved_at = datetime(2026, 9, 24, 10, 0, tzinfo=UTC)
+    db_session.add(
+        IRRelease(
+            session_id=session.id,
+            project_id=project.id,
+            pericope=P02,
+            version=2,
+            package_sha256="f" * 64,
+            packet={},
+            approved_at=datetime(2026, 9, 24, 11, 30, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+
+    history = await client.get(f"/api/facilitator/teams/{project.id}/sessions", headers=desk)
+
+    assert history.status_code == 200, history.text
+    (card,) = history.json()
+    assert card["state"] == "complete", (
+        "a sessão aprovada abaixo do piso ficava em andamento e, seis horas depois, abandonada"
+    )
+    assert card["ended_at"].startswith("2026-09-24T10:00:00"), (
+        "o fim andava com a re-aprovação em vez de ficar no instante em que a equipe aprovou"
     )

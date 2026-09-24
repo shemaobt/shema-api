@@ -19,10 +19,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.internalization_room import IRRelease, IRSession, IRSessionStatus
 from app.models.internalization_room import SessionBead, TeamSessionResponse
 from app.services.internalization_room import halt
 from app.services.internalization_room.canon.labels import labelled_elements
@@ -49,10 +49,13 @@ async def list_team_sessions(db: AsyncSession, project_id: str) -> list[TeamSess
     One statement for the rows and one for every portrait on them. A query per card is what
     this service has already had to take back out once.
     """
-    sessions = await _history_of(db, project_id)
-    portraits = await necklaces_of(db, sessions)
+    history = await _history_of(db, project_id)
+    portraits = await necklaces_of(db, [session for session, _released_at in history])
     now = datetime.now(UTC)
-    cards = [_card(session, portraits[session.id], at=now) for session in sessions]
+    cards = [
+        _card(session, portraits[session.id], released_at=released_at, at=now)
+        for session, released_at in history
+    ]
     return _still_going_first(cards)
 
 
@@ -77,20 +80,33 @@ def _still_going_first(cards: list[TeamSessionResponse]) -> list[TeamSessionResp
     return sorted(cards, key=lambda card: card.state is not SessionState.IN_PROGRESS)
 
 
-async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
+async def _history_of(
+    db: AsyncSession, project_id: str
+) -> Sequence[tuple[IRSession, datetime | None]]:
     """A session nobody entered (ENG-964) is not a room of the team and is not drawn:
     `entered()` excludes it, the one predicate the team's last activity also reads.
     """
+    first_approval = (
+        select(func.min(IRRelease.approved_at))
+        .where(IRRelease.session_id == IRSession.id)
+        .scalar_subquery()
+    )
     result = await db.execute(
-        select(IRSession)
+        select(IRSession, first_approval)
         .where(IRSession.project_id == project_id, entered())
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
-    return result.scalars().all()
+    return result.tuples().all()
 
 
-def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> TeamSessionResponse:
-    end = end_of(session, at=at)
+def _card(
+    session: IRSession,
+    portrait: dict[str, str],
+    *,
+    released_at: datetime | None,
+    at: datetime,
+) -> TeamSessionResponse:
+    end = end_of(session, at=at, released_at=released_at)
     return TeamSessionResponse(
         session_id=session.id,
         pericope=session.pericope,
