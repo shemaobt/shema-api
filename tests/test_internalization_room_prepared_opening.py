@@ -6,9 +6,18 @@ carries into the passage — so it is the one line that can be written before it
 Doing that turns a five-second wait into none.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import httpx
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import router as room_router
+from app.core.database import get_db
+from app.core.exceptions import register_exception_handlers
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.prepare_opening import hand_over, take_prepared
 
@@ -123,6 +132,26 @@ IR = "/api/internalization-room"
 ROOM_KEY = "sala-de-teste"
 
 
+@asynccontextmanager
+async def _room_client(db_session: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
+    """The room's FastAPI app, wired to `db_session` in place of a real database.
+
+    Shared by the `client` fixture below and by any test that wants the room over HTTP with
+    its own doubles, so the two never drift on what "the app under test" means.
+    """
+    test_app = FastAPI()
+    test_app.include_router(room_router, prefix=IR)
+    register_exception_handlers(test_app)
+
+    async def _get_db() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The room over HTTP, with every model and every background task stood in for.
@@ -132,15 +161,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """
     from typing import Any
 
-    import httpx
-    from fastapi import FastAPI
-    from httpx import ASGITransport
-
-    from app.api.internalization_room import router as room_router
     from app.api.internalization_room import sessions as sessions_api
     from app.core.config import get_settings
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room.run_turn import TurnOutcome
     from app.services.platform.tts import SynthesizedSpeech
 
@@ -170,16 +192,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sessions_api, "prepare_opening", _nothing)
     monkeypatch.setattr(sessions_api, "settle_coverage", _nothing)
 
-    test_app = FastAPI()
-    test_app.include_router(room_router, prefix=IR)
-    register_exception_handlers(test_app)
-
-    async def _get_db():
-        yield db_session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with _room_client(db_session) as c:
         yield c
 
 
@@ -360,14 +373,7 @@ async def test_the_prepared_opening_renders_the_teams_inherited_necklace(
     from types import SimpleNamespace
     from typing import Any
 
-    import httpx
-    from fastapi import FastAPI
-    from httpx import ASGITransport
-
     from app.api.internalization_room import _deps
-    from app.api.internalization_room import router as room_router
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import prepare_opening as prepare_opening_module
     from app.services.internalization_room import sessions as room
     from app.services.internalization_room.canon.elements import element_keys
@@ -403,18 +409,9 @@ async def test_the_prepared_opening_renders_the_teams_inherited_necklace(
     monkeypatch.setattr(prepare_opening_module, "run_turn", _run_turn)
     monkeypatch.setattr(prepare_opening_module, "synthesize_facilitator_speech", _speech)
 
-    test_app = FastAPI()
-    test_app.include_router(room_router, prefix="/api/internalization-room")
-    register_exception_handlers(test_app)
-
-    async def _get_db() -> Any:
-        yield db_session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with _room_client(db_session) as client:
         created = await client.post(
-            "/api/internalization-room/sessions",
+            f"{IR}/sessions",
             headers={"X-Device-Credential": "tablet"},
             json={"pericope": "OV"},
         )
