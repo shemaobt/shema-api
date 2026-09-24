@@ -106,9 +106,11 @@ class FakeAgent:
         self.verdict = verdict
         self.draft = draft
         self.systems: list[str] = []
+        self.asked: list[str] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         self.systems.append(system_prompt)
+        self.asked.append(user_content)
         if "corrected_response" in system_prompt:
             return json.dumps(self.verdict)
         return self.draft
@@ -217,6 +219,53 @@ async def test_the_panorama_speaks_from_her_body_whole_not_from_a_copy_missing_h
         in speaker_system
     ), "a frase do círculo (K1) saía do corpo dela"
     assert "**Written for a voice, not a page.**" in speaker_system
+
+
+@pytest.mark.parametrize(
+    ("language_code", "session_language", "note"),
+    [
+        (
+            "pt",
+            "Portuguese",
+            "[A sessão acabou de começar. A equipe abriu o Panorama do Livro de Ruth e está à "
+            "mesa, pronta para conversar. Fale primeiro.]",
+        ),
+        (
+            "en",
+            "English",
+            "[The session has just begun. The team opened the Book Panorama of Ruth and is at "
+            "the table, ready to talk. Speak first.]",
+        ),
+        (
+            "es",
+            "Spanish",
+            "[The session has just begun. The team opened the Book Panorama of Ruth and is at "
+            "the table, ready to talk. Speak first.]",
+        ),
+    ],
+)
+async def test_the_panorama_opens_on_her_note_not_on_an_instruction_written_for_passages(
+    patch_agent, language_code: str, session_language: str, note: str
+) -> None:
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+
+    await run_panorama_turn(
+        session_language=session_language,
+        language_code=language_code,
+        transcript="",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        opening=True,
+        settings=_settings(),
+    )
+
+    assert agent.asked[0] == note, (
+        "a abertura do panorama mandava ao Facilitador a nossa instrução em inglês, "
+        "escrita para passagens"
+    )
 
 
 async def test_the_validator_judges_against_the_same_material(patch_agent) -> None:

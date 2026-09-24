@@ -7,7 +7,7 @@ from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_at_end
 from app.services.internalization_room.render import render
-from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
+from app.services.internalization_room.turn_instructions import opening_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
@@ -57,7 +57,7 @@ async def run_panorama_turn(
         session_language=session_language,
         language_code=language_code,
         opening=opening,
-        opening_instruction=OPENING_INSTRUCTION,
+        opening_instruction=opening_note(book, language_code),
         settings=cfg,
         session_id=session_id,
         ask_for_movements=ask_for_movements,
