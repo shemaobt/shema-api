@@ -228,7 +228,7 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     assert agent.calls == []
 
 
-async def test_a_third_silence_in_a_row_draws_the_third_d_line_whatever_the_conversation_length(
+async def test_a_third_silence_in_a_row_still_draws_the_first_d_line_not_the_third(
     patch_agent,
 ) -> None:
     agent = patch_agent(FakeAgent(verdicts=[]))
@@ -251,8 +251,9 @@ async def test_a_third_silence_in_a_row_draws_the_third_d_line_whatever_the_conv
         settings=settings(),
     )
 
-    assert outcome.fixed_line == "D2", (
-        "quatro mensagens guardadas davam D1 pela paridade, fosse a primeira falha ou a terceira"
+    assert outcome.fixed_line == "D0", (
+        "a escada contava a corrida de faltas guardadas e chegava a D2; agora nada conta, e a "
+        "terceira falta em fila pede a mesma primeira linha que a primeira faltou"
     )
     assert agent.calls == []
 

@@ -11,7 +11,12 @@ ruling lived only in `_fail_safe_pt_supplement.md` — approved off-repo, never 
 
 Her word above moves the three blocks into `fail_safe_utterances.md` as B-pt, C-pt and E-pt,
 byte-identical to what the supplement carried. B and C stay reserve: nothing in code may route
-to `FailSafe.OUTSIDE_MAP` or `FailSafe.HANDOFF` (`tests/test_ir_b_and_c_have_no_caller.py`), her
-word above changes their text's home, not their reachability. E is unchanged in meaning — it was
-already the authored file's own English E, mirrored — and now has its Portuguese beside it the
-same way.
+to `FailSafe.OUTSIDE_MAP` or `FailSafe.HANDOFF`, her word above changes their text's home, not
+their reachability. E is unchanged in meaning — it was already the authored file's own English
+E, mirrored — and now has its Portuguese beside it the same way.
+
+Her word above says "B, C and E remain reserve lines," but E's own reachability did not match
+that yet: `validation_ladder` still routed to `FailSafe.HARD_STOP` on a third consecutive
+validation failure, and did until ENG-917 deleted it with its one caller. The guard
+(`tests/test_ir_b_and_c_have_no_caller.py`) now enforces all three names this ruling reserves,
+not only the two that were already unreachable.

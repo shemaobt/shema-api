@@ -1,9 +1,11 @@
-"""The graceful pause is a line the room says, not a state the session enters.
+"""However many turns run out of redrafts in a row, the session stays in progress.
 
 Three validation failures in a row used to be the assessor's ladder ending the interview
-and calling somebody. What the third failure does now is speak category E through the same
-route as any other turn, and the session behind it is still in progress — the call for a
-person is the tablet's, on its own triggers, never the server's.
+and calling somebody, then later a ladder that spoke category E on the third and stayed
+there. Her code never counts a run at all: an exhausted turn always speaks the same line,
+the fourth of the A family, named by the attempt it gave up on — and the session behind it
+is still in progress, because the call for a person is the tablet's, on its own triggers,
+never the server's.
 """
 
 import json
@@ -57,7 +59,7 @@ async def client(db_session, monkeypatch):
         yield c
 
 
-async def test_the_third_refused_turn_speaks_the_pause_and_leaves_the_session_open(
+async def test_three_exhausted_turns_in_a_row_all_speak_the_fourth_a_line_not_a_pause(
     client, db_session: AsyncSession
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
@@ -72,7 +74,10 @@ async def test_the_third_refused_turn_speaks_the_pause_and_leaves_the_session_op
         assert answered.status_code == 200, answered.text[:300]
         spoken.append(answered.json()["fixed_line"])
 
-    assert spoken == ["A0", "A1", "E0"]
+    assert spoken == ["A3", "A3", "A3"], (
+        "a escada dava A0, A1 e a pausa; agora toda tentativa esgotada dá a mesma linha, a "
+        "quarta de A, nomeada pela tentativa em que desistiu"
+    )
     assert (await get_session(db_session, session.id)).status is IRSessionStatus.IN_PROGRESS, (
         "a rota marcava NEEDS_PERSON na linha E e o círculo parava até um facilitador vir"
     )

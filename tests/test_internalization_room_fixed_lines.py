@@ -174,19 +174,24 @@ def test_a_language_the_room_does_not_claim_keeps_its_draft_and_reaches_no_mouth
     )
 
 
-def test_a_repeated_failure_does_not_repeat_the_same_sentence() -> None:
-    """The authored file asks for variation; a room stuck on one line sounds like a machine."""
-    spoken = [choose(FailSafe.INAUDIBLE, "pt", turn=turn) for turn in range(3)]
+def test_a_repeated_wait_does_not_repeat_the_same_sentence() -> None:
+    """The authored file asks for variation; a room stuck on one line sounds like a machine.
+
+    D no longer rotates in production — every miss is the first D line, by her rule — so this
+    exercises a family that still does: the untold-stretch wait, still called with a rising
+    `turn` at `back_translation.py:176`.
+    """
+    spoken = [choose(FailSafe.UNTOLD_STRETCH, "pt", turn=turn) for turn in range(3)]
 
     assert len({line for line, _ in spoken}) == 3
-    assert [name for _, name in spoken] == ["D0", "D1", "D2"]
+    assert [name for _, name in spoken] == ["H0", "H1", "H2"]
 
 
 def test_the_rotation_wraps_instead_of_running_out() -> None:
-    line, name = choose(FailSafe.INAUDIBLE, "pt", turn=3)
+    line, name = choose(FailSafe.UNTOLD_STRETCH, "pt", turn=3)
 
-    assert name == "D0"
-    assert line == choose(FailSafe.INAUDIBLE, "pt", turn=0)[0]
+    assert name == "H0"
+    assert line == choose(FailSafe.UNTOLD_STRETCH, "pt", turn=0)[0]
 
 
 def test_a_kind_with_one_line_always_answers_with_it() -> None:

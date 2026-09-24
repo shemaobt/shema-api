@@ -64,7 +64,7 @@ async def _a_turn():
     )
 
 
-async def test_a_verdict_unreadable_twice_is_line_a_with_both_redrafts_unspent(
+async def test_a_verdict_unreadable_twice_is_line_a1_with_both_redrafts_unspent(
     patch_agent,
 ) -> None:
     agent = patch_agent(ScriptedValidator([PROSE, PROSE]))
@@ -74,7 +74,10 @@ async def test_a_verdict_unreadable_twice_is_line_a_with_both_redrafts_unspent(
     assert agent.calls == ["guide", "validator", "validator"]
     assert outcome.redrafts == 0
     assert outcome.used_fail_safe is True
-    assert outcome.fixed_line.startswith("A")
+    assert outcome.fixed_line == "A1", (
+        "a linha é nomeada pela tentativa em que a leitura desistiu (0), não pela mais alta "
+        "que a família tem"
+    )
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
 
