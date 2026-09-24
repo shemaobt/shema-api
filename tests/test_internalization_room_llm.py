@@ -384,6 +384,46 @@ async def test_a_refusal_then_a_rate_limit_on_the_next_rung_still_answers(
     assert text == "ok"
 
 
+async def test_a_retry_that_meets_a_not_found_on_the_last_rung_logs_its_true_attempt(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A 529 retried into a 404 on the last rung still says which of the room's tries it was."""
+
+    class _RetryThenNotFound:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            self.calls += 1
+            if self.calls == 1:
+                raise anthropic.OverloadedError("Overloaded", response=_status(529), body=None)
+            raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=_RetryThenNotFound(), options=options),
+    )
+    monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="app.services.internalization_room.llm"),
+        pytest.raises(UpstreamServiceError),
+    ):
+        await llm.call_agent(
+            system_prompt="s",
+            user_content="u",
+            ladder=["claude-fable-5-1"],
+            settings=_settings(),
+        )
+
+    attempts = [record.attempt for record in caplog.records if hasattr(record, "attempt")]
+    assert attempts == [1, 2], (
+        "um 529 retentado que topava com um 404 no último degrau escrevia a segunda linha "
+        "como se fosse a primeira, e o campo attempt deixava de dizer qual tentativa era"
+    )
+
+
 async def test_the_conversation_travels_as_turns_with_the_new_utterance_last(fake_client):
     """The Guide is handed the exchange it lived, not a block of text describing it.
 

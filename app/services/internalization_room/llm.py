@@ -214,7 +214,9 @@ async def call_agent(
                 raise
             except anthropic.NotFoundError as refusal:
                 if model == rungs[-1]:
-                    raise _unavailable(model, refusal, role=role, started=started) from refusal
+                    raise _unavailable(
+                        model, refusal, role=role, started=started, attempt=attempt
+                    ) from refusal
                 logger.warning(
                     "This key cannot use %s; the room steps down to %s",
                     model,
@@ -261,11 +263,14 @@ async def call_agent(
 
 
 def _is_transient(failure: anthropic.APIError) -> bool:
-    """A failure worth one bounded retry on the same rung: rate limit, overload, any 5xx.
+    """A failure worth one bounded retry of the room's own, on the same rung.
 
-    Everything else — a bad request, a rejected key, 408/409, a dropped connection — is left
-    to the SDK's own retries (now on, since `max_retries` is no longer forced to zero) or
-    raised outright: a request that is wrong does not become right by asking again.
+    This reaches `call_agent` only once the SDK's own policy has already given up on the
+    same request: with `max_retries` no longer forced to zero, the SDK retries a 429 or any
+    5xx — this function's own set — up to twice on its own before ever raising, so one of the
+    room's own attempts can already be as many as three requests on the wire. A bad request,
+    a rejected key, 408 or 409 never reach a second attempt here; a dropped connection is the
+    SDK's alone to retry.
     """
     if isinstance(failure, anthropic.RateLimitError):
         return True
@@ -283,7 +288,8 @@ def _log_call_failure(
     status and the provider's own reason. A credit or quota failure is diagnosed from here,
     not from the team's report of a room that kept saying the same sentence. No token
     counts, because none were spent — which is also what keeps this line out of the text
-    seam's per-call tally. `attempt` tells a retried rung's two lines apart.
+    seam's per-call tally. `attempt` counts the room's own tries, not the wire's — the SDK's
+    retries happen inside a single one of them and never reach this line at all.
     """
     status = getattr(failure, "status_code", None)
     latency_ms = round((time.monotonic() - started) * 1000)

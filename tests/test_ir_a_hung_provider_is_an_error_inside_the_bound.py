@@ -97,7 +97,7 @@ def the_client(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-async def test_the_guide_and_the_validator_each_carry_the_deadline_and_no_retries(
+async def test_the_guide_and_the_validator_each_carry_the_deadline_not_a_client_with_zero_retries(
     the_client,
 ) -> None:
     messages = _Scripted()
