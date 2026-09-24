@@ -99,6 +99,43 @@ def test_ruth_and_mahlon_paired_with_a_marriage_word_is_flagged_for_the_judge() 
     )
 
 
+PAIRED = ["possible Ruth↔Mahlon pairing voiced (judge must confirm)"]
+
+
+def test_orpah_and_chilion_married_is_the_same_pairing_the_judge_must_confirm() -> None:
+    assert _turn(guide="A Orfa era a esposa do Quiliom.", expect={"no_pairing": True}) == PAIRED
+    assert _turn(guide="O Malom pegou a Rute como mulher.", expect={"no_pairing": True}) == (
+        PAIRED
+    ), "pegou/pegaram/casaram não contavam como palavra de casamento"
+
+
+def test_a_guide_refusing_to_say_who_married_whom_is_not_a_pairing() -> None:
+    refused = "A história não diz se a Rute casou com o Malom."
+    assert _turn(guide=refused, expect={"no_pairing": True}) == [], (
+        "a recusa dela citava os dois nomes com casou e virava par"
+    )
+    asked_back = "A Rute casou com o Malom ou com o Quiliom? Quem casou com quem a história guarda."
+    assert _turn(guide=asked_back, expect={"no_pairing": True}) == [], (
+        "a pergunta de volta e a recusa em frases diferentes contavam como par"
+    )
+    unsure = "Eu não sei com quem a Rute casou, se com o Malom."
+    assert _turn(guide=unsure, expect={"no_pairing": True}) == []
+
+
+def test_both_sons_and_both_women_listed_in_one_sentence_is_the_maps_own_form() -> None:
+    listed = "Malom e Quiliom tinham esposas, Orfa e Rute."
+    assert _turn(guide=listed, expect={"no_pairing": True}) == [], (
+        "a lista do próprio mapa, filhos e noras juntos, contava como par"
+    )
+
+
+def test_the_names_and_the_marriage_word_must_share_a_sentence() -> None:
+    apart = "A Rute ficou com o Malom na mesa. Depois ela casou de novo."
+    assert _turn(guide=apart, expect={"no_pairing": True}) == [], (
+        "o casou de outra frase fechava o par com os nomes da primeira"
+    )
+
+
 def test_a_send_off_that_never_says_gravem_did_not_tell_the_team_to_record() -> None:
     closing = "Que bom. A versão de vocês ficou inteira. Até a próxima."
     assert _turn(guide=closing, expect={"send_off_record": True}) == [
