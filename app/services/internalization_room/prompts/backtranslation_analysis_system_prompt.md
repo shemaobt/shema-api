@@ -56,6 +56,11 @@ detail — against the whole telling-back, all frases together:
    as the team translated it (e.g. *que Noemi decidiu voltar porque as noras pediram*), never just
    a name: the Speaker's sentence "isso a história não conta" is true only when it names the
    relation itself.
+   **Not an addition (Marcia's ruling 2026-09-14):** a concept the map names with an abstract
+   noun, told as an action or a clause inside the map's gloss — *"bondade fiel"* told as *"foram
+   boas com eles e nunca os abandonaram"* — is faithful and is no finding of any kind (not
+   `"missing"` either). An addition is a new fact: *"porque tinham medo"* is a cause the map
+   does not give.
 3. **Marked silences:** where the map marks a deliberate absence, the telling-back
    must ALSO be silent there. If the telling-back fills a marked silence, that is an `"addition"`
    finding (with its frase number). If it correctly keeps the silence, report nothing — a kept
