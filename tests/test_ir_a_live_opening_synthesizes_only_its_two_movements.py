@@ -27,6 +27,7 @@ PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 
 WHOLE = "O todo da passagem.\n\nA cena e o convite."
+WHOLE_SPOKEN = "O todo da passagem. A cena e o convite."
 FIRST = "O todo da passagem."
 SECOND = "A cena e o convite."
 
@@ -81,7 +82,7 @@ class _ElevenlabsWhereAMovementWaitsForTheWholeLine:
     async def post(self, *_: Any, json: dict[str, Any], **__: Any) -> SimpleNamespace:
         text = json["text"]
         self.calls.append(text)
-        if text == WHOLE:
+        if text == WHOLE_SPOKEN:
             self._whole_started.set()
         else:
             with contextlib.suppress(TimeoutError):
@@ -164,7 +165,7 @@ def _opens_in_two_movements(
 async def test_a_live_opening_synthesizes_only_its_two_movements(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
 ) -> None:
-    elevenlabs = _Elevenlabs(holds=WHOLE)
+    elevenlabs = _Elevenlabs(holds=WHOLE_SPOKEN)
     _opens_in_two_movements(monkeypatch)
     session = await create_session(db_session, language="pt", pericope="OV")
 
@@ -190,7 +191,7 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
 ) -> None:
     from app.api.internalization_room import sessions as sessions_api
 
-    elevenlabs = _Elevenlabs(holds=WHOLE)
+    elevenlabs = _Elevenlabs(holds=WHOLE_SPOKEN)
     _opens_in_two_movements(monkeypatch)
     session = await create_session(db_session, language="pt", pericope="OV")
 
@@ -209,7 +210,7 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
         )
         elevenlabs.may_proceed.set()
         await asyncio.wait_for(asyncio.gather(*pending), timeout=2)
-        assert elevenlabs.calls == [FIRST, SECOND, WHOLE], (
+        assert elevenlabs.calls == [FIRST, SECOND, WHOLE_SPOKEN], (
             "a linha inteira não chegou a ser cacheada em segundo plano"
         )
 
@@ -219,7 +220,7 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
         )
 
     assert again.status_code == 200
-    assert elevenlabs.calls == [FIRST, SECOND, WHOLE], (
+    assert elevenlabs.calls == [FIRST, SECOND, WHOLE_SPOKEN], (
         "o diga de novo pagou a ElevenLabs outra vez por uma linha que o segundo plano já "
         "tinha posto no bucket"
     )
@@ -230,7 +231,7 @@ async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_join
 ) -> None:
     from app.api.internalization_room import sessions as sessions_api
 
-    elevenlabs = _Elevenlabs(holds=WHOLE)
+    elevenlabs = _Elevenlabs(holds=WHOLE_SPOKEN)
     _opens_in_two_movements(monkeypatch)
     session = await create_session(db_session, language="pt", pericope="OV")
 
@@ -255,7 +256,7 @@ async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_join
         again_resp = await asyncio.wait_for(again, timeout=2)
 
     assert again_resp.status_code == 200, again_resp.text[:300]
-    assert elevenlabs.calls.count(WHOLE) == 1, (
+    assert elevenlabs.calls.count(WHOLE_SPOKEN) == 1, (
         "o diga de novo pediu a linha inteira de novo enquanto ela ainda estava em voo, em "
         "vez de se juntar à síntese já a caminho"
     )
@@ -275,7 +276,7 @@ async def test_a_cancelled_say_it_again_does_not_cancel_the_whole_line_it_joined
     """
     from app.api.internalization_room import sessions as sessions_api
 
-    elevenlabs = _Elevenlabs(holds=WHOLE)
+    elevenlabs = _Elevenlabs(holds=WHOLE_SPOKEN)
     _opens_in_two_movements(monkeypatch)
     session = await create_session(db_session, language="pt", pericope="OV")
 
@@ -309,7 +310,7 @@ async def test_a_cancelled_say_it_again_does_not_cancel_the_whole_line_it_joined
         result = await asyncio.wait_for(whole_task, timeout=2)
 
     assert result.key, "a linha inteira não terminou nem guardou o clipe depois do cancelamento"
-    assert elevenlabs.calls.count(WHOLE) == 1
+    assert elevenlabs.calls.count(WHOLE_SPOKEN) == 1
 
 
 async def test_a_say_it_again_whose_whole_line_was_cancelled_falls_back_to_its_own_synthesis(
@@ -324,7 +325,7 @@ async def test_a_say_it_again_whose_whole_line_was_cancelled_falls_back_to_its_o
     """
     from app.api.internalization_room import sessions as sessions_api
 
-    elevenlabs = _Elevenlabs(holds=WHOLE)
+    elevenlabs = _Elevenlabs(holds=WHOLE_SPOKEN)
     _opens_in_two_movements(monkeypatch)
     session = await create_session(db_session, language="pt", pericope="OV")
 
@@ -358,7 +359,7 @@ async def test_a_say_it_again_whose_whole_line_was_cancelled_falls_back_to_its_o
     )
     # The fake records a call only once it completes; the cancelled background call never
     # did, so the one recorded is the fallback's own synthesis.
-    assert elevenlabs.calls.count(WHOLE) == 1, "o diga de novo não caiu na própria síntese"
+    assert elevenlabs.calls.count(WHOLE_SPOKEN) == 1, "o diga de novo não caiu na própria síntese"
 
 
 async def test_a_stale_whole_line_callback_does_not_evict_a_newer_tasks_entry() -> None:
@@ -402,7 +403,7 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
 ) -> None:
     from app.api.internalization_room import sessions as sessions_api
 
-    elevenlabs = _Elevenlabs(holds=WHOLE, refuses=WHOLE)
+    elevenlabs = _Elevenlabs(holds=WHOLE_SPOKEN, refuses=WHOLE_SPOKEN)
     _opens_in_two_movements(monkeypatch)
     session = await create_session(db_session, language="pt", pericope="OV")
 
@@ -426,7 +427,7 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
     body = opened.json()
     urls = [segment["audio_url"] for segment in body["segments"]]
     assert body["audio_url"] == urls[0]
-    assert elevenlabs.calls == [FIRST, SECOND, WHOLE]
+    assert elevenlabs.calls == [FIRST, SECOND, WHOLE_SPOKEN]
     logged = [r.getMessage() for r in caplog.records if r.name == sessions_api.logger.name]
     assert logged == [
         "the opening's whole line could not be cached in the background: UpstreamServiceError"
@@ -451,12 +452,12 @@ async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
         left_behind = sessions_api._PENDING_WHOLE_LINE_TASKS - before
 
     assert opened.status_code == 200
-    assert sorted(elevenlabs.calls) == sorted([FIRST, SECOND, WHOLE]), (
+    assert sorted(elevenlabs.calls) == sorted([FIRST, SECOND, WHOLE_SPOKEN]), (
         "uma cena recusada não caiu para a fala inteira, uma vez só, como o fallback de hoje"
     )
     body = opened.json()
     assert body["segments"] == [], "o fallback ainda devolvia os movimentos parciais"
-    assert _clip_behind(body["audio_url"], bucket) == f"audio-for-{WHOLE}".encode(), (
+    assert _clip_behind(body["audio_url"], bucket) == f"audio-for-{WHOLE_SPOKEN}".encode(), (
         "a fala inteira deveria ter voltado como o áudio do turno, já no bucket"
     )
     assert not left_behind, (
@@ -486,7 +487,7 @@ async def test_a_refused_movement_finds_the_whole_line_already_under_way(
         "a fala inteira só começava depois de os dois movimentos voltarem, e uma cena "
         "recusada pagava os movimentos e a fala inteira em série"
     )
-    assert elevenlabs.calls.count(WHOLE) == 1, (
+    assert elevenlabs.calls.count(WHOLE_SPOKEN) == 1, (
         "a mesma abertura sintetizou a fala inteira mais de uma vez"
     )
     assert not left_behind, "a fala inteira já esperada ficou pendurada em segundo plano"
@@ -515,7 +516,7 @@ async def test_a_turn_without_movements_still_speaks_only_the_whole_line(
         )
 
     assert opened.status_code == 200
-    assert elevenlabs.calls == [WHOLE], (
+    assert elevenlabs.calls == [WHOLE_SPOKEN], (
         "um turno sem movimentos passou a sintetizar mais do que a fala inteira"
     )
     assert opened.json()["segments"] == []

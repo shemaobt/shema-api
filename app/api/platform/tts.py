@@ -33,7 +33,8 @@ async def speak_endpoint(
     layer there with mandatory human review. Raw bytes keep the consumer simple.
 
     **The room does not call this.** `payload.text` reaches `synthesize_speech` verbatim —
-    no `speakable_text` substitution (YHWH -> "Senhor Jeová" / "the LORD"), which lives in
+    no `speakable_text` transform (formatting marks stripped, a folded question split into
+    its own sentence, YHWH -> "Senhor Jeová" / "the LORD"), which lives in
     `synthesize_facilitator_speech`, the room's own chokepoint into TTS. This is the
     platform's generic route, sized for the Sound Necklace (`app/models/platform.py`), and
     ENG-929 decided to leave it that way rather than push the substitution down into
