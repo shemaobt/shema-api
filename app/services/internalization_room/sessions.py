@@ -20,13 +20,6 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.session_readiness import (
-    evaluate_session_comprehension,
-)
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
@@ -523,29 +516,14 @@ async def save_comprehension(
     return await _land(db, session, {"comprehension": state.model_dump(mode="json")})
 
 
-def semantics_ready(session: IRSession) -> bool:
-    """Whether the comprehension side of the gate is met — readiness not `needs_more_work`
-    (which already folds in per-scene mother-tongue practice)."""
-    state = comprehension_of(session)
-    readiness = evaluate_session_comprehension(
-        checkpoints=list(checkpoints_for(session.pericope)),
-        scene_ids=scene_ids_for(session.pericope),
-        ledger=state.ledger,
-        practiced_scene_ids=state.practiced_scene_ids,
-    )
-    return readiness.evaluation.outcome.value != "needs_more_work"
-
-
 def session_is_done(session: IRSession) -> bool:
-    """The advance gate, with the third term removed rather than replaced.
+    """The advance gate: the coverage floor, and nothing the team said about rehearsing.
 
-    It used to end on the team's answer to the app's own yes/no recording question. The room
-    has no such question any more, so nothing could ever write that flag again and the gate
-    would have held every session open for good. What closes a passage instead is ENG-803's
-    to say — the Guide's send-off and a rehearsal take that was kept — and until it lands the
-    floor and the practice reading close the session between them.
+    Her room calls a passage done when every element has the status its kind needs
+    (`isComplete`, `app/lib/liveTurn.ts`), and reads neither practice, a report nor the
+    team's words. Done is information, not an ending: the circle stays alive at done.
     """
-    return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(session)
+    return floor_met(session.coverage_state or {}, session.pericope)
 
 
 async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:

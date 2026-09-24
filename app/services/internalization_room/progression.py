@@ -13,11 +13,10 @@ sessions that ended and the rehearsals kept in them, and both of those are recor
 that happened rather than a computation that can be re-run to another answer.
 
 **The team's own recording is the mechanism.** A passage is closed when the team has a
-session on it that both reached the end of the conversation — `sessions.session_is_done`,
-whose instant is stamped on the row as `ir_sessions.ended_at` — and holds the rehearsal they
-recorded there. Nothing here reads the coverage floor on its own, and nothing here counts
-beads. Why the stamp and not the status they are written together with is on
-`finished_passages`.
+session on it that both met the coverage floor — `sessions.session_is_done`, whose instant is
+stamped on the row as `ir_sessions.ended_at` — and holds the rehearsal they recorded there.
+The floor alone closes nothing here, and nothing here counts beads. Why the stamp and not
+the status they are written together with is on `finished_passages`.
 
 **Reaching the rehearsal and finishing the passage are two facts, and this module wants the
 second.** `session_is_done` is the first: it is the signal the room reads to let a team into
@@ -182,9 +181,9 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     """Which passages each of these teams has finished a session on. One statement.
 
     Two facts and both are required, because they are different facts. ``ended_at`` is the
-    instant ``session_is_done`` became true — the coverage floor and the comprehension gate,
-    stamped once in ``apply_coverage`` — and that gate is what the room reads to let a team
-    *into* the rehearsal. It is not what finishes a passage: a team can reach it and stop, and
+    instant ``session_is_done`` became true — the coverage floor, stamped once in
+    ``apply_coverage`` — and that gate is what the room reads to let a team *into* the
+    rehearsal. It is not what finishes a passage: a team can reach it and stop, and
     the ledger informs, it never ends the conversation (`DOCTRINE.md` §4). What ends it is the
     rehearsal itself arriving — a kept ``ensaio`` take on that same session. "O fecho ('gravem
     o ensaio') é decisão do Guia", Marcia, answer 8.

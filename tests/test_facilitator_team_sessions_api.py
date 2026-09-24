@@ -107,11 +107,10 @@ async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
 
 
 def _ready_comprehension(pericope: str):
-    """Calibration, evidence, practice and consent — everything the floor no longer implies.
+    """The evidence and practice a closing scenario used to have to carry.
 
-    ``session_is_done`` stopped being the coverage floor alone: it folds in semantic
-    readiness and the team's recording consent, so that a bridge-limited team is not judged
-    on Portuguese output. A scenario about *closing* has to carry all of it now.
+    ``session_is_done`` is the coverage floor alone, so none of this is what closes the
+    session; it stays as the comprehension the scenario was written with.
     """
     from app.services.internalization_room.comprehension.checkpoints import (
         checkpoints_for,

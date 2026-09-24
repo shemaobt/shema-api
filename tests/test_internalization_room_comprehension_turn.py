@@ -30,7 +30,6 @@ from app.services.internalization_room.sessions import (
     comprehension_of,
     create_session,
     save_comprehension,
-    session_is_done,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -455,30 +454,6 @@ async def test_a_turn_without_a_prior_probe_mints_no_evidence(
     assert comprehension_of(session).ledger == []
 
 
-async def _session_at_the_recording_handoff(
-    db_session: AsyncSession, *, practice_reported: bool = True
-) -> IRSession:
-    """Everything the passage asks for is done except the recording: the coverage floor is
-    met and every scene was rehearsed, so the app is about to offer its own question.
-
-    The ledger is empty and stays empty. Nothing writes to it any more, and the gate no
-    longer asks it anything — what has to be true is the floor, the rehearsals and the
-    team's consent.
-
-    `practice_reported=False` is the same room with nobody having said the closing word:
-    every bead is engaged while the practice record stays empty."""
-    session = await create_session(db_session, language="pt", pericope=P)
-    session = await save_comprehension(
-        db_session,
-        session,
-        ComprehensionState(practiced_scene_ids=scene_ids_for(P) if practice_reported else []),
-    )
-    session = await apply_coverage(
-        db_session, session.id, merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    )
-    return await append_exchange(db_session, session, team_utterance="", guide_response="abertura")
-
-
 async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> str:
     turn = await run_comprehension_turn(
         db_session,
@@ -505,22 +480,6 @@ _UNUSABLE_SPEECH = (
     HeardSpeech(text="mmm ne", transcript_confidence=0.2),
     HeardSpeech(),
 )
-
-
-async def test_a_scene_worked_to_its_last_bead_is_not_a_mother_tongue_rehearsal(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    """Engagement is the ledger painting beads; rehearsal is what the team reports.
-
-    Marcia's answer 8: the ledger informs, it never ends the conversation (DOCTRINE.md §4).
-    A necklace can go fully engaged through the bridge language alone, so a scene worked to
-    its last bead without the team ever switching into their own language stays a passage
-    still owed its first rehearsal — the gate keeps waiting on the report, not the beads."""
-    session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
-
-    await _say(db_session, session, "acho que já falamos de tudo")
-
-    assert not session_is_done(session)
 
 
 _THE_INVITATION_FOR_THE_LAST_TWO_SCENES = (

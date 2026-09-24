@@ -6,16 +6,6 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import is_panorama
 
@@ -37,21 +27,6 @@ async def main() -> None:
         session.coverage_state = dict.fromkeys(
             element_keys(session.pericope), CoverageStatus.ENGAGED.value
         )
-        ledger = [
-            EvidenceObservation(
-                id=f"dev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"dev-probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-                note="atalho de desenvolvimento — nao e evidencia de campo",
-            )
-            for index, checkpoint in enumerate(checkpoints_for(session.pericope))
-        ]
-        session.comprehension = ComprehensionState(
-            ledger=list(ledger),
-            practiced_scene_ids=scene_ids_for(session.pericope),
-        ).model_dump(mode="json")
         session.status = IRSessionStatus.IN_PROGRESS
         await db.commit()
 
