@@ -539,6 +539,7 @@ async def test_a_committed_run_is_judged_again_from_its_exports_without_playing_
                         "turnMs": 12000,
                         "usage": [],
                         "mechanical": ["verbatim repeat of the previous guide turn"],
+                        "pending": ["send_off_ensaio_final"],
                     },
                 ],
             }
@@ -593,6 +594,10 @@ async def test_a_committed_run_is_judged_again_from_its_exports_without_playing_
         "juiz: answers_requests_to_understand 1; "
         "juiz: turn 1 · blocker · redirect_on_request_to_understand |"
     ) in readme, "a coluna mecânica vem do JSON exportado, o juiz da chamada de agora"
+    assert (
+        "Checagens dela que esta sala ainda não porta — PENDING, nenhuma conta como aprovada: "
+        "P01-understand-first turn 1: send_off_ensaio_final."
+    ) in readme, "o rejulgamento perdia o PENDING e a despedida voltava a ler como aprovada"
     assert exit_code == 1
 
 

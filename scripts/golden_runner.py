@@ -604,6 +604,7 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
             interrupted=turn["interrupted"],
             turnMs=turn["turnMs"],
             mechanical=turn["mechanical"],
+            pending=turn.get("pending", []),
         )
         for turn in raw["turns"]
     ]
