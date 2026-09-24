@@ -57,7 +57,12 @@ TEAM_JUST_SAID = (
     "passage.\n\n"
 )
 
-VALIDATOR_SLOTS = ("{{MEANING_MAP}}", "{{TEAM_EVIDENCE}}", "{{DRAFTED_RESPONSE}}")
+VALIDATOR_SLOTS = (
+    "{{MEANING_MAP}}",
+    "{{TEAM_EVIDENCE}}",
+    "{{DRAFTED_RESPONSE}}",
+    "{{SESSION_LANGUAGE}}",
+)
 
 
 @dataclass

@@ -250,7 +250,10 @@ async def test_the_verdict_is_judged_with_what_the_team_reported_under_her_headi
     _sent_as_hers(validators.seen[0], _as_she_builds_it(reported, ""), "")
 
 
-@pytest.mark.parametrize("slot", ["{{MEANING_MAP}}", "{{TEAM_EVIDENCE}}", "{{DRAFTED_RESPONSE}}"])
+@pytest.mark.parametrize(
+    "slot",
+    ["{{MEANING_MAP}}", "{{TEAM_EVIDENCE}}", "{{DRAFTED_RESPONSE}}", "{{SESSION_LANGUAGE}}"],
+)
 async def test_a_validator_without_one_of_her_slots_is_refused_before_a_team_hears_it(
     validators: _Validators, slot: str
 ) -> None:
