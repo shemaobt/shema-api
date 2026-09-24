@@ -218,7 +218,7 @@ async def take_text_turn(
     heard = _heard(payload, language=session.language)
     started = time.monotonic()
     with _collecting_model_calls() as calls:
-        turn = await room.run_comprehension_turn(
+        outcome = await room.run_comprehension_turn(
             db,
             session,
             speech=heard,
@@ -227,7 +227,6 @@ async def take_text_turn(
             validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
             settings=get_settings(),
         )
-        outcome = turn.outcome
         session = await room.append_exchange(
             db,
             session,

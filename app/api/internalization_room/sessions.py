@@ -830,7 +830,7 @@ async def _answer_the_turn(
                     session_id=session.id,
                 )
             else:
-                turn = await room.run_comprehension_turn(
+                outcome = await room.run_comprehension_turn(
                     db,
                     session,
                     speech=speech_heard,
@@ -839,7 +839,6 @@ async def _answer_the_turn(
                     validator_prompt=validator_prompt,
                     settings=get_settings(),
                 )
-                outcome = turn.outcome
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 

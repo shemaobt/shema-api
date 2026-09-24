@@ -24,7 +24,6 @@ from app.services.internalization_room.hard_stretches import (
     note_a_hard_stretch,
 )
 from app.services.internalization_room.live_turn import (
-    ComprehensionTurn,
     run_comprehension_turn,
 )
 from app.services.internalization_room.run_turn import (
@@ -79,7 +78,6 @@ from app.services.internalization_room.verdict_round import (
 
 __all__ = [
     "BackTranslationState",
-    "ComprehensionTurn",
     "Finding",
     "TellingBackVerdict",
     "TurnOutcome",

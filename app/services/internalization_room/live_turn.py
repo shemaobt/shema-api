@@ -17,7 +17,6 @@ before anything is asked of the team — frame first, elicit second.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,11 +30,6 @@ from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.turn.speech import speak_back
 
 
-@dataclass
-class ComprehensionTurn:
-    outcome: TurnOutcome
-
-
 async def run_comprehension_turn(
     db: AsyncSession,
     session: IRSession,
@@ -45,7 +39,7 @@ async def run_comprehension_turn(
     guide_prompt: str,
     validator_prompt: str,
     settings: Settings,
-) -> ComprehensionTurn:
+) -> TurnOutcome:
     """One comprehension turn: what was heard, and what the room says back.
 
     Only the session's very first line is told in two movements. A file-less POST on a session
@@ -61,7 +55,7 @@ async def run_comprehension_turn(
     mother_tongue = speech.mother_tongue
     empty = not transcript.strip()
 
-    outcome = await speak_back(
+    return await speak_back(
         mother_tongue=mother_tongue,
         take_ms=speech.take_ms,
         session=session,
@@ -77,7 +71,5 @@ async def run_comprehension_turn(
         settings=settings,
     )
 
-    return ComprehensionTurn(outcome=outcome)
 
-
-__all__ = ["ComprehensionTurn", "current_scene_id", "run_comprehension_turn"]
+__all__ = ["current_scene_id", "run_comprehension_turn"]

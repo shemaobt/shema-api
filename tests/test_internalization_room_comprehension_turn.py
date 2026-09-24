@@ -99,11 +99,11 @@ async def test_the_opening_is_cut_where_the_guide_marked_it(
         settings=_settings(),
     )
 
-    assert len(turn.outcome.movements) == 2
-    assert turn.outcome.movements[0].startswith("Olá, eu sou o Facilitador Digital.")
-    assert turn.outcome.movements[1].startswith("Vamos ficar no começo.")
-    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
-    assert "[[" not in turn.outcome.speech
+    assert len(turn.movements) == 2
+    assert turn.movements[0].startswith("Olá, eu sou o Facilitador Digital.")
+    assert turn.movements[1].startswith("Vamos ficar no começo.")
+    assert OPENING_MOVEMENT_MARK not in turn.speech
+    assert "[[" not in turn.speech
 
 
 async def test_a_session_that_already_spoke_is_not_opened_twice(
@@ -131,8 +131,8 @@ async def test_a_session_that_already_spoke_is_not_opened_twice(
         settings=_settings(),
     )
 
-    assert turn.outcome.movements == []
-    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
+    assert turn.movements == []
+    assert OPENING_MOVEMENT_MARK not in turn.speech
 
 
 class LongPanoramaAgent:
@@ -168,9 +168,9 @@ async def test_a_long_opening_is_spoken_in_its_two_movements(
         settings=_settings(),
     )
 
-    assert not turn.outcome.used_fail_safe
-    assert len(turn.outcome.movements) == 2
-    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
+    assert not turn.used_fail_safe
+    assert len(turn.movements) == 2
+    assert OPENING_MOVEMENT_MARK not in turn.speech
 
 
 async def test_the_opening_may_give_the_whole_before_the_parts(
@@ -198,9 +198,9 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
         settings=_settings(),
     )
 
-    assert not turn.outcome.used_fail_safe
-    assert turn.outcome.speech.startswith("Olá, eu sou o Facilitador Digital.")
-    assert len(turn.outcome.speech.split()) > 45
+    assert not turn.used_fail_safe
+    assert turn.speech.startswith("Olá, eu sou o Facilitador Digital.")
+    assert len(turn.speech.split()) > 45
 
 
 async def test_a_turn_that_runs_long_is_spoken_as_it_is(
@@ -229,9 +229,9 @@ async def test_a_turn_that_runs_long_is_spoken_as_it_is(
         settings=_settings(),
     )
 
-    assert not turn.outcome.used_fail_safe
-    assert not turn.outcome.fixed_line
-    assert len(turn.outcome.speech.split()) > 45
+    assert not turn.used_fail_safe
+    assert not turn.fixed_line
+    assert len(turn.speech.split()) > 45
 
 
 async def test_the_opening_turn_belongs_to_the_guide(
@@ -255,9 +255,9 @@ async def test_the_opening_turn_belongs_to_the_guide(
         settings=_settings(),
     )
 
-    assert turn.outcome.speech == "Vamos começar pela primeira cena. O que vocês acham?"
-    assert turn.outcome.speech != FIXED_PRACTICE_INVITATION
-    assert not turn.outcome.used_fail_safe
+    assert turn.speech == "Vamos começar pela primeira cena. O que vocês acham?"
+    assert turn.speech != FIXED_PRACTICE_INVITATION
+    assert not turn.used_fail_safe
 
 
 async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
@@ -294,7 +294,7 @@ async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
     )
 
     await append_exchange(
-        db_session, session, team_utterance="podemos começar", guide_response=turn.outcome.speech
+        db_session, session, team_utterance="podemos começar", guide_response=turn.speech
     )
 
     recovery = await run_comprehension_turn(
@@ -307,10 +307,10 @@ async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
         settings=_settings(),
     )
 
-    spoken = [turn.outcome.speech, recovery.outcome.speech]
+    spoken = [turn.speech, recovery.speech]
     assert FIXED_PRACTICE_INVITATION not in spoken
     assert not any("ensaiem juntos" in line for line in spoken), spoken
-    assert not recovery.outcome.used_fail_safe
+    assert not recovery.used_fail_safe
 
 
 async def test_mother_tongue_speech_is_an_ordinary_guide_turn_that_credits_nothing(
@@ -336,10 +336,10 @@ async def test_mother_tongue_speech_is_an_ordinary_guide_turn_that_credits_nothi
         settings=_settings(),
     )
 
-    assert not turn.outcome.used_fail_safe, "a sala respondia com a linha fixa G"
-    assert turn.outcome.fixed_line == ""
-    assert turn.outcome.transcript == ""
-    assert turn.outcome.room_note == (
+    assert not turn.used_fail_safe, "a sala respondia com a linha fixa G"
+    assert turn.fixed_line == ""
+    assert turn.transcript == ""
+    assert turn.room_note == (
         "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição]"
     )
 
@@ -370,7 +370,7 @@ async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_tim
             validator_prompt=VALIDATOR,
             settings=_settings(),
         )
-        spoken.append(turn.outcome)
+        spoken.append(turn)
 
     inaudible = utterances(FailSafe.INAUDIBLE, "pt")
     assert all(outcome.speech in inaudible for outcome in spoken), [o.speech for o in spoken]

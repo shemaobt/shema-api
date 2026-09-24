@@ -69,9 +69,9 @@ async def test_a_floor_not_met_changes_nothing_the_guide_says_back(
     on_the_echo = await _the_same_turn_on(db_session, echoed)
     on_the_work = await _the_same_turn_on(db_session, worked)
 
-    assert on_the_echo.outcome.speech == THE_GUIDES_ANSWER, (
+    assert on_the_echo.speech == THE_GUIDES_ANSWER, (
         "a sala trocava a fala do Guia por uma linha fixa numa passagem só ecoada"
     )
-    assert on_the_echo.outcome == on_the_work.outcome, (
+    assert on_the_echo == on_the_work, (
         "o piso decidia o que a equipe ouve — o convite de gravar era condicionado a ele"
     )

@@ -108,10 +108,8 @@ async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> 
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
-    await append_exchange(
-        db_session, session, team_utterance=utterance, guide_response=turn.outcome.speech
-    )
-    return turn.outcome.speech
+    await append_exchange(db_session, session, team_utterance=utterance, guide_response=turn.speech)
+    return turn.speech
 
 
 async def test_a_passage_worked_through_is_finished_without_a_consent_answer(

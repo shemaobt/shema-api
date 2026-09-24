@@ -134,7 +134,7 @@ The scene the ledger last places the team in: the first scene whose beads are no
 _Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):
-A field left on a session's comprehension state from when the room credited a rehearsal to the scene its invitation named. Nothing writes it any more: the room does not read the team's words for a rehearsal, and the field goes with the rest of that state.
+A legacy key some sessions still hold in their `comprehension` column, from when the room credited a rehearsal to the scene its invitation named. The room neither reads nor writes it: the column is kept exactly as it was stored (ADR 0037).
 _Avoid_: current scene, pointer, practised scene, Cena convidada
 
 **Coverage event** (`ir_coverage_events`):
