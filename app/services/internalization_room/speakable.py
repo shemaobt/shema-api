@@ -91,6 +91,109 @@ def strip_markdown(text: str) -> str:
     return _WHITESPACE_RUN.sub(" ", " ".join(lines)).strip()
 
 
+_SENTENCE_END = regex.compile(r"""[.!?…]+["”’')\]»]*(?=\s|$)""")
+_ENDS_AS_QUESTION = regex.compile(r"""[!?]*\?[!?]*["”’')\]»]*$""")
+_HEAD_TERMINAL = regex.compile(r"""[.!?…]["”’')\]»]*$""")
+_LETTER = regex.compile(r"\p{L}")
+_DIGIT = regex.compile(r"\p{N}")
+
+
+class _SpanState:
+    """Quote/parenthesis depth carried from one sentence to the next.
+
+    A span that opens in one sentence and closes in the next still has to protect its
+    inside, so the scan over each sentence shares one of these instead of starting fresh.
+    """
+
+    __slots__ = ("depth", "in_double")
+
+    def __init__(self) -> None:
+        self.depth = 0
+        self.in_double = False
+
+
+def _between_digits(s: str, start: int, end: int) -> bool:
+    before = s[:start].rstrip()[-1:]
+    after = s[end:].lstrip()[:1]
+    return bool(_DIGIT.match(before)) and bool(_DIGIT.match(after))
+
+
+def _last_separator_outside_spans(s: str, state: _SpanState) -> tuple[int, int] | None:
+    candidates: list[tuple[int, int, bool]] = []
+    for i, c in enumerate(s):
+        if c == '"':
+            state.in_double = not state.in_double
+            continue
+        if c in "“«‘(":
+            state.depth += 1
+            continue
+        apostrophe = (
+            c == "’"
+            and i > 0
+            and bool(_LETTER.match(s[i - 1]))
+            and i + 1 < len(s)
+            and bool(_LETTER.match(s[i + 1]))
+        )
+        if c in "”»)" or (c == "’" and not apostrophe):
+            state.depth = max(0, state.depth - 1)
+            continue
+        if state.depth > 0 or state.in_double:
+            continue
+        cand: tuple[int, int, bool] | None = None
+        if c in ":;":
+            cand = (i, i + 1, False)
+        elif c in "—–":
+            cand = (i, i + 1, True)
+        elif c == "-" and 0 < i < len(s) - 1 and s[i - 1] == " " and s[i + 1] == " ":
+            cand = (i - 1, i + 2, True)
+        if cand is None or _between_digits(s, cand[0], cand[1]):
+            continue
+        candidates.append(cand)
+    dashes = sum(1 for cand in candidates if cand[2])
+    found: tuple[int, int] | None = None
+    for cand in candidates:
+        if not (cand[2] and dashes >= 2):
+            found = (cand[0], cand[1])
+    return found
+
+
+def _split_question(sentence: str, state: _SpanState) -> str:
+    sep = _last_separator_outside_spans(sentence, state)  # always scanned: carries the span state
+    if sep is None or not _ENDS_AS_QUESTION.search(sentence):
+        return sentence
+    start, end = sep
+    head = sentence[:start].rstrip()
+    tail = sentence[end:].lstrip()
+    if not _LETTER.search(head) or not _LETTER.search(tail) or head.endswith(","):
+        return sentence
+    statement = head if _HEAD_TERMINAL.search(head) else f"{head}."
+    return f"{statement} {_capitalize_first_letter(tail)}"
+
+
+def standalone_questions(text: str) -> str:
+    """Every question folded into a statement's tail gets its own sentence (Marcia, 2026-09-09).
+
+    A sentence whose terminal punctuation is a question is cut at the last colon,
+    semicolon, dash or spaced hyphen outside any quote or parenthesis, so the question
+    stands alone: words never change, only a sentence boundary moves. Two or more dashes
+    in one sentence read as a parenthetical pair, so neither cuts; a colon or semicolon
+    after the pair still does. A separator between two digits is a time or a verse
+    reference, not a separator. An unbalanced double quote suppresses later cuts for the
+    rest of the turn, the safe direction; a head that is itself the question is still
+    closed with a period rather than left open — changing either is Marcia's call, not
+    this port's.
+    """
+    state = _SpanState()
+    out: list[str] = []
+    cursor = 0
+    for match in _SENTENCE_END.finditer(text):
+        end = match.end()
+        out.append(_split_question(text[cursor:end], state))
+        cursor = end
+    out.append(_split_question(text[cursor:], state))
+    return "".join(out)
+
+
 def speakable_text(text: str, language: str) -> str:
     """Replace the tetragrammaton with the customary spoken form for ``language``.
 
