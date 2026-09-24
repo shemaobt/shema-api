@@ -80,6 +80,27 @@ def resolve_pericope(pericope: str) -> str:
     return pericope
 
 
+async def necklace_coverage_state(
+    db: AsyncSession, *, project_id: str | None, pericope: str
+) -> dict[str, str]:
+    """The necklace a session on this passage opens with: the team's own coverage events
+    laid over the spine, or the spine alone for a tablet with no team to carry forward.
+
+    `create_session` seeds a session's tracker from exactly this; `prepare_opening` writes a
+    session's opening line before that session exists and needs the same reading for the
+    same reason — the Guide's ledger names what is left, not the whole passage again.
+    """
+    carried = (
+        {}
+        if project_id is None
+        else await necklace_with_touches(db, project_id=project_id, pericope=pericope)
+    )
+    return {
+        element_key: carried[element_key].status.value if element_key in carried else status
+        for element_key, status in initial_state(pericope).items()
+    }
+
+
 async def create_session(
     db: AsyncSession,
     *,
@@ -164,11 +185,6 @@ async def create_session(
     spoken = normalize(language)
     if language is not None and spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
-    carried = (
-        {}
-        if panorama or project_id is None
-        else await necklace_with_touches(db, project_id=project_id, pericope=pericope)
-    )
     session = IRSession(
         project_id=project_id,
         pericope=pericope,
@@ -179,10 +195,7 @@ async def create_session(
         # the book, and asks no retelling of them.
         coverage_state={}
         if panorama
-        else {
-            element_key: carried[element_key].status.value if element_key in carried else status
-            for element_key, status in initial_state(pericope).items()
-        },
+        else await necklace_coverage_state(db, project_id=project_id, pericope=pericope),
         kept_takes={},
         back_translation={},
         language=spoken or floor(),

@@ -1,13 +1,23 @@
 """The passage's first line, written while the team is still hearing the panorama.
 
 Every other turn waits on what the team just said. The opening does not — the team has not
-spoken, the coverage is untouched, the conversation is empty — so it is the one line that can
-be written before it is asked for. Doing that turns a five-second wait into none.
+spoken, the conversation is empty, and the coverage is whatever necklace this team already
+carries into the passage — so it is the one line that can be written before it is asked for.
+Doing that turns a five-second wait into none.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import httpx
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import router as room_router
+from app.core.database import get_db
+from app.core.exceptions import register_exception_handlers
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.prepare_opening import hand_over, take_prepared
 
@@ -122,6 +132,26 @@ IR = "/api/internalization-room"
 ROOM_KEY = "sala-de-teste"
 
 
+@asynccontextmanager
+async def _room_client(db_session: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
+    """The room's FastAPI app, wired to `db_session` in place of a real database.
+
+    Shared by the `client` fixture below and by any test that wants the room over HTTP with
+    its own doubles, so the two never drift on what "the app under test" means.
+    """
+    test_app = FastAPI()
+    test_app.include_router(room_router, prefix=IR)
+    register_exception_handlers(test_app)
+
+    async def _get_db() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The room over HTTP, with every model and every background task stood in for.
@@ -131,15 +161,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """
     from typing import Any
 
-    import httpx
-    from fastapi import FastAPI
-    from httpx import ASGITransport
-
-    from app.api.internalization_room import router as room_router
     from app.api.internalization_room import sessions as sessions_api
     from app.core.config import get_settings
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room.run_turn import TurnOutcome
     from app.services.platform.tts import SynthesizedSpeech
 
@@ -169,16 +192,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sessions_api, "prepare_opening", _nothing)
     monkeypatch.setattr(sessions_api, "settle_coverage", _nothing)
 
-    test_app = FastAPI()
-    test_app.include_router(room_router, prefix=IR)
-    register_exception_handlers(test_app)
-
-    async def _get_db():
-        yield db_session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with _room_client(db_session) as c:
         yield c
 
 
@@ -346,4 +360,67 @@ async def test_the_ready_line_is_classified_once_and_its_replay_still_promises_i
     )
     assert again.json()["classification_pending"] is True, (
         "o replay do turn_id guardava a promessa antiga, e o tablet que reenviou não esperava"
+    )
+
+
+async def test_the_prepared_opening_renders_the_teams_inherited_necklace(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A returning team's prepared opening wrote its ledger from a literal `{}`, never from
+    the necklace this same team already carries — so the Guide's first line always read
+    "nothing yet — the session is just beginning", even for a team most of the way through.
+    """
+    from types import SimpleNamespace
+    from typing import Any
+
+    from app.api.internalization_room import _deps
+    from app.services.internalization_room import prepare_opening as prepare_opening_module
+    from app.services.internalization_room import sessions as room
+    from app.services.internalization_room.canon.elements import element_keys
+    from app.services.internalization_room.coverage import CoverageStatus
+    from app.services.internalization_room.prompt_blocks import coverage_status_block
+    from app.services.internalization_room.run_turn import TurnOutcome
+    from app.services.platform.tts import SynthesizedSpeech
+    from tests.baker import make_language, make_project
+
+    pericope = "P01"
+    language = await make_language(db_session, name="Ledger herdado", code="hld")
+    team = await make_project(db_session, language.id, name="Ledger herdado")
+    keys = element_keys(pericope)
+    tuesday = await room.create_session(db_session, pericope=pericope, project_id=team.id)
+    await room.apply_coverage(db_session, tuesday.id, {keys[0]: CoverageStatus.ENGAGED.value})
+
+    async def _authenticate(*_: Any, **__: Any) -> Any:
+        return SimpleNamespace(id="tablet", project_id=team.id)
+
+    monkeypatch.setattr(_deps, "authenticate_device", _authenticate)
+
+    captured: dict[str, Any] = {}
+
+    async def _run_turn(**kwargs: Any) -> TurnOutcome:
+        captured.update(kwargs)
+        return TurnOutcome(speech="Vamos ficar no começo.", transcript="")
+
+    async def _speech(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
+        return SynthesizedSpeech(
+            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/x.mp3"
+        ), False
+
+    monkeypatch.setattr(prepare_opening_module, "run_turn", _run_turn)
+    monkeypatch.setattr(prepare_opening_module, "synthesize_facilitator_speech", _speech)
+
+    async with _room_client(db_session) as client:
+        created = await client.post(
+            f"{IR}/sessions",
+            headers={"X-Device-Credential": "tablet"},
+            json={"pericope": "OV"},
+        )
+    assert created.status_code == 200, created.text[:200]
+
+    assert captured["coverage_state"] == tuesday.coverage_state, (
+        "a abertura preparada montava o LEDGER a partir de um {} literal, ignorando o colar "
+        "que essa mesma equipe já carrega para a passagem"
+    )
+    assert "WORKED WITH BY THE TEAM (engaged):" in coverage_status_block(
+        captured["coverage_state"], pericope
     )
