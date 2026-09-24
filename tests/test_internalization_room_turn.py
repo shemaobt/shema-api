@@ -111,6 +111,23 @@ def test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it() -> None:
     assert "An invitation makes no judgment" in judgment
 
 
+def test_the_rehearsal_rule_s_example_is_not_a_fixed_portuguese_sentence() -> None:
+    """Sessions bc9c71c2 and fbc77ff8: one of them lifted rule 3's worked example whole, in
+    Portuguese, into an English session, and the Validator killed the opening for it.
+
+    The example was a bare Portuguese sentence with "em português" inside it and no marker
+    saying it was Portuguese, sitting next to a {{SESSION_LANGUAGE}} slot. It is the
+    session's language now.
+    """
+    guide = render(GUIDE, SESSION_LANGUAGE="English", MEANING_MAP="", COVERAGE_STATUS="")
+    rule = guide[
+        guide.index("Open the part, then — once they have it — send them to REHEARSE it") :
+    ]
+    rule = rule[: rule.index("\n")]
+
+    assert "venham me contar" not in rule
+
+
 def test_the_turn_after_a_finished_practice_asks_about_the_report_not_the_rehearsal() -> None:
     """Sessions dceeccde, 1829e6f6, 3d896817: three third turns, three fail-safes.
 
