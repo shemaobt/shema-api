@@ -8,6 +8,7 @@ line and the platform touched that shape until this module ran ahead of the TTS 
 from __future__ import annotations
 
 import pytest
+import regex
 
 from app.services.internalization_room.speakable import (
     speakable_text,
@@ -492,3 +493,93 @@ def test_speakable_text_marks_and_questions_run_in_spanish_even_though_yhwh_does
     text: str, expected: str
 ) -> None:
     assert speakable_text(text, "es") == expected
+
+
+def _words(text: str) -> str:
+    return " ".join(sorted(match.group(0).lower() for match in regex.finditer(r"\p{L}+", text)))
+
+
+def _word_order(text: str) -> str:
+    return " ".join(match.group(0).lower() for match in regex.finditer(r"\p{L}+", text))
+
+
+_INVARIANTS_CORPUS = [
+    pytest.param(_TURNO_2, id="turno-2"),
+    pytest.param(_TURNO_8, id="turno-8"),
+    pytest.param(_TURNO_10, id="turno-10"),
+    pytest.param(_TURNO_12, id="turno-12"),
+    pytest.param(_TURNO_13, id="turno-13"),
+    pytest.param(
+        "Quando estiverem prontos, a pergunta segue de pé: o que vem à cabeça de vocês "
+        'quando ouvem o nome "Rute"?',
+        id="folded-question-with-a-quoted-name",
+    ),
+    pytest.param(
+        'Noemi pergunta: "onde você trabalhou hoje?"',
+        id="reported-speech-in-quotes",
+    ),
+    pytest.param(
+        "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
+        id="bold-and-italic",
+    ),
+    pytest.param("- o pai morre\n- os dois filhos casam", id="bullet-list"),
+    pytest.param(
+        "## Segunda parte\n* a fome\n1. a perda — o que vocês sentem?\n\n"
+        "__Noemi__ volta para _Belém_ com `Rute`; e [Boaz](1) — onde está?",
+        id="heading-bullet-code-link-and-a-folded-question-together",
+    ),
+    pytest.param(
+        "Primeira parte: a fome; segunda parte — a perda: o que vocês sentem?",
+        id="several-separators",
+    ),
+    pytest.param("um * só e # aqui e C# fica snake_case_name", id="stray-marks-and-c-sharp"),
+    pytest.param(
+        "Vocês chegaram às 10:30 da manhã? Lembram de Rute 1:5, onde Noemi fica só? "
+        "Placar 2:1 — quem ganhou?",
+        id="times-and-verse-references",
+    ),
+    pytest.param(
+        "O que Noemi — a sogra — sentiu? Noemi — a sogra — pergunta: onde você trabalhou? "
+        "Pensem, — o que sentiram?",
+        id="dash-pairs-and-a-comma-headed-dash",
+    ),
+    pytest.param(
+        "Naomi asks: “where’s Boaz: here or there?” Naomi’s question: where did you work? "
+        "Ele perguntou ‘onde: aqui ou lá?’",
+        id="curly-quotes-apostrophes-and-a-straight-single-quote",
+    ),
+    pytest.param(
+        'Ele disse: "fique no meu campo. Aqui: você está segura?" Vocês viram isso: ela ficou?!',
+        id="a-span-crossing-a-sentence-end-and-a-question-mark-exclamation",
+    ),
+    pytest.param(
+        "Primeira parte.\n---\nSegunda parte: o que vocês sentem?",
+        id="horizontal-rule-and-a-folded-question",
+    ),
+]
+
+
+@pytest.mark.parametrize("text", _INVARIANTS_CORPUS)
+def test_the_transform_is_idempotent_and_never_drops_gains_or_reorders_a_word(
+    text: str,
+) -> None:
+    """Over every case above: applying a step twice is applying it once, and a word survives.
+
+    Neither step ever drops, reorders or invents a word — only formatting marks go and a
+    sentence boundary can move. speakable_text runs "pt" throughout because idempotence and
+    word-preservation are properties of the transform, not of the divine-name table.
+    """
+    marks_off = strip_markdown(text)
+    questions_split = standalone_questions(marks_off)
+    voiced = speakable_text(text, "pt")
+
+    assert strip_markdown(marks_off) == marks_off, "strip_markdown is not idempotent"
+    assert standalone_questions(questions_split) == questions_split, (
+        "standalone_questions is not idempotent"
+    )
+    assert speakable_text(voiced, "pt") == voiced, "speakable_text is not idempotent"
+    assert _words(marks_off) == _words(text), "strip_markdown dropped or invented a word"
+    assert _words(questions_split) == _words(marks_off), (
+        "standalone_questions dropped or invented a word"
+    )
+    assert _word_order(voiced) == _word_order(text), "word order was not preserved end to end"
