@@ -146,8 +146,8 @@ def _the_object_in(text: str) -> str:
 def _parse(raw: str) -> dict[str, list[str]]:
     """Bucket the classifier's decisions into the two lists `merge` advances.
 
-    The reply's shape belongs to `prompts/classifier_system_prompt.md`, which asks for a
-    `decisions` array. Reading two top-level status keys instead left both buckets empty on
+    The reply's shape belongs to her `prompts/vendor/classifier_system_prompt.md`, which asks
+    for a `decisions` array. Reading two top-level status keys instead left both buckets empty on
     every well-formed reply, so no bead ever moved and no session ever reached done.
 
     The table carries one slot per status the prompt can send, and it is the same table on

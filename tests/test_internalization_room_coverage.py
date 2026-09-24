@@ -352,16 +352,18 @@ def test_a_tracker_written_before_the_fourth_state_reads_the_same() -> None:
 
 
 def test_the_classifier_prompt_is_her_three_status_text() -> None:
-    """Every line between her markers, and nothing of ours.
+    """Every line between her markers, trimmed the way her loader trims them, and nothing of ours.
 
     The fourth status was ours: a band for the echo, and a floor lowered to meet it. What
     is served now is the vendored copy read back between `=== BEGIN SYSTEM PROMPT ===` and
     `=== END SYSTEM PROMPT ===`, so a word of ours creeping back in is a diff against her
-    file, not a judgment call.
+    file, not a judgment call. Her `extractPromptBody` trims the body, so the newline the
+    hand-kept copy ended on is not hers; the cache break before `{{COVERAGE_ELEMENTS}}` sits
+    mid-prompt and does not move with it.
     """
     vendored = (_VENDOR / "classifier_system_prompt.md").read_text(encoding="utf-8")
     hers = vendored.split("`=== BEGIN SYSTEM PROMPT ===`", 1)[1]
-    hers = hers.split("`=== END SYSTEM PROMPT ===`", 1)[0].strip("\n") + "\n"
+    hers = hers.split("`=== END SYSTEM PROMPT ===`", 1)[0].strip()
 
     assert default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"] == hers
 
