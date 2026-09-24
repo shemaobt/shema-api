@@ -147,3 +147,121 @@ async def test_a_confident_portuguese_word_the_recognizer_spelled_uncertainly_is
     )
     assert outcome.fixed_line == ""
     assert outcome.used_fail_safe is False
+
+
+P06_NOTE = (
+    "[A equipe falou na língua materna por cerca de 116 segundos; sem transcrição — nenhuma "
+    "palavra chegou até você.]"
+)
+P06_SCRIBE = {"text": "", "language_code": "eng", "language_probability": 0.65}
+
+
+async def test_two_minutes_of_rehearsal_scribe_returned_no_words_for_reach_the_guide_as_her_note(
+    db_session: AsyncSession, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+
+    outcome = await _the_room_hears(db_session, _take(116))
+
+    assert agent.guide_inputs == [P06_NOTE], (
+        "a equipe que ensaiou dois minutos na língua dela ouvia 'podem repetir?' (P06, turno 21)"
+    )
+    assert outcome.fixed_line == ""
+    assert outcome.room_note == P06_NOTE
+
+
+async def test_a_short_take_scribe_returned_no_words_for_is_line_d_with_no_model_called(
+    db_session: AsyncSession, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+
+    outcome = await _the_room_hears(db_session, _take(6))
+
+    assert outcome.fixed_line == "D0"
+    assert agent.calls == []
+
+
+async def test_a_long_take_scribe_heard_only_as_silence_is_her_note(
+    db_session: AsyncSession, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scribe_answers(
+        monkeypatch,
+        200,
+        {"text": "[silence]", "language_code": "por", "language_probability": 0.9},
+    )
+
+    outcome = await _the_room_hears(db_session, _take(25))
+
+    assert outcome.room_note == (
+        "[A equipe falou na língua materna por cerca de 25 segundos; sem transcrição — nenhuma "
+        "palavra chegou até você.]"
+    ), "uma tomada longa que o Scribe só descreveu como silêncio virava a linha D"
+
+
+async def test_a_long_take_scribe_refused_is_line_d_never_the_mother_tongue(
+    db_session: AsyncSession, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scribe_answers(monkeypatch, 422, {"detail": "invalid audio"})
+
+    outcome = await _the_room_hears(db_session, _take(30))
+
+    assert outcome.fixed_line == "D0"
+    assert agent.calls == []
+
+
+async def test_a_wordless_take_nobody_could_measure_is_line_d(
+    db_session: AsyncSession, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+
+    outcome = await _the_room_hears(db_session, b"isto nao e audio nenhum" * 4000)
+
+    assert outcome.fixed_line == "D0"
+    assert agent.calls == []
+
+
+async def test_only_a_wordless_take_is_measured_never_one_in_the_sessions_language(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services.internalization_room import hearing
+
+    the_agent_answers(
+        monkeypatch,
+        FakeAgent(verdicts=[{"verdict": "pass", "issues": []}] * 2, drafts=[WELCOME] * 2),
+    )
+    measured: list[int] = []
+    real_measure = hearing.measure_ms
+
+    async def _measure(audio: bytes) -> int | None:
+        measured.append(len(audio))
+        return await real_measure(audio)
+
+    monkeypatch.setattr(hearing, "measure_ms", _measure)
+    _scribe_answers(
+        monkeypatch,
+        200,
+        {"text": "Entendemos tudo.", "language_code": "por", "language_probability": 0.9},
+    )
+    await _the_room_hears(db_session, _take(6))
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+    await _the_room_hears(db_session, _take(21))
+
+    assert measured == [len(_take(21))], (
+        "o ffprobe rodava em toda tomada, ou nunca na que chegou sem palavras"
+    )
+
+
+async def test_a_telling_back_scribe_returned_no_words_for_is_still_an_empty_telling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.internalization_room.hearing import heard
+
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+
+    told = await heard(
+        _take(116),
+        filename="take.wav",
+        settings=Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="k"),
+    )
+
+    assert told == "", "o 200 vazio escapava do heard() da retro e virava um 400 para o app"

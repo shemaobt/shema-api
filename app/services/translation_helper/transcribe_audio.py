@@ -82,6 +82,10 @@ def _make_client() -> httpx.AsyncClient:
     return _DEFAULT_CLIENT
 
 
+class EmptyTranscription(ValidationError):
+    pass
+
+
 class TranscriptionResult:
     """One transcription plus the provider metadata some callers need.
 
@@ -152,7 +156,7 @@ async def transcribe_audio_detailed(
     payload = response.json()
     text = (payload.get("text") or "").strip()
     if not text:
-        raise ValidationError("Transcription returned empty text")
+        raise EmptyTranscription("Transcription returned empty text")
     probability = payload.get("language_probability")
     return TranscriptionResult(
         text=text,

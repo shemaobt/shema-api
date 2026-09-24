@@ -10,6 +10,8 @@ from app.core.exceptions import ValidationError
 from app.services.internalization_room.languages import FLOOR
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
+    EmptyTranscription,
+    TranscriptionResult,
     transcribe_audio,
     transcribe_audio_detailed,
 )
@@ -21,6 +23,8 @@ _BRIDGE_LANGUAGE_CODES = {
     "en": {"en", "eng"},
     "es": {"es", "spa"},
 }
+
+LONG_WORDLESS_TAKE_MS = 20_000
 
 _BRACKETED = re.compile(r"\[[^\]]{0,60}\]|[♪♫]")
 _ONLY_PARENTHETICAL = re.compile(r"^\s*\([^)]{0,60}\)\s*$")
@@ -51,8 +55,9 @@ class HeardSpeech(BaseModel):
     ``mother_tongue`` is her ``decideTeamUtterance`` (``src/audio/teamUtterance.ts`` at
     a3f3c69): words the recognizer heard in a language other than the one *this session* is
     run in, which is what ``bridge_language`` carries, or in the session's own language with a
-    probability under ``internalization_room_same_language_min_prob``. A session language the
-    room does not know is never "other".
+    probability under ``internalization_room_same_language_min_prob``; or a take with no words
+    at all that lasted ``LONG_WORDLESS_TAKE_MS`` or more. A session language the room does not
+    know is never "other".
     """
 
     text: str = ""
@@ -60,9 +65,12 @@ class HeardSpeech(BaseModel):
     language_code: str | None = None
     language_probability: float | None = None
     take_ms: int | None = None
+    wordless_long_take: bool = False
 
     @property
     def mother_tongue(self) -> bool:
+        if self.wordless_long_take:
+            return True
         detected = (self.language_code or "").strip().lower().split("-")[0]
         spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language)
         if not self.text.strip() or not detected or spoken is None:
@@ -120,6 +128,8 @@ async def heard_speech(
         result = await transcribe_audio_detailed(
             audio, filename=filename, mime_type=mime_type, settings=settings
         )
+    except EmptyTranscription:
+        result = TranscriptionResult(text="")
     except ValidationError as failure:
         logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
         return HeardSpeech(bridge_language=language)
@@ -129,6 +139,11 @@ async def heard_speech(
         language_code=result.language_code,
         language_probability=result.language_probability,
     )
-    if speech.mother_tongue:
+    if not speech.text:
+        take_ms = await measure_ms(audio)
+        if take_ms is not None and take_ms >= LONG_WORDLESS_TAKE_MS:
+            speech.wordless_long_take = True
+            speech.take_ms = take_ms
+    elif speech.mother_tongue:
         speech.take_ms = await measure_ms(audio)
     return speech
