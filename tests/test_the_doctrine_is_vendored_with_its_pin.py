@@ -67,6 +67,37 @@ def test_the_pin_names_her_main_not_the_pilot_branch_she_left() -> None:
     )
 
 
+HER_UNVENDORED_PROMPTS = {
+    "backtranslation_analysis_system_prompt.md": (
+        "82cf8334b1437f50884fc5cd8933b06ed06b01e7fcb085cbb21479e9e48ec8bd"
+    ),
+    "backtranslation_verdict_system_prompt.md": (
+        "265dcbc5b25acefd574739b0f71e3548e8f6e9826a6de3b08728dbb884258ba5"
+    ),
+    "draft_check_system_prompt.md": (
+        "7bbdbd8a7be38f0f5a2a0356d9ea2c82c1c9154153fed9ca2dfce663862dcf74"
+    ),
+}
+
+
+def test_the_three_prompts_of_hers_the_room_never_copied_are_vendored_at_the_pin() -> None:
+    """Her BT analyst, her BT verdict and her draft check are loaded by her loader too.
+
+    A prompt of hers that is not vendored has no bytes here to diff against, so what the room
+    says in its place cannot be audited against her. The digests were read off her git
+    objects at the pinned commit, not off the vendored copy.
+    """
+    pin = read_pin()
+
+    for name, hers in HER_UNVENDORED_PROMPTS.items():
+        vendored = f"app/services/internalization_room/prompts/vendor/{name}"
+        assert VENDORED.get(f"prompts/{name}") == vendored, f"{name} is not vendored"
+        assert pin.digests.get(vendored) == hers, f"the pin does not record her {name}"
+        assert digest((REPO_ROOT / vendored).read_bytes()) == hers, (
+            f"{name}: the vendored bytes are not hers at the pin"
+        )
+
+
 def test_her_guide_prompt_is_vendored_beside_ours_and_not_over_it() -> None:
     """Ours stays where it is, and hers lands next to it, so the difference is one command.
 

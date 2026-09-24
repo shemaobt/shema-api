@@ -57,6 +57,15 @@ VENDORED = {
     "prompts/book_overview_system_prompt.md": (
         "app/services/internalization_room/prompts/vendor/book_overview_system_prompt.md"
     ),
+    "prompts/backtranslation_analysis_system_prompt.md": (
+        "app/services/internalization_room/prompts/vendor/backtranslation_analysis_system_prompt.md"
+    ),
+    "prompts/backtranslation_verdict_system_prompt.md": (
+        "app/services/internalization_room/prompts/vendor/backtranslation_verdict_system_prompt.md"
+    ),
+    "prompts/draft_check_system_prompt.md": (
+        "app/services/internalization_room/prompts/vendor/draft_check_system_prompt.md"
+    ),
     "prompts/fail_safe_utterances.md": (
         "app/services/internalization_room/prompts/vendor/fail_safe_utterances.md"
     ),
