@@ -102,6 +102,17 @@ MARCIAS_DO_NOT_DECIDE = "(a do_not_decide item), say so in the note"
 #: Her item 3. A note about a filled silence names the silence, never the withheld content —
 #: naming it would hand the team the very claim the passage keeps.
 MARCIAS_MARKED_SILENCE = "your notes must never name the withheld content itself"
+#: ENG-1075: her ruling of 2026-09-14, verbatim from her main at a3f3c69 (unchanged since
+#: 17ba6fc, 15/09). Item 2 had no exception for a concept named by the map with an abstract
+#: noun and told back as an action or a clause — a team that told "bondade fiel" as "foram
+#: boas com eles e nunca os abandonaram" could be read as an addition or a missing.
+MARCIAS_MEANING_NOT_FORM = (
+    "**Not an addition (Marcia's ruling 2026-09-14):** a concept the map names with an "
+    "abstract noun, told as an action or a clause inside the map's gloss — "
+    '*"bondade fiel"* told as *"foram boas com eles e nunca os abandonaram"* — is faithful '
+    'and is no finding of any kind (not `"missing"` either). An addition is a new fact: '
+    '*"porque tinham medo"* is a cause the map does not give.'
+)
 
 
 def _addition_on(chunk: int, segment_id: str | None, note: str = "o pedido das noras") -> Finding:
@@ -1527,6 +1538,27 @@ def test_marcias_items_keep_the_relation_rule_and_the_marked_silence() -> None:
     assert hers.count(MARCIAS_DO_NOT_DECIDE) == 1, "o item 2 perdeu a colisão com do_not_decide"
     assert hers.count(MARCIAS_MARKED_SILENCE) == 1, (
         "o item 3 perdeu a proibição de nomear o conteúdo guardado"
+    )
+
+
+def test_the_analyst_carries_marcias_meaning_not_form_ruling_between_items_two_and_three() -> None:
+    """ENG-1075: item 2's own definition of *addition* has no exception for a concept the map
+    names with an abstract noun and the team tells back as an action or a clause.
+
+    A team that translates "bondade fiel" as "foram boas com eles e nunca os abandonaram" can
+    be read as an `addition` or a `missing` and sent back to re-record a telling that already
+    had the story right. Scoped to the stretch between the end of item 2 and the start of item
+    3, because her ruling belongs to *Added* and nowhere else — pasted after item 3 it would
+    read as a case of a marked silence instead.
+    """
+    between = re.search(r"relation itself\.\n(.*?)\n3\. \*\*Marked silences", ANALYST, re.DOTALL)
+
+    assert between, "não há texto entre o fim do item 2 e o item 3 no prompt do analista"
+    assert _one_line(between.group(1)).strip() == MARCIAS_MEANING_NOT_FORM, (
+        "a ruling de 14/09 da Marcia não está, verbatim, entre os itens 2 e 3"
+    )
+    assert _one_line(ANALYST).count(MARCIAS_MEANING_NOT_FORM) == 1, (
+        "a ruling de 14/09 da Marcia não está no prompt do analista exatamente uma vez"
     )
 
 
