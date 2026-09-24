@@ -22,7 +22,13 @@ from tests.turn_harness import GUIDE, VALIDATOR, FakeAgent, P, settings, the_age
 SEAM = "/api/internalization-room/text-seam"
 
 TERENA = "koeti yoko vitukeovo enepone itukovo"
-NOTE_PT_40 = "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição]"
+NOTE_PT_40 = (
+    "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
+    "palavra chegou até você.]"
+)
+NOTE_PT_NO_LENGTH = (
+    "[A equipe falou na língua materna; sem transcrição — nenhuma palavra chegou até você.]"
+)
 WELCOME = "Que bom que vocês ensaiaram. Me contem em português o que vocês disseram."
 
 
@@ -78,13 +84,13 @@ async def test_a_take_nobody_could_measure_is_still_a_rehearsal_only_without_its
 
     outcome = await _speak(session, mother_tongue=True, take_ms=None, transcript=TERENA)
 
-    assert agent.guide_inputs == ["[A equipe falou na língua materna; sem transcrição]"], (
+    assert agent.guide_inputs == [NOTE_PT_NO_LENGTH], (
         "a nota dizia 'por cerca de 0 segundos' quando o ffprobe não leu o áudio"
     )
-    assert outcome.room_note == "[A equipe falou na língua materna; sem transcrição]"
+    assert outcome.room_note == NOTE_PT_NO_LENGTH
 
 
-async def test_an_english_room_hands_the_guide_the_note_in_english(
+async def test_an_english_room_hands_the_guide_her_note_in_english_rounded_as_she_rounds(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     agent = the_agent_answers(
@@ -96,11 +102,15 @@ async def test_an_english_room_hands_the_guide_the_note_in_english(
     )
     session = await create_session(db_session, language="en", pericope=P)
 
-    await _speak(session, mother_tongue=True, take_ms=41_000, transcript=TERENA)
+    await _speak(session, mother_tongue=True, take_ms=40_500, transcript=TERENA)
 
     assert agent.guide_inputs == [
-        "[The team spoke in their own language for about 41 seconds; no transcription]"
-    ], "a sala em inglês entregava a nota em português e o Guia misturava as línguas"
+        "[The team spoke in their own language for about 41 seconds; no transcription — no "
+        "words reached you.]"
+    ], (
+        "a nota em inglês parava em 'no transcription', e 40,5 s arredondava para 40 onde o "
+        "Math.round dela diz 41"
+    )
 
 
 async def test_only_a_take_in_another_language_is_measured_for_its_length(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from typing import Any
 
@@ -16,12 +17,15 @@ from app.services.internalization_room.run_turn import (
 
 
 def mother_tongue_note(language_code: str, take_ms: int | None) -> str:
-    seconds = round(take_ms / 1000) if take_ms else 0
+    seconds = math.floor(take_ms / 1000 + 0.5) if take_ms else 0
     if language_code == "pt":
         held = f" por cerca de {seconds} segundos" if seconds else ""
-        return f"[A equipe falou na língua materna{held}; sem transcrição]"
+        return (
+            f"[A equipe falou na língua materna{held}; sem transcrição — nenhuma palavra "
+            "chegou até você.]"
+        )
     held = f" for about {seconds} seconds" if seconds else ""
-    return f"[The team spoke in their own language{held}; no transcription]"
+    return f"[The team spoke in their own language{held}; no transcription — no words reached you.]"
 
 
 async def speak_back(

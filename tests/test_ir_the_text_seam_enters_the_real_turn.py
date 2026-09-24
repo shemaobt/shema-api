@@ -246,7 +246,7 @@ HER_RUNNER_NOTE = (
     "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
     "palavra chegou até você.]"
 )
-MOTHER_TONGUE_NOTE = "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição]"
+MOTHER_TONGUE_NOTE = HER_RUNNER_NOTE
 
 
 async def test_mother_tongue_enters_as_the_fact_of_a_forty_second_rehearsal(

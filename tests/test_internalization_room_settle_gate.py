@@ -31,7 +31,10 @@ TEAM = "A fome grande fez a família se mudar."
 FAIL_SAFE = "Tem bastante coisa aqui. Vamos com calma e ficar nesta cena."
 OPENING = "Vamos ficar no começo: uma família sai de Belém por falta de comida."
 INAUDIBLE = "Não consegui ouvir. Podem repetir mais perto do microfone?"
-MOTHER_TONGUE_NOTE = "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição]"
+MOTHER_TONGUE_NOTE = (
+    "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição — nenhuma "
+    "palavra chegou até você.]"
+)
 
 
 @dataclass

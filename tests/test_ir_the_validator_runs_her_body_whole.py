@@ -50,7 +50,10 @@ TEAM_REPORTED = (
 )
 DRAFT = "Vocês disseram que a Rute casou com o Malom. Isso a história não conta."
 PORTUGUESE = "Brazilian Portuguese"
-NOTE_PT_40 = "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição]"
+NOTE_PT_40 = (
+    "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
+    "palavra chegou até você.]"
+)
 
 
 def _her_body() -> str:

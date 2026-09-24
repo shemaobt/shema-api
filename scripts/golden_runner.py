@@ -58,8 +58,9 @@ from typing import Any
 
 import httpx
 
-from app.api.internalization_room.text_seam import _collecting_model_calls
+from app.api.internalization_room.text_seam import _collecting_model_calls, _language_code
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
+from app.services.internalization_room.turn.speech import mother_tongue_note
 from scripts.golden_checks import mechanical_checks, unported_checks
 from scripts.sync_doctrine import read_pin
 
@@ -218,24 +219,12 @@ def opening_note(pericope_id: str, language: str) -> str:
     )
 
 
-def mother_tongue_note(language: str, seconds: int) -> str:
-    if _portuguese(language):
-        return (
-            f"[A equipe falou na língua materna por cerca de {seconds} segundos; sem "
-            "transcrição — nenhuma palavra chegou até você.]"
-        )
-    return (
-        f"[The team spoke in their own language for about {seconds} seconds; no "
-        "transcription — no words reached you.]"
-    )
-
-
 def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, Any]:
     body: dict[str, Any] = {"sessionId": session_id}
     if turn.kickoff:
         body["kickoff"] = True
     elif turn.motherTongue:
-        body["text"] = mother_tongue_note(script.language, turn.motherTongue)
+        body["text"] = mother_tongue_note(_language_code(script.language), turn.motherTongue * 1000)
         body["motherTongue"] = turn.motherTongue
     else:
         body["text"] = turn.team or ""

@@ -340,7 +340,8 @@ async def test_mother_tongue_speech_is_an_ordinary_guide_turn_that_credits_nothi
     assert turn.fixed_line == ""
     assert turn.transcript == ""
     assert turn.room_note == (
-        "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição]"
+        "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição — nenhuma "
+        "palavra chegou até você.]"
     )
 
 
