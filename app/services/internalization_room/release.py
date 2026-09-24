@@ -6,12 +6,11 @@ findings and playback report, the questions the team raised, and every supersede
 clearly marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
-partial artifact — because a package missing the coverage floor, the rehearsal audio, the
-telling-back, the analyst's reading of it, a stretch nobody told back or a recording nobody
-told back would look downstream exactly like a finished one; so would one composed for a
-panorama, which is not a draft of a passage at all. Those seven are missing material, and
-nothing overrules them: there is nothing in a rehearsal nobody recorded for anybody to
-overrule.
+partial artifact — because a package missing the rehearsal audio, the telling-back, the
+analyst's reading of it, a stretch nobody told back or a recording nobody told back would
+look downstream exactly like a finished one; so would one composed for a panorama, which is
+not a draft of a passage at all. Those six are missing material, and nothing overrules them:
+there is nothing in a rehearsal nobody recorded for anybody to overrule.
 
 The other two are Marcia's gate — an open finding the telling-back still carries, and a part
 of the rehearsal the team never heard through — and they are a dispute rather than a hole.
@@ -52,7 +51,6 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import floor_met
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
@@ -427,8 +425,6 @@ async def compose_internalization_release(
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
     parts = current_parts(takes)
 
-    if not floor_met(session.coverage_state or {}, session.pericope):
-        blockers.append("coverage_floor_not_met")
     if not ensaio_takes:
         blockers.append("no_rehearsal_audio")
     if not stretches:
@@ -668,11 +664,8 @@ async def approve_release(
     one forcing, so compare-first never becomes a force the team can reach.
 
     It answers an unchanged packet with its release whatever stands, and not only over the
-    finding somebody overruled. ``coverage_floor_not_met`` is the case that shows the reach:
-    it is read off ``session.coverage_state``, which is outside the hashed content, so a
-    session whose floor fell after its release was written still composes the same packet and
-    is still answered with that release. That is the rule ADR 0014 wrote — the number says
-    which content was approved, and this content was — and it is wider than the force it was
+    finding somebody overruled. That is the rule ADR 0014 wrote — the number says which
+    content was approved, and this content was — and it is wider than the force it was
     reopened for.
 
     The number is one past the last, which two approvals arriving together can both read.

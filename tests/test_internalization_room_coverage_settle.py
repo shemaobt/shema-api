@@ -159,34 +159,6 @@ async def test_a_passage_settled_from_decisions_closes_the_session(
     )
 
 
-async def test_a_settled_passage_drops_the_coverage_blocker_from_the_release(
-    db_session: AsyncSession, patch_classifier
-) -> None:
-    patch_classifier(_whole_passage_engaged(P))
-    session = await service.create_session(db_session, pericope=P)
-
-    settled = await classify_coverage(
-        coverage_state=initial_state(P),
-        team_utterance="a equipe trabalhou a passagem inteira",
-        guide_response="o Guia acompanhou",
-        classifier_prompt=CLASSIFIER,
-        pericope_num=P,
-        settings=_settings(),
-    )
-    session = await service.apply_coverage(db_session, session.id, settled)
-
-    blockers: list[str] = []
-    try:
-        await build_internalization_release(db_session, session)
-    except InternalizationReleaseBlocked as blocked:
-        blockers = blocked.blockers
-
-    assert "coverage_floor_not_met" not in blockers, (
-        "o colar ficava vazio por mais que a equipe trabalhasse, "
-        "e a soltura respondia piso não atingido para sempre"
-    )
-
-
 async def test_a_classifier_still_answering_the_retired_status_moves_nothing(
     db_session: AsyncSession, patch_classifier
 ) -> None:
@@ -215,7 +187,7 @@ async def test_a_classifier_still_answering_the_retired_status_moves_nothing(
     )
 
 
-async def test_a_passage_the_team_only_echoed_keeps_the_coverage_blocker_on_the_release(
+async def test_a_passage_the_team_only_echoed_is_not_refused_its_release_for_the_floor(
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_partially_engaged(P))
@@ -237,8 +209,8 @@ async def test_a_passage_the_team_only_echoed_keeps_the_coverage_blocker_on_the_
     except InternalizationReleaseBlocked as blocked:
         blockers = blocked.blockers
 
-    assert "coverage_floor_not_met" in blockers, (
-        "a soltura deixava de nomear a cobertura numa passagem que a equipe só ecoou"
+    assert "coverage_floor_not_met" not in blockers, (
+        "a soltura recusava pelo piso de cobertura, um portão que a aprovação dela nunca teve"
     )
 
 
