@@ -20,10 +20,13 @@ while the bytes and the canon pin the judge's map comes from are the ones her br
 
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,
-when she has ruled. Point it at a checkout of her `main`.
+when she has ruled. Point it at a scratch clone checked out at the commit of her `main` being
+pinned, never at a working clone: the pin records whatever `HEAD` the source is at. A row of
+`prompt_adaptations` whose sentence of hers moved then fails `--check`, and goes back to her.
 
     uv run python scripts/sync_doctrine.py --check             # offline; CI runs this
-    uv run python scripts/sync_doctrine.py --sync --from ~/src/Tripod-Internalization
+    git clone ~/src/Tripod-Internalization /tmp/her && git -C /tmp/her checkout <commit>
+    uv run python scripts/sync_doctrine.py --sync --from /tmp/her
 """
 
 from __future__ import annotations
