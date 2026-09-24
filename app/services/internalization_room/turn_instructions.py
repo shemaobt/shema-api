@@ -50,6 +50,19 @@ OPENING_INSTRUCTION = (
     "waits until they show they have the part."
 )
 
+
+def opening_note(book: str, language_code: str) -> str:
+    if language_code == "pt":
+        return (
+            f"[A sessão acabou de começar. A equipe abriu o Panorama do Livro de {book} e está "
+            "à mesa, pronta para conversar. Fale primeiro.]"
+        )
+    return (
+        f"[The session has just begun. The team opened the Book Panorama of {book} and is at "
+        "the table, ready to talk. Speak first.]"
+    )
+
+
 OPENING_MOVEMENT_INSTRUCTION = (
     "Write this opening in two movements, separated by a line containing only "
     f"{OPENING_MOVEMENT_MARK} and nothing else. Before the line: the whole of the "

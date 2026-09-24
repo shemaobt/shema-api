@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -7,7 +8,7 @@ from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_at_end
 from app.services.internalization_room.render import render
-from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
+from app.services.internalization_room.turn_instructions import opening_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
@@ -43,7 +44,8 @@ async def run_panorama_turn(
             fixed_line=line,
         )
 
-    return await _voiced_after_validation(
+    note = opening_note(book, language_code)
+    outcome = await _voiced_after_validation(
         speaker_system=render(
             cache_break_at_end(panorama_prompt),
             BOOK_NAME=book,
@@ -57,8 +59,9 @@ async def run_panorama_turn(
         session_language=session_language,
         language_code=language_code,
         opening=opening,
-        opening_instruction=OPENING_INSTRUCTION,
+        opening_instruction=note,
         settings=cfg,
         session_id=session_id,
         ask_for_movements=ask_for_movements,
     )
+    return replace(outcome, room_note=note) if opening else outcome

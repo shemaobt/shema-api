@@ -203,7 +203,15 @@ async def test_the_opening_prepared_behind_the_panorama_is_judged_the_same_way(
 
 @pytest.mark.parametrize(
     ("opening", "transcript", "team_side"),
-    [(True, "", OPENING_INSTRUCTION), (False, "o que é esse livro?", "o que é esse livro?")],
+    [
+        (
+            True,
+            "",
+            "[A sessão acabou de começar. A equipe abriu o Panorama do Livro de Ruth e está à "
+            "mesa, pronta para conversar. Fale primeiro.]",
+        ),
+        (False, "o que é esse livro?", "o que é esse livro?"),
+    ],
 )
 async def test_a_panorama_turn_is_judged_against_the_book_with_her_evidence(
     validators: _Validators, opening: bool, transcript: str, team_side: str
