@@ -9,7 +9,10 @@ byte-identical at 533b6e3, 17ba6fc and a3f3c69) is the structure ported here; th
 stay our canon's.
 """
 
-from app.db.models.internalization_room import IRSession
+from pathlib import Path
+
+from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 from app.services.internalization_room.sessions import session_is_done
@@ -145,3 +148,24 @@ def test_her_scene_line_is_rendered_only_for_a_scene_someone_hands_it() -> None:
         "SCENE THE LEDGER LAST SAW THE TEAM IN: S1",
         "",
     ]
+
+
+HER_GUIDE = (
+    Path(__file__).resolve().parents[1]
+    / "app/services/internalization_room/prompts/vendor/guide_system_prompt.md"
+)
+
+
+def _coverage_section(prompt: str) -> str:
+    start = prompt.index("## Coverage Status")
+    return prompt[start : prompt.index("{{COVERAGE_STATUS}}", start)]
+
+
+def test_the_ledger_is_introduced_to_the_guide_in_her_words() -> None:
+    """Her heading and paragraph (`prompts/guide_system_prompt.md`, a3f3c69:242-244)."""
+    ours = default_prompt(IRPromptKey.GUIDE)["prompt"]
+
+    assert _coverage_section(ours) == _coverage_section(HER_GUIDE.read_text(encoding="utf-8")), (
+        "o cabeçalho dizia 'act on it' e mandava trazer tudo o que restava — instrução, "
+        "onde o dela diz que o ledger é informação e a decisão é do Guia"
+    )
