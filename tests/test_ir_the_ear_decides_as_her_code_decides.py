@@ -17,10 +17,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.services.internalization_room.hearing import heard_speech
+from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.canon.book_material import build_book_material
+from app.services.internalization_room.hearing import HeardSpeech, heard_speech
+from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.live_turn import run_comprehension_turn
-from app.services.internalization_room.run_turn import TurnOutcome
+from app.services.internalization_room.run_turn import TurnOutcome, run_panorama_turn
 from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.validated_turn import TEAM_JUST_SAID
 from tests.turn_harness import GUIDE, VALIDATOR, FakeAgent, P, settings, the_agent_answers
 
 WELCOME = "Que bom que vocês ensaiaram. Me contem em português o que vocês disseram."
@@ -55,14 +60,18 @@ def agent(monkeypatch: pytest.MonkeyPatch) -> FakeAgent:
     )
 
 
-async def _the_room_hears(db_session: AsyncSession, audio: bytes) -> TurnOutcome:
-    session = await create_session(db_session, language="pt", pericope=P)
-    speech = await heard_speech(
+async def _heard(audio: bytes) -> HeardSpeech:
+    return await heard_speech(
         audio,
         filename="take.wav",
         language="pt",
         settings=Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="k"),
     )
+
+
+async def _the_room_hears(db_session: AsyncSession, audio: bytes) -> TurnOutcome:
+    session = await create_session(db_session, language="pt", pericope=P)
+    speech = await _heard(audio)
     return await run_comprehension_turn(
         db_session,
         session,
@@ -265,3 +274,66 @@ async def test_a_telling_back_scribe_returned_no_words_for_is_still_an_empty_tel
     )
 
     assert told == "", "o 200 vazio escapava do heard() da retro e virava um 400 para o app"
+
+
+class _ValidatorWatched(FakeAgent):
+    def __init__(self) -> None:
+        super().__init__(verdicts=[{"verdict": "pass", "issues": []}], drafts=[WELCOME])
+        self.validator_systems: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            self.validator_systems.append(system_prompt)
+        return await super().__call__(
+            system_prompt=system_prompt, user_content=user_content, **kwargs
+        )
+
+
+async def _the_panorama_hears(audio: bytes) -> TurnOutcome:
+    speech = await _heard(audio)
+    return await run_panorama_turn(
+        transcript=speech.text,
+        mother_tongue=speech.mother_tongue,
+        take_ms=speech.take_ms,
+        messages=[{"role": "guide", "text": "Vamos conhecer o livro de Rute."}],
+        panorama_prompt=default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"],
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        session_language=LANGUAGE_NAMES["pt"],
+        language_code="pt",
+        settings=settings(),
+    )
+
+
+async def test_a_panorama_take_in_another_language_hands_guide_and_validator_her_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = the_agent_answers(monkeypatch, _ValidatorWatched())
+    _scribe_answers(
+        monkeypatch,
+        200,
+        {"text": "Kalivono itukovo", "language_code": "grn", "language_probability": 0.90},
+    )
+
+    outcome = await _the_panorama_hears(_take(6))
+
+    assert agent.guide_inputs == [NOTE_PT_6], (
+        "o panorama entregava ao Guia as palavras que o reconhecedor inventou"
+    )
+    assert TEAM_JUST_SAID + NOTE_PT_6 in agent.validator_systems[0]
+    assert "Kalivono" not in agent.validator_systems[0]
+    assert outcome.transcript == ""
+    assert outcome.room_note == NOTE_PT_6
+
+
+async def test_two_minutes_the_panorama_heard_no_word_of_are_her_note_not_line_d(
+    agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+
+    outcome = await _the_panorama_hears(_take(116))
+
+    assert agent.guide_inputs == [P06_NOTE], "o panorama respondia 'podem repetir?' ao ensaio"
+    assert outcome.fixed_line == ""
+    assert outcome.room_note == P06_NOTE

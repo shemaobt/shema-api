@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 
 #: What an app-owned block says when the turn has none. The Validator is shared with every
@@ -61,6 +62,18 @@ def opening_note(book: str, language_code: str) -> str:
         f"[The session has just begun. The team opened the Book Panorama of {book} and is at "
         "the table, ready to talk. Speak first.]"
     )
+
+
+def mother_tongue_note(language_code: str, take_ms: int | None) -> str:
+    seconds = math.floor(take_ms / 1000 + 0.5) if take_ms else 0
+    if language_code == "pt":
+        held = f" por cerca de {seconds} segundos" if seconds else ""
+        return (
+            f"[A equipe falou na língua materna{held}; sem transcrição — nenhuma palavra "
+            "chegou até você.]"
+        )
+    held = f" for about {seconds} seconds" if seconds else ""
+    return f"[The team spoke in their own language{held}; no transcription — no words reached you.]"
 
 
 OPENING_MOVEMENT_INSTRUCTION = (

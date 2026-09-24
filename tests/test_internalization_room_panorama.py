@@ -595,3 +595,31 @@ async def test_a_direct_question_about_who_ruth_marries_is_answered_from_a_promp
     assert "must not assign divine causation" in speaker_system, (
         "a fome e as mortes não podem ser atribuídas a Deus no material que sustenta a fala"
     )
+
+
+async def test_a_panorama_take_the_ear_heard_as_the_mother_tongue_reaches_the_guide_as_her_note(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    patch_agent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    note = (
+        "[A equipe falou na língua materna por cerca de 116 segundos; sem transcrição — nenhuma "
+        "palavra chegou até você.]"
+    )
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(bridge_language="pt", wordless_long_take=True, take_ms=116_000)
+
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+
+    session_id = await _open_panorama(client)
+    answered = await _speak(client, session_id, "ensaio.m4a")
+
+    assert agent.asked[-2] == note, "a rota do panorama não passava ao motor o que o ouvido decidiu"
+    assert answered.json()["transcript"] == ""
+    session = await get_session(db_session, session_id)
+    assert (session.messages[-2]["role"], session.messages[-2]["text"]) == ("room", note)

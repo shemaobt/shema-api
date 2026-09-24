@@ -60,7 +60,7 @@ import httpx
 
 from app.api.internalization_room.text_seam import _collecting_model_calls, _language_code
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
-from app.services.internalization_room.turn.speech import mother_tongue_note
+from app.services.internalization_room.turn_instructions import mother_tongue_note
 from scripts.golden_checks import mechanical_checks, unported_checks
 from scripts.sync_doctrine import read_pin
 

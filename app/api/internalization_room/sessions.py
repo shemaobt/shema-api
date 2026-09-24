@@ -814,6 +814,8 @@ async def _answer_the_turn(
                 book = book_of(session.pericope)
                 outcome = await room.run_panorama_turn(
                     transcript=transcript,
+                    mother_tongue=speech_heard.mother_tongue,
+                    take_ms=speech_heard.take_ms,
                     messages=session.messages or [],
                     session_language=LANGUAGE_NAMES[session.language],
                     language_code=session.language,
