@@ -10,6 +10,10 @@ from __future__ import annotations
 import pytest
 import regex
 
+import scripts.render_fixed_voice_lines as render
+from app.services.internalization_room.canon.parse_map import load_book
+from app.services.internalization_room.languages import ROOM_LANGUAGES
+from app.services.internalization_room.passage_lines import line_for, panorama_line_for
 from app.services.internalization_room.speakable import (
     speakable_text,
     standalone_questions,
@@ -583,3 +587,70 @@ def test_the_transform_is_idempotent_and_never_drops_gains_or_reorders_a_word(
         "standalone_questions dropped or invented a word"
     )
     assert _word_order(voiced) == _word_order(text), "word order was not preserved end to end"
+
+
+# The D family (couldn't hear / transcription failed) folds a real question after an em
+# dash, in both languages — the one place a fixed line is not a no-op under the new steps.
+# Its shipped clip was recorded reading the flat statement; ENG-1091 tracks the re-render
+# and teaching scripts/render_fixed_voice_lines.py's fingerprint to hash the spoken form
+# instead of the raw one, so `--check` can see this drift on its own next time.
+_FIXED_LINE_QUESTION_SPLITS = {
+    (
+        "en",
+        "Sorry, I didn't quite catch that — could you say it again?",
+    ): "Sorry, I didn't quite catch that. Could you say it again?",
+    (
+        "en",
+        "The sound didn't come through — would you say that again?",
+    ): "The sound didn't come through. Would you say that again?",
+    (
+        "pt",
+        "Desculpa, não consegui ouvir direito — podem repetir?",
+    ): "Desculpa, não consegui ouvir direito. Podem repetir?",
+    (
+        "pt",
+        "O som não chegou bem — podem falar mais uma vez?",
+    ): "O som não chegou bem. Podem falar mais uma vez?",
+}
+
+
+def _fixed_voice_line_cases() -> list[object]:
+    """Every pre-approved fixed line the app can ship, by the name it plays it under.
+
+    ``scripts/render_fixed_voice_lines.py`` fingerprints this text before
+    ``render_facilitator_speech`` ever calls ``speakable_text`` on it (fingerprint at
+    ``:172``, taken from the raw ``catalogue()`` text at ``:210``), so a voicing-only change
+    to one of these lines would never show up as manifest drift. Almost every line here is a
+    no-op under the new steps apart from YHWH, which is what keeps that blind spot safe — the
+    D family (``_FIXED_LINE_QUESTION_SPLITS`` above) is the real exception, not a fixture bug.
+    """
+    cases: list[object] = []
+    for language in ROOM_LANGUAGES:
+        for name, text in render.catalogue(language).items():
+            expected = _FIXED_LINE_QUESTION_SPLITS.get((language, text), text)
+            cases.append(pytest.param(text, language, expected, id=f"catalogue-{language}-{name}"))
+        for name, text in render.STANDALONE.get(language, {}).items():
+            cases.append(pytest.param(text, language, text, id=f"standalone-{language}-{name}"))
+        for meaning_map in load_book("Ruth"):
+            text = line_for(meaning_map.pericope_num, language)
+            if text:
+                cases.append(
+                    pytest.param(
+                        text,
+                        language,
+                        text,
+                        id=f"passage-line-{language}-{meaning_map.pericope_num}",
+                    )
+                )
+        panorama = panorama_line_for(language)
+        if panorama:
+            cases.append(pytest.param(panorama, language, panorama, id=f"panorama-{language}"))
+    return cases
+
+
+@pytest.mark.parametrize("text, language, expected", _fixed_voice_line_cases())
+def test_fixed_voice_lines_pass_through_speakable_text_unchanged_apart_from_yhwh(
+    text: str, language: str, expected: str
+) -> None:
+    assert "YHWH" not in text, "a fixed line naming YHWH would need its own case, not this one"
+    assert speakable_text(text, language) == expected
