@@ -1,8 +1,9 @@
 """The passage's first line, written while the team is still hearing the panorama.
 
 Every other turn waits on what the team just said. The opening does not — the team has not
-spoken, the coverage is untouched, the conversation is empty — so it is the one line that can
-be written before it is asked for. Doing that turns a five-second wait into none.
+spoken, the conversation is empty, and the coverage is whatever necklace this team already
+carries into the passage — so it is the one line that can be written before it is asked for.
+Doing that turns a five-second wait into none.
 """
 
 import pytest
