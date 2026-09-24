@@ -90,10 +90,14 @@ def first(kind: FailSafe, language_code: str = FLOOR) -> str:
 def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str, str]:
     """One line for this situation, and the name the app knows it by.
 
-    Rotating with the turn is what the authored file asks for — *"vary them, don't repeat
-    the same line twice running, so the session doesn't feel robotic"* — and a room that
-    answers two failures in a row with the identical sentence sounds like a machine stuck,
-    which is the one impression the fail-safe exists to avoid.
+    The `turn` a caller passes is read off her code, not accumulated: D stays on the first
+    line every time (`didntCatchThat`, nonce `0`), and A is named by the attempt her own
+    turn loop gave up on (`turnLoop.ts`). Rotating on request is still what the function
+    does — nothing here stops a caller from walking a family across several lines — but of
+    the fail-safes proper, only H still asks for that. The authored file's own instruction to
+    *"vary them, don't repeat the same line twice running"* (`fail_safe_utterances.md:32`) is
+    open with her as of ENG-975; this function follows her code, not that sentence, until she
+    settles it.
 
     The name is what the app plays: these lines are shipped as audio inside the app, so a
     failure costs no synthesis and needs no network — which matters, because the network is

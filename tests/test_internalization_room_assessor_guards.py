@@ -261,13 +261,18 @@ async def test_an_exhausted_turn_is_the_fourth_a_line_whatever_came_before(
         _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
     monkeypatch.setattr(models, "call_agent", _RecordingModels())
     settled, session = await _the_team_answers(db_session, session, text="Rute foi junto")
+    own_tongue, session = await _the_team_answers(
+        db_session, session, text="koeti yoko vitukeovo enepone", heard_as="ter"
+    )
     monkeypatch.setattr(models, "call_agent", _BrokenModels())
 
     turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
 
     assert settled.outcome.speech == GUIDE_LINE
+    assert own_tongue.outcome.fixed_line == ""
+    assert own_tongue.outcome.used_fail_safe is False
     assert turn.outcome.fixed_line == "A3", (
-        "a contagem não zerava num turno que o Validador aprovou, e a terceira falha da "
-        "sessão virava pausa mesmo com a sala tendo voltado a falar no meio; agora não há "
-        "contagem para zerar"
+        "a contagem não zerava num turno que o Validador aprovou nem numa língua materna que "
+        "o Guia respondeu, e a terceira falha da sessão virava pausa mesmo assim; agora não "
+        "há contagem para zerar"
     )
