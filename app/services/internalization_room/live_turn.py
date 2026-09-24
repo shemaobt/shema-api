@@ -1,9 +1,7 @@
 """The comprehension-aware passage turn.
 
-Order matters — this is the state machine the handoff document calls "app-owned": resolve
-the bridge mode (explicit switches only), read what the team's telling settles about
-practice, and only then let the Guide speak — or bypass it entirely with exact app-owned
-speech where safety demands fixed wording.
+The Guide speaks, or is bypassed entirely with exact app-owned speech where safety demands
+fixed wording.
 
 The room asks nothing about recording. It used to voice its own yes/no consent question
 here and re-offer it every third turn the team kept working, which is the nag ENG-777 is
@@ -27,11 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
-from app.services.internalization_room.comprehension.practice import (
-    guide_invited_mother_tongue_practice,
-    scenes_practiced_by_the_report_the_guide_invited,
-)
 from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
@@ -59,7 +52,7 @@ async def run_comprehension_turn(
     validator_prompt: str,
     settings: Settings,
 ) -> ComprehensionTurn:
-    """One comprehension turn: what was heard, what it settles, and what the room says back.
+    """One comprehension turn: what was heard, and what the room says back.
 
     Only the session's very first line is told in two movements. A file-less POST on a session
     that has already spoken is a re-open, and repeating the panorama there would say the whole
@@ -68,9 +61,6 @@ async def run_comprehension_turn(
     pericope = session.pericope
     book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
-    last_guide = next(
-        (m.get("text", "") for m in reversed(messages) if m.get("role") == "guide"), ""
-    )
     state = comprehension_of(session)
     prior_probe = state.active_probe
 
@@ -78,16 +68,6 @@ async def run_comprehension_turn(
     uncertain = speech.uncertain
     mother_tongue = speech.mother_tongue
     empty = not transcript.strip()
-    reliable = not uncertain and not mother_tongue
-
-    practiced_now = scenes_practiced_by_the_report_the_guide_invited(
-        prior_probe,
-        last_guide,
-        transcript,
-        reliable,
-        state.invited_scene_id,
-    )
-    projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
 
     outcome = await speak_back(
         mother_tongue=mother_tongue,
@@ -114,20 +94,11 @@ async def run_comprehension_turn(
         transcript_empty=empty,
     )
 
-    if guide_invited_mother_tongue_practice(outcome.speech):
-        invited_scene_id = next(
-            (s for s in scene_ids_for(pericope) if s not in projected_practice), None
-        )
-    elif practiced_now:
-        invited_scene_id = None
-    else:
-        invited_scene_id = state.invited_scene_id
-
     new_state = ComprehensionState(
         ledger=state.ledger,
         active_probe=final_probe,
-        practiced_scene_ids=projected_practice,
-        invited_scene_id=invited_scene_id,
+        practiced_scene_ids=state.practiced_scene_ids,
+        invited_scene_id=state.invited_scene_id,
     )
     return ComprehensionTurn(outcome=outcome, state=new_state)
 
