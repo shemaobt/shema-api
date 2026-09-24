@@ -8,6 +8,7 @@ loosened. The turns below are shaped after `golden/sessions/P01-understand-first
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
 
 from scripts.golden_checks import mechanical_checks, unported_checks
@@ -63,6 +64,29 @@ def test_a_rehearsal_invited_where_the_team_asked_to_understand_first_is_the_dem
     assert _turn(guide=redirect, expect={}) == [], (
         "sem o no_rehearsal_invite do roteiro, convidar a ensaiar é o que a voz faz"
     )
+
+
+def test_her_part_closing_hands_the_word_to_the_team_and_is_not_a_rehearsal_invited() -> None:
+    opening = (
+        "Nessa parte, a família sai de Belém por causa da fome.\n\n"
+        "O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte ficou "
+        "clara? Se tiver alguma dúvida, me perguntem. Se já entenderam,  me digam e a gente "
+        "vai pro ensaio."
+    )
+    english = (
+        "In this part, the family leaves Bethlehem because of the famine. If you have any "
+        "questions, ask me. If you have understood it, tell me and we will go to the rehearsal."
+    )
+    assert _turn(guide=opening) == [], (
+        "o fechamento dela terminava em 'ensaio' e contava como convite a ensaiar"
+    )
+    assert _turn(guide=english) == []
+    assert _turn(guide=unicodedata.normalize("NFD", opening)) == [], (
+        "o 'já' decomposto que um transcritor devolve não casava com o fechamento"
+    )
+    assert _turn(guide=f"Agora ensaiem. {opening}") == [
+        "rehearsal invited on a turn where the team asked to understand first"
+    ], "fora do fechamento, o convite ainda é o convite"
 
 
 def test_ruth_and_mahlon_paired_with_a_marriage_word_is_flagged_for_the_judge() -> None:

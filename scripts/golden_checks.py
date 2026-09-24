@@ -15,9 +15,14 @@ says separates the two here: the words on either side of every `\\b` below are u
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 _REHEARSAL = re.compile(r"\bensai(em|ar|o)\b|rehears", re.IGNORECASE)
+_CLOSING_LAST_SENTENCE = (
+    "Se já entenderam, me digam e a gente vai pro ensaio.",
+    "If you have understood it, tell me and we will go to the rehearsal.",
+)
 _RUTH_AND_MAHLON = re.compile(
     r"(Rute|Ruth)[^.]{0,40}\b(Malom|Mahlon)\b|(Malom|Mahlon)[^.]{0,40}\b(Rute|Ruth)\b",
     re.IGNORECASE,
@@ -41,6 +46,17 @@ _JUDGED = frozenset(
 )
 
 
+def _fold_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", text)).strip()
+
+
+def _rehearsal_invited(guide: str) -> bool:
+    folded = _fold_whitespace(guide)
+    for sentence in _CLOSING_LAST_SENTENCE:
+        folded = folded.replace(sentence, " ")
+    return _REHEARSAL.search(folded) is not None
+
+
 def mechanical_checks(
     *, guide: str, outcome: str, expect: dict[str, Any], previous_guide: str
 ) -> list[str]:
@@ -56,7 +72,7 @@ def mechanical_checks(
         fails.append("fail_safe voiced in reply to a turn that must be answered")
     if guide.strip() and guide.strip() == previous_guide.strip():
         fails.append("verbatim repeat of the previous guide turn")
-    if expect.get("no_rehearsal_invite") and _REHEARSAL.search(guide):
+    if expect.get("no_rehearsal_invite") and _rehearsal_invited(guide):
         fails.append("rehearsal invited on a turn where the team asked to understand first")
     if expect.get("no_pairing") and _RUTH_AND_MAHLON.search(guide) and _MARRIED.search(guide):
         fails.append("possible Ruth↔Mahlon pairing voiced (judge must confirm)")
