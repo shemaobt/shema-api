@@ -77,7 +77,7 @@ class HeardSpeech(BaseModel):
         if self.wordless_long_take:
             seconds = math.floor((self.take_ms or 0) / 1000 + 0.5)
             return f"no words in a long take ({seconds} s >= {LONG_WORDLESS_TAKE_MS // 1000} s)"
-        detected = (self.language_code or "").strip().lower().split("-")[0]
+        detected = re.split(r"[-_]", (self.language_code or "").strip().lower())[0]
         spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language)
         if not self.text.strip() or not detected or spoken is None:
             return ""

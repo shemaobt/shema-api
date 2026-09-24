@@ -388,3 +388,20 @@ async def test_the_same_language_floor_is_read_from_the_settings_not_fixed_at_0_
     assert outcome.room_note == NOTE_PT_6, (
         "o piso dela vem de uma variável que o piloto ajusta, e o nosso ficava preso no código"
     )
+
+
+async def test_portuguese_scribe_tags_with_an_underscore_region_is_still_the_sessions_language(
+    db_session: AsyncSession, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scribe_answers(
+        monkeypatch,
+        200,
+        {"text": "Entendemos tudo.", "language_code": "pt_BR", "language_probability": 0.9},
+    )
+
+    await _the_room_hears(db_session, _take(6))
+
+    assert agent.guide_inputs == ["Entendemos tudo."], (
+        "'pt_BR' não virava 'pt' como no normLang dela, e o português da equipe ia ao Guia "
+        "como língua materna"
+    )
