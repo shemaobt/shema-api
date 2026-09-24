@@ -211,8 +211,9 @@ def floor_met(state: dict[str, str], pericope_num: str) -> bool:
     floor like `surfaced` does.
 
     The floor is a ledger fact. Nothing the room says reads it; what does is
-    `session_is_done` — the `done` a turn answers with, and the stamp progression follows —
-    and the release. Biased against completing hollow: anything unknown counts as not met.
+    `session_is_done` — the `done` a turn answers with, and the stamp progression follows.
+    The release never reads it (ADR 0037). Biased against completing hollow: anything
+    unknown counts as not met.
     """
     merged = {**initial_state(pericope_num), **state}
     for element in elements_for(pericope_num):

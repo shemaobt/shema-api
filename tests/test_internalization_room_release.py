@@ -58,8 +58,6 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
         await build_internalization_release(db_session, session)
 
     assert set(blocked.value.blockers) >= {
-        "comprehension_needs_more_work",
-        "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
     }
@@ -425,7 +423,11 @@ async def test_the_forced_row_keeps_the_note_the_packet_lost(
 
 
 async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
-    """One item leaves the list; its neighbours are not loosened with it."""
+    """The floor and the practice leave the gate; the telling-back's door is not loosened.
+
+    Below the floor and unpractised, the one thing refused is what the telling-back still
+    carries (ADR 0037).
+    """
     session = await ready_session(db_session)
     await reported_playback(
         db_session, session, await told_back_with_an_open_finding(db_session, session)
@@ -437,10 +439,7 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
-        "comprehension_needs_more_work",
-        "coverage_floor_not_met",
-    }
+    assert blocked.value.blockers == ["telling_back_not_checked"]
 
 
 async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(

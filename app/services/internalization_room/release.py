@@ -6,12 +6,11 @@ scenes practiced, the semantic evidence events and their open points, the tellin
 with its findings and playback report, and every superseded attempt clearly marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
-partial artifact — because a package missing the comprehension it was built on, the coverage
-floor, the rehearsal audio, the telling-back, the analyst's reading of it, a stretch nobody
-told back or a recording nobody told back would look downstream exactly like a finished one; so
-would one composed for a panorama, which is not a draft of a passage at all. Those eight are
-missing material, and nothing overrules them: there is nothing in a rehearsal nobody recorded
-for anybody to overrule.
+partial artifact — because a package missing the rehearsal audio, the telling-back, the
+analyst's reading of it, a stretch nobody told back or a recording nobody told back would look
+downstream exactly like a finished one; so would one composed for a panorama, which is not a
+draft of a passage at all. Those six are missing material, and nothing overrules them: there
+is nothing in a rehearsal nobody recorded for anybody to overrule.
 
 The other two are Marcia's gate — an open finding the telling-back still carries, and a part
 of the rehearsal the team never heard through — and they are a dispute rather than a hole.
@@ -59,7 +58,6 @@ from app.services.internalization_room.comprehension.checkpoints import (
 from app.services.internalization_room.comprehension.session_readiness import (
     evaluate_session_comprehension,
 )
-from app.services.internalization_room.coverage import floor_met
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
@@ -441,10 +439,6 @@ async def compose_internalization_release(
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
     parts = current_parts(takes)
 
-    if readiness.evaluation.outcome.value == "needs_more_work":
-        blockers.append("comprehension_needs_more_work")
-    if not floor_met(session.coverage_state or {}, session.pericope):
-        blockers.append("coverage_floor_not_met")
     if not ensaio_takes:
         blockers.append("no_rehearsal_audio")
     if not stretches:
@@ -709,12 +703,9 @@ async def approve_release(
     one forcing, so compare-first never becomes a force the team can reach.
 
     It answers an unchanged packet with its release whatever stands, and not only over the
-    finding somebody overruled. ``coverage_floor_not_met`` is the case that shows the reach:
-    it is read off ``session.coverage_state``, which is outside the hashed content, so a
-    session whose floor fell after its release was written still composes the same packet and
-    is still answered with that release. That is the rule ADR 0014 wrote — the number says
-    which content was approved, and this content was — and it is wider than the force it was
-    reopened for.
+    finding somebody overruled: a part a facilitator forced over unheard is answered the same
+    way. That is the rule ADR 0014 wrote — the number says which content was approved, and
+    this content was — and it is wider than the force it was reopened for.
 
     The number is one past the last, which two approvals arriving together can both read.
     The unique index is what refuses the second, and the refusal is answered rather than
