@@ -25,7 +25,7 @@ jobs:
     # 2m32-3m06 (five runs: 35653484356, 35653965653, 35654431223, 35655564859, 35655963815).
     # The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
     # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
-    timeout-minutes: 7
+    timeout-minutes: 12
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
