@@ -76,6 +76,8 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 "scripts/doctrine_allowlist.py" = ["E501"]
 "tests/test_internalization_room_passages.py" = ["RUF001"]
+"app/services/internalization_room/speakable.py" = ["RUF001"]
+"tests/test_internalization_room_speakable.py" = ["RUF001"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -1,11 +1,17 @@
-"""The tetragrammaton, rendered pronounceable before it ever reaches a voice engine.
+"""Validated text, made SPEAKABLE before it ever reaches a voice engine.
 
-The maps and the Guide write the divine name as the four consonants "YHWH", which a voice
-engine reads letter by letter — a name spelled instead of spoken, in the middle of the turn
-the map most depends on. The prompts already instruct the spoken form, but a substitution
-here is the deterministic last line of defence: any "YHWH" that slips through a corrected
-draft or a story-so-far quote is still voiced as a name, never as four letters. The table and
-its source are recorded in ``docs/divine-name-speakable-form.md``.
+Three deterministic last lines of defence, composed in ``speakable_text``: formatting marks
+off, a folded question split into its own sentence, and the divine name rendered
+pronounceable. The prompts already instruct plain, voice-first, spoken-name text, but
+anything that slips through — a corrected draft, a story-so-far quote — must never be read
+with a mark, a flattened question, or four spelled-out letters where a name belongs.
+
+The marks-and-questions pair ports Marcia's own transform, `Tripod-Internalization`'s
+``src/audio/speakable.ts`` (her ruling of pilot day one, 2026-09-09), case for case,
+including the limits she pins rather than fixes. The divine name table is ours, not hers —
+her language-fallback chain (``failSafeLang``) is deliberately not ported, so a language
+outside the table (Spanish included) still gets its marks stripped and its questions split,
+and only the name substitution is skipped. Source and table: ``docs/divine-name-speakable-form.md``.
 """
 
 from __future__ import annotations
@@ -31,9 +37,7 @@ _CODE = regex.compile(r"`([^`]*)`")
 _BOLD_STAR = regex.compile(r"\*\*(\S(?:[^*]*?\S)?)\*\*")
 _BOLD_UNDERSCORE = regex.compile(r"__(\S(?:[^_]*?\S)?)__")
 _ITALIC_STAR = regex.compile(r"\*(\S(?:[^*]*?\S)?)\*")
-_ITALIC_UNDERSCORE = regex.compile(
-    r"(^|[^\p{L}\p{N}_])_(\S(?:[^_]*?\S)?)_(?=[^\p{L}\p{N}_]|$)"
-)
+_ITALIC_UNDERSCORE = regex.compile(r"(^|[^\p{L}\p{N}_])_(\S(?:[^_]*?\S)?)_(?=[^\p{L}\p{N}_]|$)")
 _STRAY_ASTERISK = regex.compile(r"\*")
 _STRAY_HASH = regex.compile(r"(?<![\p{L}\p{N}])#")
 _WHITESPACE_RUN = regex.compile(r"\s+")
@@ -43,7 +47,7 @@ def _capitalize_first_letter(text: str) -> str:
     match = _FIRST_LETTER.match(text)
     if not match:
         return text
-    return match.group(1) + match.group(2).upper() + text[match.end() :]
+    return str(match.group(1) + match.group(2).upper() + text[match.end() :])
 
 
 def _as_own_sentence(line: str) -> str:
@@ -88,7 +92,7 @@ def strip_markdown(text: str) -> str:
         line = _STRAY_ASTERISK.sub("", line)
         line = _STRAY_HASH.sub("", line)
         lines.append(_as_own_sentence(line) if own_sentence else line)
-    return _WHITESPACE_RUN.sub(" ", " ".join(lines)).strip()
+    return str(_WHITESPACE_RUN.sub(" ", " ".join(lines)).strip())
 
 
 _SENTENCE_END = regex.compile(r"""[.!?…]+["”’')\]»]*(?=\s|$)""")
@@ -195,13 +199,23 @@ def standalone_questions(text: str) -> str:
 
 
 def speakable_text(text: str, language: str) -> str:
-    """Replace the tetragrammaton with the customary spoken form for ``language``.
+    """Make validated text SPEAKABLE before it reaches TTS: marks off, questions split, YHWH.
 
-    The table is Marcia's, not invented here: it exists only where her own rebuilt prompts
-    already carry the rule in the same language. A language outside that table returns the
-    text untouched rather than guessing at a form the pilot does not speak.
+    Three deterministic steps, in this order. First ``strip_markdown``: the Guide sometimes
+    writes ``**Noemi**`` or a bullet list, and the voice reads the marks as noise. Second
+    ``standalone_questions``: a question folded into the tail of a statement gets no
+    question intonation, so the sentence is cut before it. Both run for every language —
+    Marcia's own ``failSafeLang`` fallback is not ported here, only her marks-and-questions
+    transform is. Third, the tetragrammaton: the table is Marcia's, not invented here, and
+    exists only where her own rebuilt prompts already carry the rule in the same language —
+    a language outside it (Spanish included) reaches this step and returns from it
+    untouched, its marks already stripped and its questions already split.
+
+    All three change only what is VOICED; the persisted (validated) text keeps the Guide's
+    own form for the facilitator view and the dossier.
     """
+    voiced = standalone_questions(strip_markdown(text))
     form = _SPOKEN_FORM.get(language)
     if form is None:
-        return text
-    return _YHWH.sub(form, text)
+        return voiced
+    return _YHWH.sub(form, voiced)
