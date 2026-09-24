@@ -405,6 +405,11 @@ _STANDALONE_QUESTIONS_KNOWN_LIMITS = [
         'Ele disse "vá. Noemi pergunta: onde você trabalhou?',
         id="an-unbalanced-double-quote-suppresses-later-cuts-the-safe-direction",
     ),
+    pytest.param(
+        "Naomi asks (the workers’ field: here or there?)",
+        "Naomi asks (the workers’ field. Here or there?)",
+        id="a-plural-possessive-apostrophe-closes-a-parenthetical-it-never-opened",
+    ),
 ]
 
 
@@ -565,37 +570,57 @@ def _word_order(text: str) -> str:
     return " ".join(match.group(0).lower() for match in regex.finditer(r"\p{L}+", text))
 
 
+# A link's target is never spoken — `[Boaz](1)` reads as `Boaz`, not `Boaz 1` — so the
+# word-preservation check below runs against each case's SPOKEN form, not its raw source.
+# Every case's spoken form is its own text unchanged, except the one that carries a link.
 _INVARIANTS_CORPUS = [
-    pytest.param(_TURNO_2, id="turno-2"),
-    pytest.param(_TURNO_8, id="turno-8"),
-    pytest.param(_TURNO_10, id="turno-10"),
-    pytest.param(_TURNO_12, id="turno-12"),
-    pytest.param(_TURNO_13, id="turno-13"),
+    pytest.param(_TURNO_2, _TURNO_2, id="turno-2"),
+    pytest.param(_TURNO_8, _TURNO_8, id="turno-8"),
+    pytest.param(_TURNO_10, _TURNO_10, id="turno-10"),
+    pytest.param(_TURNO_12, _TURNO_12, id="turno-12"),
+    pytest.param(_TURNO_13, _TURNO_13, id="turno-13"),
     pytest.param(
+        "Quando estiverem prontos, a pergunta segue de pé: o que vem à cabeça de vocês "
+        'quando ouvem o nome "Rute"?',
         "Quando estiverem prontos, a pergunta segue de pé: o que vem à cabeça de vocês "
         'quando ouvem o nome "Rute"?',
         id="folded-question-with-a-quoted-name",
     ),
     pytest.param(
         'Noemi pergunta: "onde você trabalhou hoje?"',
+        'Noemi pergunta: "onde você trabalhou hoje?"',
         id="reported-speech-in-quotes",
     ),
     pytest.param(
         "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
+        "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
         id="bold-and-italic",
     ),
-    pytest.param("- o pai morre\n- os dois filhos casam", id="bullet-list"),
+    pytest.param(
+        "- o pai morre\n- os dois filhos casam",
+        "- o pai morre\n- os dois filhos casam",
+        id="bullet-list",
+    ),
     pytest.param(
         "## Segunda parte\n* a fome\n1. a perda — o que vocês sentem?\n\n"
         "__Noemi__ volta para _Belém_ com `Rute`; e [Boaz](1) — onde está?",
+        "## Segunda parte\n* a fome\n1. a perda — o que vocês sentem?\n\n"
+        "__Noemi__ volta para _Belém_ com `Rute`; e Boaz — onde está?",
         id="heading-bullet-code-link-and-a-folded-question-together",
     ),
     pytest.param(
         "Primeira parte: a fome; segunda parte — a perda: o que vocês sentem?",
+        "Primeira parte: a fome; segunda parte — a perda: o que vocês sentem?",
         id="several-separators",
     ),
-    pytest.param("um * só e # aqui e C# fica snake_case_name", id="stray-marks-and-c-sharp"),
     pytest.param(
+        "um * só e # aqui e C# fica snake_case_name",
+        "um * só e # aqui e C# fica snake_case_name",
+        id="stray-marks-and-c-sharp",
+    ),
+    pytest.param(
+        "Vocês chegaram às 10:30 da manhã? Lembram de Rute 1:5, onde Noemi fica só? "
+        "Placar 2:1 — quem ganhou?",
         "Vocês chegaram às 10:30 da manhã? Lembram de Rute 1:5, onde Noemi fica só? "
         "Placar 2:1 — quem ganhou?",
         id="times-and-verse-references",
@@ -603,33 +628,42 @@ _INVARIANTS_CORPUS = [
     pytest.param(
         "O que Noemi — a sogra — sentiu? Noemi — a sogra — pergunta: onde você trabalhou? "
         "Pensem, — o que sentiram?",
+        "O que Noemi — a sogra — sentiu? Noemi — a sogra — pergunta: onde você trabalhou? "
+        "Pensem, — o que sentiram?",
         id="dash-pairs-and-a-comma-headed-dash",
     ),
     pytest.param(
+        "Naomi asks: “where’s Boaz: here or there?” Naomi’s question: where did you work? "
+        "Ele perguntou ‘onde: aqui ou lá?’",
         "Naomi asks: “where’s Boaz: here or there?” Naomi’s question: where did you work? "
         "Ele perguntou ‘onde: aqui ou lá?’",
         id="curly-quotes-apostrophes-and-a-straight-single-quote",
     ),
     pytest.param(
         'Ele disse: "fique no meu campo. Aqui: você está segura?" Vocês viram isso: ela ficou?!',
+        'Ele disse: "fique no meu campo. Aqui: você está segura?" Vocês viram isso: ela ficou?!',
         id="a-span-crossing-a-sentence-end-and-a-question-mark-exclamation",
     ),
     pytest.param(
+        "Primeira parte.\n---\nSegunda parte: o que vocês sentem?",
         "Primeira parte.\n---\nSegunda parte: o que vocês sentem?",
         id="horizontal-rule-and-a-folded-question",
     ),
 ]
 
 
-@pytest.mark.parametrize("text", _INVARIANTS_CORPUS)
+@pytest.mark.parametrize("text, spoken_form", _INVARIANTS_CORPUS)
 def test_the_transform_is_idempotent_and_never_drops_gains_or_reorders_a_word(
-    text: str,
+    text: str, spoken_form: str
 ) -> None:
     """Over every case above: applying a step twice is applying it once, and a word survives.
 
-    Neither step ever drops, reorders or invents a word — only formatting marks go and a
-    sentence boundary can move. speakable_text runs "pt" throughout because idempotence and
-    word-preservation are properties of the transform, not of the divine-name table.
+    Neither step ever drops, reorders or invents a word of the SPOKEN text — only formatting
+    marks go and a sentence boundary can move. A link is the one exception by design: its
+    target is never spoken, so ``spoken_form`` is ``text`` with any link already resolved to
+    its visible words, and every other case's spoken form is just its own text. speakable_text
+    runs "pt" throughout because idempotence and word-preservation are properties of the
+    transform, not of the divine-name table.
     """
     marks_off = strip_markdown(text)
     questions_split = standalone_questions(marks_off)
@@ -640,11 +674,13 @@ def test_the_transform_is_idempotent_and_never_drops_gains_or_reorders_a_word(
         "standalone_questions is not idempotent"
     )
     assert speakable_text(voiced, "pt") == voiced, "speakable_text is not idempotent"
-    assert _words(marks_off) == _words(text), "strip_markdown dropped or invented a word"
+    assert _words(marks_off) == _words(spoken_form), "strip_markdown dropped or invented a word"
     assert _words(questions_split) == _words(marks_off), (
         "standalone_questions dropped or invented a word"
     )
-    assert _word_order(voiced) == _word_order(text), "word order was not preserved end to end"
+    assert _word_order(voiced) == _word_order(spoken_form), (
+        "word order was not preserved end to end"
+    )
 
 
 #: The D family (couldn't hear / transcription failed) folds a real question after an em

@@ -60,8 +60,10 @@ def _as_own_sentence(line: str) -> str:
 
 
 def strip_markdown(text: str) -> str:
-    """Formatting marks off; every word stays, in its order (Marcia, pilot day 1, 2026-09-09).
+    """Formatting marks off; every spoken word stays, in order (Marcia, pilot day 1, 2026-09-09).
 
+    A link is the one deliberate exception: its visible text stays, its target does not —
+    ``[Boaz](1)`` reads as "Boaz", never "Boaz 1", since a URL was never meant to be heard.
     A bullet or heading line is read as its own sentence, capitalized and closed with a
     period when it carries no terminal punctuation of its own. A plain line with no
     terminal punctuation is left exactly as it is: a soft-wrapped sentence split across
@@ -191,7 +193,11 @@ def standalone_questions(text: str) -> str:
     reference, not a separator. An unbalanced double quote suppresses later cuts for the
     rest of the turn, the safe direction; a head that is itself the question is still
     closed with a period rather than left open — changing either is Marcia's call, not
-    this port's.
+    this port's. KNOWN LIMIT, carried from her source: a closing ``’`` is read as an
+    apostrophe only when a letter sits on both sides of it, so a plural possessive
+    (``workers’`` followed by a space) closes a span it never opened — a parenthetical
+    around it can end early, letting a separator past its far side cut where it should
+    not.
     """
     state = _SpanState()
     out: list[str] = []
