@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -43,7 +44,8 @@ async def run_panorama_turn(
             fixed_line=line,
         )
 
-    return await _voiced_after_validation(
+    note = opening_note(book, language_code)
+    outcome = await _voiced_after_validation(
         speaker_system=render(
             cache_break_at_end(panorama_prompt),
             BOOK_NAME=book,
@@ -57,8 +59,9 @@ async def run_panorama_turn(
         session_language=session_language,
         language_code=language_code,
         opening=opening,
-        opening_instruction=opening_note(book, language_code),
+        opening_instruction=note,
         settings=cfg,
         session_id=session_id,
         ask_for_movements=ask_for_movements,
     )
+    return replace(outcome, room_note=note) if opening else outcome

@@ -20,6 +20,7 @@ from app.services.internalization_room.run_turn import TurnOutcome, run_panorama
 from app.services.internalization_room.sessions import (
     book_of,
     create_session,
+    get_session,
     is_panorama,
     resolve_pericope,
 )
@@ -30,6 +31,10 @@ VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 OV = "OV-Ruth"
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
+NOTE_PT = (
+    "[A sessão acabou de começar. A equipe abriu o Panorama do Livro de Ruth e está à mesa, "
+    "pronta para conversar. Fale primeiro.]"
+)
 VENDOR = Path(__file__).parents[1] / "app/services/internalization_room/prompts/vendor"
 
 
@@ -107,12 +112,14 @@ class FakeAgent:
         self.draft = draft
         self.systems: list[str] = []
         self.asked: list[str] = []
+        self.histories: list[list[dict[str, str]]] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         self.systems.append(system_prompt)
         self.asked.append(user_content)
         if "corrected_response" in system_prompt:
             return json.dumps(self.verdict)
+        self.histories.append([dict(turn) for turn in kwargs["conversation"]])
         return self.draft
 
 
@@ -397,46 +404,69 @@ async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
         assert body["transcript"]
 
 
+async def test_the_panorama_opening_is_kept_as_her_note_then_the_line_it_opened_with(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    patch_agent,
+) -> None:
+    patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+
+    session_id = await _open_panorama(client)
+
+    session = await get_session(db_session, session_id)
+    assert [(m["role"], m["text"]) for m in session.messages] == [
+        ("room", NOTE_PT),
+        ("guide", "Vamos conhecer o livro."),
+    ], "a abertura ficava guardada sem a nota que o Facilitador leu antes de falar"
+
+
+async def test_a_panorama_opening_that_falls_to_a_fixed_line_still_keeps_her_note(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    patch_agent,
+) -> None:
+    patch_agent(FakeAgent({"verdict": "regenerate", "issues": [{"problem": "spoiler"}]}))
+
+    session_id = await _open_panorama(client)
+
+    session = await get_session(db_session, session_id)
+    assert [m["role"] for m in session.messages] == ["room", "guide"]
+    assert session.messages[0]["text"] == NOTE_PT, (
+        "uma abertura que caía na fala fixa perdia a nota e o próximo turno começava sem ela"
+    )
+    assert session.messages[1]["outcome"] == "fail_safe"
+
+
 async def test_the_third_turn_still_carries_the_sessions_first_exchange(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, patch_agent
 ) -> None:
     """Every call gets the whole conversation — no window drops the session's opening.
 
     A six-turn window would still hold this session's first exchange by the third turn, so
-    it is asserted directly rather than merely counted: the opening's own line has to be the
-    oldest entry the third call sees, word for word.
+    it is asserted directly rather than merely counted: her note and the opening's own line
+    have to be the oldest entries the third call sees, word for word.
     """
     from app.api.internalization_room import sessions as sessions_api
 
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
     heard = ["pergunta dois", "pergunta três"]
-    seen_messages: list[list[dict[str, Any]]] = []
-
-    async def _panorama(
-        *, transcript: str, messages: list[dict[str, Any]], **_: Any
-    ) -> TurnOutcome:
-        seen_messages.append(messages)
-        return TurnOutcome(speech=f"resposta {len(seen_messages)}.", transcript=transcript)
 
     async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
         return HeardSpeech(text=heard.pop(0))
 
-    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
 
     session_id = await _open_panorama(client)
     await _speak(client, session_id, "q2.m4a")
     await _speak(client, session_id, "q3.m4a")
 
-    opening_exchange = {"role": "guide", "text": "resposta 1."}
-    assert seen_messages[0] == [], "a abertura não tem conversa nenhuma atrás dela"
-    assert opening_exchange["text"] in [m["text"] for m in seen_messages[2]], (
-        "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
-    )
-    assert [{"role": m["role"], "text": m["text"]} for m in seen_messages[2]] == [
-        opening_exchange,
-        {"role": "team", "text": "pergunta dois"},
-        {"role": "guide", "text": "resposta 2."},
-    ]
+    assert agent.histories[0] == [], "a abertura não tem conversa nenhuma atrás dela"
+    assert agent.histories[2] == [
+        {"role": "user", "text": NOTE_PT},
+        {"role": "assistant", "text": "Vamos conhecer o livro."},
+        {"role": "user", "text": "pergunta dois"},
+        {"role": "assistant", "text": "Vamos conhecer o livro."},
+    ], "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
 
 
 async def test_a_slow_panorama_turn_is_not_cut_short(patch_agent) -> None:
