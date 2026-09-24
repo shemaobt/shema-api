@@ -130,7 +130,7 @@ What a bead of the Meaning Map is. Six kinds sit in a scene of the passage — s
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move.
+The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it — and never a scope on what a turn may move. The Guide's ledger block does not carry it: her ledger names a scene only when one is set, and her live room never sets one.
 _Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):

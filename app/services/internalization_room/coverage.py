@@ -157,7 +157,7 @@ def coverage_view(session: IRSession) -> CoverageView:
 
 
 def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
-    """What the team has not worked yet, with labels the Guide can act on.
+    """What the team has not worked yet — the beads the classifier is offered.
 
     A bead short of `engaged` stays on this list whatever word it stands at, because this
     is the only way it can still be promoted — the classifier is shown this list and
@@ -169,28 +169,6 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
         for element in elements_for(pericope_num)
         if merged.get(element.key) != CoverageStatus.ENGAGED
     ]
-
-
-def current_scene(state: dict[str, str], pericope_num: str) -> str | None:
-    """The first scene with a bead still short of `engaged`, once one scene bead is.
-
-    Ledger state, read off which scene-scoped beads the team has worked: none of them
-    engaged is the whole-passage opening, all of them engaged is the whole-passage
-    integration, and both are answered with no scene at all. The pointer the rehearsal is
-    read against lives in `live_turn` and answers to what the team has said, not to this.
-    """
-    merged = {**initial_state(pericope_num), **state}
-    beads = [
-        (element.scene, merged.get(element.key) == CoverageStatus.ENGAGED)
-        for element in elements_for(pericope_num)
-        if element.scene is not None
-    ]
-    if not any(engaged for _, engaged in beads):
-        return None
-    for scene in sorted({scene for scene, _ in beads}):
-        if not all(engaged for at, engaged in beads if at == scene):
-            return f"S{scene}"
-    return None
 
 
 _EXITS_AT_SURFACED = frozenset({"arc", "context", "tone", "function"})
@@ -210,9 +188,11 @@ def floor_met(state: dict[str, str], pericope_num: str) -> bool:
     `partially_engaged` is one the ledger has not seen the team take up, and it holds the
     floor like `surfaced` does.
 
-    The floor is a ledger fact. Nothing the room says reads it; what does is
-    `session_is_done` — the `done` a turn answers with, and the stamp progression follows —
-    and the release. Biased against completing hollow: anything unknown counts as not met.
+    The floor is a ledger fact. Nothing the room says reads it, and the Guide's ledger is
+    not it: NOT YET TOUCHED can read empty while a bead the Guide only raised still holds the
+    floor. What reads it is `session_is_done` — the `done` a turn answers with, and the stamp
+    progression follows — and the release. Biased against completing hollow: anything
+    unknown counts as not met.
     """
     merged = {**initial_state(pericope_num), **state}
     for element in elements_for(pericope_num):

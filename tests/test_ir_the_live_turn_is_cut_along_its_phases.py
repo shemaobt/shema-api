@@ -122,4 +122,4 @@ async def test_everything_else_reaches_the_guide_with_the_ledger_in_hand(
 
     assert outcome.speech == "A fome chegou a Belém."
     assert outcome.used_fail_safe is False
-    assert "COVERED (engaged):" in agent.systems[0]
+    assert "WORKED WITH BY THE TEAM (engaged):" in agent.systems[0]
