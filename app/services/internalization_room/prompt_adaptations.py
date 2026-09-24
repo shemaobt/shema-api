@@ -11,7 +11,10 @@ class Adaptation(NamedTuple):
     source: str
 
 
-HER_FILES: dict[str, str] = {"coverage_classifier": "classifier_system_prompt.md"}
+HER_FILES: dict[str, str] = {
+    "coverage_classifier": "classifier_system_prompt.md",
+    "validator": "validator_system_prompt.md",
+}
 
 ADAPTATIONS: tuple[Adaptation, ...] = ()
 

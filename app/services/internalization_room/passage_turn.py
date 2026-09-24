@@ -31,16 +31,12 @@ async def run_turn(
     settings: Settings | None = None,
     session_id: str = "?",
     ask_for_movements: bool = False,
-    mother_tongue: bool = False,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
     `opening` is the session's first turn, where the Guide speaks before the team has.
     The coverage block is the whole of what the app tells the Guide, and the Validator is
     handed none of it — it judges the draft against the map and the team's own words.
-
-    `mother_tongue` marks a `transcript` that is not the team's words but the app's own note
-    about an unrecorded rehearsal (`turn.speech.speak_back`) — see `_voiced_after_validation`.
     """
     cfg = settings or get_settings()
 
@@ -74,5 +70,4 @@ async def run_turn(
         settings=cfg,
         session_id=session_id,
         ask_for_movements=ask_for_movements,
-        mother_tongue=mother_tongue,
     )

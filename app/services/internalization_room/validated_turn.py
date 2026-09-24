@@ -27,17 +27,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings
+from app.core.exceptions import ValidationError
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.llm import Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import (
-    NOT_THIS_TURN,
     OPENING_MOVEMENT_INSTRUCTION,
     SPEAK_THIS_TURN,
     VALIDATOR_USER_MESSAGE,
-    _nobody_spoke_this_turn,
     split_opening_movements,
 )
 from app.services.internalization_room.usage import (
@@ -51,6 +50,14 @@ from app.services.platform.tts import warm_connection_in_background
 
 #: How many times one draft is put to the Validator before its reply is given up on.
 READINGS_OF_ONE_DRAFT = 2
+
+TEAM_JUST_SAID = (
+    "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+    "The drafted response answers this. Referring to these words is not a claim about the "
+    "passage.\n\n"
+)
+
+VALIDATOR_SLOTS = ("{{MEANING_MAP}}", "{{TEAM_EVIDENCE}}", "{{DRAFTED_RESPONSE}}")
 
 
 @dataclass
@@ -95,33 +102,21 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     ]
 
 
-#: How each stored role is quoted back into the Validator's evidence block. Anything else
-#: (the team's own words) falls through to "Team" below.
-_EVIDENCE_LABELS = {"guide": "Guide", "room": "Room"}
-
-
-def _conversation_as_evidence(messages: list[dict[str, Any]]) -> str:
-    """The whole session, quoted, for the Validator to check a recollection against.
-
-    The Guide hears every turn (no window), so it may say what the team told it three
-    scenes ago. The Validator's evidence rule refuses any such sentence it cannot find in a
-    record, and with the slot reading "not this turn" nothing could be found: a true
-    recollection of the team's own words died as an "epistemic" violation and the team heard
-    the pause line for asking what it had said. This is quoted evidence, never a window — it
-    is all of it, oldest first, and the doctrine forbids the window, not the record.
-
-    Takes the raw stored messages, not `Turn`s: a room note is stored as its own role
-    (`sessions.append_exchange`), and the API's two-role `Turn` has already folded it onto
-    the team's side by the time `_conversation_turns` is done with it. Quoting it back as
-    `Team:` would credit the team with words it never said in the session language — this
-    labels it `Room:` instead, the one thing the Guide's own prompt already knows to do with
-    a bracketed note but the Validator's prompt is never told.
-    """
-    if not messages:
-        return NOT_THIS_TURN
-    return "\n".join(
-        f"{_EVIDENCE_LABELS.get(str(message.get('role')), 'Team')}: {message.get('text', '')}"
-        for message in messages
+def her_validator(
+    *,
+    validator_prompt: str,
+    meaning_map: str,
+    team_side: str,
+    draft: str,
+    session_language: str,
+) -> str:
+    said = team_side.strip()
+    return render(
+        cache_break_before(validator_prompt, "{{TEAM_EVIDENCE}}"),
+        MEANING_MAP=meaning_map,
+        TEAM_EVIDENCE=TEAM_JUST_SAID + said if said else "",
+        DRAFTED_RESPONSE=draft,
+        SESSION_LANGUAGE=session_language,
     )
 
 
@@ -282,29 +277,11 @@ async def _voiced_after_validation(
     session_id: str = "?",
     opening_instruction: str = "",
     ask_for_movements: bool = False,
-    telling_back: str = "",
-    finding: str = "",
-    ordered_closing: str = "",
-    mother_tongue: bool = False,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
-
-    `telling_back`, `finding` and `ordered_closing` are the verdict turn's own context — what
-    the team told back outside the conversation, what the analyst found, and the ending the
-    Speaker was ordered to write. Every other turn leaves them empty, and the Validator is told
-    in words that an empty block is a block that does not apply to this turn rather than
-    evidence being withheld, so nothing about a conversation turn changes.
-
-    `mother_tongue` is the one case where `transcript` is not the team's own words in the
-    session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. The Validator's `{{TEAM_UTTERANCE}}` is quoted
-    evidence of what the team *said*, under a heading no prompt tells it to read as a fact
-    about the room rather than speech; this turn's note has not reached `messages` yet
-    either, so nothing in `RECENT_CONVERSATION` catches it. Left alone, the slot would credit
-    the team with a sentence in the session language it never spoke.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
@@ -328,6 +305,13 @@ async def _voiced_after_validation(
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
+    absent = [slot for slot in VALIDATOR_SLOTS if slot not in validator_prompt]
+    if absent:
+        raise ValidationError(
+            f"The validator prompt has no {', '.join(absent)}: the value would be dropped "
+            "without a word and the draft judged without it"
+        )
+
     started = time.monotonic()
     spend = open_ledger()
     conversation = _conversation_turns(messages)
@@ -350,20 +334,12 @@ async def _voiced_after_validation(
         if not ask_for_movements:
             movements = []
 
-        validator_system = render(
-            cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
-            SESSION_LANGUAGE=session_language,
-            MEANING_MAP=standard_of_truth,
-            RECENT_CONVERSATION=_conversation_as_evidence(messages),
-            TEAM_UTTERANCE=(
-                NOT_THIS_TURN
-                if mother_tongue
-                else transcript or _nobody_spoke_this_turn(telling_back)
-            ),
-            DRAFTED_RESPONSE=draft,
-            TELLING_BACK=telling_back or NOT_THIS_TURN,
-            FINDING=finding or NOT_THIS_TURN,
-            ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
+        validator_system = her_validator(
+            validator_prompt=validator_prompt,
+            meaning_map=standard_of_truth,
+            team_side=opening_instruction if opening else transcript,
+            draft=draft,
+            session_language=session_language,
         )
         if not warmed_connection:
             warm_connection_in_background(

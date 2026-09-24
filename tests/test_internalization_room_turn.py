@@ -68,49 +68,6 @@ def test_a_half_offered_structure_is_no_structure_at_all(draft: str) -> None:
     assert OPENING_MOVEMENT_MARK not in text
 
 
-def test_the_channel_policy_is_about_conflation_not_order() -> None:
-    """The Validator invented a sequence rule and rejected the Guide in both directions.
-
-    In one session it rejected the Guide for asking the telling-back before the rehearsal
-    ("inverte o fluxo") and in the next for asking the rehearsal before the telling-back
-    ("a politica exige primeiro o relato"). The second is the inverse of the order the
-    Guide actually keeps, so both rejections spent the redrafts and dropped the room to a
-    canned line. The policy now says what it is for, and says where the order really lives
-    — the Guide's own instructions and the probe contract — so barring it from judging
-    order never reads as licence to invite a rehearsal the contract has not authorised.
-    """
-    policy = VALIDATOR[VALIDATOR.index("Keep the two evidence channels separate") :]
-    policy = policy[: policy.index("\n-")]
-
-    assert "conflation, not sequence" in policy
-    assert "evidence of the other" in policy
-    assert "still governs" in policy
-
-
-def test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it() -> None:
-    """Session 956987cb: the opening itself fell to a fail-safe, on the sentence that ends it.
-
-    The Validator read "When you finish, tell me in English what you said." as an epistemic
-    violation and quoted both policies at once — the Guide "must not imply it will understand
-    or check the mother-tongue rehearsal itself; it must limit its judgment to the
-    bridge-language telling-back". Neither policy carved anything out for a rehearsal in the
-    future, and on an opening turn nothing else speaks for the invitation either: the probe is
-    None there, so the practice contract that authorises it is never appended. So the one
-    sentence the opening is required to end on had no defender in the room that judges it.
-
-    A promise to hear a telling-back is not a claim about a rehearsal, and it cannot be one:
-    neither has happened when the sentence is spoken.
-    """
-    access = VALIDATOR[VALIDATOR.index("Never claim access to mother-tongue meaning") :]
-    access = access[: access.index("\n-")]
-    judgment = VALIDATOR[VALIDATOR.index("Limit every judgment to the bridge-language") :]
-    judgment = judgment[: judgment.index("\n-")]
-
-    assert "An invitation is not a claim" in access
-    assert "neither has happened yet" in access
-    assert "An invitation makes no judgment" in judgment
-
-
 def test_the_rehearsal_rule_s_example_is_not_a_fixed_portuguese_sentence() -> None:
     """Sessions bc9c71c2 and fbc77ff8: one of them lifted rule 3's worked example whole, in
     Portuguese, into an English session, and the Validator killed the opening for it.

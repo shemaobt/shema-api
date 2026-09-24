@@ -95,20 +95,19 @@ def _scene_title(pericope: str, scene: int, language: str) -> str | None:
     return None
 
 
-#: Where each of the three prompts fed by `findings_block` puts it, so a case reads the block
-#: and never the prompt around it. The meaning map travels in all three and carries the scene
+#: Where each of the two prompts fed by `findings_block` puts it, so a case reads the block
+#: and never the prompt around it. The meaning map travels in both and carries the scene
 #: titles too, and the templates' own instructions are dashed lines with colons in them: a case
 #: reading a brief whole would count eighty-nine findings where there is one, and would pass on
 #: a room that named no part at all.
 _BLOCK_HEADINGS = (
     "## The findings for ",
-    "## What the analyst found",
     "## The finding to verify",
 )
 
 
 def _block(brief: str) -> str:
-    """The findings block alone, cut out of a Speaker's, Validator's or check's brief."""
+    """The findings block alone, cut out of a Speaker's or check's brief."""
     for heading in _BLOCK_HEADINGS:
         if heading in brief:
             return brief.split(heading, 1)[1].split("\n## ", 1)[0]
@@ -452,29 +451,6 @@ async def test_a_swap_carries_two_addresses_the_addition_first(
     assert len(lines) == 2
     assert lines[0].startswith(f"- addition [frase 5 — a parte 2 — {title}, das frases 4 a 7]:")
     assert lines[1].startswith(f"- missing [frase 5 — a parte 2 — {title}, das frases 4 a 7]:")
-
-
-async def test_the_validator_is_handed_the_same_address(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    analyst: ScriptedAnalyst,
-    room: Room,
-) -> None:
-    """The Validator judges the draft against the finding, so it reads the address too.
-
-    Shown a draft naming a part the Validator had never been told about, the gate would
-    refuse a verdict for saying exactly what the room asked it to say.
-    """
-    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED)
-    analyst.readings = [{"findings": [_missing(5)]}]
-
-    answered = await _checked(client, db_session, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert room.judged, "the Validator ran"
-    title = _scene_title(TITLED, 2, "pt")
-    assert _addresses(room.briefs[-1]) == [f"frase 5 — a parte 2 — {title}, das frases 4 a 7"]
-    assert _addresses(room.judged[-1]) == _addresses(room.briefs[-1])
 
 
 def test_the_speakers_closings_call_it_the_final_draft_never_the_final_translation() -> None:

@@ -28,7 +28,7 @@ never "o mapa"  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_te
 ALFE 8th-grade register  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_register_is_eighth_grade_and_the_proclisis_is_the_spoken_one
 spoken-BR proclisis  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_register_is_eighth_grade_and_the_proclisis_is_the_spoken_one
 YHWH  tests/test_internalization_room_speakable.py::test_a_bare_yhwh_becomes_senhor_jeova_whatever_sits_beside_it
-The two languages never confused  tests/test_internalization_room_turn.py::test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it
+The two languages never confused  tests/test_ir_the_mother_tongue_reaches_the_guide_as_a_room_note.py::test_a_rehearsal_in_the_teams_own_language_reaches_the_guide_as_a_note_not_a_line
 the circle is alive at `done`  PENDING
 The voice opens the session  tests/test_internalization_room_api.py::test_the_opening_turn_carries_no_body_at_all
 the team is never left in front of a silent circle  tests/test_internalization_room_api.py::test_the_opening_turn_carries_no_body_at_all

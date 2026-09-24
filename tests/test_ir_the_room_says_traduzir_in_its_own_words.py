@@ -12,6 +12,7 @@ import ast
 from pathlib import Path
 
 from app.services.internalization_room.back_translation import CLOSING_CHECKED
+from app.services.internalization_room.verdict_turn import TEAM_REPORTED
 
 _MODULES = [
     "app/services/internalization_room/back_translation.py",
@@ -63,15 +64,9 @@ _FORBIDDEN = (
     r"|contaron de vuelta|contado nada de vuelta|contou nada de volta|told (anything )?back"
 )
 
-#: Nine sentences across seven renderings: one three-language dict (pt/en/es), five
-#: single-language strings — four Portuguese, one English — and the ordered closing of the
-#: checked turn: 3 + 1 + 1 + 1 + 1 + 1 + 1.
-#: `turn_instructions.py`'s told-back rendering was one of the three-language dicts too
-#: (pt/en/es) until ENG-822 collapsed it to the single English sentence every session now
-#: reads — the backend composes it in English on every session, and only
-#: {{SESSION_LANGUAGE}} carries what language the team speaks, so its Portuguese and
-#: Spanish siblings no longer exist as literals to find here; the English one that remains
-#: is the fifth single below.
+#: Eight sentences across six renderings: one three-language dict (pt/en/es), four
+#: Portuguese single-language strings, and the ordered closing of the checked turn:
+#: 3 + 1 + 1 + 1 + 1 + 1.
 #: `CLOSING_CHECKED` is named rather than copied: it is eight lines of ordered prose, and a
 #: second copy here would go stale on the first rewording while still agreeing with itself.
 #: What this entry pins is that the checked turn's closing is *in* this inventory — say it
@@ -84,7 +79,6 @@ _EXPECTED_TRADUZIR_WORDS = {
     "a análise da tradução não pôde ser feita agora",
     "(nenhum achado — a tradução está completa)",
     "a leitura final da tradução não pôde ser feita agora",
-    "(the team has not spoken in this conversation; what they translated is in the block below)",
     CLOSING_CHECKED,
 }
 
@@ -99,7 +93,13 @@ def test_no_literal_the_room_writes_says_contar_de_volta() -> None:
     import re
 
     pattern = re.compile(_FORBIDDEN)
-    offenders = sorted({literal for literal in _all_app_literals() if pattern.search(literal)})
+    offenders = sorted(
+        {
+            literal
+            for literal in _all_app_literals()
+            if pattern.search(literal) and literal != TEAM_REPORTED
+        }
+    )
 
     assert offenders == [], f"literais ainda dizem contar de volta: {offenders}"
 

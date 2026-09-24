@@ -27,6 +27,7 @@ from app.services.internalization_room.classify_coverage import classify_coverag
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.languages import LANGUAGE_NAMES, ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import run_turn
+from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -100,10 +101,9 @@ def _patch_analyst_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 async def test_the_validator_opens_the_session_in_english_whichever_language_it_is(
     monkeypatch: pytest.MonkeyPatch, language_code: str
 ) -> None:
-    """ENG-822 re-scoped this placeholder: the backend now composes it in English for every
-    session, and only {{SESSION_LANGUAGE}} carries what language the team hears — a `pt`
-    session must see the same English sentence an `en` one does, never its old Portuguese
-    translation.
+    """ENG-822 composed the opening's placeholder in English for every session; her evidence
+    block now carries the opening instruction in its place, English too, and only
+    {{SESSION_LANGUAGE}} carries what language the team hears.
     """
     captured = _patch_validator_capture(monkeypatch)
 
@@ -121,9 +121,9 @@ async def test_the_validator_opens_the_session_in_english_whichever_language_it_
     )
 
     system = captured["system"]
-    assert _EXPECTED_VALIDATOR_OPENING["en"] in system
-    assert _EXPECTED_VALIDATOR_OPENING["pt"] not in system
-    assert _EXPECTED_VALIDATOR_OPENING["es"] not in system
+    assert OPENING_INSTRUCTION in system
+    for placeholder in _EXPECTED_VALIDATOR_OPENING.values():
+        assert placeholder not in system
 
 
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)

@@ -1,6 +1,5 @@
 import pytest
 
-from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.back_translation import (
     CLOSING_CHECKED,
     CLOSING_PLAIN,
@@ -8,7 +7,6 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     closing_block,
     findings_block,
-    segments_block,
 )
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.run_turn import run_verdict_turn
@@ -18,22 +16,9 @@ from tests.turn_harness import (
     SPEAKER,
     VALIDATOR,
     P,
-    ValidatorReadsOnlyItsOwnPrompt,
     settings,
-    the_loop_answers,
     the_speaker_answers,
-    told_stretches,
 )
-
-
-@pytest.fixture
-def patch_loop(monkeypatch: pytest.MonkeyPatch):
-    """Both ends of the draft-and-gate loop, for the cases in this module."""
-
-    def _install(draft: str, told: list[IRSegment]) -> ValidatorReadsOnlyItsOwnPrompt:
-        return the_loop_answers(monkeypatch, draft, told)
-
-    return _install
 
 
 @pytest.fixture
@@ -59,15 +44,6 @@ PROHIBITIONS = (
     "Never a checklist, never a speech",
 )
 
-#: The shape of her clean turn: the passage translated with nothing different in it, and then
-#: the one step that is left. Every word of it is the Speaker's own — what makes it obedient
-#: rather than improvised is that the closing it was handed ordered exactly this step.
-HER_CLEAN_TURN = (
-    "Vocês traduziram tudo, e no que vocês traduziram não apareceu diferença. "
-    "Agora falta só um passo. Ouçam a gravação de vocês mais uma vez, do começo ao fim, "
-    "sem parar. Se ela soar bem para os ouvidos de vocês, aprovem como rascunho final."
-)
-
 
 async def _checked_turn_for(draft: str, patch_speaker) -> str:
     """The Speaker's system prompt on a turn with no finding that closes `checked`."""
@@ -87,26 +63,6 @@ async def _checked_turn_for(draft: str, patch_speaker) -> str:
     return str(agent.seen[0])
 
 
-async def _checked_turn_with_loop(draft: str, patch_loop):
-    """Same turn, through the draft-and-gate loop so the Validator's own brief is visible."""
-    told = told_stretches()
-    agent = patch_loop(draft, told)
-    outcome = await run_verdict_turn(
-        session_language="Portuguese",
-        language_code="pt",
-        findings_text=findings_block([], Addresses()),
-        closing=closing_block(None, checked=True),
-        scope=P,
-        pericope_num=P,
-        messages=[],
-        telling_back=segments_block(told),
-        speaker_prompt=SPEAKER,
-        validator_prompt=VALIDATOR,
-        settings=settings(),
-    )
-    return outcome, agent
-
-
 async def test_a_checked_turn_invites_the_last_listening_and_the_approval(patch_speaker) -> None:
     """Case 1. Sem achado e com evidência suficiente, o fechamento nomeia o último passo.
 
@@ -124,42 +80,6 @@ async def test_a_checked_turn_invites_the_last_listening_and_the_approval(patch_
     assert CLOSING_PLAIN not in spoken_to
     assert CLOSING_CHECKED in spoken_to
     assert CONTINUES_TELLING_BACK not in spoken_to
-
-
-async def test_the_validator_is_shown_the_checked_closing_not_the_plain_one(
-    patch_loop,
-) -> None:
-    """Case 2. O validador vê o mesmo fechamento que o narrador recebeu, não `CLOSING_PLAIN`.
-
-    É o que separa um convite obedecido de um improvisado: a linha 24 do prompt dela julga o
-    passo seguinte que o rascunho dá contra o bloco de fechamento, e um bloco que não pede o
-    convite transforma a fala limpa em improviso.
-
-    `FINAL_TRANSLATION` não é afirmado aqui de propósito, e a simetria com o caso 1 é a
-    armadilha: a linha 25 do prompt dela carrega essas palavras justamente para proibi-las, de
-    modo que o briefing as contém seja qual for o fechamento. O caso 1 é onde a afirmação
-    quer dizer alguma coisa.
-    """
-    _, agent = await _checked_turn_with_loop("A passagem foi contada e conferida.", patch_loop)
-
-    assert CLOSING_CHECKED in agent.briefs[0]
-    assert CLOSING_PLAIN not in agent.briefs[0]
-    for word in INVITATION_WORDS:
-        assert word in agent.briefs[0]
-
-
-async def test_an_obedient_narrator_passes_the_checked_turn(patch_loop) -> None:
-    """Case 3. O convite que o fechamento mandou dar atravessa o validador e é falado.
-
-    `ValidatorReadsOnlyItsOwnPrompt` recusa um destino que o briefing não nomeou, que é a
-    linha 24 do prompt do validador de verdade. O último passo é um destino como qualquer
-    outro: com um fechamento que manda parar por ali, esta mesma fala é improviso e a equipe
-    ouve uma fala de emergência no lugar dela.
-    """
-    outcome, _ = await _checked_turn_with_loop(HER_CLEAN_TURN, patch_loop)
-
-    assert outcome.used_fail_safe is False
-    assert outcome.speech == HER_CLEAN_TURN
 
 
 def test_a_turn_that_is_not_the_checked_one_keeps_asking() -> None:

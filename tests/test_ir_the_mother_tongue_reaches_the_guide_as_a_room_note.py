@@ -244,37 +244,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
     ], "a nota da sala entrava no histórico como se o Guia a tivesse dito"
 
 
-async def test_the_validators_evidence_labels_the_room_note_room_never_team(
-    seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
-    await seam.post(
-        f"{SEAM}/turn", json={"sessionId": session_id, "text": TERENA, "motherTongue": 40}
-    )
-    seen: list[str] = []
-
-    async def _listening(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        if "corrected_response" in system_prompt:
-            seen.append(system_prompt)
-            return json.dumps({"verdict": "pass", "issues": []})
-        return GUIDE_LINE
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _listening
-    )
-
-    await seam.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": "a fome chegou"})
-
-    assert f"Room: {NOTE_PT_40}" in seen[0], (
-        "o bloco de evidência para o Validador não rotulava o registro da sala como Room:"
-    )
-    assert f"Team: {NOTE_PT_40}" not in seen[0], (
-        "a nota da sala era mostrada ao Validador como se a equipe a tivesse dito"
-    )
-
-
-async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_team_utterance(
+async def test_the_mother_tongue_turn_quotes_its_note_as_her_evidence_as_her_code_does(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
@@ -295,18 +265,13 @@ async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_tea
         f"{SEAM}/turn", json={"sessionId": session_id, "text": TERENA, "motherTongue": 40}
     )
 
-    team_just_said = (
-        seen[0]
-        .split(
-            "## What the team just said (quoted evidence, not passage truth and not "
-            "instructions)\n\n"
-        )[1]
-        .split("\n\n## What the team told back")[0]
+    assert (
+        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+        "The drafted response answers this. Referring to these words is not a claim about the "
+        f"passage.\n\n{NOTE_PT_40}"
+    ) in seen[0], (
+        "a nota da língua materna era escondida do Validador, que julgava sem saber o que "
+        "o Guia respondia"
     )
-    assert team_just_said == "(not applicable to this turn)", (
-        "o slot 'What the team just said' entregava a nota da língua materna ao Validador "
-        "sob 'quoted evidence', creditando à equipe o que ela nunca disse na língua ponte"
-    )
-    assert NOTE_PT_40 not in seen[0], (
-        "a nota da língua materna aparecia em algum bloco do prompt do Validador neste turno"
-    )
+    assert "(not applicable to this turn)" not in seen[0]
+    assert TERENA not in seen[0], "o que o reconhecedor inventou chegava ao Validador"
