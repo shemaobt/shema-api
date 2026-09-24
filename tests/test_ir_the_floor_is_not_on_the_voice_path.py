@@ -75,5 +75,3 @@ async def test_a_floor_not_met_changes_nothing_the_guide_says_back(
     assert on_the_echo.outcome == on_the_work.outcome, (
         "o piso decidia o que a equipe ouve — o convite de gravar era condicionado a ele"
     )
-    assert on_the_echo.state.active_probe is None
-    assert on_the_echo.state.active_probe == on_the_work.state.active_probe

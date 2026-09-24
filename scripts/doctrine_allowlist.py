@@ -3,9 +3,9 @@
 Marcia's ruling (04/09) bans six mechanisms from code: word ceilings, probe/station
 contracts, memory windows, "say less" notes, a non-frontier model on the voice, and
 app-owned conversation modes. Her own guard, `check-doctrine.mjs` in
-`Tripod-Internalization`, is green today because the removals it protects have already
-happened there. Ours cannot be: every one of the six is still live in
-`app/services/internalization_room` and `app/api/internalization_room`, coming out
+`Tripod-Internalization`, is green because the removals it protects had already happened
+there. Ours could not be at first: every one of the six was still live in
+`app/services/internalization_room` and `app/api/internalization_room`, and came out
 under a ladder of separate tickets.
 
 So this file is a scan of the sites as they stand *right now* — one entry per file, rule
@@ -40,28 +40,4 @@ class AllowlistEntry:
     text: str
 
 
-#: Generated from `check_doctrine.scan()`, keyed on (file, rule, text) rather than line
-#: (Fable maestri, 2026-09-08) so an edit above a site cannot turn every listed site below
-#: it stale. Refreshed 2026-09-09 against `main` after ENG-831 (Assessor/planner/
-#: stt_recovery/no_report/render_active_probe_contract deleted), ENG-793's ceiling ticket
-#: (word ceilings and "dizendo menos" deleted), and ENG-793's split of run_turn.py into
-#: nine modules — 198 sites down to 65: the memory window now lives in validated_turn.py,
-#: `gemini_*`/`ThinkingLevel.LOW` in llm.py stay for ENG-747. The mode rule has nothing
-#: left to allow: ENG-800 deleted calibration.py, the column, the wire fields and the two
-#: prompt sections, so a `bridge_mode` anywhere the guard reads is now a violation with no
-#: row to hide behind. ENG-749 then deleted the memory window itself — the whole conversation
-#: reaches the Guide every turn — and its two rows went with it: 65 down to 6, every one of
-#: them a probe site. Sorted by file, then rule, then the line the text came from, purely for
-#: a readable diff.
-ALLOWLIST: list[AllowlistEntry] = [
-    AllowlistEntry(
-        "app/services/internalization_room/comprehension/probe.py",
-        Rule.PROBE,
-        "class ProbePurpose(enum.StrEnum):",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/comprehension/probe.py",
-        Rule.PROBE,
-        "purpose: ProbePurpose",
-    ),
-]
+ALLOWLIST: list[AllowlistEntry] = []

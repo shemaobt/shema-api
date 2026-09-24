@@ -10,11 +10,9 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.services.internalization_room.comprehension.evidence import EvidenceEvent
-from app.services.internalization_room.comprehension.probe import ActiveProbe
 
 
 class ComprehensionState(BaseModel):
     ledger: list[EvidenceEvent] = Field(default_factory=list)
-    active_probe: ActiveProbe | None = None
     practiced_scene_ids: list[str] = Field(default_factory=list)
     invited_scene_id: str | None = None

@@ -20,14 +20,11 @@ files the session's state lives in. A model none of the six mechanisms touch —
 thinking budget's identifier is `gemini_*`, and that same substring names a model choice
 in nine other parts of the system (ENG-747) that this guard has no business flagging.
 
-The six mechanisms are being deleted under a ladder of separate tickets, not this one, so
-the guard cannot be green against an empty allowlist yet. Until the ladder lands,
-`doctrine_allowlist.ALLOWLIST` names every site the guard finds today; a hit not on that
-list is a violation, and an allowlist entry the scan can no longer confirm is stale — a
-site nobody deleted the row for. Entries are matched by `(file, rule, text)`, never by
-`line`: eighteen tickets in the ladder touch `live_turn.py` alone, and a line-keyed
-allowlist would call every site below an unrelated edit both stale and freshly violating,
-on every one of those PRs. Run as a script:
+The six mechanisms came out under a ladder of separate tickets, and the allowlist that
+named the sites still standing is empty now: every hit is a violation. An entry added back
+to `doctrine_allowlist.ALLOWLIST` is matched by `(file, rule, text)`, never by `line`, so an
+edit above a listed site cannot turn it stale, and an entry the scan can no longer confirm
+is reported stale — a site nobody deleted the row for. Run as a script:
 
     uv run python scripts/check_doctrine.py
 """

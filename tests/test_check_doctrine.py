@@ -14,27 +14,32 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.check_doctrine import SCAN_ROOTS, evaluate, scan
+from scripts.check_doctrine import REPO_ROOT, SCAN_ROOTS, evaluate, scan
 from scripts.doctrine_allowlist import ALLOWLIST, AllowlistEntry, Rule
 
 
-def test_the_guard_finds_every_site_the_allowlist_already_names() -> None:
+def test_the_guard_looks_where_the_six_mechanisms_would_come_back(tmp_path: Path) -> None:
     """Looking where the six mechanisms live, not passing on an empty scan.
 
-    A scanner that walked the wrong directories, or whose patterns stopped matching the
-    repo's actual spellings, would report no hits at all — and an empty allowlist would
-    then agree with it for the wrong reason. Comparing against the real allowlist instead
-    of asserting `scan()` is merely non-empty is what would have caught that.
+    The live tree has no site left, so an empty scan of it proves nothing: a scanner that
+    walked the wrong directories, or whose patterns stopped matching the repo's spellings,
+    would report the same nothing. One known site planted in a copy of every scan root has
+    to come back from every one of them.
     """
-    hits = scan(SCAN_ROOTS)
+    roots = tuple(tmp_path / root.relative_to(REPO_ROOT) for root in SCAN_ROOTS)
+    for root in roots:
+        planted = root if root.suffix == ".py" else root / "planted.py"
+        planted.parent.mkdir(parents=True, exist_ok=True)
+        planted.write_text("class ProbePurpose(enum.StrEnum):\n")
 
-    assert hits, "the scan found nothing at all — it is not looking where the six mechanisms live"
+    hits = scan(roots, base=tmp_path)
 
-    _violations, stale = evaluate(hits, ALLOWLIST)
-    assert not stale, (
-        "the allowlist names sites the scan no longer confirms: "
-        f"{[(e.file, e.rule, e.text) for e in stale]}"
-    )
+    assert sorted((hit.file, hit.rule) for hit in hits) == [
+        ("app/api/internalization_room/planted.py", Rule.PROBE),
+        ("app/db/models/internalization_room.py", Rule.PROBE),
+        ("app/models/internalization_room.py", Rule.PROBE),
+        ("app/services/internalization_room/planted.py", Rule.PROBE),
+    ]
 
 
 def test_a_mechanism_reintroduced_outside_the_allowlist_fails_with_its_doctrine_sentence(

@@ -86,26 +86,14 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
-async def test_the_coverage_floor_alone_no_longer_closes_the_session(
-    db_session: AsyncSession,
-) -> None:
-    """Coverage bookkeeping is participation, not comprehension — the very confusion the
-    bridge-language calibration exists to undo.
-
-    What held this shut was the recording-consent flag, and only by accident: the room's own
-    question was the flag's one writer, so a session that had never been asked could not
-    close. ENG-777 took the question away, and until ENG-780 the premise still had one thing
-    implementing it: a fully engaged necklace read as a rehearsed one, so the floor alone
-    could still close a session nobody had reported practicing in. With that substitution
-    gone, an untouched comprehension state keeps the passage in `needs_more_work` and the
-    floor being met changes nothing about that.
-    """
+async def test_the_coverage_floor_alone_closes_the_session(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
     session = await apply_coverage(db_session, session.id, whole)
 
-    assert session.status is IRSessionStatus.IN_PROGRESS
+    assert session.status is IRSessionStatus.DONE
+    assert session.ended_at is not None
 
 
 def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
@@ -147,12 +135,6 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     exactly why this one has to be stamped: without it a finished conversation is
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
-
-    The scenario carries calibration, evidence and practice, and `_fully_supported_comprehension`
-    is what holds it up: its `practiced_scene_ids` reports every scene, which is the one
-    thing the readiness gate reads since ENG-780 killed the engaged-scene substitution. What
-    is asserted here is unchanged either way — that the close is *stamped*, not what it
-    takes to reach one.
     """
     session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
@@ -267,5 +249,5 @@ async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
 
     state = comprehension_of(session)
 
-    assert state.active_probe is None
+    assert "active_probe" not in state.model_dump()
     assert state.practiced_scene_ids == ["S1"]
