@@ -236,7 +236,7 @@ class _Refusing:
 
 
 async def test_a_refused_call_says_who_asked_how_long_it_waited_and_that_it_erred(
-    the_client, caplog: pytest.LogCaptureFixture
+    the_client, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     the_client(
@@ -246,6 +246,7 @@ async def test_a_refused_call_says_who_asked_how_long_it_waited_and_that_it_erre
             )
         )
     )
+    monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
 
     with (
         caplog.at_level(logging.WARNING, logger="app.services.internalization_room.llm"),
@@ -255,8 +256,15 @@ async def test_a_refused_call_says_who_asked_how_long_it_waited_and_that_it_erre
             role="classifier", system_prompt="s", user_content="u", settings=_settings()
         )
 
-    (refused,) = _usage_lines(caplog)
-    assert refused.status == 529 and refused.rung == MODEL
-    assert refused.role == "classifier", "sem o papel, a linha não separa o Guia do classificador"
-    assert isinstance(refused.latency_ms, int)
-    assert refused.outcome == "error"
+    first, second = _usage_lines(caplog)
+    for refused in (first, second):
+        assert refused.status == 529 and refused.rung == MODEL
+        assert refused.role == "classifier", (
+            "sem o papel, a linha não separa o Guia do classificador"
+        )
+        assert isinstance(refused.latency_ms, int)
+        assert refused.outcome == "error"
+    assert (first.attempt, second.attempt) == (1, 2), (
+        "um 529 é uma pressa passageira: a sala tenta o mesmo degrau uma segunda vez antes "
+        "de desistir, e cada tentativa deixa sua própria linha de uso"
+    )

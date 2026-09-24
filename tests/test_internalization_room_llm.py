@@ -151,11 +151,15 @@ async def test_a_classic_key_sends_no_workspace_header_at_all(fake_client) -> No
     )
 
 
-def _refusal_response() -> httpx2.Response:
+def _status(code: int) -> httpx2.Response:
     """A real response object, because the SDK's errors read `response.request` on the way up."""
     return httpx2.Response(
-        status_code=404, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+        status_code=code, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
     )
+
+
+def _refusal_response() -> httpx2.Response:
+    return _status(404)
 
 
 class LadderMessages:
@@ -246,16 +250,138 @@ async def test_a_rung_that_refuses_outright_hands_the_request_to_the_next(
     )
 
 
-async def test_a_rate_limit_keeps_the_rung_it_is_on(ladder_client) -> None:
-    messages = ladder_client("nunca", anthropic.RateLimitError)
+class FlakyMessages:
+    """A rung that fails a scripted number of times, in order, before it answers."""
+
+    def __init__(self, failures: list[Exception]):
+        self.failures = failures
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if self.failures:
+            raise self.failures.pop(0)
+        return _reply("ok")
+
+
+@pytest.fixture
+def flaky_client(monkeypatch: pytest.MonkeyPatch):
+    def _install(*failures: Exception) -> FlakyMessages:
+        messages = FlakyMessages(list(failures))
+        monkeypatch.setattr(
+            llm.anthropic,
+            "AsyncAnthropic",
+            lambda **options: SimpleNamespace(messages=messages, options=options),
+        )
+        monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
+        return messages
+
+    return _install
+
+
+async def test_a_rate_limit_retries_once_on_the_same_rung(flaky_client) -> None:
+    messages = flaky_client(anthropic.RateLimitError("slow down", response=_status(429), body=None))
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"], (
+        "um limite de taxa gastava a escada inteira na hora, e a sessão seguia num modelo "
+        "mais fraco por um minuto de pressa; a pressa passageira agora ganha uma segunda "
+        "tentativa no mesmo degrau antes de mexer na escada"
+    )
+    assert text == "ok"
+
+
+async def test_a_rate_limit_twice_still_raises(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.RateLimitError("slow down", response=_status(429), body=None),
+        anthropic.RateLimitError("slow down", response=_status(429), body=None),
+    )
+
+    with pytest.raises(UpstreamServiceError):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"], (
+        "a retentativa é uma única: um segundo 429 seguido no mesmo degrau sobe como antes, "
+        "em vez de abrir uma fila de tentativas escondida do chamador"
+    )
+
+
+async def test_an_overload_retries_once_on_the_same_rung(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.OverloadedError("Overloaded", response=_status(529), body=None)
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"]
+    assert text == "ok"
+
+
+async def test_a_5xx_retries_once_on_the_same_rung(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.ServiceUnavailableError("Service unavailable", response=_status(503), body=None)
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"]
+    assert text == "ok"
+
+
+async def test_a_bad_request_is_not_retried(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.BadRequestError(
+            "Your credit balance is too low", response=_status(400), body=None
+        )
+    )
 
     with pytest.raises(UpstreamServiceError):
         await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
 
     assert messages.asked == ["claude-fable-5-1"], (
-        "um limite de taxa gastava a escada inteira e a sessão seguia num modelo mais fraco "
-        "por um minuto de pressa; a escada é sobre o que a chave PODE usar, não sobre pressa"
+        "um 400 não é uma pressa passageira: é o pedido que está errado, e repeti-lo sem "
+        "mudar nada só paga a mesma recusa duas vezes"
     )
+
+
+async def test_a_refusal_then_a_rate_limit_on_the_next_rung_still_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rung that refuses outright steps down; the rung under it can still be flaky."""
+
+    class _RefusesThenFlaky:
+        def __init__(self) -> None:
+            self.asked: list[str] = []
+            self._second_rung_failed_once = False
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            model = kwargs["model"]
+            self.asked.append(model)
+            if model == "claude-fable-5-1":
+                reply = _reply("", stop_reason="refusal")
+                reply.content = []
+                return reply
+            if not self._second_rung_failed_once:
+                self._second_rung_failed_once = True
+                raise anthropic.RateLimitError("slow down", response=_status(429), body=None)
+            return _reply("ok")
+
+    messages = _RefusesThenFlaky()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+    monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5", "claude-opus-5"], (
+        "a retentativa é do degrau, não do topo: uma recusa desce a escada uma vez, e o "
+        "degrau seguinte ainda ganha sua própria tentativa extra numa pressa passageira"
+    )
+    assert text == "ok"
 
 
 async def test_the_conversation_travels_as_turns_with_the_new_utterance_last(fake_client):
