@@ -31,11 +31,13 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.util
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -438,6 +440,24 @@ def bar_faults(
     return faults
 
 
+def _by_path(path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def adaptation_faults(root: Path = REPO_ROOT) -> list[str]:
+    room = root / "app/services/internalization_room"
+    table = _by_path(room / "prompt_adaptations.py")
+    extract = _by_path(room / "prompt_body.py").extract_prompt_body
+    bodies = {
+        key: extract((room / "prompts/vendor" / name).read_text(encoding="utf-8"), name)
+        for key, name in table.HER_FILES.items()
+    }
+    return list(table.faults(bodies, table.ADAPTATIONS))
+
+
 def sync(source: Path) -> int:
     commit = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
@@ -472,7 +492,10 @@ def check() -> int:
     rulings = read_rulings()
     record = read_seam_record()
     missing = (
-        unruled(pin, rulings) + seam_drift(record, model_seam()) + unnamed_rulings(record, rulings)
+        unruled(pin, rulings)
+        + seam_drift(record, model_seam())
+        + unnamed_rulings(record, rulings)
+        + adaptation_faults()
     )
     if missing:
         for line in missing:
