@@ -123,7 +123,7 @@ async def _a_session_with_part_two_recorded_again(
     """
     session, parts = await rehearsed_in_parts(db, 3, project_id=project_id)
     await _pressed_terminei(client, db, session.id)
-    assert (await release_packet(db, session))["readiness"] == "ready_for_refine", (
+    assert (await release_packet(db, session))["purpose"] == "first_team_rehearsal", (
         "the case starts from a session the gate lets through"
     )
 
@@ -233,7 +233,7 @@ async def test_a_rehearsal_told_whole_and_recorded_again_is_untold(
     """
     session = await ready_session(db_session)
     told_whole = await the_one_part_of(db_session, session)
-    assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine", (
+    assert (await release_packet(db_session, session))["purpose"] == "first_team_rehearsal", (
         "the case starts from a session the gate lets through"
     )
 

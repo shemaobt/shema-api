@@ -244,7 +244,7 @@ async def test_a_stretch_told_back_after_its_recording_moved_releases(
 
     artifact = await build_internalization_release(db_session, session)
 
-    assert artifact["readiness"] == "ready_for_refine"
+    assert artifact["purpose"] == "first_team_rehearsal"
     assert [one["text"] for one in artifact["back_translation"]["segments"]] == [
         "Noemi voltou",
         "e Rute veio com ela",

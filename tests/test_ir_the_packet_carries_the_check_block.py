@@ -314,9 +314,7 @@ async def test_the_analysts_note_is_nowhere_in_the_packet(db_session: AsyncSessi
     Two greps, and the difference between them is the point. The key is looked for over the
     whole telling-back rather than over the list the note used to travel in, so a key added to
     a finding later cannot bring it back in the other list — the superseded attempt is here for
-    exactly that, being a second list of the same thing. It is not looked for over the whole
-    packet because `comprehension` carries a `note` of its own, which is the room's own note
-    about a probe and nothing the analyst ever wrote.
+    exactly that, being a second list of the same thing.
 
     The analyst's *words* are looked for over the whole packet, and that is the grep that
     survives a field nobody has written yet: whatever block a future key lands in, the marker
@@ -337,7 +335,7 @@ async def test_the_analysts_note_is_nowhere_in_the_packet(db_session: AsyncSessi
 
     assert '"note"' not in json.dumps(packet["back_translation"])
     assert THE_ANALYSTS_NOTE not in json.dumps(packet)
-    assert packet["schema_version"] == "tripod.internalization-release.v0.6"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.7"
     assert set(packet["back_translation"]["findings"][0]) == {
         "kind",
         "segment_id",
