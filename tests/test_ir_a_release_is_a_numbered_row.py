@@ -165,8 +165,8 @@ async def test_approving_again_with_nothing_changed_returns_the_same_release(cli
 async def test_the_team_approves_a_passage_whose_conversation_fell_short(client, db_session):
     """ADR 0037: the team's approval asks only about the telling-back and the rehearsal.
 
-    The ledger short of the floor and no scene practised are facts the packet states, and
-    neither is a door: a team that rehearsed through the record entry and told the passage
+    No scene practised is a fact the packet states and the floor unmet a fact of the ledger,
+    and neither is a door: a team that rehearsed through the record entry and told the passage
     back is answered with a version, not halted for a person nobody can help.
     """
     project, credential = await a_claimed_device(db_session)

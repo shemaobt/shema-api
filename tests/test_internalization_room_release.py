@@ -57,10 +57,7 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
-        "no_rehearsal_audio",
-        "no_telling_back",
-    }
+    assert blocked.value.blockers == ["no_rehearsal_audio", "no_telling_back"]
 
 
 async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:

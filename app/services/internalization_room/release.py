@@ -703,9 +703,12 @@ async def approve_release(
     one forcing, so compare-first never becomes a force the team can reach.
 
     It answers an unchanged packet with its release whatever stands, and not only over the
-    finding somebody overruled: a part a facilitator forced over unheard is answered the same
-    way. That is the rule ADR 0014 wrote — the number says which content was approved, and
-    this content was — and it is wider than the force it was reopened for.
+    finding somebody overruled. A stretch captured without words after the approval is the
+    case that shows the reach: the packet carries only the stretches the team told back, so
+    its hash does not move, and the team is answered with that release while
+    ``untold_stretch``, which no force waives, stands. That is the rule ADR 0014 wrote — the
+    number says which content was approved, and this content was — and it is wider than the
+    force it was reopened for.
 
     The number is one past the last, which two approvals arriving together can both read.
     The unique index is what refuses the second, and the refusal is answered rather than
