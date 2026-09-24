@@ -34,7 +34,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
-import importlib.util
+import importlib.machinery
 import re
 import subprocess
 import sys
@@ -444,9 +444,9 @@ def bar_faults(
 
 
 def _by_path(path: Path) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(path.stem, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    loader = importlib.machinery.SourceFileLoader(path.stem, str(path))
+    module = ModuleType(loader.name)
+    loader.exec_module(module)
     return module
 
 
