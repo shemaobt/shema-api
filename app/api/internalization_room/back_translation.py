@@ -331,11 +331,7 @@ async def _finished(
         # empty back translation blessed the passage and the app struck it off the wheel
         # for good, on a telling-back that never happened. The room says it did not hear
         # anything, which is the line family written for exactly this.
-        _, line = choose(
-            FailSafe.INAUDIBLE,
-            session.language,
-            turn=len(session.messages or []),
-        )
+        _, line = choose(FailSafe.INAUDIBLE, session.language)
         return BackTranslationVerdictResponse(
             session_id=session.id,
             audio_url="",

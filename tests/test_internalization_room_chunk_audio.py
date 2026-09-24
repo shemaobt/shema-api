@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
-from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING, get_session
 from app.services.platform.storage import StoredObject
 
 PREFIX = "/api/internalization-room"
@@ -192,6 +192,38 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     assert body["checked"] is False
     assert body["fixed_line"].startswith("D"), (
         "a sala diz que não ouviu nada, que é a família escrita para isto"
+    )
+
+
+async def test_finishing_a_long_session_with_nothing_told_still_draws_the_first_d_line(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The same press, deep into a session — the line does not drift with the transcript.
+
+    This route picked its D line by `len(session.messages)`, not by counting anything the
+    ladder counted, so a team forty messages into a passage could draw any of the three D
+    lines depending on where the count landed — the session's own length answered a
+    question about hearing nothing just now.
+    """
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
+    )
+    session_id = created.json()["session_id"]
+    session = await get_session(db_session, session_id)
+    session.messages = [
+        {"role": "guide" if i % 2 else "team", "text": f"turno {i}", "outcome": "pass"}
+        for i in range(40)
+    ]
+    await db_session.commit()
+
+    answer = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/finish",
+        headers={"X-Room-Key": KEY},
+    )
+
+    assert answer.status_code == 200
+    assert answer.json()["fixed_line"] == "D0", (
+        "40 mensagens guardadas davam D1 pelo tamanho da sessão; nada mais conta"
     )
 
 
