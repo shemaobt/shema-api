@@ -320,7 +320,11 @@ def _settle_later(
     guide_response: str,
     opening: bool,
 ) -> bool:
-    """Schedule the coverage classifier for the turn just written, if `_worth_settling`."""
+    """Schedule the coverage classifier for the turn just written, if `_worth_settling`.
+
+    Both doors reach here — the opening the panorama wrote ahead and the line the room writes
+    on demand — the way every turn but a panorama's reaches her classifier.
+    """
     if not _worth_settling(session):
         return False
     background.add_task(
@@ -775,6 +779,7 @@ async def _answer_the_turn(
         session = await room.append_exchange(
             db, session, team_utterance="", guide_response=speech, commit=False
         )
+        prepared_turn_id = turn_id or str(uuid.uuid4())
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
@@ -782,7 +787,15 @@ async def _answer_the_turn(
             peer_cue=outcome.peer_cue,
             coverage=coverage_view(session),
             done=False,
-            turn_id=turn_id or str(uuid.uuid4()),
+            turn_id=prepared_turn_id,
+            classification_pending=_settle_later(
+                background,
+                session,
+                turn_id=prepared_turn_id,
+                team_utterance="",
+                guide_response=speech,
+                opening=True,
+            ),
         )
         if turn_id:
             await remember_turn(
