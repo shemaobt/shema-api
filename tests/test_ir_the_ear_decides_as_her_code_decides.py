@@ -350,3 +350,41 @@ async def test_a_wordless_take_keeps_the_language_scribe_heard_it_in_for_the_log
         "a tomada do P06 ia para o log como heard=None p=None, o que o Scribe disse dela perdido"
     )
     assert speech.reason == "no words in a long take (116 s >= 20 s)"
+
+
+async def test_a_wordless_take_of_exactly_twenty_seconds_is_her_note_and_one_ms_less_is_d(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = the_agent_answers(
+        monkeypatch, FakeAgent(verdicts=[{"verdict": "pass", "issues": []}], drafts=[WELCOME])
+    )
+    _scribe_answers(monkeypatch, 200, P06_SCRIBE)
+
+    at_the_edge = await _the_room_hears(db_session, _take(20))
+    under_it = await _the_room_hears(db_session, _take(19.999))
+
+    assert at_the_edge.room_note == (
+        "[A equipe falou na língua materna por cerca de 20 segundos; sem transcrição — nenhuma "
+        "palavra chegou até você.]"
+    ), "a tomada de 20 s exatos, que a regra dela conta como língua materna, virava a linha D"
+    assert under_it.fixed_line == "D0"
+    assert agent.calls == ["guide", "validator"]
+
+
+async def test_the_same_language_floor_is_read_from_the_settings_not_fixed_at_0_35(
+    db_session: AsyncSession, agent: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "internalization_room_same_language_min_prob", 0.5)
+    _scribe_answers(
+        monkeypatch,
+        200,
+        {"text": "Entendemos tudo.", "language_code": "por", "language_probability": 0.40},
+    )
+
+    outcome = await _the_room_hears(db_session, _take(6))
+
+    assert outcome.room_note == NOTE_PT_6, (
+        "o piso dela vem de uma variável que o piloto ajusta, e o nosso ficava preso no código"
+    )
