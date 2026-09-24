@@ -224,6 +224,7 @@ def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, 
     if turn.kickoff:
         body["kickoff"] = True
     elif turn.motherTongue:
+        body["text"] = mother_tongue_note(_language_code(script.language), turn.motherTongue * 1000)
         body["motherTongue"] = turn.motherTongue
     else:
         body["text"] = turn.team or ""
@@ -265,11 +266,7 @@ async def play(
             idx=idx,
             team=reply.get("transcript")
             or body.get("text")
-            or (
-                mother_tongue_note(_language_code(script.language), turn.motherTongue * 1000)
-                if turn.motherTongue
-                else opening_note(script.pericopeId, script.language)
-            ),
+            or opening_note(script.pericopeId, script.language),
             guide=reply["guideText"],
             outcome=reply["outcome"],
             interrupted=turn.interrupted,
