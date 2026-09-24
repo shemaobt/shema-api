@@ -183,10 +183,10 @@ async def _write_the_turn(
     *,
     outcome: room.TurnOutcome,
     opening: bool,
-) -> IRSession:
+) -> tuple[IRSession, bool]:
     with stage("db_write"):
         if opening:
-            await room.append_opening(
+            landed = await room.append_opening(
                 db,
                 session,
                 guide_response=outcome.speech,
@@ -194,8 +194,8 @@ async def _write_the_turn(
                 scene=_scene_of(session),
                 commit=False,
             )
-            return session
-        return await room.append_exchange(
+            return session, landed
+        session = await room.append_exchange(
             db,
             session,
             team_utterance=outcome.transcript,
@@ -204,6 +204,7 @@ async def _write_the_turn(
             scene=_scene_of(session, outcome.transcript),
             commit=False,
         )
+        return session, True
 
 
 async def _upload(uploads: list[Upload]) -> None:
@@ -297,26 +298,17 @@ def _scene_of(session: IRSession, team_utterance: str = "") -> str | None:
     return current_scene_id(session.coverage_state or {}, session.pericope, history)
 
 
-def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
-    """Whether the turn carries anything the coverage classifier should be reading.
+def _worth_settling(session: IRSession) -> bool:
+    """Whether the turn goes to the coverage classifier: every turn that is not a panorama's.
 
-    A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
-    said nothing, so what the team said decides rather than the state the room's own turn
-    ended in. What the team said still has to be speech the room took up, which is what
-    `reliable_bridge_speech` means: an uncertain transcript travels forward inside the very
-    fail-safe asking the team to repeat it, and mother-tongue speech inside the one asking
-    for the session's language back. Neither is an answer the room engaged with, and coverage
-    only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
-
-    The opening used to earn an exception here by being an opening the Guide actually wrote,
-    reaching `surfaced` on beads the team had not spoken a word toward. Coverage is
-    `engaged`-only on the team's screen: a sentence the room wrote for itself, however many
-    map elements it names, is not evidence of anything the team heard, so no turn with an
-    empty transcript is worth settling any more, opening or not.
+    Her route classifies every non-panorama turn with no condition, her kickoff included
+    (`app/api/turn/route.ts:179,185-194`), and hands the classifier what reached the Guide as
+    the team's turn. The classifier marks `surfaced` from the Guide alone and `engaged` only
+    from the team, and the team's necklace counts `engaged`, so a turn with nothing from the
+    team in it moves what the Guide and the Desk read and leaves the team's screen as it was.
+    A panorama has no coverage spine to settle against.
     """
-    if outcome.transcript.strip():
-        return speech_heard.reliable_bridge_speech
-    return False
+    return not is_panorama(session.pericope)
 
 
 def _settle_later(
@@ -326,20 +318,10 @@ def _settle_later(
     turn_id: str,
     team_utterance: str,
     guide_response: str,
+    opening: bool,
 ) -> bool:
-    """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
-
-    Two doors used to reach here — the opening the panorama wrote ahead, and the line the
-    room writes on demand. `3cfd823` (ENG-684) made the prepared door call unconditionally,
-    so a pre-warmed opening's roughly ten map elements would not go unclassified, while the
-    live door kept its guard and `_worth_settling` excused the opening from it. Coverage is
-    `engaged`-only on the team's screen now: a line the room wrote for itself is not
-    evidence of anything the team heard, whichever door it left by, so the prepared door no
-    longer calls here at all, and this is reached only from the door `_worth_settling` guards.
-
-    A panorama is still handed nothing: it has no coverage spine to settle against.
-    """
-    if is_panorama(session.pericope):
+    """Schedule the coverage classifier for the turn just written, if `_worth_settling`."""
+    if not _worth_settling(session):
         return False
     background.add_task(
         settle_coverage,
@@ -348,6 +330,7 @@ def _settle_later(
         team_utterance=team_utterance,
         guide_response=guide_response,
         pericope_num=session.pericope,
+        opening=opening,
     )
     return True
 
@@ -852,21 +835,20 @@ async def _answer_the_turn(
         if uploads:
             await _upload(uploads)
         raise
-    session, _ = await asyncio.gather(
+    (session, written), _ = await asyncio.gather(
         _write_the_turn(db, session, outcome=outcome, opening=opening),
         _upload(uploads),
     )
 
     response_turn_id = turn_id or str(uuid.uuid4())
-    pending = False
-    if _worth_settling(outcome, speech_heard):
-        pending = _settle_later(
-            background,
-            session,
-            turn_id=response_turn_id,
-            team_utterance=outcome.transcript,
-            guide_response=outcome.speech,
-        )
+    pending = written and _settle_later(
+        background,
+        session,
+        turn_id=response_turn_id,
+        team_utterance=outcome.room_note or outcome.transcript,
+        guide_response=outcome.speech,
+        opening=opening,
+    )
 
     reply = TurnResponse(
         session_id=session.id,
