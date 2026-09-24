@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.internalization_room.speakable import speakable_text
+from app.services.internalization_room.speakable import speakable_text, strip_markdown
 
 _PT_CASES = [
     pytest.param("YHWH chamou Rute.", "Senhor Jeová chamou Rute.", id="mid-sentence"),
@@ -64,3 +64,100 @@ def test_a_language_outside_the_table_keeps_the_bare_letters_rather_than_inventi
     text = "YHWH chamó a Rut."
 
     assert speakable_text(text, language) == text
+
+
+_STRIP_MARKDOWN_CASES = [
+    pytest.param(
+        "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
+        "Eles saem da cidade deles, Belém de Judá, e vão morar em Moabe.",
+        id="bold-and-italic-inside-a-sentence",
+    ),
+    pytest.param(
+        "- o pai morre\n- os dois filhos casam",
+        "O pai morre. Os dois filhos casam.",
+        id="bullet-list-becomes-sentences",
+    ),
+    pytest.param(
+        "- O pai morre!\n- os dois filhos casam?",
+        "O pai morre! Os dois filhos casam?",
+        id="bullet-list-keeps-its-own-punctuation",
+    ),
+    pytest.param(
+        "* a fome\n1. a perda\n2) a volta",
+        "A fome. A perda. A volta.",
+        id="asterisk-and-numbered-bullets",
+    ),
+    pytest.param(
+        '- "voltem para casa"\n- ela ficou',
+        '"Voltem para casa". Ela ficou.',
+        id="bullet-item-starting-with-a-quote",
+    ),
+    pytest.param(
+        "## Segunda parte\nLá em Moabe, o pai morreu.",
+        "Segunda parte. Lá em Moabe, o pai morreu.",
+        id="heading-marks",
+    ),
+    pytest.param(
+        "__Noemi__ volta para _Belém_.",
+        "Noemi volta para Belém.",
+        id="dunder-bold-and-underscore-italic",
+    ),
+    pytest.param(
+        "o campo snake_case_name fica",
+        "o campo snake_case_name fica",
+        id="underscore-inside-a-word-stays",
+    ),
+    pytest.param(
+        "a palavra `respigar` quer dizer catar",
+        "a palavra respigar quer dizer catar",
+        id="code-marks-keep-the-content",
+    ),
+    pytest.param(
+        "veja [Rute 1](https://x.y/ruth#1) hoje",
+        "veja Rute 1 hoje",
+        id="link-becomes-its-text",
+    ),
+    pytest.param(
+        "um * só e # aqui e C# fica",
+        "um só e aqui e C# fica",
+        id="stray-asterisks-and-hashes",
+    ),
+    pytest.param(
+        "Primeira parte.\n\n\nSegunda   parte.",
+        "Primeira parte. Segunda parte.",
+        id="whitespace-runs-collapse-paragraphs-join-with-a-space",
+    ),
+    pytest.param(
+        'Ele diz: "fique no meu campo. Aqui você está segura." — Boaz, à noite…',
+        'Ele diz: "fique no meu campo. Aqui você está segura." — Boaz, à noite…',
+        id="accents-quotes-and-punctuation-untouched",
+    ),
+    pytest.param(
+        "Olá, equipe! Eu sou o Facilitador Digital.",
+        "Olá, equipe! Eu sou o Facilitador Digital.",
+        id="plain-text-is-the-identity",
+    ),
+    pytest.param(
+        "Primeira parte.\n---\nSegunda parte.\n***\n___",
+        "Primeira parte. Segunda parte.",
+        id="horizontal-rule-dropped",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, expected", _STRIP_MARKDOWN_CASES)
+def test_strip_markdown_removes_formatting_marks_but_keeps_every_word(
+    text: str, expected: str
+) -> None:
+    assert strip_markdown(text) == expected
+
+
+def test_strip_markdown_known_limit_a_soft_wrapped_line_gets_no_forced_period() -> None:
+    """Pinned so a change is visible, not because it is the wanted answer (Marcia, 09/09).
+
+    A plain line with no terminal punctuation of its own is not given one: a soft-wrapped
+    sentence split across two lines of the same paragraph would otherwise get a false stop.
+    """
+    text = "Olá equipe\nVamos começar"
+
+    assert strip_markdown(text) == "Olá equipe Vamos começar"
