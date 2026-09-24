@@ -36,7 +36,8 @@ async def run_turn(
 
     `opening` is the session's first turn, where the Guide speaks before the team has.
     The coverage block is the whole of what the app tells the Guide, and the Validator is
-    handed none of it — it judges the draft against the map and the team's own words.
+    handed none of it — it judges the draft against the map and this turn's team-side text:
+    the team's words, the room's note, or on an opening the opening instruction.
     """
     cfg = settings or get_settings()
 
