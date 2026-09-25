@@ -64,7 +64,7 @@ async def transcribe_speech(
 
     cfg = settings or get_settings()
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     http = client or _make_client()
     try:

@@ -84,7 +84,7 @@ async def test_empty_audio_is_an_error() -> None:
 
 
 async def test_without_an_api_key_it_is_a_configuration_error() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await transcribe_speech(
             WEBM,
             language="pt-BR",

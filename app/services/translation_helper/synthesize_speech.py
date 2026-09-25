@@ -8,7 +8,7 @@ import re
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.services.platform.tts import SpeechStore
 from app.services.translation_helper.audio_cache import CachedAudio, audio_cache
 from app.services.translation_helper.detect_language import detect_language_code
@@ -350,7 +350,7 @@ async def synthesize_speech(
             return entry, True
 
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     voice_cfg = _resolve_voice(language_code, voice_name)
     body: dict[str, object] = {
@@ -376,7 +376,7 @@ async def synthesize_speech(
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"TTS request failed with status {response.status_code}")
+        raise _upstream_or_validation_error(response.status_code)
 
     payload = response.json()
     audio_b64 = payload.get("audio_base64") or ""
@@ -393,3 +393,15 @@ async def synthesize_speech(
     if speech_store is not None:
         await _write_durable(speech_store, cache_key, audio_bytes, timepoints)
     return entry, False
+
+
+def _upstream_or_validation_error(status_code: int) -> Exception:
+    """Their outage is not our client's bad request.
+
+    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
+    limit is — same split as translation_helper/transcribe_audio.py.
+    """
+    message = f"TTS request failed with status {status_code}"
+    if status_code in (401, 403, 429) or status_code >= 500:
+        return UpstreamServiceError(message)
+    return ValidationError(message)
