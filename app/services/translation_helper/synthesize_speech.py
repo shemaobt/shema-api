@@ -367,9 +367,13 @@ async def synthesize_speech(
     }
 
     http = client or _make_client()
-    response = await http.post(
-        url, json=body, params={"output_format": cfg.elevenlabs_output_format}, headers=headers
-    )
+    try:
+        response = await http.post(
+            url, json=body, params={"output_format": cfg.elevenlabs_output_format}, headers=headers
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs TTS unreachable: %s", error)
+        raise UpstreamServiceError(f"Speech request could not reach ElevenLabs: {error}") from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs TTS failed: status=%s body=%s",

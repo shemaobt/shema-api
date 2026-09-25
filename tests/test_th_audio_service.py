@@ -329,6 +329,18 @@ async def test_synthesize_speech_raises_when_api_error(status: int) -> None:
         await synthesize_speech("hello", client=client, settings=_settings())
 
 
+@pytest.mark.parametrize(
+    "failure", [httpx.ConnectError("boom"), httpx.ReadTimeout("boom")], ids=["connect", "timeout"]
+)
+async def test_synthesize_speech_treats_a_dropped_connection_as_upstream_too(
+    failure: Exception,
+) -> None:
+    audio_cache.clear()
+    client = SimpleNamespace(post=AsyncMock(side_effect=failure))
+    with pytest.raises(UpstreamServiceError):
+        await synthesize_speech("hello", client=client, settings=_settings())
+
+
 async def test_synthesize_speech_requires_api_key() -> None:
     audio_cache.clear()
     s = Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="")
