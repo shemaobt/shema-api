@@ -31,6 +31,13 @@ def _require_api_key(cfg: Settings) -> str:
     return cfg.ph_elevenlabs_api_key
 
 
+def _upstream_or_validation_error(status_code: int, message: str) -> Exception:
+    """Their outage is not our client's bad request — same split as platform/tts.py."""
+    if status_code == 429 or status_code >= 500:
+        return UpstreamServiceError(message)
+    return ValidationError(message)
+
+
 async def synthesize_speech(
     text: str,
     *,
@@ -81,7 +88,9 @@ async def synthesize_speech(
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"TTS request failed with status {response.status_code}")
+        raise _upstream_or_validation_error(
+            response.status_code, f"TTS request failed with status {response.status_code}"
+        )
 
     entry = audio_cache.put(cache_key, response.content, mime_type="audio/mpeg")
     return entry, False
@@ -174,7 +183,10 @@ async def transcribe_audio(
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"Transcription request failed with status {response.status_code}")
+        raise _upstream_or_validation_error(
+            response.status_code,
+            f"Transcription request failed with status {response.status_code}",
+        )
 
     payload = response.json()
     text = (payload.get("text") or "").strip()

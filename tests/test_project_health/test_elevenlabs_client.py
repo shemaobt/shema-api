@@ -7,7 +7,7 @@ import pytest
 
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError
-from app.services.project_health.voice.elevenlabs_client import synthesize_speech
+from app.services.project_health.voice.elevenlabs_client import synthesize_speech, transcribe_audio
 
 
 def _settings() -> Settings:
@@ -24,6 +24,14 @@ def _ok() -> SimpleNamespace:
 
 def _stub_client() -> SimpleNamespace:
     return SimpleNamespace(post=AsyncMock(return_value=_ok()))
+
+
+def _err(status: int, body: str = "boom") -> SimpleNamespace:
+    return SimpleNamespace(status_code=status, content=b"", text=body, json=dict)
+
+
+def _err_client(response: SimpleNamespace) -> SimpleNamespace:
+    return SimpleNamespace(post=AsyncMock(return_value=response))
 
 
 async def test_the_output_format_reaches_elevenlabs_in_the_query_not_the_body() -> None:
@@ -59,3 +67,17 @@ async def test_synthesize_speech_requires_api_key() -> None:
 
     with pytest.raises(UpstreamServiceError):
         await synthesize_speech("hello", language="en-US", settings=s, client=client)
+
+
+async def test_synthesize_speech_treats_a_rate_limit_or_outage_as_upstream_not_ours() -> None:
+    client = _err_client(_err(429))
+
+    with pytest.raises(UpstreamServiceError):
+        await synthesize_speech("hello", language="en-US", settings=_settings(), client=client)
+
+
+async def test_transcribe_audio_treats_a_rate_limit_or_outage_as_upstream_not_ours() -> None:
+    client = _err_client(_err(503))
+
+    with pytest.raises(UpstreamServiceError):
+        await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
