@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import re
-import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -31,6 +30,7 @@ from app.services.internalization_room.comprehension.evidence import (
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus, floor_met, initial_state
 from app.services.internalization_room.coverage_channel import subscribe
+from tests.turn_harness import the_room_agent_is
 
 CLASSIFIER = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
 P = "P03"
@@ -85,14 +85,13 @@ def _whole_passage_partially_engaged(pericope: str) -> str:
 
 @pytest.fixture
 def patch_classifier(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             agent.system = system_prompt
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, classifier=agent)
         return agent
 
     return _install

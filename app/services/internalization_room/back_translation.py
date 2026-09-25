@@ -18,9 +18,10 @@ from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import analysis_ladder, call_agent
+from app.services.internalization_room.llm import analysis_ladder
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.render import render
+from app.services.internalization_room.room_agent import room_agent
 
 logger = logging.getLogger(__name__)
 
@@ -715,7 +716,7 @@ async def analyse_telling_back(
         SEGMENTS=segments_block(segments, language_code),
     )
     try:
-        raw = await call_agent(
+        raw = await room_agent().analyst.call_agent(
             role="analyst",
             system_prompt=system,
             user_content="Compare a tradução com o mapa.",
@@ -1079,7 +1080,7 @@ async def verify_correction(
         NEW_TELLING=corrected.transcript or "",
     )
     try:
-        raw = await call_agent(
+        raw = await room_agent().analyst.call_agent(
             role="correction check",
             system_prompt=system,
             user_content="Verifique a correção contra o achado.",

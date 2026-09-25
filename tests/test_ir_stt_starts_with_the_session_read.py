@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 from collections import OrderedDict
 from typing import Any
 
@@ -27,6 +26,7 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
+from tests.turn_harness import the_room_agent_is
 
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
@@ -75,9 +75,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.exceptions import register_exception_handlers
 
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _Model()
-    )
+    the_room_agent_is(monkeypatch, turn=_Model())
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _Voice())
     monkeypatch.setattr(sessions_api, "heard_speech", _hearing)
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)

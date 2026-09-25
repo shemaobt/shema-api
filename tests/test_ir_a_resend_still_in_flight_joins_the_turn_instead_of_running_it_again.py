@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import sys
 from typing import Any
 
 import pytest
@@ -29,6 +28,7 @@ from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
 VOICED_AS = "tts/voice/abertura.mp3"
@@ -82,9 +82,7 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _GuideStillThinking()
     voice = _CountingVoice()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
 
     async with (
@@ -119,9 +117,7 @@ async def test_a_panoramas_opening_asked_again_in_flight_is_composed_and_voiced_
     session = await create_session(db_session, pericope="OV-Ruth", language="pt")
     guide = _GuideStillThinking()
     voice = _CountingVoice()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
 
     async with (
@@ -160,9 +156,7 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
     """
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _GuideStillThinking()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _CountingVoice())
 
     async with room_client(db_session, monkeypatch, per_request=rival_factory) as tablet:
@@ -200,9 +194,7 @@ async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_no
 
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _GuideStillThinking()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _slow_voice)
 
     async with (

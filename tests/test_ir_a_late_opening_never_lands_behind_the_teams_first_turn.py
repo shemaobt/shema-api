@@ -15,7 +15,6 @@ lateness entirely.
 from __future__ import annotations
 
 import logging
-import sys
 from typing import Any
 
 import pytest
@@ -37,6 +36,7 @@ from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
 TEAM_ANSWER = "Noemi voltou para Belem com Rute no tempo da colheita"
@@ -156,11 +156,7 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
     session = await create_session(db_session, pericope=P, language="pt")
     voice = _RecordingVoice()
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"],
-        "call_agent",
-        _TeamSpeaksWhileTheGuideThinks(rival_factory, session.id),
-    )
+    the_room_agent_is(monkeypatch, turn=_TeamSpeaksWhileTheGuideThinks(rival_factory, session.id))
 
     late = await _ask_for_the_opening(client, session.id)
     assert late.status_code == 200, late.text[:300]
@@ -194,10 +190,8 @@ async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_t
 ) -> None:
     session = await create_session(db_session, pericope=P, language="pt")
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"],
-        "call_agent",
-        _TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id),
+    the_room_agent_is(
+        monkeypatch, turn=_TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id)
     )
 
     late = await _ask_for_the_opening(client, session.id)

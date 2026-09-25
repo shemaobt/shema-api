@@ -11,7 +11,6 @@ rule: a verdict of `engaged` on an absence the Guide raised last turn lands the 
 from __future__ import annotations
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -26,19 +25,19 @@ from app.services.internalization_room.coverage import (
     initial_state,
     merge,
 )
+from tests.turn_harness import the_room_agent_is
 
 P = "P01"
 
 
 @pytest.fixture
 def the_classifier_answers(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
 
     def _install(reply: str) -> None:
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, classifier=agent)
 
     return _install
 

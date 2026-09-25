@@ -8,7 +8,6 @@ would only show its identity map, which is not what survives.
 """
 
 import json
-import sys
 from typing import Any
 
 import httpx
@@ -26,6 +25,7 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -132,9 +132,7 @@ class _AgreeingModels:
 @pytest.fixture()
 def models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
     """The Guide drafts and the Validator passes it."""
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
-    )
+    the_room_agent_is(monkeypatch, turn=_AgreeingModels())
 
 
 @pytest.fixture()

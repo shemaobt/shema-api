@@ -9,7 +9,6 @@ one of hers. The exit code is the gate: 1 when any check failed, 2 on an HTTP er
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 from pathlib import Path
 from typing import Any
@@ -30,6 +29,7 @@ from tests.text_seam_harness import (
     Speaker,
     the_app,
 )
+from tests.turn_harness import the_room_agent_is
 
 BASE_URL = "http://test/api/internalization-room/text-seam/back-translation/"
 
@@ -50,20 +50,18 @@ HER_EXPECTATION: dict[str, Any] = {
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = Analyst()
     reader.readings = [{"findings": [{"kind": "addition", "note": THE_EXTRA_CAUSE, "chunk": 1}]}]
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
 @pytest.fixture()
 def speaker(monkeypatch: pytest.MonkeyPatch) -> Speaker:
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
     voice = Speaker()
-    monkeypatch.setattr(turn_module, "call_agent", voice)
+    the_room_agent_is(monkeypatch, turn=voice)
     return voice
 
 

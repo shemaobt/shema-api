@@ -1,6 +1,5 @@
 import asyncio
 import json
-import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any
 
@@ -28,6 +27,7 @@ from app.services.platform.tts import SynthesizedSpeech, Upload
 from tests.baker import fully_supported_comprehension
 from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
+from tests.turn_harness import the_room_agent_is
 
 P = "P03"
 FIRST_QUESTION = "Quem aparece nesta parte?"
@@ -102,9 +102,7 @@ async def client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     from app.api.internalization_room import sessions as sessions_api
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
-    )
+    the_room_agent_is(monkeypatch, turn=models)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
     monkeypatch.setattr(sessions_api, "settle_coverage", _settled_later)
@@ -169,9 +167,7 @@ def _in_a_transaction_while_thinking(
 
     monkeypatch.setattr(turn_dedup, "AsyncSessionLocal", a_session_of_its_own)
     monkeypatch.setattr(sessions_api, "heard_speech", heard)
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", thinks
-    )
+    the_room_agent_is(monkeypatch, turn=thinks)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", speaks)
     return held
 
