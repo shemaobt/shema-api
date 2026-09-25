@@ -20,7 +20,7 @@ from app.api.internalization_room import router, text_seam
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
-from scripts.golden_runner import Played, export, load_script, open_session, play
+from scripts.golden_runner import Played, export, load_script, open_session, play, request_for
 from tests.text_seam_harness import (
     GUIDE_LINE,
     RUNNER_KEY,
@@ -115,6 +115,18 @@ async def test_the_export_is_the_transcript_block_her_judge_is_handed(seam, tmp_
         (2, MOTHER_TONGUE_NOTE, GUIDE_LINE, "pass"),
     ]
     assert report.name == "P01-three-turns.2026-09-11T03-00-00.json"
+
+
+def test_a_mother_tongue_turn_carries_its_length_for_the_room_and_her_note_for_her_app(
+    tmp_path: Path,
+) -> None:
+    script = load_script(_her_script(tmp_path))
+
+    assert request_for(script.turns[2], script, "sessao-1") == {
+        "sessionId": "sessao-1",
+        "text": MOTHER_TONGUE_NOTE,
+        "motherTongue": 40,
+    }, "sem o text, a rota dela (route.ts:90) respondia 400 à mesma corrida contra o app dela"
 
 
 async def test_a_turn_that_fails_leaves_the_turns_already_played_in_hand(

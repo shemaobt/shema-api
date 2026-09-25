@@ -595,3 +595,94 @@ async def test_a_direct_question_about_who_ruth_marries_is_answered_from_a_promp
     assert "must not assign divine causation" in speaker_system, (
         "a fome e as mortes não podem ser atribuídas a Deus no material que sustenta a fala"
     )
+
+
+async def test_a_panorama_take_the_ear_heard_as_the_mother_tongue_reaches_the_guide_as_her_note(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    patch_agent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    note = (
+        "[A equipe falou na língua materna por cerca de 116 segundos; sem transcrição — nenhuma "
+        "palavra chegou até você.]"
+    )
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(bridge_language="pt", wordless_long_take=True, take_ms=116_000)
+
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+
+    session_id = await _open_panorama(client)
+    answered = await _speak(client, session_id, "ensaio.m4a")
+
+    assert agent.asked[-2] == note, "a rota do panorama não passava ao motor o que o ouvido decidiu"
+    assert answered.json()["transcript"] == ""
+    session = await get_session(db_session, session_id)
+    assert (session.messages[-2]["role"], session.messages[-2]["text"]) == ("room", note)
+
+
+@pytest.mark.parametrize(
+    ("heard", "line"),
+    [
+        (
+            HeardSpeech(
+                text="Kalivono", bridge_language="pt", language_code="grn", language_probability=0.5
+            ),
+            "heard=grn p=0.5 decision=mother tongue reason=recognizer heard grn, session speaks pt",
+        ),
+        (
+            HeardSpeech(
+                text="Entendemos.",
+                bridge_language="pt",
+                language_code="por",
+                language_probability=0.3,
+            ),
+            "heard=por p=0.3 decision=mother tongue "
+            "reason=recognizer unsure it was pt (p=0.30 < 0.35)",
+        ),
+        (
+            HeardSpeech(bridge_language="pt", wordless_long_take=True, take_ms=115_700),
+            "heard=None p=None decision=mother tongue "
+            "reason=no words in a long take (116 s >= 20 s)",
+        ),
+        (
+            HeardSpeech(
+                text="Entendemos.",
+                bridge_language="pt",
+                language_code="por",
+                language_probability=0.9,
+            ),
+            "heard=por p=0.9 decision=words reason=",
+        ),
+        (HeardSpeech(bridge_language="pt"), "heard=None p=None decision=inaudible reason="),
+    ],
+)
+async def test_every_take_leaves_one_line_saying_why_the_ear_decided_as_it_did(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    heard: HeardSpeech,
+    line: str,
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return heard
+
+    async def _panorama(**_: Any) -> TurnOutcome:
+        return TurnOutcome(speech="Vamos conhecer o livro.", transcript="")
+
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+    session_id = await _open_panorama(client)
+
+    with caplog.at_level("INFO"):
+        await _speak(client, session_id, "ensaio.m4a")
+
+    assert [r.getMessage() for r in caplog.records if "[hearing]" in r.getMessage()] == [
+        f"[hearing] session={session_id} {line}"
+    ], "nada no log dizia por que um turno virou palavras, língua materna ou a linha D"

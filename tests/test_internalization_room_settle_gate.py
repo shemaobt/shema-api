@@ -31,7 +31,10 @@ TEAM = "A fome grande fez a família se mudar."
 FAIL_SAFE = "Tem bastante coisa aqui. Vamos com calma e ficar nesta cena."
 OPENING = "Vamos ficar no começo: uma família sai de Belém por falta de comida."
 INAUDIBLE = "Não consegui ouvir. Podem repetir mais perto do microfone?"
-MOTHER_TONGUE_NOTE = "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição]"
+MOTHER_TONGUE_NOTE = (
+    "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição — nenhuma "
+    "palavra chegou até você.]"
+)
 
 
 @dataclass
@@ -199,23 +202,19 @@ async def test_an_opening_the_room_could_not_phrase_is_still_classified_as_the_o
     ], "a abertura em fail-safe ficava fora do classificador, ao contrário da rota dela"
 
 
-async def test_a_transcript_the_hearing_does_not_trust_is_classified_with_an_empty_slot(
+async def test_a_take_with_no_words_is_classified_with_an_empty_slot(
     room: _Room, passage: str
 ) -> None:
-    """The room asks the team to say it again and keeps none of the distrusted words
-    (`speak_back` answers with an empty transcript), so the classifier reads the Guide's
-    request and an empty team slot — nothing it could credit an `engaged` bead to."""
+    """The room asks the team to say it again, so the classifier reads the Guide's request
+    and an empty team slot — nothing it could credit an `engaged` bead to."""
     room.outcome = TurnOutcome(speech=INAUDIBLE, transcript="", used_fail_safe=True, degraded=True)
-    room.heard = HeardSpeech(text=TEAM, transcript_confidence=0.2)
+    room.heard = HeardSpeech()
 
     await _the_team_answers(room, passage)
 
     assert [(handed["team_utterance"], handed["guide_response"]) for handed in room.settled] == [
         ("", INAUDIBLE)
-    ], (
-        "o turno com transcrição duvidosa ficava fora do classificador, ou levava a ele as "
-        "palavras que a sala pediu para repetir"
-    )
+    ], "o turno sem palavras ficava fora do classificador"
 
 
 async def test_an_answer_in_the_mother_tongue_is_classified_with_the_note_the_guide_read(
@@ -224,9 +223,7 @@ async def test_an_answer_in_the_mother_tongue_is_classified_with_the_note_the_gu
     """On a mother-tongue take her classifier reads the room-note, which is what reached the
     Guide as the team's turn (`oralTurn.ts:14,92`); the transcript is empty on that turn."""
     room.outcome = TurnOutcome(speech=OPENING, transcript="", room_note=MOTHER_TONGUE_NOTE)
-    room.heard = HeardSpeech(
-        text=TEAM, language_code="ter", language_probability=0.99, transcript_confidence=0.9
-    )
+    room.heard = HeardSpeech(text=TEAM, language_code="ter", language_probability=0.99)
 
     await _the_team_answers(room, passage)
 

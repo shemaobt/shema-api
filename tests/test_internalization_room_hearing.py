@@ -99,7 +99,6 @@ def test_a_team_speaking_the_sessions_own_language_is_never_heard_as_mother_tong
     )
 
     assert heard_it.mother_tongue is False
-    assert heard_it.reliable_bridge_speech is True
 
 
 def test_speech_outside_the_sessions_language_still_meets_the_boundary() -> None:
@@ -121,7 +120,6 @@ async def test_the_session_names_the_language_the_hearing_is_measured_against(
             text="a family leaves Bethlehem",
             language_code="en",
             language_probability=0.99,
-            transcript_confidence=0.9,
         )
 
     monkeypatch.setattr(hearing, "transcribe_audio_detailed", _detailed)

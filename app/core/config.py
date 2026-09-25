@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     #: that default without a code change — a deployment sets this blank if the 1-hour write
     #: (2x the 5-minute write) turns out not to pay for itself.
     internalization_room_voice_cache_ttl: Literal["1h", ""] = "1h"
+    internalization_room_same_language_min_prob: float = 0.35
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5

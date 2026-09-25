@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 
 from pydantic import BaseModel
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.languages import FLOOR
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
+    EmptyTranscription,
     transcribe_audio,
     transcribe_audio_detailed,
 )
@@ -21,6 +23,8 @@ _BRIDGE_LANGUAGE_CODES = {
     "en": {"en", "eng"},
     "es": {"es", "spa"},
 }
+
+LONG_WORDLESS_TAKE_MS = 20_000
 
 _BRACKETED = re.compile(r"\[[^\]]{0,60}\]|[♪♫]")
 _ONLY_PARENTHETICAL = re.compile(r"^\s*\([^)]{0,60}\)\s*$")
@@ -46,54 +50,46 @@ def spoken_words_only(text: str) -> str:
 
 
 class HeardSpeech(BaseModel):
-    """A transcript plus the trusted transport facts the comprehension flow reads.
+    """A transcript plus the transport facts that decide whether it reaches the Guide as words.
 
-    ``mother_tongue`` means the team spoke something other than the language *this session*
-    is being run in, which is what ``bridge_language`` carries. It used to mean "not
-    Portuguese", and a room speaking any other language would have met every substantial
-    utterance with the off-bridge fail-safe and never called the Guide at all.
-
-    It intervenes only at a deliberately high threshold (0.98) and only on substantial
-    speech, so an imperfect ordinary detection cannot derail the conversation — and it is
-    never a claim that the app understood the content.
-    ``uncertain`` is used only to under-count: an uncertain transcript is repeated, never
-    judged as misunderstanding; the threshold is lower for one- or two-word answers so a
-    valid name in guided mode is not punished merely for being unfamiliar.
+    ``mother_tongue`` is her ``decideTeamUtterance`` (``src/audio/teamUtterance.ts`` at
+    a3f3c69): words the recognizer heard in a language other than the one *this session* is
+    run in, which is what ``bridge_language`` carries, or in the session's own language with a
+    probability under ``internalization_room_same_language_min_prob``; or a take with no words
+    at all that lasted ``LONG_WORDLESS_TAKE_MS`` or more. A session language the room does not
+    know is never "other".
     """
 
     text: str = ""
     bridge_language: str = FLOOR
     language_code: str | None = None
     language_probability: float | None = None
-    transcript_confidence: float | None = None
     take_ms: int | None = None
+    wordless_long_take: bool = False
+    declared_mother_tongue: bool = False
 
     @property
     def mother_tongue(self) -> bool:
-        words = self.text.split()
-        substantial = len(words) >= 3 or len(self.text.strip()) >= 16
-        detected = (self.language_code or "").strip().lower().split("-")[0]
-        spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language, _BRIDGE_LANGUAGE_CODES[FLOOR])
-        return bool(
-            substantial
-            and detected
-            and detected not in spoken
-            and self.language_probability is not None
-            and self.language_probability >= 0.98
-        )
+        return self.declared_mother_tongue or bool(self.reason)
 
     @property
-    def uncertain(self) -> bool:
-        if self.transcript_confidence is None:
-            return False
-        words = len(self.text.split())
-        if not words:
-            return False
-        return self.transcript_confidence < (0.35 if words <= 2 else 0.55)
-
-    @property
-    def reliable_bridge_speech(self) -> bool:
-        return not self.uncertain and not self.mother_tongue
+    def reason(self) -> str:
+        if self.wordless_long_take:
+            seconds = math.floor((self.take_ms or 0) / 1000 + 0.5)
+            return f"no words in a long take ({seconds} s >= {LONG_WORDLESS_TAKE_MS // 1000} s)"
+        detected = re.split(r"[-_]", (self.language_code or "").strip().lower())[0]
+        spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language)
+        if not self.text.strip() or not detected or spoken is None:
+            return ""
+        if detected not in spoken:
+            return f"recognizer heard {detected}, session speaks {self.bridge_language}"
+        minimum = get_settings().internalization_room_same_language_min_prob
+        if self.language_probability is not None and self.language_probability < minimum:
+            return (
+                f"recognizer unsure it was {self.bridge_language} "
+                f"(p={self.language_probability:.2f} < {minimum})"
+            )
+        return ""
 
 
 async def heard(
@@ -140,6 +136,8 @@ async def heard_speech(
         result = await transcribe_audio_detailed(
             audio, filename=filename, mime_type=mime_type, settings=settings
         )
+    except EmptyTranscription as silence:
+        result = silence.heard
     except ValidationError as failure:
         logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
         return HeardSpeech(bridge_language=language)
@@ -148,8 +146,12 @@ async def heard_speech(
         bridge_language=language,
         language_code=result.language_code,
         language_probability=result.language_probability,
-        transcript_confidence=result.transcript_confidence,
     )
-    if speech.mother_tongue:
+    if not speech.text:
+        take_ms = await measure_ms(audio)
+        if take_ms is not None and take_ms >= LONG_WORDLESS_TAKE_MS:
+            speech.wordless_long_take = True
+            speech.take_ms = take_ms
+    elif speech.mother_tongue:
         speech.take_ms = await measure_ms(audio)
     return speech
