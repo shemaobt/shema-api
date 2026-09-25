@@ -359,7 +359,7 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
         '{"kind":"missing","chunk":4,"where":"after","note":"b"},'
         '{"kind":"missing","chunk":2,"where":"inside","note":"c"},'
         '{"kind":"addition","chunk":1,"note":"d"},'
-        '{"kind":"unclear","chunk":3,"note":"e"}]}'
+        '{"kind":"missing","chunk":9,"note":"e"}]}'
     )
     four = [stretch(number, f"trecho {number}") for number in range(1, 5)]
 
@@ -377,7 +377,7 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
         (4, None),
         (2, "segmento-2"),
         (1, "segmento-1"),
-        (3, "segmento-3"),
+        (None, None),
     ]
 
 
@@ -1499,19 +1499,27 @@ async def test_the_validator_sees_the_circle_the_check_and_the_wood_disc_too(pat
     [
         (FindingKind.ADDITION, "segmento-2"),
         (FindingKind.UNCLEAR, "segmento-2"),
+        (FindingKind.ADDITION, None),
         (FindingKind.UNCLEAR, None),
     ],
-    ids=["addition on a stretch", "unclear on a stretch", "unclear homeless"],
+    ids=[
+        "addition on a stretch",
+        "unclear on a stretch",
+        "addition homeless (legacy row)",
+        "unclear homeless (legacy row)",
+    ],
 )
 def test_every_other_kind_closes_exactly_as_before(
     kind: FindingKind, segment_id: str | None
 ) -> None:
     """Henok decided on 2026-09-25: `unclear` keeps `CLOSING_SPOKEN` on a stretch, for good.
 
-    An addition off a stretch is gone from this mapping (ENG-1145): the parser now drops one
-    that names no readable frase before it ever becomes a finding, so `closing_block` never
-    sees that shape again. `unclear` still asks out loud whether or not it has an address —
-    the boundary question a stretch would offer is not the one it is asking.
+    A fresh reply can no longer produce an addition or an unclear without a stretch (ENG-1145):
+    the parser drops one that names no readable frase before it ever becomes a finding, and
+    refuses a reply that drops every finding it named. The two homeless cases here are legacy
+    only — a row `closing_block` may still be handed from before this rule, per ADR 0038 — and
+    it answers them exactly as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed
+    the two-microphone screen even where it does have a stretch.
     """
     finding = Finding(kind=kind, note="Orfa", segment_id=segment_id)
     asked_on_a_stretch = segment_id is not None and kind is not FindingKind.UNCLEAR

@@ -212,6 +212,31 @@ async def test_every_refusal_says_which_condition_and_shows_the_reply(
     assert refused_field in _besides_the_reply(caplog, reply), "e diz qual condição recusou"
 
 
+async def test_a_drop_is_not_announced_before_the_reply_is_accepted(
+    patch_analyst, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ENG-1145 send-back 1: `_dropped_without_a_frase` follows `_dropped`'s own rule.
+
+    A drop is said only once the reading has been accepted. An addition with no frase beside
+    a malformed entry refuses the whole reply — the malformed entry never gets to be
+    considered droppable — and announcing what would have been dropped before that refusal
+    is decided would send the next investigation to the wrong place.
+    """
+    reply = json.dumps(
+        {
+            "findings": [
+                {"kind": "addition", "note": "sem frase alguma"},
+                {"kind": "bogus", "note": "algo"},
+            ]
+        }
+    )
+    with caplog.at_level(logging.WARNING, logger=PARSER_LOGGER):
+        analysis = await _read(reply, patch_analyst)
+
+    assert analysis is None
+    assert "dropped" not in caplog.text
+
+
 async def test_invalid_json_is_still_refused_and_still_written_down(
     patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:

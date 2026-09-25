@@ -32,4 +32,14 @@ team to answer, out loud, a boundary question about content they cannot locate.
 
 No migration touches a row written before this deploy. A stored `addition` or `unclear` with
 `segment_id` null keeps reading exactly as it did — the drop happens only at the reader, on a
-fresh reply — and `closing_block` already answers that shape correctly, unchanged.
+fresh reply — and `closing_block` goes on answering that legacy shape correctly, unchanged.
+
+Henok ruled a second time, on the same ticket, once the opus review found that a reply whose
+only findings were an addition and an unclear naming no readable chunk came back `checked:
+true`: **a reply that named findings and dropped every one of them to this rule is refused,
+not read as a clean telling-back.** `_parse_analysis` already tells "read it, nothing to
+raise" apart from "never trusted this reply" (`None`); a reply reduced to nothing by this
+drop belongs on the refused side, through the same `_refused` a malformed reply already
+returns `None` from — the alternative, letting it confer, is the ENG-719 failure again, a
+good telling-back blessed on a reply that said nothing usable. A reply that never named a
+finding to begin with is untouched: that is still the clean, checked reading it always was.

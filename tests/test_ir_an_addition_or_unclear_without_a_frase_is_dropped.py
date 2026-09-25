@@ -113,10 +113,10 @@ async def test_an_addition_and_an_unclear_with_no_readable_frase_are_dropped(
     assert CLOSING_SPOKEN not in brief
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in brief
 
-    assert "addition" in caplog.text, "o log nomeia o tipo do achado descartado"
-    assert ADDITION_WITH_NO_FRASE in caplog.text, "e a nota que o analista escreveu"
-    assert "unclear" in caplog.text
-    assert UNCLEAR_OUT_OF_RANGE in caplog.text
+    assert (
+        f"named addition with no readable frase (note: {ADDITION_WITH_NO_FRASE})" in caplog.text
+    ), "a linha do próprio log nomeia o tipo e traz a nota, antes de ecoar a resposta bruta"
+    assert f"named unclear with no readable frase (note: {UNCLEAR_OUT_OF_RANGE})" in caplog.text
 
 
 async def test_an_addition_naming_its_frase_still_answers_on_its_stretch(
@@ -138,6 +138,55 @@ async def test_an_addition_naming_its_frase_still_answers_on_its_stretch(
     assert body["finding_segment_id"] == told[1].id
     assert body["findings_remaining"] == 1
     assert body["checked"] is False
+
+
+async def test_a_reply_that_drops_every_finding_it_named_is_refused(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ScriptedAnalyst,
+    room: Room,
+) -> None:
+    """T5. Henok's decision on send-back 1: a reply reduced to nothing confers nothing.
+
+    An addition naming no frase and an unclear naming frase 0 (out of range): both are
+    dropped, and nothing else was named, so the reply is unusable — refused the way a
+    malformed reply is, never read as the clean telling-back that blesses the passage. Without
+    this rule `[addition no chunk, unclear chunk 0]` came back `checked: true`.
+    """
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    unusable_reply = {
+        "findings": [
+            {"kind": "addition", "note": ADDITION_WITH_NO_FRASE},
+            {"kind": "unclear", "note": UNCLEAR_OUT_OF_RANGE, "chunk": 0},
+        ]
+    }
+    analyst.readings = [unusable_reply, unusable_reply]
+
+    answered = await _finish(client, db_session, session.id)
+
+    assert answered.status_code == 502, answered.text
+    assert answered.json()["code"] == "UNREADABLE_REPLY"
+    assert room.briefs == [], "sem leitura utilizável não há veredito: o Falante não é chamado"
+
+    again = await _finish(client, db_session, session.id)
+    assert again.status_code == 502, "nada foi salvo: o próximo terminei pergunta de novo"
+    assert analyst.readings == [], "as duas leituras consumiram a fila do analista"
+
+
+async def test_a_reply_naming_no_finding_at_all_still_confers(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ScriptedAnalyst,
+    room: Room,
+) -> None:
+    """Control for T5: a reply that never named a finding is still the clean reading it was."""
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": []}]
+
+    answered = await _finish(client, db_session, session.id)
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["checked"] is True
 
 
 async def test_the_retroverification_file_lists_none_of_what_was_dropped(
