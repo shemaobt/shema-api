@@ -117,6 +117,25 @@ async def test_second_call_with_same_text_does_not_hit_elevenlabs() -> None:
     assert store.writes == 1
 
 
+async def test_a_clip_already_in_memory_is_served_without_reading_the_bucket_again() -> None:
+    """The bug ENG-1004 left open: the platform route never checked `_FRESH` on a hit."""
+    client = _client(_ok())
+    store = MemoryStore()
+
+    first = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+    second = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert store.reads == 1, (
+        "o hit baixava o clipe inteiro do bucket de novo mesmo com os bytes já na memória"
+    )
+    assert second.cached is True
+    assert second.etag == first.etag
+
+
 async def test_the_cache_survives_the_process_because_it_lives_in_the_bucket() -> None:
     # A cold worker (new store, same bucket) still finds the object: this is what the
     # in-process LRU in project_health/translation_helper does NOT do.
@@ -125,6 +144,7 @@ async def test_the_cache_survives_the_process_because_it_lives_in_the_bucket() -
         QUESTION, language="pt-BR", settings=_settings(), client=_client(_ok()), store=store
     )
 
+    tts.forget_what_is_kept()  # a different process starts with no in-memory copy at all
     cold = MemoryStore()
     cold.objects = dict(store.objects)  # same bucket; different process
     client = _client(_ok())
