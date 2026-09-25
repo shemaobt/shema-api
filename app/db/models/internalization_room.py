@@ -134,6 +134,7 @@ class IRSession(Base):
     person_arrived_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(timezone=True), nullable=True
     )
+    halts_raised: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
