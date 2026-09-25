@@ -24,6 +24,7 @@ from typing import Any, NamedTuple
 import pytest
 
 import scripts.render_fixed_voice_lines as render
+from app.services.internalization_room import llm
 from app.services.internalization_room.fail_safe import (
     PROCESS_STEPS,
     FailSafe,
@@ -307,7 +308,8 @@ def test_the_catalogue_lists_the_process_lines_as_never_rendered(
 def test_no_model_is_reachable_from_a_process_line(monkeypatch: pytest.MonkeyPatch) -> None:
     """Her §6 asks for it and the glossary says it: no model sits on a process line's path.
 
-    Every `call_agent` the server has is replaced — the room's in its provider, the rest on
+    Every way the server has to reach a model is replaced — the room's `call_agent` in its
+    provider and, under it, the Anthropic client its `llm` builds on every call; the rest on
     the module that defines it and on every module that imported it — so a call added to
     this path later cannot answer from a reference bound before the fake was installed.
 
@@ -324,6 +326,7 @@ def test_no_model_is_reachable_from_a_process_line(monkeypatch: pytest.MonkeyPat
         importlib.import_module(defined_in)
 
     the_room_agent_is(monkeypatch, turn=refuse, analyst=refuse, classifier=refuse, judge=refuse)
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", refuse)
     poisoned = [
         module
         for name, module in list(sys.modules.items())
@@ -342,6 +345,7 @@ def test_no_model_is_reachable_from_a_process_line(monkeypatch: pytest.MonkeyPat
         room.classifier.call_agent,
         room.judge.call_agent,
     ] == [refuse] * 4
+    assert llm.anthropic.AsyncAnthropic is refuse
     assert sys.modules["app.services.project_health.agents.llm_client"] in poisoned
 
     for line in HER_PROCESS_LINES:
