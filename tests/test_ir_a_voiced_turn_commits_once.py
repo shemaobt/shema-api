@@ -507,6 +507,35 @@ async def test_a_halt_the_tablet_raises_while_the_guide_answers_a_halted_room_st
     assert after.halt_kind == HaltKind.BLOCKING.value
 
 
+async def test_a_warning_raised_again_after_a_visit_while_the_guide_answers_is_not_lifted(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await mark_needs_person(db_session, waiting_room, kind=HaltKind.WARNING)
+
+    async def a_visit_and_then_the_room_asks_again() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, waiting_room.id)
+            await attend(rival, halted, by="facilitadora")
+            await mark_needs_person(rival, halted, kind=HaltKind.WARNING)
+
+    models.while_the_guide_thinks = a_visit_and_then_the_room_asks_again
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert after.status is IRSessionStatus.NEEDS_PERSON, (
+        "o turno tomava o segundo aviso, levantado depois da visita, pelo aviso em que começou,"
+        " e soltava um pedido que ninguém tinha atendido"
+    )
+    assert after.halt_kind == HaltKind.WARNING.value
+
+
 async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room_stays_closed(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
