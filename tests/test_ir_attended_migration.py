@@ -44,6 +44,10 @@ ARRIVED_REVISION = "20260908_arr02"
 ARRIVED_PREVIOUS_REVISION = "20260908_arr01"
 ARRIVED_COLUMN = "person_arrived_at"
 
+HALTS_REVISION = "20260925_halt01"
+HALTS_PREVIOUS_REVISION = "20260916_spine01"
+HALTS_COLUMN = "halts_raised"
+
 
 async def _build_and_seed(database_url: str) -> str:
     engine = create_async_engine(database_url)
@@ -82,6 +86,11 @@ async def applied_database(tmp_path) -> dict[str, str]:
 @pytest.fixture()
 async def arrived_database(tmp_path) -> dict[str, str]:
     return await _applied_at(tmp_path, ARRIVED_REVISION, "ir_arrived_migration.db")
+
+
+@pytest.fixture()
+async def counted_database(tmp_path) -> dict[str, str]:
+    return await _applied_at(tmp_path, HALTS_REVISION, "ir_halts_raised_migration.db")
 
 
 async def test_the_columns_go_away_on_downgrade_and_come_back_on_upgrade(applied_database):
@@ -164,4 +173,39 @@ async def test_a_room_halted_before_the_arrival_migration_gains_no_arrival(arriv
     assert (
         await scalar(url, f"SELECT {ARRIVED_COLUMN} FROM ir_sessions WHERE id = :id", where)
     ) is None
+    assert await scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
+
+
+async def test_the_halt_count_goes_away_on_downgrade_and_comes_back_on_upgrade(counted_database):
+    url = counted_database["url"]
+
+    assert HALTS_COLUMN in await columns_of(url, TABLE)
+
+    down = run_alembic(url, "downgrade", HALTS_PREVIOUS_REVISION)
+    assert down.returncode == 0, down.stderr
+    assert HALTS_COLUMN not in await columns_of(url, TABLE), (
+        "o downgrade deixou a coluna para trás, e o upgrade seguinte falha ao recriá-la"
+    )
+
+    up = run_alembic(url, "upgrade", HALTS_REVISION)
+    assert up.returncode == 0, up.stderr
+    assert HALTS_COLUMN in await columns_of(url, TABLE)
+
+
+async def test_a_room_halted_before_the_count_keeps_its_halt_and_counts_from_zero(
+    counted_database,
+):
+    url = counted_database["url"]
+
+    assert run_alembic(url, "downgrade", HALTS_PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", HALTS_REVISION).returncode == 0
+
+    where = {"id": counted_database["session"]}
+    assert await scalar(url, "SELECT status FROM ir_sessions WHERE id = :id", where) == (
+        "needs_person"
+    )
+    assert await scalar(url, f"SELECT {HALTS_COLUMN} FROM {TABLE} WHERE id = :id", where) == 0, (
+        "uma sessão de antes da migração ficava com a contagem nula, e o turno não tinha número"
+        " com que comparar a parada que leu"
+    )
     assert await scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
