@@ -144,7 +144,7 @@ _Avoid_: log, history, audit, Evento de cobertura
 ### Findings
 
 **Finding**:
-The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear.
+The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear. An addition or an unclear always names its **Chunk**; one that names none, or names one outside this reading, is not raised — it is dropped with a log line, the way the retired kind is, and a reply left with no finding at all once every one of them is dropped this way is refused, not read as a clean telling-back.
 _Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
 
 **Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
@@ -194,7 +194,7 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it.
+The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
 **Heard the rehearsal** (`unheard_parts`):
