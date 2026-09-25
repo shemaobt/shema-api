@@ -89,11 +89,14 @@ def the_room_agent_is(
     monkeypatch: pytest.MonkeyPatch,
     *,
     turn: CallAgent | None = None,
+    analyst: CallAgent | None = None,
     strays_from: Callable[[str, str], bool] | None = None,
 ) -> None:
     swapped: dict[str, Any] = {}
     if turn is not None:
         swapped["turn"] = Agent(call_agent=turn)
+    if analyst is not None:
+        swapped["analyst"] = Agent(call_agent=analyst)
     if strays_from is not None:
         swapped["strays_from"] = strays_from
     monkeypatch.setattr(provider, "_current", replace(provider.room_agent(), **swapped))

@@ -310,8 +310,6 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
     reading by accident — which is the failure that matters, because what the analyst reads
     is what the team is told to fix.
     """
-    import sys
-
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
 
@@ -339,9 +337,7 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
         seen["prompt"] = system_prompt
         return '{"evidence_sufficient": true, "findings": []}'
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
-    )
+    the_room_agent_is(monkeypatch, analyst=agent)
     await analyse_telling_back(
         segments=await service.final_segments(db_session, session.id),
         scope=PASSAGE,
@@ -447,9 +443,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
             '{"kind": "missing", "chunk": 2, "note": "faltou dizer para onde Rute ia"}]}'
         )
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", analyst
-    )
+    the_room_agent_is(monkeypatch, analyst=analyst)
 
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
@@ -532,8 +526,6 @@ async def test_a_piece_cut_off_and_not_yet_told_is_not_read_as_something_told(
     rule is measured over that: the counts below are what a cut produces, and what carries the
     rule is that the untold piece is absent from what the analyst reads.
     """
-    import sys
-
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
 
@@ -569,9 +561,7 @@ async def test_a_piece_cut_off_and_not_yet_told_is_not_read_as_something_told(
             '[{"kind": "missing", "chunk": 3, "note": "x"}]}'
         )
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
-    )
+    the_room_agent_is(monkeypatch, analyst=agent)
     analysis = await analyse_telling_back(
         segments=readable,
         scope=PASSAGE,

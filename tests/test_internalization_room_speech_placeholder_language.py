@@ -85,14 +85,13 @@ def _patch_classifier_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]
 
 
 def _patch_analyst_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    module = sys.modules["app.services.internalization_room.back_translation"]
     captured: dict[str, str] = {}
 
     async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         captured["system"] = system_prompt
         return json.dumps({"findings": []})
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, analyst=agent)
     return captured
 
 

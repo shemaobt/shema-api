@@ -35,7 +35,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 def held(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str, bool]:
     from app.api.internalization_room import back_translation as bt_api
-    from app.services.internalization_room import back_translation as bt_service
 
     seen: dict[str, bool] = {}
 
@@ -54,7 +53,7 @@ def held(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str,
         seen["voice"] = db_session.in_transaction()
         return (type("Voiced", (), {"key": "clipe-1"})(), 0)
 
-    monkeypatch.setattr(bt_service, "call_agent", analyst)
+    the_room_agent_is(monkeypatch, analyst=analyst)
     the_room_agent_is(monkeypatch, turn=speaker)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", voice)
     return seen

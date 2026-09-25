@@ -89,10 +89,8 @@ class Analyst:
 
 def the_analyst_reads(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     """Put a counting analyst in place of the one that costs a model call."""
-    from app.services.internalization_room import back_translation as bt_service
-
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -123,10 +121,8 @@ class ScriptedAnalyst:
 
 def the_analyst_is_scripted(monkeypatch: pytest.MonkeyPatch) -> ScriptedAnalyst:
     """Put an analyst answering a case's own findings in place of the model call."""
-    from app.services.internalization_room import back_translation as bt_service
-
     reader = ScriptedAnalyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 

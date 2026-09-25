@@ -102,10 +102,9 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 

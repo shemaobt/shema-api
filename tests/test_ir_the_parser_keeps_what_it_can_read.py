@@ -22,7 +22,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import sys
 from typing import Any
 
 import httpx
@@ -109,13 +108,11 @@ def _four_told() -> list[IRSegment]:
 
 @pytest.fixture
 def patch_analyst(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules[PARSER_LOGGER]
-
     def _install(reply: str) -> None:
         async def agent(*, system_prompt: str, user_content: str, **_: Any) -> str:
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
 
     return _install
 
@@ -278,7 +275,7 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     reader = Analyst()
-    monkeypatch.setattr(sys.modules[PARSER_LOGGER], "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 

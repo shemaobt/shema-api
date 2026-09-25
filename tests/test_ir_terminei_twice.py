@@ -88,7 +88,6 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 @pytest.fixture()
 def consulted(monkeypatch: pytest.MonkeyPatch) -> Consulted:
     from app.api.internalization_room import back_translation as bt_api
-    from app.services.internalization_room import back_translation as bt_service
 
     tally = Consulted()
 
@@ -107,7 +106,7 @@ def consulted(monkeypatch: pytest.MonkeyPatch) -> Consulted:
         tally.voice += 1
         return (type("Voiced", (), {"key": f"clipe-{tally.voice}"})(), 0)
 
-    monkeypatch.setattr(bt_service, "call_agent", _analyst)
+    the_room_agent_is(monkeypatch, analyst=_analyst)
     the_room_agent_is(monkeypatch, turn=_verdict)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
     return tally

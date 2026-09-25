@@ -6,7 +6,6 @@ when they are called, and hand the call on to the harness's doubles.
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import httpx
@@ -94,11 +93,9 @@ async def test_a_retro_round_is_read_with_the_database_let_go_not_held_open(
     )
     assert declared.status_code == 200, declared.text
     held: dict[str, bool] = {}
-    analyst = sys.modules["app.services.internalization_room.back_translation"]
-    monkeypatch.setattr(
-        analyst,
-        "call_agent",
-        _watching(analyst.call_agent, db_session, held, speaks_as="analyst"),
+    the_room_agent_is(
+        monkeypatch,
+        analyst=_watching(room_agent().analyst.call_agent, db_session, held, speaks_as="analyst"),
     )
     the_room_agent_is(monkeypatch, turn=_watching(room_agent().turn.call_agent, db_session, held))
 

@@ -407,9 +407,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
             '{"kind": "missing", "chunk": 2, "note": "faltou dizer para onde Rute ia"}]}'
         )
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", analyst
-    )
+    the_room_agent_is(monkeypatch, analyst=analyst)
 
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
