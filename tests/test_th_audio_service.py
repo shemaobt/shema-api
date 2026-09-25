@@ -332,7 +332,7 @@ async def test_synthesize_speech_requires_api_key() -> None:
     audio_cache.clear()
     s = Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="")
     client = _stub_client(_tts_response(b"MP3"))
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await synthesize_speech("hello", client=client, settings=s)
 
 

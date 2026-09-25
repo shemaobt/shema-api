@@ -8,7 +8,7 @@ import re
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.services.platform.tts import SpeechStore
 from app.services.translation_helper.audio_cache import CachedAudio, audio_cache
 from app.services.translation_helper.detect_language import detect_language_code
@@ -350,7 +350,7 @@ async def synthesize_speech(
             return entry, True
 
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     voice_cfg = _resolve_voice(language_code, voice_name)
     body: dict[str, object] = {
