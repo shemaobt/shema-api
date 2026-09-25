@@ -148,6 +148,28 @@ class ReadAhead(BtAnalysis):
     segment_ids: list[str]
 
 
+class CorrectionCheck(BaseModel):
+    """One verification of one corrected stretch.
+
+    ``resolved`` and ``findings`` are independent on purpose: a correction can answer the
+    finding it was asked about and still drop an element only that stretch carried, and it can
+    leave the finding standing while breaking nothing. Collapsing them into one verdict would
+    make the room unable to tell the team which of the two happened.
+
+    ``findings`` is what the room decided, not a copy of what the reader wrote: the losses the
+    reader's own count implies are already in it, and the ones it said twice are in it once.
+    The count itself is not carried here — nothing downstream asks what was enumerated, only
+    what it means for this stretch, and a field nobody reads is one more thing to keep true.
+    """
+
+    resolved: bool
+    findings: list[Finding] = Field(default_factory=list)
+
+
+class CorrectionAhead(CorrectionCheck):
+    segment_ids: list[str]
+
+
 class SupersededAttempt(BaseModel):
     """A telling-back the team replaced by re-recording.
 
@@ -267,6 +289,7 @@ class BackTranslationState(BaseModel):
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
     read_ahead: ReadAhead | None = None
+    correction_ahead: CorrectionAhead | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -297,6 +320,13 @@ class BackTranslationState(BaseModel):
         ]:
             return None
         return self.read_ahead
+
+    def correction_ahead_of(self, segments: list[IRSegment]) -> CorrectionAhead | None:
+        if self.correction_ahead is None or self.correction_ahead.segment_ids != [
+            segment.id for segment in segments
+        ]:
+            return None
+        return self.correction_ahead
 
     @property
     def never_analysed(self) -> bool:
@@ -702,24 +732,6 @@ async def analyse_telling_back(
             session_id=session_id, reading="analysis", raw=raw, findings=analysis.findings
         )
     return analysis
-
-
-class CorrectionCheck(BaseModel):
-    """One verification of one corrected stretch.
-
-    ``resolved`` and ``findings`` are independent on purpose: a correction can answer the
-    finding it was asked about and still drop an element only that stretch carried, and it can
-    leave the finding standing while breaking nothing. Collapsing them into one verdict would
-    make the room unable to tell the team which of the two happened.
-
-    ``findings`` is what the room decided, not a copy of what the reader wrote: the losses the
-    reader's own count implies are already in it, and the ones it said twice are in it once.
-    The count itself is not carried here — nothing downstream asks what was enumerated, only
-    what it means for this stretch, and a field nobody reads is one more thing to keep true.
-    """
-
-    resolved: bool
-    findings: list[Finding] = Field(default_factory=list)
 
 
 #: What the verification may report. Deliberately short of the analyst's list: `missing` here
