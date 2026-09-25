@@ -9,7 +9,13 @@ import pytest
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.services.platform import stt, tts
-from app.services.platform.tts import cache_key, synthesize_speech
+from app.services.platform.tts import (
+    cache_key,
+    etag_of,
+    fetch_clip,
+    synthesize_speech,
+    synthesize_speech_key,
+)
 from app.services.platform.voices import VOICES, resolve_voice
 
 MP3 = b"\xff\xfb\x90fake-mpeg-frame"
@@ -50,6 +56,9 @@ class MemoryStore:
     async def get(self, key: str) -> bytes | None:
         self.reads += 1
         return self.objects.get(key)
+
+    async def exists(self, key: str) -> bool:
+        return key in self.objects
 
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         self.writes += 1
@@ -443,3 +452,46 @@ async def test_a_warm_up_without_an_api_key_never_reaches_elevenlabs(
         "sem chave configurada, a síntese recusa antes da rede; o aquecimento ia até "
         "api.elevenlabs.io mesmo assim, inclusive de dentro da suíte"
     )
+
+
+class _AlreadyWonStore(MemoryStore):
+    """Put refuses this instance's bytes: another instance's rendering already won."""
+
+    def __init__(self, winner: bytes) -> None:
+        super().__init__()
+        self._winner = winner
+
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
+        self.writes += 1
+        return self._winner
+
+
+async def test_a_synthesis_that_loses_the_write_remembers_the_winners_bytes_not_its_own() -> None:
+    store = _AlreadyWonStore(winner=b"rendered-elsewhere")
+    client = _client(_ok(b"rendered-here"))
+
+    key = await synthesize_speech_key(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert key.cached is False
+    assert await fetch_clip(key.key, store=store) == b"rendered-elsewhere", (
+        "esta instância continuava servindo a própria renderização da memória mesmo depois "
+        "de o put dizer que outra já tinha vencido"
+    )
+
+
+async def test_the_generic_route_serves_the_winners_bytes_when_its_own_write_lost() -> None:
+    store = _AlreadyWonStore(winner=b"rendered-elsewhere")
+    client = _client(_ok(b"rendered-here"))
+
+    result = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert result.audio == b"rendered-elsewhere", (
+        "/tts/speak devolvia a própria renderização, e o aparelho a guardava por um dia "
+        "como imutável sob uma chave que nenhuma outra instância serve com esses bytes"
+    )
+    assert result.etag == etag_of(b"rendered-elsewhere")
+    assert result.cached is False
