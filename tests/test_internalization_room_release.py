@@ -2,7 +2,9 @@
 
 from datetime import UTC, datetime
 
+import httpx
 import pytest
+from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
@@ -23,7 +25,7 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceResult,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.coverage import floor_met, initial_state, merge
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     build_internalization_release,
@@ -40,8 +42,40 @@ from app.services.internalization_room.sessions import (
     save_back_translation,
     save_comprehension,
 )
+from tests.baker import make_app, make_role, make_user
+from tests.test_facilitator_role_gate import (
+    APP_KEY,
+    FACILITATOR_ROLE,
+    auth_header,
+    grant_app_role,
+    with_a_team,
+)
 
 P = "P03"
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession):
+    from app.core.database import get_db
+    from app.main import app
+
+    async def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture()
+async def room_app(db_session: AsyncSession):
+    app = await make_app(db_session, app_key=APP_KEY, name="Sala de Internalização")
+    await make_role(
+        db_session, app.id, role_key=FACILITATOR_ROLE, label="Facilitador", is_system=True
+    )
+    return app
 
 
 def _supported_comprehension(pericope: str, *, carry_one: bool = False) -> ComprehensionState:
@@ -146,8 +180,12 @@ async def _reported_playback(
     )
 
 
-async def _ready_session(db: AsyncSession, **comprehension_kwargs):
-    session = await create_session(db, pericope=P, bridge_mode="guided_microchecks")
+async def _ready_session(
+    db: AsyncSession, *, project_id: str | None = None, **comprehension_kwargs
+):
+    session = await create_session(
+        db, pericope=P, bridge_mode="guided_microchecks", project_id=project_id
+    )
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
     db.add(_ensaio_take(session.id))
@@ -165,13 +203,11 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
-        "comprehension_needs_more_work",
+    assert blocked.value.blockers == [
         "recording_consent_never_given",
-        "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
-    }
+    ]
 
 
 @pytest.mark.asyncio
@@ -411,6 +447,44 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
 
 
 @pytest.mark.asyncio
+async def test_a_session_below_the_floor_and_unpracticed_still_releases(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    session.coverage_state = {}
+    await save_comprehension(db_session, session, ComprehensionState(recording_consent_given=True))
+    await db_session.commit()
+    assert not floor_met(session.coverage_state, P), "a fixture já vinha acima do piso"
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["comprehension"]["outcome"] == "needs_more_work"
+    assert artifact["comprehension"]["practiced_scene_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_the_desk_reads_that_session_with_no_blocker(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    user = await make_user(db_session, email="facilitadora-piso@example.com")
+    await grant_app_role(db_session, room_app, user, FACILITATOR_ROLE)
+    project = await with_a_team(db_session, user, tag="abaixo-do-piso")
+    session = await _ready_session(db_session, project_id=project.id)
+    session.coverage_state = {}
+    await save_comprehension(db_session, session, ComprehensionState(recording_consent_given=True))
+    await db_session.commit()
+    assert not floor_met(session.coverage_state, P), "a fixture já vinha acima do piso"
+
+    response = await client.get(
+        f"/api/internalization-room/facilitator/sessions/{session.id}/release",
+        headers=await auth_header(db_session, user),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["comprehension"]["outcome"] == "needs_more_work"
+
+
+@pytest.mark.asyncio
 async def test_the_finding_travels_in_the_package_it_unblocked(
     db_session: AsyncSession,
 ) -> None:
@@ -434,7 +508,11 @@ async def test_the_finding_travels_in_the_package_it_unblocked(
 
 @pytest.mark.asyncio
 async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
-    """One item leaves the list; its neighbours are not loosened with it."""
+    """Comprehension and the floor leave the gate; the neighbouring doors are not loosened.
+
+    Below the floor and unpractised, what still refuses is the bridge language never
+    calibrated and consent never given (ADR 0037 on main).
+    """
     session = await _ready_session(db_session)
     await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
@@ -447,12 +525,10 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
+    assert blocked.value.blockers == [
         "bridge_language_never_calibrated",
-        "comprehension_needs_more_work",
         "recording_consent_never_given",
-        "coverage_floor_not_met",
-    }
+    ]
 
 
 @pytest.mark.asyncio

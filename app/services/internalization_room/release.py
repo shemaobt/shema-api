@@ -6,8 +6,8 @@ scenes practiced, the semantic evidence events and their open points, the tellin
 with its findings and playback report, and every superseded attempt clearly marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
-partial artifact — because a package missing its calibration, consent, evidence, or
-telling-back would look downstream exactly like a finished one. The output is always
+partial artifact — because a package missing its calibration, consent, or telling-back
+would look downstream exactly like a finished one. The output is always
 labeled ``first_team_rehearsal`` / ``ready_for_refine``: the system never claims to have
 understood or approved the mother-tongue recording itself.
 """
@@ -41,7 +41,7 @@ from app.services.internalization_room.comprehension.checkpoints import (
 from app.services.internalization_room.comprehension.session_readiness import (
     evaluate_session_comprehension,
 )
-from app.services.internalization_room.coverage import engaged_scene_ids, floor_met
+from app.services.internalization_room.coverage import engaged_scene_ids
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
@@ -217,12 +217,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
 
     if session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
         blockers.append("bridge_language_never_calibrated")
-    if readiness.evaluation.outcome.value == "needs_more_work":
-        blockers.append("comprehension_needs_more_work")
     if not comprehension.recording_consent_given:
         blockers.append("recording_consent_never_given")
-    if not floor_met(session.coverage_state or {}, session.pericope):
-        blockers.append("coverage_floor_not_met")
     if not ensaio_takes:
         blockers.append("no_rehearsal_audio")
     if not stretches:
