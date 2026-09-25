@@ -263,8 +263,12 @@ async def test_a_passing_verdict_leaves_no_refusal_trace(
 ) -> None:
     patch_agent(FakeAgent(verdicts=[{"verdict": "pass", "issues": []}], drafts=["Fala normal."]))
 
-    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-8")
 
     assert outcome.used_fail_safe is False
     assert _refusal_records(caplog) == []
+    assert any(
+        record.name == LOGGER_NAME and "sessao-8" in record.getMessage()
+        for record in caplog.records
+    ), "o turno some do próprio logger sem deixar rasto nenhum, nem o de sempre"
