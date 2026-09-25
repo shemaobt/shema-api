@@ -192,7 +192,7 @@ async def synthesize_speech_key(
 
     audio = await voiced()
     _remember_fresh(key, audio)
-    upload = partial(_cache_quietly, speech_store, key, audio)
+    upload = partial(_cache_and_correct, speech_store, key, audio)
     if uploads is None:
         await upload()
     else:
@@ -285,19 +285,26 @@ async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
     return await store.get(key)
 
 
-async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
-    """Store the clip, but never fail the request over it.
+async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> bytes | None:
+    """Store the clip, but never fail the request over it. Returns the bytes now at `key`.
 
     We already paid ElevenLabs for these bytes. A missing bucket or a wrong IAM binding is
     an infrastructure problem — throwing a 500 here would bill the synthesis and hand the
     caller nothing.
     """
     try:
-        await store.put(key, audio, MIME_TYPE)
+        winner = await store.put(key, audio, MIME_TYPE)
     except Exception:
         logger.exception("failed to cache TTS clip key=%s", key)
-        return
+        return None
     _mark_kept(key)
+    return winner
+
+
+async def _cache_and_correct(store: SpeechStore, key: str, audio: bytes) -> None:
+    winner = await _cache_quietly(store, key, audio)
+    if winner is not None:
+        _remember_fresh(key, winner)
 
 
 async def _synthesize(
