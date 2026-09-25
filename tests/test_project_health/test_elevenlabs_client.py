@@ -3,7 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 from app.core.config import Settings
+from app.core.exceptions import UpstreamServiceError
 from app.services.project_health.voice.elevenlabs_client import synthesize_speech
 
 
@@ -48,3 +51,11 @@ async def test_a_clip_cached_in_one_format_is_not_served_for_another() -> None:
 
     assert was_cached is False
     assert client.post.await_count == 2
+
+
+async def test_synthesize_speech_requires_api_key() -> None:
+    s = _settings().model_copy(update={"ph_elevenlabs_api_key": ""})
+    client = _stub_client()
+
+    with pytest.raises(UpstreamServiceError):
+        await synthesize_speech("hello", language="en-US", settings=s, client=client)

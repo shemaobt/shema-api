@@ -5,7 +5,7 @@ import logging
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.services.project_health.voice.cache import CachedAudio, audio_cache
 from app.services.project_health.voice.voice_map import (
     MULTILINGUAL_VOICE_ID,
@@ -27,7 +27,7 @@ def _make_client() -> httpx.AsyncClient:
 
 def _require_api_key(cfg: Settings) -> str:
     if not cfg.ph_elevenlabs_api_key:
-        raise ValidationError("PH_ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("PH_ELEVENLABS_API_KEY is not configured")
     return cfg.ph_elevenlabs_api_key
 
 
