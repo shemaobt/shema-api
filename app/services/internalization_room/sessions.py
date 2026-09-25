@@ -353,8 +353,6 @@ async def append_exchange(
     without the visit — so leaving it set lets a facilitator correcting a ten-minute-old tap
     stop a conversation in full flow. A visit to a halt raised while the Guide was answering
     keeps it: the turn would not have lifted that halt, so undoing the visit brings it back.
-    The same-kind halt above is the exception — mistaken for the one the turn began in, its
-    visit loses the record too.
     The stamps are deliberately **not** cleared: who went and when is what the history is for,
     and a landing turn is no evidence they did not go.
     """
@@ -382,7 +380,13 @@ async def append_exchange(
     values: dict[str, Any] = {"messages": messages}
     nothing_to_put_back = IRSession.attended_at.is_not_distinct_from(session.attended_at)
     if session.status is IRSessionStatus.NEEDS_PERSON:
-        nothing_to_put_back = or_(nothing_to_put_back, IRSession.lifted_halt == session.halt_kind)
+        nothing_to_put_back = or_(
+            nothing_to_put_back,
+            and_(
+                IRSession.halts_raised == session.halts_raised,
+                IRSession.lifted_halt == session.halt_kind,
+            ),
+        )
         values["status"] = case(
             (
                 and_(

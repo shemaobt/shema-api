@@ -536,6 +536,36 @@ async def test_a_warning_raised_again_after_a_visit_while_the_guide_answers_is_n
     assert after.halt_kind == HaltKind.WARNING.value
 
 
+async def test_undoing_a_visit_to_a_warning_raised_again_while_the_guide_answered_puts_it_back(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await mark_needs_person(db_session, waiting_room, kind=HaltKind.WARNING)
+
+    async def two_visits_to_two_warnings() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, waiting_room.id)
+            await attend(rival, halted, by="facilitadora")
+            await mark_needs_person(rival, halted, kind=HaltKind.WARNING)
+            await attend(rival, halted, by="facilitadora")
+
+    models.while_the_guide_thinks = two_visits_to_two_warnings
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+    assert undone.status is IRSessionStatus.NEEDS_PERSON, (
+        "o turno tomava o segundo aviso pelo aviso em que começou e apagava o lifted_halt da"
+        " segunda visita, e desfazê-la não trazia o pedido de volta"
+    )
+    assert undone.halt_kind == HaltKind.WARNING.value
+
+
 async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room_stays_closed(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
