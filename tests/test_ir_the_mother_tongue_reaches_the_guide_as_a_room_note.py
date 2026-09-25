@@ -22,7 +22,13 @@ from tests.turn_harness import GUIDE, VALIDATOR, FakeAgent, P, settings, the_age
 SEAM = "/api/internalization-room/text-seam"
 
 TERENA = "koeti yoko vitukeovo enepone itukovo"
-NOTE_PT_40 = "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição]"
+NOTE_PT_40 = (
+    "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
+    "palavra chegou até você.]"
+)
+NOTE_PT_NO_LENGTH = (
+    "[A equipe falou na língua materna; sem transcrição — nenhuma palavra chegou até você.]"
+)
 WELCOME = "Que bom que vocês ensaiaram. Me contem em português o que vocês disseram."
 
 
@@ -42,7 +48,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "transcript": "a fome chegou",
         "opening": False,
         "empty": False,
-        "uncertain": False,
         "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
@@ -78,13 +83,13 @@ async def test_a_take_nobody_could_measure_is_still_a_rehearsal_only_without_its
 
     outcome = await _speak(session, mother_tongue=True, take_ms=None, transcript=TERENA)
 
-    assert agent.guide_inputs == ["[A equipe falou na língua materna; sem transcrição]"], (
+    assert agent.guide_inputs == [NOTE_PT_NO_LENGTH], (
         "a nota dizia 'por cerca de 0 segundos' quando o ffprobe não leu o áudio"
     )
-    assert outcome.room_note == "[A equipe falou na língua materna; sem transcrição]"
+    assert outcome.room_note == NOTE_PT_NO_LENGTH
 
 
-async def test_an_english_room_hands_the_guide_the_note_in_english(
+async def test_an_english_room_hands_the_guide_her_note_in_english_rounded_as_she_rounds(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     agent = the_agent_answers(
@@ -96,11 +101,15 @@ async def test_an_english_room_hands_the_guide_the_note_in_english(
     )
     session = await create_session(db_session, language="en", pericope=P)
 
-    await _speak(session, mother_tongue=True, take_ms=41_000, transcript=TERENA)
+    await _speak(session, mother_tongue=True, take_ms=40_500, transcript=TERENA)
 
     assert agent.guide_inputs == [
-        "[The team spoke in their own language for about 41 seconds; no transcription]"
-    ], "a sala em inglês entregava a nota em português e o Guia misturava as línguas"
+        "[The team spoke in their own language for about 41 seconds; no transcription — no "
+        "words reached you.]"
+    ], (
+        "a nota em inglês parava em 'no transcription', e 40,5 s arredondava para 40 onde o "
+        "Math.round dela diz 41"
+    )
 
 
 async def test_only_a_take_in_another_language_is_measured_for_its_length(
@@ -118,7 +127,6 @@ async def test_only_a_take_in_another_language_is_measured_for_its_length(
             text=TERENA,
             language_code=heard_language["code"],
             language_probability=0.99,
-            transcript_confidence=0.9,
         )
 
     measured: list[bytes] = []
@@ -142,19 +150,16 @@ async def test_only_a_take_in_another_language_is_measured_for_its_length(
     assert measured == [b"terena"], "um ffprobe rodava em cada turno, e não só no de língua materna"
 
 
-async def test_words_the_room_could_not_make_out_draw_the_d_line_and_travel_no_further(
+async def test_a_take_with_no_words_draws_the_d_line_and_travels_no_further(
     db_session: AsyncSession, agent: FakeAgent
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
 
-    outcome = await _speak(session, uncertain=True, transcript="mmm ne")
+    outcome = await _speak(session, empty=True, transcript="")
 
     assert outcome.fixed_line == "D0"
     assert outcome.degraded is True
-    assert outcome.transcript == "", (
-        "o palpite do reconhecedor viajava dentro da linha que pedia para repetir e era "
-        "gravado como fala da equipe"
-    )
+    assert outcome.transcript == ""
     assert agent.guide_inputs == []
 
 
@@ -213,6 +218,25 @@ async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team
         "as palavras que o reconhecedor inventou ficavam na conversa como fala da equipe, e o "
         "Guia e o Validador as liam de volta no turno seguinte"
     )
+
+
+@pytest.mark.parametrize("words", [{}, {"text": ""}])
+async def test_a_scripted_mother_tongue_turn_needs_no_words_to_hand_the_guide_her_note(
+    seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, words: dict[str, str]
+) -> None:
+    agent = the_models_answer(monkeypatch)
+    session_id = await _an_open_session(seam)
+
+    answered = await seam.post(
+        f"{SEAM}/turn", json={"sessionId": session_id, "motherTongue": 25, **words}
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert agent.guide_inputs[-1] == (
+        "[A equipe falou na língua materna por cerca de 25 segundos; sem transcrição — nenhuma "
+        "palavra chegou até você.]"
+    ), "a costura recusava ou mandava a linha D a um turno na língua materna sem texto"
+    assert answered.json()["transcript"] == ""
 
 
 async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_side(

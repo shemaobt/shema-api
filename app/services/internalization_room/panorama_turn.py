@@ -8,7 +8,7 @@ from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_at_end
 from app.services.internalization_room.render import render
-from app.services.internalization_room.turn_instructions import opening_note
+from app.services.internalization_room.turn_instructions import mother_tongue_note, opening_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
@@ -26,6 +26,8 @@ async def run_panorama_turn(
     settings: Settings | None = None,
     session_id: str = "?",
     ask_for_movements: bool = False,
+    mother_tongue: bool = False,
+    take_ms: int | None = None,
 ) -> TurnOutcome:
     """One exchange of a Book Panorama — the session before a book's first passage.
 
@@ -34,7 +36,7 @@ async def run_panorama_turn(
     """
     cfg = settings or get_settings()
 
-    if not opening and not transcript.strip():
+    if not opening and not mother_tongue and not transcript.strip():
         speech, line = choose(FailSafe.INAUDIBLE, language_code)
         return TurnOutcome(
             speech=speech,
@@ -44,6 +46,7 @@ async def run_panorama_turn(
             fixed_line=line,
         )
 
+    said = mother_tongue_note(language_code, take_ms) if mother_tongue else transcript
     note = opening_note(book, language_code)
     outcome = await _voiced_after_validation(
         speaker_system=render(
@@ -54,7 +57,7 @@ async def run_panorama_turn(
         ),
         validator_prompt=validator_prompt,
         standard_of_truth=book_material,
-        transcript=transcript,
+        transcript=said,
         messages=messages,
         session_language=session_language,
         language_code=language_code,
@@ -64,4 +67,6 @@ async def run_panorama_turn(
         session_id=session_id,
         ask_for_movements=ask_for_movements,
     )
+    if mother_tongue:
+        return replace(outcome, transcript="", room_note=said)
     return replace(outcome, room_note=note) if opening else outcome

@@ -51,7 +51,6 @@ async def run_comprehension_turn(
     messages: list[dict[str, Any]] = list(session.messages or [])
 
     transcript = speech.text
-    uncertain = speech.uncertain
     mother_tongue = speech.mother_tongue
     empty = not transcript.strip()
 
@@ -63,7 +62,6 @@ async def run_comprehension_turn(
         transcript=transcript,
         opening=opening,
         empty=empty,
-        uncertain=uncertain,
         book=book,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,

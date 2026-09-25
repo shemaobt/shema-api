@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 
 import httpx
 
@@ -86,9 +85,8 @@ def _make_client() -> httpx.AsyncClient:
 class TranscriptionResult:
     """One transcription plus the provider metadata some callers need.
 
-    The internalization room reads the detected language and confidence to tell
-    mother-tongue practice apart from bridge speech and to under-count uncertain
-    transcripts; plain callers keep receiving just the text.
+    The internalization room reads the detected language to tell mother-tongue practice
+    apart from bridge speech; plain callers keep receiving just the text.
     """
 
     def __init__(
@@ -97,28 +95,16 @@ class TranscriptionResult:
         text: str,
         language_code: str | None = None,
         language_probability: float | None = None,
-        transcript_confidence: float | None = None,
     ) -> None:
         self.text = text
         self.language_code = language_code
         self.language_probability = language_probability
-        self.transcript_confidence = transcript_confidence
 
 
-def _transcript_confidence(words: list[dict]) -> float | None:
-    """Mean word log-probability folded back to a probability, used only to under-count:
-    an uncertain transcript is repeated, never judged as misunderstanding."""
-    logprobs = [
-        word["logprob"]
-        for word in words
-        if isinstance(word, dict)
-        and word.get("type") == "word"
-        and isinstance(word.get("logprob"), (int, float))
-        and math.isfinite(word["logprob"])
-    ]
-    if not logprobs:
-        return None
-    return math.exp(sum(logprobs) / len(logprobs))
+class EmptyTranscription(ValidationError):
+    def __init__(self, heard: TranscriptionResult) -> None:
+        super().__init__("Transcription returned empty text")
+        self.heard = heard
 
 
 async def transcribe_audio_detailed(
@@ -170,16 +156,15 @@ async def transcribe_audio_detailed(
         raise _upstream_or_validation_error(response.status_code)
 
     payload = response.json()
-    text = (payload.get("text") or "").strip()
-    if not text:
-        raise ValidationError("Transcription returned empty text")
     probability = payload.get("language_probability")
-    return TranscriptionResult(
-        text=text,
+    result = TranscriptionResult(
+        text=(payload.get("text") or "").strip(),
         language_code=payload.get("language_code") or None,
         language_probability=float(probability) if isinstance(probability, (int, float)) else None,
-        transcript_confidence=_transcript_confidence(payload.get("words") or []),
     )
+    if not result.text:
+        raise EmptyTranscription(result)
+    return result
 
 
 async def transcribe_audio(

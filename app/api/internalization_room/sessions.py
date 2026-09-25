@@ -768,6 +768,19 @@ async def _answer_the_turn(
             language=session.language,
         )
     transcript = speech_heard.text
+    if file is not None:
+        logger.info(
+            "[hearing] session=%s heard=%s p=%s decision=%s reason=%s",
+            session_id,
+            speech_heard.language_code,
+            speech_heard.language_probability,
+            "mother tongue"
+            if speech_heard.mother_tongue
+            else "words"
+            if transcript
+            else "inaudible",
+            speech_heard.reason,
+        )
 
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
@@ -814,6 +827,8 @@ async def _answer_the_turn(
                 book = book_of(session.pericope)
                 outcome = await room.run_panorama_turn(
                     transcript=transcript,
+                    mother_tongue=speech_heard.mother_tongue,
+                    take_ms=speech_heard.take_ms,
                     messages=session.messages or [],
                     session_language=LANGUAGE_NAMES[session.language],
                     language_code=session.language,

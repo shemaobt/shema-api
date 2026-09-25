@@ -11,3 +11,9 @@ category does not exist — and the vendored file at the same pin has never carr
 G, G-pt and G-es blocks are retired from the authored file and the Spanish supplement, and
 `FailSafe` no longer names the family. What answers a take in the team's own language is
 the Guide, handed the bracketed fact as the note her prompt already reads.
+
+The note the Guide is handed is her code's full string (`src/turn/openingNote.ts:26-32` at
+a3f3c69), not the shortened form her letter quotes above: *"[A equipe falou na língua materna
+por cerca de N segundos; sem transcrição — nenhuma palavra chegou até você.]"*, in English
+*"[The team spoke in their own language for about N seconds; no transcription — no words
+reached you.]"*, the seconds rounded as her `Math.round` rounds them.

@@ -13,15 +13,7 @@ from app.services.internalization_room.run_turn import (
     TurnOutcome,
     run_turn,
 )
-
-
-def mother_tongue_note(language_code: str, take_ms: int | None) -> str:
-    seconds = round(take_ms / 1000) if take_ms else 0
-    if language_code == "pt":
-        held = f" por cerca de {seconds} segundos" if seconds else ""
-        return f"[A equipe falou na língua materna{held}; sem transcrição]"
-    held = f" for about {seconds} seconds" if seconds else ""
-    return f"[The team spoke in their own language{held}; no transcription]"
+from app.services.internalization_room.turn_instructions import mother_tongue_note
 
 
 async def speak_back(
@@ -33,14 +25,13 @@ async def speak_back(
     transcript: str,
     opening: bool,
     empty: bool,
-    uncertain: bool,
     book: str,
     guide_prompt: str,
     validator_prompt: str,
     pericope: str,
     settings: Settings,
 ) -> TurnOutcome:
-    if not opening and not mother_tongue and (empty or uncertain):
+    if not opening and not mother_tongue and empty:
         line, fixed = choose(FailSafe.INAUDIBLE, session.language)
         return TurnOutcome(
             speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed

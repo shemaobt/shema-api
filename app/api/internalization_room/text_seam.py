@@ -138,20 +138,16 @@ def _outcome_tag(outcome: room.TurnOutcome) -> str:
 def _heard(payload: TextTurnRequest, *, language: str) -> HeardSpeech:
     """The team's words as the transcriber would have handed them over.
 
-    A mother-tongue turn carries the one fact the recognizer reports about such a take — a
-    confident detection of a language that is not the session's — and nothing invented about
-    which language it was. `und` is the code the room's own tests give an undetermined
-    language; the room reads only that it is not the bridge.
+    No recognizer ran, so a mother-tongue turn is declared rather than detected — her seam
+    counts no audio (`app/lib/liveTurn.ts:242` at a3f3c69) — and whatever text came with it
+    never reaches the Guide.
     """
-    heard = HeardSpeech(text=payload.text or "", bridge_language=language)
     if payload.motherTongue is None:
-        return heard
-    return heard.model_copy(
-        update={
-            "language_code": "und",
-            "language_probability": 1.0,
-            "take_ms": payload.motherTongue * 1000,
-        }
+        return HeardSpeech(text=payload.text or "", bridge_language=language)
+    return HeardSpeech(
+        bridge_language=language,
+        take_ms=payload.motherTongue * 1000,
+        declared_mother_tongue=True,
     )
 
 
@@ -211,7 +207,7 @@ async def take_text_turn(
     session = await room.get_session(db, payload.sessionId)
     if payload.kickoff and session.messages:
         raise ConflictError("session already open")
-    if not payload.kickoff and payload.text is None:
+    if not payload.kickoff and payload.text is None and payload.motherTongue is None:
         raise ValidationError("no text or kickoff")
     await db.commit()
 
