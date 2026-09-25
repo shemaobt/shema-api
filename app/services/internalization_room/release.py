@@ -6,8 +6,8 @@ scenes practiced, the semantic evidence events and their open points, the tellin
 with its findings and playback report, and every superseded attempt clearly marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
-partial artifact — because a package missing its calibration, consent, evidence, or
-telling-back would look downstream exactly like a finished one. The output is always
+partial artifact — because a package missing its calibration, consent, or telling-back
+would look downstream exactly like a finished one. The output is always
 labeled ``first_team_rehearsal`` / ``ready_for_refine``: the system never claims to have
 understood or approved the mother-tongue recording itself.
 """

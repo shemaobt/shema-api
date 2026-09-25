@@ -321,11 +321,11 @@ async def _correct_the_second_stretch(
 
 
 async def _releasable_session(client: httpx.AsyncClient, db: AsyncSession) -> str:
-    """The three stretches, over a session that has done everything else a release asks for.
+    """The three stretches, over a session with consent given and comprehension and coverage
+    fully recorded.
 
-    Comprehension supported, consent given, coverage satisfied. Written straight onto the
-    session rather than played out through the room: none of it is what these cases are about,
-    and the release's own suite is where those gates are held.
+    Written straight onto the session rather than played out through the room: none of it is
+    what these cases are about, and the release's own suite is where its gates are held.
     """
     from app.services.internalization_room.canon.elements import element_keys
     from app.services.internalization_room.comprehension.checkpoints import (

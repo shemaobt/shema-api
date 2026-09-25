@@ -140,9 +140,8 @@ def _rehearsal_take(session_id: str, *, sha256: str) -> IRTake:
 
 
 async def _rehearsed(db: AsyncSession) -> tuple[IRSession, IRTake]:
-    """A session that has done everything a release needs except tell the passage back.
-
-    Comprehension supported, consent given, coverage satisfied, the passage rehearsed.
+    """A session with consent given, comprehension and coverage fully recorded, and the
+    passage rehearsed — everything short of telling the passage back.
     """
     session = await create_session(db, pericope=P, bridge_mode="guided_microchecks", language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
