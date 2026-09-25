@@ -111,6 +111,9 @@ def test_orpah_and_chilion_married_is_the_same_pairing_the_judge_must_confirm() 
 
 def test_a_guide_refusing_to_say_who_married_whom_is_not_a_pairing() -> None:
     refused = "A história não diz se a Rute casou com o Malom."
+    assert _turn(guide=unicodedata.normalize("NFD", refused), expect={"no_pairing": True}) == [], (
+        "a recusa com 'não' decomposto contava como o par que ela recusa"
+    )
     assert _turn(guide=refused, expect={"no_pairing": True}) == [], (
         "a recusa dela citava os dois nomes com casou e virava par"
     )

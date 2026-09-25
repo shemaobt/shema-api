@@ -76,6 +76,10 @@ def _rehearsal_invited(guide: str) -> bool:
 
 
 def _pairing_voiced(guide: str) -> bool:
+    # `_REFUSES_TO_PAIR` and `_DENIES` spell the refusal `n[ãa]o`, two precomposed code
+    # points; a decomposed `não` (n + a + U+0303 + o), which a transcriber does return,
+    # matches neither and a refusal would be scored as the pairing it refuses.
+    guide = unicodedata.normalize("NFC", guide)
     if _REFUSES_TO_PAIR.search(guide):
         return False
     for sentence in _SENTENCE_END.split(guide):

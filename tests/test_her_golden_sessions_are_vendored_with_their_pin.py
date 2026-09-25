@@ -45,6 +45,14 @@ HER_SESSIONS = {
 }
 
 
+def test_the_sessions_folder_holds_exactly_the_scripts_pinned_here() -> None:
+    # `scripts_to_play` globs the folder and `drift()` walks `VENDORED`; only this list ties
+    # the two, so a script dropped in the folder would be played by a full run and pinned by
+    # nothing.
+    on_disk = sorted(p.stem for p in (REPO_ROOT / "golden/sessions").glob("*.json"))
+    assert on_disk == sorted(HER_SESSIONS), "a session script on disk that no pin vouches for"
+
+
 def test_every_session_script_of_hers_is_vendored_byte_for_byte_under_the_pin() -> None:
     for name, hers in HER_SESSIONS.items():
         path = f"golden/sessions/{name}.json"
