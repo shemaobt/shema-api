@@ -1,27 +1,7 @@
-"""The draft-gate-voice engine every session type funnels through.
-
-`call_agent`, `strays_from`, `MAX_REDRAFTS` and the logger are read off `run_turn` at call
-time instead of being imported here. Thirty-four sites across twenty-three test files install
-their fake model by writing over `run_turn.call_agent`, one writes over `run_turn.strays_from`,
-and `tests/test_internalization_room_model_failure.py` asserts on records whose `record.name`
-is exactly `app.services.internalization_room.run_turn`. A monkeypatch reaches a function only
-through the globals of the module the function was defined in, so an ordinary
-`from ... import call_agent` at the top of this file would leave every one of those fakes
-unconsulted while the assertions went on passing — the suite would quietly start calling the
-real model. The lookup sits inside the functions and never at module level: `run_turn` imports
-this module, so a module-level import back would be a cycle that resolves only in the order the
-first importer happens to use.
-
-It goes through `importlib` rather than `import ... as` because the package's `__init__` binds
-the *function* `run_turn` over the submodule of the same name, so `import
-app.services.internalization_room.run_turn as shim` hands back the function and every attribute
-read off it raises. The tests reach the same module the same way.
-"""
-
 from __future__ import annotations
 
 import asyncio
-import importlib
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -49,6 +29,10 @@ from app.services.internalization_room.usage import (
 )
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
 from app.services.platform.tts import warm_connection_in_background
+
+logger = logging.getLogger(__name__)
+
+MAX_REDRAFTS = 2
 
 #: How many times one draft is put to the Validator before its reply is given up on.
 READINGS_OF_ONE_DRAFT = 2
@@ -136,9 +120,7 @@ def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     not be diagnosed — and it is the Validator's own output, not the team's speech, so the
     policy that keeps the team's words off this logger does not apply to it.
     """
-    shim = importlib.import_module("app.services.internalization_room.run_turn")
-
-    shim.logger.warning(
+    logger.warning(
         "Validator reply refused (%s) for session %s, attempt %s: %s",
         condition,
         session_id,
@@ -156,9 +138,7 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
     itself, because both can echo the team's own turn back at them, which is exactly what
     `test_a_failed_turn_logs_its_cause_and_never_what_the_team_said` forbids of the log.
     """
-    shim = importlib.import_module("app.services.internalization_room.run_turn")
-
-    shim.logger.warning(
+    logger.warning(
         "Guide draft rejected (%s) for session %s, attempt %s: %s",
         condition,
         session_id,
@@ -224,10 +204,8 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
     picks them out by the fields only a call has, and a summary that answered to the same
     names would be counted as a third call of every turn.
     """
-    shim = importlib.import_module("app.services.internalization_room.run_turn")
-
     elapsed_ms = round((time.monotonic() - started) * 1000)
-    shim.logger.info(
+    logger.info(
         "[llm-turn] session %s answered in %s ms after %s redrafts, %s calls, US$ %s: "
         "in=%s cache_read=%s cache_write=%s out=%s%s%s",
         session_id,
@@ -325,8 +303,6 @@ async def _voiced_after_validation(
     fault that was the Validator's. Only when the second reading is unreadable too does the
     family-A line answer, and the redrafts it reports are the ones actually spent.
     """
-    shim = importlib.import_module("app.services.internalization_room.run_turn")
-
     started = time.monotonic()
     spend = open_ledger()
     conversation = _conversation_turns(messages)
@@ -334,7 +310,7 @@ async def _voiced_after_validation(
     issues: list[dict[str, Any]] = []
     warmed_connection = False
 
-    for attempt in range(shim.MAX_REDRAFTS + 1):
+    for attempt in range(MAX_REDRAFTS + 1):
         draft, movements = split_opening_movements(
             await _draft(
                 guide_prompt=speaker_system,
@@ -423,7 +399,7 @@ async def _voiced_after_validation(
             )
 
         redraft_note = _redraft_note(issues, language_code)
-    shim.logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
+    logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
 
     speech, line = validation_ladder(messages, language_code)
     return _timed(

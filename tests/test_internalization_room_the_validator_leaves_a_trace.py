@@ -41,7 +41,7 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-LOGGER_NAME = "app.services.internalization_room.run_turn"
+LOGGER_NAME = "app.services.internalization_room.validated_turn"
 BRIDGE_LANGUAGE_LOGGER_NAME = "app.services.internalization_room.bridge_language"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 
