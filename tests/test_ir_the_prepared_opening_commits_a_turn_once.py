@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.services.internalization_room.sessions import create_session, get_session
+from app.services.internalization_room.voice_handles import clip_url
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import counting_commits, room_client
 
@@ -98,21 +99,17 @@ async def test_a_prepared_opening_with_no_turn_id_also_reaches_the_database_in_o
     )
 
 
-async def test_two_requests_racing_the_same_prepared_opening_leave_only_the_winners_commit(
+async def test_two_requests_racing_the_same_prepared_opening_both_hear_it_and_it_is_written_once(
     db_session: AsyncSession,
     per_request_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
-    commits: list[object],
 ) -> None:
-    """A second reader loses the version guard `append_exchange` already carries either way —
-    what the single shared transaction changes is whether *its own* consumption of the line
-    still lands. Counting commits, not just the final row, is what tells the two apart: a
-    prepared opening's read is not guarded by anything of its own, so before this fix the
-    loser's own `take_prepared` committed unconditionally, on its own, before its exchange
-    ever hit the version conflict that undid the rest of its turn.
+    """The second reader finds the first one's opening already written and drops its own, the
+    way a late live opening is dropped (ENG-941) — it used to lose `_land`'s version guard
+    instead, and a 409 is a request whose answer nobody remembers. The tablet that sent it
+    still hears the line it asked for, and the record still holds that line once.
     """
     session_id = await _a_session_with_a_line_ready(db_session)
-    commits.clear()
 
     from app.api.internalization_room import sessions as sessions_api
 
@@ -139,8 +136,11 @@ async def test_two_requests_racing_the_same_prepared_opening_leave_only_the_winn
         f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
     )
 
-    assert lost.status_code == 409, lost.text[:300]
-    assert len(commits) == 1, (
-        "o pedido que perdeu a corrida comitava sozinho o consumo da linha antes de perder"
-        " a troca no guarda de version — a linha era tomada duas vezes, uma delas sem troca"
+    assert lost.status_code == 200, lost.text[:300]
+    assert lost.json()["audio_url"] == clip_url("tts/voice/m/f/prepared.mp3")
+    db_session.expire_all()
+    written = await get_session(db_session, session_id)
+    assert [message["text"] for message in written.messages] == [PREPARED], (
+        "o pedido que perdeu a corrida levava 409 no guarda de version em vez de descartar a"
+        " sua abertura"
     )

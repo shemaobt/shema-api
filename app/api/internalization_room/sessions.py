@@ -792,9 +792,7 @@ async def _answer_the_turn(
     if ready is not None:
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        session = await room.append_exchange(
-            db, session, team_utterance="", guide_response=speech, commit=False
-        )
+        await room.append_opening(db, session, guide_response=speech, commit=False)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
