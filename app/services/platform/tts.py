@@ -159,8 +159,12 @@ async def synthesize_speech(
         return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
     audio = await voiced()
-    await _cache_quietly(speech_store, key, audio)
-    return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
+    # The route serves this as immutable for a day under a hash-addressed key, so a
+    # synthesis that lost the write must hand back the rendering the bucket holds, not
+    # its own: the loser's device would otherwise cache bytes no other instance serves.
+    winner = await _cache_quietly(speech_store, key, audio)
+    served = audio if winner is None else winner
+    return SynthesizedSpeech(served, MIME_TYPE, etag_of(served), cached=False, key=key)
 
 
 async def synthesize_speech_key(

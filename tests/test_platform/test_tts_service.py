@@ -11,6 +11,7 @@ from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.services.platform import stt, tts
 from app.services.platform.tts import (
     cache_key,
+    etag_of,
     fetch_clip,
     synthesize_speech,
     synthesize_speech_key,
@@ -478,3 +479,19 @@ async def test_a_synthesis_that_loses_the_write_remembers_the_winners_bytes_not_
         "esta instância continuava servindo a própria renderização da memória mesmo depois "
         "de o put dizer que outra já tinha vencido"
     )
+
+
+async def test_the_generic_route_serves_the_winners_bytes_when_its_own_write_lost() -> None:
+    store = _AlreadyWonStore(winner=b"rendered-elsewhere")
+    client = _client(_ok(b"rendered-here"))
+
+    result = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert result.audio == b"rendered-elsewhere", (
+        "/tts/speak devolvia a própria renderização, e o aparelho a guardava por um dia "
+        "como imutável sob uma chave que nenhuma outra instância serve com esses bytes"
+    )
+    assert result.etag == etag_of(b"rendered-elsewhere")
+    assert result.cached is False
