@@ -376,7 +376,7 @@ async def synthesize_speech(
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"TTS request failed with status {response.status_code}")
+        raise _upstream_or_validation_error(response.status_code)
 
     payload = response.json()
     audio_b64 = payload.get("audio_base64") or ""
@@ -393,3 +393,11 @@ async def synthesize_speech(
     if speech_store is not None:
         await _write_durable(speech_store, cache_key, audio_bytes, timepoints)
     return entry, False
+
+
+def _upstream_or_validation_error(status_code: int) -> Exception:
+    """Their outage is not our client's bad request — same split as platform/tts.py."""
+    message = f"TTS request failed with status {status_code}"
+    if status_code == 429 or status_code >= 500:
+        return UpstreamServiceError(message)
+    return ValidationError(message)

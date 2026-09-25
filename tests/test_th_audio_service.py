@@ -324,7 +324,7 @@ async def test_synthesize_speech_raises_when_no_audio() -> None:
 async def test_synthesize_speech_raises_when_api_error() -> None:
     audio_cache.clear()
     client = _stub_client(_err(429, "rate limit"))
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await synthesize_speech("hello", client=client, settings=_settings())
 
 
