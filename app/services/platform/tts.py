@@ -165,10 +165,12 @@ async def synthesize_speech(
         return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
     audio = await voiced()
-    _remember_fresh(key, audio)
     # The route serves this as immutable for a day under a hash-addressed key, so a
     # synthesis that lost the write must hand back the rendering the bucket holds, not
     # its own: the loser's device would otherwise cache bytes no other instance serves.
+    # Memory is seeded only with what the bucket holds: seeded before the write, an
+    # overlapping request in this worker would serve unstored bytes as cached, and a
+    # failed write would leave them there for good instead of being retried.
     winner = await _cache_quietly(speech_store, key, audio)
     if winner is not None:
         _remember_fresh(key, winner)
