@@ -165,13 +165,11 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
-        "comprehension_needs_more_work",
+    assert blocked.value.blockers == [
         "recording_consent_never_given",
-        "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
-    }
+    ]
 
 
 @pytest.mark.asyncio
@@ -411,6 +409,21 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
 
 
 @pytest.mark.asyncio
+async def test_a_session_below_the_floor_and_unpracticed_still_releases(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    session.coverage_state = {}
+    await save_comprehension(db_session, session, ComprehensionState(recording_consent_given=True))
+    await db_session.commit()
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["comprehension"]["outcome"] == "needs_more_work"
+    assert artifact["comprehension"]["practiced_scene_ids"] == []
+
+
+@pytest.mark.asyncio
 async def test_the_finding_travels_in_the_package_it_unblocked(
     db_session: AsyncSession,
 ) -> None:
@@ -447,12 +460,10 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
+    assert blocked.value.blockers == [
         "bridge_language_never_calibrated",
-        "comprehension_needs_more_work",
         "recording_consent_never_given",
-        "coverage_floor_not_met",
-    }
+    ]
 
 
 @pytest.mark.asyncio

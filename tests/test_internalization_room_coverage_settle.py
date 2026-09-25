@@ -26,11 +26,7 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceResult,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import CoverageStatus, initial_state
-from app.services.internalization_room.release import (
-    InternalizationReleaseBlocked,
-    build_internalization_release,
-)
+from app.services.internalization_room.coverage import CoverageStatus, floor_met, initial_state
 
 CLASSIFIER = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
 P = "P03"
@@ -188,7 +184,7 @@ async def test_a_passage_settled_from_decisions_closes_the_session(
     )
 
 
-async def test_a_settled_passage_drops_the_coverage_blocker_from_the_release(
+async def test_a_settled_passage_meets_the_floor(
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_engaged(P))
@@ -204,15 +200,8 @@ async def test_a_settled_passage_drops_the_coverage_blocker_from_the_release(
     )
     session = await service.apply_coverage(db_session, session.id, settled)
 
-    blockers: list[str] = []
-    try:
-        await build_internalization_release(db_session, session)
-    except InternalizationReleaseBlocked as blocked:
-        blockers = blocked.blockers
-
-    assert "coverage_floor_not_met" not in blockers, (
-        "o colar ficava vazio por mais que a equipe trabalhasse, "
-        "e a soltura respondia piso não atingido para sempre"
+    assert floor_met(session.coverage_state, P), (
+        "o colar ficava vazio por mais que a equipe trabalhasse, e o piso nunca era atingido"
     )
 
 
@@ -242,7 +231,7 @@ async def test_a_passage_the_team_only_echoed_closes_like_one_it_worked_on_its_o
     )
 
 
-async def test_a_passage_the_team_only_echoed_drops_the_coverage_blocker_from_the_release(
+async def test_a_passage_the_team_only_echoed_meets_the_floor(
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_partially_engaged(P))
@@ -258,16 +247,9 @@ async def test_a_passage_the_team_only_echoed_drops_the_coverage_blocker_from_th
     )
     session = await service.apply_coverage(db_session, session.id, settled)
 
-    blockers: list[str] = []
-    try:
-        await build_internalization_release(db_session, session)
-    except InternalizationReleaseBlocked as blocked:
-        blockers = blocked.blockers
-
-    assert "coverage_floor_not_met" not in blockers, (
+    assert floor_met(session.coverage_state, P), (
         "as regras de preservação chegam à sala como a equipe assumindo o que o Guia "
-        "notou, e nenhuma delas era escrita — a soltura respondia piso não atingido "
-        "por trabalho que existiu"
+        "notou, e nenhuma delas era escrita — o piso nunca era atingido por trabalho que existiu"
     )
 
 
