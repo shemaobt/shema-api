@@ -5,7 +5,7 @@ import logging
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 from app.services.project_health.voice.cache import CachedAudio, audio_cache
 from app.services.project_health.voice.voice_map import (
     MULTILINGUAL_VOICE_ID,
@@ -29,17 +29,6 @@ def _require_api_key(cfg: Settings) -> str:
     if not cfg.ph_elevenlabs_api_key:
         raise UpstreamServiceError("PH_ELEVENLABS_API_KEY is not configured")
     return cfg.ph_elevenlabs_api_key
-
-
-def _upstream_or_validation_error(status_code: int, message: str) -> Exception:
-    """Their outage is not our client's bad request.
-
-    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
-    limit is — same split as translation_helper/transcribe_audio.py.
-    """
-    if status_code in (401, 403, 429) or status_code >= 500:
-        return UpstreamServiceError(message)
-    return ValidationError(message)
 
 
 async def synthesize_speech(
@@ -96,7 +85,7 @@ async def synthesize_speech(
             response.status_code,
             response.text[:500],
         )
-        raise _upstream_or_validation_error(
+        raise upstream_or_validation_error(
             response.status_code, f"TTS request failed with status {response.status_code}"
         )
 
@@ -197,7 +186,7 @@ async def transcribe_audio(
             response.status_code,
             response.text[:500],
         )
-        raise _upstream_or_validation_error(
+        raise upstream_or_validation_error(
             response.status_code,
             f"Transcription request failed with status {response.status_code}",
         )
