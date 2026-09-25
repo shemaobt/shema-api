@@ -1426,31 +1426,34 @@ async def test_a_missing_element_after_everything_told_sends_them_on_to_record(
 # ---------------------------------------------------------------------------
 
 
-def test_the_closing_to_rehearsal_names_the_microphone_and_the_green_button() -> None:
-    """R9 (teste de 03/09). A team that reached this screen did not know what to do with it.
+def test_the_closing_to_rehearsal_names_the_circle_and_the_wood_disc() -> None:
+    """R9 (teste de 03/09, atualizado pelo ADR 0040 da sala). A team that reached this screen
+    did not know what to do with it.
 
     The block used to say *what* was left — record what is still missing, keep what is
-    already recorded — without ever naming *how*: which microphone, and which button brings
-    them back. Two structural anchors stand in for the two gestures the screen actually
-    offers; the exact sentence around them is the product owner's to shape.
+    already recorded — without ever naming *how*: which control records, and which control
+    brings them back. Two structural anchors stand in for the two gestures the screen
+    actually offers; the exact sentence around them is the product owner's to shape.
     """
-    assert "big microphone" in CLOSING_MISSING_TO_REHEARSAL
-    assert "green button" in CLOSING_MISSING_TO_REHEARSAL
+    assert "circle" in CLOSING_MISSING_TO_REHEARSAL
+    assert "wood disc" in CLOSING_MISSING_TO_REHEARSAL
+    assert "big microphone" not in CLOSING_MISSING_TO_REHEARSAL
+    assert "green button" not in CLOSING_MISSING_TO_REHEARSAL
 
 
-async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_loop) -> None:
+async def test_the_validator_sees_the_circle_and_the_wood_disc_too(patch_loop) -> None:
     """The Validator judges the Speaker against the same order it was given.
 
     `{{ORDERED_CLOSING}}` is filled from the same `closing_block` call as the Speaker's
-    `{{CLOSING}}` — a narrator naming the big microphone and the green button is obeying an
-    order the Validator can see, not inventing a gesture of its own.
+    `{{CLOSING}}` — a narrator naming the circle and the wood disc is obeying an order the
+    Validator can see, not inventing a gesture of its own.
     """
     told = told_stretches()
     finding = _missing(None)
     obedient_draft = (
         "No que você me contou de volta, o fim da história ainda não apareceu. "
-        "Vocês podem seguir e gravar o que ainda falta no microfone grande, e quando "
-        "terminarem, é só tocar no botão verde para voltar e conferir. Nada do que já "
+        "Vocês podem seguir e gravar o que ainda falta no círculo, e quando "
+        "terminarem, é só tocar no disco de madeira para voltar e conferir. Nada do que já "
         "gravaram se perde."
     )
     agent = patch_loop(obedient_draft, told)
@@ -1471,8 +1474,8 @@ async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_
 
     assert outcome.used_fail_safe is False
     assert outcome.speech == obedient_draft
-    assert "big microphone" in agent.briefs[0]
-    assert "green button" in agent.briefs[0]
+    assert "circle" in agent.briefs[0]
+    assert "wood disc" in agent.briefs[0]
 
 
 @pytest.mark.parametrize("segment_id", ["segmento-2", None], ids=["on a stretch", "homeless"])
