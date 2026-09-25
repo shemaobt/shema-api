@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from app.core.config import Settings
@@ -32,6 +33,10 @@ def _err(status: int, body: str = "boom") -> SimpleNamespace:
 
 def _err_client(response: SimpleNamespace) -> SimpleNamespace:
     return SimpleNamespace(post=AsyncMock(return_value=response))
+
+
+def _failing_client(error: Exception) -> SimpleNamespace:
+    return SimpleNamespace(post=AsyncMock(side_effect=error))
 
 
 async def test_the_output_format_reaches_elevenlabs_in_the_query_not_the_body() -> None:
@@ -78,6 +83,20 @@ async def test_synthesize_speech_treats_a_rate_limit_or_outage_as_upstream_not_o
 
 async def test_transcribe_audio_treats_a_rate_limit_or_outage_as_upstream_not_ours() -> None:
     client = _err_client(_err(503))
+
+    with pytest.raises(UpstreamServiceError):
+        await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
+
+
+async def test_synthesize_speech_treats_a_dropped_connection_as_upstream_too() -> None:
+    client = _failing_client(httpx.ConnectError("boom"))
+
+    with pytest.raises(UpstreamServiceError):
+        await synthesize_speech("hello", language="en-US", settings=_settings(), client=client)
+
+
+async def test_transcribe_audio_treats_a_dropped_connection_as_upstream_too() -> None:
+    client = _failing_client(httpx.ReadTimeout("boom"))
 
     with pytest.raises(UpstreamServiceError):
         await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
