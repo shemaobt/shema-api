@@ -244,7 +244,6 @@ async def test_a_prepared_opening_handed_over_after_the_teams_first_turn_is_drop
             await append_exchange(
                 rival_db, team, team_utterance=TEAM_ANSWER, guide_response=TEAM_TURN_LINE
             )
-        monkeypatch.setattr(sessions_api, "take_prepared", real_take_prepared)
         return await real_take_prepared(*args, **kwargs)
 
     monkeypatch.setattr(sessions_api, "take_prepared", take_prepared_after_the_team_spoke)
