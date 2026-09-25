@@ -20,7 +20,6 @@ or a column.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 from typing import Any
 
@@ -41,6 +40,7 @@ from tests.room_harness import (
     nothing_is_read_ahead,
     press_terminei,
 )
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -120,14 +120,12 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     from app.api.internalization_room import back_translation as bt_api
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return "Vocês contaram bem."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         said_aloud.append(text)

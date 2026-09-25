@@ -7,7 +7,6 @@ person is the tablet's, on its own triggers, never the server's.
 """
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -20,6 +19,7 @@ from app.services.internalization_room.sessions import create_session, get_sessi
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 REFUSED = json.dumps({"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]})
 
@@ -50,9 +50,7 @@ async def client(db_session, monkeypatch):
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _refusing_models
-    )
+    the_room_agent_is(monkeypatch, turn=_refusing_models)
     async with room_client(db_session, monkeypatch) as c:
         yield c
 

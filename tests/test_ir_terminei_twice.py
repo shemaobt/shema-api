@@ -16,7 +16,6 @@ consulted, what the room said, and what reached the conversation a facilitator r
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 from typing import Any
 
@@ -30,6 +29,7 @@ from app.db.models.internalization_room import IRTakeKind
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
 from tests.room_harness import heard_every_part, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -91,7 +91,6 @@ def consulted(monkeypatch: pytest.MonkeyPatch) -> Consulted:
     from app.services.internalization_room import back_translation as bt_service
 
     tally = Consulted()
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
     async def _analyst(*, system_prompt: str, user_content: str, **_: Any) -> str:
         tally.analyst += 1
@@ -109,7 +108,7 @@ def consulted(monkeypatch: pytest.MonkeyPatch) -> Consulted:
         return (type("Voiced", (), {"key": f"clipe-{tally.voice}"})(), 0)
 
     monkeypatch.setattr(bt_service, "call_agent", _analyst)
-    monkeypatch.setattr(turn_module, "call_agent", _verdict)
+    the_room_agent_is(monkeypatch, turn=_verdict)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
     return tally
 

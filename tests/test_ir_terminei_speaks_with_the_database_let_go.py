@@ -7,7 +7,6 @@ pooled connection held idle through the analyst, the Speaker, the Validator or t
 
 from __future__ import annotations
 
-import importlib
 import json
 from typing import Any
 
@@ -24,6 +23,7 @@ from tests.room_harness import (
     room_client,
     stretch_on,
 )
+from tests.turn_harness import the_room_agent_is
 
 
 @pytest.fixture()
@@ -37,7 +37,6 @@ def held(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str,
     from app.api.internalization_room import back_translation as bt_api
     from app.services.internalization_room import back_translation as bt_service
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
     seen: dict[str, bool] = {}
 
     async def analyst(*, system_prompt: str, user_content: str, **_: Any) -> str:
@@ -56,7 +55,7 @@ def held(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str,
         return (type("Voiced", (), {"key": "clipe-1"})(), 0)
 
     monkeypatch.setattr(bt_service, "call_agent", analyst)
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", voice)
     return seen
 

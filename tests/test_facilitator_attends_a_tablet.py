@@ -18,7 +18,6 @@ half of this slice that would not exist.
 from __future__ import annotations
 
 import json
-import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -43,6 +42,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
@@ -445,9 +445,7 @@ def target_checkpoint() -> str:
 @pytest.fixture()
 def the_models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
     """The Guide drafts and the Validator passes it."""
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
-    )
+    the_room_agent_is(monkeypatch, turn=_AgreeingModels())
 
 
 @pytest.fixture()

@@ -18,7 +18,6 @@ be widened until it meant nothing.
 import dataclasses
 import importlib
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -37,6 +36,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     save_comprehension,
 )
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -190,9 +190,7 @@ async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached
     fail-safe, not a fixed line, and nothing about the sound.
     """
     models = _RecordingModels()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
-    )
+    the_room_agent_is(monkeypatch, turn=models)
     session = await _a_room_that_has_asked_something(db_session)
 
     turn, _ = await _the_team_answers(
@@ -235,9 +233,7 @@ async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_sto
     asks for a person lives outside the turn. That the session stays open behind it is
     the route's to show, in `test_ir_the_pause_leaves_the_session_open.py`.
     """
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
-    )
+    the_room_agent_is(monkeypatch, turn=_BrokenModels())
     session = await _a_room_that_has_asked_something(db_session)
 
     spoken = []
@@ -254,14 +250,13 @@ async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_sto
 async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    models = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+    the_room_agent_is(monkeypatch, turn=_BrokenModels())
     session = await _a_room_that_has_asked_something(db_session)
     for _ in range(2):
         _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-    monkeypatch.setattr(models, "call_agent", _RecordingModels())
+    the_room_agent_is(monkeypatch, turn=_RecordingModels())
     settled, session = await _the_team_answers(db_session, session, text="Rute foi junto")
-    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+    the_room_agent_is(monkeypatch, turn=_BrokenModels())
 
     turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
 
@@ -278,15 +273,14 @@ async def test_a_turn_in_the_teams_own_tongue_the_guide_answered_starts_the_a_la
     """A rehearsal in the team's own language is an ordinary Guide turn now, not a fixed
     line: when the Guide answers the fact of it, that turn needed no fail-safe, and by the
     ticket's rule a turn that needed none ends the run."""
-    models = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+    the_room_agent_is(monkeypatch, turn=_BrokenModels())
     session = await _a_room_that_has_asked_something(db_session)
     _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-    monkeypatch.setattr(models, "call_agent", _RecordingModels())
+    the_room_agent_is(monkeypatch, turn=_RecordingModels())
     own_tongue, session = await _the_team_answers(
         db_session, session, text="koeti yoko vitukeovo enepone", heard_as="ter"
     )
-    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+    the_room_agent_is(monkeypatch, turn=_BrokenModels())
 
     turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
 

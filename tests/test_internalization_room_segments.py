@@ -31,6 +31,7 @@ from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.takes import store_take
 from app.services.platform.storage import StoredObject
 from tests.room_harness import a_piece_still_to_be_told, heard_every_part, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -426,8 +427,6 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     import json
     import sys
 
-    turn_module = sys.modules["app.services.internalization_room.run_turn"]
-
     session_id = await _open_session(client)
     take_id = await _record(client, session_id, b"a equipe ensaiou a passagem inteira")
 
@@ -457,7 +456,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
             return json.dumps({"verdict": "pass", "issues": []})
         return "Vocês contaram bem. Falta uma coisa."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(*_: Any, **__: Any):
         return (type("Voiced", (), {"key": "uma-chave"})(), 0)

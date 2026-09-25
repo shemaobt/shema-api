@@ -32,6 +32,7 @@ from app.services.internalization_room.llm import Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
+from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
     NOT_THIS_TURN,
     OPENING_MOVEMENT_INSTRUCTION,
@@ -189,8 +190,6 @@ async def _draft(
     400 would reach the team as a fail-safe line. The fallback sits here and not at the call
     site, because this is where the message is built.
     """
-    shim = importlib.import_module("app.services.internalization_room.run_turn")
-
     if utterance:
         user_content = utterance
     else:
@@ -199,7 +198,7 @@ async def _draft(
             user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
     if redraft_note:
         user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
-    draft: str = await shim.call_agent(
+    draft: str = await room_agent().turn.call_agent(
         role="guide",
         system_prompt=guide_prompt,
         user_content=user_content,
@@ -373,7 +372,7 @@ async def _voiced_after_validation(
             )
             warmed_connection = True
         for _reading in range(READINGS_OF_ONE_DRAFT):
-            raw_verdict = await shim.call_agent(
+            raw_verdict = await room_agent().turn.call_agent(
                 role="validator",
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
@@ -397,7 +396,9 @@ async def _voiced_after_validation(
         else:
             _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
 
-        if speech and await asyncio.to_thread(shim.strays_from, speech, language_code):
+        if speech and bool(
+            await asyncio.to_thread(room_agent().strays_from, speech, language_code)
+        ):
             issues = [*issues, {"problem": "off_bridge_language"}]
             _draft_rejected(
                 "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"

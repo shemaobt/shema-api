@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -22,6 +21,7 @@ from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 TEAM_ANSWER = "Noemi voltou para Belem com Rute no tempo da colheita"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
@@ -83,9 +83,7 @@ def fan_out(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
 
     model = _CountingModel()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", model
-    )
+    the_room_agent_is(monkeypatch, turn=model)
 
     voice = _CountingVoice()
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)

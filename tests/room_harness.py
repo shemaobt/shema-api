@@ -12,7 +12,6 @@ module keeps the three-line fixture that calls it — which is also how `release
 
 from __future__ import annotations
 
-import importlib
 import json
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -56,6 +55,7 @@ from tests.release_harness import (
     ensaio_take,
     supported_comprehension,
 )
+from tests.turn_harness import the_room_agent_is
 
 PART_MS = 61000
 PLAYBACK_BLOCKER = "playback_did_not_cover_the_clip"
@@ -190,8 +190,6 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
 
     from app.api.internalization_room import back_translation as bt_api
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             room.judged.append(system_prompt)
@@ -199,7 +197,7 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
         room.briefs.append(system_prompt)
         return "Vocês contaram bem."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def voice(text: str, *_: Any, **__: Any):
         room.said.append(text)

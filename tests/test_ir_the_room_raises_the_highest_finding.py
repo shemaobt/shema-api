@@ -19,7 +19,6 @@ or a column.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 import re
 from typing import Any
@@ -35,6 +34,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
 from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -205,15 +205,13 @@ def speaker(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     from app.api.internalization_room import back_translation as bt_api
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
     async def _speak(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         handed.append(system_prompt)
         return "No que vocês me traduziram, vamos olhar uma parte de novo."
 
-    monkeypatch.setattr(turn_module, "call_agent", _speak)
+    the_room_agent_is(monkeypatch, turn=_speak)
 
     async def _voice(text: str, *_: Any, **__: Any):
         return (type("Voiced", (), {"key": "clipe"})(), 0)

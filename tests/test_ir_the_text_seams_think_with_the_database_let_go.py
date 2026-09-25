@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import text_seam
 from app.core.config import get_settings
+from app.services.internalization_room.room_agent import CallAgent, room_agent
 from tests.text_seam_harness import (
     RUNNER_KEY,
     TEAM_LINE,
@@ -24,6 +25,7 @@ from tests.text_seam_harness import (
     the_models_answer,
     the_speaker_says,
 )
+from tests.turn_harness import the_room_agent_is
 
 SEAM = "/api/internalization-room/text-seam"
 
@@ -46,22 +48,15 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield c
 
 
-def _watched(
-    monkeypatch: pytest.MonkeyPatch,
-    module: str,
-    db: AsyncSession,
-    held: dict[str, bool],
-    *,
-    speaks_as: str = "guide",
-) -> None:
-    answers = sys.modules[module].call_agent
-
+def _watching(
+    answers: CallAgent, db: AsyncSession, held: dict[str, bool], *, speaks_as: str = "guide"
+) -> CallAgent:
     async def thinks(*, system_prompt: str, **kwargs: Any) -> str:
         role = "validator" if "corrected_response" in system_prompt else speaks_as
         held[role] = db.in_transaction()
         return await answers(system_prompt=system_prompt, **kwargs)
 
-    monkeypatch.setattr(sys.modules[module], "call_agent", thinks)
+    return thinks
 
 
 async def test_a_text_turn_is_thought_with_the_database_let_go_not_held_open(
@@ -74,7 +69,7 @@ async def test_a_text_turn_is_thought_with_the_database_let_go_not_held_open(
     session_id = created.json()["sessionId"]
     await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
     held: dict[str, bool] = {}
-    _watched(monkeypatch, "app.services.internalization_room.run_turn", db_session, held)
+    the_room_agent_is(monkeypatch, turn=_watching(room_agent().turn.call_agent, db_session, held))
 
     answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
 
@@ -99,14 +94,13 @@ async def test_a_retro_round_is_read_with_the_database_let_go_not_held_open(
     )
     assert declared.status_code == 200, declared.text
     held: dict[str, bool] = {}
-    _watched(
-        monkeypatch,
-        "app.services.internalization_room.back_translation",
-        db_session,
-        held,
-        speaks_as="analyst",
+    analyst = sys.modules["app.services.internalization_room.back_translation"]
+    monkeypatch.setattr(
+        analyst,
+        "call_agent",
+        _watching(analyst.call_agent, db_session, held, speaks_as="analyst"),
     )
-    _watched(monkeypatch, "app.services.internalization_room.run_turn", db_session, held)
+    the_room_agent_is(monkeypatch, turn=_watching(room_agent().turn.call_agent, db_session, held))
 
     played = await client.post(
         f"{SEAM}/back-translation/round",

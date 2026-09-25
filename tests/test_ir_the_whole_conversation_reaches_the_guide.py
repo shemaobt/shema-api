@@ -8,7 +8,6 @@ confere o reconto é o Guia, item por item contra o mapa, com a conversa inteira
 """
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -18,6 +17,7 @@ from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -53,9 +53,7 @@ class _Recording:
 @pytest.fixture
 def recording(monkeypatch: pytest.MonkeyPatch) -> _Recording:
     models = _Recording()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
-    )
+    the_room_agent_is(monkeypatch, turn=models)
     return models
 
 

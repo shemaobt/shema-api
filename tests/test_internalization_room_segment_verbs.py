@@ -27,6 +27,7 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 from tests.room_harness import heard_every_part, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -391,8 +392,6 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The regression case of the slice."""
-    turn_module = sys.modules["app.services.internalization_room.run_turn"]
-
     session_id = await _session(client)
     take_id = await _rehearse(client, session_id, b"a equipe ensaiou a passagem inteira")
     client.said.extend(["Noemi mandou Rute voltar.", "Rute disse que ia junto."])  # type: ignore[attr-defined]
@@ -417,7 +416,7 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
             return json.dumps({"verdict": "pass", "issues": []})
         return "Vocês contaram bem. Falta uma coisa."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(*_: Any, **__: Any):
         return (type("Voiced", (), {"key": "uma-chave"})(), 0)

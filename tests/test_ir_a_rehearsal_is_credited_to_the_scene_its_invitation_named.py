@@ -7,7 +7,6 @@ rehearsed scene 3, and was asked again for the scene it had just told.
 """
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -27,7 +26,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     save_comprehension,
 )
-from tests.turn_harness import GUIDE, VALIDATOR, P, settings
+from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_room_agent_is
 from tests.turn_harness import INVITATION as WHOLE_PASSAGE_INVITATION
 
 INVITATION = "Agora ensaiem esta cena juntos na língua de vocês; quando terminarem, digam: pronto."
@@ -50,8 +49,7 @@ class ScriptedGuide:
 @pytest.fixture
 def guide(monkeypatch: pytest.MonkeyPatch) -> ScriptedGuide:
     scripted = ScriptedGuide()
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", scripted)
+    the_room_agent_is(monkeypatch, turn=scripted)
     return scripted
 
 

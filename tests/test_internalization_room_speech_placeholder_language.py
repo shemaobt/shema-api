@@ -27,6 +27,7 @@ from app.services.internalization_room.classify_coverage import classify_coverag
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.languages import LANGUAGE_NAMES, ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import run_turn
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -59,7 +60,6 @@ def _settings() -> Settings:
 
 def _patch_validator_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     """Let the Guide draft through, then record the system prompt the Validator is judged by."""
-    module = sys.modules["app.services.internalization_room.run_turn"]
     captured: dict[str, str] = {}
 
     async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
@@ -68,7 +68,7 @@ def _patch_validator_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
             return json.dumps({"verdict": "pass", "issues": []})
         return "fala"
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, turn=agent)
     return captured
 
 
