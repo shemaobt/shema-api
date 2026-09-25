@@ -396,8 +396,12 @@ async def synthesize_speech(
 
 
 def _upstream_or_validation_error(status_code: int) -> Exception:
-    """Their outage is not our client's bad request — same split as platform/tts.py."""
+    """Their outage is not our client's bad request.
+
+    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
+    limit is — same split as translation_helper/transcribe_audio.py.
+    """
     message = f"TTS request failed with status {status_code}"
-    if status_code == 429 or status_code >= 500:
+    if status_code in (401, 403, 429) or status_code >= 500:
         return UpstreamServiceError(message)
     return ValidationError(message)

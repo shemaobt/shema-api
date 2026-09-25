@@ -74,8 +74,11 @@ async def test_synthesize_speech_requires_api_key() -> None:
         await synthesize_speech("hello", language="en-US", settings=s, client=client)
 
 
-async def test_synthesize_speech_treats_a_rate_limit_or_outage_as_upstream_not_ours() -> None:
-    client = _err_client(_err(429))
+@pytest.mark.parametrize("status", [401, 429])
+async def test_synthesize_speech_treats_a_rate_limit_or_outage_as_upstream_not_ours(
+    status: int,
+) -> None:
+    client = _err_client(_err(status))
 
     with pytest.raises(UpstreamServiceError):
         await synthesize_speech("hello", language="en-US", settings=_settings(), client=client)

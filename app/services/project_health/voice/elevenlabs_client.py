@@ -32,8 +32,12 @@ def _require_api_key(cfg: Settings) -> str:
 
 
 def _upstream_or_validation_error(status_code: int, message: str) -> Exception:
-    """Their outage is not our client's bad request — same split as platform/tts.py."""
-    if status_code == 429 or status_code >= 500:
+    """Their outage is not our client's bad request.
+
+    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
+    limit is — same split as translation_helper/transcribe_audio.py.
+    """
+    if status_code in (401, 403, 429) or status_code >= 500:
         return UpstreamServiceError(message)
     return ValidationError(message)
 
