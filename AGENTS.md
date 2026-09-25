@@ -39,11 +39,11 @@ The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordin
 Marcia's golden scripts are played against a running server through the **Text seam**, which
 exists only where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and the seam
 answers 404. Two runners, one convention: reports land under `golden/reports/<date>/`, committed,
-and the key travels as `ACCESS_CODE`. Her five session scripts are vendored at `golden/sessions/`
-under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
+and the key travels as `ACCESS_CODE`. Her fourteen session scripts are vendored at
+`golden/sessions/` under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
 
 ```sh
-# the Guide's conversation: the five sessions, her mechanical checks, her judge, one README
+# the Guide's conversation: her fourteen sessions, her mechanical checks, her judge, one README
 # per run; a session passes only when the judge passed it and no check tripped, exit 1
 # otherwise. --only <name> plays one of them. The judge runs in this process on the voice
 # ladder, so it needs ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID for an identity-bound

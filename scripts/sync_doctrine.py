@@ -13,7 +13,7 @@ conflict rather than a decision. Her prompts land beside ours — `prompts/vendo
 would throw away the tickets that ported her text, and the vendoring exists so that "how does
 our Guide prompt differ from hers" is a `diff` instead of an argument.
 
-Her five golden sessions travel the same door, at their own path, because a script that drifts
+Her golden sessions travel the same door, at their own path, because a script that drifts
 from hers grades this room against its own homework: `scripts/golden_runner.py` plays the
 vendored copy, and a run is only comparable to her 5/5 of 2026-09-03 — vendored beside ours —
 while the bytes and the canon pin the judge's map comes from are the ones her branch names.
@@ -77,19 +77,38 @@ VENDORED = {
     "prompts/golden_judge_system_prompt.md": (
         "app/services/internalization_room/prompts/vendor/golden_judge_system_prompt.md"
     ),
-    "golden/sessions/J01-frame-before-elicit.json": (
-        "golden/sessions/J01-frame-before-elicit.json"
+    "golden/sessions/J01-frame-before-elicit.json": "golden/sessions/J01-frame-before-elicit.json",
+    "golden/sessions/P01-ensaio-da-cena.json": "golden/sessions/P01-ensaio-da-cena.json",
+    "golden/sessions/P01-ensaio-final-send-off-a-small-gap.json": (
+        "golden/sessions/P01-ensaio-final-send-off-a-small-gap.json"
+    ),
+    "golden/sessions/P01-ensaio-final-send-off-b-oral-scene.json": (
+        "golden/sessions/P01-ensaio-final-send-off-b-oral-scene.json"
+    ),
+    "golden/sessions/P01-ensaio-final-send-off-c-late-rehearsal.json": (
+        "golden/sessions/P01-ensaio-final-send-off-c-late-rehearsal.json"
     ),
     "golden/sessions/P01-opening-and-mother-tongue.json": (
         "golden/sessions/P01-opening-and-mother-tongue.json"
     ),
+    "golden/sessions/P01-part-opening-closing.json": (
+        "golden/sessions/P01-part-opening-closing.json"
+    ),
+    "golden/sessions/P01-question-is-not-a-shelter.json": (
+        "golden/sessions/P01-question-is-not-a-shelter.json"
+    ),
     "golden/sessions/P01-retelling-gaps-and-additions.json": (
         "golden/sessions/P01-retelling-gaps-and-additions.json"
     ),
+    "golden/sessions/P01-small-gaps-choice.json": "golden/sessions/P01-small-gaps-choice.json",
     "golden/sessions/P01-spoilers-and-boundaries.json": (
         "golden/sessions/P01-spoilers-and-boundaries.json"
     ),
     "golden/sessions/P01-understand-first.json": "golden/sessions/P01-understand-first.json",
+    "golden/sessions/P02-meaning-not-form.json": "golden/sessions/P02-meaning-not-form.json",
+    "golden/sessions/P03-accept-meaning-and-microphone.json": (
+        "golden/sessions/P03-accept-meaning-and-microphone.json"
+    ),
     "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
     "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
         "golden/reports/2026-09-03/J01-frame-before-elicit.md"

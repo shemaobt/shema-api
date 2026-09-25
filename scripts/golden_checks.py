@@ -1,11 +1,12 @@
-"""Marcia's `mechanicalChecks`, ported whole as a pure function over one played turn.
+"""Marcia's `mechanicalChecks`, as a pure function over one played turn.
 
-Read from `src/golden/run.ts` in `shemaobt/Tripod-Internalization` at `533b6e3`, the commit
-`docs/doctrine/DOCTRINE_PIN` names. The rules are hers and so are the messages, in her
-English, because a report of ours is read beside one of hers and a rule renamed on our side
-is a rule the two stacks no longer share. No check is added, none is dropped, none is
-loosened. These are "the cheap, unambiguous ones" the runner makes without a judge; the rest
-of her `expect` keys — `opens_more`, `names_gap`, `no_spoiler` — are the judge's to score.
+Read from `src/golden/run.ts` and `src/golden/checks.ts` in `shemaobt/Tripod-Internalization`
+at `a3f3c69`, the commit `docs/doctrine/DOCTRINE_PIN` names. The rules are hers and so are
+the messages, in her English, because a report of ours is read beside one of hers and a rule
+renamed on our side is a rule the two stacks no longer share. No check is added and none
+is loosened. These are "the cheap, unambiguous ones" the runner makes without a judge; her
+judged `expect` keys — `opens_more`, `names_gap`, `no_spoiler` — are the judge's to score,
+and every mechanical key of hers not ported here is reported as PENDING.
 
 Her regexes run without the `u` flag, so her `\\b` is ASCII-only where Python's is
 Unicode-aware; `scripts/bt_golden_checks.py` measures the difference. Nothing a Guide turn
@@ -15,14 +16,36 @@ says separates the two here: the words on either side of every `\\b` below are u
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 _REHEARSAL = re.compile(r"\bensai(em|ar|o)\b|rehears", re.IGNORECASE)
-_RUTH_AND_MAHLON = re.compile(
-    r"(Rute|Ruth)[^.]{0,40}\b(Malom|Mahlon)\b|(Malom|Mahlon)[^.]{0,40}\b(Rute|Ruth)\b",
+_CLOSING_LAST_SENTENCE = (
+    "Se já entenderam, me digam e a gente vai pro ensaio.",
+    "If you have understood it, tell me and we will go to the rehearsal.",
+)
+_REFUSES_TO_PAIR = re.compile(
+    r"n[ãa]o (diz|fala|conta|sabemos)[^.]{0,60}(quem|qual|se)\b|quem casou com quem"
+    r"|qual casou com qual|sem dizer (quem|qual)",
     re.IGNORECASE,
 )
-_MARRIED = re.compile(r"casou|esposa|mulher de|married|wife", re.IGNORECASE)
+_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+_BOTH_SONS = re.compile(r"(Malom|Mahlon) (e|and) (Quiliom|Chilion)", re.IGNORECASE)
+_BOTH_WOMEN = re.compile(
+    r"(Orfa|Orpah) (e|and) (a outra |the other )?(Rute|Ruth)"
+    r"|(Rute|Ruth) (e|and) (a outra |the other )?(Orfa|Orpah)",
+    re.IGNORECASE,
+)
+_A_PAIR = re.compile(
+    r"(Rute|Ruth)[^.]{0,40}\b(Malom|Mahlon)\b|(Malom|Mahlon)[^.]{0,40}\b(Rute|Ruth)\b"
+    r"|(Orfa|Orpah)[^.]{0,40}\b(Quiliom|Chilion)\b|(Quiliom|Chilion)[^.]{0,40}\b(Orfa|Orpah)\b",
+    re.IGNORECASE,
+)
+_MARRIED = re.compile(r"casou|casaram|esposa|mulher de|married|wife|pegou|pegaram", re.IGNORECASE)
+_DENIES = re.compile(
+    r"n[ãa]o (diz|fala|conta|sabemos|sei)|sem dizer|not (say|tell)|does not|doesn't|never says",
+    re.IGNORECASE,
+)
 _RECORD = re.compile(r"grav", re.IGNORECASE)
 _THE_MAP = re.compile(r"\bo mapa\b|the map\b", re.IGNORECASE)
 _FAREWELL = re.compile(r"vão com deus|god bless|amém|amen\b", re.IGNORECASE)
@@ -41,6 +64,35 @@ _JUDGED = frozenset(
 )
 
 
+def _fold_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", text)).strip()
+
+
+def _rehearsal_invited(guide: str) -> bool:
+    folded = _fold_whitespace(guide)
+    for sentence in _CLOSING_LAST_SENTENCE:
+        folded = folded.replace(sentence, " ")
+    return _REHEARSAL.search(folded) is not None
+
+
+def _pairing_voiced(guide: str) -> bool:
+    # `_REFUSES_TO_PAIR` and `_DENIES` spell the refusal `n[ãa]o`, two precomposed code
+    # points; a decomposed `não` (n + a + U+0303 + o), which a transcriber does return,
+    # matches neither and a refusal would be scored as the pairing it refuses.
+    guide = unicodedata.normalize("NFC", guide)
+    if _REFUSES_TO_PAIR.search(guide):
+        return False
+    for sentence in _SENTENCE_END.split(guide):
+        if _BOTH_SONS.search(sentence) and _BOTH_WOMEN.search(sentence):
+            continue
+        if not _A_PAIR.search(sentence) or not _MARRIED.search(sentence):
+            continue
+        if _DENIES.search(sentence):
+            continue
+        return True
+    return False
+
+
 def mechanical_checks(
     *, guide: str, outcome: str, expect: dict[str, Any], previous_guide: str
 ) -> list[str]:
@@ -56,9 +108,9 @@ def mechanical_checks(
         fails.append("fail_safe voiced in reply to a turn that must be answered")
     if guide.strip() and guide.strip() == previous_guide.strip():
         fails.append("verbatim repeat of the previous guide turn")
-    if expect.get("no_rehearsal_invite") and _REHEARSAL.search(guide):
+    if expect.get("no_rehearsal_invite") and _rehearsal_invited(guide):
         fails.append("rehearsal invited on a turn where the team asked to understand first")
-    if expect.get("no_pairing") and _RUTH_AND_MAHLON.search(guide) and _MARRIED.search(guide):
+    if expect.get("no_pairing") and _pairing_voiced(guide):
         fails.append("possible Ruth↔Mahlon pairing voiced (judge must confirm)")
     if expect.get("send_off_record") and not _RECORD.search(guide):
         fails.append("send-off did not tell the team to record (gravem o ensaio)")

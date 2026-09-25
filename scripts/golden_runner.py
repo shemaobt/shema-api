@@ -11,7 +11,7 @@ and the requests are the same.
         --base-url http://127.0.0.1:8044/api/internalization-room/text-seam \\
         [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>]
 
-One command is the five, as `npm run golden` is on her side; `--only` names one of them and
+One command is all of them, as `npm run golden` is on her side; `--only` names one of them and
 `--script <path>` plays a script from anywhere. Per turn the runner prints the outcome, the
 wall clock and the faults her mechanical checks name, and one `[llm-usage]` line per model
 call the room reported. A session the room refuses — a pericope this canon does not hold — is
@@ -73,6 +73,8 @@ class ScriptTurn:
     team: str | None = None
     kickoff: bool = False
     motherTongue: int | None = None
+    rehearsal: list[str] | None = None
+    sceneRehearsals: list[str] | None = None
     interrupted: bool = False
     expect: dict[str, Any] = field(default_factory=dict)
 
@@ -194,6 +196,8 @@ def load_script(path: Path) -> Script:
                 team=turn.get("team"),
                 kickoff=bool(turn.get("kickoff")),
                 motherTongue=turn.get("motherTongue"),
+                rehearsal=turn["rehearsal"]["pieces"] if "rehearsal" in turn else None,
+                sceneRehearsals=turn.get("sceneRehearsals"),
                 interrupted=bool(turn.get("interrupted")),
                 expect=turn.get("expect", {}),
             )
@@ -219,6 +223,30 @@ def opening_note(pericope_id: str, language: str) -> str:
     )
 
 
+def rehearsal_team_text(language: str, pieces: list[str]) -> str:
+    said = [piece.strip() for piece in pieces if piece.strip()]
+    if len(said) == 1:
+        note = (
+            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue "
+            "a tradução:]"
+            if _portuguese(language)
+            else "[The team rehearsed this scene in their own language and translated the "
+            "scene rehearsal. The translation follows:]"
+        )
+    elif _portuguese(language):
+        note = (
+            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase "
+            f"por frase ({len(said)} frases). Segue a tradução, na ordem:]"
+        )
+    else:
+        note = (
+            "[The team rehearsed this scene in their own language and translated the scene "
+            f"rehearsal phrase by phrase ({len(said)} phrases). The translation follows, in "
+            "order:]"
+        )
+    return f"{note} {' '.join(said)}"
+
+
 def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, Any]:
     body: dict[str, Any] = {"sessionId": session_id}
     if turn.kickoff:
@@ -226,6 +254,8 @@ def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, 
     elif turn.motherTongue:
         body["text"] = mother_tongue_note(_language_code(script.language), turn.motherTongue * 1000)
         body["motherTongue"] = turn.motherTongue
+    elif turn.rehearsal is not None:
+        body["text"] = rehearsal_team_text(script.language, turn.rehearsal)
     else:
         body["text"] = turn.team or ""
     if turn.interrupted:
@@ -279,7 +309,10 @@ async def play(
             expect=turn.expect,
             previous_guide=previous_guide,
         )
-        line.pending = unported_checks(turn.expect)
+        line.pending = sorted(
+            unported_checks(turn.expect)
+            + (["sceneRehearsals"] if turn.sceneRehearsals is not None else [])
+        )
         previous_guide = line.guide
         played.append(line)
         for call in line.usage:
@@ -605,7 +638,7 @@ async def rejudge(args: argparse.Namespace) -> int:
     """Her judge over a run already on disk, with the room left alone.
 
     A judge prompt that changes, or a rung that does, changes the verdict and not the
-    transcript; and a run's verdict can be asked for twice without paying the five sessions
+    transcript; and a run's verdict can be asked for twice without paying the sessions
     again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
     pericope names today, and its verdict written under the same name and stamp into `--out`,
     so the file still says which transcript it judged. The mechanical column is the one the

@@ -1,0 +1,85 @@
+{
+  "name": "P01-part-opening-closing",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's ruling of 2026-09-23 (prompts/guide_system_prompt.md, 'Opening a part — close it with these words'): a part goes in through two gates. Evidence: pilot P06 (22 Sept) — every part opening closed on the voice's own question, and after every part opening the team asked to hear the part again (five requests, most of them 'sem comentários'); P07 (23 Sept) — the voice closed on words close to hers, the team talked it over in Terena, said 'vamos pro ensaio', and nobody asked again; the fence itself worked on both days (6/6, 8/8). Gate 1: the team asks to open scene 1 — the guide opens it (the story of the part with whatever it says around it) and its LAST words are her closing, verbatim, with no fenced block in that turn (part_opening_closing). The team comes back with a comment and a question ('foram pra ficar lá pra sempre?') — the guide takes it up from the map (the sojourn: living there as a resident foreigner, a guest, not a citizen — a stopgap shelter, not a move for good; nothing from outside) and, since this is between the opening and the fence, ends that turn with the closing's last two sentences, still with no fence (take_up_closing — a builder's reading of the ruling, pending her word). Gate 2: 'Entendemos. Vamos pro ensaio.' — only now the fenced block and the one red-microphone instruction; scene 1 comes back whole as a translated scene rehearsal. Scene 1 comes back whole, and after a whole scene the voice may open scene 2 on its own in the same reply, ending with the full closing (the Guide's 'Opening a part' rule 1: 'on your own, after a telling has come back whole'; the live run of 2026-09-23 22:47 did so); the team's 'Pode abrir a segunda cena pra gente.' (turn 5) may then ask for a part already open, and the voice retells it ending with only the closing's last two sentences (rule 3: a retelling asked for to understand is not a new opening) — so that turn expects those two sentences, with no fence (take_up_closing: the full closing ends with them too, so a first opening passes as well). Then the team asks for only the story of scene 2, with no comments — the fenced block is the answer. The script states the app's SCENE REHEARSALS fact from turn 0 (none, then S1, then S1 and S2), so both drivers read what production reads.",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true
+      }
+    },
+    {
+      "team": "Bom dia. Pode abrir a primeira cena pra gente.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_opening_closing": true
+      }
+    },
+    {
+      "team": "A gente conversou em Terena. Chamou a nossa atenção que a família foi morar numa terra estranha. Eles foram pra ficar lá pra sempre?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Nos dias em que os juízes julgavam, teve uma fome na terra.",
+          "Um homem de Belém de Judá foi morar de passagem nos campos de Moabe, como estrangeiro, com a mulher e os dois filhos.",
+          "O nome dele era Elimeleque, a mulher era Noemi, e os filhos Malom e Quiliom. Eram efrateus de Belém de Judá.",
+          "Chegaram nos campos de Moabe e ficaram lá."
+        ]
+      },
+      "sceneRehearsals": [
+        "S1"
+      ],
+      "expect": {
+        "no_fail_safe": true
+      }
+    },
+    {
+      "team": "Pode abrir a segunda cena pra gente.",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true
+      }
+    },
+    {
+      "team": "Sem comentários agora: conta só a história dessa parte pra gente ensaiar.",
+      "expect": {
+        "no_fail_safe": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Elimeleque, o marido de Noemi, morreu.",
+          "E Noemi ficou com os dois filhos dela."
+        ]
+      },
+      "sceneRehearsals": [
+        "S1",
+        "S2"
+      ],
+      "expect": {
+        "no_fail_safe": true
+      }
+    }
+  ]
+}

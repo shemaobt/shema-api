@@ -8,6 +8,7 @@ loosened. The turns below are shaped after `golden/sessions/P01-understand-first
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
 
 from scripts.golden_checks import mechanical_checks, unported_checks
@@ -65,6 +66,29 @@ def test_a_rehearsal_invited_where_the_team_asked_to_understand_first_is_the_dem
     )
 
 
+def test_her_part_closing_hands_the_word_to_the_team_and_is_not_a_rehearsal_invited() -> None:
+    opening = (
+        "Nessa parte, a família sai de Belém por causa da fome.\n\n"
+        "O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte ficou "
+        "clara? Se tiver alguma dúvida, me perguntem. Se já entenderam,  me digam e a gente "
+        "vai pro ensaio."
+    )
+    english = (
+        "In this part, the family leaves Bethlehem because of the famine. If you have any "
+        "questions, ask me. If you have understood it, tell me and we will go to the rehearsal."
+    )
+    assert _turn(guide=opening) == [], (
+        "o fechamento dela terminava em 'ensaio' e contava como convite a ensaiar"
+    )
+    assert _turn(guide=english) == []
+    assert _turn(guide=unicodedata.normalize("NFD", opening)) == [], (
+        "o 'já' decomposto que um transcritor devolve não casava com o fechamento"
+    )
+    assert _turn(guide=f"Agora ensaiem. {opening}") == [
+        "rehearsal invited on a turn where the team asked to understand first"
+    ], "fora do fechamento, o convite ainda é o convite"
+
+
 def test_ruth_and_mahlon_paired_with_a_marriage_word_is_flagged_for_the_judge() -> None:
     paired = "A Rute casou com o Malom, o filho mais velho, e a Orfa com o Quiliom."
     assert _turn(guide=paired, expect={"no_pairing": True}) == [
@@ -72,6 +96,46 @@ def test_ruth_and_mahlon_paired_with_a_marriage_word_is_flagged_for_the_judge() 
     ]
     assert _turn(guide="Malom e Rute aparecem na história.", expect={"no_pairing": True}) == [], (
         "os dois nomes numa frase sem casou/esposa/mulher de não é o par"
+    )
+
+
+PAIRED = ["possible Ruth↔Mahlon pairing voiced (judge must confirm)"]
+
+
+def test_orpah_and_chilion_married_is_the_same_pairing_the_judge_must_confirm() -> None:
+    assert _turn(guide="A Orfa era a esposa do Quiliom.", expect={"no_pairing": True}) == PAIRED
+    assert _turn(guide="O Malom pegou a Rute como mulher.", expect={"no_pairing": True}) == (
+        PAIRED
+    ), "pegou/pegaram/casaram não contavam como palavra de casamento"
+
+
+def test_a_guide_refusing_to_say_who_married_whom_is_not_a_pairing() -> None:
+    refused = "A história não diz se a Rute casou com o Malom."
+    assert _turn(guide=unicodedata.normalize("NFD", refused), expect={"no_pairing": True}) == [], (
+        "a recusa com 'não' decomposto contava como o par que ela recusa"
+    )
+    assert _turn(guide=refused, expect={"no_pairing": True}) == [], (
+        "a recusa dela citava os dois nomes com casou e virava par"
+    )
+    asked_back = "A Rute casou com o Malom ou com o Quiliom? Quem casou com quem a história guarda."
+    assert _turn(guide=asked_back, expect={"no_pairing": True}) == [], (
+        "a pergunta de volta e a recusa em frases diferentes contavam como par"
+    )
+    unsure = "Eu não sei com quem a Rute casou, se com o Malom."
+    assert _turn(guide=unsure, expect={"no_pairing": True}) == []
+
+
+def test_both_sons_and_both_women_listed_in_one_sentence_is_the_maps_own_form() -> None:
+    listed = "Malom e Quiliom tinham esposas, Orfa e Rute."
+    assert _turn(guide=listed, expect={"no_pairing": True}) == [], (
+        "a lista do próprio mapa, filhos e noras juntos, contava como par"
+    )
+
+
+def test_the_names_and_the_marriage_word_must_share_a_sentence() -> None:
+    apart = "A Rute ficou com o Malom na mesa. Depois ela casou de novo."
+    assert _turn(guide=apart, expect={"no_pairing": True}) == [], (
+        "o casou de outra frase fechava o par com os nomes da primeira"
     )
 
 

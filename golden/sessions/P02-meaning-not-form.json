@@ -1,0 +1,25 @@
+{
+  "name": "P02-meaning-not-form",
+  "pericopeId": "P02",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's ruling 2026-09-14 (meaning, not form), after the 2026-09-13 pilot session on Ruth 1:6–14: the map names hesed (CB_0011) as an abstract noun ('bondade fiel'); Terena does not tell abstract nouns as things, so the team told it as an action — 'foram boas e nunca abandonaram' — and the voice demanded the noun and treated the unfolding as an addition. The telling is checked by MEANING (people, facts, relations, marked details, silences), never by word class or sentence shape. Turn 6: Naomi's blessing told with hesed as 'seja bom com vocês e nunca abandone vocês, como vocês foram boas e nunca abandonaram os mortos e a mim' — the voice must ACCEPT it (no noun demanded, no addition named). Turn 7: the team adds a cause the map does not give ('porque tinham medo de ficar sozinhas') — the voice must NAME it as something the story does not tell. Turn 8: the faithful telling again — accepted. Ruling 2026-09-23 (prompts/guide_system_prompt.md, 'Opening a part — close it with these words') and Marcia's word that evening (the whole passage is not a part's opening): the team's request to rehearse the first part, which it has heard only inside the whole passage (turn 2), is answered by opening that part, ending with her fixed closing and no fenced block (part_opening_closing); the fenced block comes on the team's 'Entendemos. Vamos pro ensaio.' (turn 3).",
+  "turns": [
+    { "kickoff": true,
+      "expect": { "no_fail_safe": true } },
+    { "team": "Podem contar a passagem inteira pra gente, do jeito que a história conta.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Entendemos. Vamos ensaiar a primeira parte na nossa língua, a da notícia e da saída de Moabe.",
+      "expect": { "no_fail_safe": true, "part_opening_closing": true } },
+    { "team": "Entendemos. Vamos pro ensaio.",
+      "expect": { "no_fail_safe": true, "fenced_rehearsal": true, "invites_microphone": true } },
+    { "team": "Contando de volta: Noemi ouviu, lá nos campos de Moabe, que o Senhor tinha visitado o povo dele e dado pão pra eles. Ela se levantou com as duas noras pra voltar dos campos de Moabe. Saiu do lugar onde estava, com as duas noras, e as três foram andando pela estrada de volta pra terra de Judá.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Agora a primeira conversa na estrada — a bênção de Noemi, até as noras dizerem que não. A gente ensaiou e vai contar de volta." },
+    { "team": "No caminho, Noemi disse pras duas noras: vão, voltem cada uma pra casa da sua mãe. Que o Senhor seja bom com vocês e nunca abandone vocês, como vocês foram boas e nunca abandonaram os mortos e a mim. Que o Senhor dê pra cada uma de vocês descanso na casa de um marido. Aí ela beijou as duas, e elas choraram alto e disseram: não, nós vamos voltar com a senhora pro seu povo.",
+      "expect": { "no_fail_safe": true, "no_nag_on_paraphrase": true, "accepts_telling": true } },
+    { "team": "A gente contou de novo com uma coisa a mais que a gente entendeu: as noras foram boas com Noemi e com os mortos porque tinham medo de ficar sozinhas. Aí Noemi pediu que o Senhor fosse bom com elas e desse descanso pra elas na casa de um marido.",
+      "expect": { "no_fail_safe": true, "names_addition": true, "names_new_fact": true } },
+    { "team": "Entendi. A história não diz por que elas foram boas. Então de novo, só com o que a história conta: no caminho, Noemi disse pras noras que voltassem cada uma pra casa da sua mãe, e pediu que o Senhor fosse bom com elas e nunca abandonasse elas, como elas foram boas e nunca abandonaram os mortos e a Noemi, e que desse descanso pra cada uma na casa de um marido. Ela beijou as duas, elas choraram alto e disseram que não, que iam voltar com ela pro povo dela.",
+      "expect": { "no_fail_safe": true, "no_nag_on_paraphrase": true, "accepts_telling": true } }
+  ]
+}
