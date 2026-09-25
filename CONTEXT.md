@@ -144,7 +144,7 @@ _Avoid_: log, history, audit, Evento de cobertura
 ### Findings
 
 **Finding**:
-The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear.
+The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear. An addition or an unclear always names its frase; one that names none, or names one outside this reading, is not raised — it is dropped with a log line, the way the retired kind is.
 _Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
 
 **Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
