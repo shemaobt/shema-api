@@ -251,11 +251,12 @@ async def test_empty_text_is_an_error() -> None:
         )
 
 
-@pytest.mark.parametrize("status", [429, 500, 503])
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
 async def test_elevenlabs_unavailability_is_an_upstream_failure_not_a_client_error(
     status: int,
 ) -> None:
-    # Their 429/5xx is not a bad request from the SPA: as a 400, the right alert never fires.
+    # A revoked key, a spent quota, or 429/5xx is not a bad request from the SPA: as a 400,
+    # the right alert never fires.
     store = MemoryStore()
 
     with pytest.raises(UpstreamServiceError):

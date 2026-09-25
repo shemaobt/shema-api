@@ -28,7 +28,7 @@ from typing import Protocol
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 from app.services.platform.voices import language_hint, resolve_voice
 
 logger = logging.getLogger(__name__)
@@ -358,22 +358,11 @@ async def _synthesize(
             response.status_code,
             response.text[:500],
         )
-        raise _upstream_or_validation_error(response.status_code)
+        raise upstream_or_validation_error(
+            response.status_code, f"TTS request failed with status {response.status_code}"
+        )
 
     return bytes(response.content)
-
-
-def _upstream_or_validation_error(status_code: int) -> Exception:
-    """Their outage is not our client's bad request.
-
-    429 and 5xx mean ElevenLabs is rate limiting or down: that is an upstream failure (502),
-    and dressing it as a 400 means the right alert never fires. Other 4xx really are a
-    malformed request we sent, so they stay a business error.
-    """
-    message = f"TTS request failed with status {status_code}"
-    if status_code == 429 or status_code >= 500:
-        return UpstreamServiceError(message)
-    return ValidationError(message)
 
 
 def etag_of(audio: bytes) -> str:
