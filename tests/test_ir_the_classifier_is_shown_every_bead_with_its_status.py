@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -39,6 +38,7 @@ from app.services.internalization_room.coverage import (
     remaining,
 )
 from app.services.internalization_room.llm import CACHE_BREAK
+from tests.turn_harness import the_room_agent_is
 
 P = "P01"
 CLASSIFIER = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
@@ -50,14 +50,13 @@ def _settings() -> Settings:
 
 @pytest.fixture
 def the_classifier_answers(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             agent.system = system_prompt
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, classifier=agent)
         return agent
 
     return _install
@@ -219,12 +218,11 @@ async def test_an_id_the_classifier_was_not_offered_this_turn_moves_nothing(
 async def test_the_keyword_classifier_moves_beads_from_the_words_alone_with_no_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
 
     async def never(**_: Any) -> str:
         raise AssertionError("o classificador determinístico chamou o provedor")
 
-    monkeypatch.setattr(module, "call_agent", never)
+    the_room_agent_is(monkeypatch, classifier=never)
 
     settled = await classify_coverage_by_keywords(
         coverage_state=initial_state(P),

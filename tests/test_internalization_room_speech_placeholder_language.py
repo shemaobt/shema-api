@@ -14,7 +14,6 @@ production dicts they happen to match.
 """
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -73,14 +72,13 @@ def _patch_validator_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 
 
 def _patch_classifier_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
     captured: dict[str, str] = {}
 
     async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         captured["system"] = system_prompt
         return json.dumps({"decisions": []})
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, classifier=agent)
     return captured
 
 

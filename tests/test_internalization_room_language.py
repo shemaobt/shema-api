@@ -322,7 +322,7 @@ async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothin
         return json.dumps({"decisions": []})
 
     monkeypatch.setattr(module, "render", capturing_render)
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, classifier=agent)
 
     await classify_coverage(
         coverage_state=fully_engaged,
