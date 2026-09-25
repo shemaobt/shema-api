@@ -1376,7 +1376,7 @@ CLOSING_MISSING_TO_REHEARSAL = (
     "- End by handing the choice to the screen, not by asking for a spoken answer. The end of "
     "the story has not been told yet — nothing they recorded is wrong, and nothing they "
     "recorded will be lost. In one or two short sentences, tell them to record what is still "
-    "missing with the big microphone, and that when they finish they tap the green button to "
+    "missing with the circle, confirm it with the green check, and tap the wood disc to "
     "come back and check it. Do not offer to settle it later, do not ask them to choose "
     "between voices, and do not ask them to say anything out loud. "
     + _NEXT_ROUND
