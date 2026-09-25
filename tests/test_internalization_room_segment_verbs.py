@@ -814,6 +814,102 @@ async def test_dividing_a_stretch_is_not_telling_it_again_and_counts_nothing(
     assert [one.tellings for one in pieces] == [2, 2]
 
 
+# ---------------------------------------------------------------------------
+# ENG-1133: a session gone is not a take that is not this session's
+# ---------------------------------------------------------------------------
+
+
+async def _session_read(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
+    return await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+
+
+async def test_a_chunk_for_a_session_the_room_does_not_hold_is_404_the_session_reads_shape(
+    client: httpx.AsyncClient,
+) -> None:
+    absent = str(uuid.uuid4())
+    take_id = await _rehearse(client, await _session(client), b"o ensaio")
+
+    refused = await _tell(client, absent, take_id, 0, 9000, b"um trecho")
+    read = await _session_read(client, absent)
+
+    assert refused.status_code == 404, refused.text
+    assert read.status_code == 404, read.text
+    assert refused.json() == read.json()
+
+
+async def test_a_chunk_naming_a_take_of_another_session_is_422_unknown_reference(
+    client: httpx.AsyncClient,
+) -> None:
+    session_id = await _session(client)
+    other_take_id = await _rehearse(client, await _session(client), b"o ensaio de outra sessao")
+
+    refused = await _tell(client, session_id, other_take_id, 0, 9000, b"um trecho")
+
+    assert refused.status_code == 422, refused.text
+    body = refused.json()
+    assert body["code"] == "UNKNOWN_REFERENCE"
+    assert other_take_id in body["detail"]
+
+
+async def test_a_replace_for_a_session_the_room_does_not_hold_is_404_the_session_reads_shape(
+    client: httpx.AsyncClient,
+) -> None:
+    _, take_id, whole = await _one_told_stretch(client)
+    absent = str(uuid.uuid4())
+
+    refused = await _replace(
+        client,
+        absent,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"de novo",
+    )
+    read = await _session_read(client, absent)
+
+    assert refused.status_code == 404, refused.text
+    assert read.status_code == 404, read.text
+    assert refused.json() == read.json()
+
+
+async def test_a_replace_naming_a_take_of_another_session_is_422_unknown_reference(
+    client: httpx.AsyncClient,
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+    other_take_id = await _rehearse(client, await _session(client), b"o ensaio de outra sessao")
+
+    refused = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=other_take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"de novo",
+    )
+
+    assert refused.status_code == 422, refused.text
+    body = refused.json()
+    assert body["code"] == "UNKNOWN_REFERENCE"
+    assert other_take_id in body["detail"]
+
+
+async def test_a_divide_for_a_session_the_room_does_not_hold_is_404_the_session_reads_shape(
+    client: httpx.AsyncClient,
+) -> None:
+    """Divide names no take, so it keeps its one refusal: this is the control, not a gap."""
+    _, _, whole = await _one_told_stretch(client)
+    absent = str(uuid.uuid4())
+
+    refused = await _divide(client, absent, whole["segment_id"], 8000)
+    read = await _session_read(client, absent)
+
+    assert refused.status_code == 404, refused.text
+    assert read.status_code == 404, read.text
+    assert refused.json() == read.json()
+
+
 async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.AsyncClient) -> None:
     """The stopping survives the answer that carried it.
 

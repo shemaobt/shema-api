@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
@@ -211,6 +211,10 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     mother tongue. Checked rather than trusted: a slice of somebody else's recording, or of a
     telling-back, is not a stretch of this passage at all, and stored unchecked it would read
     downstream as one.
+
+    Both callers name this take in the request body, so a miss here is a row the caller named
+    that does not exist — the house rule of `UnknownReferenceError` — and not the session gone,
+    which the caller already resolved from the path before reaching this call.
     """
     result = await db.execute(
         select(IRTake).where(
@@ -221,7 +225,7 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     )
     take = result.scalar_one_or_none()
     if take is None:
-        raise NotFoundError(f"Internalization room rehearsal take {take_id} not found")
+        raise UnknownReferenceError(f"Internalization room rehearsal take {take_id} not found")
     return take
 
 
