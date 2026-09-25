@@ -53,7 +53,7 @@ class SynthesizedSpeech:
     audio: bytes
     mime_type: str
     etag: str
-    #: Came from the bucket (ElevenLabs was not called).
+    #: Came from the cache, bucket or memory (ElevenLabs was not called).
     cached: bool
     #: Where the clip lives. Content-addressed, so it is also a stable public handle.
     key: str = ""
@@ -142,6 +142,12 @@ async def synthesize_speech(
 
     `settings`, `client` and `store` are injectable — that is what makes the service testable
     without network and without GCS.
+
+    A hit is read through `fetch_clip`, which tries the in-process `_FRESH` cache before the
+    bucket, and a miss seeds `_FRESH` with the bytes it just wrote — so a repeat request in the
+    same worker costs no bucket round trip at all. Reading straight from `store.get` on every
+    hit, as this used to, downloaded the whole clip from the bucket every time, even for a clip
+    this same worker had rendered a moment before.
     """
     key, speech_store, voiced = _addressed(
         text,
@@ -154,7 +160,7 @@ async def synthesize_speech(
         client=client,
         store=store,
     )
-    cached = await speech_store.get(key)
+    cached = await fetch_clip(key, store=speech_store)
     if cached is not None:
         return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
@@ -162,7 +168,12 @@ async def synthesize_speech(
     # The route serves this as immutable for a day under a hash-addressed key, so a
     # synthesis that lost the write must hand back the rendering the bucket holds, not
     # its own: the loser's device would otherwise cache bytes no other instance serves.
+    # Memory is seeded only with what the bucket holds: seeded before the write, an
+    # overlapping request in this worker would serve unstored bytes as cached, and a
+    # failed write would leave them there for good instead of being retried.
     winner = await _cache_quietly(speech_store, key, audio)
+    if winner is not None:
+        _remember_fresh(key, winner)
     served = audio if winner is None else winner
     return SynthesizedSpeech(served, MIME_TYPE, etag_of(served), cached=False, key=key)
 

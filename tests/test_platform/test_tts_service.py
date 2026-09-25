@@ -60,9 +60,10 @@ class MemoryStore:
     async def exists(self, key: str) -> bool:
         return key in self.objects
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
         self.writes += 1
         self.objects[key] = data
+        return data
 
 
 async def test_synthesizes_and_returns_the_mp3() -> None:
@@ -117,6 +118,25 @@ async def test_second_call_with_same_text_does_not_hit_elevenlabs() -> None:
     assert store.writes == 1
 
 
+async def test_a_clip_already_in_memory_is_served_without_reading_the_bucket_again() -> None:
+    """The bug ENG-1004 left open: the platform route never checked `_FRESH` on a hit."""
+    client = _client(_ok())
+    store = MemoryStore()
+
+    first = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+    second = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert store.reads == 1, (
+        "o hit baixava o clipe inteiro do bucket de novo mesmo com os bytes já na memória"
+    )
+    assert second.cached is True
+    assert second.etag == first.etag
+
+
 async def test_the_cache_survives_the_process_because_it_lives_in_the_bucket() -> None:
     # A cold worker (new store, same bucket) still finds the object: this is what the
     # in-process LRU in project_health/translation_helper does NOT do.
@@ -125,6 +145,7 @@ async def test_the_cache_survives_the_process_because_it_lives_in_the_bucket() -
         QUESTION, language="pt-BR", settings=_settings(), client=_client(_ok()), store=store
     )
 
+    tts.forget_what_is_kept()  # a different process starts with no in-memory copy at all
     cold = MemoryStore()
     cold.objects = dict(store.objects)  # same bucket; different process
     client = _client(_ok())
@@ -495,3 +516,28 @@ async def test_the_generic_route_serves_the_winners_bytes_when_its_own_write_los
     )
     assert result.etag == etag_of(b"rendered-elsewhere")
     assert result.cached is False
+
+
+async def test_a_clip_whose_write_failed_is_not_served_from_memory_afterwards() -> None:
+    class BrokenStore(MemoryStore):
+        async def put(self, key: str, data: bytes, content_type: str) -> bytes:
+            self.writes += 1
+            raise RuntimeError("bucket down")
+
+    store = BrokenStore()
+    client = _client(_ok(b"rendered-here"), _ok(b"rendered-here"))
+
+    first = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+    assert first.audio == b"rendered-here" and first.cached is False
+
+    assert await fetch_clip(first.key, store=store) is None, (
+        "a semente antes do put deixava na memória bytes que o bucket nunca recebeu, e "
+        "este worker passava a servi-los como cached em vez de tentar gravar de novo"
+    )
+    second = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+    assert second.cached is False
+    assert store.writes == 2
