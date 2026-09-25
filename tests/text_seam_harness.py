@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import router
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
-from app.services.internalization_room import golden_judge
 from tests.room_harness import CORRECTION_MARK
 from tests.turn_harness import the_room_agent_is
 
@@ -153,7 +152,7 @@ class Judge:
 
 def the_judge_answers(monkeypatch: pytest.MonkeyPatch, reply: str = json.dumps(A_VERDICT)) -> Judge:
     judge = Judge(reply)
-    monkeypatch.setattr(golden_judge, "call_agent", judge)
+    the_room_agent_is(monkeypatch, judge=judge)
     return judge
 
 

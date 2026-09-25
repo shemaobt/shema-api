@@ -91,6 +91,7 @@ def the_room_agent_is(
     turn: CallAgent | None = None,
     analyst: CallAgent | None = None,
     classifier: CallAgent | None = None,
+    judge: CallAgent | None = None,
     strays_from: Callable[[str, str], bool] | None = None,
 ) -> None:
     swapped: dict[str, Any] = {}
@@ -100,6 +101,8 @@ def the_room_agent_is(
         swapped["analyst"] = Agent(call_agent=analyst)
     if classifier is not None:
         swapped["classifier"] = Agent(call_agent=classifier)
+    if judge is not None:
+        swapped["judge"] = Agent(call_agent=judge)
     if strays_from is not None:
         swapped["strays_from"] = strays_from
     monkeypatch.setattr(provider, "_current", replace(provider.room_agent(), **swapped))
