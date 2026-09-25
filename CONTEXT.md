@@ -38,7 +38,7 @@ The group of translators that owns the work. In the schema the column is called 
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
 
 **Desk**:
-The facilitator's web app, consumer of the routes for questions, halts and sessions by team.
+The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
 _Avoid_: panel, dashboard, Mesa
 
 **Room**:
@@ -236,6 +236,10 @@ _Avoid_: blockage, lockup, Parada
 **Halt kind** (`halt_kind`):
 Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
+
+**Station**:
+The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. An abandoned session keeps the station it stopped in.
+_Avoid_: stage, phase, status (the session's own three states), Estação
 
 **Refine**:
 The later product stage that receives the packet. It does not live on this server.
