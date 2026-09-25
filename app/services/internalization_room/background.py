@@ -47,7 +47,7 @@ from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)
 
-_reading: dict[str, tuple[list[str], asyncio.Task[ReadAhead | CorrectionAhead | None]]] = {}
+_reading: dict[str, tuple[list[str], asyncio.Task[BackTranslationState | None]]] = {}
 
 
 async def settle_coverage(
@@ -147,7 +147,7 @@ async def read_ahead(*, session_id: str) -> None:
                 return
             retired = await retired_segments(db, session_id)
             correction = correction_to_verify(state, told, retired)
-            running: asyncio.Task[ReadAhead | CorrectionAhead | None]
+            running: asyncio.Task[BackTranslationState | None]
             with counted_for(session_id):
                 if correction is not None:
                     running = asyncio.create_task(
@@ -167,7 +167,7 @@ async def read_ahead(*, session_id: str) -> None:
 
 async def _read_and_keep(
     db: AsyncSession, session: IRSession, state: BackTranslationState, told: list[IRSegment]
-) -> ReadAhead | None:
+) -> BackTranslationState | None:
     try:
         read = await analyse_telling_back(
             segments=told,
@@ -186,7 +186,7 @@ async def _read_and_keep(
         kept = back_translation_of(session)
         kept.read_ahead = ahead
         await save_back_translation(db, session, kept)
-        return ahead
+        return kept
     except Exception:
         logger.exception("Reading ahead failed for session %s", session.id)
         return None
@@ -200,7 +200,7 @@ async def _verify_and_keep(
     retired: list[IRSegment],
     takes: list[IRTake],
     correction: CorrectionToVerify,
-) -> CorrectionAhead | None:
+) -> BackTranslationState | None:
     try:
         checked = await verify_correction(
             findings=correction.findings,
@@ -233,37 +233,36 @@ async def _verify_and_keep(
         kept.correction_ahead = ahead
         await save_back_translation(db, session, kept)
         if not findings_after_correction(state.findings, checked, correction.corrected):
-            await _read_and_keep(db, session, kept, told)
-        return ahead
+            return await _read_and_keep(db, session, kept, told) or kept
+        return kept
     except Exception:
         logger.exception("Reading ahead failed for session %s", session.id)
         return None
 
 
 async def _joined_ahead(
-    session_id: str, told: list[IRSegment]
-) -> ReadAhead | CorrectionAhead | None:
+    session_id: str, state: BackTranslationState, told: list[IRSegment]
+) -> None:
     running = _reading.get(session_id)
     if running is None or running[0] != [segment.id for segment in told]:
-        return None
+        return
     with stage("read_ahead"):
         await asyncio.wait([running[1]])
-    return None if running[1].cancelled() else running[1].result()
+    kept = None if running[1].cancelled() else running[1].result()
+    if kept is not None:
+        state.read_ahead = kept.read_ahead
+        state.correction_ahead = kept.correction_ahead
 
 
 async def the_reading_ahead(
     session_id: str, state: BackTranslationState, told: list[IRSegment]
 ) -> ReadAhead | None:
-    joined = await _joined_ahead(session_id, told)
-    if isinstance(joined, ReadAhead):
-        return joined
+    await _joined_ahead(session_id, state, told)
     return state.read_ahead_of(told)
 
 
 async def the_correction_ahead(
     session_id: str, state: BackTranslationState, told: list[IRSegment]
 ) -> CorrectionAhead | None:
-    joined = await _joined_ahead(session_id, told)
-    if isinstance(joined, CorrectionAhead):
-        return joined
+    await _joined_ahead(session_id, state, told)
     return state.correction_ahead_of(told)

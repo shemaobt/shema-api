@@ -437,6 +437,9 @@ async def test_a_terminei_pressed_while_a_correction_is_verified_waits_for_it_no
     assert len(analyst.verifications) == 1, (
         "o terminei verificava de novo enquanto a verificação adiantada ainda estava em voo"
     )
+    assert analyst.whole_readings == 2, (
+        "o terminei que esperou a verificação lia de novo a leitura de fechamento já feita"
+    )
     assert verdict["checked"] is True
 
 
