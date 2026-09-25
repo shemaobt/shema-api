@@ -428,9 +428,14 @@ async def apply_coverage(
     floor was met — an event, at an instant, written into ``ended_at`` here — or because
     nobody came back to it, which is derived from its last activity at read time and left
     unwritten, because the limit that decides it is not agreed with the room app. The
-    ``IN_PROGRESS`` guard is what keeps the stamp a single instant: the classifier goes on
-    settling whatever turns were already in flight when the floor was met, and a stamp on
-    every one of them would grow the conversation's length after the team had finished.
+    ``IN_PROGRESS`` guard alone keeps the stamp a single instant across the turns still in
+    flight when the floor was met — the classifier goes on settling them, and a stamp on
+    every one would grow the conversation's length after the team had finished — but it does
+    not by itself cover a halt: ``mark_needs_person`` carries no guard on the status it
+    overwrites, so a halt can reach a session already ``DONE`` and a landing turn puts it back
+    to ``IN_PROGRESS``. The ``ended_at is None`` check is what keeps the stamp the *team's*
+    single instant through that reopening too — the status closes again, but the moment does
+    not move a second time.
     """
     session = await get_session(db, session_id)
     kept = session.coverage_state or {}
@@ -443,7 +448,8 @@ async def apply_coverage(
         and session.status is IRSessionStatus.IN_PROGRESS
     ):
         session.status = IRSessionStatus.DONE
-        session.ended_at = datetime.now(UTC)
+        if session.ended_at is None:
+            session.ended_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(session)
     return session
