@@ -265,8 +265,8 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
 
     The open finding and the unheard part are the two things a person can disagree about
     after looking at them. A rehearsal nobody recorded, a stretch nobody told back: there is
-    nothing there to overrule, and a code that waived them
-    would let the Desk mint a packet out of a session that never happened.
+    nothing there to overrule, and a code that waived them would let the Desk mint a packet out
+    of a session that never happened.
     """
     project, _credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)

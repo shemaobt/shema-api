@@ -2,7 +2,6 @@
 handed."""
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -20,6 +19,7 @@ from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
 )
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -47,8 +47,7 @@ class ApprovingAgent:
 
 @pytest.fixture
 def approve_all(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", ApprovingAgent())
+    the_room_agent_is(monkeypatch, turn=ApprovingAgent())
 
 
 class LongWindedAgent:
@@ -85,8 +84,7 @@ async def test_the_opening_is_cut_where_the_guide_marked_it(
     """Two movements, so the room can hand the scene back on its own and the necklace can
     wait for it — and so each half answers to its own ceiling instead of the turn becoming
     one long breath."""
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
+    the_room_agent_is(monkeypatch, turn=TwoMovementAgent())
     session = await create_session(db_session, language="pt", pericope=P)
 
     turn = await run_comprehension_turn(
@@ -114,8 +112,7 @@ async def test_a_session_that_already_spoke_is_not_opened_twice(
     Letting it ask for the two movements again would say the whole passage a second time and
     pull the necklace apart under a team already working.
     """
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
+    the_room_agent_is(monkeypatch, turn=TwoMovementAgent())
     session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
@@ -154,8 +151,7 @@ async def test_a_long_opening_is_spoken_in_its_two_movements(
     team was supposed to hear collapsed into one canned sentence on the exact turn the room
     had the most to say.
     """
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", LongPanoramaAgent())
+    the_room_agent_is(monkeypatch, turn=LongPanoramaAgent())
     session = await create_session(db_session, language="pt", pericope=P)
 
     turn = await run_comprehension_turn(
@@ -184,8 +180,7 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
     team into the scenes, and the team waited six model calls for it. The opening answers to
     a wider ceiling now, not to none: lifting it entirely produced a ninety-second monologue.
     """
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", LongWindedAgent())
+    the_room_agent_is(monkeypatch, turn=LongWindedAgent())
     session = await create_session(db_session, language="pt", pericope=P)
 
     turn = await run_comprehension_turn(
@@ -212,8 +207,7 @@ async def test_a_turn_that_runs_long_is_spoken_as_it_is(
     for a fixed line, so a team that had just told something back heard the room say nothing
     about it. Brevity is asked for in the Guide's own prompt now, and nowhere else.
     """
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", LongWindedAgent())
+    the_room_agent_is(monkeypatch, turn=LongWindedAgent())
     session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"

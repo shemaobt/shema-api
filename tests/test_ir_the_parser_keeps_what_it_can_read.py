@@ -20,10 +20,8 @@ four because it points at the third and the fourth.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 import logging
-import sys
 from typing import Any
 
 import httpx
@@ -42,6 +40,7 @@ from app.services.internalization_room.back_translation import FindingKind, anal
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
 from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -109,13 +108,11 @@ def _four_told() -> list[IRSegment]:
 
 @pytest.fixture
 def patch_analyst(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules[PARSER_LOGGER]
-
     def _install(reply: str) -> None:
         async def agent(*, system_prompt: str, user_content: str, **_: Any) -> str:
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
 
     return _install
 
@@ -278,7 +275,7 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     reader = Analyst()
-    monkeypatch.setattr(sys.modules[PARSER_LOGGER], "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -289,14 +286,12 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     from app.api.internalization_room import back_translation as bt_api
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return "Vocês contaram bem."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         spoken.append(text)

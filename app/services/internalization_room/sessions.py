@@ -347,9 +347,7 @@ async def append_exchange(
     `attend` is the other, and is the one a facilitator controls (ENG-609). The lift itself
     is untouched by that slice: the team resuming still ends the halt, and both kinds of halt
     end this way. Only a halt already standing when the turn began is lifted: one the tablet
-    raised while the Guide was still answering is a request nobody has answered yet. The row
-    knows the halt the turn began in only by its kind, so a halt of that same kind raised
-    again after a visit, all inside one turn, is taken for it and lifted.
+    raised while the Guide was still answering is a request nobody has answered yet.
 
     It clears `lifted_halt`, which is the record of a halt an outstanding visit lifted and
     which undoing that visit would put back, when the visit is the one the row carried as the
@@ -358,8 +356,6 @@ async def append_exchange(
     without the visit — so leaving it set lets a facilitator correcting a ten-minute-old tap
     stop a conversation in full flow. A visit to a halt raised while the Guide was answering
     keeps it: the turn would not have lifted that halt, so undoing the visit brings it back.
-    The same-kind halt above is the exception — mistaken for the one the turn began in, its
-    visit loses the record too.
     The stamps are deliberately **not** cleared: who went and when is what the history is for,
     and a landing turn is no evidence they did not go.
     """
@@ -387,12 +383,18 @@ async def append_exchange(
     values: dict[str, Any] = {"messages": messages}
     nothing_to_put_back = IRSession.attended_at.is_not_distinct_from(session.attended_at)
     if session.status is IRSessionStatus.NEEDS_PERSON:
-        nothing_to_put_back = or_(nothing_to_put_back, IRSession.lifted_halt == session.halt_kind)
+        nothing_to_put_back = or_(
+            nothing_to_put_back,
+            and_(
+                IRSession.halts_raised == session.halts_raised,
+                IRSession.lifted_halt == session.halt_kind,
+            ),
+        )
         values["status"] = case(
             (
                 and_(
                     IRSession.status == IRSessionStatus.NEEDS_PERSON,
-                    IRSession.halt_kind == session.halt_kind,
+                    IRSession.halts_raised == session.halts_raised,
                 ),
                 literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),
             ),
@@ -577,6 +579,7 @@ async def mark_needs_person(
     """
     session.status = IRSessionStatus.NEEDS_PERSON
     session.halt_kind = kind.value
+    session.halts_raised = IRSession.halts_raised + 1
     session.attended_at = None
     session.attended_by = None
     session.lifted_halt = None
@@ -586,6 +589,7 @@ async def mark_needs_person(
         await db.refresh(session)
     else:
         await db.flush()
+        await db.refresh(session, ["halts_raised"])
     return session
 
 

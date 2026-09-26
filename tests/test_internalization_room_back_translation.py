@@ -2,7 +2,6 @@ import itertools
 import json
 import logging
 import re
-import sys
 from typing import Any
 
 import pytest
@@ -43,6 +42,7 @@ from tests.turn_harness import (
     settings,
     stretch,
     the_loop_answers,
+    the_room_agent_is,
     the_speaker_answers,
     told_stretches,
 )
@@ -138,14 +138,13 @@ def _unclear_on(chunk: int, note: str = "não deu para ouvir") -> Finding:
 
 @pytest.fixture
 def patch_analyst(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.back_translation"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             agent.system = system_prompt
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
         return agent
 
     return _install
@@ -429,9 +428,8 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
     def _explode(**_kwargs):
         raise RuntimeError("gemini fora do ar")
 
-    module = sys.modules["app.services.internalization_room.back_translation"]
     monkey = pytest.MonkeyPatch()
-    monkey.setattr(module, "call_agent", _explode)
+    the_room_agent_is(monkey, analyst=_explode)
     try:
         with pytest.raises(UpstreamServiceError):
             await analyse_telling_back(

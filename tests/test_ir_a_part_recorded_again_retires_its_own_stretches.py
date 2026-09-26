@@ -73,6 +73,7 @@ from tests.room_harness import (
     the_upload_landed_at,
     upload_a_part,
 )
+from tests.turn_harness import the_room_agent_is
 
 #: What the team says when they tell the re-recorded part back. Its own sentence, so a case can
 #: find where in the reading it landed without matching anything a builder wrote.
@@ -106,10 +107,8 @@ class _TheReadingTheAnalystGot:
 @pytest.fixture(autouse=True)
 def analyst(monkeypatch: pytest.MonkeyPatch) -> _TheReadingTheAnalystGot:
     """The analyst, and what it was actually asked to read."""
-    from app.services.internalization_room import back_translation as bt_service
-
     reader = _TheReadingTheAnalystGot()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 

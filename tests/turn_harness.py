@@ -18,14 +18,17 @@ from __future__ import annotations
 
 import json
 import re
-import sys
+from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSegment
+from app.services.internalization_room import room_agent as provider
 from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.room_agent import Agent, CallAgent
 
 P = "P03"
 
@@ -82,18 +85,32 @@ class FakeAgent:
         return self.drafts[len([c for c in self.calls if c == "guide"]) - 1]
 
 
-def _turn_module():
-    """The module, never the dotted string.
-
-    The package re-exports the `run_turn` function, which shadows the module of the same
-    name, so the dotted-string form of setattr would patch the function object.
-    """
-    return sys.modules["app.services.internalization_room.run_turn"]
+def the_room_agent_is(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    turn: CallAgent | None = None,
+    analyst: CallAgent | None = None,
+    classifier: CallAgent | None = None,
+    judge: CallAgent | None = None,
+    strays_from: Callable[[str, str], bool] | None = None,
+) -> None:
+    swapped: dict[str, Any] = {}
+    if turn is not None:
+        swapped["turn"] = Agent(call_agent=turn)
+    if analyst is not None:
+        swapped["analyst"] = Agent(call_agent=analyst)
+    if classifier is not None:
+        swapped["classifier"] = Agent(call_agent=classifier)
+    if judge is not None:
+        swapped["judge"] = Agent(call_agent=judge)
+    if strays_from is not None:
+        swapped["strays_from"] = strays_from
+    monkeypatch.setattr(provider, "_current", replace(provider.room_agent(), **swapped))
 
 
 def the_agent_answers(monkeypatch: pytest.MonkeyPatch, agent: FakeAgent) -> FakeAgent:
-    """Swap `call_agent` for a fake inside the turn module."""
-    monkeypatch.setattr(_turn_module(), "call_agent", agent)
+    """Swap the turn's `call_agent` for a fake."""
+    the_room_agent_is(monkeypatch, turn=agent)
     return agent
 
 
@@ -108,7 +125,7 @@ def the_speaker_answers(monkeypatch: pytest.MonkeyPatch, draft: str):
         return draft
 
     agent.seen = seen  # type: ignore[attr-defined]
-    monkeypatch.setattr(_turn_module(), "call_agent", agent)
+    the_room_agent_is(monkeypatch, turn=agent)
     return agent
 
 
@@ -196,5 +213,5 @@ def the_loop_answers(
 ) -> ValidatorReadsOnlyItsOwnPrompt:
     """Both ends of the draft-and-gate loop, with a Validator that judges by its evidence."""
     agent = ValidatorReadsOnlyItsOwnPrompt(draft, told)
-    monkeypatch.setattr(_turn_module(), "call_agent", agent)
+    the_room_agent_is(monkeypatch, turn=agent)
     return agent
