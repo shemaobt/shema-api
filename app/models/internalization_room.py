@@ -539,6 +539,10 @@ class QuestionRaisedResponse(BaseModel):
     status: str
 
 
+class HeardRequest(BaseModel):
+    audio_url: str | None = None
+
+
 class HandReplyView(BaseModel):
     """One answer waiting for the team, addressed by the audio route rather than inlined."""
 
