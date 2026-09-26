@@ -127,7 +127,12 @@ class NothingToForce(ConflictError):
 
 
 class ReplyMovedOn(ConflictError):
-    pass
+    """The reply the tablet heard is no longer the question's current one.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
+    promises a version to reload from, and there is none. The tablet reads any non-2xx as
+    not heard and offers the reply again.
+    """
 
 
 class RoleError(Exception):
