@@ -66,6 +66,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 language_code=spoken,
                 settings=get_settings(),
                 session_id=panorama_session_id,
+                prepared_pericope=pericope,
             )
             if outcome.used_fail_safe:
                 reason = (
