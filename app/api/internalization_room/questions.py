@@ -20,6 +20,7 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
+    HeardRequest,
     InboxQuestionView,
     LabelledElement,
     QuestionAudioResponse,
@@ -130,12 +131,15 @@ async def team_audio(
 
 @router.post("/questions/{question_id}/heard", dependencies=[room_caller_dep])
 async def heard(
-    question_id: str, device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
+    question_id: str,
+    payload: HeardRequest | None = None,
+    device_id: str = DeviceId,
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     question = await service.get_question(db, question_id)
     if question.device_id != device_id:
         raise NotFoundError(f"Question {question_id} not found")
-    await service.mark_heard(db, question)
+    await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
     return {"status": "heard"}
 
 
