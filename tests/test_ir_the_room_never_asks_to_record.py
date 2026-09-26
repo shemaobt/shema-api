@@ -12,7 +12,6 @@ would stop compiling the moment the code was right.
 """
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -36,6 +35,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     session_is_done,
 )
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -84,8 +84,7 @@ class ApprovingAgent:
 
 @pytest.fixture
 def approve_all(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", ApprovingAgent())
+    the_room_agent_is(monkeypatch, turn=ApprovingAgent())
 
 
 async def _a_passage_worked_through(db_session: AsyncSession, language: str) -> IRSession:

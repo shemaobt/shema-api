@@ -27,6 +27,7 @@ from app.api.internalization_room.text_seam import (
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import PlayedTake
 from app.models.internalization_room_text_seam import (
@@ -155,8 +156,10 @@ async def play_a_round(
     with _collecting_model_calls() as calls:
         parts = await declared_parts_by_key(db, session.id)
         state = room.back_translation_of(session)
+        crossed = False
         for number, frase in enumerate(payload.frases, start=1):
-            state = await _capture(db, session, state, frase, number=number, parts=parts)
+            if await _capture(db, session, state, frase, number=number, parts=parts):
+                crossed = True
 
         told = room.told_back(await room.final_segments(db, session.id))
         retired = await room.retired_segments(db, session.id)
@@ -179,6 +182,8 @@ async def play_a_round(
             outcome=verdict.outcome,
             told_back=verdict.told_back,
         )
+        if crossed:
+            await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
 
     return TextRoundResponse(
         sessionId=session.id,
@@ -213,7 +218,7 @@ async def _capture(
     *,
     number: int,
     parts: dict[str, IRTake],
-) -> BackTranslationState:
+) -> bool:
     part = parts.get(frase.clipKey)
     if part is None:
         raise NotFoundError(f"frase {number} names clip {frase.clipKey!r}, which was not declared")
@@ -229,7 +234,7 @@ async def _capture(
                 f"frase {number} supersedes a telling, and no stretch stands at "
                 f"{frase.clipKey} {frase.coversFrom}-{frase.coversTo}s"
             )
-    await room.capture_and_note_a_hard_stretch(
+    return await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=part.id,
@@ -241,4 +246,3 @@ async def _capture(
         replaces=retold,
         state=state,
     )
-    return state

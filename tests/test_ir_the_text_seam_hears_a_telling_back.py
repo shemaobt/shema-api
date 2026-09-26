@@ -22,10 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import router
 from app.core.config import get_settings
-from app.db.models.internalization_room import IRTakeKind
+from app.core.room_enums import HaltKind
+from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services import internalization_room as room
 from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.takes import takes_of
+from tests.hard_stretch_harness import row
 from tests.text_seam_harness import (
     RUNNER_KEY,
     THE_EXTRA_CAUSE,
@@ -323,6 +325,27 @@ async def test_a_superseding_frase_runs_the_correction_check_then_the_reading(
     assert len(told) == len(CAUSA_A_MAIS), "a frase nova substitui a primeira, não se soma a ela"
     assert told[0].pass_number == 2
     assert told[0].transcript == FAITHFUL_FRASE_ONE["text"]
+
+
+async def test_the_warning_a_round_raises_for_a_hard_stretch_outlives_the_rounds_verdict(
+    client, db_session
+) -> None:
+    session_id = await _a_session(client)
+    await _a_round(client, session_id, CAUSA_A_MAIS)
+    await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
+    before = await row(db_session, session_id)
+    assert before.status is IRSessionStatus.IN_PROGRESS, (
+        "uma rodada que não cruzou trecho nenhum parava a sala do mesmo jeito"
+    )
+
+    await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
+
+    after = await row(db_session, session_id)
+    assert after.status is IRSessionStatus.NEEDS_PERSON, (
+        "a terceira contagem do mesmo trecho pedia uma pessoa, e o veredito da mesma rodada"
+        " soltava o pedido antes de alguém vê-lo"
+    )
+    assert after.halt_kind == HaltKind.WARNING.value
 
 
 async def test_two_superseding_frases_in_one_round_both_replace_their_stretches(

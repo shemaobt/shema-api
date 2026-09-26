@@ -17,7 +17,6 @@ or a column, and none of them copies the sentence into a literal.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 from typing import Any
 
@@ -40,6 +39,7 @@ from tests.room_harness import (
     nothing_is_read_ahead,
     press_terminei,
 )
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -146,10 +146,9 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -182,14 +181,13 @@ def room(monkeypatch: pytest.MonkeyPatch) -> Room:
 
     # The package re-exports a `run_turn` function under the submodule's own name, so the
     # module has to be asked for by path rather than by attribute.
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return heard.draft
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         heard.said.append(text)
@@ -508,14 +506,13 @@ async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     stretch. The finding still names its stretch here, which is what makes the case worth
     having: every other reason to withhold the request is absent.
     """
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
     async def refuses_every_draft(*, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "regenerate", "issues": ["fora do mapa"]})
         return "Vamos ficar nesta cena."
 
-    monkeypatch.setattr(turn_module, "call_agent", refuses_every_draft)
+    the_room_agent_is(monkeypatch, turn=refuses_every_draft)
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 

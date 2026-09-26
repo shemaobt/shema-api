@@ -8,7 +8,7 @@ import re
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 from app.services.platform.tts import SpeechStore
 from app.services.translation_helper.audio_cache import CachedAudio, audio_cache
 from app.services.translation_helper.detect_language import detect_language_code
@@ -350,7 +350,7 @@ async def synthesize_speech(
             return entry, True
 
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     voice_cfg = _resolve_voice(language_code, voice_name)
     body: dict[str, object] = {
@@ -367,16 +367,22 @@ async def synthesize_speech(
     }
 
     http = client or _make_client()
-    response = await http.post(
-        url, json=body, params={"output_format": cfg.elevenlabs_output_format}, headers=headers
-    )
+    try:
+        response = await http.post(
+            url, json=body, params={"output_format": cfg.elevenlabs_output_format}, headers=headers
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs TTS unreachable: %s", error)
+        raise UpstreamServiceError(f"Speech request could not reach ElevenLabs: {error}") from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs TTS failed: status=%s body=%s",
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"TTS request failed with status {response.status_code}")
+        raise upstream_or_validation_error(
+            response.status_code, f"TTS request failed with status {response.status_code}"
+        )
 
     payload = response.json()
     audio_b64 = payload.get("audio_base64") or ""

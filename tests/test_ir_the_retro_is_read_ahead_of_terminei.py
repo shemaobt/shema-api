@@ -21,7 +21,6 @@ from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSegment, IRTake
-from app.services.internalization_room import back_translation as bt_service
 from app.services.internalization_room import llm, usage
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.takes import take_by_id
@@ -42,6 +41,7 @@ from tests.room_harness import (
     the_room_speaks,
     the_transcriber_says,
 )
+from tests.turn_harness import the_room_agent_is
 
 AN_ADDITION = {"findings": [{"kind": "addition", "note": "Boaz não está nesta cena.", "chunk": 2}]}
 
@@ -60,7 +60,7 @@ class Analyst(ScriptedAnalyst):
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -283,7 +283,7 @@ async def test_a_terminei_pressed_while_the_reading_ahead_runs_waits_for_it_inst
             await answer.wait()
         return await scripted(system_prompt=system_prompt, user_content=user_content)
 
-    monkeypatch.setattr(bt_service, "call_agent", still_reading)
+    the_room_agent_is(monkeypatch, analyst=still_reading)
 
     async with room_client(db_session, monkeypatch, per_request=per_request) as client:
         await press_terminei(client, session.id, report=played_every_part([part.id]))
@@ -376,6 +376,117 @@ async def test_a_stretch_retold_over_its_own_slice_starts_the_reading_the_closin
     assert verdict["checked"] is True
 
 
+async def test_a_terminei_after_a_correction_was_read_ahead_verifies_nothing_again(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [1])
+    raised = {"findings": [{"kind": "addition", "note": "Boaz não está nesta cena.", "chunk": 1}]}
+
+    async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+        analyst.readings = [raised]
+        await press_terminei(client, session.id, report=played_every_part([part.id]))
+        (stretch,) = await final_segments(db_session, session.id)
+        await _tell_again(client, session.id, stretch)
+        verified_before = len(analyst.verifications)
+        verdict = (await press_terminei(client, session.id)).json()
+
+    assert verified_before == 1, "a correção não era verificada adiantada, no próprio trecho"
+    assert len(analyst.verifications) == verified_before, (
+        "o terminei verificava de novo a correção que o último trecho já tinha verificado"
+    )
+    assert verdict["checked"] is True
+
+
+async def test_a_terminei_pressed_while_a_correction_is_verified_waits_for_it_not_asking_twice(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [1])
+    raised = {"findings": [{"kind": "addition", "note": "Boaz não está nesta cena.", "chunk": 1}]}
+    verifying = asyncio.Event()
+    answer = asyncio.Event()
+    scripted = analyst.__call__
+
+    async def still_verifying(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        if CORRECTION_MARK in system_prompt and not verifying.is_set():
+            verifying.set()
+            await answer.wait()
+        return await scripted(system_prompt=system_prompt, user_content=user_content)
+
+    the_room_agent_is(monkeypatch, analyst=still_verifying)
+
+    async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+        analyst.readings = [raised]
+        await press_terminei(client, session.id, report=played_every_part([part.id]))
+        (stretch,) = await final_segments(db_session, session.id)
+        retold = asyncio.create_task(_tell_again(client, session.id, stretch))
+        await asyncio.wait_for(verifying.wait(), timeout=5)
+        pressed = asyncio.create_task(press_terminei(client, session.id))
+        await asyncio.sleep(0.05)
+        answer.set()
+        await asyncio.wait_for(retold, timeout=5)
+        verdict = (await asyncio.wait_for(pressed, timeout=5)).json()
+
+    assert len(analyst.verifications) == 1, (
+        "o terminei verificava de novo enquanto a verificação adiantada ainda estava em voo"
+    )
+    assert analyst.whole_readings == 2, (
+        "o terminei que esperou a verificação lia de novo a leitura de fechamento já feita"
+    )
+    assert verdict["checked"] is True
+
+
+async def test_a_stretch_told_while_a_correction_is_verified_calls_that_verification_off(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [1])
+    raised = {"findings": [{"kind": "addition", "note": "Boaz não está nesta cena.", "chunk": 1}]}
+    verifying = asyncio.Event()
+    never = asyncio.Event()
+    called_off: list[str] = []
+    scripted = analyst.__call__
+
+    async def outrun(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        if CORRECTION_MARK in system_prompt and not verifying.is_set():
+            verifying.set()
+            try:
+                await never.wait()
+            except asyncio.CancelledError:
+                called_off.append(system_prompt)
+                raise
+        return await scripted(system_prompt=system_prompt, user_content=user_content)
+
+    the_room_agent_is(monkeypatch, analyst=outrun)
+
+    try:
+        async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+            analyst.readings = [raised]
+            await press_terminei(client, session.id, report=played_every_part([part.id]))
+            (stretch,) = await final_segments(db_session, session.id)
+            older = asyncio.create_task(_tell_again(client, session.id, stretch))
+            await asyncio.wait_for(verifying.wait(), timeout=5)
+            (current,) = await final_segments(db_session, session.id)
+            await _tell_again(client, session.id, current)
+            await asyncio.wait_for(older, timeout=2)
+            verdict = (await press_terminei(client, session.id)).json()
+    finally:
+        never.set()
+
+    assert len(called_off) == 1, "a verificação de um trecho já recontado de novo seguia gastando"
+    assert verdict["checked"] is True
+
+
 async def test_a_stretch_retold_after_the_reading_ahead_throws_it_away_too(
     db_session: AsyncSession,
     per_request: async_sessionmaker[AsyncSession],
@@ -427,7 +538,7 @@ async def test_a_stretch_told_while_an_older_reading_runs_calls_that_reading_off
                 raise
         return await scripted(system_prompt=system_prompt, user_content=user_content)
 
-    monkeypatch.setattr(bt_service, "call_agent", outrun)
+    the_room_agent_is(monkeypatch, analyst=outrun)
 
     try:
         async with room_client(db_session, monkeypatch, per_request=per_request) as client:
@@ -468,7 +579,7 @@ async def test_a_terminei_waiting_on_a_reading_that_is_called_off_reads_for_itse
             await never.wait()
         return await scripted(system_prompt=system_prompt, user_content=user_content)
 
-    monkeypatch.setattr(bt_service, "call_agent", outrun)
+    the_room_agent_is(monkeypatch, analyst=outrun)
 
     try:
         async with room_client(db_session, monkeypatch, per_request=per_request) as client:
@@ -510,7 +621,7 @@ async def test_a_reading_ahead_that_fails_leaves_the_stretch_told_and_terminei_r
             raise _Unreachable("o analista caiu")
         return await scripted(system_prompt=system_prompt, user_content=user_content)
 
-    monkeypatch.setattr(bt_service, "call_agent", unreachable_ahead)
+    the_room_agent_is(monkeypatch, analyst=unreachable_ahead)
 
     async with room_client(db_session, monkeypatch, per_request=per_request) as client:
         await press_terminei(client, session.id, report=played_every_part([part.id]))
@@ -543,7 +654,7 @@ async def test_a_terminei_waiting_on_a_reading_ahead_that_fails_reads_for_itself
             raise _Unreachable("o analista caiu no meio da leitura")
         return await scripted(system_prompt=system_prompt, user_content=user_content)
 
-    monkeypatch.setattr(bt_service, "call_agent", falls_while_reading)
+    the_room_agent_is(monkeypatch, analyst=falls_while_reading)
 
     async with room_client(db_session, monkeypatch, per_request=per_request) as client:
         await press_terminei(client, session.id, report=played_every_part([part.id]))

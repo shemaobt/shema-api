@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from typing import Any
 
 import pytest
@@ -32,6 +31,7 @@ from app.services.internalization_room.back_translation import (
     verify_correction,
 )
 from app.services.internalization_room.part_names import Addresses
+from tests.turn_harness import the_room_agent_is
 
 LOGGER_NAME = "app.services.internalization_room.back_translation"
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
@@ -66,13 +66,12 @@ def _told() -> list[IRSegment]:
 @pytest.fixture
 def patch_model(monkeypatch: pytest.MonkeyPatch):
     """Answer the one call `analyse_telling_back`/`verify_correction` make, with `reply`."""
-    module = sys.modules["app.services.internalization_room.back_translation"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
         return agent
 
     return _install

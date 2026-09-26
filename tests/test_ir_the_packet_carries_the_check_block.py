@@ -73,6 +73,7 @@ from tests.room_harness import (
     the_analyst_reads,
     the_room_speaks,
 )
+from tests.turn_harness import the_room_agent_is
 
 #: Her names for the block and for one entry of its list, written out rather than imported.
 #: A case that read them off the module under test would agree with any rename, and the whole
@@ -451,9 +452,7 @@ async def test_the_verdict_stamps_when_the_check_ran(
     assert packet["check"]["lastCheckAt"] == stamped.checked_at.isoformat()
     assert packet["check"]["status"] == "conferida"
 
-    from app.services.internalization_room import back_translation as bt_service
-
-    monkeypatch.setattr(bt_service, "call_agent", _AnAnalystRaisingOneAddition())
+    the_room_agent_is(monkeypatch, analyst=_AnAnalystRaisingOneAddition())
     disputed, its_parts = await rehearsed_in_parts(db_session, 1)
 
     raised = await press_terminei(

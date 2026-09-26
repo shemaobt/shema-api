@@ -1,5 +1,4 @@
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +24,7 @@ from app.services.internalization_room.sessions import (
     resolve_pericope,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.turn_harness import the_room_agent_is
 
 PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -125,10 +125,9 @@ class FakeAgent:
 
 @pytest.fixture
 def patch_agent(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.run_turn"]
 
     def _install(agent: FakeAgent) -> FakeAgent:
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, turn=agent)
         return agent
 
     return _install
