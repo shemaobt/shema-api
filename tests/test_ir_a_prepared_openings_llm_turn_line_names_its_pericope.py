@@ -63,9 +63,7 @@ async def test_a_prepared_openings_turn_line_names_the_pericope_it_is_for(
     patch_agent(FakeAgent(verdicts=[{"verdict": "pass", "issues": []}], drafts=["Fala normal."]))
 
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        await _a_turn(
-            "panorama-1", opening=True, transcript="", prepared_pericope="P01"
-        )
+        await _a_turn("panorama-1", opening=True, transcript="", prepared_pericope="P01")
 
     record = _the_turn_line(caplog)
     assert "prepared=P01" in record.getMessage()
