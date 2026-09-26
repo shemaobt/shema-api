@@ -189,7 +189,13 @@ async def _draft(
     return draft.strip()
 
 
-def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) -> TurnOutcome:
+def _timed(
+    outcome: TurnOutcome,
+    started: float,
+    session_id: str,
+    spend: Spend,
+    prepared_pericope: str | None = None,
+) -> TurnOutcome:
     """Say how long the turn took, how it ended, and what it asked of the models.
 
     Both exits pass through here rather than each logging for itself, because the numbers only
@@ -203,11 +209,17 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
     `turn_*`, as `turn_ms` already was — a reader filtering the log for the per-call lines
     picks them out by the fields only a call has, and a summary that answered to the same
     names would be counted as a third call of every turn.
+
+    `prepared_pericope`, when a `prepare_opening` run passed one down, is the one thing this
+    line cannot say from `session_id` alone: that run shares the panorama's own id with
+    whatever the panorama itself is doing, so two `[llm-turn]` lines under the same id used to
+    read as the same turn firing twice (ENG-968, ENG-1107) when the second was a different
+    pericope entirely.
     """
     elapsed_ms = round((time.monotonic() - started) * 1000)
     logger.info(
         "[llm-turn] session %s answered in %s ms after %s redrafts, %s calls, US$ %s: "
-        "in=%s cache_read=%s cache_write=%s out=%s%s%s",
+        "in=%s cache_read=%s cache_write=%s out=%s%s%s%s",
         session_id,
         elapsed_ms,
         outcome.redrafts,
@@ -223,11 +235,13 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
         f" — {spend.unpriced_calls} unpriced, so the total is short"
         if spend.unpriced_calls
         else "",
+        f" — prepared={prepared_pericope}" if prepared_pericope else "",
         extra={
             "session_id": session_id,
             "turn_ms": elapsed_ms,
             "redrafts": outcome.redrafts,
             "used_fail_safe": outcome.used_fail_safe,
+            "prepared_pericope": prepared_pericope,
             "turn_calls": spend.calls,
             "turn_cost_usd": spend.cost_usd,
             "turn_unpriced_calls": spend.unpriced_calls,
@@ -263,6 +277,7 @@ async def _voiced_after_validation(
     finding: str = "",
     ordered_closing: str = "",
     mother_tongue: bool = False,
+    prepared_pericope: str | None = None,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -396,6 +411,7 @@ async def _voiced_after_validation(
                 started,
                 session_id,
                 spend,
+                prepared_pericope,
             )
 
         redraft_note = _redraft_note(issues, language_code)
@@ -417,4 +433,5 @@ async def _voiced_after_validation(
         started,
         session_id,
         spend,
+        prepared_pericope,
     )

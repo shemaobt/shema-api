@@ -32,6 +32,7 @@ async def run_turn(
     session_id: str = "?",
     ask_for_movements: bool = False,
     mother_tongue: bool = False,
+    prepared_pericope: str | None = None,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -41,6 +42,12 @@ async def run_turn(
 
     `mother_tongue` marks a `transcript` that is not the team's words but the app's own note
     about an unrecorded rehearsal (`turn.speech.speak_back`) — see `_voiced_after_validation`.
+
+    `prepared_pericope` names this call as `prepare_opening`'s own background run, so the
+    `[llm-turn]` line can say which pericope it wrote ahead for. It is set nowhere else:
+    a live turn's `session_id` is that session's own, but a prepared one runs under the
+    panorama's, and without the tag the two are indistinguishable in the log (ENG-968,
+    ENG-1107).
     """
     cfg = settings or get_settings()
 
@@ -75,4 +82,5 @@ async def run_turn(
         session_id=session_id,
         ask_for_movements=ask_for_movements,
         mother_tongue=mother_tongue,
+        prepared_pericope=prepared_pericope,
     )
