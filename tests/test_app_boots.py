@@ -59,6 +59,38 @@ def test_the_application_imports_in_a_clean_interpreter() -> None:
     )
 
 
+@pytest.mark.parametrize("first", ["app.services.shema", "app.services.resource_request_access"])
+def test_the_grant_packages_import_in_either_order(first: str) -> None:
+    """The Shemá services and the form's invite package import each other (OBT-543).
+
+    `import app.main` walks one order — the form first — and the Shemá tests walk the other,
+    because their conftest imports the module's dependencies before anything of the form's.
+    Each order is its own fresh process, and each checks that the two functions that cross
+    the boundary are bound as functions rather than as half-imported modules.
+    """
+    probe = (
+        f"import importlib, sys; importlib.import_module({first!r}); "
+        "import app.services.shema, app.services.resource_request_access; "
+        "accept = sys.modules['app.services.resource_request_access.accept_invite']; "
+        "grant = sys.modules['app.services.shema.grant_role']; "
+        "assert callable(accept.apply_invited_scope) and callable(grant.recall_pending_invites)"
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "DATABASE_URL": "sqlite+aiosqlite:///./boot-check.db",
+            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
+            "INNGEST_DEV": "1",
+        },
+    )
+
+    assert finished.returncode == 0, f"{first} primeiro não importa:\n{finished.stderr}"
+
+
 def test_no_dto_module_reaches_up_into_the_service_layer() -> None:
     """The rule whose breach let the cycle close, checked where it can be seen.
 

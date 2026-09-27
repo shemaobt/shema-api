@@ -170,9 +170,10 @@ async def test_the_downgrade_removes_the_role_and_every_grant_of_it(db_session) 
 
 
 async def test_an_admin_holder_may_manage_that_apps_roles(db_session, shema_app) -> None:
-    """The platform's shared predicate already reads an app's ``admin`` role: the Admin
-    concedes and revokes through ``/api/roles`` from the day it is granted — which is OBT-522's
-    rule for this role, and the reason naming one is guarded below."""
+    """The platform's shared predicate reads an app's ``admin`` role — which is why naming one
+    is guarded below. Since OBT-543 the Admin concedes through ``/api/shema/access``, and the
+    raw ``/api/roles/assign`` and ``/revoke`` refuse the two apps to anyone but an installation
+    admin (``test_admin_gate.py``); ``/api/roles/check`` still reads this predicate."""
     admin = await make_user(db_session, email="manager@admin.test")
     await grant(db_session, admin, shema_app, ADMIN_ROLE)
 
