@@ -1,4 +1,4 @@
-"""Every link token this server issues — minted, read and dated in one place.
+"""Link tokens — minted, read and dated in one place (the invite and the reset are not yet).
 
 **Why one module.** Before BE-20 (OBT-525) three tokens were written three ways: the leader
 link with ``token_urlsafe(32)``, the access invite and the password reset with
