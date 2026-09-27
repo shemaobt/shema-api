@@ -122,10 +122,11 @@ importing it as-is, as zero, or flagged as unverified. Two of those three answer
 column and the third needs this one; giving it now is what keeps BE-16 out of the migration
 graph while BE-11 waits on the same fact.
 
-``completed_date`` is not an export column and nothing writes it yet. It is here because
-GATE-01's item 6 cannot close without it: ``status`` records *that* a project finished and
-never *when*, and the ETEN report is per year. It is the one open item on that gate that is a
-schema change, and a schema change is the thing a stacked wave cannot afford to discover late.
+``completed_date`` is not an export column. It was added here because GATE-01's item 6 could
+not close without it: ``status`` records *that* a project finished and never *when*, and the
+ETEN report is per year. The gate closed on 25/sep/2026 and BE-11 made ``save_project`` its
+writer: stamped with the saver's own day on the move into ``concluido``, cleared on the move out,
+and **only from then on** — a record concluded before the stamp existed stays undated.
 
 **Coordinates are two floats and the pair is longitude first.** ``[0, 0]`` is *no
 coordinate*, not the Gulf of Guinea — two records carry it and both have an empty
@@ -317,7 +318,7 @@ class ShemaProject(Base):
     #: heard.
     last_updated: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: GATE-01 item 6: ``status`` records *that* a project finished, never *when*, and the
-    #: ETEN report is per year. Nothing writes it yet.
+    #: ETEN report is per year. ``save_project`` stamps it on the move into ``concluido`` (BE-11).
     completed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     status: Mapped[ShemaProjectStatus | None] = mapped_column(PROJECT_STATUS, nullable=True)

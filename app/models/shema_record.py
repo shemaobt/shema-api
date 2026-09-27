@@ -29,8 +29,8 @@ instruction rather than a liberty:
   they stay empty. Emitting them is what keeps a whole ``Project`` round-trippable through
   ``POST``; storing one would be a second owner of a fact ``shema_region_teams`` owns.
 * **``completedDate`` is not emitted.** It is a column (GATE-01 item 6) and it is not one of
-  FE-44's 73 keys; nothing writes it yet, and a server that invents a 74th key is the reason a
-  frozen contract stops being one.
+  FE-44's 73 keys; ``save_project`` writes it (BE-11) and the ETEN report is where it is read,
+  and a server that invents a 74th key is the reason a frozen contract stops being one.
 * **``mediaPhotos[].image`` is always ``null``.** The bytes have no serving path: BE-04 built
   the authorization predicate and named *the storage half* as belonging to the issue that
   first serves media (BE-09/BE-14), and a ``src`` invented here would freeze the guess that
