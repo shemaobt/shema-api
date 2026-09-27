@@ -227,7 +227,8 @@ async def naive_client(db_session):
     only in what the handler hands back — an ORM row, or a model it built itself — because
     those are the two shapes a handler can return, and what FastAPI does with the second one
     is a function of which Pydantic it is running on (``serialize_response`` dumps it first
-    on the v1 branch and passes the instance straight through on v2).
+    on the v1 branch and, on v2, does not re-validate the instance's fields — though the model
+    validator runs again, which ``test_reader.py`` pins for the reader).
 
     The dependency aliases are imported at module level for the reason
     ``conftest.client`` states: with ``from __future__ import annotations`` FastAPI resolves
