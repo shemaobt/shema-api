@@ -989,8 +989,9 @@ Daniel, recorded in the PR. The form imports reach `save_project` with the impor
 route audit asks it like any other. `READER_ROUTES` names instead the routes whose dependencies
 reach the caller's reader — the only ones that may build a payload carrying the truth — and a
 new route that took `Reading` (an export, say) is red there until somebody lists it and argues
-it. The record's answers carry `Cache-Control: private, no-store`: one version of one record now
-reads two ways, and no cache may hand one reader's body to another.
+it. The collection's and the record's answers carry `Cache-Control: private, no-store`
+(`PER_READER_CACHE_CONTROL`): one URL — and one version of one record — now reads two ways, and
+no cache may hand one reader's body to another.
 
 **Two coordinations, deliberately.** `ShemaReader.COORDINATION` is GATE-04's membership — who
 reads a sensitive place. `ShemaAudience.COORDENACAO` is FE-44's destination — every role that

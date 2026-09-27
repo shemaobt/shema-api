@@ -35,7 +35,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Response, status
 
 from app.api.shema._deps import APP_KEY, CurrentUser, Db, Reading, Scope
-from app.api.shema.projects import RECORD_CACHE_CONTROL
+from app.api.shema.projects import PER_READER_CACHE_CONTROL
 from app.core.exceptions import ValidationError
 from app.models.shema_health import (
     ShemaHealthAssessmentSubmission,
@@ -147,5 +147,5 @@ async def file_assessment(
     )
     record = await build_record(db, project, readership=reading, today=today)
     response.headers["ETag"] = f'"{record.version}"'
-    response.headers["Cache-Control"] = RECORD_CACHE_CONTROL
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return record

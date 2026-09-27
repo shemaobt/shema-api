@@ -58,9 +58,14 @@ router = APIRouter()
 ProjectQuery = Annotated[ShemaProjectQuery, Query()]
 
 
+#: One URL, two readers, two bodies — the collection and the record alike, since OBT-528 builds
+#: both for the caller's reader: nothing between the server and the reader may keep one.
+PER_READER_CACHE_CONTROL = "private, no-store"
+
+
 @router.get("/projects", response_model=ShemaProjectPage)
 async def list_projects(
-    db: Db, scope: Scope, reading: Reading, query: ProjectQuery
+    db: Db, scope: Scope, reading: Reading, query: ProjectQuery, response: Response
 ) -> ShemaProjectPage:
     """Every project the caller's role and region allow, filtered, counted, ordered and paged.
 
@@ -76,8 +81,10 @@ async def list_projects(
 
     Each card is built for the caller's reader (OBT-528): a coordination reader's card carries
     the truth of a sensitive place and everybody else's the region — the service decides, from
-    the ``Reading`` handed down here.
+    the ``Reading`` handed down here — so one URL answers two bodies, and the page carries
+    :data:`PER_READER_CACHE_CONTROL` for the reason the record does.
     """
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return await browse_projects(
         db, scope, query, readership=reading, today=datetime.now(UTC).date()
     )
@@ -186,10 +193,6 @@ def _conflict(exc: RecordVersionConflict) -> JSONResponse:
     )
 
 
-#: One record, two readers, two bodies: nothing between the server and the reader may keep one.
-RECORD_CACHE_CONTROL = "private, no-store"
-
-
 def _with_etag(record: ShemaProjectRecord, response: Response) -> ShemaProjectRecord:
     """Hand the record's version back in the header, since it is not in the body.
 
@@ -200,10 +203,10 @@ def _with_etag(record: ShemaProjectRecord, response: Response) -> ShemaProjectRe
     **And no cache may keep it** (OBT-528): one version of one record now reads as the truth to
     coordination and as the region to everybody else, so a stored body is somebody's body. The
     ``ETag`` stays what it is for — the version ``If-Match`` quotes — and
-    :data:`RECORD_CACHE_CONTROL` keeps it from being a cache validator across readers.
+    :data:`PER_READER_CACHE_CONTROL` keeps it from being a cache validator across readers.
     """
     response.headers["ETag"] = _etag(record.version)
-    response.headers["Cache-Control"] = RECORD_CACHE_CONTROL
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return record
 
 

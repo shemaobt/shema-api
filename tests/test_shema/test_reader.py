@@ -465,14 +465,16 @@ async def test_coordination_reads_the_truth_on_all_five_console_routes(
     """The list, the read, the create, the patch and the health reading — **over HTTP**, because
     each passes the payload through a second validation (a page, the response model) that runs
     with no reader, and a reader that did not survive it would reduce coordination's truth on
-    the way out."""
+    the way out. And every one of the five says ``private, no-store``: one URL now answers a
+    different body to each reader, so no cache may hand one reader's body to another."""
     coordinator = await _user(db_session, shema_app, "coordinator")
     headers = await _headers(db_session, coordinator)
 
-    page = (await client.get(PROJECTS, headers=headers)).json()
-    _assert_truth(next(item for item in page["items"] if item["id"] == WITHHELD_ID))
+    listed = await client.get(PROJECTS, headers=headers)
+    _assert_truth(next(item for item in listed.json()["items"] if item["id"] == WITHHELD_ID))
 
-    _assert_truth((await client.get(f"{PROJECTS}/{WITHHELD_ID}", headers=headers)).json())
+    read = await client.get(f"{PROJECTS}/{WITHHELD_ID}", headers=headers)
+    _assert_truth(read.json())
 
     patched = await client.patch(
         f"{PROJECTS}/{WITHHELD_ID}",
@@ -504,6 +506,9 @@ async def test_coordination_reads_the_truth_on_all_five_console_routes(
     )
     assert created.status_code == 201, created.text
     _assert_truth(created.json())
+
+    for answer in (listed, read, patched, filed, created):
+        assert answer.headers["Cache-Control"] == "private, no-store", answer.request.url
 
 
 async def test_the_record_a_write_answers_is_built_for_the_writers_reader(
