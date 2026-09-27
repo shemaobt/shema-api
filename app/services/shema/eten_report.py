@@ -61,7 +61,7 @@ from app.utils.shema_derivations import (
     fiscal_year_end,
     fiscal_year_start,
 )
-from app.utils.shema_facets import normalize_search_text
+from app.utils.shema_facets import collation_key
 
 
 async def _history(db: AsyncSession, ids: list[str]) -> dict[str, list[ProgressPoint]]:
@@ -160,21 +160,21 @@ def _line(
     )
 
 
-def _order(line: EtenYearSnapshot) -> tuple[int, int, str, str, str]:
+def _order(line: EtenYearSnapshot) -> tuple[int, int, tuple[str, str], str]:
     """``buildEtenReport``'s order: credits down (no figure last), advance down, then the name.
 
-    The name is compared the way the Projetos screen compares it
-    (``app/utils/shema_facets.py``): unaccented and case-folded first, the raw string second —
-    ``localeCompare`` over there, and a code-point sort here would file every accented name
-    after ``Z``. The id last keeps the order total, which the recorded digest depends on.
+    The name is compared by the Projetos screen's own ``collation_key``
+    (``app/utils/shema_facets.py``), which carries why a code-point sort is wrong for these names.
+    The id last keeps the order total, which the recorded digest depends on.
     """
     credits = -1 if line.credits is None else line.credits
-    name = line.language_name
-    return (-credits, -line.advanced, normalize_search_text(name), name, line.project_id)
+    return (-credits, -line.advanced, collation_key(line.language_name), line.project_id)
 
 
 def _scope_key(scope: RegionScope) -> str:
-    return "global" if scope.global_ else ",".join(sorted(scope.regions))
+    """``global``, or the regions as ``RegionScope.wire`` already orders them."""
+    regions = scope.wire
+    return "global" if regions is None else ",".join(regions)
 
 
 def _content(report: EtenYearReport) -> dict[str, Any]:

@@ -21,16 +21,18 @@ from app.models.shema_eten import EtenCreditEntry
 from app.services.shema._scope import RegionScope, within_scope
 
 
-def credit_entry(row: ShemaEtenCredit) -> EtenCreditEntry:
+def credit_entry(row: ShemaEtenCredit, credits: int) -> EtenCreditEntry:
     """One ledger row on the wire: the contract's four keys, and who set it and when.
 
     Built field by field rather than validated off the row: the row's ``recorded_by`` is the
-    account id, and the wire's ``recordedBy`` is the name as it was then.
+    account id, and the wire's ``recordedBy`` is the name as it was then. ``credits`` is passed
+    already narrowed, because the column is nullable and a manual figure never is — a row
+    without one is not listed as a zero.
     """
     return EtenCreditEntry(
         project_id=row.project_id,
         year=row.year,
-        credits=row.credits or 0,
+        credits=credits,
         source=row.source,
         recorded_by=row.recorded_by_name,
         recorded_at=row.updated_at,
@@ -45,4 +47,8 @@ async def list_eten_credits(db: AsyncSession, scope: RegionScope) -> list[EtenCr
         .where(within_scope(scope), ShemaEtenCredit.source == ShemaEtenCreditSource.MANUAL)
         .order_by(ShemaEtenCredit.year.desc(), ShemaEtenCredit.project_id)
     )
-    return [credit_entry(row) for row in (await db.execute(stmt)).scalars()]
+    return [
+        credit_entry(row, row.credits)
+        for row in (await db.execute(stmt)).scalars()
+        if row.credits is not None
+    ]

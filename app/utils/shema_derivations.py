@@ -33,6 +33,14 @@ midnight; :func:`is_recently_updated` compares whole calendar days and keeps it 
 the whole of that day. The parity artifact pins ``now`` at midnight, where the two agree, and
 the calendar reading is the one this product's own vocabulary means — every date here is a
 day somebody wrote down (FE-44 §9.0).
+
+**The ETEN block at the end is BE-11's, FE-44 §7.8.** GATE-01 closed on 25/sep/2026 (OBT-387):
+a credit is one completed defined scope, counted in approved chapters and never a divisor; the
+year is ETEN's fiscal year, August to July; each partner receives the whole credit; the credit
+belongs to the fiscal year the project ended; partial scope earns nothing.
+``src/utils/etenCredits.ts``'s ``accountFor`` is the reference and FE-51 (OBT-530) moves it to
+the fiscal year; the departures in :func:`account_for` are the facts the server can see and the
+console cannot, and each is argued where it is made.
 """
 
 from __future__ import annotations
@@ -536,15 +544,6 @@ def derive(record: Derivable, now: date, *, region: ShemaRegionKey) -> Derivatio
         region=region,
     )
 
-
-# --- ETEN credit (FE-44 §7.8) — BE-11 ------------------------------------------------------
-#
-# GATE-01 closed on 25/sep/2026 (OBT-387): a credit is one completed defined scope, counted in
-# approved chapters and never a divisor; the year is ETEN's fiscal year, August to July; each
-# partner receives the whole credit; the credit belongs to the fiscal year the project ended;
-# partial scope earns nothing. ``src/utils/etenCredits.ts``'s ``accountFor`` is the reference
-# and FE-51 (OBT-530) moves it to the fiscal year; the departures below are the ones the server
-# can see and the console cannot, and each is argued where it is made.
 
 #: The day ETEN's fiscal year closes, as ``(month, day)``. ``?year=2026`` is the year that
 #: **ends** on 31/07/2026, and a day is placed in a year by comparing these two calendar fields —

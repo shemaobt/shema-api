@@ -101,4 +101,4 @@ async def record_eten_credit(
     row.recorded_by_name = author_name(user)
     await db.commit()
     await db.refresh(row)
-    return credit_entry(row)
+    return credit_entry(row, credits)
