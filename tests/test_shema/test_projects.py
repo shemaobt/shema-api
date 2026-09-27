@@ -579,9 +579,7 @@ async def test_a_regional_scope_reaches_the_counts_and_not_only_the_results(
     # place the card beside it does not.
     assert set(page["counts"]["groups"]["team"]) == {"YWAM Khartoum"}
 
-    asked_for_another_region = await fetch(
-        client, db_session, regional, continent="south-america"
-    )
+    asked_for_another_region = await fetch(client, db_session, regional, continent="south-america")
     assert asked_for_another_region["items"] == []
     assert asked_for_another_region["counts"]["groups"]["continent"] == {"africa": 2}
 
