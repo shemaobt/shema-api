@@ -34,6 +34,11 @@ joins against.
 
 **Reads and writes take the same value.** A regional holder who may read a region may write
 it; the product has no third answer, so nothing here offers one.
+
+**A project membership is the second kind of reach, and it lives here for the first paragraph's
+reason** (OBT-524, ``docs/shema.md`` §6.8). ``member_projects`` and ``roster_projects`` select
+``ShemaProject`` too, so a query that could hand a member somebody else's project is no more a
+thing a service can write by forgetting something than one that could hand a region's.
 """
 
 from __future__ import annotations
@@ -461,11 +466,6 @@ def role_from(granted: AbstractSet[str]) -> str | None:
 
 
 # --- the member's reach (OBT-524) -------------------------------------------------------------
-#
-# A second kind of reach beside the region, and it lives here for this file's first paragraph's
-# reason: the module's only ``select(ShemaProject)`` is in this file, so a query that could hand a
-# member somebody else's project is not a thing a service can write by forgetting something.
-# ``docs/shema.md`` §6.8 is the design.
 
 
 def _live_memberships(user_id: str) -> Select[tuple[str]]:
