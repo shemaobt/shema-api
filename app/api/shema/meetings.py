@@ -41,7 +41,7 @@ _LOG = "/meetings/log"
 
 
 @router.get(_LOG, response_model=list[MeetingLogEntry])
-async def read_meeting_log(user: CurrentUser, db: Db, scope: Scope) -> list[MeetingLogEntry]:
+async def read_meeting_log(db: Db, scope: Scope, user: CurrentUser) -> list[MeetingLogEntry]:
     """Every entry the caller's regions cover - the console hydrates ``rhythmStore`` from it."""
     return await list_meeting_log(db, scope, reader=user, app_key=APP_KEY)
 
@@ -53,7 +53,7 @@ async def read_meeting_log(user: CurrentUser, db: Db, scope: Scope) -> list[Meet
     responses={status.HTTP_200_OK: {"description": "The period's entry was replaced"}},
 )
 async def write_meeting_log(
-    payload: MeetingLogCreate, user: CurrentUser, db: Db, scope: Scope, response: Response
+    payload: MeetingLogCreate, db: Db, scope: Scope, user: CurrentUser, response: Response
 ) -> MeetingLogEntry:
     """Log a meeting; the server derives the period, and a second log of it replaces the first.
 
@@ -77,9 +77,9 @@ async def remove_meeting_log(
     meeting_id: ShemaMeetingId,
     scope_key: MeetingScopeKey,
     period: str,
-    user: CurrentUser,
     db: Db,
     scope: Scope,
+    user: CurrentUser,
 ) -> None:
     """Undo one period's entry - the period the server returned when it was logged."""
     await undo_meeting(db, scope, meeting_id, scope_key, period, actor=user, app_key=APP_KEY)
