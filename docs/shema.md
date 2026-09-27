@@ -280,7 +280,9 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_health_audience.py` | **BE-07, built** | Who may read a reading of a team, and who is told when one turns critical — one list, two uses. |
 | `app/services/shema/_health_notice.py` | **BE-07, built** | What a notice about a struggling team may say, which is the part of that feature that needed deciding. |
 | `app/api/shema/prayer.py` | BE-09 | The wall, and the intercessor network — the routes are under `/prayer/` whoever writes them, and §1.3 C3 leaves open which issue that is. |
-| `app/api/shema/meetings.py` | BE-10 | Definitions and the log. |
+| `app/api/shema/meetings.py` | **BE-10, built** | The log: `GET`/`POST /meetings/log`, `DELETE /meetings/log/{meetingId}/{scopeKey}/{period}`. No definitions route — §9.2. |
+| `app/utils/shema_meetings.py` | **BE-10, built** | GATE-02's set as the server needs it: the three logged meetings and their cadences. Titles, attendees and readiness stay in the console's `RITMO_MEETINGS`. |
+| `app/services/shema/_meeting_log.py` | **BE-10, built** | The log's one rule, for reads and writes: `_health_audience.py`'s audience, inside the caller's region scope; `global` refused with the reason. |
 | `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
 | `app/api/shema/forms.py` | BE-12 | Submissions, the Pulse artifact, intake links, and the two **unauthenticated** intake routes. |
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
@@ -295,7 +297,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
 | `app/services/shema/_directory.py` | BE-13 | A person's contact, their consents and their country — the **only** file in either package that names `ShemaIntercessor`. §6.4's fourth owner. |
 | `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; and `can_export_notes`. §6.4. |
-| `app/utils/shema_derivations.py` | **BE-05, built** | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
+| `app/utils/shema_derivations.py` | **BE-05, built**; BE-10 | FE-44 §7's nine pure functions of `(record, now)`, and §7.5's period keys in a block of their own (BE-10). **Not** in the service package — see below. |
 | `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
 | `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
 | `app/models/shema_record.py` | **BE-06, built** | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key — and every sub-shape the ficha is made of. Separate from `app/models/shema.py`, which is what a client *sends*. |
@@ -664,7 +666,7 @@ behaviour on it.
 | 5.6 | **Prayer** | *(none for the wall)* | BE-09 | **The wall is derived, never stored**, which is what makes withdrawal free: moving a request back to `coordenacao` removes it from the next query with no cleanup step. The three columns live on the record; `_consent.py` is their only reader. If BE-09 ever stores requests, a withdrawn one is **deleted from that store**, never flagged and retained. |
 | 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. |
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
-| 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. **Whether the definitions are a table at all is Open · GATE-02** (§9.2). |
+| 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. ~~**Whether the definitions are a table at all is Open · GATE-02** (§9.2).~~ **Answered by GATE-02 on 22/set: the set is global, so there is no definitions table** — §9.2. |
 | 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads` | BE-02, BE-15 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
 | 5.11 | **ETEN ledger** | `shema_eten_credits` | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule is **Open · GATE-01** (§9.1). |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
@@ -1251,6 +1253,40 @@ scoped, which changes the table **and** the readiness computation. **Do not buil
 until the gate answers** — which is why §5.9 makes `shema_meeting_definitions` conditional and
 `shema_meeting_log` unconditional.
 
+> **Answered by the client on 22 and 25/set/2026, and built by BE-10
+> ([OBT-399](https://linear.app/shema-obt/issue/OBT-399)).** The set is **the same in the seven
+> regions**, so `shema_meeting_definitions` is never created and no migration was needed: the log
+> table BE-02 built already had every column. Of the five encounters, three are logged —
+> `bimestral_pi_campo`, `trimestral_pi_pontes`, `semestral_member_care` — and two are not: the
+> Pulso Mensal's record is the submission received (BE-12) and the annual celebration is a report
+> (FE-50). Six decisions travel with it.
+>
+> - **No `GET /api/shema/meetings`.** FE-44 §9.0 made it the one vocabulary endpoint only while the
+>   set might differ by region; the issue records that `RITMO_MEETINGS` stays the console's source.
+>   The server keeps what it enforces — each meeting's cadence, in `app/utils/shema_meetings.py` —
+>   and because the console compares `period` as text, that table is pinned by a test.
+> - **The period is read by field, with two new cadences.** `period_key`, `period_start` and
+>   `period_end` sit in their own block of `app/utils/shema_derivations.py`: `YYYY-MM`, `YYYY-Bn`
+>   (B1 = January–February), `YYYY-Qn`, `YYYY-Hn` (H1 = January–June), `YYYY`. The wire date goes
+>   through `parse_iso_date`, which refuses what Pydantic's `date` and `date.fromisoformat` accept
+>   and the console never sends — a timestamp, an offset, `20260301`, an ISO week.
+>   `tests/test_shema/test_periods.py` moves the process to UTC-3 and UTC+14 and proves the trap is
+>   armed before trusting a pass.
+> - **A second log of a period replaces the first**, with the unique constraint as the arbiter: the
+>   write reads, then creates or rewrites inside a savepoint, and retries once on the two races —
+>   a concurrent first insert, and an undo landing mid-write.
+> - **The log's audience is the health assessment's.** Its notes are a pastoral reading of a team,
+>   so `_meeting_log.py` composes `_health_audience.py`'s list instead of copying it:
+>   `resourceCircle` is refused the log on all three routes, fail-closed until the client says the
+>   bridge people include it. The region scope applies on both sides, and out of scope is a 403.
+> - **`global` is refused with the reason.** Every meeting kept is held per region.
+> - **The notes are the artifact.** GATE-02's own table answered which encounters produce what; no
+>   meeting produces a stored file, so the log carries no URL or storage key and opens no upload
+>   path (§4.6).
+>
+> Readiness stays derived on the console (FE-44 §9.7): the Pulse's is FE-49 counting
+> `GET /forms/submissions`, not anything this module stores twice.
+
 ### 9.3 GATE-03 — the Pulse file format ([OBT-389](https://linear.app/shema-obt/issue/OBT-389))
 
 **Blocks BE-12 and part of BE-09.** Format, authority when two formats disagree, the
@@ -1356,6 +1392,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |
 | 12 | Whether `sensitive_country` records **who** raised it. Today it does not, and the import cannot tell a flag a coordinator ticked from the `true` it wrote itself fail-closed — so a hand-raised flag is cleared by the next `--apply --allow-lowering`. BE-16 gates the lowering on the one column that can answer (`sensitivity`, compared against `source`) and names every lowering in its report, which narrows the hole without closing it. Closing it is a write-path decision — an audit column, a `sensitive_country_source`, or a rule that the import never lowers what it did not insert — and it is not a migration script's to take, least of all on a model and a migration ten sibling branches already build on. | **BE-03** (§4.2's write path), with **BE-02** if it costs a column |
+| 13 | Who the *pessoas-ponte* of `trimestral_pi_pontes` are, and whether the health assessment moves to the bimonthly meeting (GATE-02's open half). The server holds neither attendees nor readiness, so the answer changes nothing here unless it changes a cadence or the set — one edit in `app/utils/shema_meetings.py` — or puts `resourceCircle` among the bridge people, which would open that one meeting's log to it. | **the client** (FE-49 carries the reading) |
 
 ---
 

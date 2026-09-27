@@ -1,0 +1,94 @@
+# Shemá - the Rhythm's log: which meeting of which period happened in which region (BE-10 · OBT-399)
+#
+# The log is a listening tracker, not an agenda: one entry per meeting, region and period, with the
+# day it happened and its notes. Four things are worth running by hand before believing the rest:
+#
+#   1. THE SERVER DERIVES THE PERIOD. Post a day and read `period` in the answer: 2026-03-01 in the
+#      bimonthly meeting is 2026-B2, in the quarterly 2026-Q1, in the semiannual 2026-H1. A body
+#      that states its own `period` is a 422.
+#   2. A SECOND LOG OF THE SAME PERIOD REPLACES THE FIRST. Post twice inside one bimester: the
+#      first answers 201, the second 200, and the list has one entry with the second one's notes.
+#   3. THE LOG IS NOT THE RESOURCE CIRCLE'S. Its notes are a pastoral reading of a team - the
+#      reading the health assessment already withholds from `resourceCircle` - so that role gets a
+#      403 on all three routes, in its own region.
+#   4. `global` IS NOT A REGION. Every meeting GATE-02 kept is held per region; `scopeKey: global`
+#      is a 422 that says so, for the global strategist too.
+#
+# The three meetings: bimestral_pi_campo, trimestral_pi_pontes, semestral_member_care. The Pulso
+# Mensal is not here - its record is the submission received (GET /api/shema/forms/submissions) -
+# and neither is the annual celebration, which is a report.
+#
+# Before running: seed the app and its roles, grant a coordinator and give it a region.
+#   uv run python scripts/seed_apps_roles.py
+#   (grant through app/services/authorization/grant_app_role.py, and set the region with
+#    app/services/shema/set_region_scope.py - http/shema_session.http shows both)
+
+@baseUrl = http://localhost:8000
+
+### Sign in as the regional coordinator
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coord.local@test.com",
+  "password": "password123"
+}
+
+###
+@token = {{login.response.body.tokens.access_token}}
+
+### The log, as far as this account reaches
+GET {{baseUrl}}/api/shema/meetings/log
+Authorization: Bearer {{token}}
+
+### Log the bimonthly meeting - the answer carries the period the server derived (2026-B2)
+POST {{baseUrl}}/api/shema/meetings/log
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "meetingId": "bimestral_pi_campo",
+  "scopeKey": "africa",
+  "date": "2026-03-01",
+  "notes": "Reviewed the forms of both teams; one asked for a follow-up call."
+}
+
+### Log it again inside the same bimester - 200, and the entry is replaced, not duplicated
+POST {{baseUrl}}/api/shema/meetings/log
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "meetingId": "bimestral_pi_campo",
+  "scopeKey": "africa",
+  "date": "2026-04-20",
+  "notes": "Follow-up call held."
+}
+
+### A period stated by the client - 422: the server derives it
+POST {{baseUrl}}/api/shema/meetings/log
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "meetingId": "bimestral_pi_campo",
+  "scopeKey": "africa",
+  "date": "2026-03-01",
+  "period": "2026-B6"
+}
+
+### The Pulse is not a meeting - 422
+POST {{baseUrl}}/api/shema/meetings/log
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "meetingId": "pulso_mensal",
+  "scopeKey": "africa",
+  "date": "2026-03-01"
+}
+
+### Undo one period of one region - 204
+DELETE {{baseUrl}}/api/shema/meetings/log/bimestral_pi_campo/africa/2026-B2
+Authorization: Bearer {{token}}
