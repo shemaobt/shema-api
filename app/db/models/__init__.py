@@ -101,6 +101,7 @@ from app.db.models.shema_enums import (
 )
 from app.db.models.shema_eten import ShemaEtenCredit
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
+from app.db.models.shema_grant import ShemaScopeChange
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.db.models.shema_intercessor import ShemaIntercessor
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
@@ -232,6 +233,7 @@ __all__ = [
     "ShemaRegionTeam",
     "ShemaRoleChange",
     "ShemaRoleKey",
+    "ShemaScopeChange",
     "ShemaSubmission",
     "ShemaUserRegion",
     "ShemaYesNo",

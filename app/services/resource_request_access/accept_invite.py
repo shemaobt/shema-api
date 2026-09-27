@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth_cache import invalidate_roles
 from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError, RoleError
 from app.db.models.auth import AccessInvite, App, Role, User
 from app.models.resource_request_access import AccessGrantResponse
@@ -10,6 +11,7 @@ from app.services.auth.hash_refresh_token import hash_refresh_token
 from app.services.authorization.grant_app_role import grant_app_role
 from app.services.resource_request_access._invite_status import invite_status
 from app.services.resource_request_access._rules import assert_role_compatible
+from app.services.shema.apply_invited_scope import apply_invited_scope
 
 
 async def accept_invite(db: AsyncSession, actor: User, raw_token: str) -> AccessGrantResponse:
@@ -21,9 +23,18 @@ async def accept_invite(db: AsyncSession, actor: User, raw_token: str) -> Access
     was theirs, and the audit trail should say so. Exclusivity is checked here
     and not only at creation, because the holder's roles may have changed in
     the days between the letter and the click.
+
+    **An invite the Shemá Admin wrote for a regional role carries its regions**
+    (OBT-543), and they are applied in the same commit through
+    ``apply_invited_scope``, before the role — which refuses when the account
+    already holds a different regional scope. The invite is read ``FOR UPDATE``,
+    so two clicks cannot both spend it on PostgreSQL. ``apply_invited_scope`` is
+    imported from its own module and not from ``app.services.shema``: the two
+    packages import each other, and only the submodule path binds the function
+    in either import order.
     """
     token_hash = hash_refresh_token(raw_token)
-    stmt = select(AccessInvite).where(AccessInvite.token_hash == token_hash)
+    stmt = select(AccessInvite).where(AccessInvite.token_hash == token_hash).with_for_update()
     invite = (await db.execute(stmt)).scalar_one_or_none()
     if not invite:
         raise NotFoundError("Invitation not found.")
@@ -46,6 +57,14 @@ async def accept_invite(db: AsyncSession, actor: User, raw_token: str) -> Access
 
     await assert_role_compatible(db, actor.id, app.id, role.role_key)
 
+    if invite.region_keys:
+        await apply_invited_scope(
+            db,
+            actor.id,
+            invite.region_keys,
+            app_key=app.app_key,
+            invited_by=invite.created_by,
+        )
     assignment = await grant_app_role(
         db,
         actor.id,
@@ -58,6 +77,7 @@ async def accept_invite(db: AsyncSession, actor: User, raw_token: str) -> Access
     invite.accepted_by = actor.id
     await db.commit()
     await db.refresh(assignment)
+    invalidate_roles(actor.id)
     return AccessGrantResponse(
         user_id=assignment.user_id,
         role_key=role.role_key,
