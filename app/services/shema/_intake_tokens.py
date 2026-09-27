@@ -72,7 +72,7 @@ DEFAULT_LINK_DAYS: Final = 45
 MAX_LINK_DAYS: Final = get_settings().shema_intake_link_max_days
 
 
-def mint_token() -> tuple[str, str]:
+def mint_token() -> tokens.Minted:
     """A fresh leader-link token and its digest — ``tokens.mint``, under this link's name.
 
     The raw value leaves once and is never stored, as every link token's does, and this one

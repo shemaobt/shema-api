@@ -2,11 +2,12 @@ import secrets
 from typing import Final
 
 from app.services.common.tokens.digest import digest
+from app.services.common.tokens.minted import Minted
 
 _CODE_DIGITS: Final = 6
 
 
-def mint_code() -> tuple[str, str]:
+def mint_code() -> Minted:
     """A fresh six-digit confirmation code and its digest.
 
     Drawn by ``secrets`` from the whole million and zero-padded, so ``000042`` is a code like
@@ -19,4 +20,4 @@ def mint_code() -> tuple[str, str]:
     ``app/services/device/claim_code.py`` records for the Room's installation code.
     """
     code = f"{secrets.randbelow(10**_CODE_DIGITS):0{_CODE_DIGITS}d}"
-    return code, digest(code)
+    return Minted(raw=code, digest=digest(code))

@@ -60,10 +60,10 @@ async def create_intake_link(
         )
 
     definition = await publish_definition(db, PULSE_KIND)
-    raw_token, token_hash = mint_token()
+    minted = mint_token()
     link = ShemaIntakeLink(
         project_id=project.id,
-        token_hash=token_hash,
+        token_hash=minted.digest,
         created_by=user.id,
         definition_id=definition.id,
         expires_at=expiry_from(payload.expires_at, today=today),
@@ -82,6 +82,6 @@ async def create_intake_link(
         created_at=as_utc(link.created_at).date(),
         used_at=None,
         revoked_at=None,
-        token=raw_token,
-        url=intake_url(None if app is None else app.app_url, raw_token),
+        token=minted.raw,
+        url=intake_url(None if app is None else app.app_url, minted.raw),
     )
