@@ -127,7 +127,7 @@ async def mark_intercessor_reviewed(
     with ``reviewDue`` and offers two answers: this one, and ``DELETE`` beside it. The body is
     the entry with the flag gone, so the screen replaces the row it has with the server's.
     """
-    return await review_intercessor(db, intercessor_id)
+    return await review_intercessor(db, intercessor_id, actor=user)
 
 
 @router.get(_PEOPLE + "/{intercessor_id}/contact", response_model=IntercessorContact)

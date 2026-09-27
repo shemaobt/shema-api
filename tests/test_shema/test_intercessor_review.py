@@ -11,6 +11,7 @@ routes read the real clock, and a test that patched it would be testing the patc
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -159,6 +160,28 @@ async def test_marking_reviewed_stamps_the_row_and_clears_the_flag(
     assert datetime.now(UTC) - stamped < timedelta(minutes=5)
     listed = (await client.get(PEOPLE, headers=headers)).json()["people"][0]
     assert listed["reviewDue"] is False
+
+
+async def test_the_review_logs_who_kept_the_person_and_not_the_person(
+    db_session, client, shema_app, caplog
+) -> None:
+    """ "Revisado" keeps somebody's data for another year, so it leaves the same trace every
+    other write on a person leaves: who did it and which row — never the name or the contact."""
+    user, headers = await _circle(db_session, shema_app)
+    person = await _listed(client, headers, name="Ana Velha", contact="ana@example.org")
+    caplog.set_level(logging.INFO, logger="app.services.shema.review_intercessor")
+
+    assert (
+        await client.post(f"{PEOPLE}/{person['id']}/review", headers=headers)
+    ).status_code == 200
+
+    lines = [r for r in caplog.records if r.name == "app.services.shema.review_intercessor"]
+    assert len(lines) == 1
+    assert lines[0].__dict__["shema_user_id"] == user.id
+    assert lines[0].__dict__["shema_intercessor_id"] == person["id"]
+    written = " ".join(str(value) for value in lines[0].__dict__.values())
+    assert "Ana Velha" not in written
+    assert "ana@example.org" not in written
 
 
 async def test_a_review_moves_neither_added_at_nor_a_consent(db_session, client, shema_app) -> None:

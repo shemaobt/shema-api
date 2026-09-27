@@ -12,24 +12,39 @@ calls this is ``resourceCircle`` only, like every other route of the network.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.auth import User
 from app.models.shema_intercessor import IntercessorEntry
 from app.services.shema._directory import entry_of, mark_reviewed
+
+logger = logging.getLogger(__name__)
 
 
 async def review_intercessor(
     db: AsyncSession,
     intercessor_id: str,
     *,
+    actor: User,
     now: datetime | None = None,
 ) -> IntercessorEntry:
     """Stamp the review and answer the entry, which no longer carries the flag.
 
     A 404 for an unknown id comes from ``_directory``, as every operation on a person does.
+    The line left behind names who kept the person for another year and which row it was —
+    the shape of ``remove_intercessor.py``'s, never the name, the country or the contact.
     """
     moment = now or datetime.now(UTC)
     await mark_reviewed(db, intercessor_id, now=moment)
+    logger.info(
+        "shema intercessor reviewed",
+        extra={
+            "shema_operation": "review_intercessor",
+            "shema_user_id": actor.id,
+            "shema_intercessor_id": intercessor_id,
+        },
+    )
     return await entry_of(db, intercessor_id, now=moment)
