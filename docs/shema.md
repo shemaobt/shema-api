@@ -943,7 +943,8 @@ absent from **all four** output paths — the wall, exports, the ETEN report and
 >   §6.7's module, `ON DELETE CASCADE` from the person — and `leave_intercessor.issue_exit_link`
 >   is what BE-09 calls once per send. **No link is revoked by a newer one**: each lives
 >   `shema_intercessor_exit_link_days` (365), so the reader of an older message can still leave,
->   and a link that leaks can only remove somebody, which is the safe direction. The issue's
+>   and a link that leaks can only remove somebody, which is the safe direction; a link past its
+>   clock is deleted at the person's next send. The issue's
 >   *rotated at each failed confirmation* is read as *every send carries a fresh token and none
 >   is ever reused*; burning a link on a failed confirmation could only strand the person who
 >   wants out, and that reading is raised in the pull request rather than built.

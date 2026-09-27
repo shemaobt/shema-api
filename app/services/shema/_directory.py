@@ -560,8 +560,9 @@ async def store_exit_link(
     The person is read first, so a link for somebody who does not exist is a 404 naming what
     is missing rather than an ``IntegrityError`` escaping a flush. **No earlier link is
     revoked**: a person may still hold the message it came in, and it keeps working until its
-    own clock runs out. What has run out is deleted here, so the table holds one row per send
-    that can still open something and nothing else.
+    own clock runs out. The person's links whose clock has run out are deleted here, at their
+    next send, so rows do not pile up one per send for ever; a link that expires after the last
+    send stays until the person leaves or is removed, and opens nothing meanwhile.
 
     ``commit=False`` is for a caller minting a whole send in one transaction; whoever passes it
     owns the commit, as ``create_notification``'s flag says.
