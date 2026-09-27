@@ -82,8 +82,6 @@ def _stale_id(card: ShemaProjectCard) -> str:
 async def _stale_entries(
     db: AsyncSession, scope: RegionScope, *, today: date
 ) -> list[ShemaNotificationEntry]:
-    # The entries name no place, and a notice is an output path: the cards are built for a
-    # reader who coordinates nothing, so a later edit to the body cannot reach a truth.
     page = await browse_projects(
         db,
         scope,

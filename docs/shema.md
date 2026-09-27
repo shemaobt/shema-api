@@ -1169,7 +1169,7 @@ replacement a single file with one import direction.
 
 **And one thing that is not a departure, recorded because it looks like one.** The list item
 inherits `LeavingShape`, so a card in a sensitive country carries its region where its country
-would be — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
+would be (to every reader who is not coordination, since OBT-528 — §6.4) — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
 inherited**: `app/models/shema_privacy.py` names *the collection read* among the shapes that go
 through the boundary, and `COORDINATION_PATHS` is empty with a comment saying the one line
 expected in it is BE-06's record read. Following §9.1 here would mean adding this route to that
