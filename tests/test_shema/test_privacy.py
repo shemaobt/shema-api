@@ -35,6 +35,7 @@ from app.db.models.shema_enums import (
     ShemaRegionKey,
 )
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
+from app.models.shema_eten import EtenYearSnapshot
 from app.models.shema_need import ShemaNeedLine
 from app.models.shema_privacy import (
     REGION_CENTROIDS,
@@ -136,15 +137,6 @@ class NaiveNotification(LeavingShape):
     project_id: str
     country: str
     team: str
-
-
-class NaiveEtenSnapshot(LeavingShape):
-    """BE-11's report line — FE-44 §5.6's ``EtenYearSnapshot``, whose ``country`` is a
-    ``LocationDisplay`` on the frontend precisely because it leaves coordination."""
-
-    project_id: str
-    country: str
-    approved_units: int
 
 
 class NaivePulseEntry(LeavingShape):
@@ -379,7 +371,7 @@ def test_the_withholding_is_visible_and_says_nothing_about_what(flagged) -> None
         NaiveExportRow,
         NaivePrayerEntry,
         NaiveNotification,
-        NaiveEtenSnapshot,
+        EtenYearSnapshot,
         NaivePulseEntry,
         ShemaNeedLine,
     ],
@@ -394,7 +386,9 @@ def test_every_shape_that_leaves_coordination_withholds_the_place(shape, flagged
 
     **The sixth arrived with BE-08 and is not a stand-in**:
     :class:`~app.models.shema_need.ShemaNeedLine` is the shipped shape a need leaves in, and it
-    proves the same claim about the one payload that carries money.
+    proves the same claim about the one payload that carries money. **BE-11 replaced the ETEN
+    stand-in with the shipped** :class:`~app.models.shema_eten.EtenYearSnapshot`, whose
+    ``country`` is FE-44's ``LocationDisplay`` computed from the ``location`` the boundary reduced.
     """
     payload = {
         "project_id": flagged.id,

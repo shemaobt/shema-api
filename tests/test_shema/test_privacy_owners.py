@@ -38,6 +38,7 @@ from pydantic import BaseModel
 
 from app.db.models.shema_enums import ShemaRegionKey
 from app.main import create_app
+from app.models.shema_eten import EtenLocationShown
 from app.models.shema_privacy import (
     BASE_FIELDS,
     CONTACT_FIELDS,
@@ -231,12 +232,26 @@ def test_each_owner_actually_reads_what_it_owns() -> None:
     assert silent == [], f"an owner that reads none of what it owns: {silent}"
 
 
+#: Models a computed field builds **from a leaving shape that has already been reduced** — so
+#: they carry a place only after the boundary decided what it may be, and are not leaving
+#: shapes of their own. BE-11's ``EtenLocationShown`` is FE-44's ``LocationDisplay`` open half:
+#: ``EtenYearSnapshot.country`` builds it from the ``location`` its own ``LeavingShape``
+#: reduced, and inheriting the boundary here would add ``locationWithheld`` to a shape the
+#: contract froze as ``{withheld, location}``. A new name here is a line somebody has to argue.
+DISPLAYS_OF_A_REDUCED_SHAPE: frozenset[type[BaseModel]] = frozenset({EtenLocationShown})
+
+
 def _models_in(annotation: Any, depth: int = 0) -> set[type[BaseModel]]:
     """Every Pydantic model reachable from a response annotation, through the generics.
 
     ``list[ProjectOut]``, ``dict[str, ProjectOut]`` and a shape with a nested project are all
     the same leak with different packaging. Depth-limited because a self-referential model is
     a legitimate shape and would otherwise hang the suite rather than fail it.
+
+    **Computed fields are walked too** (BE-11). A ``@computed_field`` is serialised like any
+    field and is absent from ``model_fields``, so a model that returned a place from one would
+    otherwise be invisible to the audit — the net would have a hole exactly where the ETEN
+    report's ``country`` is.
     """
     from typing import get_args
 
@@ -247,6 +262,8 @@ def _models_in(annotation: Any, depth: int = 0) -> set[type[BaseModel]]:
         found.add(annotation)
         for field in annotation.model_fields.values():
             found |= _models_in(field.annotation, depth + 1)
+        for computed in annotation.model_computed_fields.values():
+            found |= _models_in(computed.return_type, depth + 1)
         return found
     for argument in get_args(annotation):
         found |= _models_in(argument, depth + 1)
@@ -292,6 +309,8 @@ def test_every_route_that_can_name_a_place_leaves_through_the_boundary() -> None
             continue
         for model in _models_in(route.response_model):
             place = _names_a_place(model)
+            if model in DISPLAYS_OF_A_REDUCED_SHAPE:
+                continue
             if place and not issubclass(model, LeavingShape):
                 unprotected.append(f"{methods} {route.path} -> {model.__name__}{place}")
 
@@ -299,6 +318,19 @@ def test_every_route_that_can_name_a_place_leaves_through_the_boundary() -> None
         "a response model can name a project's place and does not inherit LeavingShape, so "
         f"the redaction is not applied to it: {unprotected}"
     )
+
+
+def test_the_audit_sees_a_place_returned_by_a_computed_field() -> None:
+    """The walk reaches a computed field's model, so the allowlist above is load-bearing.
+
+    Without this, deleting ``EtenLocationShown`` from :data:`DISPLAYS_OF_A_REDUCED_SHAPE` could
+    leave the route audit green for the wrong reason — because it never looked.
+    """
+    from app.models.shema_eten import EtenYearReport
+
+    reached = _models_in(EtenYearReport)
+    assert EtenLocationShown in reached
+    assert _names_a_place(EtenLocationShown) == ["location"]
 
 
 def test_every_field_the_boundary_guards_has_a_replacement() -> None:
