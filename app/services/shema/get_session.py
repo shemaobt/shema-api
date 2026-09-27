@@ -38,7 +38,7 @@ from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaRegionKey, ShemaRoleKey
 from app.db.models.shema_org_chart import ShemaRegionTeam
 from app.models.shema_session import ShemaSession
-from app.services.shema._scope import RegionScope, scope_from_roles
+from app.services.shema._scope import RegionScope, role_from, roles_from, scope_from_roles
 
 
 async def _seat_holder(db: AsyncSession, region_key: str, role: str) -> str:
@@ -68,8 +68,9 @@ async def _resolve_name(
 async def get_session(db: AsyncSession, user: User, *, roles: tuple[str, ...]) -> ShemaSession:
     """The signed-in persona, as FE-44 §9.13 froze it and OBT-523 widened it.
 
-    ``roles`` is what the PME's door already read — ``_scope.session_roles``, in precedence
-    order — handed down rather than read again, the same trade
+    ``roles`` is what the PME's door already read — ``_scope.session_roles`` — handed down
+    rather than read again, and answered in :data:`~app.services.shema._scope.ROLE_PRECEDENCE`
+    order whatever order it arrived in, the same trade
     :func:`~app.services.shema._scope.scope_from_roles` exists for: the door and the body are
     one fact and asking it twice read it twice. **Keyword-only on purpose**: this function
     took an app key positionally until OBT-523, and a ``str`` is a sequence of strings, so a
@@ -79,11 +80,12 @@ async def get_session(db: AsyncSession, user: User, *, roles: tuple[str, ...]) -
     here would buy nothing and would hold a persona that a rename in the org chart is
     supposed to change immediately.
     """
-    role = roles[0] if roles else None
-    scope = await scope_from_roles(db, user, frozenset(roles))
+    held = frozenset(roles)
+    role = role_from(held)
+    scope = await scope_from_roles(db, user, held)
     return ShemaSession(
         role=role,
-        roles=list(roles),
+        roles=list(roles_from(held)),
         regionScope=scope.wire,
         name=await _resolve_name(db, user, role, scope),
     )

@@ -179,6 +179,17 @@ async def test_an_account_holding_strategist_admin_and_gestor_keeps_the_role_it_
     assert res.json()["regionScope"] is None
 
 
+async def test_the_service_answers_in_precedence_whatever_order_it_is_handed(db_session, shema_app):
+    """``role`` and ``roles`` come from the precedence and not from the caller's order, and a
+    key outside the vocabulary a caller slips in never reaches the wire."""
+    user = await make_user(db_session, email="handed@shema.test")
+
+    session = await get_session(db_session, user, roles=("mesa", "lider", "admin", "obtLab"))
+
+    assert session.roles == ["obtLab", "admin", "mesa"]
+    assert session.role == "obtLab"
+
+
 async def test_the_endpoint_needs_no_role_alias_of_its_own(db_session, client, shema_app):
     """Every one of the four personas reaches it. A role alias here would refuse three of
     the four the endpoint exists to describe."""

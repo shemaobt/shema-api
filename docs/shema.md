@@ -865,8 +865,8 @@ GET /api/shema/session -> {role: SessionRole, roles: SessionRole[], regionScope:
 only through the transition.
 
 `GET /api/auth/my-roles` cannot answer this, because the grant has no region. The three parts
-come from three places and **none of them is a new store**: `role` from
-`authorization_service.list_roles(db, user.id, "shema")`; `regionScope` from
+come from three places and **none of them is a new store**: `role` (and, since OBT-523, `roles`)
+from `authorization_service.list_roles` — one read of both apps, §6.7; `regionScope` from
 `shema_user_regions` (`null` = global); and **`name` resolved from the org chart** (§5.8) —
 it is not a user profile field, and renaming a role-holder renames who the session says you
 are.
