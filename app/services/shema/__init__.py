@@ -91,6 +91,15 @@ recorded there sends nothing, because no e-mail, push or WhatsApp sender exists 
 batch of delivered and derived ids needs, and the only thing that ever writes
 ``shema_notification_reads``.
 
+**BE-11 landed the ETEN report and its ledger.** The rule is not here: ``account_for`` is a pure
+function in ``app/utils/shema_derivations.py`` beside the other FE-44 §7 derivations, and
+``eten_report.py`` is the computation around it — the listed projects in scope, their history, the
+year's manual rows, the lines through the redaction boundary, and the report **recorded** in
+``shema_eten_reports`` as it was answered, so a figure sent to a funder stays explainable after
+the data moves. ``record_eten_credit.py`` is the only writer of the ledger and owns who may set a
+manual figure; ``list_eten_credits.py`` reads it. ``save_project`` stamps ``completed_date``,
+which is the date the rule reads.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -190,12 +199,14 @@ from app.services.shema.append_assessment import append_assessment
 from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
+from app.services.shema.eten_report import eten_report
 from app.services.shema.get_notification_prefs import get_notification_prefs
 from app.services.shema.get_project import get_project
 from app.services.shema.get_region_team import get_region_team
 from app.services.shema.get_session import get_session
 from app.services.shema.import_submission import apply_submission, import_submission
 from app.services.shema.list_assessments import list_assessments
+from app.services.shema.list_eten_credits import list_eten_credits
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_intercessors import list_intercessors
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
@@ -217,6 +228,7 @@ from app.services.shema.read_intake_form import form_fields, read_intake_form
 from app.services.shema.read_record import build_record, read_changes_since, read_record
 from app.services.shema.read_submission import as_received, list_submissions, read_submission
 from app.services.shema.receive_submission import receive_submission
+from app.services.shema.record_eten_credit import ETEN_LEDGER_AUDIENCE, record_eten_credit
 from app.services.shema.remove_intercessor import remove_intercessor
 from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
 from app.services.shema.revoke_intake_link import revoke_intake_link
@@ -233,6 +245,7 @@ from app.services.shema.update_intercessor import update_intercessor
 __all__ = [
     "DEFAULT_LINK_DAYS",
     "DOWNLOAD_URL_EXPIRY_MINUTES",
+    "ETEN_LEDGER_AUDIENCE",
     "GCS_SHEMA_BUCKET",
     "HEALTH_AUDIENCE",
     "MAX_LINK_DAYS",
@@ -270,6 +283,7 @@ __all__ = [
     "definition_at",
     "derive_region",
     "entered_critical",
+    "eten_report",
     "expires_on",
     "field_changes",
     "form_fields",
@@ -285,6 +299,7 @@ __all__ = [
     "leaving_person",
     "link_status",
     "list_assessments",
+    "list_eten_credits",
     "list_intake_links",
     "list_intercessors",
     "list_notification_panel",
@@ -316,6 +331,7 @@ __all__ = [
     "reads_assessments",
     "receive_submission",
     "recipients",
+    "record_eten_credit",
     "record_progress",
     "record_update",
     "recorded_decision",
