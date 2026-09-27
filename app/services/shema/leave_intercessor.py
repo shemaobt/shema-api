@@ -63,16 +63,16 @@ async def issue_exit_link(
     lets a whole send be minted in one transaction; whoever passes it owns the commit.
     """
     moment = now or datetime.now(UTC)
-    raw, token_hash = tokens.mint()
+    minted = tokens.mint()
     await store_exit_link(
         db,
         intercessor_id,
-        token_hash=token_hash,
+        token_hash=minted.digest,
         expires_at=tokens.expiry(moment, days=EXIT_LINK_DAYS),
         now=moment,
         commit=commit,
     )
-    return raw
+    return minted.raw
 
 
 def exit_url(base_url: str | None, raw_token: str) -> str:
