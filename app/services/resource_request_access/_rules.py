@@ -11,10 +11,15 @@ seeds ``admin`` since ``20260927_shema08`` — OBT-522's Admin, one role for bot
 apps — and both doors here grant any role the app has, while the Gestor holds
 ``grant_access``. Left open, a Gestor could name an Admin, and that Admin passes
 ``assert_can_manage_roles`` and revokes through ``/api/roles``: the opposite of
-*só o Admin revoga* and of *o Gestor não administra papéis*. Until OBT-543 moves
-the concession to the PME, only ``is_platform_admin`` names one. The key is
-spelled here, as ``assert_can_manage_roles`` spells it, rather than imported
-from the Shemá module this package will be composed into.
+*só o Admin revoga* and of *o Gestor não administra papéis*. The concession of
+the Admin lives in the PME since OBT-543, and through these doors only
+``is_platform_admin`` names one. The key is spelled here, as
+``assert_can_manage_roles`` spells it, rather than imported from the Shemá module
+this package is composed into.
+
+**The Shemá Admin's surface imports** ``assert_role_compatible`` — the one owner
+of the rule that keeps mesa and Gestor apart, for both surfaces. When OBT-549 retires these doors,
+move it with ``accept_invite``; deleting it with them breaks the PME's grants.
 """
 
 from sqlalchemy import select
