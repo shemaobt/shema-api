@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthenticationError
@@ -27,7 +27,7 @@ async def read_live_refresh_token(db: AsyncSession, refresh_token: str) -> Refre
     if payload.get("type") != "refresh":
         raise AuthenticationError("Invalid token type")
 
-    stmt: Select[tuple[RefreshToken]] = select(RefreshToken).where(
+    stmt = select(RefreshToken).where(
         RefreshToken.token_hash == hash_refresh_token(refresh_token),
         RefreshToken.revoked_at.is_(None),
     )
