@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthorizationError, InvalidTokenError
@@ -96,9 +96,7 @@ async def exchange_handoff(
     reads as expired — and ``AuthorizationError`` for an account no longer active.
     """
     now = now or datetime.now(UTC)
-    stmt: Select[tuple[AuthHandoffCode]] = select(AuthHandoffCode).where(
-        AuthHandoffCode.code_hash == tokens.digest(raw_code)
-    )
+    stmt = select(AuthHandoffCode).where(AuthHandoffCode.code_hash == tokens.digest(raw_code))
     code = (await db.execute(stmt)).scalar_one_or_none()
     if code is None:
         raise _refuse("unknown", None)

@@ -1,10 +1,6 @@
 from app.services.auth.authenticate_user import authenticate_user
 from app.services.auth.create_handoff import create_handoff
-from app.services.auth.exchange_handoff import (
-    ExchangedHandoff,
-    HandoffRefused,
-    exchange_handoff,
-)
+from app.services.auth.exchange_handoff import HandoffRefused, exchange_handoff
 from app.services.auth.get_current_user_from_access_token import (
     get_current_user_from_access_token,
 )
@@ -23,7 +19,6 @@ from app.services.auth.validate_reset_token import validate_reset_token
 from app.services.auth.verify_password import verify_password
 
 __all__ = [
-    "ExchangedHandoff",
     "HandoffRefused",
     "authenticate_user",
     "create_handoff",
