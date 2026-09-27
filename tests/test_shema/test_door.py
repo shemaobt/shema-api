@@ -4,7 +4,10 @@ OBT-523, from OBT-522's decision of 25/set: the mesa and the Gestor sign in to t
 holding no Shemá role, their grants living in ``resource-request-form``. So the session sits
 on the ``door`` router, which admits an account holding any role of the session's vocabulary
 — a Shemá role, the ``admin`` role held in ``shema``, or ``gestor``/``mesa`` held in the form —
-and every other route stays behind the Shemá app gate.
+and every other route stays behind the Shemá app gate. Since OBT-524 a live project membership
+is the vocabulary's ``equipe`` too, and the door also holds the two reads a member has (the
+roster and ``/me/projects``, ``tests/test_shema/test_project_members.py``): *nothing else* here
+means nothing under the app gate.
 
 The negatives are the point, and each names the role that must not open the door: the form's
 ``equipe`` (which ``auto_approve`` hands to everybody who registers there), the ``lider`` (who
@@ -20,6 +23,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.db.models.shema_enums import ShemaRegionKey
+from app.db.models.shema_project_member import MEMBER_ROLE, ShemaProjectMember
 from app.services import authorization_service
 from tests.baker import grant_app_role, make_app, make_user
 from tests.test_shema.conftest import (
@@ -32,6 +36,7 @@ from tests.test_shema.conftest import (
     auth_header,
     grant,
     make_scoped_user,
+    make_shema_project,
 )
 
 AFRICA = ShemaRegionKey.AFRICA
@@ -123,7 +128,8 @@ async def test_the_door_refuses_with_the_app_gates_own_sentence(
 
 async def test_the_form_floor_alone_does_not_open_the_door(db_session, client, shema_app, form_app):
     """Everybody who registers in the form is ``equipe`` — counting it would open the console to
-    anyone with an account. ``equipe`` becomes a project membership in OBT-524, not a door."""
+    anyone with an account. The form's grant is not a door; since OBT-524 the ``equipe`` the door
+    counts is a live **project membership** in the PME, asserted at the end of this file."""
     user = await _form_account(db_session, form_app, "floor@door.test", "equipe")
 
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
@@ -181,12 +187,13 @@ async def test_an_unauthenticated_call_to_the_door_is_a_401(client, shema_app):
     assert (await client.get(SESSION)).status_code == 401
 
 
-# --- the door opens one route --------------------------------------------------------
+# --- the door opens the session, and nothing behind the app gate ------------------------
 
 
 async def test_the_door_opens_the_session_and_nothing_else(db_session, client, shema_app, form_app):
     """A mesa gets its session and is refused everywhere else — the app gate still stands in
-    front of every route under ``authenticated``, guarded or not."""
+    front of every route under ``authenticated``, guarded or not. The member's two reads sit
+    behind the door too, and answer a mesa nothing of anybody's (``test_project_members.py``)."""
     user = await _form_account(db_session, form_app, "mesa-door@door.test", "mesa")
     headers = await auth_header(db_session, user)
 
@@ -269,3 +276,70 @@ async def test_admin_gestor_and_mesa_reach_no_region_even_with_a_region_row(
 
     assert res.status_code == 200
     assert res.json()["regionScope"] == []
+
+
+# --- a project membership is the door's equipe (OBT-524) ---------------------------------------
+
+
+async def _member_of_a_project(db_session, shema_app, email: str):
+    """An account with one live membership and, unless a test grants one, no role anywhere."""
+    admin = await make_user(db_session, email=f"adds-{email}")
+    await grant(db_session, admin, shema_app, "admin")
+    project = await make_shema_project(db_session, project_id=f"p-{email}", region_key=AFRICA)
+    user = await make_user(db_session, email=email)
+    db_session.add(
+        ShemaProjectMember(
+            project_id=project.id, user_id=user.id, role=MEMBER_ROLE, added_by=admin.id
+        )
+    )
+    await db_session.commit()
+    return user, project, admin
+
+
+async def test_a_live_membership_opens_the_door_as_equipe(db_session, client, shema_app, form_app):
+    """The member of the issue: no grant in either app, one team. The session answers ``equipe``
+    and no region — a membership is not a reach over a region."""
+    user, _project, _admin = await _member_of_a_project(db_session, shema_app, "member@door.test")
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert res.status_code == 200, res.text
+    assert res.json()["roles"] == ["equipe"]
+    assert res.json()["role"] == "equipe"
+    assert res.json()["regionScope"] == []
+
+
+async def test_removing_the_last_membership_closes_the_door_on_the_next_request(
+    db_session, client, shema_app, form_app
+):
+    """Nothing to clean up: the door reads live rows, so the ``DELETE`` that marks the row is the
+    whole of taking somebody out."""
+    user, project, admin = await _member_of_a_project(db_session, shema_app, "leaves@door.test")
+    headers = await auth_header(db_session, user)
+    assert (await client.get(SESSION, headers=headers)).status_code == 200
+
+    removed = await client.delete(
+        f"{PREFIX}/projects/{project.id}/members/{user.id}",
+        headers=await auth_header(db_session, admin),
+    )
+    assert removed.status_code == 204, removed.text
+
+    assert (await client.get(SESSION, headers=headers)).status_code == 403
+
+
+async def test_a_member_keeps_the_role_it_had_and_gains_equipe(
+    db_session, client, shema_app, form_app
+):
+    """``equipe`` closes the precedence, so a coordinator who is also on a team keeps answering
+    ``coordinator`` — and its region — with ``equipe`` listed after."""
+    from app.services.shema import set_region_scope
+
+    user, _project, _admin = await _member_of_a_project(db_session, shema_app, "both@door.test")
+    await grant(db_session, user, shema_app, "coordinator")
+    await set_region_scope(db_session, user.id, [AFRICA])
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert res.json()["roles"] == ["coordinator", "equipe"]
+    assert res.json()["role"] == "coordinator"
+    assert res.json()["regionScope"] == ["africa"]

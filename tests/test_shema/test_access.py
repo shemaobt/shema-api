@@ -68,7 +68,7 @@ DOOR_ROUTES: frozenset[tuple[str, str]] = frozenset(
 
 
 def _pairs(routes, prefix: str = "") -> set[tuple[str, str]]:
-    """Every ``(method, path)`` a route list serves — ``HEAD`` and ``OPTIONS`` are not routes here."""
+    """Every ``(method, path)`` a route list serves; ``HEAD`` and ``OPTIONS`` are not counted."""
     return {
         (method, f"{prefix}{route.path}")
         for route in routes
