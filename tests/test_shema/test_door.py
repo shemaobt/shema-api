@@ -105,6 +105,22 @@ async def test_an_account_with_no_role_anywhere_is_refused_at_the_door(
     assert "contact support" in res.json()["detail"].lower()
 
 
+async def test_the_door_refuses_with_the_app_gates_own_sentence(
+    db_session, client, shema_app, form_app
+):
+    """The door's 403 is typed a second time in ``_deps.py``; this holds it to the one
+    ``require_app_access`` answers, so a reword over there cannot leave the door answering a
+    different refusal in silence."""
+    user = await make_user(db_session, email="same-sentence@door.test")
+    headers = await auth_header(db_session, user)
+
+    door = await client.get(SESSION, headers=headers)
+    gate = await client.get(UNGUARDED_PROBE, headers=headers)
+
+    assert door.status_code == gate.status_code == 403
+    assert door.json() == gate.json()
+
+
 async def test_the_form_floor_alone_does_not_open_the_door(db_session, client, shema_app, form_app):
     """Everybody who registers in the form is ``equipe`` — counting it would open the console to
     anyone with an account. ``equipe`` becomes a project membership in OBT-524, not a door."""
