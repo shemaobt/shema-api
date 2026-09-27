@@ -65,18 +65,29 @@ def _row(revoked: bool, expired: bool, used: bool) -> _Row:
 
 
 def test_a_minted_token_is_256_bits_of_url_safe_text_paired_with_its_digest() -> None:
-    raw, raw_digest = tokens.mint()
+    minted = tokens.mint()
 
-    assert re.fullmatch(r"[A-Za-z0-9_-]{43}", raw)
-    assert raw_digest == tokens.digest(raw)
-    assert re.fullmatch(r"[0-9a-f]{64}", raw_digest)
+    assert re.fullmatch(r"[A-Za-z0-9_-]{43}", minted.raw)
+    assert minted.digest == tokens.digest(minted.raw)
+    assert re.fullmatch(r"[0-9a-f]{64}", minted.digest)
 
 
 def test_no_two_mints_repeat() -> None:
     minted = [tokens.mint() for _ in range(100)]
 
-    assert len({raw for raw, _ in minted}) == 100
-    assert len({stored for _, stored in minted}) == 100
+    assert len({m.raw for m in minted}) == 100
+    assert len({m.digest for m in minted}) == 100
+
+
+@pytest.mark.parametrize("mint", [tokens.mint, tokens.mint_code], ids=["token", "code"])
+def test_the_raw_value_and_its_digest_come_back_by_name_and_not_by_position(mint) -> None:
+    """Both halves are ``str``: a bare pair lets a caller swap them and store the raw value
+    in ``token_hash`` with the type checker satisfied. Named, the swap has to be spelled."""
+    minted = mint()
+
+    assert isinstance(minted, tokens.Minted)
+    assert minted._fields == ("raw", "digest")
+    assert minted.digest == tokens.digest(minted.raw)
 
 
 # --- digest ---------------------------------------------------------------------------
@@ -148,13 +159,13 @@ def test_expiry_refuses_what_it_cannot_date_honestly(call, error) -> None:
 
 def test_a_code_is_six_digits_and_keeps_its_leading_zeros(monkeypatch) -> None:
     for _ in range(50):
-        assert re.fullmatch(r"[0-9]{6}", tokens.mint_code()[0])
+        assert re.fullmatch(r"[0-9]{6}", tokens.mint_code().raw)
 
     monkeypatch.setattr(secrets, "randbelow", lambda bound: 42)
-    code, code_digest = tokens.mint_code()
+    minted = tokens.mint_code()
 
-    assert code == "000042"
-    assert code_digest == tokens.digest("000042")
+    assert minted.raw == "000042"
+    assert minted.digest == tokens.digest("000042")
 
 
 def test_a_code_is_drawn_by_secrets_from_the_whole_million(monkeypatch) -> None:
@@ -168,7 +179,7 @@ def test_a_code_is_drawn_by_secrets_from_the_whole_million(monkeypatch) -> None:
 
     monkeypatch.setattr(secrets, "randbelow", draw)
 
-    assert [tokens.mint_code()[0] for _ in range(2)] == ["000000", "999999"]
+    assert [tokens.mint_code().raw for _ in range(2)] == ["000000", "999999"]
     assert bounds == [10**6, 10**6]
 
 

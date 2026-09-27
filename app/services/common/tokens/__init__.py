@@ -15,8 +15,8 @@ target id would trade every one of those keys for a string the database cannot c
 ``docs/shema.md`` §6.7.
 
 **The raw value leaves once.** :func:`mint` and :func:`mint_code` hand back the raw value and
-its digest; the caller stores the digest and returns the raw value in the response that
-created the row, and nowhere else.
+its digest as a :class:`Minted`, by name; the caller stores the digest and returns the raw
+value in the response that created the row, and nowhere else.
 
 **The module reads no configuration.** How long a token may live is its purpose's key in
 ``app/core/config.py``, one key per purpose, read by the service that mints it and passed to
@@ -27,9 +27,11 @@ from app.services.common.tokens.digest import digest
 from app.services.common.tokens.expiry import expiry
 from app.services.common.tokens.mint import mint
 from app.services.common.tokens.mint_code import mint_code
+from app.services.common.tokens.minted import Minted
 from app.services.common.tokens.status import TokenRow, TokenStatus, status
 
 __all__ = [
+    "Minted",
     "TokenRow",
     "TokenStatus",
     "digest",
