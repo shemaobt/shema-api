@@ -33,7 +33,17 @@ probe look different in those fields, and the id is what somebody allowed to kno
 joins against.
 
 **Reads and writes take the same value.** A regional holder who may read a region may write
-it; the product has no third answer, so nothing here offers one.
+its records; the product has no third answer about *which records*, so nothing here offers one.
+*Which fields* is a second question, and since OBT-528 it has an owner of its own: the place and
+the flag are coordination's to write, and :func:`readership` below is where coordination is
+decided.
+
+**Who reads the truth is decided here too (OBT-528), in a function of its own.** GATE-04 gave
+the truth of a sensitive place to coordination — ``globalStrategist``, and ``coordinator`` on a
+project in a region of their scope — and the region half of that sentence is this file's.
+:func:`readership` answers it from the grant and the scope a request already read, as a
+:class:`Readership` the services ask per project; :func:`visible_projects` is untouched, because
+who may *reach* a project and who may read its place are two different questions.
 """
 
 from __future__ import annotations
@@ -51,6 +61,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_region import ShemaUserRegion
+from app.models.shema_privacy import ShemaReader
 from app.services import authorization_service
 
 logger = logging.getLogger(__name__)
@@ -113,6 +124,13 @@ FORM_DOOR_ROLES = (GESTOR_ROLE, MESA_ROLE)
 #: keys follow widest-first among themselves (Admin, Gestor, Mesa — OBT-522's hierarchy), and
 #: the reserved ``equipe`` closes the list. The frontend's ``SESSION_ROLES`` is this tuple.
 ROLE_PRECEDENCE = (*ROLE_KEYS, ADMIN_ROLE, GESTOR_ROLE, MESA_ROLE, EQUIPE_ROLE)
+
+#: The roles that read the truth of a sensitive place in **every** region (OBT-528).
+#: ``globalStrategist`` is GATE-04's own answer. ``admin`` is here on the issue's reading — the
+#: Admin *vê tudo*, GATE of 23/set — and it is a **hypothesis to confirm with Daniel**: undoing
+#: it is deleting it from this tuple. ``coordinator`` is not here because it reads the truth
+#: only in its own regions (:func:`readership`).
+COORDINATION_EVERYWHERE = (GLOBAL_ROLE, ADMIN_ROLE)
 
 
 class RegionScope(NamedTuple):
@@ -356,6 +374,65 @@ def reaches(scope: RegionScope, region_key: ShemaRegionKey | str) -> bool:
         return True
     key = region_key.value if isinstance(region_key, ShemaRegionKey) else region_key
     return key in scope.regions
+
+
+class Readership(NamedTuple):
+    """Where a caller reads the truth of a sensitive place — OBT-528's reader, by region.
+
+    Carried as a :class:`RegionScope` because the question is the scope's own shape — *does
+    this reach that region* — and :func:`reaches` is the one spelling of it. It is **not** the
+    caller's scope: every project a caller reaches is read, and this says in which of them the
+    place is read as it is.
+
+    Region rows are per account and not per role (``shema_user_regions``), so an account holding
+    ``coordinator`` and ``obtLab`` is coordination in every region it reaches. The org chart is
+    not consulted: a seat names who holds a role, and the grant is what the guards read.
+    """
+
+    #: The regions this caller coordinates: all of them, their own, or none.
+    coordination: RegionScope
+
+    def reader_of(self, region_key: ShemaRegionKey | str) -> ShemaReader:
+        """``coordination`` for a project in a region this caller coordinates, ``other`` else."""
+        if reaches(self.coordination, region_key):
+            return ShemaReader.COORDINATION
+        return ShemaReader.OTHER
+
+    @property
+    def coordinates_anything(self) -> bool:
+        """Whether this caller coordinates any region — who a notice about a collection is for."""
+        return self.coordination.global_ or bool(self.coordination.regions)
+
+
+#: A readership that coordinates nothing: every project reads as ``other``. For a caller that
+#: builds cards and never shows their place — the notification panel's stale reading, whose
+#: entries are an output path.
+NO_COORDINATION = Readership(coordination=RegionScope(global_=False, regions=frozenset()))
+
+
+def readership(
+    scope: RegionScope, granted: AbstractSet[str], *, platform_admin: bool
+) -> Readership:
+    """Where this caller reads the truth, from the grant and the scope already read.
+
+    No query of its own: the caller has already resolved both, once per request
+    (``app/api/shema/_deps.py``), and a second read of one fact is the defect
+    :func:`scope_from_roles` was written to close.
+
+    * An installation admin, a ``globalStrategist`` and — the hypothesis in
+      :data:`COORDINATION_EVERYWHERE` — an ``admin`` coordinate every region: an installation
+      admin passes every guard in this repository, and reading less than the guards let it
+      reach would be a stricter rule on one route than on the route beside it.
+    * A ``coordinator`` coordinates the regions of its own scope — GATE-04's *cada um na sua
+      região*.
+    * Everybody else coordinates nothing, which is the fail-closed floor: a reader nobody named
+      reads the region.
+    """
+    if platform_admin or any(role in granted for role in COORDINATION_EVERYWHERE):
+        return Readership(coordination=RegionScope(global_=True, regions=frozenset()))
+    if COORDINATOR_ROLE in granted:
+        return Readership(coordination=scope)
+    return NO_COORDINATION
 
 
 def refuse_out_of_scope(

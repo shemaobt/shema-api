@@ -23,13 +23,16 @@ from app.models.shema_record import ShemaProjectRecord
 
 CONTRACT = json.loads((Path(__file__).parent / "projectContract.json").read_text(encoding="utf-8"))
 
-#: The one key the response carries that ``Project`` does not.
+#: The keys the response carries that ``Project`` does not — all additive, so a client that
+#: ignores them sees exactly ``Project``.
 #:
-#: BE-05 added it to the card with the argument this inherits: the console stops computing
-#: FE-44 §7's nine derivations and reads the server's answer, so *is this project stale* has
-#: one implementation and the ficha's badge cannot disagree with the list's. It is additive —
-#: a client that ignores it sees exactly ``Project``.
-ADDED_BY_THE_SERVER = {"derived"}
+#: ``derived`` is BE-05's, added to the card with the argument this inherits: the console stops
+#: computing FE-44 §7's nine derivations and reads the server's answer, so *is this project
+#: stale* has one implementation and the ficha's badge cannot disagree with the list's.
+#: ``locationWithheld`` and ``readAs`` are OBT-528's: the record became a leaving shape built for
+#: its reader, and every leaving shape carries the marker; ``readAs`` tells the console whether
+#: the payload in hand is the truth or the region, so it does not keep a second copy of the rule.
+ADDED_BY_THE_SERVER = {"derived", "locationWithheld", "readAs"}
 
 
 def _wire_keys() -> set[str]:
@@ -64,8 +67,12 @@ def test_three_columns_that_exist_stay_off_the_wire() -> None:
 
 
 def test_the_base_is_the_team_under_the_contracts_second_name() -> None:
-    """One column, two keys — BE-02 collapsed them and FE-44 §5.1 asks for both on the wire."""
-    record = ShemaProjectRecord(id="x", team="YWAM Porto Velho")
+    """One column, two keys — BE-02 collapsed them and FE-44 §5.1 asks for both on the wire.
+
+    The record says it is not sensitive: since OBT-528 one that cannot say fails closed, as every
+    leaving shape does, and its base would read ``""`` (``test_reader.py`` pins that half).
+    """
+    record = ShemaProjectRecord(id="x", team="YWAM Porto Velho", sensitive_country=False)
     payload = record.model_dump(by_alias=True)
     assert payload["team"] == payload["ywamBase"] == "YWAM Porto Velho"
 
@@ -85,7 +92,7 @@ def test_the_three_org_chart_names_are_empty_and_cannot_be_anything_else() -> No
 
 def test_coordinates_are_longitude_first_and_survive_the_response_model() -> None:
     """``[0, 0]`` is *no coordinate* and that is a fact about the pair, so the pair travels."""
-    record = ShemaProjectRecord(id="x", latitude=-10.5, longitude=-60.25)
+    record = ShemaProjectRecord(id="x", latitude=-10.5, longitude=-60.25, sensitive_country=False)
     assert record.model_dump(by_alias=True)["coords"] == (-60.25, -10.5)
 
 

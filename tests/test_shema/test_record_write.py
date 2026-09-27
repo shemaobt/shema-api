@@ -105,14 +105,15 @@ async def test_the_record_read_answers_the_whole_shape_with_its_version(
     assert response.headers["ETag"] == '"1"'
 
 
-async def test_the_record_read_carries_the_true_place_of_a_sensitive_project(
+async def test_the_regions_coordinator_reads_the_true_place_of_a_sensitive_project(
     client, db_session, shema_app, headers
 ) -> None:
-    """FE-44 §9.0: the record is a **coordination** surface and is the one read that does.
+    """The region's coordinator reads the true place — GATE-04's coordination (OBT-528).
 
-    Hiding the country from the record's own author is data loss rather than privacy (§8.1
-    rule 5); the collection read beside it withholds the same row, and
-    ``test_privacy.py`` is where that half is pinned.
+    Hiding the country from the people who coordinate the project is data loss rather than
+    privacy (§8.1 rule 5). The marker travels beside the truth, saying the place is withheld
+    from everything that leaves, and ``readAs`` says whose payload this is;
+    ``test_reader.py`` pins the other readers.
     """
     project = await make_shema_project(
         db_session, project_id="sensivel-um", region_key=ShemaRegionKey.SOUTH_AMERICA
@@ -125,7 +126,8 @@ async def test_the_record_read_carries_the_true_place_of_a_sensitive_project(
     body = (await client.get(f"{PROJECTS}/sensivel-um", headers=headers)).json()
     assert body["location"] == "Colombia"
     assert body["team"] == "YWAM Bogotá"
-    assert "locationWithheld" not in body
+    assert body["locationWithheld"] is True
+    assert body["readAs"] == "coordination"
 
 
 async def test_a_record_in_another_region_is_refused_as_absent(

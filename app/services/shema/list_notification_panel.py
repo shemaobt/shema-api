@@ -32,7 +32,7 @@ from app.services.notifications import get_shema_app_id, list_notifications
 from app.services.shema._health_audience import reads_assessments
 from app.services.shema._health_notice import EVENT_TYPE as HEALTH_EVENT_TYPE
 from app.services.shema._needs import URGENT_NEED_EVENT
-from app.services.shema._scope import RegionScope
+from app.services.shema._scope import NO_COORDINATION, RegionScope
 from app.services.shema._submission_notices import ARRIVAL_EVENT, PRAYER_EVENT
 from app.services.shema.browse_projects import browse_projects
 from app.utils.shema_derivations import StaleStatus
@@ -82,8 +82,14 @@ def _stale_id(card: ShemaProjectCard) -> str:
 async def _stale_entries(
     db: AsyncSession, scope: RegionScope, *, today: date
 ) -> list[ShemaNotificationEntry]:
+    # The entries name no place, and a notice is an output path: the cards are built for a
+    # reader who coordinates nothing, so a later edit to the body cannot reach a truth.
     page = await browse_projects(
-        db, scope, ShemaProjectQuery(stale=StaleStatus.CRITICO), today=today
+        db,
+        scope,
+        ShemaProjectQuery(stale=StaleStatus.CRITICO),
+        readership=NO_COORDINATION,
+        today=today,
     )
     stamp = datetime.combine(today, time.min, tzinfo=UTC)
     entries = []

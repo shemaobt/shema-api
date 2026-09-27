@@ -45,7 +45,12 @@ from app.models.shema_forms import ReceivedSubmission, SubmissionImport
 from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
 from app.services.shema._progress import ProgressSource
-from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
+from app.services.shema._scope import (
+    Readership,
+    RegionScope,
+    refuse_out_of_scope,
+    visible_projects,
+)
 from app.services.shema._submission_archive import archive_submission, archived_answers
 from app.services.shema.read_submission import as_received
 from app.services.shema.save_project import save_project
@@ -82,6 +87,7 @@ async def _apply(
     definition: ShemaFormDefinition,
     answers: dict[str, Any],
     *,
+    readership: Readership,
     user: User,
     expected_version: int,
     day: date,
@@ -94,6 +100,10 @@ async def _apply(
     commit afterwards is for the case ``save_project`` returns without one — a submission whose
     answers moved nothing is still applied, and saying so is the difference between *done* and
     *forgotten*.
+
+    The write goes through ``save_project`` as the caller's own, ``readership`` included: an
+    import is a person writing the record, and what that person may write is the record's rule
+    and not the form's.
     """
     submission.applied_at = datetime.now(UTC)
     try:
@@ -102,6 +112,7 @@ async def _apply(
             scope,
             project.id,
             record_update(definition, answers),
+            readership=readership,
             user=user,
             expected_version=expected_version,
             day=day,
@@ -138,6 +149,7 @@ async def import_submission(
     payload_in: SubmissionImport,
     *,
     payload_bytes: bytes,
+    readership: Readership,
     user: User,
     app_key: str,
     expected_version: int,
@@ -178,6 +190,7 @@ async def import_submission(
             submission,
             answered,
             archived_answers(submission),
+            readership=readership,
             user=user,
             expected_version=expected_version,
             day=day,
@@ -190,6 +203,7 @@ async def apply_submission(
     scope: RegionScope,
     submission_id: str,
     *,
+    readership: Readership,
     user: User,
     expected_version: int,
     day: date,
@@ -224,6 +238,7 @@ async def apply_submission(
             submission,
             definition,
             archived_answers(submission),
+            readership=readership,
             user=user,
             expected_version=expected_version,
             day=day,
