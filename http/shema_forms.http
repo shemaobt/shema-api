@@ -2,8 +2,9 @@
 #
 # The loop this file walks is the product's own, and it has five steps: a coordinator mints a
 # link, sends it, the leader answers, a coordinator imports, the system archives. Two of the
-# five happen with no `Authorization` header at all — they are the only routes in this module
-# that do, and they are the reason to run this file by hand rather than trust the tests.
+# five happen with no `Authorization` header at all — with the intercessor's exit link
+# (`shema_people.http`), the only routes in this module that do, and they are the reason to run
+# this file by hand rather than trust the tests.
 #
 # Four things are worth watching while you run it:
 #

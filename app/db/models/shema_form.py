@@ -1,4 +1,4 @@
-"""Received submissions and the leader's intake link — the module's two unauthenticated seams.
+"""Received submissions and the leader's intake link — the leader link's two unauthenticated seams.
 
 ``docs/shema.md`` §5.12 and FE-44 §5.7 settle what these hold before GATE-03 settles the file
 format. Four of the rules are not open and are built on here: the import is **idempotent and

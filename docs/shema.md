@@ -284,7 +284,8 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
 | `app/api/shema/forms.py` | BE-12 | Submissions, the Pulse artifact, intake links, and the two **unauthenticated** intake routes. |
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
-| `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. |
+| `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. OBT-531 added `POST …/{id}/review`. |
+| `app/api/shema/intercessor_exit.py` | **OBT-531, built** | The module's **second** unauthenticated seam: `GET`/`POST /intercessors/leave/{token}`, the intercessor's exit link. §6.4's OBT-531 note. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
 | `app/api/shema/session.py` | BE-03 **· built** | `GET /api/shema/session` — §6.3. |
@@ -368,7 +369,7 @@ nothing in column 3 imports `fastapi`.
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
-| **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the one deliberate hole, and it is a router-level fact. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
+| **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the first deliberate hole, and it is a router-level fact. The intercessor's exit link (OBT-531) is the second, of the same shape. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
 
 ---
 
@@ -662,7 +663,7 @@ behaviour on it.
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
 | 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). |
 | 5.6 | **Prayer** | *(none for the wall)* | BE-09 | **The wall is derived, never stored**, which is what makes withdrawal free: moving a request back to `coordenacao` removes it from the next query with no cleanup step. The three columns live on the record; `_consent.py` is their only reader. If BE-09 ever stores requests, a withdrawn one is **deleted from that store**, never flagged and retained. |
-| 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. |
+| 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. **OBT-531:** a contact untouched for more than a year — the latest of entry, review and send — is **flagged for review**, served as `reviewDue` and never derived by the client; and a person with no account **leaves through an exit link**, which is the same erasure. |
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
 | 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. **Whether the definitions are a table at all is Open · GATE-02** (§9.2). |
 | 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads` | BE-02, BE-15 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
@@ -922,6 +923,42 @@ absent from **all four** output paths — the wall, exports, the ETEN report and
 > the rule above withholds a **location**. Whether a person's name is itself a location in a
 > dangerous place belongs to §9.4's fourth gate, whose own instruction is to raise it rather
 > than invent it surface by surface.
+
+> **OBT-531 answered §10 item 8's other two questions**, with the client's answers of 22/sep,
+> and every file is still under the fourth owner: `_directory.py` names the new table too.
+>
+> - **A contact nobody has used in a year is reviewed, not expired** (4.3). `shema_intercessors`
+>   gained `reviewed_at` and `last_sent_at` — the second is BE-09's to write when the Prayer Pulse
+>   goes out, NULL until then — and `_directory.review_due` is the one reading: due when more
+>   than 365 days have passed since the latest of `added_at`, `reviewed_at` and `last_sent_at`.
+>   The list serves it as `reviewDue`; `POST /prayer/intercessors/{id}/review` (`resourceCircle`)
+>   stamps the review. A review is explicit — an edit, a read of the contact or a re-stated
+>   consent does not reset the year.
+> - **The people no list may show are counted, not reviewed.** Somebody with no `directory`
+>   consent is on no screen, so nobody can review them there; `withheldReviewDueCount` is a
+>   number beside `withheldCount`, read from three dates and nothing else. What to do with them
+>   is a question for the client, raised in the pull request.
+> - **A person with no account leaves through an exit link** (4.2, *"ainda não existe
+>   caminho"*). `shema_intercessor_exit_links` keeps one row per link minted — the digest only,
+>   §6.7's module, `ON DELETE CASCADE` from the person — and `leave_intercessor.issue_exit_link`
+>   is what BE-09 calls once per send. **No link is revoked by a newer one**: each lives
+>   `shema_intercessor_exit_link_days` (365), so the reader of an older message can still leave,
+>   and a link that leaks can only remove somebody, which is the safe direction. The issue's
+>   *rotated at each failed confirmation* is read as *every send carries a fresh token and none
+>   is ever reused*; burning a link on a failed confirmation could only strand the person who
+>   wants out, and that reading is raised in the pull request rather than built.
+> - **The confirmation page is the console's, and the API answers 204.** `GET
+>   /api/shema/intercessors/leave/{token}` reads and changes nothing — a link previewer opens
+>   every URL — and `POST` erases the person, their consents and every link, by the same
+>   `_directory._erase` removal uses. Every link that opens nothing gets **one** sentence, so a
+>   forwarded link does not tell whoever holds it whether the person is still in the network.
+>   Both routes are limited **per address** with `shared_limit` and a fixed scope: slowapi's
+>   default scope is the URL, which here carries the token, so `@limiter.limit` would have been
+>   per address *and token* — and would keep the raw token in the limiter's key. The intake
+>   routes have that shape today; it is named in the pull request, not changed here.
+> - **The batch consent waits for the client** (4.1). `scripts/shema_backfill_network_consent.py`
+>   takes the basis as an argument, inserts `network` only where it is missing and never
+>   restamps an answer that stands, and nothing runs it.
 #### What BE-04 built
 
 **The rule is not in `_redaction.py`. It is in `app/models/shema_privacy.py`, and it is
@@ -1055,8 +1092,9 @@ the payload beside it withholds.
 
 ### 6.6 Seam E — the unauthenticated intake — **Decided**
 
-`GET /api/shema/intake/{token}` and `POST /api/shema/intake/{token}` are the only routes in
-this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
+`GET /api/shema/intake/{token}` and `POST /api/shema/intake/{token}` were the first routes in
+this module with no `Authorization` requirement, by FE-44 §9.0; the intercessor's exit link
+(OBT-531, §6.4) is the second pair and follows the same three rules:
 
 - **The token is the whole guard**, so the guard is a **service function**
   (`verify_intake_token`) and not a router condition — the rule then holds for any future
@@ -1153,7 +1191,10 @@ reinvents its hash and its states is how one of them ends up with no expiry.
   `app/services/device/claim_code.py` already records for the Room.
 
 **What moved, and what stays.** The leader link moved: `_intake_tokens.py` mints, looks up and
-reads state through the module, and `tests/test_shema/` passed unedited. Four stay where they
+reads state through the module, and `tests/test_shema/` passed unedited. **The intercessor's
+exit link was born on it** (OBT-531): `leave_intercessor.py` mints and digests, `_directory.py`
+stores and reads the digest, and a link that is never revoked nor used-and-kept is shown to
+`status` with those two stated as `None` rather than as two columns nothing writes. Four stay where they
 are:
 
 - **The access invite** (BE-17, `create_invite.py`, `accept_invite.py`, `_invite_status.py`)
@@ -1404,7 +1445,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 5 | ~~Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3).~~ **Answered by BE-13: the network is BE-13's**, because INT-10 is blocked by OBT-402 and not by OBT-398 and OBT-402's whole Context section is about that table. The frozen paths did not move. §1.3 C3 carries the argument. | ~~BE-09 / BE-13~~ **closed** |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
 | 7 | ~~Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1).~~ **Answered by BE-16: as-is, with `approved_units_unverified` set on every migrated record.** Zero would have discarded the only number there is, and as-is alone would have credited approvals nobody made; the flag says the number came from the export rather than from an approval, which is true of all 127 and needs no second rule for the 105 where it is zero anyway. **BE-11 reads it to tell a migrated count from a typed one**, and the write path that lets somebody approve a chapter for real is the one that clears it. | ~~BE-16~~ **closed** |
-| 8 | The three privacy questions the intercessor network cannot ship without. **The first — what consent was given and how it is evidenced — is answered by BE-13**, as `shema_intercessor_consents`: a row per person per context, with a non-empty `basis`, and a create that cannot store a person without one. **The other two are still owed and neither is engineering's**: how someone outside the platform asks to be removed when they cannot log in, and what happens to a contact nobody has used in a year. **Shipping more storage before answering them is how silent retention starts.** | **BE-13** (first), **the client** (the other two) |
+| 8 | The three privacy questions the intercessor network cannot ship without. **The first — what consent was given and how it is evidenced — is answered by BE-13**, as `shema_intercessor_consents`: a row per person per context, with a non-empty `basis`, and a create that cannot store a person without one. ~~The other two are still owed and neither is engineering's: how someone outside the platform asks to be removed when they cannot log in, and what happens to a contact nobody has used in a year.~~ **Answered by the client on 22/sep and built by OBT-531** (§6.4's OBT-531 note): an exit link with no login, and a review after a year. **The residual:** a person who withheld `directory` consent cannot be reviewed on any screen — they are counted (`withheldReviewDueCount`), and what to do with them is the client's to say. | **BE-13** (first), **OBT-531** (the other two; the residual is the client's) |
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |

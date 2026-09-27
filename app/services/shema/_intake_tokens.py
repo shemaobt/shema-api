@@ -120,7 +120,7 @@ def link_status(link: ShemaIntakeLink, *, now: datetime | None = None) -> tokens
 
 
 async def verify_intake_token(db: AsyncSession, raw_token: str) -> ShemaIntakeLink:
-    """The link this token opens, or a refusal — the module's one unauthenticated guard.
+    """The link this token opens, or a refusal — the leader link's whole unauthenticated guard.
 
     Composes all three checks, which is the reason it is one function: a caller that could ask
     *which link is this* without asking *is it still good* is a caller that eventually will,
