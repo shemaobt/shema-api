@@ -109,6 +109,7 @@ from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_notification import ShemaNotificationPrefs, ShemaNotificationRead
 from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
 from app.db.models.shema_progress import ShemaProgressEntry
+from app.db.models.shema_project_member import ShemaProjectMember
 from app.db.models.shema_region import ShemaUserRegion
 from app.db.models.sound_necklace import (
     GranularityLevel,
@@ -226,6 +227,7 @@ __all__ = [
     "ShemaPrayerVisibility",
     "ShemaProgressEntry",
     "ShemaProject",
+    "ShemaProjectMember",
     "ShemaProjectStatus",
     "ShemaRecordEdit",
     "ShemaRegionKey",

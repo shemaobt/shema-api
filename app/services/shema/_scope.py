@@ -43,13 +43,14 @@ from collections.abc import Collection, Sequence
 from collections.abc import Set as AbstractSet
 from typing import NamedTuple
 
-from sqlalchemy import ColumnElement, Select, false, select, true
+from sqlalchemy import ColumnElement, Select, false, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
+from app.db.models.shema_project_member import ShemaProjectMember
 from app.db.models.shema_region import ShemaUserRegion
 from app.services import authorization_service
 
@@ -88,10 +89,12 @@ ADMIN_ROLE = "admin"
 GESTOR_ROLE = "gestor"
 MESA_ROLE = "mesa"
 
-#: **Reserved.** OBT-522 retires ``equipe`` as a form role and OBT-524 makes it a project
-#: membership in the PME; it is in the vocabulary so the console already accepts it, and no
-#: source emits it yet. The form's own ``equipe`` grant — which ``auto_approve`` hands to
-#: everybody who registers there — deliberately does not count (:data:`FORM_DOOR_ROLES`).
+#: **A project membership, not a grant.** OBT-522 retires ``equipe`` as a form role, and since
+#: OBT-524 the session answers it for an account that is a live member of at least one project
+#: (``shema_project_members``, :func:`holds_membership`) — which is what lets a member with no
+#: role anywhere through the PME's door. The form's own ``equipe`` grant — which
+#: ``auto_approve`` hands to everybody who registers there — still does not count
+#: (:data:`FORM_DOOR_ROLES`): only the PME's link does.
 EQUIPE_ROLE = "equipe"
 
 #: What the ``shema`` app seeds, and which of its grants the session counts.
@@ -412,7 +415,7 @@ def refuse_out_of_scope(
 async def session_roles(
     db: AsyncSession, user_id: str, *, app_key: str, form_app_key: str
 ) -> tuple[str, ...]:
-    """The roles ``GET /api/shema/session`` answers, from **one** read of both apps.
+    """The roles ``GET /api/shema/session`` answers, from **one** read of both apps' grants.
 
     ``list_roles`` asked without an app key answers every live grant the account holds, so
     the door and the body of the session are one query rather than one per app — and, being
@@ -421,12 +424,19 @@ async def session_roles(
     from ``form_app_key``. A key another product happens to share — six of them seed an
     ``admin`` — is somebody else's role and never reaches this list.
 
+    **And one read of the memberships** (OBT-524): a live row in ``shema_project_members``
+    adds :data:`EQUIPE_ROLE`, which is how a project member holding no grant at all passes the
+    door to the two reads a member has. It is not a grant and ``list_roles`` does not see it,
+    so it is a second query — but still one per request, whichever of the door's routes asked.
+
     Read fresh, like :func:`granted_roles`, and for the same half: the session is asked once
     per sign-in and decides what the console believes it may show.
     """
     counted = {app_key: SHEMA_APP_ROLES, form_app_key: FORM_DOOR_ROLES}
     pairs = await authorization_service.list_roles(db, user_id)
-    held = frozenset(role for app, role in pairs if role in counted.get(app, ()))
+    held = {role for app, role in pairs if role in counted.get(app, ())}
+    if await holds_membership(db, user_id):
+        held.add(EQUIPE_ROLE)
     return roles_from(held)
 
 
@@ -448,3 +458,72 @@ def role_from(granted: AbstractSet[str]) -> str | None:
     first — and answering a role nobody granted is the wrong half to guess on.
     """
     return next(iter(roles_from(granted)), None)
+
+
+# --- the member's reach (OBT-524) -------------------------------------------------------------
+#
+# A second kind of reach beside the region, and it lives here for this file's first paragraph's
+# reason: the module's only ``select(ShemaProject)`` is in this file, so a query that could hand a
+# member somebody else's project is not a thing a service can write by forgetting something.
+# ``docs/shema.md`` §6.8 is the design.
+
+
+def _live_memberships(user_id: str) -> Select[tuple[str]]:
+    """The ids of the projects ``user_id`` is a live member of."""
+    return select(ShemaProjectMember.project_id).where(
+        ShemaProjectMember.user_id == user_id,
+        ShemaProjectMember.removed_at.is_(None),
+    )
+
+
+async def holds_membership(db: AsyncSession, user_id: str) -> bool:
+    """Whether ``user_id`` is a live member of any project — the session's :data:`EQUIPE_ROLE`."""
+    found = await db.execute(_live_memberships(user_id).limit(1))
+    return found.scalar_one_or_none() is not None
+
+
+def member_projects(user_id: str) -> Select[tuple[ShemaProject]]:
+    """The projects ``user_id`` is a live member of — what ``GET /api/shema/me/projects`` lists.
+
+    **A membership is not a region, and nothing here composes it into**
+    :func:`visible_projects`. A member reaches their projects' ids and names and their rosters;
+    the collection, the counts and the record stay where the region scope puts them, so a member
+    with no regional role reaches no other project — OBT-524's DoD, as a property of there being
+    no statement that could. What else a member is shown of their own project is OBT-544's to
+    decide, and composing this statement is how it would.
+    """
+    return select(ShemaProject).where(ShemaProject.id.in_(_live_memberships(user_id)))
+
+
+class RosterReach(NamedTuple):
+    """How far a caller reaches over the projects' **rosters** — a type of its own, on purpose.
+
+    Three readers and no fourth: the caller's region ``scope``, their own live memberships, and
+    the Admin, who reaches every roster. Membership is the Admin's to write (OBT-522, *só o admin
+    escreve*), and the Admin reaches no region (OBT-523): confined to the regions it holds, the one
+    role that writes rosters could write none.
+
+    **Not a** :class:`RegionScope`, and that is the guard. A global ``RegionScope`` handed to the
+    Admin would be one wrong annotation away from ``visible_projects``, ``read_record`` or
+    ``browse_projects`` — the whole collection and every record for an account that reaches no
+    region. A ``RosterReach`` cannot be passed to any of them, and mypy says so.
+    """
+
+    #: The caller's region scope, exactly as :func:`scope_from_roles` answered it.
+    scope: RegionScope
+    #: Whether the caller holds ``admin`` in ``shema`` — every roster, and nothing more.
+    admin: bool
+
+
+def roster_projects(reach: RosterReach, user_id: str) -> Select[tuple[ShemaProject]]:
+    """The projects whose members this caller may read — or, for the Admin, write.
+
+    Whoever the scope reaches, plus the projects ``user_id`` is a live member of, plus every
+    project for the Admin. A project outside all three is absent, and its callers refuse it as
+    :func:`refuse_out_of_scope` does — the same 404 an id that does not exist gets.
+    """
+    if reach.admin:
+        return select(ShemaProject)
+    return select(ShemaProject).where(
+        or_(within_scope(reach.scope), ShemaProject.id.in_(_live_memberships(user_id)))
+    )
