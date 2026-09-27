@@ -1,24 +1,33 @@
-"""``GET /api/shema/session`` — the shape FE-44 §9.13 froze, and the name rule BE-03 decided.
+"""``GET /api/shema/session`` — the shape FE-44 §9.13 froze, the name rule BE-03 decided, and
+the roles list OBT-523 added.
 
 The endpoint exists because ``GET /api/auth/my-roles`` cannot answer it: the platform's
-grant has no region. What it adds over the platform's session is the region and the org
-chart's name, and each of the three fields is asserted here against the place that owns it.
+grant has no region. What it adds over the platform's session is the region, the org chart's
+name and the roles an account holds across the PME's two apps, and each field is asserted
+here against the place that owns it. Who gets through the door is ``test_door.py``.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from app.api.shema._deps import APP_KEY
+from app.api.shema._deps import APP_KEY, FORM_APP_KEY
 from app.db.models.shema_enums import ShemaRegionKey, ShemaRoleKey
 from app.db.models.shema_org_chart import ShemaRegionTeam
 from app.models.shema_session import ShemaSession
 from app.services.shema import get_session, set_region_scope
+from app.services.shema._scope import ROLE_KEYS, session_roles
 from tests.baker import make_user
 from tests.test_shema.conftest import SESSION, auth_header, grant, make_scoped_user
 
 AFRICA = ShemaRegionKey.AFRICA
 ASIA = ShemaRegionKey.ASIA
+
+
+async def _session(db_session, user) -> ShemaSession:
+    """The service, fed what the door would have read — the two halves of the real route."""
+    roles = await session_roles(db_session, user.id, app_key=APP_KEY, form_app_key=FORM_APP_KEY)
+    return await get_session(db_session, user, roles=roles)
 
 
 async def seat(db_session, region: ShemaRegionKey, role: ShemaRoleKey, holder: str) -> None:
@@ -35,8 +44,8 @@ async def seat(db_session, region: ShemaRegionKey, role: ShemaRoleKey, holder: s
 # --- the wire shape ------------------------------------------------------------------
 
 
-async def test_the_response_carries_the_three_frozen_keys(db_session, client, shema_app):
-    """``{role, regionScope, name}``, camelCase, exactly as the console reads it.
+async def test_the_response_carries_the_four_keys(db_session, client, shema_app):
+    """``{role, roles, regionScope, name}``, camelCase, exactly as the console reads it.
 
     The ``regionScope`` spelling is asserted on the JSON and not on the Python attribute,
     because the alias is the only thing standing between the house's snake_case and a
@@ -49,8 +58,9 @@ async def test_the_response_carries_the_three_frozen_keys(db_session, client, sh
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
 
     assert res.status_code == 200
-    assert sorted(res.json()) == ["name", "regionScope", "role"]
+    assert sorted(res.json()) == ["name", "regionScope", "role", "roles"]
     assert res.json()["role"] == "coordinator"
+    assert res.json()["roles"] == ["coordinator"]
     assert res.json()["regionScope"] == ["africa"]
 
 
@@ -108,7 +118,7 @@ async def test_one_role_is_answered_for_an_account_holding_two(db_session, shema
     )
     await grant(db_session, user, shema_app, "coordinator")
 
-    assert (await get_session(db_session, user, APP_KEY)).role == "coordinator"
+    assert (await _session(db_session, user)).role == "coordinator"
 
 
 async def test_the_global_strategist_wins_over_a_regional_role(db_session, shema_app):
@@ -117,13 +127,62 @@ async def test_the_global_strategist_wins_over_a_regional_role(db_session, shema
     )
     await grant(db_session, user, shema_app, "globalStrategist")
 
-    assert (await get_session(db_session, user, APP_KEY)).role == "globalStrategist"
+    assert (await _session(db_session, user)).role == "globalStrategist"
+
+
+async def test_roles_lists_every_held_role_in_precedence_and_role_is_the_first(
+    db_session, client, shema_app, form_app
+):
+    """The list is the answer and ``role`` its first entry. Granted in the wrong order on
+    purpose — the order on the wire is the precedence, not the order of the grants."""
+    user = await make_scoped_user(
+        db_session, shema_app, email="list@shema.test", role_key="resourceCircle", regions=[ASIA]
+    )
+    await grant(db_session, user, form_app, "mesa")
+    await grant(db_session, user, shema_app, "admin")
+    await grant(db_session, user, shema_app, "coordinator")
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert res.json()["roles"] == ["coordinator", "resourceCircle", "admin", "mesa"]
+    assert res.json()["role"] == res.json()["roles"][0]
+
+
+async def test_the_four_console_roles_outrank_the_new_ones(db_session, shema_app, form_app):
+    """``role`` is kept so no screen breaks: an account that reached the console before the
+    list existed keeps the one role the screens were drawn for, however much else it holds.
+    The narrowest of the four still beats the widest of the new."""
+    user = await make_scoped_user(
+        db_session, shema_app, email="outrank@shema.test", role_key="resourceCircle", regions=[]
+    )
+    await grant(db_session, user, shema_app, "admin")
+    await grant(db_session, user, form_app, "gestor")
+
+    assert (await _session(db_session, user)).role == "resourceCircle"
+
+
+async def test_an_account_holding_strategist_admin_and_gestor_keeps_the_role_it_has_today(
+    db_session, client, shema_app, form_app
+):
+    """The Admin OBT-522 describes holds all three. Before the list its session answered
+    ``globalStrategist`` and global scope; it still does, and the list says the rest."""
+    user = await make_scoped_user(
+        db_session, shema_app, email="threeroles@shema.test", role_key="globalStrategist"
+    )
+    await grant(db_session, user, shema_app, "admin")
+    await grant(db_session, user, form_app, "gestor")
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert res.json()["role"] == "globalStrategist"
+    assert res.json()["roles"] == ["globalStrategist", "admin", "gestor"]
+    assert res.json()["regionScope"] is None
 
 
 async def test_the_endpoint_needs_no_role_alias_of_its_own(db_session, client, shema_app):
     """Every one of the four personas reaches it. A role alias here would refuse three of
     the four the endpoint exists to describe."""
-    for role in ("globalStrategist", "coordinator", "obtLab", "resourceCircle"):
+    for role in ROLE_KEYS:
         user = await make_scoped_user(
             db_session, shema_app, email=f"{role.lower()}@persona.test", role_key=role
         )
@@ -146,7 +205,7 @@ async def test_the_name_comes_from_the_org_chart_seat(db_session, shema_app):
     user.display_name = "Some Account Name"
     await db_session.commit()
 
-    assert (await get_session(db_session, user, APP_KEY)).name == "Ana Coordenadora"
+    assert (await _session(db_session, user)).name == "Ana Coordenadora"
 
 
 async def test_renaming_the_seat_renames_the_session(db_session, shema_app):
@@ -156,13 +215,13 @@ async def test_renaming_the_seat_renames_the_session(db_session, shema_app):
     user = await make_scoped_user(
         db_session, shema_app, email="rename@shema.test", role_key="obtLab", regions=[ASIA]
     )
-    assert (await get_session(db_session, user, APP_KEY)).name == "Before"
+    assert (await _session(db_session, user)).name == "Before"
 
     row = await db_session.get(ShemaRegionTeam, (ASIA, ShemaRoleKey.OBT_LAB))
     row.holder_name = "After"
     await db_session.commit()
 
-    assert (await get_session(db_session, user, APP_KEY)).name == "After"
+    assert (await _session(db_session, user)).name == "After"
 
 
 async def test_the_global_strategist_falls_back_to_the_accounts_display_name(db_session, shema_app):
@@ -177,7 +236,7 @@ async def test_the_global_strategist_falls_back_to_the_accounts_display_name(db_
     user = await make_user(db_session, email="strategist@name.test", display_name="Karina")
     await grant(db_session, user, shema_app, "globalStrategist")
 
-    assert (await get_session(db_session, user, APP_KEY)).name == "Karina"
+    assert (await _session(db_session, user)).name == "Karina"
 
 
 async def test_an_unassigned_seat_falls_back_to_the_display_name(db_session, shema_app):
@@ -187,7 +246,7 @@ async def test_an_unassigned_seat_falls_back_to_the_display_name(db_session, she
     await grant(db_session, user, shema_app, "coordinator")
     await set_region_scope(db_session, user.id, [AFRICA])
 
-    assert (await get_session(db_session, user, APP_KEY)).name == "Sem Assento"
+    assert (await _session(db_session, user)).name == "Sem Assento"
 
 
 async def test_a_two_region_scope_falls_back_rather_than_picking_a_seat(db_session, shema_app):
@@ -199,7 +258,7 @@ async def test_a_two_region_scope_falls_back_rather_than_picking_a_seat(db_sessi
     await grant(db_session, user, shema_app, "coordinator")
     await set_region_scope(db_session, user.id, [AFRICA, ASIA])
 
-    assert (await get_session(db_session, user, APP_KEY)).name == "Own Name"
+    assert (await _session(db_session, user)).name == "Own Name"
 
 
 async def test_the_seat_of_another_role_in_the_same_region_is_not_read(db_session, shema_app):
@@ -210,7 +269,7 @@ async def test_the_seat_of_another_role_in_the_same_region_is_not_read(db_sessio
     await grant(db_session, user, shema_app, "obtLab")
     await set_region_scope(db_session, user.id, [AFRICA])
 
-    assert (await get_session(db_session, user, APP_KEY)).name == "Lab Person"
+    assert (await _session(db_session, user)).name == "Lab Person"
 
 
 async def test_the_name_is_null_when_there_is_no_seat_and_no_display_name(
@@ -232,8 +291,8 @@ async def test_the_name_is_null_when_there_is_no_seat_and_no_display_name(
 
 
 async def test_an_account_with_no_shema_role_is_refused(db_session, client, shema_app):
-    """``require_app_access`` refuses before the handler runs, so the endpoint never has to
-    answer ``role: null`` on the wire."""
+    """The door refuses before the handler runs, so the endpoint never has to answer
+    ``role: null`` to an account that holds nothing."""
     user = await make_user(db_session, email="outsider@shema.test")
 
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
@@ -246,7 +305,9 @@ async def test_the_service_answers_a_null_role_where_the_guard_has_not_run(db_se
     type carries it: answering a role nobody granted is the wrong half to guess on."""
     user = await make_user(db_session, email="ungranted@shema.test")
 
-    assert (await get_session(db_session, user, APP_KEY)).role is None
+    session = await _session(db_session, user)
+    assert session.role is None
+    assert session.roles == []
 
 
 # --- the model -----------------------------------------------------------------------
@@ -263,7 +324,7 @@ def test_the_model_serialises_by_alias_and_accepts_the_python_name() -> None:
 
 def test_the_model_does_not_restate_the_role_vocabulary() -> None:
     """``app/models/`` may not import ``app/services/`` — the inversion that closed an
-    import cycle once — so the four keys are not re-typed here as a ``Literal``. This
+    import cycle once — so the keys are not re-typed here as a ``Literal``. This
     asserts the absence, because a helpful ``Literal`` added later would be a second copy
     of a vocabulary whose whole value is that there is one.
 
@@ -274,7 +335,7 @@ def test_the_model_does_not_restate_the_role_vocabulary() -> None:
     import ast
     from pathlib import Path
 
-    from app.services.shema._scope import ROLE_KEYS
+    from app.services.shema._scope import ROLE_PRECEDENCE
 
     source = Path(__file__).resolve().parents[2] / "app" / "models" / "shema_session.py"
     tree = ast.parse(source.read_text(encoding="utf-8"))
@@ -290,11 +351,18 @@ def test_the_model_does_not_restate_the_role_vocabulary() -> None:
         and isinstance(node.value, str)
         and node.value not in docstrings
     }
-    assert not literals & set(ROLE_KEYS), f"the role vocabulary is restated here: {literals}"
+    assert not literals & set(ROLE_PRECEDENCE), f"the vocabulary is restated here: {literals}"
+
+
+def test_roles_is_never_null() -> None:
+    """The list is empty when nothing is held and never ``null``: the console iterates it, and a
+    third state would be one more thing every consumer has to check before it can."""
+    assert ShemaSession().model_dump()["roles"] == []
+    assert ShemaSession().model_dump(by_alias=True)["roles"] == []
 
 
 @pytest.mark.parametrize("field", ["role", "region_scope", "name"])
 def test_every_field_is_nullable(field: str) -> None:
-    """All three are ``| null`` in the contract, each for its own reason, and a required
+    """These three are ``| null`` in the contract, each for its own reason, and a required
     one would 500 rather than answer."""
     assert ShemaSession().model_dump()[field] is None
