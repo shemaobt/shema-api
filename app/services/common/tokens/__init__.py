@@ -5,7 +5,7 @@ link with ``token_urlsafe(32)``, the access invite and the password reset with
 ``token_hex(32)``, each deciding its own states — and the access work of OBT-522 adds four
 more (the handoff code, the endorsement link, the external request link, the intercessor's
 exit link). A token that reinvents its hash and its states is how one of them ends up with
-no expiry, so the new ones are minted here and read here.
+no expiry, so the new ones have one place to be minted and read.
 
 **What is shared is the function, not the row.** There is no table of tokens. Each purpose
 keeps its own table with a real foreign key, because each token points at something
