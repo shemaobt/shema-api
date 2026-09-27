@@ -80,8 +80,9 @@ class ShemaProjectMember(Base):
     added_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    #: Stamped from Python as well as by the server: ``func.now()`` is the transaction's clock and
-    #: ties two rows written under one commit, and the roster is read in this order.
+    #: Stamped by the ORM from Python on every write through the model, so two rows written under
+    #: one commit carry two moments — ``func.now()`` is the transaction's clock and would tie them.
+    #: The server default only fills a row inserted outside the model.
     added_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True),
         nullable=False,
