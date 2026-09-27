@@ -10,10 +10,12 @@ trusted.
 
 from __future__ import annotations
 
+import ast
 import re
 import secrets
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -168,3 +170,71 @@ def test_a_code_is_drawn_by_secrets_from_the_whole_million(monkeypatch) -> None:
 
     assert [tokens.mint_code()[0] for _ in range(2)] == ["000000", "999999"]
     assert bounds == [10**6, 10**6]
+
+
+# --- the leader link, the module's first consumer -------------------------------------
+
+
+@pytest.mark.parametrize(("revoked", "expired", "used", "expected"), PRECEDENCE, ids=PRECEDENCE_IDS)
+def test_the_leader_link_reads_its_state_through_the_module(
+    revoked: bool, expired: bool, used: bool, expected: str
+) -> None:
+    """The same vector as the module's, over the leader link's own row and its own reader."""
+    from app.db.models.shema_form import ShemaIntakeLink
+    from app.services.shema._intake_tokens import link_status
+
+    row = _row(revoked, expired, used)
+    link = ShemaIntakeLink(
+        expires_at=row.expires_at, revoked_at=row.revoked_at, used_at=row.used_at
+    )
+
+    assert link_status(link, now=NOW) == expected
+
+
+def _imported_modules(tree: ast.AST) -> set[str]:
+    """Every module a file imports, with ``from a import b`` read as both ``a`` and ``a.b``."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+            names.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return names
+
+
+def test_the_leader_link_has_no_mint_or_hash_of_its_own() -> None:
+    """**The DoD's third line, read off the source.** ``tests/test_shema/`` proves the link
+    behaves as it did; this proves it does so through the module and not beside it — a
+    ``secrets`` or a hash imported back into the file is a second mint, and the next token
+    copies whichever one it finds first."""
+    source = (
+        Path(__file__).resolve().parents[1] / "app" / "services" / "shema" / "_intake_tokens.py"
+    )
+    imported = _imported_modules(ast.parse(source.read_text(encoding="utf-8")))
+
+    assert "app.services.common.tokens" in imported, "the scan did not read the leader link"
+    assert imported.isdisjoint({"secrets", "hashlib", "app.services.auth.hash_refresh_token"}), (
+        sorted(imported & {"secrets", "hashlib", "app.services.auth.hash_refresh_token"})
+    )
+
+
+@pytest.mark.parametrize(("ceiling", "days"), [(90, 45), (30, 30)], ids=["shipped", "lowered"])
+def test_a_coordinator_who_states_nothing_gets_the_default_or_the_ceiling_whichever_is_shorter(
+    monkeypatch, ceiling: int, days: int
+) -> None:
+    """The ceiling is a configuration key since BE-20, so it can be set below the default —
+    and a coordinator who stated no date must then get a shorter link, not a refusal about a
+    date they never gave."""
+    from app.core.exceptions import ValidationError
+    from app.services.shema import _intake_tokens
+
+    monkeypatch.setattr(_intake_tokens, "MAX_LINK_DAYS", ceiling)
+    today = date(2026, 9, 27)
+
+    last_day = today + timedelta(days=days)
+    assert _intake_tokens.expiry_from(None, today=today) == datetime.combine(
+        last_day + timedelta(days=1), time.min, tzinfo=UTC
+    )
+    with pytest.raises(ValidationError):
+        _intake_tokens.expiry_from(today + timedelta(days=ceiling + 1), today=today)

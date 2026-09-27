@@ -31,6 +31,12 @@ cycle is a link that gets replaced by a coordinator typing the answers in themse
 bounds the abuse instead is the expiry, the revocation and the rate limit on the route —
 three things that hold whether or not anyone remembers to re-send anything.
 
+**What is every link's and what is this link's.** Since BE-20 (OBT-525) the token, its digest
+and the order its states are read in belong to ``app/services/common/tokens/``, shared with
+every other link this server issues. What stays in this file is what only the leader link
+decides: the default life and the ceiling, the calendar-day expiry, the guard that composes
+the checks, and the URL.
+
 **The refusal names the state.** A hash that matches nothing, an expired link and a revoked one
 are three different messages, all 404. Telling them apart is not an oracle: the caller already
 holds a 256-bit token, so there is nothing to guess and nothing to enumerate — what the
@@ -40,46 +46,40 @@ broken, and a coordinator who can be asked for a new one.
 
 from __future__ import annotations
 
-import secrets
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Final
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.shema_form import ShemaIntakeLink
-from app.services.auth.hash_refresh_token import hash_refresh_token
+from app.services.common import tokens
 from app.utils.stored_time import as_utc
 
 #: How long a link lives when the coordinator states nothing.
 #:
 #: Longer than one Pulse cycle and shorter than two. A month exactly would expire on the week
 #: the next form is due, which is when a link is least likely to be re-minted and most likely
-#: to be worked around.
+#: to be worked around. A ceiling configured below it shortens it rather than refusing the
+#: coordinator who stated nothing.
 DEFAULT_LINK_DAYS: Final = 45
 
-#: The longest life a coordinator may ask for. Three cycles, and the ceiling exists because
-#: *expiring* is a property of the credential rather than of the coordinator's intention: a
-#: link that can be minted for a year is a link that will be.
-MAX_LINK_DAYS: Final = 90
-
-#: 256 bits, URL-safe. Shorter than the repository's ``token_hex(32)`` siblings for the same
-#: entropy, which matters for exactly one reason and it is not aesthetics: this token travels
-#: as a link in a chat message to a phone, and a token that wraps is a token somebody retypes.
-_TOKEN_BYTES: Final = 32
+#: The longest life a coordinator may ask for — ``shema_intake_link_max_days``, the leader
+#: link's key in the block of token ceilings in ``app/core/config.py``, where the argument for
+#: the number is. Read once, so the guard and whoever reads the ceiling see one value.
+MAX_LINK_DAYS: Final = get_settings().shema_intake_link_max_days
 
 
 def mint_token() -> tuple[str, str]:
-    """A fresh token and its SHA-256 — the raw value leaves once and is never stored.
+    """A fresh leader-link token and its digest — ``tokens.mint``, under this link's name.
 
-    Every token in this repository is kept this way (``refresh_tokens``,
-    ``password_reset_tokens``, ``access_invites``) and this one has the strongest case for it:
-    it is the one credential whose holder has no account, so a database dump is the only place
-    it could ever be read from.
+    The raw value leaves once and is never stored, as every link token's does, and this one
+    has the strongest case for it: its holder has no account, so a database dump is the only
+    place it could ever be read from.
     """
-    raw = secrets.token_urlsafe(_TOKEN_BYTES)
-    return raw, hash_refresh_token(raw)
+    return tokens.mint()
 
 
 def expiry_from(requested: date | None, *, today: date) -> datetime:
@@ -94,7 +94,7 @@ def expiry_from(requested: date | None, *, today: date) -> datetime:
     of success that is discovered by a leader in a village.
     """
     if requested is None:
-        requested = today + timedelta(days=DEFAULT_LINK_DAYS)
+        requested = today + timedelta(days=min(DEFAULT_LINK_DAYS, MAX_LINK_DAYS))
     if requested < today:
         raise ValidationError(f"expiresAt: {requested.isoformat()} has already passed")
     if (requested - today).days > MAX_LINK_DAYS:
@@ -110,20 +110,13 @@ def expires_on(link: ShemaIntakeLink) -> date:
     return (as_utc(link.expires_at) - timedelta(days=1)).date()
 
 
-def link_status(link: ShemaIntakeLink, *, now: datetime | None = None) -> str:
+def link_status(link: ShemaIntakeLink, *, now: datetime | None = None) -> tokens.TokenStatus:
     """One reading of a link's state, shared by the listing, the creation and the guard.
 
-    Precedence is the sibling's and is deliberate: revoked beats expired and expired beats
-    used, so a link somebody took back never reads as one that merely ran out.
+    ``tokens.status``'s order — revoked, expired, used, pending — with the clock read here
+    when the caller brings none.
     """
-    moment = now or datetime.now(UTC)
-    if link.revoked_at is not None:
-        return "revoked"
-    if as_utc(link.expires_at) <= moment:
-        return "expired"
-    if link.used_at is not None:
-        return "used"
-    return "pending"
+    return tokens.status(link, now or datetime.now(UTC))
 
 
 async def verify_intake_token(db: AsyncSession, raw_token: str) -> ShemaIntakeLink:
@@ -138,9 +131,7 @@ async def verify_intake_token(db: AsyncSession, raw_token: str) -> ShemaIntakeLi
     """
     link = (
         await db.execute(
-            select(ShemaIntakeLink).where(
-                ShemaIntakeLink.token_hash == hash_refresh_token(raw_token)
-            )
+            select(ShemaIntakeLink).where(ShemaIntakeLink.token_hash == tokens.digest(raw_token))
         )
     ).scalar_one_or_none()
     if link is None:
