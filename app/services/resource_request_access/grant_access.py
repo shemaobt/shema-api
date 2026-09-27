@@ -6,7 +6,10 @@ from app.services.auth.get_user_by_id import get_user_by_id
 from app.services.authorization.get_app_by_key import get_app_by_key
 from app.services.authorization.grant_app_role import grant_app_role
 from app.services.resource_request_access._gate import assert_can_grant
-from app.services.resource_request_access._rules import assert_role_compatible
+from app.services.resource_request_access._rules import (
+    assert_role_compatible,
+    assert_role_grantable,
+)
 
 
 async def grant_access(
@@ -18,10 +21,12 @@ async def grant_access(
 ) -> UserAppRole:
     """Name a user into a role: Admin and Gestor concede, never to themselves.
 
-    Enforces the mesa/gestor exclusivity before delegating the write to
+    Enforces the mesa/gestor exclusivity, and that only an installation admin
+    names the ``admin`` role, before delegating the write to
     ``grant_app_role``, which records ``granted_by`` and ``granted_at``.
     """
     await assert_can_grant(db, actor, app_key)
+    assert_role_grantable(actor, role_key)
 
     if target_user_id == actor.id:
         raise RoleError("You cannot grant a role to yourself.")
