@@ -38,6 +38,12 @@ network's contact column, of its sensitive-country flag and of every read and wr
 ``shema_intercessor_consents``, and ``tests/test_shema/test_people_privacy.py`` globs this
 package and ``app/api/shema/`` to keep it sole — the fourth owner beside BE-04's three.
 
+**OBT-531 answered the network's other two privacy questions.** ``review_intercessor.py`` is
+the "Revisado" of the one-year review — the flag itself is ``_directory.review_due``'s — and
+``leave_intercessor.py`` is the exit link: the only file where a raw exit token exists, minting
+one per send for BE-09 and backing the module's second unauthenticated seam, the confirmation
+page's read and the erasure it confirms.
+
 **BE-08 landed the needs and the money they carry.** ``_needs.py`` is the batch's own
 rules, and it is a step of ``save_project`` rather than an endpoint because a need travels
 with its project (``docs/shema.md`` §5.4) — one write path, one version guard, one
@@ -57,7 +63,7 @@ property of the write path rather than of whoever remembered. BE-07, BE-08 and B
 the record through ``save_project`` rather than beside it, and get all three.
 
 **BE-12 landed the forms and the leader link**, and the shape of it is one sentence: the
-module's only unauthenticated seam deposits, and a signed-in coordinator applies.
+module's first unauthenticated seam deposits, and a signed-in coordinator applies.
 ``_intake_tokens.py`` is the whole guard — hash, expiry and revocation composed in
 ``verify_intake_token``, so a future caller inherits all three rather than the one it
 remembered (``docs/shema.md`` §6.6); ``_form_definitions.py`` publishes the spec authored in
@@ -195,6 +201,13 @@ from app.services.shema.get_project import get_project
 from app.services.shema.get_region_team import get_region_team
 from app.services.shema.get_session import get_session
 from app.services.shema.import_submission import apply_submission, import_submission
+from app.services.shema.leave_intercessor import (
+    EXIT_LINK_DAYS,
+    exit_url,
+    issue_exit_link,
+    leave_network,
+    open_exit_link,
+)
 from app.services.shema.list_assessments import list_assessments
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_intercessors import list_intercessors
@@ -219,6 +232,7 @@ from app.services.shema.read_submission import as_received, list_submissions, re
 from app.services.shema.receive_submission import receive_submission
 from app.services.shema.remove_intercessor import remove_intercessor
 from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
+from app.services.shema.review_intercessor import review_intercessor
 from app.services.shema.revoke_intake_link import revoke_intake_link
 from app.services.shema.save_notification_prefs import save_notification_prefs
 from app.services.shema.save_project import RecordVersionConflict, create_project, save_project
@@ -233,6 +247,7 @@ from app.services.shema.update_intercessor import update_intercessor
 __all__ = [
     "DEFAULT_LINK_DAYS",
     "DOWNLOAD_URL_EXPIRY_MINUTES",
+    "EXIT_LINK_DAYS",
     "GCS_SHEMA_BUCKET",
     "HEALTH_AUDIENCE",
     "MAX_LINK_DAYS",
@@ -270,6 +285,7 @@ __all__ = [
     "definition_at",
     "derive_region",
     "entered_critical",
+    "exit_url",
     "expires_on",
     "field_changes",
     "form_fields",
@@ -281,6 +297,8 @@ __all__ = [
     "import_submission",
     "is_authorized",
     "is_withheld",
+    "issue_exit_link",
+    "leave_network",
     "leaving_directory",
     "leaving_person",
     "link_status",
@@ -303,6 +321,7 @@ __all__ = [
     "notify_critical",
     "notify_submission",
     "notify_urgent",
+    "open_exit_link",
     "plan_needs",
     "prayer_visibility",
     "publish_definition",
@@ -323,6 +342,7 @@ __all__ = [
     "remove_intercessor",
     "require_reads_assessments",
     "reveal_intercessor_contact",
+    "review_intercessor",
     "revoke_intake_link",
     "roll_up",
     "save_notification_prefs",

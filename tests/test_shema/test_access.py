@@ -35,18 +35,26 @@ from tests.test_shema.conftest import (
 
 #: Paths under ``/api/shema`` that are allowed to carry no authentication.
 #:
-#: **One path and two methods, which is the module's whole hole.** BE-04 expected this list to
-#: stay empty until BE-12 and BE-12 added exactly the entry it predicted: ``GET`` and ``POST
-#: /api/shema/intake/{token}``, by FE-44 §9.0 and ``docs/shema.md`` §6.6, where the token *is*
-#: the guard and the guard is a service function (``verify_intake_token``) so the rule holds
-#: for any future caller of it rather than for the two routes it was written under.
+#: **Two paths and two methods each, which are the module's whole hole.** BE-04 expected this
+#: list to stay empty until BE-12 and BE-12 added exactly the entry it predicted: ``GET`` and
+#: ``POST /api/shema/intake/{token}``, by FE-44 §9.0 and ``docs/shema.md`` §6.6, where the token
+#: *is* the guard and the guard is a service function (``verify_intake_token``) so the rule
+#: holds for any future caller of it rather than for the two routes it was written under.
+#:
+#: **The second is OBT-531's exit link**, ``GET`` and ``POST
+#: /api/shema/intercessors/leave/{token}``: a person in the prayer network has no account, and
+#: this is how they leave. Same shape — the token is the guard and ``leave_intercessor.py`` is
+#: the guard — and ``tests/test_shema/test_intercessor_exit.py`` is where each method is held to
+#: what it may do: the ``GET`` changes nothing, the ``POST`` erases.
 #:
 #: A route that arrives without a line added here fails ``test_every_shema_route_is_guarded``,
 #: which is what makes forgetting a guard a red build rather than an open endpoint. Keyed by
 #: path because that is what the audit compares; the two methods on it are both exempt and
 #: ``tests/test_shema/test_intake_link.py`` is where each is held to what it may actually
 #: serve — the guard being absent is the premise of that file, not a gap in this one.
-UNAUTHENTICATED_PATHS: frozenset[str] = frozenset({f"{PREFIX}/intake/{{token}}"})
+UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
+    {f"{PREFIX}/intake/{{token}}", f"{PREFIX}/intercessors/leave/{{token}}"}
+)
 
 
 def test_the_app_key_is_the_one_three_documents_name() -> None:

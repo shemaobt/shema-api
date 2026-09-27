@@ -8,7 +8,7 @@ different subject: those three guard facts about a project, and the intercessor 
 table of people who are in no project and will never sign in.
 
 **This is the only file in** ``app/services/shema/`` **and** ``app/api/shema/`` **that names**
-``ShemaIntercessor`` **or** ``ShemaIntercessorConsent``, and
+``ShemaIntercessor``, ``ShemaIntercessorConsent`` **or** ``ShemaIntercessorExitLink``, and
 ``tests/test_shema/test_people_privacy.py`` globs both packages and fails on a second one. One
 token, checked by a glob, is the mechanism — the sibling's
 ``test_the_app_key_is_named_once_in_the_module`` applied to a table instead of a literal. The
@@ -19,7 +19,7 @@ That is why the whole small lifecycle lives here rather than only the reads. Spl
 the guarded reads here, the writes next door — would have given the glob two files to allow,
 and a rule with an exception list is the rule the next exception joins.
 
-**Three rules this file is the whole of.**
+**Four rules this file is the whole of.**
 
 *Consent is per context and absence is refusal.* A row exists only while the consent stands
 (``app/db/models/shema_consent.py`` carries the argument), so every question here is *is there
@@ -37,6 +37,15 @@ once — *redact in the payload on every path that leaves; never on the record r
 :func:`leaving_person` is this side of it. The shape is FE-44 §9.6's own, verbatim:
 ``country: ""`` with the withheld marker beside it, so the redaction travels in the payload and
 a renderer downstream cannot leak what the payload does not hold.
+
+*A contact is reviewed after a year, and a person may leave without an account* (OBT-531, the
+client's answers of 22/sep to ``docs/shema.md`` §10 item 8). :func:`review_due` is the one
+reading of the year — the latest of entry, review and send — and the exit link's rows are
+stored and read here by their **digest only**: ``leave_intercessor.py`` mints the token and
+hands this file ``tokens.digest(raw)``, so the owner of the tables never holds a raw token.
+Leaving is :func:`_erase`, the same statement removal is, and every link that does not open
+anything is refused with **one** sentence, whatever the reason — a forwarded link must not tell
+whoever holds it whether the person is still in the network.
 
 The two string rules — what an e-mail is, what a phone is, how much of either a hint keeps —
 are in ``app/utils/shema_contacts.py`` and re-exported here, because ``app/models/`` needs the
@@ -61,36 +70,63 @@ request; not invented here.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+from typing import Any, Final, NamedTuple
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
+from app.db.models.shema_exit_link import ShemaIntercessorExitLink
 from app.db.models.shema_intercessor import ShemaIntercessor
 from app.models.shema_intercessor import Consent, IntercessorEntry
+from app.services.common import tokens
 from app.utils.shema_contacts import contact_channel, contact_hint
 from app.utils.stored_time import as_utc
 
 __all__ = [
+    "DEAD_EXIT_LINK",
+    "REVIEW_AFTER",
     "LeavingPerson",
+    "check_exit_link",
     "contact_channel",
     "contact_hint",
     "count_people",
+    "count_review_due",
     "create_person",
     "edit_person",
     "entries_of",
     "entry_of",
     "erase_person",
+    "leave_through_exit_link",
     "leaving_directory",
     "leaving_person",
     "listable_ids",
+    "mark_reviewed",
+    "people_lacking",
     "record_consent",
+    "record_where_missing",
     "revealed_contact",
+    "review_due",
+    "store_exit_link",
     "with_consent",
     "withdraw_consent",
 ]
+
+#: How long a contact may go unused before it is due for review — the client's answer of
+#: 22/sep (4.3), *revisar depois de um ano*. Strictly more than this, measured from the latest
+#: of entry, review and send.
+REVIEW_AFTER: Final = timedelta(days=365)
+
+#: The one answer to an exit link that opens nothing — unknown, expired, or its person already
+#: gone. One sentence on purpose: telling *expired* from *already left* would tell whoever holds
+#: a forwarded link whether the person is still in the network.
+DEAD_EXIT_LINK: Final = (
+    "This link is no longer active. If you have already left the network, there is nothing "
+    "more to do; otherwise use the link in the most recent message you received."
+)
 
 
 class LeavingPerson(NamedTuple):
@@ -155,7 +191,8 @@ async def record_consent(
     ``set_region_scope``'s *rows already present keep their* ``granted_at``. The two are
     different facts: a region scope that did not change was not re-granted, while a question
     asked again and answered again is a fresh answer, and *when it was last given* is what a
-    retention review actually needs.
+    person reviewing the record reads. It does not move the one-year clock, which is
+    :func:`review_due`'s and is reset only by an explicit review (OBT-531).
 
     ``commit=False`` is for a caller that owns its transaction — the create path, where the
     person and their first consent arrive together or not at all. The rule is
@@ -257,8 +294,17 @@ async def edit_person(db: AsyncSession, intercessor_id: str, changes: dict[str, 
 
 
 async def erase_person(db: AsyncSession, intercessor_id: str) -> None:
-    """Delete the row. The consents go with it by ``ON DELETE CASCADE``."""
-    await db.delete(await _person(db, intercessor_id))
+    """Delete the row. The consents and the exit links go with it by ``ON DELETE CASCADE``."""
+    await _erase(db, await _person(db, intercessor_id))
+
+
+async def _erase(db: AsyncSession, person: ShemaIntercessor) -> None:
+    """**The** erasure of the module — removal, withdrawal of ``network`` and leaving by link.
+
+    One statement: every table that holds anything about the person hangs off this row by
+    ``ON DELETE CASCADE``, so nothing is swept and nothing can be forgotten.
+    """
+    await db.delete(person)
     await db.commit()
 
 
@@ -289,7 +335,9 @@ async def listable_ids(db: AsyncSession) -> list[str]:
 # --- what leaves this file -----------------------------------------------------------
 
 
-async def entry_of(db: AsyncSession, intercessor_id: str) -> IntercessorEntry:
+async def entry_of(
+    db: AsyncSession, intercessor_id: str, *, now: datetime | None = None
+) -> IntercessorEntry:
     """One person's **coordination** shape: masked contact, and the consents that stand.
 
     Coordination, so the country is verbatim — ``docs/shema.md`` §6.4's split says redaction
@@ -310,10 +358,12 @@ async def entry_of(db: AsyncSession, intercessor_id: str) -> IntercessorEntry:
             .order_by(ShemaIntercessorConsent.recorded_at, ShemaIntercessorConsent.context)
         )
     ).scalars()
-    return _entry(person, list(rows))
+    return _entry(person, list(rows), now=now or datetime.now(UTC))
 
 
-async def entries_of(db: AsyncSession, ids: list[str]) -> list[IntercessorEntry]:
+async def entries_of(
+    db: AsyncSession, ids: list[str], *, now: datetime | None = None
+) -> list[IntercessorEntry]:
     """Many people's coordination shape, in the order the ids came — two statements, not 2N.
 
     The directory is the caller. :func:`listable_ids` answers ids as scalars, so nothing is in
@@ -343,14 +393,17 @@ async def entries_of(db: AsyncSession, ids: list[str]) -> list[IntercessorEntry]
     )
     for row in (await db.execute(stmt)).scalars():
         consents.setdefault(row.intercessor_id, []).append(row)
+    moment = now or datetime.now(UTC)
     return [
-        _entry(people[person_id], consents.get(person_id, []))
+        _entry(people[person_id], consents.get(person_id, []), now=moment)
         for person_id in ids
         if person_id in people
     ]
 
 
-def _entry(person: ShemaIntercessor, rows: list[ShemaIntercessorConsent]) -> IntercessorEntry:
+def _entry(
+    person: ShemaIntercessor, rows: list[ShemaIntercessorConsent], *, now: datetime
+) -> IntercessorEntry:
     """The one assembly of a collection entry, shared by the single and the batched read."""
     return IntercessorEntry(
         id=person.id,
@@ -360,6 +413,9 @@ def _entry(person: ShemaIntercessor, rows: list[ShemaIntercessorConsent]) -> Int
         contactHint=contact_hint(person.contact),
         sensitiveCountry=person.sensitive_country,
         addedAt=as_utc(person.added_at).date(),
+        reviewedAt=_day(person.reviewed_at),
+        lastSentAt=_day(person.last_sent_at),
+        reviewDue=review_due(person.added_at, person.reviewed_at, person.last_sent_at, now=now),
         consents=[
             Consent(
                 context=row.context.value,
@@ -411,3 +467,208 @@ async def leaving_directory(db: AsyncSession) -> list[LeavingPerson]:
         .order_by(ShemaIntercessor.name, ShemaIntercessor.id)
     )
     return [leaving_person(person) for person in (await db.execute(stmt)).scalars()]
+
+
+# --- the one-year review (OBT-531) ------------------------------------------------------
+
+
+def _day(moment: datetime | None) -> date | None:
+    """A stored moment as the UTC day the wire carries, or ``None``."""
+    return None if moment is None else as_utc(moment).date()
+
+
+def review_due(
+    added_at: datetime,
+    reviewed_at: datetime | None,
+    last_sent_at: datetime | None,
+    *,
+    now: datetime,
+) -> bool:
+    """Whether more than :data:`REVIEW_AFTER` has passed since the latest of the three moments.
+
+    **The one reading of the year**, for the entry a list carries and for the count of the
+    people no list may show. *More than* is strict: a contact entered exactly a year ago is not
+    due yet, and one second later it is. ``None`` is not a moment — a contact nobody reviewed
+    and nothing was sent to counts from its entry, which is when the platform began holding it.
+    """
+    latest = max(as_utc(moment) for moment in (added_at, reviewed_at, last_sent_at) if moment)
+    return now - latest > REVIEW_AFTER
+
+
+async def mark_reviewed(db: AsyncSession, intercessor_id: str, *, now: datetime) -> None:
+    """Stamp that a Resource Circle member confirmed this person still belongs.
+
+    Only the stamp moves: not ``added_at``, which is when the platform began holding the person,
+    and not a consent, which is what they agreed to and not whether somebody checked.
+    """
+    person = await _person(db, intercessor_id)
+    person.reviewed_at = now
+    await db.commit()
+
+
+async def count_review_due(db: AsyncSession, *, excluding: list[str], now: datetime) -> int:
+    """How many people outside ``excluding`` are past their year — **a number, never a name**.
+
+    The directory's caller passes the ids it lists, so this counts the people it withholds. It
+    reads three dates per person and nothing else: not an id, a name, a country or a contact
+    reaches the process, and the dates are counted through :func:`review_due` and discarded.
+    """
+    stmt = select(
+        ShemaIntercessor.added_at, ShemaIntercessor.reviewed_at, ShemaIntercessor.last_sent_at
+    )
+    if excluding:
+        stmt = stmt.where(ShemaIntercessor.id.not_in(excluding))
+    return sum(
+        review_due(added, reviewed, sent, now=now)
+        for added, reviewed, sent in (await db.execute(stmt)).all()
+    )
+
+
+# --- the exit link (OBT-531) --------------------------------------------------------------
+
+
+@dataclass
+class _ExitLinkState:
+    """What ``tokens.status`` reads, for a link that is never revoked and never used-and-kept.
+
+    ``app/db/models/shema_exit_link.py`` carries why the two columns do not exist; stating them
+    as ``None`` here keeps the one reading of a token's state in the token module rather than a
+    clock comparison written again in this file. A plain, mutable dataclass because the
+    protocol's members are settable attributes.
+    """
+
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    used_at: datetime | None = None
+
+
+def _alive(link: ShemaIntercessorExitLink, now: datetime) -> bool:
+    return tokens.status(_ExitLinkState(expires_at=link.expires_at), now) == "pending"
+
+
+async def store_exit_link(
+    db: AsyncSession,
+    intercessor_id: str,
+    *,
+    token_hash: str,
+    expires_at: datetime,
+    now: datetime,
+    commit: bool = True,
+) -> None:
+    """Keep one freshly minted link's digest, and prune the person's links that already died.
+
+    The person is read first, so a link for somebody who does not exist is a 404 naming what
+    is missing rather than an ``IntegrityError`` escaping a flush. **No earlier link is
+    revoked**: a person may still hold the message it came in, and it keeps working until its
+    own clock runs out. What has run out is deleted here, so the table holds one row per send
+    that can still open something and nothing else.
+
+    ``commit=False`` is for a caller minting a whole send in one transaction; whoever passes it
+    owns the commit, as ``create_notification``'s flag says.
+    """
+    await _person(db, intercessor_id)
+    held = (
+        await db.execute(
+            select(ShemaIntercessorExitLink).where(
+                ShemaIntercessorExitLink.intercessor_id == intercessor_id
+            )
+        )
+    ).scalars()
+    for link in held:
+        if not _alive(link, now):
+            await db.delete(link)
+    db.add(
+        ShemaIntercessorExitLink(
+            intercessor_id=intercessor_id, token_hash=token_hash, expires_at=expires_at
+        )
+    )
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
+
+
+async def _live_exit_link(
+    db: AsyncSession, token_hash: str, now: datetime
+) -> ShemaIntercessorExitLink:
+    """The link this digest names while it still opens something, or the one refusal."""
+    link = (
+        await db.execute(
+            select(ShemaIntercessorExitLink).where(
+                ShemaIntercessorExitLink.token_hash == token_hash
+            )
+        )
+    ).scalar_one_or_none()
+    if link is None or not _alive(link, now):
+        raise NotFoundError(DEAD_EXIT_LINK)
+    return link
+
+
+async def check_exit_link(db: AsyncSession, token_hash: str, *, now: datetime) -> None:
+    """Whether this link still lets somebody leave. **Reads only** — changes nothing.
+
+    A link previewer opens every URL it is sent, so the read that backs the confirmation page
+    must never be the act; the act is :func:`leave_through_exit_link`.
+    """
+    await _live_exit_link(db, token_hash, now)
+
+
+async def leave_through_exit_link(db: AsyncSession, token_hash: str, *, now: datetime) -> str:
+    """Erase the person this link belongs to, and answer whose id it was, for the log line.
+
+    Checking and erasing are one function so that the answer is one sentence whichever step
+    finds nothing: a second confirmation that arrives after the first erased the person meets a
+    missing row, and it is told exactly what an unknown link is told.
+    """
+    link = await _live_exit_link(db, token_hash, now)
+    intercessor_id = link.intercessor_id
+    person = await db.get(ShemaIntercessor, intercessor_id)
+    if person is None:
+        raise NotFoundError(DEAD_EXIT_LINK)
+    await _erase(db, person)
+    return intercessor_id
+
+
+# --- consent in a batch (OBT-531) ---------------------------------------------------------
+
+
+async def people_lacking(db: AsyncSession, context: ShemaConsentContext) -> list[str]:
+    """The ids of everybody with no row for ``context``, oldest entry first."""
+    has_it = select(ShemaIntercessorConsent.intercessor_id).where(
+        ShemaIntercessorConsent.context == context
+    )
+    stmt = (
+        select(ShemaIntercessor.id)
+        .where(ShemaIntercessor.id.not_in(has_it))
+        .order_by(ShemaIntercessor.added_at, ShemaIntercessor.id)
+    )
+    return list((await db.execute(stmt)).scalars())
+
+
+async def record_where_missing(
+    db: AsyncSession,
+    context: ShemaConsentContext,
+    *,
+    basis: str,
+    recorded_by: str,
+) -> int:
+    """Record ``context`` for everybody who lacks it, in one transaction, and answer how many.
+
+    **Only inserts.** A consent that already stands keeps its basis and its date — which is the
+    opposite of :func:`record_consent`, and it is what makes a batch safe to run twice: the
+    second run finds nobody and writes nothing. A batch is one basis stated for many people at
+    once, and restamping somebody who answered on their own would overwrite their answer with
+    the batch's.
+    """
+    lacking = await people_lacking(db, context)
+    db.add_all(
+        ShemaIntercessorConsent(
+            intercessor_id=person_id,
+            context=context,
+            basis=basis.strip(),
+            recorded_by=recorded_by,
+        )
+        for person_id in lacking
+    )
+    await db.commit()
+    return len(lacking)

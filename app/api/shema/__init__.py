@@ -17,11 +17,11 @@ twice.
 ``require_app_access(APP_KEY)`` once, so a route added by a later issue is refused for an
 account with no Shemá grant **whether or not its author wired a guard**. A route added
 straight to ``router`` is the only way past that, and it is exactly what BE-12's two
-unauthenticated intake routes will need (``docs/shema.md`` §6.6, FE-44 §9.0) — which is
-why the hole is a named, deliberate line in a diff instead of a dependency somebody has to
-notice is missing. ``tests/test_shema/test_access.py`` reads the built application's route
-table and fails on any ``/api/shema`` route that does not carry the guard, with the intake
-allowlist stated there and empty today.
+unauthenticated intake routes needed (``docs/shema.md`` §6.6, FE-44 §9.0), and then the
+intercessor's exit link (OBT-531) — which is why each hole is a named, deliberate line in a
+diff instead of a dependency somebody has to notice is missing.
+``tests/test_shema/test_access.py`` reads the built application's route table and fails on
+any ``/api/shema`` route that does not carry the guard and is not in its allowlist.
 
 ``tests/test_shema/test_mount.py`` proves the wiring by hanging its own route off this
 object, which is the check that survives a module with no routes — and the one that
@@ -39,6 +39,7 @@ from app.api.shema._deps import APP_KEY
 from app.api.shema.forms import intake as intake_router
 from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
+from app.api.shema.intercessor_exit import router as exit_router
 from app.api.shema.intercessors import router as intercessors_router
 from app.api.shema.notifications import router as notifications_router
 from app.api.shema.projects import router as projects_router
@@ -50,7 +51,7 @@ router = APIRouter()
 
 #: Everything in this module that needs a signed-in Shemá account. The guard is declared
 #: once here and inherited by every route included below, which is what makes the module
-#: deny-by-default; see the note above for the one exception this shape leaves room for.
+#: deny-by-default; see the note above for the exceptions this shape leaves room for.
 authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
 
 authenticated.include_router(session_router)  # BE-03
@@ -61,7 +62,7 @@ authenticated.include_router(health_assessments_router)  # BE-07
 authenticated.include_router(forms_router)  # BE-12
 authenticated.include_router(notifications_router)  # BE-15
 
-#: **The module's one deliberate hole**, and it is this line rather than a missing dependency.
+#: **The module's first deliberate hole**, and it is this line rather than a missing dependency.
 #: ``GET`` and ``POST /api/shema/intake/{token}`` carry no ``Authorization`` requirement, by
 #: FE-44 §9.0 and ``docs/shema.md`` §6.6: the token *is* the guard, and the guard is a service
 #: function (``verify_intake_token``) so the rule holds for any future caller of it rather than
@@ -70,6 +71,13 @@ authenticated.include_router(notifications_router)  # BE-15
 #: carries the two paths in ``UNAUTHENTICATED_PATHS`` and fails on a third that arrives without
 #: a line added there. BE-12.
 router.include_router(intake_router)
+
+#: **The module's second deliberate hole** (OBT-531). ``GET`` and ``POST
+#: /api/shema/intercessors/leave/{token}`` carry no ``Authorization`` requirement: a person in
+#: the prayer network has no account, and the exit link is how they leave. The token is the
+#: guard and the guard is a service function (``leave_intercessor.py``); the ``GET`` changes
+#: nothing and the ``POST`` erases. Listed in ``UNAUTHENTICATED_PATHS`` beside the intake's.
+router.include_router(exit_router)
 
 # Keep this the last statement in the file. ``include_router`` copies routes at call time,
 # so a line added below it is included into a router the application never sees: the route

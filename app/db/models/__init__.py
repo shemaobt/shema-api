@@ -100,6 +100,7 @@ from app.db.models.shema_enums import (
     ShemaYesNo,
 )
 from app.db.models.shema_eten import ShemaEtenCredit
+from app.db.models.shema_exit_link import ShemaIntercessorExitLink
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.db.models.shema_intercessor import ShemaIntercessor
@@ -213,6 +214,7 @@ __all__ = [
     "ShemaIntakeLink",
     "ShemaIntercessor",
     "ShemaIntercessorConsent",
+    "ShemaIntercessorExitLink",
     "ShemaMaterial",
     "ShemaMaterialKind",
     "ShemaMediaItem",

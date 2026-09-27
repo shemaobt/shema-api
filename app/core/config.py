@@ -101,6 +101,12 @@ class Settings(BaseSettings):
     #: the coordinator's intention — a link that can be minted for a year is a link that will
     #: be. The default of 45 days is ``_intake_tokens.py``'s, and this caps it.
     shema_intake_link_max_days: int = 90
+    #: How long an intercessor's exit link lives (OBT-531). Each send to the network mints its
+    #: own, so this is not a ceiling a person chooses under: it is how old a message may be and
+    #: still let its reader leave. A year, because the network is reviewed on the same clock —
+    #: a contact nobody has sent anything to in a year is due for review, and a link older than
+    #: that belongs to a send the review has already looked past.
+    shema_intercessor_exit_link_days: int = 365
 
     email_provider: str = "log"
     resend_api_key: str = ""

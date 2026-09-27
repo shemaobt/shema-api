@@ -12,11 +12,10 @@ is absent from storage. That is why this file has no soft-delete column — a co
 a row be *kept but hidden* is how silent retention starts, and it would be the first thing a
 well-meaning follow-up added.
 
-Three questions this table cannot ship without, and they are not engineering questions
-(``docs/shema.md`` §10, item 8, owned by BE-09): what consent was given and how it is
-evidenced; how someone outside the platform asks to be removed when they cannot log in; and
-what happens to a contact nobody has used in a year. The schema is here so BE-09 has
-something to build against, and the answers are still owed before it stores a real person.
+Three questions this table could not ship without, and they were not engineering questions
+(``docs/shema.md`` §10, item 8): what consent was given and how it is evidenced; how someone
+outside the platform asks to be removed when they cannot log in; and what happens to a contact
+nobody has used in a year.
 
 **BE-13 owns the network, and answered the first of the three.** ``docs/shema.md`` §10 item 5
 left the aggregate with two owners; the settlement and its evidence are in BE-13's pull
@@ -26,8 +25,12 @@ by this issue and not by BE-09. The consent that was owed is
 on purpose: ``add_intercessor`` will not create a row in this table without one, which is the
 rule written where it can be seen rather than in a service somebody has to remember.
 
-The other two are still owed and neither is a schema question. Named again here, because this
-is the file the next person opens.
+**OBT-531 answered the other two, with the client's answers of 22/sep.** A contact nobody has
+used in a year is *reviewed*, not expired: ``reviewed_at`` and ``last_sent_at`` below are the two
+moments the year is counted from besides ``added_at``, and ``_directory.review_due`` is the one
+reading of them. Somebody who cannot log in leaves through an exit link, whose rows are
+``shema_intercessor_exit_links`` (``app/db/models/shema_exit_link.py``) and go with the person
+by ``ON DELETE CASCADE`` — leaving is the same erasure as removal, with nothing left behind.
 """
 
 import uuid
@@ -87,3 +90,11 @@ class ShemaIntercessor(Base):
     added_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: When a Resource Circle member last confirmed this contact still belongs in the network —
+    #: the "Revisado" of the one-year review. NULL until somebody does; there is no default,
+    #: because a review nobody made is not a review.
+    reviewed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    #: When the network last sent this person something. BE-09 writes it when the Prayer Pulse
+    #: goes out; until then it stays NULL, and NULL means *nothing was ever sent*, not *sent
+    #: long ago*.
+    last_sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
