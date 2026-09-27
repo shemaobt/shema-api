@@ -91,6 +91,15 @@ recorded there sends nothing, because no e-mail, push or WhatsApp sender exists 
 batch of delivered and derived ids needs, and the only thing that ever writes
 ``shema_notification_reads``.
 
+**BE-10 landed the Rhythm's log** - a record that a meeting of one period happened in one
+region, never an agenda. ``log_meeting.py`` derives the period from the day and the meeting's
+cadence and replaces the period's entry rather than adding a second, with the unique constraint
+as the arbiter between two coordinators; ``undo_meeting.py`` deletes one period's entry and
+``list_meeting_log.py`` reads the caller's regions. ``_meeting_log.py`` owns the one rule all
+three ask: the log is read and written by ``_health_audience.py``'s audience - its notes are a
+pastoral reading of a team - inside the caller's region scope, and ``global`` is refused with the
+reason, because every meeting GATE-02 kept is held per region.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -198,6 +207,7 @@ from app.services.shema.import_submission import apply_submission, import_submis
 from app.services.shema.list_assessments import list_assessments
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_intercessors import list_intercessors
+from app.services.shema.list_meeting_log import list_meeting_log
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
 from app.services.shema.list_projects import list_projects
 from app.services.shema.list_regions import list_regions
@@ -207,6 +217,7 @@ from app.services.shema.list_unacknowledged_needs import (
     list_unacknowledged_needs,
     unacknowledged_needs,
 )
+from app.services.shema.log_meeting import LoggedMeeting, log_meeting
 from app.services.shema.mark_notifications_read import mark_notifications_read
 from app.services.shema.media_download_url import (
     MediaLink,
@@ -228,6 +239,7 @@ from app.services.shema.set_intercessor_consent import (
     withdraw_intercessor_consent,
 )
 from app.services.shema.set_region_scope import set_region_scope
+from app.services.shema.undo_meeting import undo_meeting
 from app.services.shema.update_intercessor import update_intercessor
 
 __all__ = [
@@ -245,6 +257,7 @@ __all__ = [
     "Aggregates",
     "ChangesSince",
     "LeavingPerson",
+    "LoggedMeeting",
     "MediaLink",
     "Notice",
     "ProgressSource",
@@ -287,12 +300,14 @@ __all__ = [
     "list_assessments",
     "list_intake_links",
     "list_intercessors",
+    "list_meeting_log",
     "list_notification_panel",
     "list_projects",
     "list_regions",
     "list_role_changes",
     "list_submissions",
     "list_unacknowledged_needs",
+    "log_meeting",
     "log_reference",
     "mark_notifications_read",
     "material_download_url",
@@ -335,6 +350,7 @@ __all__ = [
     "shared_prayer_text",
     "storage_key",
     "unacknowledged_needs",
+    "undo_meeting",
     "update_intercessor",
     "validate_submission",
     "validated_answers",
