@@ -178,17 +178,19 @@ def _scope_key(scope: RegionScope) -> str:
 
 
 def _content(report: EtenYearReport) -> dict[str, Any]:
-    """What is recorded: the figures and their evidence, with the region and never the place."""
-    return {
-        "year": report.year,
-        "periodStart": report.period_start.isoformat(),
-        "periodEnd": report.period_end.isoformat(),
-        "listedProjects": report.listed_projects,
-        "advancingProjects": report.advancing_projects,
-        "totalCredits": report.total_credits,
-        "hasData": report.has_data,
-        "snapshots": [line.recorded() for line in report.snapshots],
-    }
+    """What is recorded: the report as its shape dumps it, minus three deliberate omissions.
+
+    Built off the model rather than off a second list of keys, so a field added to
+    :class:`~app.models.shema_eten.EtenYearReport` reaches the record — and the digest — on its
+    own. What stays out is named: ``asOf`` and the report's own id and time are metadata of the
+    answer, not of its figures, and the lines are dumped by ``recorded()``, which puts the region
+    where the country would be.
+    """
+    content = report.model_dump(
+        mode="json", by_alias=True, exclude={"as_of", "report_id", "recorded_at", "snapshots"}
+    )
+    content["snapshots"] = [line.recorded() for line in report.snapshots]
+    return content
 
 
 def _digest(content: dict[str, Any]) -> str:

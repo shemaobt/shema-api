@@ -279,9 +279,17 @@ def test_a_record_that_arrived_complete_is_undated_not_credited() -> None:
     assert after.credits == 0
 
 
-def test_the_open_year_with_no_reading_at_all_is_no_data_not_zero() -> None:
+def test_a_closed_year_with_no_reading_at_all_is_no_data_not_zero() -> None:
     result = account(subject(), [], 2026)
     assert (result.has_data, result.credits) == (False, None)
+
+
+def test_the_open_year_with_no_entry_reads_the_record_as_it_stands() -> None:
+    """The console's fallback: the year still open has data before its first entry — zero."""
+    result = account(subject(approved=40), [], 2028)
+    assert result.end_reading is not None
+    assert result.end_reading.source is ReadingSource.LIVE
+    assert (result.has_data, result.approved_at_end, result.credits) == (True, 40, 0)
 
 
 # --- the manual valve ------------------------------------------------------------------------
