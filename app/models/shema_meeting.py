@@ -19,6 +19,10 @@ mechanism of ``app/models/shema_health.py``.
 **Not a** ``LeavingShape``: nothing here names a place. ``scopeKey`` is the coarse region key
 every ``RegionScope`` already answers in the clear, the same distinction
 ``app/models/shema_notification.py`` draws for its ``region``.
+
+``ShemaMeetingId`` and ``MeetingScopeKey`` are re-exported so ``app/api/shema/meetings.py`` types
+its path parameters from here rather than from ``app.utils`` and ``app.db.models`` - the layering
+``tests/test_shema/test_layering.py`` keeps.
 """
 
 from __future__ import annotations
@@ -31,10 +35,6 @@ from pydantic.alias_generators import to_camel
 
 from app.db.models.shema_meeting import ShemaMeetingLogEntry
 from app.utils.shema_derivations import parse_iso_date
-
-# Re-exported so ``app/api/shema/meetings.py`` types its path parameters from here rather than
-# from ``app.utils`` and ``app.db.models`` - the layering ``tests/test_shema/test_layering.py``
-# keeps.
 from app.utils.shema_meetings import MeetingScopeKey as MeetingScopeKey
 from app.utils.shema_meetings import ShemaMeetingId as ShemaMeetingId
 
