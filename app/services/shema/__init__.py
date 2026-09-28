@@ -125,6 +125,15 @@ three ask: the log is read and written by ``_health_audience.py``'s audience - i
 pastoral reading of a team - inside the caller's region scope, and ``global`` is refused with the
 reason, because every meeting GATE-02 kept is held per region.
 
+**BE-11 landed the ETEN report and its ledger.** The rule is not here: ``account_for`` is a pure
+function in ``app/utils/shema_derivations.py`` beside the other FE-44 §7 derivations, and
+``eten_report.py`` is the computation around it — the listed projects in scope, their history, the
+year's manual rows, the lines through the redaction boundary, and the report **recorded** in
+``shema_eten_reports`` as it was answered, so a figure sent to a funder stays explainable after
+the data moves. ``record_eten_credit.py`` is the only writer of the ledger and owns who may set a
+manual figure; ``list_eten_credits.py`` reads it. ``save_project`` stamps ``completed_date``,
+which is the date the rule reads.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -234,6 +243,7 @@ from app.services.shema.apply_invited_scope import apply_invited_scope
 from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
+from app.services.shema.eten_report import eten_report
 from app.services.shema.find_account import account_grants, find_account
 from app.services.shema.get_notification_prefs import get_notification_prefs
 from app.services.shema.get_project import get_project
@@ -249,6 +259,7 @@ from app.services.shema.leave_intercessor import (
     open_exit_link,
 )
 from app.services.shema.list_assessments import list_assessments
+from app.services.shema.list_eten_credits import list_eten_credits
 from app.services.shema.list_grant_changes import list_grant_changes
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_intercessors import list_intercessors
@@ -276,6 +287,7 @@ from app.services.shema.read_intake_form import form_fields, read_intake_form
 from app.services.shema.read_record import build_record, read_changes_since, read_record
 from app.services.shema.read_submission import as_received, list_submissions, read_submission
 from app.services.shema.receive_submission import receive_submission
+from app.services.shema.record_eten_credit import ETEN_LEDGER_AUDIENCE, record_eten_credit
 from app.services.shema.remove_intercessor import remove_intercessor
 from app.services.shema.remove_project_member import remove_project_member
 from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
@@ -298,6 +310,7 @@ from app.services.shema.withdraw_invite import withdraw_invite
 __all__ = [
     "DEFAULT_LINK_DAYS",
     "DOWNLOAD_URL_EXPIRY_MINUTES",
+    "ETEN_LEDGER_AUDIENCE",
     "EXIT_LINK_DAYS",
     "GCS_SHEMA_BUCKET",
     "HEALTH_AUDIENCE",
@@ -344,6 +357,7 @@ __all__ = [
     "definition_at",
     "derive_region",
     "entered_critical",
+    "eten_report",
     "exit_url",
     "expires_on",
     "field_changes",
@@ -365,6 +379,7 @@ __all__ = [
     "leaving_person",
     "link_status",
     "list_assessments",
+    "list_eten_credits",
     "list_grant_changes",
     "list_intake_links",
     "list_intercessors",
@@ -405,6 +420,7 @@ __all__ = [
     "reads_assessments",
     "receive_submission",
     "recipients",
+    "record_eten_credit",
     "record_progress",
     "record_update",
     "recorded_decision",

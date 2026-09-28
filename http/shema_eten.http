@@ -1,0 +1,47 @@
+# Shemá — ETEN (BE-11 · OBT-400)
+#
+# The credit report for one ETEN fiscal year and its manual ledger. `year` is the fiscal year
+# that ENDS on 31 July of that number: `?year=2026` covers 01/08/2025 to 31/07/2026.
+#
+# Three things to know before running anything below:
+#   * every report answered is recorded in `shema_eten_reports` (deduplicated: an unchanged
+#     report is not recorded twice) — `reportId` in the answer names the row;
+#   * a project in a sensitive country comes back with `country: {withheld: true,
+#     regionLabelKey}` for every role, and still counts in the totals;
+#   * with nothing listed in ETEN — the state of the 127 migrated records — the report is
+#     empty on purpose. Nothing is seeded.
+#
+# Before running: seed the app and its roles, grant one, and give the account a region.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py coord.local@test.com shema coordinator
+# Only `globalStrategist` and `coordinator` (or a platform admin) may set a manual credit.
+
+@baseUrl = http://localhost:8000
+@accessToken = {{shema_login.response.body.tokens.access_token}}
+
+### Login — named, so every request below reuses the token
+# @name shema_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coord.local@test.com",
+  "password": "password123"
+}
+
+### The report for the fiscal year that closed on 31/07/2026
+GET {{baseUrl}}/api/shema/eten/report?year=2026
+Authorization: Bearer {{accessToken}}
+
+### The manual ledger, for the projects the caller reaches
+GET {{baseUrl}}/api/shema/eten/credits
+Authorization: Bearer {{accessToken}}
+
+### Set a manual figure — it wins over the calculated one, and names who set it
+PUT {{baseUrl}}/api/shema/eten/credits/guarani-mbya/2026
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "credits": 1
+}

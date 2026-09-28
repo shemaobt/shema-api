@@ -48,6 +48,7 @@ from fastapi import APIRouter
 
 from app.api.shema._deps import APP_KEY, DOOR
 from app.api.shema.access import router as access_router
+from app.api.shema.eten import router as eten_router
 from app.api.shema.forms import intake as intake_router
 from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
@@ -78,6 +79,7 @@ authenticated.include_router(notifications_router)  # BE-15
 authenticated.include_router(meetings_router)  # BE-10
 authenticated.include_router(members_router)  # OBT-524
 authenticated.include_router(access_router)  # BE-22, OBT-543
+authenticated.include_router(eten_router)  # BE-11
 
 #: **The module's first deliberate hole**, and it is this line rather than a missing dependency.
 #: ``GET`` and ``POST /api/shema/intake/{token}`` carry no ``Authorization`` requirement, by

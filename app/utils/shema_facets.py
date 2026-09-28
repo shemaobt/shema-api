@@ -319,7 +319,7 @@ def in_progress_range(derived: Derivations, low: int, high: int) -> bool:
     return low <= derived.progress <= high
 
 
-def _collation_key(value: str) -> tuple[str, str]:
+def collation_key(value: str) -> tuple[str, str]:
     """How a name orders: unaccented and case-folded first, the raw string as the tiebreak.
 
     ``localeCompare`` is what the screen sorts with over there, and Python has no locale
@@ -350,10 +350,10 @@ def sort_key(record: Sortable, derived: Derivations, key: str) -> tuple[int, Any
     if key == "deadline":
         return (1, date.max) if record.deadline is None else (0, record.deadline)
     if key == "team":
-        return (1, ("", "")) if not record.team else (0, _collation_key(record.team))
+        return (1, ("", "")) if not record.team else (0, collation_key(record.team))
     if not record.language_name:
         return (1, ("", ""))
-    return (0, _collation_key(record.language_name))
+    return (0, collation_key(record.language_name))
 
 
 def _in_band(derived: Derivations, band: str) -> bool:

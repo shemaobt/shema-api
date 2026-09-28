@@ -60,7 +60,8 @@ def test_three_columns_that_exist_stay_off_the_wire() -> None:
     """``completedDate`` is a column and not a key; ``version`` and the staleness date are ours.
 
     ``completed_date`` is GATE-01 item 6's schema change, sitting in the table so that a
-    stacked wave does not discover it late, and nothing writes it. ``version`` travels as an
+    stacked wave does not discover it late; ``save_project`` stamps it (BE-11) and the ETEN
+    report, not the record, is where it travels. ``version`` travels as an
     ``ETag`` and ``last_progress_date`` is what ``derived`` was computed from.
     """
     assert {"completedDate", "version", "lastProgressDate"} & _wire_keys() == set()

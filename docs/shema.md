@@ -307,7 +307,10 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/meetings.py` | **BE-10, built** | The log: `GET`/`POST /meetings/log`, `DELETE /meetings/log/{meetingId}/{scopeKey}/{period}`. No definitions route — §9.2. |
 | `app/utils/shema_meetings.py` | **BE-10, built** | GATE-02's set as the server needs it: the three logged meetings and their cadences. Titles, attendees and readiness stay in the console's `RITMO_MEETINGS`. |
 | `app/services/shema/_meeting_log.py` | **BE-10, built** | The log's one rule, for reads and writes: `_health_audience.py`'s audience, inside the caller's region scope; `global` refused with the reason. |
-| `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
+| `app/api/shema/eten.py` | **BE-11, built** | `GET /eten/report?year=`, `GET /eten/credits`, `PUT /eten/credits/{projectId}/{year}` — FE-44 §9.8. |
+| `app/models/shema_eten.py` | **BE-11, built** | `EtenYearReport`, the line `EtenYearSnapshot` (a `LeavingShape` whose `country` is FE-44's `LocationDisplay`), the ledger entry, and the evidence each carries. **The one owner of the report's form** (FE-44 §9.8's today) and of what is recorded, `EtenYearReport.recorded()`. |
+| `app/services/shema/eten_report.py` | **BE-11, built** | The report: listed projects in scope, their history, the year's manual rows, `account_for` per project, and the report **recorded** in `shema_eten_reports` as it was answered. |
+| `app/services/shema/record_eten_credit.py`, `list_eten_credits.py` | **BE-11, built** | The manual ledger: the only writer, with who may set a figure (`ETEN_LEDGER_AUDIENCE`), and its scoped read. |
 | `app/api/shema/forms.py` | BE-12 | Submissions, the Pulse artifact, intake links, and the two **unauthenticated** intake routes. |
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
 | `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. OBT-531 added `POST …/{id}/review`. |
@@ -329,7 +332,7 @@ bucket, which is the precedent, not a trespass).
 | `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
 | `app/services/shema/_directory.py` | BE-13 | A person's contact, their consents and their country — the **only** file in either package that names `ShemaIntercessor`. §6.4's fourth owner. |
 | `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; and `can_export_notes`. §6.4. |
-| `app/utils/shema_derivations.py` | **BE-05, built**; BE-10 | FE-44 §7's nine pure functions of `(record, now)`, and §7.5's period keys in a block of their own (BE-10). **Not** in the service package — see below. |
+| `app/utils/shema_derivations.py` | **BE-05, built**; BE-10; BE-11 | FE-44 §7's nine pure functions of `(record, now)`, and §7.5's period keys in a block of their own (BE-10). **Not** in the service package — see below. BE-11 added §7.8's ETEN block at the end: the fiscal year, `completion_date_after` and `account_for`. |
 | `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
 | `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
 | `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key, plus `derived`, `locationWithheld` and `readAs` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
@@ -708,7 +711,7 @@ behaviour on it.
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
 | 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. ~~**Whether the definitions are a table at all is Open · GATE-02** (§9.2).~~ **Answered by GATE-02 on 22/set: the set is global, so there is no definitions table** — §9.2. |
 | 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads` | BE-02, BE-15 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
-| 5.11 | **ETEN ledger** | `shema_eten_credits` | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule is **Open · GATE-01** (§9.1). |
+| 5.11 | **ETEN ledger** | `shema_eten_credits`, `shema_eten_reports` (BE-11) | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule was **Open · GATE-01** (§9.1) and closed on 25/sep/2026 — BE-11's note below. |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
 | 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. One of the two things this module owns about identity (5.14 is the other). Empty means global. |
 | 5.14 | **Project members** | `shema_project_members` | OBT-524 | §6.9. **One live row per account and project**, as a partial unique index (`WHERE removed_at IS NULL`); **removal marks** `removed_at`/`removed_by` and never deletes, and coming back is a new row. **Only the Admin writes.** Read by the project's scope, its own live members and the Admin. A membership is **not** a region. |
@@ -772,6 +775,52 @@ behaviour on it.
 > record's*: `globalStrategist`, `coordinator`, `obtLab` — `resourceCircle` opens the ficha and is
 > refused the assessment, off FE-44 §5.8's own table. The same list addresses the critical notice,
 > because notifying somebody who may not read it leaks the fact that it exists.
+
+> **BE-11 ([OBT-400](https://linear.app/shema-obt/issue/OBT-400)) built row 5.11, after GATE-01
+> closed on 25/sep/2026** — and the number it produces leaves the organisation, so the
+> decisions are about making it explainable from stored data rather than reconstructible from code.
+>
+> - **The rule is `account_for` in `app/utils/shema_derivations.py`**, FE-44 §7.8's function over
+>   ETEN's fiscal year (August to July; `?year=2026` ends on 31/07/2026, read by calendar fields).
+>   It reproduces the console's `accountFor` with FE-51's two sources: a `concluido` record with
+>   a `completed_date` and a defined scope is credited in the stamp's fiscal year; otherwise the
+>   approved count crossing the scope between the two cuts decides. Three facts only the server
+>   sees move it, each argued in the function: an approved count still copied from the export
+>   (`approved_units_unverified`) is not a reading until a save moves it; a record that arrived
+>   already complete (an `initial` entry at the scope) is undated, not credited in the year it
+>   was filed; and a status recorded after the scope had already closed does not move a credit a
+>   report has already given.
+> - **`save_project` stamps `completed_date`** with the saver's day on the move into
+>   `concluido`, clears it on the way out, and never on a create; the stamp is a `completedDate`
+>   row in `shema_record_edits`, which is the event a credit is traced back to.
+> - **Every report answered is recorded** in `shema_eten_reports` (append-only, deduplicated
+>   against the newest row for the same year and scope), so the report sent in July still says
+>   what it said after the data moves — the issue's *store the snapshot with the report*. Each
+>   line carries its evidence on the wire too: the history entries read and their days, what
+>   decided the year, who set a manual figure. **The recorded content holds the region and never
+>   the country**, even for a project that is not flagged: a country in an append-only table is
+>   beyond the reach of a flag raised later.
+> - **The form is one owner, apart from the rule and the record.** ETEN changes its own report's
+>   format every year, and on 28/sep/2026 the client had not received this year's (§9.1). So:
+>   the rule is `account_for`; the data is the fields of `EtenYearReport`/`EtenYearSnapshot`;
+>   the form in force is FE-44 §9.8's — how those shapes serialise (camelCase, `country` as a
+>   `LocationDisplay`); and the record is `EtenYearReport.recorded()`, **the data under the
+>   fields' own names**, which reads no alias and no computed field
+>   (`test_the_recorded_report_keeps_the_data_and_not_the_form`). **ETEN's format, when it
+>   arrives, is a presenter in `app/models/shema_eten.py`** — a function from `EtenYearReport`
+>   to the shape ETEN asks for — served, if the server is the one that writes ETEN's file, by a
+>   route of its own in `app/api/shema/eten.py` beside `GET /eten/report`, whose console
+>   contract does not change. (The console's CSV and PDF are wave 2 and have no owner yet; if
+>   the file is built there, the same presenter is the front's to write.) Neither the rule nor
+>   the record moves; a fact the format asks for that the line lacks is a field on
+>   `EtenYearSnapshot`, filled in `eten_report._line`, and it reaches the record as one more key.
+> - **The `projectId` travels on the line** — the client allowed it on 28/sep/2026 (§9.4).
+> - **The ledger holds manual rows only**, and names who set each one; a calculated figure is
+>   kept with its readings in the recorded report instead. Setting one is the coordination's
+>   (`globalStrategist`, `coordinator` in its region) — this issue's reading, one tuple to change.
+> - **The line is an `outside` reader**: withheld for every role, the region's own coordinator
+>   included, and still counted in the totals. `test_privacy_owners.py`'s route audit now walks
+>   computed fields as well, with `EtenLocationShown` on a named allowlist.
 
 **Two shapes worth naming because they are easy to get wrong the same way the sibling did.**
 The health assessment (5.3) is the module's counterpart of
@@ -1709,6 +1758,14 @@ And a data fact that lands on this gate: **the export's `approvedUnits` is a cop
 `translatedUnits` on all 127 records**, so migrating it as-is would credit approvals nobody
 made. **Open · BE-16**, with BE-11 needing the answer.
 
+> **Closed on 25/sep/2026** (OBT-387): the rule above confirmed, the fiscal year August–July cut
+> on 31/07, the whole credit to each partner, the credit in the year the project ended, partial
+> scope worth zero, and `completed_date` written from then on. **Built by BE-11** — see the note
+> under §5. Still open, and not blocking: the format of ETEN's own report. On 28/sep/2026 the
+> client said ETEN changes it every year and had not sent this year's, so it is not an answer
+> that will close once — BE-11 keeps the form in one owner, where the next one lands as a
+> presenter without touching the rule or the recorded reports (the note under §5).
+
 ### 9.2 GATE-02 — the Rhythm meeting set ([OBT-388](https://linear.app/shema-obt/issue/OBT-388))
 
 **Blocks BE-10.** The expensive question is **whether the meeting set differs by region** —
@@ -1799,6 +1856,13 @@ which is the property that made deciding now cheap enough to do.
 > so are the country and the place; and the withheld notice is coordination's. The console's
 > cards and record are no longer the gate's to render: the server sends each reader what it may
 > read, and says which it sent (`readAs`). §6.4 carries the table.
+
+> **Answered for the ETEN report on 28/sep/2026: the `projectId` may travel on its line.** BE-11
+> had left it as a question, because a Shemá id is `<language>-<place>` (§6.4). The rule on the
+> place is unchanged — the region where the country would be, no base, no contact, and a recorded
+> report that keeps the region and never the country. **To confirm, and not decided here:** the
+> answer was about the id, and for a flagged project the id — like the language name GATE-04
+> (1.5) already lets through — can itself name the place, which the recorded report then keeps.
 
 ### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — open, and BE-16 is running fail-closed against it
 

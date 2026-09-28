@@ -70,7 +70,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.services.shema import _audit, _needs
-from app.services.shema._audit import ChangesSince
+from app.services.shema._audit import ChangesSince, FieldChange
 from app.services.shema._progress import (
     Aggregates,
     ProgressSource,
@@ -85,6 +85,7 @@ from app.services.shema._scope import (
     refuse_out_of_scope,
     visible_projects,
 )
+from app.utils.shema_derivations import completion_date_after
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,27 @@ def _refuse_impossible_dates(merged: dict[str, Any]) -> None:
         raise ValidationError("; ".join(problems))
 
 
+def _stamp_completion(project: ShemaProject, completed: date | None) -> list[FieldChange]:
+    """Write ``completed_date`` and return the trail row that says so, or nothing if it held.
+
+    BE-11. GATE-01 (25/sep) has the date **written here, when the status moves into**
+    ``concluido``, with the saver's own day — ``completion_date_after`` is the rule. The column
+    is not writable by a client, so it is not one of ``_audit.AUDITED_COLUMNS`` (which are the
+    write model's own fields, on purpose) and its trail row is written here instead: the stamp is
+    the **event** an ETEN credit is traced back to, and *who concluded it* is the trail's
+    ``changed_by``.
+    """
+    if project.completed_date == completed:
+        return []
+    change = FieldChange(
+        "completedDate",
+        None if project.completed_date is None else project.completed_date.isoformat(),
+        None if completed is None else completed.isoformat(),
+    )
+    project.completed_date = completed
+    return [change]
+
+
 def _refuse_what_the_reader_may_not_write(
     project: ShemaProject, payload: ShemaProjectUpdate, readership: Readership, *, user: User
 ) -> None:
@@ -316,6 +338,9 @@ async def save_project(
     before = _audit.snapshot(project)
     merged = _merged(project, payload)
     _refuse_impossible_dates(merged)
+    completed = completion_date_after(
+        before["status"], merged["status"], project.completed_date, day
+    )
 
     batch = _needs.needs_payload(payload)
     plan = _needs.NeedPlan() if batch is None else await _needs.plan_needs(db, project, batch)
@@ -334,6 +359,7 @@ async def save_project(
     previous = _aggregates(before)
     for column in changed:
         setattr(project, column, merged[column])
+    completion = _stamp_completion(project, completed)
     project.region_key = derive_region(project)
     project.version = version
     project.updated_by = user.id
@@ -359,7 +385,7 @@ async def save_project(
         db,
         project,
         version=version,
-        changes=[*_audit.field_changes(before, project), *need_changes],
+        changes=[*_audit.field_changes(before, project), *completion, *need_changes],
         user=user,
     )
     await _needs.notify_urgent(db, project, urgent, actor=user)

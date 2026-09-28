@@ -26,7 +26,7 @@ from tests.database_naming import the_generated_database_file
 SEEDED_KEYS = ["meaning-map-generator", "translation-helper"]
 
 #: `Base.metadata` is populated by importing the models, not by collecting the suite.
-TABLES_IN_THE_SCHEMA = 108
+TABLES_IN_THE_SCHEMA = 109
 
 A_THIRD_APP = "a-third-app-committed-outside-the-test-session"
 

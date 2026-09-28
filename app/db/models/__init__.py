@@ -99,7 +99,7 @@ from app.db.models.shema_enums import (
     ShemaRoleKey,
     ShemaYesNo,
 )
-from app.db.models.shema_eten import ShemaEtenCredit
+from app.db.models.shema_eten import ShemaEtenCredit, ShemaEtenReport
 from app.db.models.shema_exit_link import ShemaIntercessorExitLink
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
 from app.db.models.shema_grant import ShemaScopeChange
@@ -210,6 +210,7 @@ __all__ = [
     "ShemaConsentContext",
     "ShemaEtenCredit",
     "ShemaEtenCreditSource",
+    "ShemaEtenReport",
     "ShemaFormDefinition",
     "ShemaHealthAssessment",
     "ShemaHealthLevel",
