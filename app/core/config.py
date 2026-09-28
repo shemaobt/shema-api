@@ -101,6 +101,15 @@ class Settings(BaseSettings):
     #: the coordinator's intention — a link that can be minted for a year is a link that will
     #: be. The default of 45 days is ``_intake_tokens.py``'s, and this caps it.
     shema_intake_link_max_days: int = 90
+    #: How long a handoff code lives (BE-21): long enough for one app to open a tab on
+    #: another and for that app to exchange the code, short enough that a code left in a
+    #: browser history is dead before anyone reads it. Sixty seconds is the issue's number.
+    auth_handoff_code_expire_seconds: int = 60
+    #: How many handoff exchanges one address may attempt in a minute. The exchange is the
+    #: handoff's one public route; the code's 256 bits are what guard it, and this is the
+    #: second line. Beside the code's life rather than in the router because OBT-527 puts
+    #: both of the handoff's numbers here, which the other limits of the house do not do.
+    auth_handoff_exchange_limit_per_minute: int = 10
 
     email_provider: str = "log"
     resend_api_key: str = ""
