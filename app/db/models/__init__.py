@@ -101,6 +101,7 @@ from app.db.models.shema_enums import (
 )
 from app.db.models.shema_eten import ShemaEtenCredit
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
+from app.db.models.shema_grant import ShemaScopeChange
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.db.models.shema_intercessor import ShemaIntercessor
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
@@ -109,6 +110,7 @@ from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_notification import ShemaNotificationPrefs, ShemaNotificationRead
 from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
 from app.db.models.shema_progress import ShemaProgressEntry
+from app.db.models.shema_project_member import ShemaProjectMember
 from app.db.models.shema_region import ShemaUserRegion
 from app.db.models.sound_necklace import (
     GranularityLevel,
@@ -226,12 +228,14 @@ __all__ = [
     "ShemaPrayerVisibility",
     "ShemaProgressEntry",
     "ShemaProject",
+    "ShemaProjectMember",
     "ShemaProjectStatus",
     "ShemaRecordEdit",
     "ShemaRegionKey",
     "ShemaRegionTeam",
     "ShemaRoleChange",
     "ShemaRoleKey",
+    "ShemaScopeChange",
     "ShemaSubmission",
     "ShemaUserRegion",
     "ShemaYesNo",

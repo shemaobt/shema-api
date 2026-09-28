@@ -7,7 +7,9 @@
 #
 # The session is the PME's door (docs/shema.md §6.8): it also admits an account holding
 # `gestor` or `mesa` in resource-request-form and nothing here, and answers every role the
-# account holds in `roles`. Every other /api/shema route still needs a Shemá role.
+# account holds in `roles`. Since OBT-524 a live project membership is `equipe` and opens it
+# too, with the member's two reads (http/shema_members.http). Every other /api/shema route
+# still needs a Shemá role.
 #
 # Before running: apply the seed, then grant a role.
 #   uv run python scripts/seed_apps_roles.py

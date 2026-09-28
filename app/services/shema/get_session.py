@@ -1,12 +1,13 @@
 """``GET /api/shema/session``'s answers, each read from the place that owns it.
 
 ``GET /api/auth/my-roles`` cannot answer this and never will: the grant has no region
-(FE-44 §3.1). What it adds is the region, and **none of the parts is a new store** —
-``roles`` (and ``role``, its first entry) come from ``authorization_service.list_roles``
-through ``_scope.session_roles``, ``regionScope`` from
-``shema_user_regions`` through ``_scope.py``, and ``name`` from the org chart
-``shema_region_teams``, which FE-44 §5.3 freezes as the single source of who holds which
-role where, with the session named as one of its four consumers.
+(FE-44 §3.1). What it adds is the region, and **none of the parts is a store of the session's
+own** — ``roles`` (and ``role``, its first entry) come from ``authorization_service.list_roles``
+through ``_scope.session_roles`` — plus, since OBT-524, the ``equipe`` a live row in
+``shema_project_members`` adds — ``regionScope`` from ``shema_user_regions`` through
+``_scope.py``, and ``name`` from the org chart ``shema_region_teams``, which FE-44 §5.3 freezes
+as the single source of who holds which role where, with the session named as one of its four
+consumers.
 
 **Open question 4 of** ``docs/shema.md`` **§10 is answered here: yes, the name falls back to**
 ``users.display_name``. The argument, since §6.3 asked for one rather than a coin toss:
