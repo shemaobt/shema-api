@@ -1143,6 +1143,59 @@ this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
 > artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
 > and withdrawal from an already-distributed file — is untouched by anything above.
 
+### 6.7 Link tokens — one module, a table per purpose — **Decided**
+
+BE-20 ([OBT-525](https://linear.app/shema-obt/issue/OBT-525)) built this. Before it, three
+tokens were written three ways — the leader link with `token_urlsafe(32)`, the access invite
+and the password reset with `token_hex(32)` — each deciding its own states, and the access work
+of [OBT-522](https://linear.app/shema-obt/issue/OBT-522) adds four more: the handoff code, the
+endorsement link, the external request link and the intercessor's exit link. A token that
+reinvents its hash and its states is how one of them ends up with no expiry.
+
+- **One module: `app/services/common/tokens/`.** `mint` (`token_urlsafe(32)` and its digest),
+  `digest` (SHA-256, the value every token row in this repository already stores), `status`,
+  `expiry` and `mint_code`. It lives in `app/services/common/` and not in this module's service
+  package because its callers are three modules — the auth core, resource requests and Shemá.
+- **What is shared is the function, not the row. There is no generic token table.** Each
+  purpose keeps its own table with a real foreign key — `shema_intake_links.project_id`,
+  `access_invites.role_id`, and one per new token — because each token points at something
+  different and *used* means something different in each: the first answer on a multi-use link,
+  the acceptance of an invite, the spend of a handoff code. A table keyed by a kind and a target
+  id would trade every one of those keys for a string the database cannot check.
+- **The raw value leaves once**, in the response that creates the row. `mint` and `mint_code`
+  return it beside its digest; only the digest reaches a column. §6.6's third rule, now held in
+  one place.
+- **One order of states: `revoked > expired > used > pending`**, the leader link's. Revoked
+  first, so a link taken back never reads as one that merely ran out; expired before used,
+  because on a multi-use link `used_at` records the first answer and not the end of the link.
+  `status` reads a row with `expires_at`, `revoked_at` and `used_at`, and **`expires_at` is not
+  optional** — a token with no expiry has no state there.
+- **Each purpose's ceiling is a key in `app/core/config.py`, one per purpose**, read by the
+  service that mints the token and passed to `expiry`; the module reads no configuration. The
+  leader link's is `shema_intake_link_max_days` (90). Its default of 45 days stays in
+  `_intake_tokens.py` — a product fact tied to the Pulse's monthly cycle — and a ceiling set
+  below it shortens it rather than refusing the coordinator who stated nothing.
+- **A six-digit code's digest is not what protects it.** A million values is brute-forced
+  offline in no time; what protects a live code is its short life and the attempt limit, and
+  the limit is a column of the table that uses the code — the trade
+  `app/services/device/claim_code.py` already records for the Room.
+
+**What moved, and what stays.** The leader link moved: `_intake_tokens.py` mints, looks up and
+reads state through the module, and `tests/test_shema/` passed unedited. Four stay where they
+are:
+
+- **The access invite** (BE-17, `create_invite.py`, `accept_invite.py`, `_invite_status.py`)
+  stays for later. [OBT-543](https://linear.app/shema-obt/issue/OBT-543) changes
+  `AccessInvite` and `accept_invite.py` in the same wave, and moving it here would collide for
+  no gain. Nor is it a mechanical swap: the invite reads `used` **before** `expired` — an
+  accepted invite whose clock later ran out still reads as accepted in the admin's list — and
+  its column is `accepted_at`, which `status` does not read. Whoever moves it decides that
+  order first; the digest is already the same, so a live invite would keep working.
+- **The password reset** belongs to the platform's auth core, outside this module.
+- **Refresh tokens** — their rotation is INT-01's open item.
+- **The Room's device claim code and credential** (`app/services/device/`) are not links and
+  have a lifecycle of their own.
+
 ### 6.8 Seam F — the PME's door: one session over two apps' roles — **Decided; OBT-523**
 
 OBT-522 (22 and 25/sep) put the mesa, the Gestor and the Admin inside the PME: *"todos da mesa
