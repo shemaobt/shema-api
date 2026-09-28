@@ -131,7 +131,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         # Neither is CORS-safelisted: without this a browser client cannot read them at all.
         # The sound-necklace autosave version guard rides on ETag; X-Tts-Cached is what makes
-        # TTS cache warming observable.
+        # TTS cache warming observable. Accept-Ranges and Content-Range are left out on
+        # purpose: the only reader of the room's range route (/voice, 206) is the tablet's
+        # native http client, which CORS does not govern, and no browser page reads /voice
+        # (the Project Health UI's voice calls are its own routes). Checked 2026-09-28.
         expose_headers=["ETag", "X-Tts-Cached"],
     )
 
