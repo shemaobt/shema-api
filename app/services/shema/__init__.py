@@ -291,6 +291,7 @@ from app.services.shema.set_intercessor_consent import (
     withdraw_intercessor_consent,
 )
 from app.services.shema.set_region_scope import held_regions, set_region_scope
+from app.services.shema.undo_meeting import undo_meeting
 from app.services.shema.update_intercessor import update_intercessor
 from app.services.shema.withdraw_invite import withdraw_invite
 
