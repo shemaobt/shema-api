@@ -96,9 +96,11 @@ async def raise_question(
     "/questions/replies", response_model=HandRepliesResponse, dependencies=[room_caller_dep]
 )
 async def replies(
-    device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
+    device_id: str = DeviceId,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> HandRepliesResponse:
-    waiting = await service.replies_for(db, device_id)
+    waiting = await service.replies_for(db, device_id, project_id=project_id)
     return HandRepliesResponse(
         replies=[
             HandReplyView(

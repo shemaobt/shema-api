@@ -195,7 +195,8 @@ async def get_question_for_device(
     different callers until this helper made them agree. Same rule, same shape: a caller
     that names a project reaches only that project's questions; the shared key names none
     and keeps the by-id read, as everywhere else in the room. The list the tablet pulls
-    (``replies_for``) is still by device alone; that is ENG-1149's.
+    (``replies_for``) reads on the same rule, so the list, the audio and the mark agree on
+    who may touch a question.
     """
     question = await get_question(db, question_id)
     if question.device_id != device_id:
@@ -523,19 +524,32 @@ async def resolve_elsewhere(
     return question
 
 
-async def replies_for(db: AsyncSession, device_id: str) -> list[IRQuestion]:
-    """Answers this device has not heard yet, from any session it ever held.
+async def replies_for(
+    db: AsyncSession, device_id: str, *, project_id: str | None
+) -> list[IRQuestion]:
+    """Answers this device has not heard yet, from any session it ever held, in its project.
 
     A facilitator may answer hours later, when that passage is long closed. Scoping the
     reply to its session would drop it silently.
+
+    The project is the third filter, after the device and the unheard answer, and it reads on
+    the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
+    a caller that names one lists that project's questions and the ones that name none.
+    ``project_id=None`` is the shared key, which names no project, and it turns the rule off
+    and keeps the list by device.
     """
-    result = await db.execute(
+    query = (
         select(IRQuestion)
         .where(IRQuestion.device_id == device_id)
         .where(IRQuestion.status == IRQuestionStatus.ANSWERED)
         .where(IRQuestion.heard_at.is_(None))
         .order_by(IRQuestion.answered_at)
     )
+    if project_id is not None:
+        query = query.where(
+            or_(IRQuestion.project_id.is_(None), IRQuestion.project_id == project_id)
+        )
+    result = await db.execute(query)
     return list(result.scalars())
 
 
