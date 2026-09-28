@@ -18,7 +18,9 @@ overwriting one.
 shape (``docs/resource_requests.md`` §4.5) and the reason a partial progress batch cannot
 exist:
 
-1. the record, **inside the caller's scope** — out of scope is refused exactly as absent is;
+1. the record, **inside the caller's scope** — out of scope is refused exactly as absent is —
+   and then the fields **this reader** may write (OBT-528: the place and the flag are
+   coordination's, and so is anything the reader was handed withheld);
 2. the version, against what the client read;
 3. the merged view, built and validated **before anything is applied** — every bad row in a
    batch named at once, and nothing written for any of them;
@@ -48,7 +50,9 @@ would meet a SQLAlchemy exception with no handler and answer 500 where this answ
 
 This file may read ``location``: it does so through ``_redaction.derive_region``, which is the
 column's one reader, so ``tests/test_shema/test_privacy_owners.py`` needs no allowlist entry
-for it.
+for it. The same goes for the reader's refusal: *which* fields a reader may not write is
+``_redaction.unwritable_fields``'s answer, from the names the payload set, and this file only
+raises it.
 """
 
 from __future__ import annotations
@@ -57,6 +61,7 @@ import logging
 from datetime import date
 from typing import Any
 
+from pydantic.alias_generators import to_camel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,8 +77,14 @@ from app.services.shema._progress import (
     record_progress,
     with_rolled_aggregates,
 )
-from app.services.shema._redaction import derive_region, log_reference
-from app.services.shema._scope import RegionScope, reaches, refuse_out_of_scope, visible_projects
+from app.services.shema._redaction import derive_region, log_reference, unwritable_fields
+from app.services.shema._scope import (
+    Readership,
+    RegionScope,
+    reaches,
+    refuse_out_of_scope,
+    visible_projects,
+)
 from app.utils.shema_derivations import completion_date_after
 
 logger = logging.getLogger(__name__)
@@ -229,6 +240,37 @@ def _stamp_completion(project: ShemaProject, completed: date | None) -> list[Fie
     return [change]
 
 
+def _refuse_what_the_reader_may_not_write(
+    project: ShemaProject, payload: ShemaProjectUpdate, readership: Readership, *, user: User
+) -> None:
+    """Refuse a save that writes a field this reader may not write — before anything else.
+
+    Before the version check, because a write the reader could never make is not made
+    possible by quoting the right version, and a 409 would send them to reload for nothing.
+    The message names the fields in the client's own spelling and nothing about the record,
+    and the line logs the event with ``log_reference`` — the id and the region, never the
+    place.
+    """
+    reader = readership.reader_of(project.region_key)
+    refused = unwritable_fields(project, payload.model_fields_set, reader)
+    if not refused:
+        return
+    logger.warning(
+        "shema authorization refused: a field this reader may not write",
+        extra={
+            "shema_operation": "save_project",
+            "shema_user_id": user.id,
+            "shema_reader": reader.value,
+            "shema_refused_fields": refused,
+            **log_reference(project),
+        },
+    )
+    raise AuthorizationError(
+        f"{', '.join(to_camel(name) for name in refused)}: "
+        "only coordination writes the place, the sensitive flag and what they withhold"
+    )
+
+
 async def _bump_version(db: AsyncSession, project: ShemaProject, expected: int) -> int | None:
     """Move the version from ``expected`` to ``expected + 1``, or answer ``None``.
 
@@ -257,6 +299,7 @@ async def save_project(
     project_id: str,
     payload: ShemaProjectUpdate,
     *,
+    readership: Readership,
     user: User,
     expected_version: int,
     day: date,
@@ -270,7 +313,11 @@ async def save_project(
     a region may write it, and the product has no third answer — so this starts at
     ``visible_projects`` exactly as the record read does, and a project outside the caller's
     reach is refused with the same ``NotFoundError`` for the same reason: a 403 on a direct id
-    is the existence-without-detail answer delivered by status code.
+    is the existence-without-detail answer delivered by status code. **Which fields** is the
+    second question, and ``readership`` answers it: a reader who is not coordination is
+    refused the place and the flag on every record, and the base and the contacts on a
+    withheld one (OBT-528) — a 403, because the record is already theirs to reach and the
+    answer depends on nothing but the names they sent.
 
     ``day`` is the actor's local day and is the caller's to state; ``source`` is BE-12's, and
     is here so that an imported update and a typed one are one path.
@@ -280,6 +327,8 @@ async def save_project(
     ).scalar_one_or_none()
     if project is None:
         raise refuse_out_of_scope(scope, user=user, operation="save_project", project_id=project_id)
+
+    _refuse_what_the_reader_may_not_write(project, payload, readership, user=user)
 
     if project.version != expected_version:
         raise RecordVersionConflict(

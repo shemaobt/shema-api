@@ -15,10 +15,13 @@ contact are **not** in the line, and that is the point of it existing in this sh
 is read by more people and kept longer than a response body. A removal audit **row** would be
 the tombstone by another name.
 
-**Nothing else in this module holds a reference to a network contact**, so removal takes effect
-everywhere in one statement rather than in a sweep. That is not luck: §5.7 forbids a foreign
-key from this table to anything, in either direction, which is what makes *removal removes from
-every output* a property of the schema instead of a checklist. ``_directory.leaving_directory``
+**Nothing else in this module holds a reference to a network contact** beyond the rows that hang
+off it — the consents and the exit links (OBT-531), both ``ON DELETE CASCADE`` — so removal takes
+effect everywhere in one statement rather than in a sweep. That is not luck: §5.7 forbids a
+foreign key from this table to anything, in either direction, which is what makes *removal
+removes from every output* a property of the schema instead of a checklist. Leaving through an
+exit link is the same erasure, ``_directory._erase``, with its own log line in
+``leave_intercessor.py``: there is no actor to name there. ``_directory.leaving_directory``
 reads the table on every call and caches nothing, so a person removed is absent from the next
 export with no cleanup step — the derived-wall property of FE-44 §8.2, held here by the same
 means.

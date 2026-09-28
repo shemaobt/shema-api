@@ -1,14 +1,15 @@
 """The record — ``GET /api/shema/projects/{id}``, and every sub-shape the ficha is made of.
 
-**This is a coordination surface and it carries the truth.** It is the one read in the module
-that deliberately does *not* inherit
-:class:`~app.models.shema_privacy.LeavingShape`: FE-44 §9.0 states the split in one line —
-*"the project read itself carries the true location — it is a coordination surface"* — and §8.1
-rule 5 gives the reason, which is that hiding the country from the record's own author is data
-loss rather than privacy. The scope is what decides who may open it (``_scope.py``), and
-``tests/test_shema/test_privacy_owners.py`` carries the three routes of this file in
-``COORDINATION_ROUTES`` so the exemption is a line somebody wrote rather than a shape that
-slipped past.
+**It is built for its reader (OBT-528).** BE-06 exempted the record from
+:class:`~app.models.shema_privacy.LeavingShape` on FE-44 §9.0's line that the project read is a
+coordination surface, and GATE-04 moved that line to the reader: the truth of a sensitive place
+is **coordination's**, not the record's. So the record is a
+:class:`~app.models.shema_privacy.SessionShape`: a coordination reader gets the truth — hiding
+the country from the people who coordinate the project is data loss rather than privacy (§8.1
+rule 5) — and every other reader gets the region, inclusive na ficha. The scope still decides
+who may open it (``_scope.py``); the reader decides what they read. No route is exempt any
+more, and ``tests/test_shema/test_privacy_owners.py``'s ``READER_ROUTES`` names the ones that
+take the caller's reader.
 
 **The shape is FE-44's ``Project``, key for key: 55 required and 18 optional.**
 ``src/types/__tests__/contract.test.ts`` pins that split in both directions on the other side,
@@ -68,6 +69,7 @@ from app.db.models.shema_enums import (
     ShemaProjectStatus,
     ShemaYesNo,
 )
+from app.models.shema_privacy import SessionShape
 from app.models.shema_projects import ShemaProjectDerived
 from app.utils.shema_books import chapters_in
 from app.utils.shema_derivations import OverallHealth, overall_of
@@ -381,8 +383,8 @@ class ShemaNeedItem(BaseModel):
     already had. A record screen that cannot read them cannot edit them, so the departure is
     the read's half of the same decision.
 
-    This is the **record**, which is a coordination surface: it carries what is there.
-    :class:`~app.models.shema_need.ShemaNeedLine` is the same need on its way out.
+    This is the need **on the record**, read by whoever opens it: the place rule does not reach
+    a need. :class:`~app.models.shema_need.ShemaNeedLine` is the same need on its way out.
     """
 
     model_config = _OUTWARD
@@ -459,7 +461,7 @@ class ShemaHealthAssessmentEntry(BaseModel):
         return overall_of(self.emotional, self.relational, self.spiritual, self.physical)
 
 
-class ShemaProjectRecord(BaseModel):
+class ShemaProjectRecord(SessionShape):
     """The whole record, in FE-44's frozen spelling — what the ficha's ten tabs read.
 
     Validated straight off a ``ShemaProject`` row; the six collections a row cannot answer
@@ -472,9 +474,10 @@ class ShemaProjectRecord(BaseModel):
     product added — where **absent means absent and never an empty default**, which is what
     every ``| None = None`` below the aggregates is for — and then the six collections.
 
-    **It is not a** :class:`~app.models.shema_privacy.LeavingShape`, deliberately and by
-    exemption — the module docstring carries the argument and
-    ``tests/test_shema/test_privacy_owners.py`` carries the three routes.
+    **It is a** :class:`~app.models.shema_privacy.SessionShape`, built with
+    :meth:`~app.models.shema_privacy.LeavingShape.read_by` for the caller's reader — the module
+    docstring carries the argument. Two keys beyond the contract travel with that:
+    ``locationWithheld`` and ``readAs``, both additive.
     """
 
     model_config = _OUTWARD
@@ -520,7 +523,10 @@ class ShemaProjectRecord(BaseModel):
     #: option beside its three editable ones (FE-44 §7.1).
     status: ShemaProjectStatus | None = None
     sensitivity: str = ""
-    sensitive_country: bool = False
+    #: The flag itself, on the wire as FE-44's ``sensitiveCountry`` — unlike the leaving shapes
+    #: that exclude it, the record is where coordination reads and sets it. ``None`` is a record
+    #: that could not say, which withholds and is written as ``true``.
+    sensitive_country: bool | None = None
     status_comments: str = ""
     status_goal: str = ""
     org_role: str = ""
@@ -607,6 +613,11 @@ class ShemaProjectRecord(BaseModel):
         ficha for one badly written row rather than on a list.
         """
         return [] if value is None else value
+
+    @field_serializer("sensitive_country")
+    def _the_flag_fails_closed(self, value: bool | None) -> bool:
+        """``sensitiveCountry`` is a boolean; a record that could not say is ``true``."""
+        return True if value is None else value
 
     @computed_field(alias="coords")  # type: ignore[prop-decorator]
     @property

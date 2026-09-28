@@ -1,19 +1,22 @@
-"""The Rhythm meeting log — and the table this issue deliberately does not create.
+"""The Rhythm meeting log - and the table GATE-02 decided nobody builds.
 
-``docs/shema.md`` §5.9 makes ``shema_meeting_log`` unconditional and
-``shema_meeting_definitions`` **conditional on GATE-02** ([OBT-388]), and the conditional
-half is the decision worth reading. The expensive question that gate holds is *whether the
-meeting set differs by region* — a data-model fork rather than a detail. Today the log's
-``scope_key`` carries a region or ``global`` while the five definitions are global; a
-per-region set means the definition itself is scoped, which changes the table **and** the
-readiness computation that reads it. Building either shape now would freeze a schema around a
-guess, which §9 forbids by name. So the definitions stay in code until the client answers,
-and BE-10 gets the table when the answer tells it which table to get.
+``docs/shema.md`` §5.9 made ``shema_meeting_log`` unconditional and
+``shema_meeting_definitions`` **conditional on GATE-02** ([OBT-388]), because the expensive
+question that gate held was *whether the meeting set differs by region* - a data-model fork
+rather than a detail. **It answered on 22/set/2026: the set is the same in the seven regions.**
+So the definitions table never exists; the set stays in code (``app/utils/shema_meetings.py``,
+and ``RITMO_MEETINGS`` on the console), and a log's ``scope_key`` is the region it was held in.
 
 **The period is derived by the server from the date and the cadence, never taken from the
-client.** ``src/utils/cadence.ts`` is the single owner and it never constructs a date from
-text: the prototype's own period key did, read the month back in local time, and filed the
-1st of a month under the previous month — and 1 January under the previous *year*.
+client** (BE-10). ``app/utils/shema_derivations.py``'s ``period_key`` reads it off the day's
+calendar fields and never constructs an instant: the prototype's own period key did, read the
+month back in local time, and filed the 1st of a month under the previous month - and 1 January
+under the previous *year*. The console keeps its own ``periodKey`` in ``src/utils/cadence.ts``
+to find the current period's entry and compares it to this column as text, so the two are
+**two owners of one spelling that must agree**, which ``tests/test_shema/test_periods.py``
+pins.
+
+[OBT-388]: https://linear.app/shema-obt/issue/OBT-388
 """
 
 import uuid
@@ -32,18 +35,19 @@ class ShemaMeetingLogEntry(Base):
 
     **Unique per** ``(meeting_id, scope_key, period)``, and the constraint is the behaviour:
     logging a meeting for a period that already has an entry **replaces** it rather than
-    appending a second, so the upsert BE-10 writes has a key to conflict on instead of a
-    read-then-write that two coordinators can interleave.
+    appending a second. BE-10's write reads the key's row and creates or rewrites it inside a
+    savepoint, and the constraint is what makes that safe when two coordinators interleave: the
+    second insert conflicts instead of landing, and is retried as the replacement it is
+    (``app/services/shema/log_meeting.py``).
 
     ``scope_key`` is text and not the ``RegionKey`` enum, because the vocabulary it holds is
     *a region or* ``global`` — eight values today, where the enum has seven. An enum of eight
-    would be a second region vocabulary to keep in step with the first, and GATE-02 may scope
-    the definitions themselves, which is exactly when a fixed set costs a migration. Text
+    would be a second region vocabulary to keep in step with the first, and the day the set is
+    scoped by region after all is exactly when a fixed set would cost a migration. Text
     costs nothing and the service validates against the one owner of the seven.
 
-    ``meeting_id`` is text for the same reason one level up: the five meetings live in code
-    until GATE-02 says whether they are a table, and a foreign key cannot point at a
-    constant.
+    ``meeting_id`` is text for the same reason one level up: the meetings live in code, as
+    GATE-02 decided, and a foreign key cannot point at a constant.
     """
 
     __tablename__ = "shema_meeting_log"
@@ -57,7 +61,8 @@ class ShemaMeetingLogEntry(Base):
     meeting_id: Mapped[str] = mapped_column(String(60), nullable=False)
     #: A ``RegionKey`` or ``global``.
     scope_key: Mapped[str] = mapped_column(String(30), nullable=False)
-    #: ``2026-05``, ``2026-Q2`` or ``2026``, derived by the server from the date and cadence.
+    #: ``2026-05``, ``2026-B3``, ``2026-Q2``, ``2026-H1`` or ``2026``, derived by the server from
+    #: the date and the meeting's cadence.
     period: Mapped[str] = mapped_column(String(10), nullable=False)
     meeting_date: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[str] = mapped_column(Text, default="", server_default="")

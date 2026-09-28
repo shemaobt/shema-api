@@ -22,6 +22,8 @@ from sqlalchemy import select
 
 from app.api.shema._deps import (
     APP_KEY,
+    FORM_APP_KEY,
+    AdminUser,
     CoordinatorUser,
     CurrentUser,
     GlobalStrategistUser,
@@ -32,7 +34,8 @@ from app.api.shema._deps import (
 from app.core.rate_limit import limiter
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
-from app.services.shema._scope import ROLE_KEYS
+from app.services.shema._scope import SHEMA_APP_ROLES
+from scripts.seed_apps_roles import seeded_roles
 from tests.baker import make_role, make_user, make_user_app_role
 
 PREFIX = "/api/shema"
@@ -47,8 +50,13 @@ UNGUARDED_PROBE = f"{PREFIX}/_probe/unguarded"
 SCOPE_PROBE = f"{PREFIX}/_probe/scope"
 
 #: One probe per role alias, so an alias wired to the wrong key is a real failure rather
-#: than an unread line. ``test_access.py`` asserts every key in ``ROLE_KEYS`` has one.
-ROLE_PROBES: dict[str, str] = {role: f"{PREFIX}/_probe/role/{role}" for role in ROLE_KEYS}
+#: than an unread line. ``test_access.py`` asserts every key the ``shema`` app seeds — the
+#: four and the ``admin`` role — has one.
+ROLE_PROBES: dict[str, str] = {role: f"{PREFIX}/_probe/role/{role}" for role in SHEMA_APP_ROLES}
+
+#: A route with no guard of its own hung off ``door`` — the door's deny-by-default, as
+#: ``UNGUARDED_PROBE`` is the app gate's.
+DOOR_PROBE = f"{PREFIX}/_probe/door"
 
 
 @pytest.fixture(autouse=True)
@@ -81,7 +89,8 @@ def _clear_role_cache():
 
 @pytest.fixture()
 async def shema_app(db_session):
-    """The app registry row and its four roles — what ``seed_apps_roles.py`` writes.
+    """The app registry row and its roles — the four and the ``admin`` role, exactly what
+    ``seed_apps_roles.py`` writes, read off its own ``seeded_roles`` so the two cannot drift.
 
     ``auto_approve`` is **off**, which is the row production has: Shemá access is granted,
     not registered for. The sibling's is on because GATE-02 D1 answered that whoever
@@ -91,8 +100,27 @@ async def shema_app(db_session):
     from tests.baker import make_app
 
     app = await make_app(db_session, app_key=APP_KEY, name="Shemá", auto_approve=False)
-    for role_key in ROLE_KEYS:
-        await make_role(db_session, app.id, role_key=role_key, label=role_key, is_system=True)
+    for role_key, label in seeded_roles(APP_KEY):
+        await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
+    return app
+
+
+@pytest.fixture()
+async def form_app(db_session):
+    """The resource-request form's registry row and its roles, as the seed writes them —
+    ``equipe``, ``mesa``, ``gestor``, ``lider`` and the ``admin`` role.
+
+    ``auto_approve`` is **on**, the row production has since ``20260828_rr02``: whoever
+    registers there is ``equipe``, which is why ``equipe`` opening the PME's door would open
+    it to everybody.
+    """
+    from tests.baker import make_app
+
+    app = await make_app(
+        db_session, app_key=FORM_APP_KEY, name="Resource Request Form", auto_approve=True
+    )
+    for role_key, label in seeded_roles(FORM_APP_KEY):
+        await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
     return app
 
 
@@ -106,12 +134,14 @@ async def client(db_session):
     into — which is what makes the unguarded probe a test of the module's wiring rather
     than of a dependency written here.
 
-    ``router`` itself is deliberately **not** mounted beside it. Everything it carries today
-    it carries *through* ``authenticated``, so mounting both would register
-    ``/api/shema/session`` twice. The day BE-12 adds the two intake routes to ``router``
-    directly, they get their own unauthenticated client rather than sharing this one — and
-    ``test_every_shema_route_is_guarded`` reads the real application's route table, which is
-    where a route added anywhere in the module is seen whether a fixture mounts it or not.
+    ``router`` — the module's own, with the intake routes, the door and ``authenticated``
+    copied in at import time — is mounted first, so every real route is served by the copy
+    the application serves. ``authenticated`` and ``door`` are then mounted again, each
+    carrying the probes included into it here: ``include_router`` copies routes when it is
+    called, so a probe added now never reaches ``router``. The real routes they also carry
+    are registered twice and the first registration serves; ``test_every_shema_route_is_guarded``
+    reads the real application's route table, which is where a route added anywhere in the
+    module is seen whether a fixture mounts it or not.
 
     The real exception handlers are registered, so ``AuthorizationError`` reaches the wire
     as the 403 a client would receive and ``NotFoundError`` as the 404.
@@ -128,7 +158,7 @@ async def client(db_session):
     from slowapi.errors import RateLimitExceeded
 
     from app.api.auth import router as auth_router
-    from app.api.shema import authenticated
+    from app.api.shema import authenticated, door
     from app.api.shema import router as module_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
@@ -159,13 +189,25 @@ async def client(db_session):
     async def _probe_resource_circle(user: ResourceCircleUser) -> dict[str, str]:
         return {"email": user.email}
 
+    @probe.get("/_probe/role/admin")
+    async def _probe_admin(user: AdminUser) -> dict[str, str]:
+        return {"email": user.email}
+
     @probe.get("/_probe/current")
     async def _probe_current(user: CurrentUser) -> dict[str, str]:
         return {"email": user.email}
 
+    door_probe = APIRouter()
+
+    @door_probe.get("/_probe/door")
+    async def _probe_door() -> dict[str, str]:
+        return {"reached": "yes"}
+
     mark = len(authenticated.routes)
+    door_mark = len(door.routes)
     try:
         authenticated.include_router(probe)
+        door.include_router(door_probe)
         test_app = FastAPI()
         # BE-12's two intake routes carry slowapi limits, and slowapi reads the limiter off
         # ``app.state``. Without these two lines every call to a limited route raises before
@@ -175,6 +217,7 @@ async def client(db_session):
         test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
         test_app.include_router(module_router, prefix=PREFIX)
         test_app.include_router(authenticated, prefix=PREFIX)
+        test_app.include_router(door, prefix=PREFIX)
         test_app.include_router(auth_router, prefix="/api/auth")
         register_exception_handlers(test_app)
 
@@ -187,6 +230,7 @@ async def client(db_session):
             yield c
     finally:
         del authenticated.routes[mark:]
+        del door.routes[door_mark:]
 
 
 async def auth_header(db_session, user) -> dict[str, str]:

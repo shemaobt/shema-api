@@ -1,4 +1,4 @@
-"""The network on the wire — and the two places the frozen shape deliberately does not hold.
+"""The network on the wire — and the three places the frozen shape deliberately does not hold.
 
 FE-44 §5.5 freezes ``Intercessor`` as ``{id, name, country, contact, addedAt}``. **The
 collection shapes here carry no** ``contact``, and that is this issue's answer to its own last
@@ -26,6 +26,13 @@ the record. A network contact is the same kind of subject with no project around
 flag rides on their own row. It is **visible on this read and withheld on every path that
 leaves** — ``docs/shema.md`` §6.4's split, not a second rule — and the leaving shape is
 ``app/services/shema/_directory.py``'s.
+
+**The third is the one-year review** (OBT-531): ``reviewDue``, ``reviewedAt`` and
+``lastSentAt``. The client answered on 22/sep that a contact nobody has used in a year is
+reviewed, and the flag is the server's — ``_directory.review_due`` is its one reading — so the
+console highlights and never computes. The directory beside it gains
+``withheldReviewDueCount``: the people no list may show who are past their year, a number and
+never a name, for the reason ``withheldCount`` already gives.
 
 Dates are ``YYYY-MM-DD`` (FE-44 §9.0) and the day is the UTC day, for the reason
 ``app/models/shema_org_chart.py`` states once: nothing in this repository stores a timezone
@@ -218,6 +225,14 @@ class IntercessorEntry(BaseModel):
     contact_hint: str = Field(alias="contactHint")
     sensitive_country: bool = Field(alias="sensitiveCountry")
     added_at: date = Field(alias="addedAt")
+    #: The last time a Resource Circle member confirmed this person still belongs. ``null``
+    #: until somebody does.
+    reviewed_at: date | None = Field(alias="reviewedAt")
+    #: The last time the network sent this person anything — BE-09 writes it. ``null`` means
+    #: nothing was ever sent.
+    last_sent_at: date | None = Field(alias="lastSentAt")
+    #: More than a year since the latest of entry, review and send. Computed here, read there.
+    review_due: bool = Field(alias="reviewDue")
     consents: list[Consent]
 
 
@@ -235,6 +250,9 @@ class IntercessorDirectory(BaseModel):
     people: list[IntercessorEntry]
     #: People in the network with no ``directory`` consent. A number and never a name.
     withheld_count: int = Field(alias="withheldCount")
+    #: Of those, how many are past their year. Nobody can review them on a screen they did not
+    #: consent to appear on, so the count is what says they exist. A number and never a name.
+    withheld_review_due_count: int = Field(alias="withheldReviewDueCount")
 
 
 class IntercessorContact(BaseModel):

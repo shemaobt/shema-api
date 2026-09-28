@@ -9,8 +9,10 @@
 # Two things to know before running anything below:
 #   * every response carries `counts`, including the unfiltered one — there is no way to ask
 #     for the filter alone;
-#   * a project in a sensitive country comes back with its region where its country would be,
-#     and the `country` facet counts it the same way. That is not an error in the fixture.
+#   * a project in a sensitive country comes back with its region where its country would be
+#     to any reader who is not coordination (obtLab, resourceCircle), and the `country` facet
+#     counts it the same way — that is not an error in the fixture. The coordinator granted
+#     below reads the truth of their own region (OBT-528); every card says which in `readAs`.
 #
 # Before running: seed the app and its roles, grant one, and give the account a region.
 #   uv run python scripts/seed_apps_roles.py

@@ -42,6 +42,7 @@ from app.models.shema_privacy import (
     UNKNOWN_REGION,
     LeavingShape,
     ShemaAudience,
+    ShemaReader,
 )
 from app.services.oral_collector import gcs_utils
 from app.services.shema import (
@@ -218,7 +219,8 @@ async def naive_client(db_session):
     only in what the handler hands back — an ORM row, or a model it built itself — because
     those are the two shapes a handler can return, and what FastAPI does with the second one
     is a function of which Pydantic it is running on (``serialize_response`` dumps it first
-    on the v1 branch and passes the instance straight through on v2).
+    on the v1 branch and, on v2, does not re-validate the instance's fields — though the model
+    validator runs again, which ``test_reader.py`` pins for the reader).
 
     The dependency aliases are imported at module level for the reason
     ``conftest.client`` states: with ``from __future__ import annotations`` FastAPI resolves
@@ -420,14 +422,26 @@ def test_every_shape_that_leaves_coordination_withholds_the_place(shape, flagged
 
 def test_the_search_haystack_of_a_withheld_project_holds_no_place(flagged, cleared) -> None:
     """A search returns no location at all — it returns whether a query matched, which is the
-    same fact arriving as a count. Typing a country is the cheapest probe in the module."""
-    assert COUNTRY not in searchable_text(flagged)
-    assert BASE not in searchable_text(flagged)
-    assert "Siwa Oasis" not in searchable_text(flagged)
-    assert ShemaRegionKey.AFRICA.value in searchable_text(flagged)
+    same fact arriving as a count. Typing a country is the cheapest probe in the module — for
+    every reader who is not coordination, and the cleared record matches for everybody."""
+    for reader in (ShemaReader.OTHER, ShemaReader.OUTSIDE):
+        haystack = searchable_text(flagged, reader)
+        assert COUNTRY not in haystack
+        assert BASE not in haystack
+        assert "Siwa Oasis" not in haystack
+        assert ShemaRegionKey.AFRICA.value in haystack
 
-    assert OPEN_COUNTRY in searchable_text(cleared)
-    assert OPEN_BASE in searchable_text(cleared)
+    for reader in ShemaReader:
+        assert OPEN_COUNTRY in searchable_text(cleared, reader)
+        assert OPEN_BASE in searchable_text(cleared, reader)
+
+
+def test_coordination_finds_a_withheld_project_by_the_place_it_reads(flagged) -> None:
+    """OBT-528: a coordination reader reads the place on the card, so the search that could not
+    find the card by it would be a search that disagrees with the screen beside it."""
+    haystack = searchable_text(flagged, ShemaReader.COORDINATION)
+    assert COUNTRY in haystack
+    assert BASE in haystack
 
 
 async def test_an_aggregate_is_keyed_by_region_and_never_by_a_place(
@@ -450,20 +464,30 @@ async def test_an_aggregate_is_keyed_by_region_and_never_by_a_place(
     assert COUNTRY not in json.dumps(counts)
 
 
-def test_the_collection_announces_how_many_it_reduced_and_stays_quiet_otherwise(
+def test_the_collection_announces_how_many_it_reduced_only_to_coordination(
     flagged, cleared
 ) -> None:
-    """FE-44 §8.1's map overlay and §8.4's file header, as one function.
+    """FE-44 §8.1's map overlay and §8.4's file header, as one function — addressed to a reader.
+
+    GATE-04 (OBT-528): the notice is coordination's. The caller names who it is for, whatever
+    the rows were built for — a coordinator's export carries rows built for ``outside`` under a
+    header addressed to the coordinator. Anybody else is told nothing, which hides nothing:
+    every row still carries its own marker.
 
     *"0 locations withheld"* on a file with no sensitive projects is a sentence about the
     absence of sensitive projects, said on every file, and interesting exactly when it should
     not be said.
     """
     reduced = [NaiveExportRow.model_validate(row) for row in (flagged, cleared)]
-    assert withheld_note(reduced) == 1
+    assert withheld_note(reduced, ShemaReader.COORDINATION) == 1
+    assert withheld_note(reduced, ShemaReader.OTHER) is None
+    assert withheld_note(reduced, ShemaReader.OUTSIDE) is None
+    assert [row.location_withheld for row in reduced] == [True, False], (
+        "the notice is withheld from other readers; the per-row marker never is"
+    )
 
-    assert withheld_note([NaiveExportRow.model_validate(cleared)]) is None
-    assert withheld_note([]) is None
+    assert withheld_note([NaiveExportRow.model_validate(cleared)], ShemaReader.COORDINATION) is None
+    assert withheld_note([], ShemaReader.COORDINATION) is None
 
 
 def test_a_log_reference_names_the_record_without_naming_the_place(flagged) -> None:
@@ -596,10 +620,10 @@ def test_a_payload_rebuilt_from_its_own_dump_is_the_payload_it_was(flagged, clea
     """The other half of the seam, and the half no framework version can take away.
 
     ``sensitive_country`` and ``region_key`` are both ``exclude=True``, so a payload rebuilt
-    from a dump of itself can answer neither *was this withheld* nor *which region*. It is
-    taken at its word rather than reduced again — reducing it again would rewrite the region
-    the first pass named to ``other`` and plot every withheld project on one centroid, which
-    is the opposite of what ``REGION_CENTROIDS`` is for.
+    from a dump of itself can answer neither *was this withheld* nor *which region*. Its marker
+    is read as a report: a withheld payload is reduced again in the region it names itself —
+    idempotently, so the rebuilt payload is the payload it was, rather than one moved to
+    ``other`` and plotted on the wrong centroid — and a cleared one stays cleared.
     """
     withheld = NaiveProjectOut.model_validate(flagged).model_dump(by_alias=True)
     rebuilt = NaiveProjectOut.model_validate(withheld).model_dump(by_alias=True)
@@ -614,10 +638,28 @@ def test_a_payload_rebuilt_from_its_own_dump_is_the_payload_it_was(flagged, clea
     assert NaiveProjectOut.model_validate(whole).model_dump(by_alias=True) == whole
 
 
+def test_a_coordination_payload_rebuilt_from_its_dump_is_reduced_for_anybody_else(flagged) -> None:
+    """OBT-528: a coordination payload carries the truth beside the same marker, so the round
+    trip is where it could be laundered into a payload that leaves. The marker says withheld and
+    the rebuilt payload has no reader, so it is reduced — in the region the place itself names.
+    """
+    truth = NaiveProjectOut.read_by(flagged, ShemaReader.COORDINATION).model_dump(by_alias=True)
+    assert truth["location"] == COUNTRY and truth["locationWithheld"] is True
+
+    rebuilt = NaiveProjectOut.model_validate(truth)
+    body = json.dumps(rebuilt.model_dump(by_alias=True))
+
+    assert rebuilt.reader is ShemaReader.OUTSIDE
+    for secret in (COUNTRY, BASE, CONTACT, "Siwa Oasis"):
+        assert secret not in body, f"{secret} survived the round trip"
+    assert rebuilt.location == ShemaRegionKey.AFRICA.value
+
+
 async def test_the_record_read_still_carries_the_truth(db_session, shema_app, flagged) -> None:
-    """**The split, from the other side.** Redaction belongs to output paths; an editing
-    surface that hides the data from its own author is not privacy, it is data loss — the
-    coordinator filling the record is the person who needs the real country."""
+    """**The row is never reduced; the shape is.** The service answers the row whole for
+    whoever reaches it, and the reader decides what the payload built from it says (OBT-528) —
+    a coordinator of the region reads the real country, because hiding it from the people who
+    coordinate the project is data loss rather than privacy."""
     user = await make_scoped_user(
         db_session,
         shema_app,

@@ -18,6 +18,15 @@ them and a translation table between two spellings of one vocabulary is a second
 wrong (``docs/shema.md`` §2.3). ``roles.role_key`` is ``String(100)`` scoped per app, so
 nothing in the platform objects.
 
+**The Admin of OBT-522 is one role applied to two apps, and not a fifth key in two
+overrides.** ``PLATFORM_ADMIN_APPS`` seeds ``admin`` — labelled *"Admin da plataforma"* — in
+``shema`` and ``resource-request-form``, beside each app's own roles. It stays out of
+``APP_ROLES_OVERRIDE`` on purpose: the form's list there is its frontend's role ids, pinned by
+``tests/test_resource_requests/`` against ``capabilities.ts``, and the Admin is not one of them.
+The label applies only to those two apps; every other app's ``admin`` keeps its own. Existing
+installations get the same row from ``20260927_shema08``, which writes the same key and label;
+``tests/test_shema/test_admin_role.py`` holds the two to each other.
+
 **The Shemá ``app_url`` is the convention and not a reading**, and it is the one entry here
 that says so. ``docs/shema.md`` §10 item 3 asked BE-03 to read the console's hostname off the
 deployment; there is no deployment to read — the console is wave 1, it has no deploy
@@ -37,6 +46,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.db.models.auth import App, Role
+from app.services.shema._scope import ADMIN_ROLE
 from app.services.shema._scope import ROLE_KEYS as SHEMA_ROLE_KEYS
 
 SEED_APPS = [
@@ -70,6 +80,23 @@ APP_ROLES_OVERRIDE: dict[str, list[str]] = {
     "shema": list(SHEMA_ROLE_KEYS),
 }
 
+#: The apps the Admin of OBT-522 is seeded in, under one label.
+PLATFORM_ADMIN_APPS = ("resource-request-form", "shema")
+PLATFORM_ADMIN_LABEL = "Admin da plataforma"
+
+
+def _label(role_key: str) -> str:
+    return role_key.replace("-", " ").replace("_", " ").title()
+
+
+def seeded_roles(app_key: str) -> list[tuple[str, str]]:
+    """The ``(role_key, label)`` pairs ``app_key`` is seeded with, in seeding order."""
+    roles = [(key, _label(key)) for key in APP_ROLES_OVERRIDE.get(app_key, DEFAULT_ROLES)]
+    if app_key in PLATFORM_ADMIN_APPS:
+        roles = [(key, label) for key, label in roles if key != ADMIN_ROLE]
+        roles.append((ADMIN_ROLE, PLATFORM_ADMIN_LABEL))
+    return roles
+
 
 async def seed() -> None:
     async with AsyncSessionLocal() as db:
@@ -84,8 +111,7 @@ async def seed() -> None:
                 app.app_url = app_url
                 await db.flush()
 
-            roles = APP_ROLES_OVERRIDE.get(app_key, DEFAULT_ROLES)
-            for role_key in roles:
+            for role_key, label in seeded_roles(app_key):
                 role_result = await db.execute(
                     select(Role).where(Role.app_id == app.id, Role.role_key == role_key)
                 )
@@ -95,7 +121,7 @@ async def seed() -> None:
                         Role(
                             app_id=app.id,
                             role_key=role_key,
-                            label=role_key.replace("-", " ").replace("_", " ").title(),
+                            label=label,
                             is_system=True,
                         )
                     )

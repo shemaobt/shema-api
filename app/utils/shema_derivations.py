@@ -1,4 +1,4 @@
-"""FE-44 §7's nine derivations, as pure functions of ``(record, now)``.
+"""FE-44 §7's nine derivations, as pure functions of ``(record, now)`` - and §7.5's period keys.
 
 ``src/utils/__tests__/dataJsParity.json`` is the acceptance artifact — the output of these
 nine over all 127 export records at ``2026-05-14`` — and FE-44 §7 is explicit about what
@@ -34,10 +34,14 @@ the whole of that day. The parity artifact pins ``now`` at midnight, where the t
 the calendar reading is the one this product's own vocabulary means — every date here is a
 day somebody wrote down (FE-44 §9.0).
 
-**The ETEN block at the end is BE-11's, FE-44 §7.8.** GATE-01 closed on 25/sep/2026 (OBT-387):
-a credit is one completed defined scope, counted in approved chapters and never a divisor; the
-year is ETEN's fiscal year, August to July; each partner receives the whole credit; the credit
-belongs to the fiscal year the project ended; partial scope earns nothing.
+**The Rhythm's period keys are the next-to-last block of the file (BE-10).** They are not one of
+the nine the parity artifact pins, and they answer the same trap the module is arranged against:
+a period read through an instant files the 1st of a month under the previous one.
+
+**The ETEN block, last in the file, is BE-11's, FE-44 §7.8.** GATE-01 closed on 25/sep/2026
+(OBT-387): a credit is one completed defined scope, counted in approved chapters and never a
+divisor; the year is ETEN's fiscal year, August to July; each partner receives the whole credit;
+the credit belongs to the fiscal year the project ended; partial scope earns nothing.
 ``src/utils/etenCredits.ts``'s ``accountFor`` is the reference and FE-51 (OBT-530) moves it to
 the fiscal year; the departures in :func:`account_for` are the facts the server can see and the
 console cannot, and each is argued where it is made.
@@ -46,9 +50,10 @@ console cannot, and each is argued where it is made.
 from __future__ import annotations
 
 import enum
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Final, NamedTuple, Protocol
 
 from app.db.models.shema_enums import (
@@ -543,6 +548,119 @@ def derive(record: Derivable, now: date, *, region: ShemaRegionKey) -> Derivatio
         last_progress_update=last_progress_update(record),
         region=region,
     )
+
+
+class Cadence(enum.StrEnum):
+    """How often a Rhythm encounter recurs - the console's ``MeetingCadence``, spelled the same.
+
+    GATE-02 (22/set) added ``bimonthly`` and ``semiannual`` to the three the prototype knew. A
+    cadence is a **length in months that divides twelve**, which is the whole reason every period
+    below is a block of calendar months inside one year and never crosses a new year.
+    """
+
+    MONTHLY = "monthly"
+    BIMONTHLY = "bimonthly"
+    QUARTERLY = "quarterly"
+    SEMIANNUAL = "semiannual"
+    ANNUAL = "annual"
+
+
+#: Months in one period of each cadence - ``PERIOD_MONTHS`` in ``src/utils/cadence.ts``.
+PERIOD_MONTHS: Final[dict[Cadence, int]] = {
+    Cadence.MONTHLY: 1,
+    Cadence.BIMONTHLY: 2,
+    Cadence.QUARTERLY: 3,
+    Cadence.SEMIANNUAL: 6,
+    Cadence.ANNUAL: 12,
+}
+
+#: The letter a numbered period carries in its key: ``2026-B2``, ``2026-Q1``, ``2026-H2``. The
+#: monthly and the annual keys carry none - ``2026-03`` and ``2026``.
+_PERIOD_LETTER: Final[dict[Cadence, str]] = {
+    Cadence.BIMONTHLY: "B",
+    Cadence.QUARTERLY: "Q",
+    Cadence.SEMIANNUAL: "H",
+}
+
+#: ``YYYY-MM-DD`` and nothing else. ``[0-9]`` and not ``\d``, which in Python also matches the
+#: digits of every other script.
+_ISO_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
+
+
+def parse_iso_date(value: object) -> date:
+    """A wire date read **by field**, or ``ValueError`` - ``parseIsoDate`` on the server.
+
+    FE-44 §7.5's rule is that a period is never read through a ``Date`` built from text, and the
+    two readers that would otherwise do the parsing are both wider than a calendar day. Pydantic's
+    lax ``date`` accepts a unix timestamp and ``2026-03-01T00:00:00-03:00``; Python's
+    ``date.fromisoformat`` accepts ``20260301`` and the ISO week date ``2026-W09-7``. Each of
+    those is an instant or a spelling the console never sends, so each is refused rather than
+    guessed at.
+
+    **Every refusal is a** ``ValueError``, including a value that is not text at all: this runs
+    as a Pydantic ``BeforeValidator``, which turns ``ValueError`` into a 422 and anything else
+    into a 500. ``date(y, m, d)`` is what checks the day against the real length of the month,
+    leap years included.
+    """
+    if isinstance(value, datetime):
+        raise ValueError("an instant is not a calendar day")
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str):
+        raise ValueError("not a YYYY-MM-DD calendar day")
+    match = _ISO_DATE.fullmatch(value.strip())
+    if match is None:
+        raise ValueError("not a YYYY-MM-DD calendar day")
+    year, month, day = (int(group) for group in match.groups())
+    return date(year, month, day)
+
+
+def _period_index(cadence: Cadence, day: date) -> int:
+    """Which period of its year ``day`` falls in, from 1: ``(month - 1) // months + 1``."""
+    return (day.month - 1) // PERIOD_MONTHS[cadence] + 1
+
+
+def period_key(cadence: Cadence, day: date) -> str:
+    """The period ``day`` belongs to: ``2026-03``, ``2026-B2``, ``2026-Q1``, ``2026-H1``, ``2026``.
+
+    **Read off the calendar fields of the day and nothing else.** The prototype built a ``Date``
+    at UTC midnight and read its month back in local time, so in every zone behind UTC the 1st
+    of a month landed in the previous month and 1 January in the previous year. There is no
+    instant here to be read in the wrong zone. B1 is January-February and B6 November-December;
+    H1 is January-June and H2 July-December.
+
+    The console compares a log's ``period`` against its own key **as text**, so the spelling is
+    a contract: four-digit year, two-digit month, one-digit period number.
+    """
+    year = f"{day.year:04d}"
+    if cadence is Cadence.MONTHLY:
+        return f"{year}-{day.month:02d}"
+    if cadence is Cadence.ANNUAL:
+        return year
+    return f"{year}-{_PERIOD_LETTER[cadence]}{_period_index(cadence, day)}"
+
+
+def period_start(cadence: Cadence, day: date) -> date:
+    """The first day of the period ``day`` belongs to - ``periodStart`` in ``cadence.ts``."""
+    first_month = (_period_index(cadence, day) - 1) * PERIOD_MONTHS[cadence] + 1
+    return date(day.year, first_month, 1)
+
+
+def period_end(cadence: Cadence, day: date) -> date:
+    """The last day of the period ``day`` belongs to - anchored to the boundary, never to *the
+    same day next period*.
+
+    ``periodEnd`` in ``cadence.ts``, and the rule the issue repeats for the two new cadences: the
+    period closes on the day before the next one starts, so the awkward dates need no special
+    case. A monthly period that holds the 31st of January closes on the 31st; the next one closes
+    on 28 February (29 in a leap year); a quarter holding 30 November closes on 31 December and
+    the next on 31 March. Because every cadence divides twelve, the next period starts in the
+    same year or on 1 January of the next, and the last day is one day before that.
+    """
+    last_month = period_start(cadence, day).month + PERIOD_MONTHS[cadence] - 1
+    if last_month == 12:
+        return date(day.year, 12, 31)
+    return date(day.year, last_month + 1, 1) - timedelta(days=1)
 
 
 #: The day ETEN's fiscal year closes, as ``(month, day)``. ``?year=2026`` is the year that

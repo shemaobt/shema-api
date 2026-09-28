@@ -1,14 +1,13 @@
 """shema eten: the reports the server answered, and who set a manual credit
 
 Revision ID: 20260927_shema_eten01
-Revises: 20260917_0001
+Revises: 20260927_shema531
 Create Date: 2026-09-27
 
-The parent is `20260917_0001`, read with `uv run alembic heads` in this worktree on 27/sep/2026
-immediately before this file was written — the measurement `docs/shema.md` §7.1 asks for. Five
-sibling issues of the same batch author migrations against `dev` too, and this one is declared
-to merge last, so whoever merges it re-points `down_revision` at the head standing then; the pull
-request body says so. The id is `shema_eten01` rather than the next `shemaNN` on purpose: two
+The parent was `20260917_0001` when this file was written (27/sep/2026). Five sibling issues of
+the same batch authored migrations against `dev` too, and this one merged last: on 28/sep it was
+re-pointed to `20260927_shema531`, the head `alembic heads` read then — the measurement
+`docs/shema.md` §7.1 asks for. The id is `shema_eten01` rather than the next `shemaNN` on purpose: two
 branches coining the same number is how `shema02` had to become `shema07`.
 
 Why BE-11 needs a migration at all, when `completed_date` and `shema_eten_credits` already
@@ -28,7 +27,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260927_shema_eten01"
-down_revision = "20260917_0001"
+down_revision = "20260927_shema531"
 branch_labels = None
 depends_on = None
 
