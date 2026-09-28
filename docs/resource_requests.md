@@ -694,6 +694,38 @@ vitest suite — but it means this emission cannot go stale at the source, which
 weakness §9 had to design around. The two checks fail for different reasons and both are
 needed: one says the emission is old, the other says the vendored copy and the map disagree.
 
+### 5.4.1 The team is a project's members, not a grant — **Built** (BE-19, OBT-520, 28/sep/2026)
+
+GATE-04 (OBT-519) and the access model of 22 and 25/sep/2026 (OBT-522) moved the team out of this
+app: a team is **the members of a project in the PME** (`shema_project_members`, OBT-524). Three
+reads change, and they change together so they cannot disagree:
+
+- **`_membership.held_roles`** is the one answer to *which of this app's roles does the account
+  hold*: the grants in `user_app_roles`, plus `equipe` when the account is a live member of any
+  project — the PME's own reading (`holds_membership`, `app/services/shema/_scope.py`), imported
+  and not restated. The app gate (`_deps._app_member`, which replaced `require_app_access` for
+  this app), `holds_capability` and `_scope.reach` all read it.
+- **The scope**: a member reaches the requests they authored **and every request of their
+  projects, drafts included** (GATE-04 D2). Who may *edit* one is the instance's question
+  (OBT-534). `RequestStatusOut` does not move: tracking is still status and nothing else
+  (GATE-03 D4).
+- **The project a request belongs to**: `rr_requests.shema_project_id`, nullable FK. Stamped at
+  creation from `?project_id=` **checked against the caller's live memberships**, never read from
+  the document (`RequestDraftIn` forbids it). A member of exactly one project may leave it unsaid;
+  a member of several must say which. The mesa, the Gestor and the platform admin may open with
+  no project or name any that exists. The second write — a link request's project, at the mesa's
+  approval — is OBT-547's. `count_project_translations` is the number the one-per-project rule
+  reads (OBT-508): submitted `traducao`, revisions not counted twice.
+
+`20260928_rr08` adds the column, **revokes** every live `equipe` grant of this app and turns
+`auto_approve` off. Three things GATE-04 D5 asks for that it deliberately does not do: the
+`equipe` role row stays (a key of the capability table, pinned by tests and by the seed script);
+`lider` stays until OBT-535's link endorsement exists; and the existing test requests are **not**
+deleted, because four tables here are append-only and deleting them means lifting
+`rr_reject_write()` and erasing ledger movements — its own reviewed step. `_default_roles.py`
+keeps mapping the app to `equipe` for the platform's `test_every_app_is_approvable`: with
+`auto_approve` off, an approval is an Admin's act (GATE-04 D3).
+
 ### 5.5 Two platform behaviours to design around
 
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and
