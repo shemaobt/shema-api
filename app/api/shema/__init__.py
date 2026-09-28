@@ -23,6 +23,15 @@ notice is missing. ``tests/test_shema/test_access.py`` reads the built applicati
 table and fails on any ``/api/shema`` route that does not carry the guard, with the intake
 allowlist stated there and empty today.
 
+**The PME's door is the other deliberate exception, and it is narrower rather than wider**
+(OBT-523, ``docs/shema.md`` §6.8). ``GET /api/shema/session`` is the console's sign-in read,
+and the mesa and the Gestor sign in holding no Shemá grant. So ``door`` carries ``DOOR`` —
+a Shemá role, or ``gestor``/``mesa`` held in the form — and holds that one route: an account
+the form made gets its session answered and is still refused by every route under
+``authenticated``. A route belongs on ``door`` only if every account at the door may reach
+it; ``tests/test_shema/test_access.py`` pins the door's paths in ``DOOR_PATHS``, so adding
+one is an edit somebody has to justify.
+
 ``tests/test_shema/test_mount.py`` proves the wiring by hanging its own route off this
 object, which is the check that survives a module with no routes — and the one that
 keeps working the day this file's own routes are the thing being moved.
@@ -35,7 +44,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.shema._deps import APP_KEY
+from app.api.shema._deps import APP_KEY, DOOR
 from app.api.shema.forms import intake as intake_router
 from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
@@ -53,7 +62,6 @@ router = APIRouter()
 #: deny-by-default; see the note above for the one exception this shape leaves room for.
 authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
 
-authenticated.include_router(session_router)  # BE-03
 authenticated.include_router(regions_router)  # BE-13
 authenticated.include_router(intercessors_router)  # BE-13
 authenticated.include_router(projects_router)  # BE-05
@@ -70,6 +78,14 @@ authenticated.include_router(notifications_router)  # BE-15
 #: carries the two paths in ``UNAUTHENTICATED_PATHS`` and fails on a third that arrives without
 #: a line added there. BE-12.
 router.include_router(intake_router)
+
+#: The PME's door: the session read, for any account holding a role of the session's
+#: vocabulary in either app (OBT-523). Everything else stays under ``authenticated``.
+door = APIRouter(dependencies=[DOOR])
+
+door.include_router(session_router)  # BE-03, OBT-523
+
+router.include_router(door)
 
 # Keep this the last statement in the file. ``include_router`` copies routes at call time,
 # so a line added below it is included into a router the application never sees: the route

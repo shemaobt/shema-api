@@ -14,6 +14,7 @@ from app.services.authorization.get_role import get_role
 from app.services.common.email import send_access_invite_email
 from app.services.resource_request_access._gate import assert_can_grant
 from app.services.resource_request_access._invite_status import invite_status
+from app.services.resource_request_access._rules import assert_role_grantable
 
 
 async def create_invite(
@@ -29,10 +30,12 @@ async def create_invite(
     so a dead provider cannot roll the invite back — and the returned URL lets
     the creator hand the link over some other way when that happens. Only the
     token's SHA-256 is stored; the raw token lives in the URL alone. Inviting
-    your own e-mail is refused as the self-grant it would become, and a second
-    pending invite for the same e-mail and role is refused as a duplicate.
+    your own e-mail is refused as the self-grant it would become, a second
+    pending invite for the same e-mail and role is refused as a duplicate, and
+    only an installation admin invites anyone to the ``admin`` role.
     """
     await assert_can_grant(db, actor, app_key)
+    assert_role_grantable(actor, role_key)
 
     normalized_email = email.strip().lower()
     if normalized_email == actor.email.lower():

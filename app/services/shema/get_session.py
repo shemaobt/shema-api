@@ -1,8 +1,9 @@
-"""``GET /api/shema/session``'s three answers, each read from the place that owns it.
+"""``GET /api/shema/session``'s answers, each read from the place that owns it.
 
 ``GET /api/auth/my-roles`` cannot answer this and never will: the grant has no region
-(FE-44 §3.1). What it adds is the region, and **none of the three parts is a new store** —
-``role`` comes from ``authorization_service.list_roles``, ``regionScope`` from
+(FE-44 §3.1). What it adds is the region, and **none of the parts is a new store** —
+``roles`` (and ``role``, its first entry) come from ``authorization_service.list_roles``
+through ``_scope.session_roles``, ``regionScope`` from
 ``shema_user_regions`` through ``_scope.py``, and ``name`` from the org chart
 ``shema_region_teams``, which FE-44 §5.3 freezes as the single source of who holds which
 role where, with the session named as one of its four consumers.
@@ -37,7 +38,7 @@ from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaRegionKey, ShemaRoleKey
 from app.db.models.shema_org_chart import ShemaRegionTeam
 from app.models.shema_session import ShemaSession
-from app.services.shema._scope import RegionScope, granted_roles, role_from, scope_from_roles
+from app.services.shema._scope import RegionScope, role_from, roles_from, scope_from_roles
 
 
 async def _seat_holder(db: AsyncSession, region_key: str, role: str) -> str:
@@ -64,24 +65,27 @@ async def _resolve_name(
     return user.display_name or None
 
 
-async def get_session(db: AsyncSession, user: User, app_key: str) -> ShemaSession:
-    """The signed-in persona, as FE-44 §9.13 froze it.
+async def get_session(db: AsyncSession, user: User, *, roles: tuple[str, ...]) -> ShemaSession:
+    """The signed-in persona, as FE-44 §9.13 froze it and OBT-523 widened it.
 
-    The roles are read once and answer both ``role`` and ``regionScope``, which is why
-    ``_scope.py`` exposes :func:`~app.services.shema._scope.scope_from_roles` beside
-    :func:`~app.services.shema._scope.region_scope` — the two questions come from one
-    fact and asking them separately read that fact twice.
+    ``roles`` is what the PME's door already read — ``_scope.session_roles`` — handed down
+    rather than read again, and answered in :data:`~app.services.shema._scope.ROLE_PRECEDENCE`
+    order whatever order it arrived in, the same trade
+    :func:`~app.services.shema._scope.scope_from_roles` exists for: the door and the body are
+    one fact and asking it twice read it twice. **Keyword-only on purpose**: this function
+    took an app key positionally until OBT-523, and a ``str`` is a sequence of strings, so a
+    caller still passing one would have been answered off the letters of ``"shema"``.
 
-    No cache. The guard that let the caller in already consulted the role cache, and this
-    endpoint is asked once per sign-in rather than once per request; a second cache here
-    would buy nothing and would hold a persona that a rename in the org chart is supposed
-    to change immediately.
+    No cache. The session is asked once per sign-in rather than once per request; a cache
+    here would buy nothing and would hold a persona that a rename in the org chart is
+    supposed to change immediately.
     """
-    granted = await granted_roles(db, user.id, app_key)
-    role = role_from(granted)
-    scope = await scope_from_roles(db, user, granted)
+    held = frozenset(roles)
+    role = role_from(held)
+    scope = await scope_from_roles(db, user, held)
     return ShemaSession(
         role=role,
+        roles=list(roles_from(held)),
         regionScope=scope.wire,
         name=await _resolve_name(db, user, role, scope),
     )

@@ -203,8 +203,8 @@ The naming trips every newcomer once.
 | | |
 |---|---|
 | `app_key` | **`shema`** |
-| Role keys | **`globalStrategist`, `coordinator`, `obtLab`, `resourceCircle`** |
-| Seeded by | `scripts/seed_apps_roles.py`'s `SEED_APPS` and `APP_ROLES_OVERRIDE` — BE-03 |
+| Role keys | **`globalStrategist`, `coordinator`, `obtLab`, `resourceCircle`**, and **`admin`** since OBT-523 (§6.8) |
+| Seeded by | `scripts/seed_apps_roles.py`'s `SEED_APPS` and `APP_ROLES_OVERRIDE` — BE-03; `admin` by its `PLATFORM_ADMIN_APPS` and by `20260927_shema08` — OBT-523 |
 | Named in code | `app/api/shema/_deps.py` and nowhere else in the module |
 
 The role keys are the frontend's own ids verbatim, which is the precedent
@@ -215,6 +215,10 @@ camelCase (`SessionRole` in `src/types/role.ts`) while most of this repository's
 are snake_case. **Keep the camelCase.** `GET /api/shema/session` (§6.3) must answer a
 `SessionRole` the frontend can use as a key; a translation table between two spellings of
 one vocabulary is a second place to be wrong, and it would be read on every request.
+
+`admin` is lower-case and not camelCase because it is not one of the four personas: it is
+OBT-522's Admin, one role seeded in this app and in `resource-request-form` under the label
+*"Admin da plataforma"*, and not `users.is_platform_admin` (§6.8).
 
 `role_key` is `String(100)` free text scoped per app (`uq_roles_app_role_key`), so nothing
 in the platform objects.
@@ -273,7 +277,7 @@ bucket, which is the precedent, not a trespass).
 | Path | Owner | Holds |
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 **· built** | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.1's region-scope dependency. The app key is named here and nowhere else in the module. |
+| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8). The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
@@ -287,7 +291,7 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
-| `app/api/shema/session.py` | BE-03 **· built** | `GET /api/shema/session` — §6.3. |
+| `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.8. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/shema/_scope.py` | BE-03 **· built** | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
@@ -414,6 +418,10 @@ Two behaviours to design around, both inherited from the sibling's §5.5 and bot
   is the installation's standing trade, not this module's bug. Anything that must see a grant
   immediately reads `list_roles` directly, as
   `app/services/resource_request/holds_capability.py` does and says why.
+- **An app's `admin` role manages that app's roles** (`assert_can_manage_roles`, the predicate
+  behind `/api/roles/assign` and `/revoke`). Since OBT-523 this app seeds one — the Admin of
+  §6.8 — so whoever is granted it concedes and revokes Shemá roles from that day, which is
+  OBT-522's rule for the role. Nobody holds it until OBT-543 grants it.
 
 `scripts/grant_app_role.py` matching on `(user_id, app_id)` and **overwriting** `role_id` is a
 live platform bug with its own issue (OBT-484), recorded in `holds_capability`'s docstring. It
@@ -828,6 +836,13 @@ an explicit act — name its seven regions, or grant it `globalStrategist` too. 
 `default_role_for("shema")` entry is `resourceCircle` for the same reason: an approval hands
 out a role and no data.
 
+**And a row counts only under a regional role — OBT-523 closed the converse.** An account
+holding no regional role (and not `globalStrategist`) reaches nothing whatever rows it has,
+without the table being read. Nothing deletes an account's rows when its regional role is
+revoked, and a seat or an operator can leave one behind; without this, the `admin`, `gestor`
+and `mesa` of §6.8 would reach a region by accident of data. The three regional roles reach
+exactly what they reached before.
+
 ### 6.2 What the region scope is *not* allowed to become
 
 Two temptations, refused here so nobody spends a week on them:
@@ -842,12 +857,16 @@ Two temptations, refused here so nobody spends a week on them:
 ### 6.3 Seam B — how the frontend learns its own scope — **Decided**
 
 ```
-GET /api/shema/session -> {role: SessionRole, regionScope: RegionKey[] | null, name: string | null}
+GET /api/shema/session -> {role: SessionRole, roles: SessionRole[], regionScope: RegionKey[] | null,
+                           name: string | null}
 ```
 
+`roles` and the door it sits behind are OBT-523's, §6.8; `role` is the first of `roles`, kept
+only through the transition.
+
 `GET /api/auth/my-roles` cannot answer this, because the grant has no region. The three parts
-come from three places and **none of them is a new store**: `role` from
-`authorization_service.list_roles(db, user.id, "shema")`; `regionScope` from
+come from three places and **none of them is a new store**: `role` (and, since OBT-523, `roles`)
+from `authorization_service.list_roles` — one read of both apps, §6.8; `regionScope` from
 `shema_user_regions` (`null` = global); and **`name` resolved from the org chart** (§5.8) —
 it is not a user profile field, and renaming a role-holder renames who the session says you
 are.
@@ -1168,6 +1187,51 @@ are:
 - **The Room's device claim code and credential** (`app/services/device/`) are not links and
   have a lifecycle of their own.
 
+### 6.8 Seam F — the PME's door: one session over two apps' roles — **Decided; OBT-523**
+
+OBT-522 (22 and 25/sep) put the mesa, the Gestor and the Admin inside the PME: *"todos da mesa
+vão ter conta no PME com a função já definida"*. Their grants live in `resource-request-form`,
+and the session route sat under `authenticated`, whose gate is `require_app_access("shema")`:
+the mesa was refused at the door of a console it now belongs to. Six rules.
+
+- **The session answers every role, and `role` is transitional.** `roles` is every key of
+  `ROLE_PRECEDENCE` the account holds, in that order; `role` is its first entry, kept so no
+  screen that reads one role breaks while the console moves to the list. The four Shemá roles
+  lead the precedence, widest-first as before, so every account that reached the console
+  before keeps its `role` byte for byte (the Admin of today holds `globalStrategist`, `admin`
+  and `gestor` and still answers `globalStrategist`); then `admin`, `gestor`, `mesa`, and the
+  reserved `equipe`. The console's `SESSION_ROLES` is this tuple and refuses any key outside it,
+  so the list is closed: a key added here is a key added there.
+- **The door is a router of its own and opens one route.** `door` carries `DOOR` and holds
+  `GET /session`; everything else stays under `authenticated`. An account the form made gets its
+  session and is refused by every other route — what each area shows it is OBT-544's.
+  `tests/test_shema/test_access.py` pins the door's paths in `DOOR_PATHS`, so the next door
+  route (OBT-524's `/me/projects`, for a member with no regional role) is a deliberate edit.
+- **Who passes: at least one role of the vocabulary, counted per app.** From `shema`, the four
+  and `admin`; from `resource-request-form`, `gestor` and `mesa`. **Not** the form's `equipe`
+  — `auto_approve` hands it to everybody who registers there, and OBT-524 turns it into a
+  project membership — nor `lider`, who has no account since 22/sep, nor the form's `admin` row:
+  every guard below the door reads the `shema` grant, and a session answering *admin* off the
+  form's row would name a power every admin route refuses. One `list_roles` read answers the
+  door and the body (`_scope.session_roles`), so the two cannot disagree. An installation admin
+  passes, as everywhere, and is answered the roles it actually holds.
+- **`admin` is one role for two apps, and it is not the installation's admin.** Seeded in both
+  by `20260927_shema08` and by `scripts/seed_apps_roles.py` under *"Admin da plataforma"*;
+  nobody holds it until OBT-543. `AdminUser` guards on it for OBT-524 and OBT-543.
+- **Seeding it in the form closed a door there.** The form's two access doors
+  (`app/services/resource_request_access/`) grant any role the app has, and the Gestor may use
+  them: a Gestor could have named an Admin, who then passes `assert_can_manage_roles` and
+  revokes through `/api/roles`. Only an installation admin names `admin` through those doors
+  until OBT-543 moves the concession to the PME.
+- **`admin`, `gestor` and `mesa` reach no region** — §6.1's last paragraph.
+
+**Left to others, and named so nobody assumes them done.** OBT-543: granting `admin` should
+grant it in both apps (the door reads the `shema` one), and an `admin` held in the form passes
+`assert_can_manage_roles` there without the form's mesa × Gestor exclusion. The form's owner:
+`admin` holds no capability in the form's table, and the form's `reach()` counts it as a fifth
+role — the whole board. OBT-544: until it lands, an account at the door with no Shemá role is
+refused by every other route the console calls, `/regions` on sign-in included.
+
 ---
 
 ## 7. Traps in this repository, for this module
@@ -1260,9 +1324,10 @@ No models, no migration, no service, no endpoint. The anchor is what lets BE-02�
 routers without touching `app/main.py` and without a second conversation about the prefix.
 
 **What BE-03 added to it, and the one shape worth knowing before writing a router.**
-`app/api/shema/__init__.py` now holds two routers: `router`, which `app/main.py` mounts and
-which carries no dependency of its own, and `authenticated`, which carries
-`require_app_access(APP_KEY)` once. **Include your sub-router into `authenticated`.** That is
+`app/api/shema/__init__.py` now holds three routers: `router`, which `app/main.py` mounts and
+which carries no dependency of its own; `authenticated`, which carries
+`require_app_access(APP_KEY)` once; and — since OBT-523 — `door`, which carries the PME's door
+and holds `GET /session` alone (§6.8). **Include your sub-router into `authenticated`.** That is
 what makes the module deny-by-default — a route added by a later issue is refused for an
 account with no Shemá grant whether or not its author wired a guard — and it is a property of
 the file rather than a thing to remember. `router` stays plain so BE-12's two unauthenticated

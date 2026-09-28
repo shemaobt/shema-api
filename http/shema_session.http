@@ -1,8 +1,13 @@
-# Shemá — roles, region scope and the session (BE-03 · OBT-392)
+# Shemá — roles, region scope and the session (BE-03 · OBT-392; the door · OBT-523)
 #
 # This product has no login of its own: it uses the shared /api/auth with the app_key
-# below. What belongs to it are the app_key and its four roles — globalStrategist,
-# coordinator, obtLab, resourceCircle — seeded by scripts/seed_apps_roles.py.
+# below. What belongs to it are the app_key and its roles — globalStrategist,
+# coordinator, obtLab, resourceCircle, and the Admin (`admin`, "Admin da plataforma") —
+# seeded by scripts/seed_apps_roles.py.
+#
+# The session is the PME's door (docs/shema.md §6.8): it also admits an account holding
+# `gestor` or `mesa` in resource-request-form and nothing here, and answers every role the
+# account holds in `roles`. Every other /api/shema route still needs a Shemá role.
 #
 # Before running: apply the seed, then grant a role.
 #   uv run python scripts/seed_apps_roles.py
@@ -73,7 +78,9 @@ Content-Type: application/json
   "password": "password123"
 }
 
-### The session — {role, regionScope, name}
+### The session — {role, roles, regionScope, name}
+# roles is every role held, highest precedence first; role is its first entry, kept only
+# while the console still reads one role.
 # regionScope is null for a global caller and a list for a regional one; an empty list
 # is an account holding a regional role with no region granted, which reaches nothing.
 # name comes from the org chart seat (shema_region_teams) and falls back to the
@@ -83,11 +90,29 @@ GET {{baseUrl}}/api/shema/session
 Authorization: Bearer {{shema_login.response.body.tokens.access_token}}
 
 ### The same call from the account with no role — 403, naming the app
-# Deny by default: every route under /api/shema inherits require_app_access from the
-# `authenticated` router in app/api/shema/__init__.py, so this is the answer a route
-# added later gives too, whether or not its author wired a guard.
+# The door refuses an account holding nothing in either app. Every other route under
+# /api/shema inherits require_app_access from the `authenticated` router in
+# app/api/shema/__init__.py, so a route added later refuses it too, guard or not.
 GET {{baseUrl}}/api/shema/session
 Authorization: Bearer {{shema_outsider_login.response.body.tokens.access_token}}
+
+### A mesa with nothing in `shema` — 200 here, 403 everywhere else
+# Sign up mesa.local@test.com as above, grant it the form's own role, then sign in as it:
+#   await grant_app_role(db, user.id, 'resource-request-form', 'mesa')
+# The session answers {"role": "mesa", "roles": ["mesa"], "regionScope": [], ...}; the
+# form's `equipe`, which every account registered there holds, does not open the door.
+# @name shema_mesa_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "mesa.local@test.com",
+  "password": "password123"
+}
+
+###
+GET {{baseUrl}}/api/shema/session
+Authorization: Bearer {{shema_mesa_login.response.body.tokens.access_token}}
 
 ### The same call with no token at all — 401, not 403
 GET {{baseUrl}}/api/shema/session
