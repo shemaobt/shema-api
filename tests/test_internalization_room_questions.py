@@ -9,14 +9,15 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.core.exceptions import ValidationError
+from app.core.exceptions import ReplyMovedOn, ValidationError
 from app.db.models.internalization_room import IRCoverageEvent, IRQuestion, IRQuestionStatus
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
+from app.services.internalization_room.voice_handles import team_audio_url
 from tests.baker import make_language, make_project, make_project_user_access, make_user
 
 DEVICE = "tablet-da-equipe-1"
@@ -273,6 +274,104 @@ async def test_resolving_does_not_bury_a_reply_nobody_has_heard(
 
     waiting = await service.replies_for(db_session, DEVICE)
     assert [q.id for q in waiting] == [question.id]
+
+
+async def _served_reply(client: httpx.AsyncClient, question_id: str) -> str | None:
+    response = await client.get(f"{QUESTIONS}/replies")
+    assert response.status_code == 200, response.text
+    served = {r["question_id"]: r["audio_url"] for r in response.json()["replies"]}
+    return served.get(question_id)
+
+
+async def test_a_reply_recorded_again_while_the_first_played_is_still_offered(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    store = MemoryStore()
+    question = await _raise(db_session, store)
+    await service.answer_with_voice(
+        db_session, question, audio=b"primeira", answered_by="fac", store=store
+    )
+    first = await _served_reply(room_client, question.id)
+    await service.answer_with_voice(
+        db_session, question, audio=b"segunda", answered_by="fac", store=store
+    )
+    second = await _served_reply(room_client, question.id)
+
+    response = await room_client.post(f"{QUESTIONS}/{question.id}/heard", json={"audio_url": first})
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "REPLY_MOVED_ON"
+    assert second is not None and second != first
+    assert await _served_reply(room_client, question.id) == second, (
+        "o tablet terminava a primeira e marcava a pergunta, e o servidor carimbava a "
+        "segunda, que ninguém ouviu — a correção sumia do próximo pull"
+    )
+
+
+async def test_the_reply_the_tablet_heard_is_the_current_one_and_leaves_the_pull(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    store = MemoryStore()
+    question = await _raise(db_session, store)
+    await service.answer_with_voice(
+        db_session, question, audio=b"resposta", answered_by="fac", store=store
+    )
+    current = await _served_reply(room_client, question.id)
+
+    response = await room_client.post(
+        f"{QUESTIONS}/{question.id}/heard", json={"audio_url": current}
+    )
+
+    assert response.status_code == 200, response.text
+    assert await _served_reply(room_client, question.id) is None
+
+
+async def test_a_tablet_that_names_no_reply_still_marks_the_question_heard(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    store = MemoryStore()
+    question = await _raise(db_session, store)
+    await service.answer_with_voice(
+        db_session, question, audio=b"resposta", answered_by="fac", store=store
+    )
+
+    response = await room_client.post(f"{QUESTIONS}/{question.id}/heard")
+
+    assert response.status_code == 200, response.text
+    assert await _served_reply(room_client, question.id) is None, (
+        "o app em campo não manda corpo nenhum; recusar o POST sem o campo faria toda "
+        "resposta voltar a tocar para sempre"
+    )
+
+
+async def test_a_reply_recorded_again_between_the_read_and_the_stamp_is_not_stamped(
+    db_session: AsyncSession,
+) -> None:
+    store = MemoryStore()
+    question = await _raise(db_session, store)
+    await service.answer_with_voice(
+        db_session, question, audio=b"primeira", answered_by="fac", store=store
+    )
+    heard = team_audio_url(question.reply_audio_key or "")
+    await db_session.execute(
+        text("UPDATE ir_questions SET reply_audio_key = :key WHERE id = :id"),
+        {
+            "key": f"internalization-room/questions/{question.id}/resposta-segunda.m4a",
+            "id": question.id,
+        },
+    )
+    await db_session.commit()
+
+    with pytest.raises(ReplyMovedOn):
+        await service.mark_heard(db_session, question, audio_url=heard)
+
+    stamped = await db_session.execute(
+        text("SELECT heard_at FROM ir_questions WHERE id = :id"), {"id": question.id}
+    )
+    assert stamped.scalar_one() is None, (
+        "a comparação lia a linha antes da segunda resposta entrar, e o UPDATE sem condição "
+        "carimbava a segunda do mesmo jeito"
+    )
 
 
 async def test_a_panorama_question_keeps_the_sessions_own_pericope(

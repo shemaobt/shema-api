@@ -9,12 +9,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import ColumnElement, and_, case, func, or_, select
+from sqlalchemy import ColumnElement, and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     NotFoundError,
+    ReplyMovedOn,
     TranscriptionDefect,
     UpstreamServiceError,
     ValidationError,
@@ -23,6 +24,10 @@ from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room.coverage_events import last_bead_moved_in_session
 from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.voice_handles import (
+    TEAM_AUDIO_ROUTE,
+    from_question_handle,
+)
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms
 from app.services.platform.storage import GcsPlatformStore
@@ -516,8 +521,20 @@ async def replies_for(db: AsyncSession, device_id: str) -> list[IRQuestion]:
     return list(result.scalars())
 
 
-async def mark_heard(db: AsyncSession, question: IRQuestion) -> IRQuestion:
-    question.heard_at = datetime.now(UTC)
+async def mark_heard(
+    db: AsyncSession, question: IRQuestion, *, audio_url: str | None = None
+) -> IRQuestion:
+    if audio_url is None:
+        question.heard_at = datetime.now(UTC)
+    else:
+        heard_key = from_question_handle(audio_url.removeprefix(f"{TEAM_AUDIO_ROUTE}/")) or ""
+        stamped = await db.execute(
+            update(IRQuestion)
+            .where(IRQuestion.id == question.id, IRQuestion.reply_audio_key == heard_key)
+            .values(heard_at=datetime.now(UTC))
+        )
+        if stamped.rowcount != 1:
+            raise ReplyMovedOn(f"Question {question.id} has a newer reply than the one heard")
     await db.commit()
     await db.refresh(question)
     return question
