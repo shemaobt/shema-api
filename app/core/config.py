@@ -90,8 +90,33 @@ class Settings(BaseSettings):
     #: production, so an unset variable deploys what it always did.
     gcs_oc_bucket: str = "tripod-image-uploads"
 
+    # Token lifetimes: one key per purpose, in the unit that purpose is measured in. The
+    # service that mints a token reads its own key; ``app/services/common/tokens/`` reads none
+    # of them and takes the number as an argument — the module is shared, the ceiling is not.
+    # A new token adds its key at the end of this block.
     password_reset_token_expire_minutes: int = 60
     access_invite_expire_days: int = 7
+    #: The longest a coordinator may ask a leader link to live (BE-12): three Pulse cycles.
+    #: The ceiling exists because *expiring* is a property of the credential rather than of
+    #: the coordinator's intention — a link that can be minted for a year is a link that will
+    #: be. The default of 45 days is ``_intake_tokens.py``'s, and this caps it.
+    shema_intake_link_max_days: int = 90
+    #: How long an intercessor's exit link lives (OBT-531). Each send to the network mints its
+    #: own, so this is not a ceiling a person chooses under: it is how old a message may be and
+    #: still let its reader leave. A year, because the network is reviewed on the same clock —
+    #: a contact nobody has sent anything to in a year is due for review, and a link older than
+    #: that belongs to a send the review has already looked past.
+    shema_intercessor_exit_link_days: int = 365
+    #: How long a handoff code lives (BE-21): long enough for one app to open a tab on
+    #: another and for that app to exchange the code, short enough that a code left in a
+    #: browser history is dead before anyone reads it. Sixty seconds is the issue's number.
+    auth_handoff_code_expire_seconds: int = 60
+    #: How many handoff exchanges one address may attempt in a minute. The exchange is the
+    #: handoff's one public route; the code's 256 bits are what guard it, and this is the
+    #: second line. Beside the code's life rather than in the router because OBT-527 puts
+    #: both of the handoff's numbers here, which the other limits of the house do not do.
+    auth_handoff_exchange_limit_per_minute: int = 10
+
     email_provider: str = "log"
     resend_api_key: str = ""
 

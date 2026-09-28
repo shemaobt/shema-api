@@ -17,7 +17,13 @@ The three nets, and what each one catches that the others do not:
    endpoint written by somebody who has never read ``docs/shema.md`` either protected or red,
    and never quietly open.
 3. **The vocabulary check.** Every field the boundary promises to replace has a replacement,
-   so the two lists cannot drift into a field that is declared guarded and is emitted whole.
+   so the two lists cannot drift into a field that is declared guarded and is emitted whole —
+   and, since OBT-528, every field a withheld read reduces is a field that reader is refused
+   on write.
+4. **The reader nets** (OBT-528). The truth of a sensitive place is coordination's, so the
+   routes that take the caller's reader are a list (:data:`READER_ROUTES`) and the services that
+   build a shape for it are two files — an export that reached for the session's reader would be
+   a route that carries the truth out of the system, and it is red here until somebody lists it.
 
 **Why AST and not a substring search.** The precedent in this directory
 (``test_the_app_key_is_named_once_in_the_module``) greps for a quoted literal, which works
@@ -41,12 +47,16 @@ from app.main import create_app
 from app.models.shema_privacy import (
     BASE_FIELDS,
     CONTACT_FIELDS,
+    COORDINATION_WRITES,
     PLACE_FIELDS,
+    REASON_FIELDS,
     WITHHELD_FIELDS,
+    WITHHELD_WRITES,
     LeavingShape,
     withheld_value,
 )
 from tests.test_shema.conftest import PREFIX
+from tests.test_shema.test_access import _reaches
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -110,40 +120,46 @@ OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 }
 
 #: Routes under ``/api/shema`` whose response may carry a place unreduced — **by method and
-#: path**, never by path alone.
+#: path**, never by path alone. **Empty since OBT-528.**
 #:
-#: BE-04 wrote this as a set of paths and expected one line in it. BE-06 found that one path
-#: carries two methods with two answers: ``POST /api/shema/projects`` returns the record it
-#: just created and must be here, while ``GET /api/shema/projects`` is BE-05's collection read
-#: and must **not** be — exempting the path would have switched the audit off for the busiest
-#: leaving shape in the module, silently and in the same line that looked like an exemption for
-#: something else. So the key is the pair, which is also what the failure message already
-#: printed.
+#: BE-04 wrote this as a set of paths and expected one line in it; BE-06 keyed it by method and
+#: path and put the record's read, create and patch here, and BE-07 the health-assessment
+#: ``POST`` that answers the same record. GATE-04 then moved the truth from the record to its
+#: reader: the record is a :class:`~app.models.shema_privacy.LeavingShape` built for the caller,
+#: so the route that serves a coordinator the truth serves everybody else the region, and it
+#: needs no exemption from this audit. Which routes take the caller's reader is
+#: :data:`READER_ROUTES`' question below; this list stays, empty, for a route that one day has
+#: to be exempt — a line somebody writes and argues.
 #:
 #: ``GET /api/shema/session`` is not listed because it needs no exemption: a persona carries no
 #: project data at all.
+COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset()
+
+#: The routes whose dependency tree reaches the caller's reader (``_deps.Reading``) — the only
+#: routes that may build a payload carrying the truth of a sensitive place, because the reader
+#: is the only thing that lets a shape skip the reduction (OBT-528).
 #:
-#: **The three entries are BE-06's record, read and written.** A project read by somebody
-#: allowed to open it is a **coordination** surface and carries the truth, because hiding the
-#: country from its own author is data loss rather than privacy (FE-44 §8.1 rule 5, and §9.0
-#: in one line). The create and the patch answer the same shape for the same reason: FE-44 §9.3
-#: has both return the recomputed record, so a reduced reply to a save would show the author a
-#: withheld version of what they had just typed. Every other read — the collection, the wall,
-#: the report, the file — leaves coordination and goes through the boundary.
-#: **The fourth entry is BE-07's**, and it is here for the third one's reason rather than a new
-#: one: ``POST /api/shema/projects/{id}/health-assessments`` answers *the recomputed record*
-#: (FE-44 §9.4's own ``-> Project``), so it is the same coordination surface the record's save is,
-#: reached through a different door. The assessment history beside it — ``GET`` on the same path —
-#: is **not** listed and needs no exemption: a ``HealthAssessment`` names no place at all, which
-#: is why the audit does not ask about it.
-COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset(
+#: The four record and collection routes, and the health-assessment ``POST``, build their
+#: answer for it. The two form imports take it because an import is a person writing the record,
+#: and ``save_project`` asks the writer's reader which fields they may write; their answer names
+#: no place. A route added here is one that reads as the caller — an export, a report or a
+#: download must not be, because what leaves is built for ``outside`` whoever asked for it.
+READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
+        ("GET", f"{PREFIX}/projects"),
         ("GET", f"{PREFIX}/projects/{{project_id}}"),
         ("POST", f"{PREFIX}/projects"),
         ("PATCH", f"{PREFIX}/projects/{{project_id}}"),
         ("POST", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
+        ("POST", f"{PREFIX}/forms/submissions"),
+        ("POST", f"{PREFIX}/forms/submissions/{{submission_id}}/import"),
     }
 )
+
+#: The two services that build a shape for the session's reader: the Projetos screen's cards
+#: and the record. Every other leaving shape in the module is built with no reader, which is
+#: ``outside``.
+SESSION_READS = frozenset({"browse_projects.py", "read_record.py"})
 
 #: Routes under ``/api/shema`` whose subject is a **person**, not a project, so the project
 #: vocabulary above misreads their fields — BE-13's two directories.
@@ -155,9 +171,9 @@ COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset(
 #: beside ``sensitiveCountry``) rather than a region key; and ``sensitiveCountry`` itself
 #: is the flag the resource circle sets and reads on the entry, which :class:`LeavingShape`
 #: would exclude. So the shape is not a ``LeavingShape`` and is not unguarded:
-#: ``tests/test_shema/test_people_privacy.py`` is the audit these six answer to. Listed by
-#: the pair, as above, so a future project-shaped route on a neighbouring path is still
-#: asked.
+#: ``tests/test_shema/test_people_privacy.py`` is the audit these seven answer to — the
+#: seventh is OBT-531's review, which answers the same entry. Listed by the pair, as above,
+#: so a future project-shaped route on a neighbouring path is still asked.
 PEOPLE_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("GET", f"{PREFIX}/regions"),
@@ -166,6 +182,7 @@ PEOPLE_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{PREFIX}/prayer/intercessors"),
         ("PATCH", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}"),
         ("PUT", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}/consents/{{context}}"),
+        ("POST", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}/review"),
     }
 )
 
@@ -263,7 +280,13 @@ def _names_a_place(model: type[BaseModel]) -> list[str]:
     later notification or Pulse entry with a ``team`` and no ``location`` is exactly the shape
     that would pass an audit that only looked for a place column.
     """
-    telling = set(PLACE_FIELDS) | set(BASE_FIELDS) | set(CONTACT_FIELDS) | {"sensitive_country"}
+    telling = (
+        set(PLACE_FIELDS)
+        | set(BASE_FIELDS)
+        | set(CONTACT_FIELDS)
+        | set(REASON_FIELDS)
+        | {"sensitive_country"}
+    )
     return sorted(name for name in model.model_fields if name in telling)
 
 
@@ -320,3 +343,65 @@ def test_the_place_fields_are_all_withheld_fields() -> None:
     """The audit's trigger set may not be wider than what the boundary actually replaces."""
     assert set(PLACE_FIELDS) <= set(WITHHELD_FIELDS)
     assert set(CONTACT_FIELDS) <= set(WITHHELD_FIELDS)
+
+
+def test_every_field_a_withheld_read_reduces_is_refused_on_write() -> None:
+    """*Não dá para editar o que não se vê* (OBT-528), as a property of the two lists.
+
+    A field the read hands a reader reduced and the write lets the same reader set is a field
+    they can overwrite without seeing it — the base read as ``""`` and typed over. So every
+    withheld field is refused somewhere: on every record, or on a withheld one.
+    """
+    assert set(WITHHELD_FIELDS) <= COORDINATION_WRITES | WITHHELD_WRITES
+    assert "sensitive_country" in COORDINATION_WRITES
+
+
+def test_only_the_listed_routes_take_the_callers_reader() -> None:
+    """**The successor of the exemption list, read off the application the server builds.**
+
+    The reader is what lets a leaving shape carry the truth, so a route whose dependencies reach
+    it is a route that may. A new one — an export, a report, a download that took the caller's
+    ``Reading`` and handed it to ``browse_projects`` — would pass the route audit above, because
+    its shape is a leaving shape, and ship the truth out of the system. It is red here instead,
+    until somebody adds it to :data:`READER_ROUTES` and argues it.
+    """
+    from app.api.shema._deps import _reading
+
+    app = create_app()
+    taking = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or not route.path.startswith(PREFIX):
+            continue
+        if _reaches(route.dependant, _reading):
+            for method in set(route.methods or ()) - {"HEAD", "OPTIONS"}:
+                taking.add((method, route.path))
+
+    assert taking == READER_ROUTES
+
+
+def _builds_for_a_reader(source: Path) -> bool:
+    """Whether the module calls ``read_by`` or names the reader's context key."""
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == "read_by":
+            return True
+        if isinstance(node, ast.Name) and node.id == "READER_KEY":
+            return True
+    return False
+
+
+def test_only_the_console_reads_build_a_shape_for_the_sessions_reader() -> None:
+    """*Outside is what the export, the ETEN report, the Pulse and the leader's link already use
+    — não muda*, as a property of the tree.
+
+    A shape built with no reader is ``outside``. The two files that build one for the session
+    are the cards and the record; a third — a notice, a file, a report — that reached for a
+    reader would be the one path out of the system carrying the truth.
+    """
+    builders = sorted(
+        source.name
+        for package in GUARDED_PACKAGES
+        for source in package.glob("*.py")
+        if _builds_for_a_reader(source)
+    )
+    assert builders == sorted(SESSION_READS)

@@ -1,9 +1,10 @@
-"""The forms surface, and the module's two unauthenticated routes.
+"""The forms surface, and the leader link's two unauthenticated routes.
 
 **The hole is here and it is two lines in a diff.** ``app/api/shema/__init__.py`` puts
 ``require_app_access`` on an inner router so that a route added by a later issue is refused
-whether or not its author wired a guard; the two intake routes below are the one exception in
-the module, by FE-44 §9.0 and ``docs/shema.md`` §6.6, and they are included into the **outer**
+whether or not its author wired a guard; the two intake routes below were the module's first
+exception, by FE-44 §9.0 and ``docs/shema.md`` §6.6 (the intercessor's exit link, OBT-531, is
+the second, in ``intercessor_exit.py``), and they are included into the **outer**
 router — a named, deliberate line somebody has to write, rather than a dependency somebody has
 to notice is missing. ``tests/test_shema/test_access.py`` reads the built application's route
 table and fails on any ``/api/shema`` route not in ``UNAUTHENTICATED_PATHS``, so the exemption
@@ -63,7 +64,15 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Request, Response, status
 from slowapi.util import get_remote_address
 
-from app.api.shema._deps import APP_KEY, CoordinatorUser, CurrentUser, Db, MayApply, Scope
+from app.api.shema._deps import (
+    APP_KEY,
+    CoordinatorUser,
+    CurrentUser,
+    Db,
+    MayApply,
+    Reading,
+    Scope,
+)
 from app.api.shema.projects import LOCAL_DAY_HEADER, _expected_version, _local_day
 from app.core.rate_limit import limiter
 from app.models.shema_forms import (
@@ -212,6 +221,7 @@ async def file_submission(
     request: Request,
     db: Db,
     scope: Scope,
+    reading: Reading,
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
@@ -229,6 +239,7 @@ async def file_submission(
         scope,
         payload,
         payload_bytes=await request.body(),
+        readership=reading,
         user=user,
         app_key=APP_KEY,
         expected_version=_expected_version(if_match),
@@ -241,6 +252,7 @@ async def import_received(
     submission_id: str,
     db: Db,
     scope: Scope,
+    reading: Reading,
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
@@ -256,6 +268,7 @@ async def import_received(
         db,
         scope,
         submission_id,
+        readership=reading,
         user=user,
         expected_version=_expected_version(if_match),
         day=_local_day(local_day, utc_today=today),

@@ -53,6 +53,7 @@ from app.services.shema import (
     list_intercessors,
     remove_intercessor,
     reveal_intercessor_contact,
+    review_intercessor,
     set_intercessor_consent,
     update_intercessor,
     withdraw_intercessor_consent,
@@ -114,6 +115,19 @@ async def erase_intercessor(intercessor_id: str, user: ResourceCircleUser, db: D
     204 must not have a response body. Stating it removes the inference entirely.
     """
     await remove_intercessor(db, intercessor_id, actor=user)
+
+
+@router.post(_PEOPLE + "/{intercessor_id}/review", response_model=IntercessorEntry)
+async def mark_intercessor_reviewed(
+    intercessor_id: str, user: ResourceCircleUser, db: Db
+) -> IntercessorEntry:
+    """The "Revisado": this contact still belongs in the network, and its year starts again.
+
+    The one-year review (OBT-531, the client's answer of 22/sep). The list flags a contact
+    with ``reviewDue`` and offers two answers: this one, and ``DELETE`` beside it. The body is
+    the entry with the flag gone, so the screen replaces the row it has with the server's.
+    """
+    return await review_intercessor(db, intercessor_id, actor=user)
 
 
 @router.get(_PEOPLE + "/{intercessor_id}/contact", response_model=IntercessorContact)

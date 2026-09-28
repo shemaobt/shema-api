@@ -159,3 +159,65 @@ async def test_list_roles_excludes_revoked(db_session) -> None:
 
     roles = await authorization_service.list_roles(db_session, user.id)
     assert roles == []
+
+
+async def _member_setup(db_session, suffix: str):
+    actor = await make_user(db_session, email=f"revoker-{suffix}@example.com")
+    target = await make_user(db_session, email=f"target-{suffix}@example.com")
+    app = await make_app(db_session, app_key=f"app-{suffix}")
+    admin_role = await make_role(db_session, app.id, role_key="admin")
+    member_role = await make_role(db_session, app.id, role_key="member")
+    await make_user_app_role(db_session, actor.id, app.id, admin_role.id)
+    return actor, target, app, member_role
+
+
+@pytest.mark.asyncio
+async def test_revoke_role_records_who_revoked(db_session) -> None:
+    """A revocation has an author — what the Shemá Admin's history reads it by (OBT-543)."""
+    actor, target, app, member_role = await _member_setup(db_session, "who")
+    await make_user_app_role(db_session, target.id, app.id, member_role.id, granted_by=actor.id)
+
+    assignment = await authorization_service.revoke_role(
+        db_session, actor, target.id, app.app_key, "member"
+    )
+
+    assert assignment.revoked_by == actor.id
+
+
+@pytest.mark.asyncio
+async def test_revoke_role_revokes_every_live_duplicate(db_session) -> None:
+    """Two live rows of one grant — two requests that landed together — used to be a 500 here,
+    and revoking one of them would have left the role held."""
+    actor, target, app, member_role = await _member_setup(db_session, "dup")
+    await make_user_app_role(db_session, target.id, app.id, member_role.id)
+    await make_user_app_role(db_session, target.id, app.id, member_role.id)
+
+    await authorization_service.revoke_role(db_session, actor, target.id, app.app_key, "member")
+
+    assert await authorization_service.list_roles(db_session, target.id, app.app_key) == []
+
+
+@pytest.mark.asyncio
+async def test_assign_and_revoke_leave_the_transaction_to_the_caller_when_asked(
+    db_session,
+) -> None:
+    """``commit=False`` writes nothing a rollback cannot take back — the seam that lets the
+    Shemá Admin write one role in two apps, or a role and its regions, as one commit."""
+    actor, target, app, _member_role = await _member_setup(db_session, "tx")
+    key, target_id = app.app_key, target.id
+
+    await authorization_service.assign_role(
+        db_session, actor, target_id, key, "member", commit=False
+    )
+    assert await authorization_service.list_roles(db_session, target_id, key) == [(key, "member")]
+    await db_session.rollback()
+    assert await authorization_service.list_roles(db_session, target_id, key) == []
+    await db_session.refresh(actor)
+
+    await authorization_service.assign_role(db_session, actor, target_id, key, "member")
+    await authorization_service.revoke_role(
+        db_session, actor, target_id, key, "member", commit=False
+    )
+    assert await authorization_service.list_roles(db_session, target_id, key) == []
+    await db_session.rollback()
+    assert await authorization_service.list_roles(db_session, target_id, key) == [(key, "member")]

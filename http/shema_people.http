@@ -11,6 +11,8 @@
 #   /regions/role-changes           coordinator, and only their regions
 #   /regions/{key}/team (GET, PUT)  coordinator, and only their region
 #   everything under /prayer/...    resourceCircle, and nobody else
+#   /intercessors/leave/{token}     nobody signed in: the exit link (OBT-531) is the
+#                                   person's own, and the token is the guard
 #
 # Before running: seed the app and its roles, then grant. An account may hold
 # more than one Shemá role and here it needs two, because the two directories
@@ -103,6 +105,21 @@ Content-Type: application/json
 
 {"contact": "+55 11 98765-4321"}
 
+### "Revisado" — the one-year review. The list flags reviewDue past a year since the
+### latest of entry, review and send; this stamps reviewedAt and the flag goes.
+POST {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID/review
+Authorization: Bearer {{accessToken}}
+
 ### Erase — the row and its consents leave storage. No tombstone.
 DELETE {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID
 Authorization: Bearer {{accessToken}}
+
+### The exit link — NO Authorization header. The raw token comes from
+### leave_intercessor.issue_exit_link, which BE-09 calls once per send; nothing in this
+### module hands one out over HTTP. Opening changes nothing and answers 204.
+@exitToken = PASTE_RAW_EXIT_TOKEN
+GET {{baseUrl}}/api/shema/intercessors/leave/{{exitToken}}
+
+### Confirming erases the person, their consents and every exit link — 204. Run it
+### twice: the second answer is the same 404 an unknown link gets.
+POST {{baseUrl}}/api/shema/intercessors/leave/{{exitToken}}

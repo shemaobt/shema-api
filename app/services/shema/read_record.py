@@ -10,10 +10,12 @@ rows to regroup in Python — and every one of them is keyed on an id that came 
 scoped read, so none can reach a project the caller cannot. The property ``_scope.py`` states
 as *there is no unscoped query to call* holds here by there being no id to query with.
 
-**This file names no guarded column.** The record is a *coordination* surface and carries the
-true place (FE-44 §9.0), so there is nothing to redact — but the three authorization columns
-behind every ``authorization`` key are still read by their one owner:
-``_media_sharing.recorded_decision`` builds the shape and hands it over, and
+**This file names no guarded column.** The record is built for its reader (OBT-528): a
+coordination reader gets the true place and everybody else the region, and the reduction is
+applied by the act of validating the row into
+:class:`~app.models.shema_record.ShemaProjectRecord` for that reader — this file only says who
+reads. The three authorization columns behind every ``authorization`` key are still read by
+their one owner: ``_media_sharing.recorded_decision`` builds the shape and hands it over, and
 ``tests/test_shema/test_privacy_owners.py`` is what keeps that true of the next file too.
 
 **The write path re-reads through here.** FE-44 §9.3 requires the response to carry *the
@@ -48,7 +50,7 @@ from app.models.shema_record import (
 )
 from app.services.shema._audit import ChangesSince, changes_since
 from app.services.shema._media_sharing import recorded_decision
-from app.services.shema._scope import RegionScope
+from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
 from app.utils.shema_derivations import derive
 
@@ -153,7 +155,7 @@ async def _health_history(db: AsyncSession, project_id: str) -> list[ShemaHealth
 
 
 async def build_record(
-    db: AsyncSession, project: ShemaProject, *, today: date
+    db: AsyncSession, project: ShemaProject, *, readership: Readership, today: date
 ) -> ShemaProjectRecord:
     """One record, assembled — for a caller that has already decided it may read this row.
 
@@ -171,7 +173,8 @@ async def build_record(
     history = await _history(db, project.id)
     assessments = await _health_history(db, project.id)
 
-    record = ShemaProjectRecord.model_validate(project).model_copy(
+    reader = readership.reader_of(project.region_key)
+    record = ShemaProjectRecord.read_by(project, reader).model_copy(
         update={
             "needs_items": needs,
             "materials": materials,
@@ -191,6 +194,7 @@ async def read_record(
     scope: RegionScope,
     project_id: str,
     *,
+    readership: Readership,
     user: User,
     today: date,
 ) -> ShemaProjectRecord:
@@ -200,7 +204,7 @@ async def read_record(
     scope stops being applied, and there is no unscoped spelling of this call.
     """
     project = await get_project(db, scope, project_id, user=user, operation="read_record")
-    return await build_record(db, project, today=today)
+    return await build_record(db, project, readership=readership, today=today)
 
 
 async def read_changes_since(

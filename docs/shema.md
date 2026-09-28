@@ -203,8 +203,8 @@ The naming trips every newcomer once.
 | | |
 |---|---|
 | `app_key` | **`shema`** |
-| Role keys | **`globalStrategist`, `coordinator`, `obtLab`, `resourceCircle`** |
-| Seeded by | `scripts/seed_apps_roles.py`'s `SEED_APPS` and `APP_ROLES_OVERRIDE` — BE-03 |
+| Role keys | **`globalStrategist`, `coordinator`, `obtLab`, `resourceCircle`**, and **`admin`** since OBT-523 (§6.8) |
+| Seeded by | `scripts/seed_apps_roles.py`'s `SEED_APPS` and `APP_ROLES_OVERRIDE` — BE-03; `admin` by its `PLATFORM_ADMIN_APPS` and by `20260927_shema08` — OBT-523 |
 | Named in code | `app/api/shema/_deps.py` and nowhere else in the module |
 
 The role keys are the frontend's own ids verbatim, which is the precedent
@@ -215,6 +215,10 @@ camelCase (`SessionRole` in `src/types/role.ts`) while most of this repository's
 are snake_case. **Keep the camelCase.** `GET /api/shema/session` (§6.3) must answer a
 `SessionRole` the frontend can use as a key; a translation table between two spellings of
 one vocabulary is a second place to be wrong, and it would be read on every request.
+
+`admin` is lower-case and not camelCase because it is not one of the four personas: it is
+OBT-522's Admin, one role seeded in this app and in `resource-request-form` under the label
+*"Admin da plataforma"*, and not `users.is_platform_admin` (§6.8).
 
 `role_key` is `String(100)` free text scoped per app (`uq_roles_app_role_key`), so nothing
 in the platform objects.
@@ -235,14 +239,26 @@ The whole authentication spine, and only through `app/core/access_control.py` an
 `app/services/authorization/`: `users`, `apps`, `roles`, `user_app_roles`, `access_requests`,
 `access_invites`, `refresh_tokens`, `password_reset_tokens`.
 
-**This module's services never query those tables directly.** The guards are the interface;
-a service that reaches for `user_app_roles` has reimplemented `require_role` badly. When the
+**This module's services never query the grant tables directly** — `user_app_roles`, `roles`,
+`apps` and the two access tables. The guards are the interface; a service that reaches for
+`user_app_roles` has reimplemented `require_role` badly. When the
 module needs the join from the other end — *who holds this role* — it asks
 `authorization_service.list_role_holders`, which the sibling added for exactly that and whose
-docstring states the rule.
+docstring states the rule. OBT-543's history asks the same way (`list_grant_history`).
+Reading `users` for an account's existence or name is not that:
+`save_region_team` checks a seat's account there and OBT-524's roster names its members from it,
+and neither reads a grant.
 
-The **one** thing this module owns about identity is the region dimension of §6.1, which the
-platform has no column for.
+> **Two readings of this rule since OBT-543, both named rather than absorbed.**
+> `access_invites` is reached through the invite module that owns it —
+> `app/services/resource_request_access/invite_store.py`, gate-free, which OBT-549 moves into
+> this module — and not through `authorization/`. And `users` is read by id where a name or a
+> lock is the point: the Admin's history resolves names in one query, and a grant locks the
+> account it writes to, as `save_region_team` already reads one by id.
+
+Two things this module owns about identity: the region dimension of §6.1, which the platform
+has no column for, and — since OBT-524 — **project membership** (§6.9), the link from an account
+to the Shemá projects whose team it is on.
 
 ### 2.5 What it deliberately does not share
 
@@ -259,6 +275,14 @@ this side: the two share the auth spine of §2.4 and **nothing else** — differ
 different aggregates, different app keys. The first person to reach for the other's tables
 should be asked why.
 
+> **OBT-543 is where the two meet, deliberately.** The PME's Admin grants the form's roles
+> too (OBT-522), so this module composes the form's invite store and its mesa × Gestor rule
+> (`_rules.assert_role_compatible`), and the form's acceptance applies the regions a Shemá
+> invite carries (`apply_invited_scope`). Both directions import by **submodule path**, the only
+> spelling that binds a function whichever package loads first —
+> `tests/test_app_boots.py::test_the_grant_packages_import_in_either_order` walks both orders.
+> OBT-549 moves the form's half into this module rather than deleting it (§6.10).
+
 Two shared-by-accident surfaces are worth naming because they are one import away:
 `app/services/notifications/` (§4.6 — call it as it is, do not change its signature) and
 `app/services/oral_collector/gcs_utils.py` (§4.6 — the sibling already reuses it with its own
@@ -273,7 +297,7 @@ bucket, which is the precedent, not a trespass).
 | Path | Owner | Holds |
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 **· built** | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.1's region-scope dependency. The app key is named here and nowhere else in the module. |
+| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4). The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
@@ -286,21 +310,29 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
 | `app/api/shema/forms.py` | BE-12 | Submissions, the Pulse artifact, intake links, and the two **unauthenticated** intake routes. |
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
-| `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. |
+| `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. OBT-531 added `POST …/{id}/review`. |
+| `app/api/shema/intercessor_exit.py` | **OBT-531, built** | The module's **second** unauthenticated seam: `GET`/`POST /intercessors/leave/{token}`, the intercessor's exit link. §6.4's OBT-531 note. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
-| `app/api/shema/session.py` | BE-03 **· built** | `GET /api/shema/session` — §6.3. |
+| `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.8. |
+| `app/api/shema/access.py` | **OBT-543, built** | The Admin's seven routes under `/access` — §6.10. |
+| `app/services/shema/_grant_rules.py` | **OBT-543, built** | The one owner of what the Admin's surface grants and how: the vocabulary (built from `_scope.py`), `admin` in both apps, regions with a regional role and with no other, and the fresh check of the Admin's own standing. |
+| `app/services/shema/{find_account,grant_role,revoke_grant,send_invite,withdraw_invite,list_invites,list_grant_changes,apply_invited_scope}.py` | **OBT-543, built** | One operation each. **Flat, against the issue's `access/**`**: every structural scan of this package (`test_layering.py`, `test_privacy_owners.py`, `test_people_privacy.py`, `test_scope.py`, `test_needs.py`) reads `*.py` without recursing, and a sub-package would sit outside all of them. |
+| `app/models/shema_grant.py`, `app/db/models/shema_grant.py` | **OBT-543, built** | The surface's wire shapes; and `shema_scope_changes`, the append-only trail of every region scope change. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
-| `app/services/shema/_scope.py` | BE-03 **· built** | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
-| `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
-| `app/services/shema/_redaction.py` | **BE-04, built** | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
+| `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9). The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. |
+| `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
+| `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question. The only reader of the guarded columns in the two `shema` packages. §6.4. |
 | `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
+| `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
+| `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
+| `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
 | `app/services/shema/_directory.py` | BE-13 | A person's contact, their consents and their country — the **only** file in either package that names `ShemaIntercessor`. §6.4's fourth owner. |
 | `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; and `can_export_notes`. §6.4. |
 | `app/utils/shema_derivations.py` | **BE-05, built**; BE-10 | FE-44 §7's nine pure functions of `(record, now)`, and §7.5's period keys in a block of their own (BE-10). **Not** in the service package — see below. |
 | `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
 | `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
-| `app/models/shema_record.py` | **BE-06, built** | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key — and every sub-shape the ficha is made of. Separate from `app/models/shema.py`, which is what a client *sends*. |
+| `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key, plus `derived`, `locationWithheld` and `readAs` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
 | `app/db/models/shema_audit.py` | **BE-06, built** | `shema_record_edits` — the trail: who moved which field, when, from what to what. Append-only, by the same trigger `shema_progress_history` uses. |
 | `app/services/shema/_audit.py` | **BE-06, built** | The trail's writer and its one reader. Names no guarded column and records no guarded **value**. |
 | `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
@@ -365,12 +397,12 @@ nothing in column 3 imports `fastapi`.
 | **Role** | The four aliases, `require_role(APP_KEY, key)`. | Nothing. |
 | **Region scope** | Declares the dependency; receives a `RegionScope` value. | `_scope.py` computes it from `shema_user_regions` and the granted roles, and **every list query takes it as a parameter**. §6.1. |
 | **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a duplicate slug is a `ConflictError`). |
-| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service. `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
+| **Redaction (sensitive country)** | Nothing but hand down the caller's reader (`Reading`, OBT-528), as it hands down the scope. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service — which says only **who reads** (`read_by`). `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
 | **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; the wall's query (BE-09) is the only one that applies the gate. §6.4. |
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
-| **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the one deliberate hole, and it is a router-level fact. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
+| **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the first deliberate hole, and it is a router-level fact. The intercessor's exit link (OBT-531) is the second, of the same shape. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
 
 ---
 
@@ -416,6 +448,14 @@ Two behaviours to design around, both inherited from the sibling's §5.5 and bot
   is the installation's standing trade, not this module's bug. Anything that must see a grant
   immediately reads `list_roles` directly, as
   `app/services/resource_request/holds_capability.py` does and says why.
+- **An app's `admin` role manages that app's roles** (`assert_can_manage_roles`, the predicate
+  behind `/api/roles/assign`, `/revoke` and `/check`). Since OBT-523 this app seeds one — the
+  Admin of §6.8 — and **OBT-543 grants it, in both apps, through `/api/shema/access`** (§6.10),
+  which applies the product's rules. So the raw `/api/roles/assign` and `/revoke` **refuse
+  `shema` and `resource-request-form` to anyone but an installation admin** (`PME_APP_KEYS` in
+  `app/api/roles.py`): every Admin would otherwise pass the predicate there and step around
+  the self-grant, the mesa × Gestor exclusion, the mirrored `admin` and the regions in one
+  request. `/check` still reads the predicate.
 
 `scripts/grant_app_role.py` matching on `(user_id, app_id)` and **overwriting** `role_id` is a
 live platform bug with its own issue (OBT-484), recorded in `holds_capability`'s docstring. It
@@ -664,13 +704,14 @@ behaviour on it.
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
 | 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). |
 | 5.6 | **Prayer** | *(none for the wall)* | BE-09 | **The wall is derived, never stored**, which is what makes withdrawal free: moving a request back to `coordenacao` removes it from the next query with no cleanup step. The three columns live on the record; `_consent.py` is their only reader. If BE-09 ever stores requests, a withdrawn one is **deleted from that store**, never flagged and retained. |
-| 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. |
+| 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. **OBT-531:** a contact untouched for more than a year — the latest of entry, review and send — is **flagged for review**, served as `reviewDue` and never derived by the client; and a person with no account **leaves through an exit link**, which is the same erasure. |
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
 | 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. ~~**Whether the definitions are a table at all is Open · GATE-02** (§9.2).~~ **Answered by GATE-02 on 22/set: the set is global, so there is no definitions table** — §9.2. |
 | 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads` | BE-02, BE-15 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
 | 5.11 | **ETEN ledger** | `shema_eten_credits` | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule is **Open · GATE-01** (§9.1). |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
-| 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. The one thing this module owns about identity. Empty means global. |
+| 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. One of the two things this module owns about identity (5.14 is the other). Empty means global. |
+| 5.14 | **Project members** | `shema_project_members` | OBT-524 | §6.9. **One live row per account and project**, as a partial unique index (`WHERE removed_at IS NULL`); **removal marks** `removed_at`/`removed_by` and never deletes, and coming back is a new row. **Only the Admin writes.** Read by the project's scope, its own live members and the Admin. A membership is **not** a region. |
 
 > **BE-06 ([OBT-395](https://linear.app/shema-obt/issue/OBT-395)) built the record's
 > lifecycle on rows 5.1 and 5.2, and four decisions travel with it.**
@@ -797,7 +838,8 @@ answers "who are you and in what role"; the module answers "how far does that re
   (`app/utils/shema_derivations.py`) and the query keeps an index. Never a second hand-typed
   field.
 - **Writes are scoped by the same value as reads.** A regional `coordinator` who may read a
-  region may write it; there is no third answer in the product.
+  region may write it; there is no third answer in the product about *which records*. *Which
+  fields* is §6.4's question since OBT-528: the place and the flag are coordination's to write.
 
 **What a caller sees of another region's project — answered by BE-03: nothing.** The issue
 named the two defensible answers, *nothing* and *the existence without detail*, and asked
@@ -830,6 +872,18 @@ an explicit act — name its seven regions, or grant it `globalStrategist` too. 
 `default_role_for("shema")` entry is `resourceCircle` for the same reason: an approval hands
 out a role and no data.
 
+**Since OBT-543 the Admin's surface clears the rows when the last regional role goes**, and every
+change to them — by that surface, by an accepted invite, by an operator — is a row in the
+append-only `shema_scope_changes` (§6.10). Other doors still leave rows behind, which the next
+paragraph makes harmless.
+
+**And a row counts only under a regional role — OBT-523 closed the converse.** An account
+holding no regional role (and not `globalStrategist`) reaches nothing whatever rows it has,
+without the table being read. Nothing deletes an account's rows when its regional role is
+revoked, and a seat or an operator can leave one behind; without this, the `admin`, `gestor`
+and `mesa` of §6.8 would reach a region by accident of data. The three regional roles reach
+exactly what they reached before.
+
 ### 6.2 What the region scope is *not* allowed to become
 
 Two temptations, refused here so nobody spends a week on them:
@@ -844,12 +898,17 @@ Two temptations, refused here so nobody spends a week on them:
 ### 6.3 Seam B — how the frontend learns its own scope — **Decided**
 
 ```
-GET /api/shema/session -> {role: SessionRole, regionScope: RegionKey[] | null, name: string | null}
+GET /api/shema/session -> {role: SessionRole, roles: SessionRole[], regionScope: RegionKey[] | null,
+                           name: string | null}
 ```
 
+`roles` and the door it sits behind are OBT-523's, §6.8; `role` is the first of `roles`, kept
+only through the transition.
+
 `GET /api/auth/my-roles` cannot answer this, because the grant has no region. The three parts
-come from three places and **none of them is a new store**: `role` from
-`authorization_service.list_roles(db, user.id, "shema")`; `regionScope` from
+come from three places and **none of them is a store of the session's own**: `role` (and, since
+OBT-523, `roles`) from `authorization_service.list_roles` — one read of both apps, §6.8, plus, since OBT-524, one
+read of `shema_project_members` for the `equipe` a live membership adds (§6.9); `regionScope` from
 `shema_user_regions` (`null` = global); and **`name` resolved from the org chart** (§5.8) —
 it is not a user profile field, and renaming a role-holder renames who the session says you
 are.
@@ -869,7 +928,7 @@ scope names exactly one region **and** the seat is filled. Global scope, a two-r
 last of those is the ordinary path rather than an edge case: all twenty-one seats ship
 unassigned.
 
-### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 built**
+### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 built; OBT-528 made it depend on who reads**
 
 FE-44 §8 is written as server requirements and `CLAUDE.md` §6.1/§6.2 as invariants. The
 scheduling is already right: BE-04 lands **before anything that emits data**. What this
@@ -880,16 +939,116 @@ file.
 
 | File | Owns | The rule |
 |---|---|---|
-| `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. |
+| `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. Since OBT-528 it also answers the write's question — which fields a reader who is not coordination may not write — and addresses the withheld notice to a reader. |
 | `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` — **and `source["prayerRequests"]`, which is a fourth copy of the same text** | **The only reader of those three columns**, and one query applies the gate. `prayerRequests` is one of the export's 55 keys, so `shema_projects.source`, which keeps the export row verbatim, carries that key too under the export's own camelCase spelling — empty in today's export, and where the next one's text lands; `prayerVisibility` and `prayerRequestsAudio` are two of the 18 the product added and are not in it. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
 | `app/services/shema/_media_sharing.py` | `authorization` on media and materials | Composes, most restrictive wins: an authorized item reaches `coordenacao`; the same item on a sensitive project **never** reaches `publico`. |
 
-**The split that keeps this from over-redacting.** A project **read** by someone allowed to
-open it is a *coordination* surface and carries the truth — hiding the country from its own
-author is data loss, not privacy. Every shape that **leaves** coordination carries the
-redaction in its own Pydantic model: the prayer request, the ETEN snapshot, the notification
-entry and the exported project each hold a `location_withheld` flag rather than a bare
-string. **Redact in the payload on every path that leaves; never on the record read.**
+**Who reads, and not only where it goes — OBT-528.** BE-04 drew the line at the door of the
+record: the record read carried the truth to its whole audience, and every shape that left
+coordination carried the redaction. GATE-04 moved the line
+to the reader (Karina, 22/sep, items 1.1–1.3; Daniel, 23/sep, on who coordination is): **the
+truth of a sensitive place belongs to coordination**, and every other role reads the region
+in its place, *inclusive na ficha*. So every leaving shape — the ficha included — is built
+**for a reader**, `ShemaReader`, and one class covers the three values:
+
+| | `coordination` | `other` | `outside` |
+|---|---|---|---|
+| **Who** | `globalStrategist`; a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
+| `location`, `country` | the truth | the region **key** | the region key |
+| `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | `""` | `""` |
+| `coords` | the truth | the region centroid | the region centroid |
+| `sensitiveCountry` (the ficha) | the flag | the flag | — |
+| `locationWithheld` | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed |
+| `readAs` (card and ficha) | `"coordination"` | `"other"` | — |
+| `locationsWithheld` (the collection) | how many, or `null` when none | `null` | — |
+
+Only a **withheld** record is reduced — flagged, or built from something that could not say.
+A cleared record is the truth for every reader. On a reduced ficha `location2` and the two
+optional contacts read `""` rather than `null`.
+
+**Where the reader comes from.** `app/services/shema/_scope.py`'s `readership` answers it from
+the grant and the scope the request already read — no query of its own — as a `Readership` the
+services ask per project (`reader_of(region_key)`), and `app/api/shema/_deps.py` hands it down
+as `Reading`, exactly as it hands down `Scope`. A `coordinator` is coordination **in the regions
+of its own scope** and `other` anywhere else it reaches. Region rows are per account and not per
+role, so an account holding `coordinator` and `obtLab` is coordination wherever it reaches; the
+org chart is not consulted. The `admin` hypothesis is one line — `COORDINATION_EVERYWHERE` — and
+undoing it is deleting `admin` from it. `visible_projects` is untouched: who may **reach** a
+project and who may read its **place** are two questions.
+
+**Who builds a shape for it.** Only the two reads of the console: the Projetos screen's cards
+(`browse_projects`) and the record (`build_record` — `GET`, `POST` and `PATCH /projects…` and the
+health-assessment `POST`). A shape reaches its reader only through `LeavingShape.read_by`, which
+puts it in the validation context; the reader is kept on the instance and **no input can set
+it**, and a shape built any other way is `outside`. So every other leaving shape — the export
+row, the ETEN line, the Pulse entry, the leader's form, the need line an urgent notice is written
+from — is `outside` whoever asked for it, and an endpoint written by somebody who never read this
+section still emits the form that leaves. The notification panel builds its stale cards with
+`NO_COORDINATION` for the same reason: a notice is an output path.
+
+**The marker is the flag, for every reader.** `locationWithheld` says *this record's place is
+withheld from everything that leaves coordination* — the same bit whoever reads, and a
+coordination payload carries the truth **beside** it. That is deliberate: the console maps the
+bit to `sensitiveCountry` and redacts its own map and its client-side export from it, so a
+coordinator who now receives the truth keeps the bit that keeps their export redacted. What says
+whether the payload in hand is the truth or the reduction is `readAs`, added to the card and the
+ficha only: `locationWithheld && readAs == "other"` is a reduced payload, whose `location` holds a
+region key; `readAs == "coordination"` is one whose place and flag this reader may edit. The
+console reads that answer instead of keeping a second copy of the rule (OBT-532).
+
+**The notice is coordination's.** `withheld_note(records, reader)` counts the markers and
+announces them to `coordination` only; the caller says who the announcement is for, which is not
+always who the rows were built for — the Projetos screen addresses it to its caller, and a file a
+coordinator exports would carry rows built for `outside` under a header addressed to the
+coordinator (BE-14's). The `null` the others receive hides nothing: every card still carries its
+marker and the `sensitive` facet still counts it — GATE-04 decided the notice, not the bit.
+
+**The search and the facets read the card the reader was given.** Coordination finds a withheld
+project by the place it reads and counts it under its country; everybody else can do neither,
+because their haystack and their card hold the region.
+
+**The write: *não dá para editar o que não se vê*.** `save_project` asks
+`_redaction.unwritable_fields` which of the fields a save sent this reader may not write, and
+refuses them with `AuthorizationError` — a 403 naming the fields in the client's spelling and
+nothing about the record, raised after the scope has found the record and **before** the version
+is compared, logged with `log_reference`:
+
+| Field | `coordination` | anybody else |
+|---|---|---|
+| `location`, `location2`, `coords`, `sensitiveCountry`, `sensitivity` | writes | refused on **every** record |
+| the base (`team` / `ywamBase`), `teamContact`, `teamLeaderContact`, `mentorContact` | writes | refused on a **withheld** record; writes on a cleared one |
+
+There is no `country` to write: it is the first segment of `location`, so refusing the location
+is refusing the country. The answer depends on the **names** the payload set and never on their
+values, so it is not an oracle. **A create is not the refused write**: the creator sees what they
+type, and closing it would need a narrower rule (the flag and the reason only), because the
+location a record is filed with is what puts it in its creator's region — an open question for
+Daniel, recorded in the PR. The form imports reach `save_project` with the importer's own reader.
+
+**No route is exempt any more, and one list replaces the exemption.** `COORDINATION_ROUTES` in
+`tests/test_shema/test_privacy_owners.py` is empty again: the record is a leaving shape and the
+route audit asks it like any other. `READER_ROUTES` names instead the routes whose dependencies
+reach the caller's reader — the only ones that may build a payload carrying the truth — and a
+new route that took `Reading` (an export, say) is red there until somebody lists it and argues
+it. The collection's and the record's answers carry `Cache-Control: private, no-store`
+(`PER_READER_CACHE_CONTROL`): one URL — and one version of one record — now reads two ways, and
+no cache may hand one reader's body to another.
+
+**Two coordinations, deliberately.** `ShemaReader.COORDINATION` is GATE-04's membership — who
+reads a sensitive place. `ShemaAudience.COORDENACAO` is FE-44's destination — every role that
+follows up and supports — and it still decides notes and media (`can_export_notes`,
+`can_share_media`). GATE-04 decided the place per role and said nothing about notes, prayer text
+or media, so those keep their own owners and are not reduced by this rule.
+
+**Residuals named and not closed** — each can name a place and none is reduced for `other`:
+the slug `<language>-<place>`, which is the record's address on every shape; the free text of
+the ficha (`partnerOrg`, `scopeDetails`, `statusComments` / `statusGoal`, `phases`, `notes`,
+`needsNotes`, `objectiveNotes`, a need's `description`, a material's file name or link, media
+captions and URLs, health notes); `storyProgress[].recordLocation` and its copy in
+`progressHistory` — reducing a field inside a table the progress tab saves whole would make the
+next save of that table erase the truth; and the submissions inbox, which serves a leader's free
+text to every role. They belong to GATE-04's *Notes & media* column, which the grid has not
+answered per role.
 
 **The check that makes it a rule rather than an intention.** FE-44's frontend has a scan test
 that fails the build if any shipped file outside the record's own editing surfaces reads the
@@ -916,14 +1075,52 @@ absent from **all four** output paths — the wall, exports, the ETEN report and
 > `ShemaIntercessor`, checked by the glob this section asks for
 > (`tests/test_shema/test_people_privacy.py`). It reuses this section's mechanism rather than
 > inventing a second: the same flag, the same withheld marker (FE-44 §9.6's `country: ""`
-> beside the marker), the same *redact on every path that leaves, never on the record read*
-> split. If the shapes want to be one function, `leaving_person` folds into `_redaction.py`
-> and the glob moves with it.
+> beside the marker), the same *redact on every path that leaves* split — the network's read is
+> still a coordination surface; OBT-528's reader is about a project's place and did not reach
+> it. If the shapes want to be one function, `leaving_person` folds into `_redaction.py` and the
+> glob moves with it.
 >
 > **One residual is named and not closed.** A withheld person's *name* still travels, because
 > the rule above withholds a **location**. Whether a person's name is itself a location in a
 > dangerous place belongs to §9.4's fourth gate, whose own instruction is to raise it rather
 > than invent it surface by surface.
+
+> **OBT-531 answered §10 item 8's other two questions**, with the client's answers of 22/sep,
+> and every file is still under the fourth owner: `_directory.py` names the new table too.
+>
+> - **A contact nobody has used in a year is reviewed, not expired** (4.3). `shema_intercessors`
+>   gained `reviewed_at` and `last_sent_at` — the second is BE-09's to write when the Prayer Pulse
+>   goes out, NULL until then — and `_directory.review_due` is the one reading: due when more
+>   than 365 days have passed since the latest of `added_at`, `reviewed_at` and `last_sent_at`.
+>   The list serves it as `reviewDue`; `POST /prayer/intercessors/{id}/review` (`resourceCircle`)
+>   stamps the review. A review is explicit — an edit, a read of the contact or a re-stated
+>   consent does not reset the year.
+> - **The people no list may show are counted, not reviewed.** Somebody with no `directory`
+>   consent is on no screen, so nobody can review them there; `withheldReviewDueCount` is a
+>   number beside `withheldCount`, read from three dates and nothing else. What to do with them
+>   is a question for the client, raised in the pull request.
+> - **A person with no account leaves through an exit link** (4.2, *"ainda não existe
+>   caminho"*). `shema_intercessor_exit_links` keeps one row per link minted — the digest only,
+>   §6.7's module, `ON DELETE CASCADE` from the person — and `leave_intercessor.issue_exit_link`
+>   is what BE-09 calls once per send. **No link is revoked by a newer one**: each lives
+>   `shema_intercessor_exit_link_days` (365), so the reader of an older message can still leave,
+>   and a link that leaks can only remove somebody, which is the safe direction; a link past its
+>   clock is deleted at the person's next send. The issue's
+>   *rotated at each failed confirmation* is read as *every send carries a fresh token and none
+>   is ever reused*; burning a link on a failed confirmation could only strand the person who
+>   wants out, and that reading is raised in the pull request rather than built.
+> - **The confirmation page is the console's, and the API answers 204.** `GET
+>   /api/shema/intercessors/leave/{token}` reads and changes nothing — a link previewer opens
+>   every URL — and `POST` erases the person, their consents and every link, by the same
+>   `_directory._erase` removal uses. Every link that opens nothing gets **one** sentence, so a
+>   forwarded link does not tell whoever holds it whether the person is still in the network.
+>   Both routes are limited **per address** with `shared_limit` and a fixed scope: slowapi's
+>   default scope is the URL, which here carries the token, so `@limiter.limit` would have been
+>   per address *and token* — and would keep the raw token in the limiter's key. The intake
+>   routes have that shape today; it is named in the pull request, not changed here.
+> - **The batch consent waits for the client** (4.1). `scripts/shema_backfill_network_consent.py`
+>   takes the basis as an argument, inserts `network` only where it is missing and never
+>   restamps an answer that stands, and nothing runs it.
 #### What BE-04 built
 
 **The rule is not in `_redaction.py`. It is in `app/models/shema_privacy.py`, and it is
@@ -952,8 +1149,8 @@ columns.
 **The fields a leaving shape reduces**, in one list, because the value of one list is that
 there is one: `location`, `location2`, `country` (to the **region key**, never an empty
 string), `latitude` / `longitude` / `coords` (to the region centroid, so the marker moves
-rather than disappears), `team` / `base` and the three personal contacts (to `""`). The record
-read reduces none of them.
+rather than disappears), `team` / `base` and the three personal contacts (to `""`), and — since
+OBT-528 — `sensitivity` (to `""`). A `coordination` reader reduces none of them.
 
 **Fail closed, and the closed state is the default.** A shape built from something that cannot
 answer whether the record is sensitive — a hand-assembled dict, a partial row, a join that did
@@ -962,9 +1159,10 @@ the alternative costs somebody their safety, and fails silently.
 
 **The withholding is visible and says nothing about what.** `locationWithheld` is in every
 leaving shape's output, always. For a collection or a file, `withheld_note` answers *how many*
-rows were reduced — and answers `None` rather than `0`, because *"0 locations withheld"* on a
-file with no sensitive projects is a sentence about the absence of sensitive projects, said on
-every file, and interesting exactly when it should not be said.
+rows are withheld — to coordination only, since OBT-528 — and answers `None` rather than `0`,
+because *"0 locations withheld"* on a file with no sensitive projects is a sentence about the
+absence of sensitive projects, said on every file, and interesting exactly when it should not be
+said.
 
 **Three nets, not one**, and `tests/test_shema/test_privacy_owners.py` is all three. The glob
 this section already asked for, over both `shema` packages and now for three column sets
@@ -973,8 +1171,11 @@ issue extends by writing a line it has to justify. **A route audit** that reads 
 application's route table and fails when a response model under `/api/shema` can name a place
 and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
 `test_access.py`, applied to the payload instead of the guard, with `COORDINATION_ROUTES` empty
-today and BE-06's record read as the one line expected in it. And a vocabulary check, so the
-list of guarded fields and the list of replacements cannot drift apart.
+today and BE-06's record read as the one line expected in it — BE-06 wrote it, and OBT-528
+emptied it again when the record joined the boundary. And a vocabulary check, so the list of
+guarded fields and the list of replacements cannot drift apart. OBT-528 added a fourth: the
+routes that take the caller's reader (`READER_ROUTES`) and the two services that build a shape
+for it.
 
 **And the bytes, because a predicate that ends in a public URL decides nothing.** §4.6's
 verdict is built: `app/services/shema/_media_storage.py` holds the `shema-private` bucket and
@@ -992,7 +1193,8 @@ section gives: *why* is the fact being protected.
 withheld on **every** leaving shape and not only in a file (§9.4 — the gate keeps the console's
 own rendering, which is presentation). And the collection read is a leaving shape, with only
 the record read a coordination surface, because the issue names *list* among the output paths
-and FE-44 §8.7 says display is never enforcement.
+and FE-44 §8.7 says display is never enforcement. OBT-528 closed the second: the record is a
+leaving shape too, built for its reader.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
@@ -1046,7 +1248,7 @@ replacement a single file with one import direction.
 
 **And one thing that is not a departure, recorded because it looks like one.** The list item
 inherits `LeavingShape`, so a card in a sensitive country carries its region where its country
-would be — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
+would be (to every reader who is not coordination, since OBT-528 — §6.4) — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
 inherited**: `app/models/shema_privacy.py` names *the collection read* among the shapes that go
 through the boundary, and `COORDINATION_PATHS` is empty with a comment saying the one line
 expected in it is BE-06's record read. Following §9.1 here would mean adding this route to that
@@ -1057,8 +1259,9 @@ the payload beside it withholds.
 
 ### 6.6 Seam E — the unauthenticated intake — **Decided**
 
-`GET /api/shema/intake/{token}` and `POST /api/shema/intake/{token}` are the only routes in
-this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
+`GET /api/shema/intake/{token}` and `POST /api/shema/intake/{token}` were the first routes in
+this module with no `Authorization` requirement, by FE-44 §9.0; the intercessor's exit link
+(OBT-531, §6.4) is the second pair and follows the same three rules:
 
 - **The token is the whole guard**, so the guard is a **service function**
   (`verify_intake_token`) and not a router condition — the rule then holds for any future
@@ -1116,6 +1319,267 @@ this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
 > **Not built, and it is GATE-03's:** `POST /api/shema/forms/pulse/{projectId}`, the generated
 > artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
 > and withdrawal from an already-distributed file — is untouched by anything above.
+
+### 6.7 Link tokens — one module, a table per purpose — **Decided**
+
+BE-20 ([OBT-525](https://linear.app/shema-obt/issue/OBT-525)) built this. Before it, three
+tokens were written three ways — the leader link with `token_urlsafe(32)`, the access invite
+and the password reset with `token_hex(32)` — each deciding its own states, and the access work
+of [OBT-522](https://linear.app/shema-obt/issue/OBT-522) adds four more: the handoff code, the
+endorsement link, the external request link and the intercessor's exit link. A token that
+reinvents its hash and its states is how one of them ends up with no expiry.
+
+- **One module: `app/services/common/tokens/`.** `mint` (`token_urlsafe(32)` and its digest),
+  `digest` (SHA-256, the value every token row in this repository already stores), `status`,
+  `expiry` and `mint_code`. It lives in `app/services/common/` and not in this module's service
+  package because its callers are three modules — the auth core, resource requests and Shemá.
+- **What is shared is the function, not the row. There is no generic token table.** Each
+  purpose keeps its own table with a real foreign key — `shema_intake_links.project_id`,
+  `access_invites.role_id`, and one per new token — because each token points at something
+  different and *used* means something different in each: the first answer on a multi-use link,
+  the acceptance of an invite, the spend of a handoff code. A table keyed by a kind and a target
+  id would trade every one of those keys for a string the database cannot check.
+- **The raw value leaves once**, in the response that creates the row. `mint` and `mint_code`
+  return it beside its digest; only the digest reaches a column. §6.6's third rule, now held in
+  one place.
+- **One order of states: `revoked > expired > used > pending`**, the leader link's. Revoked
+  first, so a link taken back never reads as one that merely ran out; expired before used,
+  because on a multi-use link `used_at` records the first answer and not the end of the link.
+  `status` reads a row with `expires_at`, `revoked_at` and `used_at`, and **`expires_at` is not
+  optional** — a token with no expiry has no state there.
+- **Each purpose's ceiling is a key in `app/core/config.py`, one per purpose**, read by the
+  service that mints the token and passed to `expiry`; the module reads no configuration. The
+  leader link's is `shema_intake_link_max_days` (90). Its default of 45 days stays in
+  `_intake_tokens.py` — a product fact tied to the Pulse's monthly cycle — and a ceiling set
+  below it shortens it rather than refusing the coordinator who stated nothing.
+- **A six-digit code's digest is not what protects it.** A million values is brute-forced
+  offline in no time; what protects a live code is its short life and the attempt limit, and
+  the limit is a column of the table that uses the code — the trade
+  `app/services/device/claim_code.py` already records for the Room.
+
+**What moved, and what stays.** The leader link moved: `_intake_tokens.py` mints, looks up and
+reads state through the module, and `tests/test_shema/` passed unedited. **The intercessor's
+exit link was born on it** (OBT-531): `leave_intercessor.py` mints and digests, `_directory.py`
+stores and reads the digest, and a link that is never revoked nor used-and-kept is shown to
+`status` with those two stated as `None` rather than as two columns nothing writes. Four stay where they
+are:
+
+- **The access invite** (BE-17, `create_invite.py`, `accept_invite.py`, `_invite_status.py`)
+  stays for later. [OBT-543](https://linear.app/shema-obt/issue/OBT-543) changes
+  `AccessInvite` and `accept_invite.py` in the same wave, and moving it here would collide for
+  no gain. Nor is it a mechanical swap: the invite reads `used` **before** `expired` — an
+  accepted invite whose clock later ran out still reads as accepted in the admin's list — and
+  its column is `accepted_at`, which `status` does not read. Whoever moves it decides that
+  order first; the digest is already the same, so a live invite would keep working.
+- **The password reset** belongs to the platform's auth core, outside this module.
+- **Refresh tokens** — their rotation is INT-01's open item.
+- **The Room's device claim code and credential** (`app/services/device/`) are not links and
+  have a lifecycle of their own.
+
+### 6.8 Seam F — the PME's door: one session over two apps' roles — **Decided; OBT-523**
+
+OBT-522 (22 and 25/sep) put the mesa, the Gestor and the Admin inside the PME: *"todos da mesa
+vão ter conta no PME com a função já definida"*. Their grants live in `resource-request-form`,
+and the session route sat under `authenticated`, whose gate is `require_app_access("shema")`:
+the mesa was refused at the door of a console it now belongs to. Six rules.
+
+- **The session answers every role, and `role` is transitional.** `roles` is every key of
+  `ROLE_PRECEDENCE` the account holds, in that order; `role` is its first entry, kept so no
+  screen that reads one role breaks while the console moves to the list. The four Shemá roles
+  lead the precedence, widest-first as before, so every account that reached the console
+  before keeps its `role` byte for byte (the Admin of today holds `globalStrategist`, `admin`
+  and `gestor` and still answers `globalStrategist`); then `admin`, `gestor`, `mesa`, and the
+  reserved `equipe`. The console's `SESSION_ROLES` is this tuple and refuses any key outside it,
+  so the list is closed: a key added here is a key added there.
+- **The door is a router of its own and opens one route.** `door` carries `DOOR` and holds
+  `GET /session`; everything else stays under `authenticated`. *(OBT-524 added the member's two
+  reads behind it, and made the pin `DOOR_ROUTES`, by method and path — §6.9.)* An account the form made gets its
+  session and is refused by every other route — what each area shows it is OBT-544's.
+  `tests/test_shema/test_access.py` pins the door's paths in `DOOR_PATHS`, so the next door
+  route (OBT-524's `/me/projects`, for a member with no regional role) is a deliberate edit.
+- **Who passes: at least one role of the vocabulary, counted per app.** From `shema`, the four
+  and `admin`; from `resource-request-form`, `gestor` and `mesa`. **Not** the form's `equipe`
+  — `auto_approve` hands it to everybody who registers there, and OBT-524 turns it into a
+  project membership (§6.9: a live membership is the session's `equipe`) — nor `lider`, who has no account since 22/sep, nor the form's `admin` row:
+  every guard below the door reads the `shema` grant, and a session answering *admin* off the
+  form's row would name a power every admin route refuses. One `list_roles` read answers the
+  door and the body (`_scope.session_roles`), so the two cannot disagree. An installation admin
+  passes, as everywhere, and is answered the roles it actually holds.
+- **`admin` is one role for two apps, and it is not the installation's admin.** Seeded in both
+  by `20260927_shema08` and by `scripts/seed_apps_roles.py` under *"Admin da plataforma"*;
+  OBT-543 grants it, in both apps (§6.10). `AdminUser` guards on it for OBT-524 and OBT-543.
+- **Seeding it in the form closed a door there.** The form's two access doors
+  (`app/services/resource_request_access/`) grant any role the app has, and the Gestor may use
+  them: a Gestor could have named an Admin, who then passes `assert_can_manage_roles` and
+  revokes through `/api/roles`. Only an installation admin names `admin` through those doors;
+  the concession moved to the PME with OBT-543 (§6.10), which also closed `/api/roles` to the
+  two apps for everyone else.
+- **`admin`, `gestor` and `mesa` reach no region** — §6.1's last paragraph.
+
+**Left to others, and named so nobody assumes them done.** ~~OBT-543: granting `admin` should
+grant it in both apps, and an `admin` held in the form passes `assert_can_manage_roles` there
+without the form's mesa × Gestor exclusion.~~ **Closed by OBT-543** (§6.10): the grant writes
+both rows, and `/api/roles/assign` and `/revoke` refuse the two apps to anyone but an
+installation admin. The form's owner:
+`admin` holds no capability in the form's table, and the form's `reach()` counts it as a fifth
+role — the whole board. OBT-544: until it lands, an account at the door with no Shemá role is
+refused by every other route the console calls, `/regions` on sign-in included.
+
+### 6.9 Seam G — the member's reach: project membership — **Decided; OBT-524**
+
+OBT-522 (22 and 25/sep) made *the team* the project's members in the PME rather than the free
+text on the record (`team_leader`, `mentor`, `translators` stay, and the Notion export carries
+them). `shema_project_members` is the link, and the form (OBT-520), *Solicitar recurso*
+(OBT-544) and the Admin's access screen (OBT-546) read it. Seven rules.
+
+- **Its own table, not `project_user_access`.** That table grants access to Tripod's `projects`
+  rows, and a Shemá project is not one (§4.3).
+- **One live row per account and project; removal marks.** The partial unique index is on the
+  live rows, declared on the model for both dialects (the suite builds from `create_all`) and in
+  `20260927_shema524` for PostgreSQL. `DELETE` writes `removed_at`/`removed_by`: a request a
+  member sent stays the project's after they leave, so the stay is kept. Coming back is a new
+  row. `added_by`/`removed_by` are `SET NULL`, the platform grant's shape — `RESTRICT` would make
+  deleting the Admin, who writes every membership, fail.
+- **Only the Admin writes** — `POST` and `DELETE` sit under `authenticated` with `AdminUser`
+  (the `shema` grant). The regional coordination does not add members (*"por enquanto não"* —
+  Karina, 25/sep). A duplicate live membership is a 409 and an unknown account a 422.
+- **A live membership is the session's `equipe`.** `_scope.session_roles` adds it after reading
+  the grants, so a member holding no role anywhere passes the door (§6.8). The form's own
+  `equipe` grant still does not: only the PME's link counts.
+- **The door holds the member's two reads**: `GET /projects/{id}/members` and `GET /me/projects`.
+  `tests/test_shema/test_access.py` pins them in `DOOR_ROUTES`, by method and path, because the
+  Admin's `POST` shares the roster's path behind the app gate.
+- **Three readers of a roster, and a type of their own.** The project's region scope, its own
+  live members, and the Admin — who reaches every roster because it writes them and holds no
+  region (§6.8). `_scope.roster_projects` is the statement and `RosterReach` its input: not a
+  `RegionScope`, so the Admin's reach over rosters cannot be handed to the collection or the
+  record, and mypy says so. Anybody else gets the §6.1 answer, a 404 indistinguishable from a
+  project that does not exist.
+- **A membership is not a region.** `visible_projects` does not read it: a member reaches their
+  projects' refs (`/me/projects`, `_scope.member_projects`) and rosters, and no other project.
+  What else a member sees of their own project — the record included — is OBT-544's, and
+  composing `member_projects` is how it would.
+
+**A coordination surface that redacts nothing.** The roster names people, not places: a member of a
+project in a sensitive country is named on it, to the people who reach that project. `name` is the
+display name, else the e-mail (`_audit.author_name`), so an address can appear there — the
+`CONTACT_FIELDS` of §6.4 guard a project's contacts on shapes that leave, and this shape does not
+leave. No export reads the table until BE-14 decides. **`/me/projects` answers 403, not `[]`**, to
+an account holding no role of the door's vocabulary and no live membership: the door refuses it
+before the service runs.
+
+### 6.10 Seam H — the Admin grants: one surface for two apps' roles — **Decided; OBT-543**
+
+OBT-522 (Daniel, 23 and 25/sep): **only the Admin concedes and revokes, in both apps**, from one
+screen in the PME (OBT-546) instead of the form's `/access`. This is that screen's server: seven
+routes under `/api/shema/access`, all behind `AdminUser`, composing what existed —
+`assign_role`, `revoke_role`, `set_region_scope` and the form's invite module — rather than a
+second copy of any of it. `app/services/shema/_grant_rules.py` owns every rule below that is a
+question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` answer *who*.
+
+**The routes.** Request and response keys are camelCase; the form's own routes, which the PME's
+`/convite` page also calls, stay snake_case and are quoted as they are.
+
+| Route | Body / query | Answers |
+|---|---|---|
+| `GET /access/people?email=` | exact e-mail, case aside | `AccountGrants` — `{userId, email, displayName, isActive, apps: [{appKey, roles[]}], regions: [{regionKey, grantedBy, grantedAt}], regionScope}` |
+| `POST /access/grants` | `{userId, appKey, roleKey, regionKeys?}` | `AccountGrants`, as the account now stands |
+| `POST /access/grants/revoke` | `{userId, appKey, roleKey}` | `AccountGrants` |
+| `POST /access/invites` | `{email, appKey, roleKey, regionKeys?}` | 201 `{id, email, appKey, roleKey, regionKeys, status, createdAt, expiresAt, createdBy, inviteUrl, emailSent}` — the link once |
+| `POST /access/invites/revoke` | `{inviteId}` | the invite, `status: "revoked"`; repeating is a no-op |
+| `GET /access/invites` | — | the two apps' invites nobody accepted, newest first, at most 200 |
+| `GET /access/changes` | — | `[{action: granted\|revoked, at, appKey, roleKey\|null, regionKey\|null, userId, userEmail, userName, actorId, actorEmail, actorName}]`, newest first, at most 200 |
+| `GET /api/resource-requests/access/invites/{token}` | anonymous | `{status, email, app_name, role_key, role_label, account_exists, region_keys}` |
+| `POST /api/resource-requests/access/invites/{token}/accept` | signed in, same e-mail | `{user_id, role_key, granted_at, granted_by, revoked_at, revoked_by}` |
+
+**The rules.**
+
+- **What is granted is the PME's own vocabulary.** From `shema`: the four and `admin`
+  (`SHEMA_APP_ROLES`); from the form: `admin`, `gestor`, `mesa`. `equipe` is refused by name —
+  a project membership since OBT-524 — and so is `lider`, who has no account since 22/sep.
+- **`admin` is one role for two apps**: granting or revoking it under either `appKey` writes
+  or revokes the row in both. The door reads the `shema` row; the form's guards read theirs,
+  and its `reach()` gives any role but `equipe`/`lider` the whole board — so every Admin sees the
+  form's board, which is OBT-522's *faz tudo exceto endossar*.
+- **A regional role (`coordinator`, `obtLab`, `resourceCircle`) comes with at least one region,
+  in the same call**, and `regionKeys` is **the account's whole scope**, because the table is
+  per account: re-granting a held regional role is how regions are edited, and the screen
+  pre-fills the current ones. Any other role touches no region — `regionKeys: []` beside it
+  is *leave them*, never *reach nothing*. **Revoking the last regional role clears the rows**, so
+  a later grant through a door that states no region (an approved access request) cannot bring
+  an old scope back.
+- **Nobody grants, revokes or invites themselves**, and **mesa and Gestor never share an
+  account** — `_rules.assert_role_compatible`, the form's own rule and its one owner.
+- **Every refusal comes before the first write**, and the writes are one commit: the role in
+  each app, the close of any invite still pending for the same e-mail, app and role, and the
+  regions. The account written to is locked `FOR UPDATE`, which serializes two acts on one
+  person on PostgreSQL (SQLite ignores it).
+- **The Admin's standing is read fresh** on every write — `AdminUser` answers from a
+  thirty-second cache per process — and an Admin holding the role in one app only is refused
+  with a sentence that says so.
+
+**Invitations.** For somebody with no account. The link is always the PME's,
+`{shema app_url}/convite?token=…`, whatever app the role lives in — the form has no sign-in
+since 22/sep — and the letter is BE-12's `access_invite` template under the PME's name, sent
+after the row is committed; `emailSent` says whether it left. **`admin` is never granted by
+link**: a link can be forwarded, and signing up proves nothing about the e-mail. The regions of
+a regional invite are stored on it (`access_invites.region_keys`) and applied on acceptance, in
+the commit that grants the role and spends the invite, with the inviter as their author —
+**unless the account already holds a regional role and a different scope**: a week-old link does
+not rewrite a newer decision (409), and the Admin grants directly. A direct grant or revocation
+closes pending invites for the same thing.
+
+**Acceptance stays on the form's routes** for now — they are generic by token — so no new
+public route enters this module. **OBT-549 must move, not delete**, before those routes answer
+404: the lookup and the acceptance, `accept_invite`, `describe_invite`, `invite_store` and
+`_rules.assert_role_compatible`.
+
+**The history.** Roles come from `user_app_roles` through the auth spine
+(`list_grant_history`): a grant carries `granted_by`/`granted_at` and a revocation
+`revoked_by`/`revoked_at` — which `revoke_role` records since this issue — so every door that
+writes a role is in it, an accepted invite reading as the inviter's grant. Regions come from
+**`shema_scope_changes`**, the append-only trail `set_region_scope` writes on every change,
+because moving somebody between regions writes no role row at all. It has **no foreign key**:
+`SET NULL` is an UPDATE and `CASCADE` a DELETE, and its trigger refuses both. Only the roles the
+surface writes are read — the form's automatic `equipe` is nobody's decision. What it cannot
+say: a deleted account takes its role rows with it while its region rows stay under an id with
+no name; a deleted author is anonymised; `admin` reads twice, one row per app; nothing of the
+region half predates OBT-543.
+
+**Refusals**, for the screen to render — status, `code`, the server's sentence:
+
+| When | Status · `code` | `detail` |
+|---|---|---|
+| no Shemá role at all (a Gestor, a mesa) | 403 · `FORBIDDEN` | `You don't have access to the 'shema' application. Please contact support to request access.` |
+| a Shemá role that is not `admin` | 403 · `FORBIDDEN` | `Role 'admin' is required for this action.` |
+| the Admin holds the role in one app only | 403 · `FORBIDDEN` | `The admin role is not held in '<app>'. Granting the Admin writes it in both apps; an installation admin can grant it again to repair this account.` |
+| `equipe` | 422 · `UNPROCESSABLE_VALUE` | `'equipe' is a project membership, added on the project, not a role granted here.` |
+| any other role or app outside the vocabulary | 422 · `UNPROCESSABLE_VALUE` | `'<role>' is not a role granted here for '<app>'.` |
+| a regional role with no region | 422 · `UNPROCESSABLE_VALUE` | `'<role>' is a regional role: grant it with at least one region.` |
+| regions beside any other role | 422 · `UNPROCESSABLE_VALUE` | `Regions go with a regional role only; '<role>' is not one.` |
+| `admin` by invitation | 422 · `UNPROCESSABLE_VALUE` | `The admin role is granted to an existing account, never through a link.` |
+| an id that is no account | 422 · `UNKNOWN_REFERENCE` | `Target user not found.` |
+| granting, revoking, inviting yourself | 400 · `BAD_REQUEST` | `You cannot grant a role to yourself.` · `You cannot revoke your own role.` · `You cannot invite yourself.` |
+| revoking a role the account does not hold | 400 · `BAD_REQUEST` | `Active assignment not found` |
+| mesa to a Gestor, or Gestor to a mesa | 409 · `CONFLICT` | `'mesa' and 'gestor' are mutually exclusive: revoke 'gestor' before granting 'mesa'.` (and the converse) |
+| a second pending invite for the same e-mail, app and role | 409 · `CONFLICT` | `An invitation for this e-mail and role is already pending.` |
+| recalling an accepted invite | 409 · `CONFLICT` | `This invitation was already accepted; revoke the granted role instead.` |
+| no account for that e-mail · no such invite (or another app's) | 404 · `NOT_FOUND` | `No account with this e-mail.` · `Invitation not found.` |
+| accepting would change an existing regional scope | 409 · `CONFLICT` | `This account already has a region scope, and accepting this invitation would change it. The Admin grants the role directly instead.` |
+| a malformed body — an unknown region key, a bad e-mail, an unknown field | 422, no `code` | FastAPI's field errors |
+
+Accepting keeps the form's own refusals: revoked, used and expired are 409, another e-mail is
+403.
+
+**`/api/roles`.** `/assign` and `/revoke` answer 403 `Roles of '<app>' are granted and revoked
+through /api/shema/access.` for the two apps to anyone but an installation admin. `/check` did
+not change: `dev` has required the app's `admin` or an installation admin to ask about somebody
+else since OBT-506 (`9fb3129f`, 20/sep — the issue measured `main`), and asking about yourself
+reveals nothing `/api/auth/my-roles` does not.
+
+**Residuals, named.** Until OBT-549, the Gestor still concedes through the form's door, and an
+installation admin can still invite `admin` there — that acceptance writes the form's row only.
+The account lookup does not list project memberships, which are OBT-524's table.
 
 ---
 
@@ -1209,9 +1673,10 @@ No models, no migration, no service, no endpoint. The anchor is what lets BE-02�
 routers without touching `app/main.py` and without a second conversation about the prefix.
 
 **What BE-03 added to it, and the one shape worth knowing before writing a router.**
-`app/api/shema/__init__.py` now holds two routers: `router`, which `app/main.py` mounts and
-which carries no dependency of its own, and `authenticated`, which carries
-`require_app_access(APP_KEY)` once. **Include your sub-router into `authenticated`.** That is
+`app/api/shema/__init__.py` now holds three routers: `router`, which `app/main.py` mounts and
+which carries no dependency of its own; `authenticated`, which carries
+`require_app_access(APP_KEY)` once; and — since OBT-523 — `door`, which carries the PME's door
+and holds `GET /session` (§6.8) and, since OBT-524, the member's two reads (§6.9). **Include your sub-router into `authenticated`.** That is
 what makes the module deny-by-default — a route added by a later issue is refused for an
 account with no Shemá grant whether or not its author wired a guard — and it is a property of
 the file rather than a thing to remember. `router` stays plain so BE-12's two unauthenticated
@@ -1329,6 +1794,12 @@ presentation, and which the server neither sees nor should decide. If the client
 the base may travel, the change is one line in `BASE_FIELDS` rather than a sweep of consumers,
 which is the property that made deciding now cheap enough to do.
 
+> **GATE-04 answered the per-role half (Karina 22/sep, Daniel 23/sep), and OBT-528 built it.**
+> The base is hidden from everything that leaves and from every reader who is not coordination;
+> so are the country and the place; and the withheld notice is coordination's. The console's
+> cards and record are no longer the gate's to render: the server sends each reader what it may
+> read, and says which it sent (`readAs`). §6.4 carries the table.
+
 ### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — open, and BE-16 is running fail-closed against it
 
 > Added by BE-16 ([OBT-405](https://linear.app/shema-obt/issue/OBT-405)). The gate was always
@@ -1393,7 +1864,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 5 | ~~Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3).~~ **Answered by BE-13: the network is BE-13's**, because INT-10 is blocked by OBT-402 and not by OBT-398 and OBT-402's whole Context section is about that table. The frozen paths did not move. §1.3 C3 carries the argument. | ~~BE-09 / BE-13~~ **closed** |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
 | 7 | ~~Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1).~~ **Answered by BE-16: as-is, with `approved_units_unverified` set on every migrated record.** Zero would have discarded the only number there is, and as-is alone would have credited approvals nobody made; the flag says the number came from the export rather than from an approval, which is true of all 127 and needs no second rule for the 105 where it is zero anyway. **BE-11 reads it to tell a migrated count from a typed one**, and the write path that lets somebody approve a chapter for real is the one that clears it. | ~~BE-16~~ **closed** |
-| 8 | The three privacy questions the intercessor network cannot ship without. **The first — what consent was given and how it is evidenced — is answered by BE-13**, as `shema_intercessor_consents`: a row per person per context, with a non-empty `basis`, and a create that cannot store a person without one. **The other two are still owed and neither is engineering's**: how someone outside the platform asks to be removed when they cannot log in, and what happens to a contact nobody has used in a year. **Shipping more storage before answering them is how silent retention starts.** | **BE-13** (first), **the client** (the other two) |
+| 8 | The three privacy questions the intercessor network cannot ship without. **The first — what consent was given and how it is evidenced — is answered by BE-13**, as `shema_intercessor_consents`: a row per person per context, with a non-empty `basis`, and a create that cannot store a person without one. ~~The other two are still owed and neither is engineering's: how someone outside the platform asks to be removed when they cannot log in, and what happens to a contact nobody has used in a year.~~ **Answered by the client on 22/sep and built by OBT-531** (§6.4's OBT-531 note): an exit link with no login, and a review after a year. **The residual:** a person who withheld `directory` consent cannot be reviewed on any screen — they are counted (`withheldReviewDueCount`), and what to do with them is the client's to say. | **BE-13** (first), **OBT-531** (the other two; the residual is the client's) |
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |
