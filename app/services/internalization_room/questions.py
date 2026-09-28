@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     NotFoundError,
+    NothingToHear,
     ReplyMovedOn,
     TranscriptionDefect,
     UpstreamServiceError,
@@ -541,17 +542,38 @@ async def replies_for(db: AsyncSession, device_id: str) -> list[IRQuestion]:
 async def mark_heard(
     db: AsyncSession, question: IRQuestion, *, audio_url: str | None = None
 ) -> IRQuestion:
+    """The team played the reply; say so once.
+
+    ``heard_at`` means something only beside a reply (the column says so), so a question
+    with no reply is refused rather than stamped — the Desk was showing "ouvida" on cards
+    nobody had answered. And the instant is the first listen's: a second mark for the same
+    reply, which the tablet sends whenever it plays a reply it has not yet been told is
+    heard, keeps the stamp it finds and answers as agreement.
+
+    With the clip named, the stamp is one conditional ``UPDATE`` (ENG-1120): a reply landing
+    between the read and the stamp matches nothing. Zero rows is then read back once to say
+    which it was — the reply moved on, or this one was already heard.
+    """
+    if question.reply_audio_key is None:
+        raise NothingToHear(f"Question {question.id} has no reply to hear")
     if audio_url is None:
-        question.heard_at = datetime.now(UTC)
+        if question.heard_at is None:
+            question.heard_at = datetime.now(UTC)
     else:
         heard_key = from_question_handle(audio_url.removeprefix(f"{TEAM_AUDIO_ROUTE}/")) or ""
         stamped = await db.execute(
             update(IRQuestion)
-            .where(IRQuestion.id == question.id, IRQuestion.reply_audio_key == heard_key)
+            .where(
+                IRQuestion.id == question.id,
+                IRQuestion.reply_audio_key == heard_key,
+                IRQuestion.heard_at.is_(None),
+            )
             .values(heard_at=datetime.now(UTC))
         )
         if stamped.rowcount != 1:
-            raise ReplyMovedOn(f"Question {question.id} has a newer reply than the one heard")
+            await db.refresh(question)
+            if question.reply_audio_key != heard_key:
+                raise ReplyMovedOn(f"Question {question.id} has a newer reply than the one heard")
     await db.commit()
     await db.refresh(question)
     return question

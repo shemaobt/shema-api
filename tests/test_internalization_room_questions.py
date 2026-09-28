@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.core.exceptions import ReplyMovedOn, ValidationError
+from app.core.exceptions import NothingToHear, ReplyMovedOn, ValidationError
 from app.db.models.internalization_room import IRCoverageEvent, IRQuestion, IRQuestionStatus
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
@@ -404,6 +404,65 @@ async def test_a_question_of_another_project_is_not_marked_heard_on_a_matching_d
         f"{QUESTIONS}/{question.id}/heard", headers={"X-Device-Credential": owner_credential}
     )
     assert allowed.status_code == 200, allowed.text[:300]
+
+
+async def test_a_question_nobody_answered_cannot_be_heard(db_session: AsyncSession) -> None:
+    question = await _raise(db_session, MemoryStore())
+
+    with pytest.raises(NothingToHear):
+        await service.mark_heard(db_session, question)
+
+    await db_session.refresh(question)
+    assert question.heard_at is None, (
+        "o UPDATE sem condição carimbava heard_at numa pergunta aberta, e a Mesa mostrava "
+        "'ouvida' num cartão que ninguém respondeu"
+    )
+
+
+async def test_a_question_nobody_answered_answers_the_tablet_with_its_own_code(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    question = await _raise(db_session, MemoryStore())
+
+    response = await room_client.post(f"{QUESTIONS}/{question.id}/heard")
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "NOTHING_TO_HEAR"
+
+
+async def test_a_second_mark_keeps_the_first_listen(db_session: AsyncSession) -> None:
+    store = MemoryStore()
+    question = await _raise(db_session, store)
+    await service.answer_with_voice(
+        db_session, question, audio=b"resposta", answered_by="fac", store=store
+    )
+    heard = team_audio_url(question.reply_audio_key or "")
+    first = (await service.mark_heard(db_session, question, audio_url=heard)).heard_at
+    assert first is not None
+
+    again = await service.mark_heard(db_session, question, audio_url=heard)
+    bare = await service.mark_heard(db_session, question)
+
+    assert again.heard_at == first, "a marca repetida sobrescrevia o instante da primeira escuta"
+    assert bare.heard_at == first
+
+
+async def test_a_repeated_mark_for_the_current_reply_is_agreement(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    store = MemoryStore()
+    question = await _raise(db_session, store)
+    await service.answer_with_voice(
+        db_session, question, audio=b"resposta", answered_by="fac", store=store
+    )
+    current = await _served_reply(room_client, question.id)
+    await room_client.post(f"{QUESTIONS}/{question.id}/heard", json={"audio_url": current})
+
+    response = await room_client.post(
+        f"{QUESTIONS}/{question.id}/heard", json={"audio_url": current}
+    )
+
+    assert response.status_code == 200, response.text
 
 
 async def test_a_panorama_question_keeps_the_sessions_own_pericope(
