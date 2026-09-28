@@ -21,8 +21,8 @@ async def revoke_access(
     """Revoke one active role: Admin only, never their own, with who and when.
 
     Not a call into the shared ``revoke_role``: that one runs the symmetric
-    gate this app rejects, and records only *when* a grant was revoked. This
-    writes ``revoked_by`` alongside ``revoked_at``.
+    gate this app rejects. This writes ``revoked_by`` alongside ``revoked_at``,
+    as that one also does since OBT-543.
     """
     assert_can_revoke(actor)
 

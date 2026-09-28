@@ -99,6 +99,15 @@ session's ``equipe`` for an account with a live membership. ``_roster.py`` is th
 pair and the shape one row leaves in; ``add_project_member`` and ``remove_project_member`` are the
 two writers, and removal marks rather than deletes; ``list_project_members`` and
 ``list_my_projects`` are the two reads a member has. ``docs/shema.md`` §6.9 is the design.
+**OBT-543 landed the Admin's access surface** — ``/api/shema/access``, where OBT-522's Admin
+grants and revokes the roles of both applications the PME serves and invites whoever has no
+account yet. ``_grant_rules.py`` is its one owner of *what* may be granted and how: the
+vocabulary, the ``admin`` role written in both apps, regions with a regional role and with no
+other. The services compose rather than reimplement — the platform's ``assign_role`` and
+``revoke_role``, ``set_region_scope`` (which now writes the ``shema_scope_changes`` trail on
+every change), and the form's invite module behind this surface's own gate — and every
+refusal is answered before the first write. ``docs/shema.md``, *The Admin grants*, is the
+contract.
 
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
@@ -133,6 +142,7 @@ from app.services.shema._form_validation import (
     validate_submission,
     validated_answers,
 )
+from app.services.shema._grant_rules import GrantApps
 from app.services.shema._health_audience import (
     HEALTH_AUDIENCE,
     reads_assessments,
@@ -200,17 +210,22 @@ from app.services.shema._submission_notices import notify_submission
 from app.services.shema.add_intercessor import add_intercessor
 from app.services.shema.add_project_member import add_project_member
 from app.services.shema.append_assessment import append_assessment
+from app.services.shema.apply_invited_scope import apply_invited_scope
 from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
+from app.services.shema.find_account import account_grants, find_account
 from app.services.shema.get_notification_prefs import get_notification_prefs
 from app.services.shema.get_project import get_project
 from app.services.shema.get_region_team import get_region_team
 from app.services.shema.get_session import get_session
+from app.services.shema.grant_role import grant_role
 from app.services.shema.import_submission import apply_submission, import_submission
 from app.services.shema.list_assessments import list_assessments
+from app.services.shema.list_grant_changes import list_grant_changes
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_intercessors import list_intercessors
+from app.services.shema.list_invites import list_invites
 from app.services.shema.list_my_projects import list_my_projects
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
 from app.services.shema.list_project_members import list_project_members
@@ -235,16 +250,19 @@ from app.services.shema.receive_submission import receive_submission
 from app.services.shema.remove_intercessor import remove_intercessor
 from app.services.shema.remove_project_member import remove_project_member
 from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
+from app.services.shema.revoke_grant import revoke_grant
 from app.services.shema.revoke_intake_link import revoke_intake_link
 from app.services.shema.save_notification_prefs import save_notification_prefs
 from app.services.shema.save_project import RecordVersionConflict, create_project, save_project
 from app.services.shema.save_region_team import save_region_team
+from app.services.shema.send_invite import send_invite
 from app.services.shema.set_intercessor_consent import (
     set_intercessor_consent,
     withdraw_intercessor_consent,
 )
-from app.services.shema.set_region_scope import set_region_scope
+from app.services.shema.set_region_scope import held_regions, set_region_scope
 from app.services.shema.update_intercessor import update_intercessor
+from app.services.shema.withdraw_invite import withdraw_invite
 
 __all__ = [
     "DEFAULT_LINK_DAYS",
@@ -260,6 +278,7 @@ __all__ = [
     "URGENT_NEED_ROLES",
     "Aggregates",
     "ChangesSince",
+    "GrantApps",
     "LeavingPerson",
     "MediaLink",
     "Notice",
@@ -267,9 +286,11 @@ __all__ = [
     "RecordVersionConflict",
     "RegionScope",
     "RosterReach",
+    "account_grants",
     "add_intercessor",
     "add_project_member",
     "append_assessment",
+    "apply_invited_scope",
     "apply_needs",
     "apply_submission",
     "archived_answers",
@@ -290,11 +311,14 @@ __all__ = [
     "entered_critical",
     "expires_on",
     "field_changes",
+    "find_account",
     "form_fields",
     "get_notification_prefs",
     "get_project",
     "get_region_team",
     "get_session",
+    "grant_role",
+    "held_regions",
     "holders_reaching",
     "import_submission",
     "is_authorized",
@@ -303,8 +327,10 @@ __all__ = [
     "leaving_person",
     "link_status",
     "list_assessments",
+    "list_grant_changes",
     "list_intake_links",
     "list_intercessors",
+    "list_invites",
     "list_my_projects",
     "list_notification_panel",
     "list_project_members",
@@ -345,6 +371,7 @@ __all__ = [
     "remove_project_member",
     "require_reads_assessments",
     "reveal_intercessor_contact",
+    "revoke_grant",
     "revoke_intake_link",
     "roll_up",
     "roster_projects",
@@ -352,6 +379,7 @@ __all__ = [
     "save_project",
     "save_region_team",
     "searchable_text",
+    "send_invite",
     "set_intercessor_consent",
     "set_region_scope",
     "shared_prayer_audio",
@@ -365,6 +393,7 @@ __all__ = [
     "visible_projects",
     "with_rolled_aggregates",
     "withdraw_intercessor_consent",
+    "withdraw_invite",
     "withheld_note",
     "within_scope",
 ]

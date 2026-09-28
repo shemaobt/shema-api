@@ -108,6 +108,11 @@ class AccessInvite(Base):
     ``revoked_by`` are what make a pending invite recallable before anyone
     accepts it. Audit survives account deletion: the people columns go NULL, the
     invite stays.
+
+    ``region_keys`` is the region scope a regional Shemá role arrives with (OBT-543): the
+    PME's Admin invites a ``coordinator`` *and* the regions it reaches, and acceptance writes
+    both in one commit. NULL for every role that is not regional, and for every invite the
+    form writes.
     """
 
     __tablename__ = "access_invites"
@@ -118,6 +123,7 @@ class AccessInvite(Base):
     email: Mapped[str] = mapped_column(String(320), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    region_keys: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

@@ -84,7 +84,7 @@ ROLE_KEYS = (GLOBAL_ROLE, COORDINATOR_ROLE, OBT_LAB_ROLE, RESOURCE_CIRCLE_ROLE)
 #: The Admin of OBT-522 — **one role for both apps**, seeded in ``shema`` and in
 #: ``resource-request-form`` by ``20260927_shema08`` and labelled *"Admin da plataforma"*.
 #: It is **not** ``users.is_platform_admin``, the Tripod installation's admin that passes every
-#: guard: this is a role somebody is granted, and until OBT-543 nobody is. It has no seat in
+#: guard: this is a role somebody is granted — by OBT-543's surface, in both apps. It has no seat in
 #: the org chart and no region (:func:`scope_from_roles`).
 ADMIN_ROLE = "admin"
 

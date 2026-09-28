@@ -244,9 +244,17 @@ The whole authentication spine, and only through `app/core/access_control.py` an
 `user_app_roles` has reimplemented `require_role` badly. When the
 module needs the join from the other end — *who holds this role* — it asks
 `authorization_service.list_role_holders`, which the sibling added for exactly that and whose
-docstring states the rule. Reading `users` for an account's existence or name is not that:
+docstring states the rule. OBT-543's history asks the same way (`list_grant_history`).
+Reading `users` for an account's existence or name is not that:
 `save_region_team` checks a seat's account there and OBT-524's roster names its members from it,
 and neither reads a grant.
+
+> **Two readings of this rule since OBT-543, both named rather than absorbed.**
+> `access_invites` is reached through the invite module that owns it —
+> `app/services/resource_request_access/invite_store.py`, gate-free, which OBT-549 moves into
+> this module — and not through `authorization/`. And `users` is read by id where a name or a
+> lock is the point: the Admin's history resolves names in one query, and a grant locks the
+> account it writes to, as `save_region_team` already reads one by id.
 
 Two things this module owns about identity: the region dimension of §6.1, which the platform
 has no column for, and — since OBT-524 — **project membership** (§6.9), the link from an account
@@ -266,6 +274,14 @@ module and answered *nothing, because there is no Shemá module*. The answer is 
 this side: the two share the auth spine of §2.4 and **nothing else** — different products,
 different aggregates, different app keys. The first person to reach for the other's tables
 should be asked why.
+
+> **OBT-543 is where the two meet, deliberately.** The PME's Admin grants the form's roles
+> too (OBT-522), so this module composes the form's invite store and its mesa × Gestor rule
+> (`_rules.assert_role_compatible`), and the form's acceptance applies the regions a Shemá
+> invite carries (`apply_invited_scope`). Both directions import by **submodule path**, the only
+> spelling that binds a function whichever package loads first —
+> `tests/test_app_boots.py::test_the_grant_packages_import_in_either_order` walks both orders.
+> OBT-549 moves the form's half into this module rather than deleting it (§6.10).
 
 Two shared-by-accident surfaces are worth naming because they are one import away:
 `app/services/notifications/` (§4.6 — call it as it is, do not change its signature) and
@@ -296,6 +312,10 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
 | `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.8. |
+| `app/api/shema/access.py` | **OBT-543, built** | The Admin's seven routes under `/access` — §6.10. |
+| `app/services/shema/_grant_rules.py` | **OBT-543, built** | The one owner of what the Admin's surface grants and how: the vocabulary (built from `_scope.py`), `admin` in both apps, regions with a regional role and with no other, and the fresh check of the Admin's own standing. |
+| `app/services/shema/{find_account,grant_role,revoke_grant,send_invite,withdraw_invite,list_invites,list_grant_changes,apply_invited_scope}.py` | **OBT-543, built** | One operation each. **Flat, against the issue's `access/**`**: every structural scan of this package (`test_layering.py`, `test_privacy_owners.py`, `test_people_privacy.py`, `test_scope.py`, `test_needs.py`) reads `*.py` without recursing, and a sub-package would sit outside all of them. |
+| `app/models/shema_grant.py`, `app/db/models/shema_grant.py` | **OBT-543, built** | The surface's wire shapes; and `shema_scope_changes`, the append-only trail of every region scope change. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9). The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
@@ -426,9 +446,13 @@ Two behaviours to design around, both inherited from the sibling's §5.5 and bot
   immediately reads `list_roles` directly, as
   `app/services/resource_request/holds_capability.py` does and says why.
 - **An app's `admin` role manages that app's roles** (`assert_can_manage_roles`, the predicate
-  behind `/api/roles/assign` and `/revoke`). Since OBT-523 this app seeds one — the Admin of
-  §6.8 — so whoever is granted it concedes and revokes Shemá roles from that day, which is
-  OBT-522's rule for the role. Nobody holds it until OBT-543 grants it.
+  behind `/api/roles/assign`, `/revoke` and `/check`). Since OBT-523 this app seeds one — the
+  Admin of §6.8 — and **OBT-543 grants it, in both apps, through `/api/shema/access`** (§6.10),
+  which applies the product's rules. So the raw `/api/roles/assign` and `/revoke` **refuse
+  `shema` and `resource-request-form` to anyone but an installation admin** (`PME_APP_KEYS` in
+  `app/api/roles.py`): every Admin would otherwise pass the predicate there and step around
+  the self-grant, the mesa × Gestor exclusion, the mirrored `admin` and the regions in one
+  request. `/check` still reads the predicate.
 
 `scripts/grant_app_role.py` matching on `(user_id, app_id)` and **overwriting** `role_id` is a
 live platform bug with its own issue (OBT-484), recorded in `holds_capability`'s docstring. It
@@ -844,6 +868,11 @@ an explicit act — name its seven regions, or grant it `globalStrategist` too. 
 `default_role_for("shema")` entry is `resourceCircle` for the same reason: an approval hands
 out a role and no data.
 
+**Since OBT-543 the Admin's surface clears the rows when the last regional role goes**, and every
+change to them — by that surface, by an accepted invite, by an operator — is a row in the
+append-only `shema_scope_changes` (§6.10). Other doors still leave rows behind, which the next
+paragraph makes harmless.
+
 **And a row counts only under a regional role — OBT-523 closed the converse.** An account
 holding no regional role (and not `globalStrategist`) reaches nothing whatever rows it has,
 without the table being read. Nothing deletes an account's rows when its regional role is
@@ -1227,17 +1256,20 @@ the mesa was refused at the door of a console it now belongs to. Six rules.
   passes, as everywhere, and is answered the roles it actually holds.
 - **`admin` is one role for two apps, and it is not the installation's admin.** Seeded in both
   by `20260927_shema08` and by `scripts/seed_apps_roles.py` under *"Admin da plataforma"*;
-  nobody holds it until OBT-543. `AdminUser` guards on it for OBT-524 and OBT-543.
+  OBT-543 grants it, in both apps (§6.10). `AdminUser` guards on it for OBT-524 and OBT-543.
 - **Seeding it in the form closed a door there.** The form's two access doors
   (`app/services/resource_request_access/`) grant any role the app has, and the Gestor may use
   them: a Gestor could have named an Admin, who then passes `assert_can_manage_roles` and
-  revokes through `/api/roles`. Only an installation admin names `admin` through those doors
-  until OBT-543 moves the concession to the PME.
+  revokes through `/api/roles`. Only an installation admin names `admin` through those doors;
+  the concession moved to the PME with OBT-543 (§6.10), which also closed `/api/roles` to the
+  two apps for everyone else.
 - **`admin`, `gestor` and `mesa` reach no region** — §6.1's last paragraph.
 
-**Left to others, and named so nobody assumes them done.** OBT-543: granting `admin` should
-grant it in both apps (the door reads the `shema` one), and an `admin` held in the form passes
-`assert_can_manage_roles` there without the form's mesa × Gestor exclusion. The form's owner:
+**Left to others, and named so nobody assumes them done.** ~~OBT-543: granting `admin` should
+grant it in both apps, and an `admin` held in the form passes `assert_can_manage_roles` there
+without the form's mesa × Gestor exclusion.~~ **Closed by OBT-543** (§6.10): the grant writes
+both rows, and `/api/roles/assign` and `/revoke` refuse the two apps to anyone but an
+installation admin. The form's owner:
 `admin` holds no capability in the form's table, and the form's `reach()` counts it as a fifth
 role — the whole board. OBT-544: until it lands, an account at the door with no Shemá role is
 refused by every other route the console calls, `/regions` on sign-in included.
@@ -1284,6 +1316,119 @@ display name, else the e-mail (`_audit.author_name`), so an address can appear t
 leave. No export reads the table until BE-14 decides. **`/me/projects` answers 403, not `[]`**, to
 an account holding no role of the door's vocabulary and no live membership: the door refuses it
 before the service runs.
+
+### 6.10 Seam H — the Admin grants: one surface for two apps' roles — **Decided; OBT-543**
+
+OBT-522 (Daniel, 23 and 25/sep): **only the Admin concedes and revokes, in both apps**, from one
+screen in the PME (OBT-546) instead of the form's `/access`. This is that screen's server: seven
+routes under `/api/shema/access`, all behind `AdminUser`, composing what existed —
+`assign_role`, `revoke_role`, `set_region_scope` and the form's invite module — rather than a
+second copy of any of it. `app/services/shema/_grant_rules.py` owns every rule below that is a
+question of *what*; `AdminUser` and a fresh read of `assert_can_manage_roles` answer *who*.
+
+**The routes.** Request and response keys are camelCase; the form's own routes, which the PME's
+`/convite` page also calls, stay snake_case and are quoted as they are.
+
+| Route | Body / query | Answers |
+|---|---|---|
+| `GET /access/people?email=` | exact e-mail, case aside | `AccountGrants` — `{userId, email, displayName, isActive, apps: [{appKey, roles[]}], regions: [{regionKey, grantedBy, grantedAt}], regionScope}` |
+| `POST /access/grants` | `{userId, appKey, roleKey, regionKeys?}` | `AccountGrants`, as the account now stands |
+| `POST /access/grants/revoke` | `{userId, appKey, roleKey}` | `AccountGrants` |
+| `POST /access/invites` | `{email, appKey, roleKey, regionKeys?}` | 201 `{id, email, appKey, roleKey, regionKeys, status, createdAt, expiresAt, createdBy, inviteUrl, emailSent}` — the link once |
+| `POST /access/invites/revoke` | `{inviteId}` | the invite, `status: "revoked"`; repeating is a no-op |
+| `GET /access/invites` | — | the two apps' invites nobody accepted, newest first, at most 200 |
+| `GET /access/changes` | — | `[{action: granted\|revoked, at, appKey, roleKey\|null, regionKey\|null, userId, userEmail, userName, actorId, actorEmail, actorName}]`, newest first, at most 200 |
+| `GET /api/resource-requests/access/invites/{token}` | anonymous | `{status, email, app_name, role_key, role_label, account_exists, region_keys}` |
+| `POST /api/resource-requests/access/invites/{token}/accept` | signed in, same e-mail | `{user_id, role_key, granted_at, granted_by, revoked_at, revoked_by}` |
+
+**The rules.**
+
+- **What is granted is the PME's own vocabulary.** From `shema`: the four and `admin`
+  (`SHEMA_APP_ROLES`); from the form: `admin`, `gestor`, `mesa`. `equipe` is refused by name —
+  a project membership since OBT-524 — and so is `lider`, who has no account since 22/sep.
+- **`admin` is one role for two apps**: granting or revoking it under either `appKey` writes
+  or revokes the row in both. The door reads the `shema` row; the form's guards read theirs,
+  and its `reach()` gives any role but `equipe`/`lider` the whole board — so every Admin sees the
+  form's board, which is OBT-522's *faz tudo exceto endossar*.
+- **A regional role (`coordinator`, `obtLab`, `resourceCircle`) comes with at least one region,
+  in the same call**, and `regionKeys` is **the account's whole scope**, because the table is
+  per account: re-granting a held regional role is how regions are edited, and the screen
+  pre-fills the current ones. Any other role touches no region — `regionKeys: []` beside it
+  is *leave them*, never *reach nothing*. **Revoking the last regional role clears the rows**, so
+  a later grant through a door that states no region (an approved access request) cannot bring
+  an old scope back.
+- **Nobody grants, revokes or invites themselves**, and **mesa and Gestor never share an
+  account** — `_rules.assert_role_compatible`, the form's own rule and its one owner.
+- **Every refusal comes before the first write**, and the writes are one commit: the role in
+  each app, the close of any invite still pending for the same e-mail, app and role, and the
+  regions. The account written to is locked `FOR UPDATE`, which serializes two acts on one
+  person on PostgreSQL (SQLite ignores it).
+- **The Admin's standing is read fresh** on every write — `AdminUser` answers from a
+  thirty-second cache per process — and an Admin holding the role in one app only is refused
+  with a sentence that says so.
+
+**Invitations.** For somebody with no account. The link is always the PME's,
+`{shema app_url}/convite?token=…`, whatever app the role lives in — the form has no sign-in
+since 22/sep — and the letter is BE-12's `access_invite` template under the PME's name, sent
+after the row is committed; `emailSent` says whether it left. **`admin` is never granted by
+link**: a link can be forwarded, and signing up proves nothing about the e-mail. The regions of
+a regional invite are stored on it (`access_invites.region_keys`) and applied on acceptance, in
+the commit that grants the role and spends the invite, with the inviter as their author —
+**unless the account already holds a regional role and a different scope**: a week-old link does
+not rewrite a newer decision (409), and the Admin grants directly. A direct grant or revocation
+closes pending invites for the same thing.
+
+**Acceptance stays on the form's routes** for now — they are generic by token — so no new
+public route enters this module. **OBT-549 must move, not delete**, before those routes answer
+404: the lookup and the acceptance, `accept_invite`, `describe_invite`, `invite_store` and
+`_rules.assert_role_compatible`.
+
+**The history.** Roles come from `user_app_roles` through the auth spine
+(`list_grant_history`): a grant carries `granted_by`/`granted_at` and a revocation
+`revoked_by`/`revoked_at` — which `revoke_role` records since this issue — so every door that
+writes a role is in it, an accepted invite reading as the inviter's grant. Regions come from
+**`shema_scope_changes`**, the append-only trail `set_region_scope` writes on every change,
+because moving somebody between regions writes no role row at all. It has **no foreign key**:
+`SET NULL` is an UPDATE and `CASCADE` a DELETE, and its trigger refuses both. Only the roles the
+surface writes are read — the form's automatic `equipe` is nobody's decision. What it cannot
+say: a deleted account takes its role rows with it while its region rows stay under an id with
+no name; a deleted author is anonymised; `admin` reads twice, one row per app; nothing of the
+region half predates OBT-543.
+
+**Refusals**, for the screen to render — status, `code`, the server's sentence:
+
+| When | Status · `code` | `detail` |
+|---|---|---|
+| no Shemá role at all (a Gestor, a mesa) | 403 · `FORBIDDEN` | `You don't have access to the 'shema' application. Please contact support to request access.` |
+| a Shemá role that is not `admin` | 403 · `FORBIDDEN` | `Role 'admin' is required for this action.` |
+| the Admin holds the role in one app only | 403 · `FORBIDDEN` | `The admin role is not held in '<app>'. Granting the Admin writes it in both apps; an installation admin can grant it again to repair this account.` |
+| `equipe` | 422 · `UNPROCESSABLE_VALUE` | `'equipe' is a project membership, added on the project, not a role granted here.` |
+| any other role or app outside the vocabulary | 422 · `UNPROCESSABLE_VALUE` | `'<role>' is not a role granted here for '<app>'.` |
+| a regional role with no region | 422 · `UNPROCESSABLE_VALUE` | `'<role>' is a regional role: grant it with at least one region.` |
+| regions beside any other role | 422 · `UNPROCESSABLE_VALUE` | `Regions go with a regional role only; '<role>' is not one.` |
+| `admin` by invitation | 422 · `UNPROCESSABLE_VALUE` | `The admin role is granted to an existing account, never through a link.` |
+| an id that is no account | 422 · `UNKNOWN_REFERENCE` | `Target user not found.` |
+| granting, revoking, inviting yourself | 400 · `BAD_REQUEST` | `You cannot grant a role to yourself.` · `You cannot revoke your own role.` · `You cannot invite yourself.` |
+| revoking a role the account does not hold | 400 · `BAD_REQUEST` | `Active assignment not found` |
+| mesa to a Gestor, or Gestor to a mesa | 409 · `CONFLICT` | `'mesa' and 'gestor' are mutually exclusive: revoke 'gestor' before granting 'mesa'.` (and the converse) |
+| a second pending invite for the same e-mail, app and role | 409 · `CONFLICT` | `An invitation for this e-mail and role is already pending.` |
+| recalling an accepted invite | 409 · `CONFLICT` | `This invitation was already accepted; revoke the granted role instead.` |
+| no account for that e-mail · no such invite (or another app's) | 404 · `NOT_FOUND` | `No account with this e-mail.` · `Invitation not found.` |
+| accepting would change an existing regional scope | 409 · `CONFLICT` | `This account already has a region scope, and accepting this invitation would change it. The Admin grants the role directly instead.` |
+| a malformed body — an unknown region key, a bad e-mail, an unknown field | 422, no `code` | FastAPI's field errors |
+
+Accepting keeps the form's own refusals: revoked, used and expired are 409, another e-mail is
+403.
+
+**`/api/roles`.** `/assign` and `/revoke` answer 403 `Roles of '<app>' are granted and revoked
+through /api/shema/access.` for the two apps to anyone but an installation admin. `/check` did
+not change: `dev` has required the app's `admin` or an installation admin to ask about somebody
+else since OBT-506 (`9fb3129f`, 20/sep — the issue measured `main`), and asking about yourself
+reveals nothing `/api/auth/my-roles` does not.
+
+**Residuals, named.** Until OBT-549, the Gestor still concedes through the form's door, and an
+installation admin can still invite `admin` there — that acceptance writes the form's row only.
+The account lookup does not list project memberships, which are OBT-524's table.
 
 ---
 

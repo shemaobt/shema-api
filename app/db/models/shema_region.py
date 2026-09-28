@@ -66,9 +66,11 @@ class ShemaUserRegion(Base):
     region_key: Mapped[ShemaRegionKey] = mapped_column(REGION_KEY, primary_key=True)
     #: Who granted the scope. Nullable because a scope may be seeded rather than granted by a
     #: person, and it restricts on delete nowhere — this is a convenience for an audit
-    #: question, not the audit itself.
+    #: question, not the audit itself, which is ``shema_scope_changes``. ``SET NULL`` since
+    #: OBT-543: the Admin's surface is the first writer to put a person here, and without it
+    #: deleting that Admin's account would be refused by this column.
     granted_by: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     granted_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()

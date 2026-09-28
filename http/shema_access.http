@@ -1,0 +1,63 @@
+# Shemá — the Admin's access surface (OBT-543 · docs/shema.md, "The Admin grants")
+#
+# Every route needs the `admin` role of the shema app ("Admin da plataforma"). Granting the
+# Admin writes it in both apps, so an installation admin bootstraps the first one here:
+# POST /access/grants with roleKey "admin". The routes, the shapes and every refusal sentence
+# are in docs/shema.md §6.10. Set @accessToken after logging in as an Admin.
+
+@baseUrl = http://localhost:8000
+@accessToken = paste-an-admin-access-token
+
+### One account by exact e-mail — roles per app, stored regions, what they reach
+GET {{baseUrl}}/api/shema/access/people?email=someone@example.org
+Authorization: Bearer {{accessToken}}
+
+### Grant a regional role with its regions (the regions are the account's whole scope)
+POST {{baseUrl}}/api/shema/access/grants
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"userId": "USER_ID", "appKey": "shema", "roleKey": "coordinator", "regionKeys": ["africa"]}
+
+### Grant a form seat — mesa and gestor never share an account
+POST {{baseUrl}}/api/shema/access/grants
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"userId": "USER_ID", "appKey": "resource-request-form", "roleKey": "mesa"}
+
+### Revoke — the last regional role takes the regions with it
+POST {{baseUrl}}/api/shema/access/grants/revoke
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"userId": "USER_ID", "appKey": "shema", "roleKey": "coordinator"}
+
+### Invite somebody with no account — the link lands on the PME's /convite page
+POST {{baseUrl}}/api/shema/access/invites
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"email": "someone@example.org", "appKey": "shema", "roleKey": "obtLab", "regionKeys": ["asia"]}
+
+### The invitations nobody accepted, newest first
+GET {{baseUrl}}/api/shema/access/invites
+Authorization: Bearer {{accessToken}}
+
+### Recall one
+POST {{baseUrl}}/api/shema/access/invites/revoke
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"inviteId": "INVITE_ID"}
+
+### Who granted or revoked which role or region, to whom, and when
+GET {{baseUrl}}/api/shema/access/changes
+Authorization: Bearer {{accessToken}}
+
+### What the invitation gives — anonymous, the form's route until OBT-549 moves it
+GET {{baseUrl}}/api/resource-requests/access/invites/TOKEN
+
+### Accept it, signed in with the invited address
+POST {{baseUrl}}/api/resource-requests/access/invites/TOKEN/accept
+Authorization: Bearer {{inviteeAccessToken}}

@@ -17,8 +17,21 @@ async def revoke_role(
     target_user_id: str,
     app_key: str,
     role_key: str,
+    *,
+    commit: bool = True,
 ) -> UserAppRole:
+    """Revoke a live role, recording who revoked it and when.
 
+    **Every live row of the grant is revoked, not one.** ``user_app_roles`` has no unique
+    constraint on a live ``(user, app, role)`` and ``grant_app_role`` checks before it
+    inserts, so two requests landing together can leave two live rows; reading one of them
+    here used to raise ``MultipleResultsFound`` and answer 500, and revoking one would have
+    left the role held. The first row is returned, which is all the callers read.
+
+    ``revoked_by`` is written beside ``revoked_at``, so a revocation has an author in the
+    history the Shemá Admin reads (OBT-543). ``commit=False`` flushes and leaves the
+    transaction to the caller, as ``grant_app_role`` does.
+    """
     await assert_can_manage_roles(db, actor_user, app_key)
 
     app = await get_app_by_key(db, app_key)
@@ -35,13 +48,18 @@ async def revoke_role(
         UserAppRole.role_id == role.id,
         UserAppRole.revoked_at.is_(None),
     )
-    result = await db.execute(stmt)
-    assignment = result.scalar_one_or_none()
-    if not assignment:
+    assignments = list((await db.execute(stmt)).scalars().all())
+    if not assignments:
         raise RoleError("Active assignment not found")
 
-    assignment.revoked_at = datetime.now(UTC)
-    await db.commit()
-    await db.refresh(assignment)
+    now = datetime.now(UTC)
+    for assignment in assignments:
+        assignment.revoked_at = now
+        assignment.revoked_by = actor_user.id
+    if commit:
+        await db.commit()
+        await db.refresh(assignments[0])
+    else:
+        await db.flush()
     invalidate_roles(target_user_id)
-    return assignment
+    return assignments[0]
