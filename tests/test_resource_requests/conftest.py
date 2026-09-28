@@ -89,12 +89,13 @@ def _clear_role_cache():
 async def rrf_app(db_session):
     """The app registry row plus its four roles — what ``seed_apps_roles.py`` writes.
 
-    ``auto_approve`` is on because ``20260828_rr02`` turns it on: GATE-02 D1 answered that
-    whoever registers gets in, as ``equipe``. The fixture carries the row production has,
-    not the row the seed script leaves behind.
+    ``auto_approve`` is off because ``20260928_rr08`` turns it back off: the form has no
+    login since the 22/sep meeting, and the team is a project's members in the PME (GATE-04,
+    OBT-519), so nobody registers here. It was on from ``20260828_rr02`` until then. The
+    fixture carries the row production has, not the row the seed script leaves behind.
     """
     app = await make_app(
-        db_session, app_key=APP_KEY, name="Resource Request Form", auto_approve=True
+        db_session, app_key=APP_KEY, name="Resource Request Form", auto_approve=False
     )
 
     for role_key, label in (
@@ -210,11 +211,54 @@ async def auth_header(db_session, user) -> dict[str, str]:
 
 
 async def grant(db_session, user, app, role_key: str):
-    """Give ``user`` one of the app's already-seeded roles."""
+    """Give ``user`` one of the app's already-seeded roles.
+
+    **``equipe`` also makes ``user`` the one member of a project of their own** (BE-19,
+    OBT-520). The team is a project's members since GATE-04 (OBT-519), and a member of
+    exactly one project opens requests in it without naming it; a project per account keeps
+    every team apart exactly as the account-shaped scope did, so the isolation these tests
+    already prove stays what they prove. The grant is kept beside the membership because an
+    account may still carry it, and the union reads both.
+    """
     from sqlalchemy import select
 
     from app.db.models.auth import Role
 
+    if role_key == "equipe":
+        await make_membership(db_session, user, own_project_id(user))
+
     stmt = select(Role).where(Role.app_id == app.id, Role.role_key == role_key)
     role = (await db_session.execute(stmt)).scalar_one()
     return await make_user_app_role(db_session, user.id, app.id, role.id)
+
+
+def own_project_id(user) -> str:
+    """The id of the project ``grant(..., "equipe")`` gives ``user``."""
+    return f"projeto-{user.id[:8]}"
+
+
+async def make_project(db_session, project_id: str):
+    """One PME project, with only the columns a request's FK needs."""
+    from app.db.models.shema import ShemaProject
+    from app.db.models.shema_enums import ShemaRegionKey
+
+    existing = await db_session.get(ShemaProject, project_id)
+    if existing is not None:
+        return existing
+    project = ShemaProject(
+        id=project_id, language_name=project_id, region_key=ShemaRegionKey.SOUTH_AMERICA
+    )
+    db_session.add(project)
+    await db_session.commit()
+    return project
+
+
+async def make_membership(db_session, user, project_id: str):
+    """``user`` as a live member of ``project_id``, creating the project if needed."""
+    from app.db.models.shema_project_member import ShemaProjectMember
+
+    await make_project(db_session, project_id)
+    member = ShemaProjectMember(project_id=project_id, user_id=user.id, role="equipe")
+    db_session.add(member)
+    await db_session.commit()
+    return member
