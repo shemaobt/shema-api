@@ -58,14 +58,17 @@ OBT-524, the two reads a member has — a project's roster and ``/me/projects``.
 and ``tests/test_shema/test_access.py`` holds it to the form's own ``APP_KEY`` rather than this
 file importing the form's router package.
 
-**One role key is also asked as a value and not only as a guard**, which is :data:`MayApply`
-below. It is not the capability map this file refuses: there is no table, no second
-vocabulary and no OR — it is ``coordinator``, the same key the route beside it is guarded on,
-read as a boolean because the answer shapes a payload rather than admitting a request. The
-grant is read once per request by :func:`_granted` and both consumers share it, so asking the
-second question costs no second query: a scope and a role resolved from two separate reads of
-one fact is the defect ``app/services/shema/_scope.py``'s ``scope_from_roles`` was written to
-close, and it would come straight back through this file.
+**Two role questions are also asked as values and not only as guards**, which are
+:data:`MayApply` and :data:`Reading` below. Neither is the capability map this file refuses:
+there is no table and no second vocabulary. :data:`MayApply` is ``coordinator``, the same key the
+route beside it is guarded on, read as a boolean. :data:`Reading` is OBT-528's reader — who reads
+the truth of a sensitive place — and its OR (``globalStrategist``, the ``admin`` hypothesis, or
+``coordinator`` in its own regions) is written once, in ``app/services/shema/_scope.py``'s
+``readership``, which owns the region half of it; this file only hands it the grant and the
+scope it already read. Both shape a payload rather than admit a request. The grant is read once
+per request by :func:`_granted` and every consumer shares it, so asking a second question costs
+no second query: a scope and a role resolved from two separate reads of one fact is the defect
+``scope_from_roles`` was written to close, and it would come straight back through this file.
 """
 
 from __future__ import annotations
@@ -86,9 +89,11 @@ from app.services.shema._scope import (
     GLOBAL_ROLE,
     OBT_LAB_ROLE,
     RESOURCE_CIRCLE_ROLE,
+    Readership,
     RegionScope,
     RosterReach,
     granted_roles,
+    readership,
     scope_from_roles,
     session_roles,
 )
@@ -199,6 +204,22 @@ async def _may_apply(user: CurrentUser, granted: Granted) -> bool:
 #: Whether the caller can apply what they are being shown. **A payload's shape, never a guard**
 #: — a route that must refuse a non-coordinator uses :data:`CoordinatorUser`, which refuses.
 MayApply = Annotated[bool, Depends(_may_apply)]
+
+
+async def _reading(user: CurrentUser, granted: Granted, scope: Scope) -> Readership:
+    """Where this caller reads the truth of a sensitive place — the reader of OBT-528.
+
+    No database read of its own: :func:`_granted` and :func:`_scope` are resolved once per
+    request, and the rule is ``_scope.readership``'s. Like :data:`Scope`, the router hands the
+    value to a service and does nothing else with it.
+    """
+    return readership(scope, granted, platform_admin=user.is_platform_admin)
+
+
+#: The caller's readership, for a handler to pass into the service that builds the payload.
+#: **A payload's shape, never a guard.** Which routes take it is a list somebody writes:
+#: ``tests/test_shema/test_privacy_owners.py``'s ``READER_ROUTES``.
+Reading = Annotated[Readership, Depends(_reading)]
 
 
 async def _roster(user: SignedIn, db: Db, roles: SessionRoles) -> RosterReach:

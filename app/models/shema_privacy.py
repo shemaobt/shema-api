@@ -1,4 +1,4 @@
-"""The serialization boundary — what a shape that **leaves coordination** may carry.
+"""The serialization boundary — what a shape that **leaves coordination** may carry, per reader.
 
 ``docs/shema.md`` §6.4 asks for the sensitive-country rule to be written once and applied
 where the payload is built, and FE-44 §8 says why the payload and not the endpoint: *the
@@ -30,6 +30,16 @@ apply it, and ``_redaction.py`` stays the module's service-side owner: the one f
 That is the same split §3.1 makes for the derivations and for the same stated reason. The PR
 records it as a departure from §3.1's table.
 
+**Who reads, and not only where it goes (OBT-528).** GATE-04 moved the line BE-04 drew at
+the door of the record: the truth of a sensitive place belongs to **coordination**, not to
+whoever may open the record. So a shape is built *for a reader* — :class:`ShemaReader`,
+three values, one class for all three. ``coordination`` reads the truth; ``other`` (every
+other signed-in reader of the console) and ``outside`` (everything that leaves the system)
+read the same reduced form. The reader is not data: it arrives only in the validation
+context of :meth:`LeavingShape.read_by`, the service's own decision, and a shape built any
+other way is ``outside`` — so an endpoint written by somebody who never read this file still
+emits the form that leaves.
+
 **Fail closed, and the closed state is the default.** :attr:`LeavingShape.sensitive_country`
 is ``None`` when a shape was built from something that could not answer — a dict assembled by
 hand, a partial row, a join that did not select the column. ``None`` withholds. The cost is
@@ -37,44 +47,55 @@ visible and cheap (a shape built from a ``ShemaProject`` always answers, because
 ``NOT NULL``); the alternative fails the other way and fails silently.
 
 **The withholding is visible and says nothing about what was withheld.**
-``locationWithheld`` is in every leaving shape's output, always, so a consumer can render
-*"location withheld"* and a file can count how many rows it reduced. It is one bit: that
-something was reduced. It never carries the country, the place, the base or the reason.
+``locationWithheld`` is in every leaving shape's output, always: one bit saying that this
+record's place is withheld from everything that leaves coordination. It is **the same bit for
+every reader** — a coordination reader receives the truth beside it, everybody else the
+reduction it announces — which is what keeps a consumer that keys its own redaction on the
+bit (the console's map and its client-side export) redacting for a coordinator who now reads
+the truth. It never carries the country, the place, the base or the reason.
 
 **One seam, named rather than left to be discovered.** A payload rebuilt from a dump of a
 leaving shape — ``model_validate(shape.model_dump())``, which is what a dict round trip
 through any transport looks like — carries neither :attr:`LeavingShape.sensitive_country`
-nor :attr:`LeavingShape.region_key`, because both are ``exclude=True``. It can answer
-neither *was this withheld* nor *which region*, and it does not need to: it already carries
-``locationWithheld`` and the reduced fields the first pass wrote. So a payload that arrives
-with the marker and without the flag is **taken at its word**, the decision and the fields
-both. Withholding it again would rewrite the region the first pass named to
-:data:`UNKNOWN_REGION` and move every withheld record onto one square degree — the opposite
-of what :data:`REGION_CENTROIDS` is for — and would bring back withheld a record the rule had
-cleared.
+nor :attr:`LeavingShape.region_key`, because both are ``exclude=True``, nor its reader. It
+arrives with ``locationWithheld`` and without the flag, and the marker is taken as a
+**report**: when it says withheld and the reader is not coordination, the payload is reduced
+again — idempotently, in the region the payload itself names — because a coordination payload
+carries the truth beside the same marker and a round trip must not launder it into one that
+leaves. When it says the place is not withheld, the record was cleared and stays cleared.
 
 **Which makes the marker a report and never a request.** A caller that wants a payload
 withheld says ``sensitive_country=True``, or says nothing at all, because the default
 withholds. What it may not do is set ``locationWithheld`` on a payload that still names a
 place and expect this class to finish the job.
 
-**Today's FastAPI does not take that round trip, and the seam is here anyway.** On Pydantic v2
-``fastapi.routing.serialize_response`` skips ``_prepare_response_content`` — that call is
-guarded by ``hasattr(field, "serialize")``, true only on the v1 branch — and hands the
-returned value to ``ModelField.validate``, which passes an instance of the response model
-straight through. A handler that returns rows and one that returns models therefore serialise
-identically, and which round trip a payload takes is the framework's decision to change
-rather than ours. ``tests/test_shema/test_privacy.py`` pins the wire and the round trip both.
+**The validator runs again on a shape that is already built, and that is load-bearing.**
+FastAPI validates a handler's return value into the response model, and a page validates the
+cards handed to it; on Pydantic v2 neither re-validates the fields of an instance of the right
+class, but a model validator wraps the schema and runs again — with no context. So the reader
+is kept on the instance and only an explicit context sets it, and the reduction is idempotent:
+a second pass changes nothing, whether the payload was the truth for coordination or the
+region for anybody else. ``tests/test_shema/test_privacy.py`` pins the wire and the round trip
+both, and ``tests/test_shema/test_reader.py`` pins the reader through the page and the route.
 """
 
 from __future__ import annotations
 
 import enum
-from typing import Any, Final
+from typing import Any, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    ValidationInfo,
+    computed_field,
+    model_validator,
+)
 
 from app.db.models.shema_enums import ShemaRegionKey
+from app.utils.shema_derivations import get_region
 
 
 class ShemaAudience(enum.StrEnum):
@@ -91,6 +112,37 @@ class ShemaAudience(enum.StrEnum):
 
     COORDENACAO = "coordenacao"
     PUBLICO = "publico"
+
+
+class ShemaReader(enum.StrEnum):
+    """Who a leaving shape is built for — OBT-528's second input to the sensitive-country rule.
+
+    * ``coordination`` reads the truth of a sensitive place: ``globalStrategist``, a
+      ``coordinator`` on a project in a region of their scope, the ``admin`` (the issue's
+      reading, to confirm with Daniel) and an installation admin. ``app/services/shema/_scope.py``
+      derives it; nothing else does.
+    * ``other`` is every other signed-in reader of the console — ``obtLab``, ``resourceCircle`` —
+      and reads the region in place of the country, the ficha included.
+    * ``outside`` is whatever leaves the system: the export, the ETEN report, the Pulse, the
+      leader's link, a notice. **The default**, and the fail-closed one.
+
+    ``other`` and ``outside`` reduce the same fields today; they are two values because one is
+    decided by the session and the other by the path, and a coordinator's export is ``outside``.
+
+    **Not** :class:`ShemaAudience`'s ``coordenacao``, which is FE-44's *destination* — every
+    role that follows up and supports — and decides notes and media. The two coordinations are
+    different memberships on purpose: GATE-04 decided who reads a sensitive place, and nothing
+    about who reads a note.
+    """
+
+    COORDINATION = "coordination"
+    OTHER = "other"
+    OUTSIDE = "outside"
+
+
+#: The validation-context key a leaving shape reads its reader from — set by
+#: :meth:`LeavingShape.read_by` and by nothing else.
+READER_KEY: Final = "shema_reader"
 
 
 #: Where a withheld project is placed on a map, longitude first — ``REGION_CENTROIDS`` in
@@ -147,9 +199,28 @@ CONTACT_FIELDS: Final[tuple[str, ...]] = (
     "mentor_contact",
 )
 
+#: The export's free text about *why* a place is sensitive. BE-02 kept it as provenance beside
+#: the flag, and it is a worse thing to emit than the country: since OBT-528 the ficha is a
+#: leaving shape, so it goes empty for every reader who is not coordination.
+REASON_FIELDS: Final[tuple[str, ...]] = ("sensitivity",)
+
 #: Every field a withheld shape replaces. A subclass that declares none of them is still a
 #: leaving shape and still carries ``locationWithheld``; there is nothing on it to reduce.
-WITHHELD_FIELDS: Final[tuple[str, ...]] = PLACE_FIELDS + BASE_FIELDS + CONTACT_FIELDS
+WITHHELD_FIELDS: Final[tuple[str, ...]] = (
+    PLACE_FIELDS + BASE_FIELDS + CONTACT_FIELDS + REASON_FIELDS
+)
+
+#: What only coordination writes, on **every** record (OBT-528): the place, the flag and the
+#: reason beside it. The write shape has no ``country``: the country is the first segment of
+#: ``location``, so refusing the location is refusing the country.
+COORDINATION_WRITES: Final[frozenset[str]] = frozenset(
+    (*PLACE_FIELDS, "sensitive_country", *REASON_FIELDS)
+)
+
+#: What only coordination writes on a record whose place is **withheld**: the rest of what the
+#: read withholds from everybody else. *Não dá para editar o que não se vê* — a base read as
+#: ``""`` is not a base a reader may type over.
+WITHHELD_WRITES: Final[frozenset[str]] = frozenset((*BASE_FIELDS, *CONTACT_FIELDS))
 
 
 def withheld_value(field_name: str, region: ShemaRegionKey) -> Any:
@@ -178,16 +249,37 @@ def withheld_value(field_name: str, region: ShemaRegionKey) -> Any:
     return ""
 
 
+#: The values a reduced ``location`` or ``country`` can hold.
+_REGION_VALUES: Final = frozenset(region.value for region in ShemaRegionKey)
+
+
+def _region_named_by(shape: BaseModel) -> ShemaRegionKey:
+    """The region a payload rebuilt from a dump names, for the seam the module docstring names.
+
+    A payload that was already reduced carries the region key in ``location`` (or
+    ``country``); one built for coordination carries the place itself, and the region is
+    derived from it by the owner of that map. A shape that declares neither falls back to
+    :data:`UNKNOWN_REGION`, which withholds.
+    """
+    for field_name in ("location", "country"):
+        value = getattr(shape, field_name, None)
+        if not isinstance(value, str) or not value:
+            continue
+        if value in _REGION_VALUES:
+            return ShemaRegionKey(value)
+        return get_region(value)
+    return UNKNOWN_REGION
+
+
 class LeavingShape(BaseModel):
-    """The base of every payload that leaves coordination.
+    """The base of every payload that leaves coordination — built for a reader.
 
     Inherit it for the prayer request, the ETEN snapshot, the notification entry, the export
-    row, the Pulse entry, a search hit and the collection read. Do **not** inherit it for the
-    record read: a project read by somebody allowed to open it is a coordination surface and
-    carries the truth, because hiding the country from its own author is data loss rather
-    than privacy (FE-44 §8.1 rule 5). That is the whole of the split, and
-    ``tests/test_shema/test_privacy_owners.py`` keeps the exceptions to it in one named list
-    instead of in reviewers' heads.
+    row, the Pulse entry, a search hit, the collection read and — since OBT-528 — the record
+    read. Only a ``coordination`` reader gets the truth of a sensitive place, and a shape
+    learns its reader from :meth:`read_by` and from nowhere else.
+    ``tests/test_shema/test_privacy_owners.py`` keeps the routes that take the caller's reader
+    in one named list instead of in reviewers' heads.
 
     ``from_attributes`` is on so a subclass validates straight off a ``ShemaProject`` row and
     picks up :attr:`sensitive_country` and :attr:`region_key` without the caller passing
@@ -204,32 +296,85 @@ class LeavingShape(BaseModel):
     #: Its absence does not disclose: it falls back to :data:`UNKNOWN_REGION`.
     region_key: ShemaRegionKey | None = Field(default=None, exclude=True, repr=False)
 
-    #: **The withholding, made visible.** One bit, in every leaving shape, saying that the
-    #: payload was reduced and nothing about what was reduced. Defaulting to ``True`` is the
-    #: fail-closed spelling of the same rule the validator applies.
+    #: **The withholding, made visible.** One bit, in every leaving shape: this record's place
+    #: is withheld from everything that leaves coordination. The same bit for every reader —
+    #: coordination reads the truth beside it. Defaulting to ``True`` is the fail-closed
+    #: spelling of the same rule the validator applies.
     location_withheld: bool = Field(default=True, alias="locationWithheld")
 
+    #: Who this payload was built for. Private, so no input can set it; kept on the instance,
+    #: so the validator's second pass (FastAPI's response validation, a page taking its cards)
+    #: does not reset it.
+    _reader: ShemaReader = PrivateAttr(default=ShemaReader.OUTSIDE)
+
+    @property
+    def reader(self) -> ShemaReader:
+        """The reader this payload was built for — ``outside`` unless a service said otherwise."""
+        return self._reader
+
+    @classmethod
+    def read_by(cls, source: Any, reader: ShemaReader) -> Self:
+        """Build this shape from a row or a mapping, **for** ``reader``.
+
+        The one way a reader reaches a shape. Another shape is refused as a source: validating
+        an instance hands the same object back, so reading a coordination payload *for*
+        somebody else would reduce it in place under whoever else holds it.
+        """
+        if isinstance(source, BaseModel):
+            raise TypeError(
+                f"{cls.__name__} is read from a row or a mapping, never from another shape"
+            )
+        return cls.model_validate(source, context={READER_KEY: ShemaReader(reader)})
+
+    def _withhold(self, region: ShemaRegionKey) -> None:
+        for field_name in WITHHELD_FIELDS:
+            if field_name in self.model_fields:
+                setattr(self, field_name, withheld_value(field_name, region))
+
     @model_validator(mode="after")
-    def _withhold_the_place(self) -> LeavingShape:
-        """Replace every guarded field this shape declares, or record that none was.
+    def _withhold_the_place(self, info: ValidationInfo) -> Self:
+        """Replace every guarded field this shape declares, unless coordination is reading.
 
         Runs on every construction, including the one FastAPI performs when it validates a
         handler's return value into the response model — so a payload cannot be assembled
-        past this by returning a model the route did not declare.
+        past this by returning a model the route did not declare — and again on an instance
+        that is already built, which is why the reader is only ever *set* here from an
+        explicit context and every reduction is idempotent.
         """
+        context = info.context if isinstance(info.context, dict) else {}
+        if READER_KEY in context:
+            self._reader = ShemaReader(context[READER_KEY])
+        reads_the_truth = self._reader is ShemaReader.COORDINATION
+
         if self.sensitive_country is None and "location_withheld" in self.__pydantic_fields_set__:
-            # The seam. The marker arrived and the flag did not, so this payload has already
-            # been through here once and is taken at its word — reducing it a second time
-            # would be done against a `region_key` that did not survive the dump either.
+            # The seam. The marker arrived and the flag did not, so this payload has been
+            # through here once: a cleared record stays cleared, and a withheld one is reduced
+            # again for anybody but coordination, in the region it names itself.
+            if self.location_withheld and not reads_the_truth:
+                self._withhold(self.region_key or _region_named_by(self))
             return self
 
         withheld = True if self.sensitive_country is None else self.sensitive_country
 
-        if withheld:
-            region = self.region_key or UNKNOWN_REGION
-            for field_name in WITHHELD_FIELDS:
-                if field_name in self.model_fields:
-                    setattr(self, field_name, withheld_value(field_name, region))
+        if withheld and not reads_the_truth:
+            self._withhold(self.region_key or UNKNOWN_REGION)
 
         self.location_withheld = withheld
         return self
+
+
+class SessionShape(LeavingShape):
+    """A leaving shape the console reads — the card and the record — which says who read it.
+
+    ``readAs`` is additive, and it is the server's own answer to the question the console
+    would otherwise answer with a second copy of the rule: whether the payload in hand is the
+    truth or the reduction (``locationWithheld`` and ``readAs == "other"``), and whether its
+    place and flag are this reader's to edit (``readAs == "coordination"``). Shapes that leave
+    the system do not carry it: a file does not say who it was not written for.
+    """
+
+    @computed_field(alias="readAs")  # type: ignore[prop-decorator]
+    @property
+    def read_as(self) -> ShemaReader:
+        """Who this payload was read as — ``coordination`` or ``other`` on the console's reads."""
+        return self._reader

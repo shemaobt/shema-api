@@ -24,15 +24,13 @@ shape that leaves), the prayer columns (``app/services/shema/_consent.py`` is th
 reader, and the wall is BE-09's), the progress tables and ``source`` (BE-06's record read), and
 the org-chart names, which no project row holds at all (``docs/shema.md`` §5.8).
 
-**It is a leaving shape, and that is BE-04's decision inherited rather than this issue's.**
-``app/models/shema_privacy.py`` names *the collection read* among the shapes that inherit
-:class:`~app.models.shema_privacy.LeavingShape`, and ``COORDINATION_ROUTES`` in
-``tests/test_shema/test_privacy_owners.py`` names BE-06's three record routes and
-**not this one** — which is why that list is keyed by method and path rather than by path
-alone: exempting ``/api/shema/projects`` would have switched the audit off for this shape
-in the same line that exempted the create. So a card in a sensitive country carries its region
-where its country would be, and the facets built from these cards say the same thing the cards
-do — which is how the DoD's fourth line becomes true of the counts and not only of the results.
+**It is a leaving shape, built for its reader.** BE-04 named *the collection read* among the
+shapes that inherit :class:`~app.models.shema_privacy.LeavingShape`, and OBT-528 made the shape
+depend on who reads it: the card is a :class:`~app.models.shema_privacy.SessionShape`, so a
+coordination reader's card carries the truth of a sensitive place and everybody else's carries
+its region where its country would be, its base blank and its centroid on the map. The facets
+built from these cards say the same thing the cards do — which is how the DoD's fourth line
+becomes true of the counts and not only of the results, for each reader.
 
 **The derived block is the parity artifact's row.** ``derived`` carries FE-44 §7's nine
 derivations under the keys ``dataJsParity.json`` uses for them, so the acceptance file, the
@@ -65,7 +63,7 @@ from app.db.models.shema_enums import (
     ShemaProjectStatus,
     ShemaRegionKey,
 )
-from app.models.shema_privacy import LeavingShape
+from app.models.shema_privacy import SessionShape
 from app.utils.shema_derivations import (
     Derivations,
     OverallHealth,
@@ -152,7 +150,7 @@ class ShemaProjectDerived(BaseModel):
         )
 
 
-class ShemaProjectCard(LeavingShape):
+class ShemaProjectCard(SessionShape):
     """One project, as the Projetos screen reads it — filtered, counted, sorted and drawn.
 
     Validated straight off a ``ShemaProject`` row, which is what picks up ``sensitive_country``
@@ -330,9 +328,10 @@ class ShemaProjectPage(BaseModel):
     limit: int | None = None
     offset: int = 0
     sort: str = DEFAULT_SORT
-    #: How many of :attr:`items` had their place reduced, or ``None`` when none were — the
-    #: visible overlay FE-44 §8.1 asks the map for. Never ``0``: a file with no sensitive
-    #: projects gets no withheld note rather than a line about their absence.
+    #: How many of :attr:`items` are withheld from everything that leaves — the overlay FE-44
+    #: §8.1 asks the map for — **announced to coordination only** (GATE-04, OBT-528): ``None``
+    #: for every other reader, and never ``0``, because a line about the absence of sensitive
+    #: projects is not a line worth saying.
     locations_withheld: int | None = None
 
 
