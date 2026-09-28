@@ -3,7 +3,7 @@
 # Every route needs the `admin` role of the shema app ("Admin da plataforma"). Granting the
 # Admin writes it in both apps, so an installation admin bootstraps the first one here:
 # POST /access/grants with roleKey "admin". The routes, the shapes and every refusal sentence
-# are in docs/shema.md §6.8. Set @accessToken after logging in as an Admin.
+# are in docs/shema.md §6.10. Set @accessToken after logging in as an Admin.
 
 @baseUrl = http://localhost:8000
 @accessToken = paste-an-admin-access-token
