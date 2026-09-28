@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from app.api.shema._deps import APP_KEY
+from app.api.shema._deps import APP_KEY, FORM_APP_KEY
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.models.shema_enums import ShemaRegionKey
 from app.services.shema import (
@@ -148,6 +148,47 @@ async def test_the_scope_ignores_a_grant_in_another_application(db_session, shem
         db_session, shema_app, email="crossapp@shema.test", role_key="coordinator", regions=[ASIA]
     )
     await grant_app_role(db_session, user, other, role_key="globalStrategist")
+
+    scope = await region_scope(db_session, user, APP_KEY)
+
+    assert scope.global_ is False
+    assert scope.regions == frozenset({"asia"})
+
+
+@pytest.mark.parametrize("role", ["admin", "gestor", "mesa"])
+async def test_a_role_with_no_regional_reach_reaches_nothing_even_with_a_region_row(
+    db_session, client, shema_app, form_app, role
+):
+    """OBT-523: ``admin``, ``gestor`` and ``mesa`` gain no region. Proved with a row in
+    ``shema_user_regions`` — which nothing deletes when a regional role is revoked — because a
+    scope that is empty only for want of a row is an accident of data, not a rule.
+
+    ``admin`` is the one of the three that also reaches the app gate, so it is asked through
+    the real ``Scope`` dependency as well."""
+    user = await make_user(db_session, email=f"{role}-scope@shema.test")
+    await grant(db_session, user, shema_app if role == "admin" else form_app, role)
+    await set_region_scope(db_session, user.id, [AFRICA])
+
+    for app_key in (APP_KEY, FORM_APP_KEY):
+        scope = await region_scope(db_session, user, app_key)
+        assert scope.global_ is False
+        assert scope.regions == frozenset()
+
+    if role == "admin":
+        res = await client.get(SCOPE_PROBE, headers=await auth_header(db_session, user))
+        assert res.json() == {"global": False, "regions": []}
+
+
+@pytest.mark.parametrize("role", ["admin", "gestor", "mesa"])
+async def test_a_regional_role_keeps_its_scope_beside_a_non_regional_one(
+    db_session, shema_app, form_app, role
+):
+    """The other half: the regional roles' reach is exactly what it was, whatever else the
+    account holds."""
+    user = await make_scoped_user(
+        db_session, shema_app, email=f"beside-{role}@shema.test", role_key="obtLab", regions=[ASIA]
+    )
+    await grant(db_session, user, shema_app if role == "admin" else form_app, role)
 
     scope = await region_scope(db_session, user, APP_KEY)
 

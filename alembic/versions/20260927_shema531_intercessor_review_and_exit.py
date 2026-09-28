@@ -1,12 +1,13 @@
 """shema network: the one-year review and the exit link
 
 Revision ID: 20260927_shema531
-Revises: 20260917_0001
+Revises: 20260927_acc21
 Create Date: 2026-09-27
 
-The parent is `20260917_0001`, read with `uv run alembic heads` in this worktree on
-27/sep/2026, immediately before this file was written — the measurement `docs/shema.md` §7.1
-asks for. **This revision is numbered by its issue (OBT-531) and not by the next counter.**
+The parent was `20260917_0001` when this file was written (27/sep/2026); on 28/sep, merged after
+OBT-527, it was re-pointed to `20260927_acc21`, the head `alembic heads` read then — the
+measurement `docs/shema.md` §7.1 asks for. **This revision is numbered by its issue (OBT-531)
+and not by the next counter.**
 Five migrations of the access batch are written on the same parent at the same time, and the
 counter is exactly what collided once already (`shema02` → `shema07`); an issue number does
 not repeat. The sibling on the same base (OBT-527) is merged first by the declared order, so
@@ -34,7 +35,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260927_shema531"
-down_revision = "20260917_0001"
+down_revision = "20260927_acc21"
 branch_labels = None
 depends_on = None
 

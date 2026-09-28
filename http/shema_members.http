@@ -1,0 +1,34 @@
+# Shemá — project members (OBT-524; docs/shema.md §6.9)
+#
+# The link from an account to the projects whose team it is on. Only the Admin writes it
+# (`admin` granted in the `shema` app — not the installation's is_platform_admin). A project's
+# roster is read by whoever reaches the project's region, by its own live members and by the
+# Admin; anybody else gets the 404 of a project that does not exist. A live membership is the
+# session's `equipe`, so a member with no role anywhere passes the PME's door to the two reads.
+#
+# Removing a member marks the row (removed_at, removed_by) and never deletes it; adding the
+# same account again later makes a new row.
+
+@baseUrl = http://localhost:8000
+@token = paste-an-access-token-here
+@projectId = afrikaans-kaaps
+@userId = paste-a-user-id-here
+
+### The roster: who is on the team now, and since which day
+GET {{baseUrl}}/api/shema/projects/{{projectId}}/members
+Authorization: Bearer {{token}}
+
+### The Admin adds an account — 201 with the member; 409 if already live; 422 if no such account
+POST {{baseUrl}}/api/shema/projects/{{projectId}}/members
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"userId": "{{userId}}"}
+
+### The Admin removes it — 204; the row stays, marked
+DELETE {{baseUrl}}/api/shema/projects/{{projectId}}/members/{{userId}}
+Authorization: Bearer {{token}}
+
+### The projects the caller is a live member of — [{id, languageName}]
+GET {{baseUrl}}/api/shema/me/projects
+Authorization: Bearer {{token}}

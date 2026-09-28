@@ -23,6 +23,17 @@ diff instead of a dependency somebody has to notice is missing.
 ``tests/test_shema/test_access.py`` reads the built application's route table and fails on
 any ``/api/shema`` route that does not carry the guard and is not in its allowlist.
 
+**The PME's door is the other deliberate exception, and it is narrower rather than wider**
+(OBT-523, ``docs/shema.md`` §6.8). ``GET /api/shema/session`` is the console's sign-in read,
+and the mesa and the Gestor sign in holding no Shemá grant. So ``door`` carries ``DOOR`` —
+a Shemá role, or ``gestor``/``mesa`` held in the form, or the ``equipe`` a live project
+membership adds (OBT-524) — and holds the session and the two reads a member has: a
+project's roster and ``/me/projects``. An account the form made gets those answered and is
+still refused by every route under ``authenticated``. A route belongs on ``door`` only if
+every account at the door may call it and the service decides what it answers;
+``tests/test_shema/test_access.py`` pins the door's routes, by method and path, in
+``DOOR_ROUTES``, so adding one is an edit somebody has to justify.
+
 ``tests/test_shema/test_mount.py`` proves the wiring by hanging its own route off this
 object, which is the check that survives a module with no routes — and the one that
 keeps working the day this file's own routes are the thing being moved.
@@ -35,12 +46,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.shema._deps import APP_KEY
+from app.api.shema._deps import APP_KEY, DOOR
+from app.api.shema.access import router as access_router
 from app.api.shema.forms import intake as intake_router
 from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
 from app.api.shema.intercessor_exit import router as exit_router
 from app.api.shema.intercessors import router as intercessors_router
+from app.api.shema.members import door_router as members_door_router
+from app.api.shema.members import router as members_router
 from app.api.shema.notifications import router as notifications_router
 from app.api.shema.projects import router as projects_router
 from app.api.shema.regions import router as regions_router
@@ -54,13 +68,14 @@ router = APIRouter()
 #: deny-by-default; see the note above for the exceptions this shape leaves room for.
 authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
 
-authenticated.include_router(session_router)  # BE-03
 authenticated.include_router(regions_router)  # BE-13
 authenticated.include_router(intercessors_router)  # BE-13
 authenticated.include_router(projects_router)  # BE-05
 authenticated.include_router(health_assessments_router)  # BE-07
 authenticated.include_router(forms_router)  # BE-12
 authenticated.include_router(notifications_router)  # BE-15
+authenticated.include_router(members_router)  # OBT-524
+authenticated.include_router(access_router)  # BE-22, OBT-543
 
 #: **The module's first deliberate hole**, and it is this line rather than a missing dependency.
 #: ``GET`` and ``POST /api/shema/intake/{token}`` carry no ``Authorization`` requirement, by
@@ -78,6 +93,16 @@ router.include_router(intake_router)
 #: guard and the guard is a service function (``leave_intercessor.py``); the ``GET`` changes
 #: nothing and the ``POST`` erases. Listed in ``UNAUTHENTICATED_PATHS`` beside the intake's.
 router.include_router(exit_router)
+
+#: The PME's door: the session read, for any account holding a role of the session's
+#: vocabulary in either app (OBT-523), and the member's two reads (OBT-524). Everything else
+#: stays under ``authenticated``.
+door = APIRouter(dependencies=[DOOR])
+
+door.include_router(session_router)  # BE-03, OBT-523
+door.include_router(members_door_router)  # OBT-524
+
+router.include_router(door)
 
 # Keep this the last statement in the file. ``include_router`` copies routes at call time,
 # so a line added below it is included into a router the application never sees: the route

@@ -56,3 +56,26 @@ Authorization: Bearer {{auth_login.response.body.tokens.access_token}}
 ### My roles (filter by app)
 GET {{baseUrl}}/api/auth/my-roles?app_key=tripod-studio
 Authorization: Bearer {{auth_login.response.body.tokens.access_token}}
+
+### Handoff — a one-minute, single-use code that opens another app signed in (BE-21)
+# The account needs a role in the app named here (or be a platform admin), and the body
+# carries the session's own refresh token. The asking app puts the code in the URL fragment.
+# @name auth_handoff
+POST {{baseUrl}}/api/auth/handoff
+Authorization: Bearer {{auth_login.response.body.tokens.access_token}}
+Content-Type: application/json
+
+{
+  "app_key": "resource-request-form",
+  "refresh_token": "{{auth_login.response.body.tokens.refresh_token}}",
+  "context": { "projectId": "PROJECT_ID" }
+}
+
+### Handoff exchange — what the receiving app does with the code (public, 10/min per address)
+# Answers like login, plus the context. A second run answers 401 HANDOFF_CODE_USED.
+POST {{baseUrl}}/api/auth/handoff/exchange
+Content-Type: application/json
+
+{
+  "code": "{{auth_handoff.response.body.code}}"
+}

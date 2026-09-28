@@ -77,6 +77,8 @@ class InviteDescriptionResponse(BaseModel):
     role_key: str
     role_label: str
     account_exists: bool
+    #: The region scope a regional Shemá invite applies on acceptance; empty otherwise.
+    region_keys: list[str] = []
 
 
 class AccessOverviewResponse(BaseModel):
