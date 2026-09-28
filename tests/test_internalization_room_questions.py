@@ -19,6 +19,7 @@ from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.voice_handles import team_audio_url
 from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.release_harness import a_claimed_device
 
 DEVICE = "tablet-da-equipe-1"
 OTHER_DEVICE = "tablet-de-outra-equipe"
@@ -372,6 +373,37 @@ async def test_a_reply_recorded_again_between_the_read_and_the_stamp_is_not_stam
         "a comparação lia a linha antes da segunda resposta entrar, e o UPDATE sem condição "
         "carimbava a segunda do mesmo jeito"
     )
+
+
+async def test_a_question_of_another_project_is_not_marked_heard_on_a_matching_device_id(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    owner, owner_credential = await a_claimed_device(db_session, email="owner-heard@example.com")
+    _stranger, stranger_credential = await a_claimed_device(
+        db_session, email="stranger-heard@example.com"
+    )
+    store = MemoryStore()
+    question = await _raise(db_session, store, project_id=owner.id)
+    await service.answer_with_voice(
+        db_session, question, audio=b"resposta", answered_by="fac", store=store
+    )
+
+    refused = await room_client.post(
+        f"{QUESTIONS}/{question.id}/heard", headers={"X-Device-Credential": stranger_credential}
+    )
+
+    assert refused.status_code == 404, refused.text[:300]
+    await db_session.refresh(question)
+    assert question.heard_at is None, (
+        "o id do aparelho é declarado pelo próprio tablet; a rota do áudio ao lado já "
+        "conferia o projeto do credencial, e esta marcava a pergunta de outra equipe como "
+        "ouvida com o mesmo id de aparelho"
+    )
+
+    allowed = await room_client.post(
+        f"{QUESTIONS}/{question.id}/heard", headers={"X-Device-Credential": owner_credential}
+    )
+    assert allowed.status_code == 200, allowed.text[:300]
 
 
 async def test_a_panorama_question_keeps_the_sessions_own_pericope(

@@ -176,16 +176,34 @@ def _no_such_question(question_id: str) -> str:
     until one answers differently, and a question that exists is a team that exists. Two
     call sites drifting by a word is all it takes to hand that back.
 
-    **There is a fourth refusal of this exact shape and it does not come through here:**
-    the room's ``POST /questions/{id}/heard`` refuses a question raised by another device
-    with the same sentence, written by hand at ``app/api/internalization_room/questions.py``.
-    It is the same rule applied to a tablet instead of a facilitator, and it belongs to the
-    room's line rather than to this slice, so ENG-534 leaves it where it is and says so
-    here instead of quietly claiming to cover it. Routing it through this helper — better
-    still, giving it a ``get_question_for_device`` of its own, so the rule stops living in
-    a router — is worth an issue of its own.
+    The fourth refusal of this exact shape is the tablet's: ``POST /questions/{id}/heard``
+    refuses a question raised by another device, or by another project, with the same
+    sentence, through ``get_question_for_device`` below — ENG-534 left it written by hand
+    in the router and said so here; ENG-1147 moved it.
     """
     return f"Question {question_id} not found"
+
+
+async def get_question_for_device(
+    db: AsyncSession, question_id: str, *, device_id: str, project_id: str | None
+) -> IRQuestion:
+    """The question, if this tablet raised it and, when the tablet names a project, in it.
+
+    The device id is self-declared (``require_device``), so on its own it is a claim, not a
+    proof: any caller that guesses a question's id and its device's id could mark it heard.
+    The project is what the credential proves, and ``question_for_room_caller`` beside this
+    already reads the reply's audio on that rule — the two doors onto one question answered
+    different callers until this helper made them agree. Same rule, same shape: a caller
+    that names a project reaches only that project's questions; the shared key names none
+    and keeps the by-id read, as everywhere else in the room.
+    """
+    question = await get_question(db, question_id)
+    if question.device_id != device_id:
+        raise NotFoundError(_no_such_question(question_id))
+    owned_elsewhere = project_id is not None and question.project_id is not None
+    if owned_elsewhere and question.project_id != project_id:
+        raise NotFoundError(_no_such_question(question_id))
+    return question
 
 
 async def get_question_for_facilitator(
