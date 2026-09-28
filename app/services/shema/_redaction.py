@@ -17,12 +17,15 @@ a validator, so the three things a query-side caller needs are:
 
 * :func:`is_withheld` — the predicate, for a decision taken before any shape exists
   (``_media_sharing.py`` composes with it);
-* :func:`withheld_note` — the collection-level announcement, so a file that reduced rows
-  says how many;
+* :func:`withheld_note` — the collection-level announcement, addressed to a reader, because
+  since OBT-528 only coordination is told how many (GATE-04);
 * :func:`log_reference` and :func:`searchable_text` — the two paths that are not payloads at
   all, and the two this module would otherwise leak through unwatched;
 * :func:`derive_region` — the write path's one question about ``location``, which lives here
-  because ``location`` lives here (BE-06; the function's own docstring carries the trade).
+  because ``location`` lives here (BE-06; the function's own docstring carries the trade);
+* :func:`unwritable_fields` — the write path's other question (OBT-528): which of the fields a
+  save sent this reader may not write, because a field that is withheld from a reader is not
+  one that reader may type over.
 
 **This is the only file in** ``app/services/shema/`` **and** ``app/api/shema/`` **allowed to
 read the guarded columns.** ``tests/test_shema/test_privacy_owners.py`` globs both packages
@@ -35,10 +38,16 @@ applied per endpoint is a rule the next endpoint forgets; a glob is not.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from collections.abc import Set as AbstractSet
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
-from app.models.shema_privacy import LeavingShape
+from app.models.shema_privacy import (
+    COORDINATION_WRITES,
+    WITHHELD_WRITES,
+    LeavingShape,
+    ShemaReader,
+)
 from app.utils.shema_derivations import get_region
 
 
@@ -58,8 +67,15 @@ def is_withheld(project: ShemaProject) -> bool:
     return project.sensitive_country
 
 
-def withheld_note(records: Iterable[LeavingShape]) -> int | None:
-    """How many of ``records`` were reduced, or ``None`` when none were.
+def withheld_note(records: Iterable[LeavingShape], reader: ShemaReader) -> int | None:
+    """How many of ``records`` are withheld, announced to ``reader`` — or ``None``.
+
+    **Announced to coordination only** (GATE-04 1.3, OBT-528). The caller says who the
+    announcement is for, and that is not always who the rows were built for: the Projetos screen
+    announces to its own caller, and a file a coordinator exports carries rows built for
+    ``outside`` with a header addressed to the coordinator (BE-14). Anybody else is told
+    nothing — which hides nothing, because each row still carries its own ``locationWithheld``
+    (BE-04's *make the withholding visible*); GATE-04 decided the notice, not the bit.
 
     **The announcement, and why it is not a count that can be zero.** FE-44 §8.1 has the map
     state in a visible overlay how many projects are being withheld, because a silently
@@ -73,6 +89,8 @@ def withheld_note(records: Iterable[LeavingShape]) -> int | None:
     withheld because the rule could not be evaluated is counted exactly like one withheld
     because the flag was set, because from the reader's side they are the same fact.
     """
+    if reader is not ShemaReader.COORDINATION:
+        return None
     total = sum(1 for record in records if record.location_withheld)
     return total or None
 
@@ -104,15 +122,16 @@ def log_reference(project: ShemaProject) -> dict[str, object]:
     }
 
 
-def searchable_text(project: ShemaProject) -> str:
-    """The text a search may match this project on.
+def searchable_text(project: ShemaProject, reader: ShemaReader) -> str:
+    """The text a search may match this project on, for ``reader``.
 
     **A search is an output path, and the cheapest one to forget**, because it returns no
     location at all — it returns whether a query matched. A caller who may list a project but
     not learn where it is can type a country and read the answer off the result count, and
     every row they *cannot* see answers the same question by being absent. So the haystack a
-    withheld project offers holds nothing it is not already willing to say in a payload: its
-    language, its bridge language and its region.
+    withheld project offers a reader who is not coordination holds nothing it is not already
+    willing to say in that reader's payload: its language, its bridge language and its region.
+    A coordination reader reads the place on the card, and finds the card by it (OBT-528).
 
     The names of people are not in either haystack. They are not this rule's to reduce — FE-44
     §8.1 gates the three *contact* fields and says nothing about ``team_leader`` or ``mentor``
@@ -121,7 +140,7 @@ def searchable_text(project: ShemaProject) -> str:
     belongs.
     """
     fields = [project.language_name, project.bridge_language, project.region_key.value]
-    if not is_withheld(project):
+    if reader is ShemaReader.COORDINATION or not is_withheld(project):
         fields.extend([project.location, project.location2 or "", project.team])
     return " ".join(part for part in fields if part)
 
@@ -144,3 +163,30 @@ def derive_region(project: ShemaProject) -> ShemaRegionKey:
     is one call to it.
     """
     return get_region(project.location)
+
+
+def unwritable_fields(
+    project: ShemaProject, sent: AbstractSet[str], reader: ShemaReader
+) -> list[str]:
+    """The fields of ``sent`` that ``reader`` may not write on ``project`` — sorted, or empty.
+
+    **Não dá para editar o que não se vê** (OBT-528), in two tiers:
+
+    * on **every** record, the place, the flag and the reason beside it
+      (:data:`~app.models.shema_privacy.COORDINATION_WRITES`) are coordination's — moving a
+      project's location moves its region and can move it into a sensitive country, and the
+      flag is the decision the whole rule rests on;
+    * on a **withheld** record, the base and the contacts too
+      (:data:`~app.models.shema_privacy.WITHHELD_WRITES`), because the reader was given ``""``
+      for each and a value typed there would overwrite a truth they cannot see.
+
+    It answers from the **names** the payload set and never from their values, so the refusal
+    is not an oracle: comparing a sent base with the stored one would tell a reader who may not
+    see it whether they guessed it. Coordination may write all of them.
+    """
+    if reader is ShemaReader.COORDINATION:
+        return []
+    refused = set(sent) & COORDINATION_WRITES
+    if is_withheld(project):
+        refused |= set(sent) & WITHHELD_WRITES
+    return sorted(refused)

@@ -24,6 +24,11 @@ into :class:`~app.models.shema_projects.ShemaProjectCard`, which inherits
 :class:`~app.models.shema_privacy.LeavingShape` — that is what ``from_attributes`` is for, and
 ``app/models/shema_privacy.py`` says so. The one guarded question this file does ask, *what may
 a search match this project on*, it asks ``_redaction.py``, which is the owner.
+
+**Each card is built for its reader (OBT-528)**, which the caller's
+:class:`~app.services.shema._scope.Readership` answers per project: a coordination reader's card
+carries the truth, everybody else's the region, and the search and the facets read the card the
+reader was given — so a count cannot name a place the card beside it withholds, from anybody.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from app.db.models.shema_enums import ShemaMediaKind
 from app.db.models.shema_media import ShemaMediaItem
 from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_progress import ShemaProgressEntry
+from app.models.shema_privacy import ShemaReader
 from app.models.shema_projects import (
     ShemaFacetCounts,
     ShemaNeedCard,
@@ -48,7 +54,7 @@ from app.models.shema_projects import (
     ShemaProjectQuery,
 )
 from app.services.shema._redaction import searchable_text, withheld_note
-from app.services.shema._scope import RegionScope
+from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.list_projects import list_projects
 from app.utils.shema_facets import filter_projects, sort_records
 
@@ -117,32 +123,36 @@ async def _last_progress_dates(db: AsyncSession, ids: list[str]) -> dict[str, da
     return dict((await db.execute(stmt)).all())  # type: ignore[arg-type]
 
 
-async def _cards(db: AsyncSession, projects: list[ShemaProject]) -> list[ShemaProjectCard]:
-    """One redacted card per project, with what a row cannot answer joined in.
+async def _cards(
+    db: AsyncSession, projects: list[ShemaProject], readership: Readership
+) -> list[ShemaProjectCard]:
+    """One card per project, built for its reader, with what a row cannot answer joined in.
 
     The card is validated **off the row**, which is what applies the sensitive-country rule
     without this file naming the flag: a shape that inherits ``LeavingShape`` is redacted by
-    the act of being constructed. The four joined values are attached afterwards with
-    ``model_copy``, which does not re-run the boundary — and must not, because a payload that
-    already carries ``locationWithheld`` is taken at its word (``app/models/shema_privacy.py``
-    names that seam).
+    the act of being constructed, for the reader it is read by. The four joined values are
+    attached afterwards with ``model_copy``, which does not re-run the boundary and keeps the
+    reader.
     """
     ids = [project.id for project in projects]
     needs = await _needs_by_project(db, ids)
     with_media = await _projects_with_media(db, ids)
     newest = await _last_progress_dates(db, ids)
 
-    return [
-        ShemaProjectCard.model_validate(project).model_copy(
-            update={
-                "needs": needs.get(project.id, []),
-                "has_media": project.id in with_media,
-                "last_progress_date": newest.get(project.id),
-                "search_text": searchable_text(project),
-            }
+    cards = []
+    for project in projects:
+        reader = readership.reader_of(project.region_key)
+        cards.append(
+            ShemaProjectCard.read_by(project, reader).model_copy(
+                update={
+                    "needs": needs.get(project.id, []),
+                    "has_media": project.id in with_media,
+                    "last_progress_date": newest.get(project.id),
+                    "search_text": searchable_text(project, reader),
+                }
+            )
         )
-        for project in projects
-    ]
+    return cards
 
 
 async def browse_projects(
@@ -150,6 +160,7 @@ async def browse_projects(
     scope: RegionScope,
     query: ShemaProjectQuery,
     *,
+    readership: Readership,
     today: date,
 ) -> ShemaProjectPage:
     """The Projetos screen's answer: the filtered list, its facet counts and the window.
@@ -165,8 +176,13 @@ async def browse_projects(
     for, and the counts are the one thing it cannot decline: they are computed from the same
     pass as the list, so *never the filter alone* is a property of the return type rather than
     a rule somebody has to follow.
+
+    ``readership`` has no default either: it decides which cards carry the truth, and the one
+    caller that shows no place at all (the notification panel) says so with ``NO_COORDINATION``.
+    The withheld notice is addressed to the caller — coordination when they coordinate any
+    region, and then only (GATE-04).
     """
-    cards = await _cards(db, await list_projects(db, scope))
+    cards = await _cards(db, await list_projects(db, scope), readership)
     result = filter_projects(cards, query, today)
 
     window = sort_records(result.visible, query.sort)
@@ -189,5 +205,8 @@ async def browse_projects(
         limit=query.limit,
         offset=query.offset,
         sort=query.sort,
-        locations_withheld=withheld_note(items),
+        locations_withheld=withheld_note(
+            items,
+            ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER,
+        ),
     )

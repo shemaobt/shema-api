@@ -15,10 +15,10 @@ operation, so BE-15's panel gets it by calling the service rather than by readin
 **The** ``POST`` **answers the record and not the entry**, which is FE-44 §9.4's own arrow
 (``-> Project``) and the right one: the flat fields, the overall reading, the history and the
 derivations all move together, and a reply that carried only the new row would have the record
-screen re-reading to find out what it now says. It is therefore a *coordination* surface — it
-carries the true place, like the record's own read and for the same reason — and
-``tests/test_shema/test_privacy_owners.py`` names it in ``COORDINATION_ROUTES`` so the exemption
-is a line somebody wrote.
+screen re-reading to find out what it now says. It is therefore built exactly as the record's
+own read is — for the caller's reader (OBT-528), so an OBT Lab mentor filing a reading on a
+sensitive project gets the region back and a coordinator the truth — and
+``tests/test_shema/test_privacy_owners.py`` lists it in ``READER_ROUTES``.
 
 **No** ``If-Match``. ``app/services/shema/append_assessment.py``'s module docstring carries the
 argument: appending is not replacing, two mentors filing two readings lose nothing, and a version
@@ -34,7 +34,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, Response, status
 
-from app.api.shema._deps import APP_KEY, CurrentUser, Db, Scope
+from app.api.shema._deps import APP_KEY, CurrentUser, Db, Reading, Scope
+from app.api.shema.projects import PER_READER_CACHE_CONTROL
 from app.core.exceptions import ValidationError
 from app.models.shema_health import (
     ShemaHealthAssessmentSubmission,
@@ -122,6 +123,7 @@ async def file_assessment(
     payload: ShemaHealthAssessmentSubmission,
     db: Db,
     scope: Scope,
+    reading: Reading,
     user: CurrentUser,
     response: Response,
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
@@ -143,6 +145,7 @@ async def file_assessment(
         app_key=APP_KEY,
         day=_local_day(local_day, utc_today=today),
     )
-    record = await build_record(db, project, today=today)
+    record = await build_record(db, project, readership=reading, today=today)
     response.headers["ETag"] = f'"{record.version}"'
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return record

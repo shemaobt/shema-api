@@ -63,7 +63,15 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Request, Response, status
 from slowapi.util import get_remote_address
 
-from app.api.shema._deps import APP_KEY, CoordinatorUser, CurrentUser, Db, MayApply, Scope
+from app.api.shema._deps import (
+    APP_KEY,
+    CoordinatorUser,
+    CurrentUser,
+    Db,
+    MayApply,
+    Reading,
+    Scope,
+)
 from app.api.shema.projects import LOCAL_DAY_HEADER, _expected_version, _local_day
 from app.core.rate_limit import limiter
 from app.models.shema_forms import (
@@ -212,6 +220,7 @@ async def file_submission(
     request: Request,
     db: Db,
     scope: Scope,
+    reading: Reading,
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
@@ -229,6 +238,7 @@ async def file_submission(
         scope,
         payload,
         payload_bytes=await request.body(),
+        readership=reading,
         user=user,
         app_key=APP_KEY,
         expected_version=_expected_version(if_match),
@@ -241,6 +251,7 @@ async def import_received(
     submission_id: str,
     db: Db,
     scope: Scope,
+    reading: Reading,
     user: CoordinatorUser,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
@@ -256,6 +267,7 @@ async def import_received(
         db,
         scope,
         submission_id,
+        readership=reading,
         user=user,
         expected_version=_expected_version(if_match),
         day=_local_day(local_day, utc_today=today),

@@ -297,7 +297,7 @@ bucket, which is the precedent, not a trespass).
 | Path | Owner | Holds |
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8). The app key is named here and nowhere else in the module. |
+| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4). The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
@@ -317,9 +317,9 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/{find_account,grant_role,revoke_grant,send_invite,withdraw_invite,list_invites,list_grant_changes,apply_invited_scope}.py` | **OBT-543, built** | One operation each. **Flat, against the issue's `access/**`**: every structural scan of this package (`test_layering.py`, `test_privacy_owners.py`, `test_people_privacy.py`, `test_scope.py`, `test_needs.py`) reads `*.py` without recursing, and a sub-package would sit outside all of them. |
 | `app/models/shema_grant.py`, `app/db/models/shema_grant.py` | **OBT-543, built** | The surface's wire shapes; and `shema_scope_changes`, the append-only trail of every region scope change. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
-| `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9). The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
-| `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
-| `app/services/shema/_redaction.py` | **BE-04, built** | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
+| `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9). The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. |
+| `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
+| `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question. The only reader of the guarded columns in the two `shema` packages. §6.4. |
 | `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
 | `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
@@ -329,7 +329,7 @@ bucket, which is the precedent, not a trespass).
 | `app/utils/shema_derivations.py` | **BE-05, built** | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
 | `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
 | `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
-| `app/models/shema_record.py` | **BE-06, built** | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key — and every sub-shape the ficha is made of. Separate from `app/models/shema.py`, which is what a client *sends*. |
+| `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key, plus `derived`, `locationWithheld` and `readAs` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
 | `app/db/models/shema_audit.py` | **BE-06, built** | `shema_record_edits` — the trail: who moved which field, when, from what to what. Append-only, by the same trigger `shema_progress_history` uses. |
 | `app/services/shema/_audit.py` | **BE-06, built** | The trail's writer and its one reader. Names no guarded column and records no guarded **value**. |
 | `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
@@ -394,7 +394,7 @@ nothing in column 3 imports `fastapi`.
 | **Role** | The four aliases, `require_role(APP_KEY, key)`. | Nothing. |
 | **Region scope** | Declares the dependency; receives a `RegionScope` value. | `_scope.py` computes it from `shema_user_regions` and the granted roles, and **every list query takes it as a parameter**. §6.1. |
 | **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a duplicate slug is a `ConflictError`). |
-| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service. `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
+| **Redaction (sensitive country)** | Nothing but hand down the caller's reader (`Reading`, OBT-528), as it hands down the scope. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service — which says only **who reads** (`read_by`). `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
 | **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; the wall's query (BE-09) is the only one that applies the gate. §6.4. |
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
@@ -835,7 +835,8 @@ answers "who are you and in what role"; the module answers "how far does that re
   (`app/utils/shema_derivations.py`) and the query keeps an index. Never a second hand-typed
   field.
 - **Writes are scoped by the same value as reads.** A regional `coordinator` who may read a
-  region may write it; there is no third answer in the product.
+  region may write it; there is no third answer in the product about *which records*. *Which
+  fields* is §6.4's question since OBT-528: the place and the flag are coordination's to write.
 
 **What a caller sees of another region's project — answered by BE-03: nothing.** The issue
 named the two defensible answers, *nothing* and *the existence without detail*, and asked
@@ -924,7 +925,7 @@ scope names exactly one region **and** the seat is filled. Global scope, a two-r
 last of those is the ordinary path rather than an edge case: all twenty-one seats ship
 unassigned.
 
-### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 built**
+### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 built; OBT-528 made it depend on who reads**
 
 FE-44 §8 is written as server requirements and `CLAUDE.md` §6.1/§6.2 as invariants. The
 scheduling is already right: BE-04 lands **before anything that emits data**. What this
@@ -935,16 +936,116 @@ file.
 
 | File | Owns | The rule |
 |---|---|---|
-| `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. |
+| `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. Since OBT-528 it also answers the write's question — which fields a reader who is not coordination may not write — and addresses the withheld notice to a reader. |
 | `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` — **and `source["prayerRequests"]`, which is a fourth copy of the same text** | **The only reader of those three columns**, and one query applies the gate. `prayerRequests` is one of the export's 55 keys, so `shema_projects.source`, which keeps the export row verbatim, carries that key too under the export's own camelCase spelling — empty in today's export, and where the next one's text lands; `prayerVisibility` and `prayerRequestsAudio` are two of the 18 the product added and are not in it. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
 | `app/services/shema/_media_sharing.py` | `authorization` on media and materials | Composes, most restrictive wins: an authorized item reaches `coordenacao`; the same item on a sensitive project **never** reaches `publico`. |
 
-**The split that keeps this from over-redacting.** A project **read** by someone allowed to
-open it is a *coordination* surface and carries the truth — hiding the country from its own
-author is data loss, not privacy. Every shape that **leaves** coordination carries the
-redaction in its own Pydantic model: the prayer request, the ETEN snapshot, the notification
-entry and the exported project each hold a `location_withheld` flag rather than a bare
-string. **Redact in the payload on every path that leaves; never on the record read.**
+**Who reads, and not only where it goes — OBT-528.** BE-04 drew the line at the door of the
+record: the record read carried the truth to its whole audience, and every shape that left
+coordination carried the redaction. GATE-04 moved the line
+to the reader (Karina, 22/sep, items 1.1–1.3; Daniel, 23/sep, on who coordination is): **the
+truth of a sensitive place belongs to coordination**, and every other role reads the region
+in its place, *inclusive na ficha*. So every leaving shape — the ficha included — is built
+**for a reader**, `ShemaReader`, and one class covers the three values:
+
+| | `coordination` | `other` | `outside` |
+|---|---|---|---|
+| **Who** | `globalStrategist`; a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
+| `location`, `country` | the truth | the region **key** | the region key |
+| `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | `""` | `""` |
+| `coords` | the truth | the region centroid | the region centroid |
+| `sensitiveCountry` (the ficha) | the flag | the flag | — |
+| `locationWithheld` | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed |
+| `readAs` (card and ficha) | `"coordination"` | `"other"` | — |
+| `locationsWithheld` (the collection) | how many, or `null` when none | `null` | — |
+
+Only a **withheld** record is reduced — flagged, or built from something that could not say.
+A cleared record is the truth for every reader. On a reduced ficha `location2` and the two
+optional contacts read `""` rather than `null`.
+
+**Where the reader comes from.** `app/services/shema/_scope.py`'s `readership` answers it from
+the grant and the scope the request already read — no query of its own — as a `Readership` the
+services ask per project (`reader_of(region_key)`), and `app/api/shema/_deps.py` hands it down
+as `Reading`, exactly as it hands down `Scope`. A `coordinator` is coordination **in the regions
+of its own scope** and `other` anywhere else it reaches. Region rows are per account and not per
+role, so an account holding `coordinator` and `obtLab` is coordination wherever it reaches; the
+org chart is not consulted. The `admin` hypothesis is one line — `COORDINATION_EVERYWHERE` — and
+undoing it is deleting `admin` from it. `visible_projects` is untouched: who may **reach** a
+project and who may read its **place** are two questions.
+
+**Who builds a shape for it.** Only the two reads of the console: the Projetos screen's cards
+(`browse_projects`) and the record (`build_record` — `GET`, `POST` and `PATCH /projects…` and the
+health-assessment `POST`). A shape reaches its reader only through `LeavingShape.read_by`, which
+puts it in the validation context; the reader is kept on the instance and **no input can set
+it**, and a shape built any other way is `outside`. So every other leaving shape — the export
+row, the ETEN line, the Pulse entry, the leader's form, the need line an urgent notice is written
+from — is `outside` whoever asked for it, and an endpoint written by somebody who never read this
+section still emits the form that leaves. The notification panel builds its stale cards with
+`NO_COORDINATION` for the same reason: a notice is an output path.
+
+**The marker is the flag, for every reader.** `locationWithheld` says *this record's place is
+withheld from everything that leaves coordination* — the same bit whoever reads, and a
+coordination payload carries the truth **beside** it. That is deliberate: the console maps the
+bit to `sensitiveCountry` and redacts its own map and its client-side export from it, so a
+coordinator who now receives the truth keeps the bit that keeps their export redacted. What says
+whether the payload in hand is the truth or the reduction is `readAs`, added to the card and the
+ficha only: `locationWithheld && readAs == "other"` is a reduced payload, whose `location` holds a
+region key; `readAs == "coordination"` is one whose place and flag this reader may edit. The
+console reads that answer instead of keeping a second copy of the rule (OBT-532).
+
+**The notice is coordination's.** `withheld_note(records, reader)` counts the markers and
+announces them to `coordination` only; the caller says who the announcement is for, which is not
+always who the rows were built for — the Projetos screen addresses it to its caller, and a file a
+coordinator exports would carry rows built for `outside` under a header addressed to the
+coordinator (BE-14's). The `null` the others receive hides nothing: every card still carries its
+marker and the `sensitive` facet still counts it — GATE-04 decided the notice, not the bit.
+
+**The search and the facets read the card the reader was given.** Coordination finds a withheld
+project by the place it reads and counts it under its country; everybody else can do neither,
+because their haystack and their card hold the region.
+
+**The write: *não dá para editar o que não se vê*.** `save_project` asks
+`_redaction.unwritable_fields` which of the fields a save sent this reader may not write, and
+refuses them with `AuthorizationError` — a 403 naming the fields in the client's spelling and
+nothing about the record, raised after the scope has found the record and **before** the version
+is compared, logged with `log_reference`:
+
+| Field | `coordination` | anybody else |
+|---|---|---|
+| `location`, `location2`, `coords`, `sensitiveCountry`, `sensitivity` | writes | refused on **every** record |
+| the base (`team` / `ywamBase`), `teamContact`, `teamLeaderContact`, `mentorContact` | writes | refused on a **withheld** record; writes on a cleared one |
+
+There is no `country` to write: it is the first segment of `location`, so refusing the location
+is refusing the country. The answer depends on the **names** the payload set and never on their
+values, so it is not an oracle. **A create is not the refused write**: the creator sees what they
+type, and closing it would need a narrower rule (the flag and the reason only), because the
+location a record is filed with is what puts it in its creator's region — an open question for
+Daniel, recorded in the PR. The form imports reach `save_project` with the importer's own reader.
+
+**No route is exempt any more, and one list replaces the exemption.** `COORDINATION_ROUTES` in
+`tests/test_shema/test_privacy_owners.py` is empty again: the record is a leaving shape and the
+route audit asks it like any other. `READER_ROUTES` names instead the routes whose dependencies
+reach the caller's reader — the only ones that may build a payload carrying the truth — and a
+new route that took `Reading` (an export, say) is red there until somebody lists it and argues
+it. The collection's and the record's answers carry `Cache-Control: private, no-store`
+(`PER_READER_CACHE_CONTROL`): one URL — and one version of one record — now reads two ways, and
+no cache may hand one reader's body to another.
+
+**Two coordinations, deliberately.** `ShemaReader.COORDINATION` is GATE-04's membership — who
+reads a sensitive place. `ShemaAudience.COORDENACAO` is FE-44's destination — every role that
+follows up and supports — and it still decides notes and media (`can_export_notes`,
+`can_share_media`). GATE-04 decided the place per role and said nothing about notes, prayer text
+or media, so those keep their own owners and are not reduced by this rule.
+
+**Residuals named and not closed** — each can name a place and none is reduced for `other`:
+the slug `<language>-<place>`, which is the record's address on every shape; the free text of
+the ficha (`partnerOrg`, `scopeDetails`, `statusComments` / `statusGoal`, `phases`, `notes`,
+`needsNotes`, `objectiveNotes`, a need's `description`, a material's file name or link, media
+captions and URLs, health notes); `storyProgress[].recordLocation` and its copy in
+`progressHistory` — reducing a field inside a table the progress tab saves whole would make the
+next save of that table erase the truth; and the submissions inbox, which serves a leader's free
+text to every role. They belong to GATE-04's *Notes & media* column, which the grid has not
+answered per role.
 
 **The check that makes it a rule rather than an intention.** FE-44's frontend has a scan test
 that fails the build if any shipped file outside the record's own editing surfaces reads the
@@ -971,9 +1072,10 @@ absent from **all four** output paths — the wall, exports, the ETEN report and
 > `ShemaIntercessor`, checked by the glob this section asks for
 > (`tests/test_shema/test_people_privacy.py`). It reuses this section's mechanism rather than
 > inventing a second: the same flag, the same withheld marker (FE-44 §9.6's `country: ""`
-> beside the marker), the same *redact on every path that leaves, never on the record read*
-> split. If the shapes want to be one function, `leaving_person` folds into `_redaction.py`
-> and the glob moves with it.
+> beside the marker), the same *redact on every path that leaves* split — the network's read is
+> still a coordination surface; OBT-528's reader is about a project's place and did not reach
+> it. If the shapes want to be one function, `leaving_person` folds into `_redaction.py` and the
+> glob moves with it.
 >
 > **One residual is named and not closed.** A withheld person's *name* still travels, because
 > the rule above withholds a **location**. Whether a person's name is itself a location in a
@@ -1007,8 +1109,8 @@ columns.
 **The fields a leaving shape reduces**, in one list, because the value of one list is that
 there is one: `location`, `location2`, `country` (to the **region key**, never an empty
 string), `latitude` / `longitude` / `coords` (to the region centroid, so the marker moves
-rather than disappears), `team` / `base` and the three personal contacts (to `""`). The record
-read reduces none of them.
+rather than disappears), `team` / `base` and the three personal contacts (to `""`), and — since
+OBT-528 — `sensitivity` (to `""`). A `coordination` reader reduces none of them.
 
 **Fail closed, and the closed state is the default.** A shape built from something that cannot
 answer whether the record is sensitive — a hand-assembled dict, a partial row, a join that did
@@ -1017,9 +1119,10 @@ the alternative costs somebody their safety, and fails silently.
 
 **The withholding is visible and says nothing about what.** `locationWithheld` is in every
 leaving shape's output, always. For a collection or a file, `withheld_note` answers *how many*
-rows were reduced — and answers `None` rather than `0`, because *"0 locations withheld"* on a
-file with no sensitive projects is a sentence about the absence of sensitive projects, said on
-every file, and interesting exactly when it should not be said.
+rows are withheld — to coordination only, since OBT-528 — and answers `None` rather than `0`,
+because *"0 locations withheld"* on a file with no sensitive projects is a sentence about the
+absence of sensitive projects, said on every file, and interesting exactly when it should not be
+said.
 
 **Three nets, not one**, and `tests/test_shema/test_privacy_owners.py` is all three. The glob
 this section already asked for, over both `shema` packages and now for three column sets
@@ -1028,8 +1131,11 @@ issue extends by writing a line it has to justify. **A route audit** that reads 
 application's route table and fails when a response model under `/api/shema` can name a place
 and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
 `test_access.py`, applied to the payload instead of the guard, with `COORDINATION_ROUTES` empty
-today and BE-06's record read as the one line expected in it. And a vocabulary check, so the
-list of guarded fields and the list of replacements cannot drift apart.
+today and BE-06's record read as the one line expected in it — BE-06 wrote it, and OBT-528
+emptied it again when the record joined the boundary. And a vocabulary check, so the list of
+guarded fields and the list of replacements cannot drift apart. OBT-528 added a fourth: the
+routes that take the caller's reader (`READER_ROUTES`) and the two services that build a shape
+for it.
 
 **And the bytes, because a predicate that ends in a public URL decides nothing.** §4.6's
 verdict is built: `app/services/shema/_media_storage.py` holds the `shema-private` bucket and
@@ -1047,7 +1153,8 @@ section gives: *why* is the fact being protected.
 withheld on **every** leaving shape and not only in a file (§9.4 — the gate keeps the console's
 own rendering, which is presentation). And the collection read is a leaving shape, with only
 the record read a coordination surface, because the issue names *list* among the output paths
-and FE-44 §8.7 says display is never enforcement.
+and FE-44 §8.7 says display is never enforcement. OBT-528 closed the second: the record is a
+leaving shape too, built for its reader.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
@@ -1101,7 +1208,7 @@ replacement a single file with one import direction.
 
 **And one thing that is not a departure, recorded because it looks like one.** The list item
 inherits `LeavingShape`, so a card in a sensitive country carries its region where its country
-would be — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
+would be (to every reader who is not coordination, since OBT-528 — §6.4) — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
 inherited**: `app/models/shema_privacy.py` names *the collection read* among the shapes that go
 through the boundary, and `COORDINATION_PATHS` is empty with a comment saying the one line
 expected in it is BE-06's record read. Following §9.1 here would mean adding this route to that
@@ -1602,6 +1709,12 @@ console's own rendering of its coordination surfaces — cards, tooltips, the re
 presentation, and which the server neither sees nor should decide. If the client answers that
 the base may travel, the change is one line in `BASE_FIELDS` rather than a sweep of consumers,
 which is the property that made deciding now cheap enough to do.
+
+> **GATE-04 answered the per-role half (Karina 22/sep, Daniel 23/sep), and OBT-528 built it.**
+> The base is hidden from everything that leaves and from every reader who is not coordination;
+> so are the country and the place; and the withheld notice is coordination's. The console's
+> cards and record are no longer the gate's to render: the server sends each reader what it may
+> read, and says which it sent (`readAs`). §6.4 carries the table.
 
 ### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — open, and BE-16 is running fail-closed against it
 
