@@ -15,7 +15,7 @@ it. What there is instead is a file somebody edits in a pull request, and this, 
 **Publishing happens on the authenticated write and never on the public read.** A link is
 minted by a coordinator, and that is where the current spec is published and pinned; ``GET
 /api/shema/intake/{token}`` then only reads. The alternative — publish on first use — would
-put an ``INSERT`` on the module's one unauthenticated route, which is the route that will be
+put an ``INSERT`` on the leader link's unauthenticated read, which is the route that will be
 found.
 
 **A version is identified by its content and not by being the newest, and the difference is a

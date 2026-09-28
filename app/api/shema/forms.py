@@ -1,9 +1,10 @@
-"""The forms surface, and the module's two unauthenticated routes.
+"""The forms surface, and the leader link's two unauthenticated routes.
 
 **The hole is here and it is two lines in a diff.** ``app/api/shema/__init__.py`` puts
 ``require_app_access`` on an inner router so that a route added by a later issue is refused
-whether or not its author wired a guard; the two intake routes below are the one exception in
-the module, by FE-44 §9.0 and ``docs/shema.md`` §6.6, and they are included into the **outer**
+whether or not its author wired a guard; the two intake routes below were the module's first
+exception, by FE-44 §9.0 and ``docs/shema.md`` §6.6 (the intercessor's exit link, OBT-531, is
+the second, in ``intercessor_exit.py``), and they are included into the **outer**
 router — a named, deliberate line somebody has to write, rather than a dependency somebody has
 to notice is missing. ``tests/test_shema/test_access.py`` reads the built application's route
 table and fails on any ``/api/shema`` route not in ``UNAUTHENTICATED_PATHS``, so the exemption

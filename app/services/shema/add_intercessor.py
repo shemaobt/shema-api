@@ -7,9 +7,10 @@ consent was given and how it is evidenced — is answered by making the alternat
 unrepresentable: the payload requires a basis, and the two writes are one transaction, so a
 crash between them cannot leave a person stored with none.
 
-The other two are still owed and neither is engineering's: how somebody outside the platform
-asks to be removed when they cannot log in, and what happens to a contact nobody has used in a
-year. Named again here because this is the function that starts the clock on both.
+The other two were answered by the client on 22/sep and built by OBT-531: somebody outside the
+platform leaves through an exit link (``leave_intercessor.py``), and a contact nobody has used in
+a year is flagged for review (``review_intercessor.py``). This is the function that starts the
+clock on both — ``added_at`` is where the year counts from until a review or a send moves it.
 
 **The ``network`` consent is the floor and the other two are not granted here.** A person is
 asked three separate questions — may we hold and use this contact, may we list you, may you
