@@ -55,10 +55,7 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert set(blocked.value.blockers) >= {
-        "no_rehearsal_audio",
-        "no_telling_back",
-    }
+    assert blocked.value.blockers == ["no_rehearsal_audio", "no_telling_back"]
 
 
 async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
@@ -400,6 +397,25 @@ async def test_the_forced_row_keeps_the_note_the_packet_lost(
         {key: value for key, value in finding.items() if key != "note"}
         for finding in release.forced_open_findings
     ] == carried
+
+
+async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
+    """The floor and the practice leave the gate; the telling-back's door is not loosened.
+
+    Below the floor and unpractised, the one thing refused is what the telling-back still
+    carries (ADR 0037).
+    """
+    session = await ready_session(db_session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+    session.coverage_state = {}
+    await db_session.commit()
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert blocked.value.blockers == ["telling_back_not_checked"]
 
 
 async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(

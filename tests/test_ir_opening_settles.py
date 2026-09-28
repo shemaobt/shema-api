@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +32,7 @@ from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
 from scripts.check_doctrine import RULES
 from scripts.doctrine_allowlist import Rule
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -98,9 +98,7 @@ async def test_a_session_after_the_panorama_is_still_told_to_introduce_itself(
         captured["user_content"] = user_content
         return "Bem-vindos! Vamos ficar com Rute."
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _fake_call_agent
-    )
+    the_room_agent_is(monkeypatch, turn=_fake_call_agent)
 
     session = await create_session(db_session, pericope=P, after_panorama=True, language="pt")
 

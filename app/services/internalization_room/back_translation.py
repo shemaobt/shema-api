@@ -18,9 +18,10 @@ from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import analysis_ladder, call_agent
+from app.services.internalization_room.llm import analysis_ladder
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.render import render
+from app.services.internalization_room.room_agent import room_agent
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,28 @@ class ReadAhead(BtAnalysis):
     segment_ids: list[str]
 
 
+class CorrectionCheck(BaseModel):
+    """One verification of one corrected stretch.
+
+    ``resolved`` and ``findings`` are independent on purpose: a correction can answer the
+    finding it was asked about and still drop an element only that stretch carried, and it can
+    leave the finding standing while breaking nothing. Collapsing them into one verdict would
+    make the room unable to tell the team which of the two happened.
+
+    ``findings`` is what the room decided, not a copy of what the reader wrote: the losses the
+    reader's own count implies are already in it, and the ones it said twice are in it once.
+    The count itself is not carried here — nothing downstream asks what was enumerated, only
+    what it means for this stretch, and a field nobody reads is one more thing to keep true.
+    """
+
+    resolved: bool
+    findings: list[Finding] = Field(default_factory=list)
+
+
+class CorrectionAhead(CorrectionCheck):
+    segment_ids: list[str]
+
+
 class SupersededAttempt(BaseModel):
     """A telling-back the team replaced by re-recording.
 
@@ -267,6 +290,7 @@ class BackTranslationState(BaseModel):
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
     read_ahead: ReadAhead | None = None
+    correction_ahead: CorrectionAhead | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -297,6 +321,13 @@ class BackTranslationState(BaseModel):
         ]:
             return None
         return self.read_ahead
+
+    def correction_ahead_of(self, segments: list[IRSegment]) -> CorrectionAhead | None:
+        if self.correction_ahead is None or self.correction_ahead.segment_ids != [
+            segment.id for segment in segments
+        ]:
+            return None
+        return self.correction_ahead
 
     @property
     def never_analysed(self) -> bool:
@@ -459,6 +490,33 @@ def _landed_without_a_frase(raw: str, session: str) -> None:
     logger.warning("BT analyst missing finding without a chunk for session %s: %s", session, raw)
 
 
+def _dropped_without_a_frase(kind: FindingKind, note: str, raw: str, session: str) -> None:
+    """An addition or an unclear the analyst named no readable frase for; dropped, not raised.
+
+    A missing element still lands with no chunk at all — the story simply has not been told
+    that far, and `_landed_without_a_frase` counts it. The other two kinds are a statement
+    about a chunk, and one naming none, or one outside the reading the analyst was given,
+    names nothing the team can act on: it goes the way the retired evidence kind does,
+    dropped and the rest of the reply read, rather than reaching the tablet as a finding
+    with no stretch.
+
+    Said only once the reading has been accepted, the way `_dropped` is: a reply that drops
+    every one of its findings to this rule is refused instead (`_parse_analysis`), and
+    announcing a drop it then threw away whole would send the next investigation to the
+    wrong place.
+
+    The reply is behind it whole, as every other line in this file carries one.
+    """
+    logger.warning(
+        "BT reply named %s with no readable frase (note: %s); dropped it and read the rest "
+        "for session %s: %s",
+        kind.value,
+        note,
+        session,
+        raw,
+    )
+
+
 def _dropped(entries: list[Any], raw: str, about: str) -> None:
     """A name the room retired left the reply, and the rest of it was read.
 
@@ -498,6 +556,14 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     kept, because refusing a reply whole over a name the prompt itself stopped offering is
     the ENG-719 failure with a different trigger — a team stopped three times by a round
     with no verdict, for a reading the room could have used.
+
+    An addition or an unclear naming no chunk this reading has, or one outside it, is
+    dropped the same way (ENG-1145) — but a reply left with nothing at all once every one of
+    its findings dropped for that reason is not a clean reading: it is refused like a
+    malformed reply, through the same `_refused` this function already returns None from,
+    because a reply that named findings and lost every one of them to an unreadable frase is
+    the ENG-719 failure again — a good telling-back blessed on the strength of a reply that
+    said nothing usable.
     """
     session = _session_of(segments)
     text = raw.strip()
@@ -514,9 +580,11 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         return None
 
     reported = parsed["findings"]
+    considered = [one for one in reported if not _is_the_retired_evidence_kind(one)]
 
     findings: list[Finding] = []
-    for entry in [one for one in reported if not _is_the_retired_evidence_kind(one)]:
+    dropped_without_a_frase: list[tuple[FindingKind, str]] = []
+    for entry in considered:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
@@ -532,6 +600,9 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
         chunk = _chunk_named(entry.get("chunk"), segments)
+        if chunk is None and kind is not FindingKind.MISSING:
+            dropped_without_a_frase.append((kind, note))
+            continue
         lands_on = _segment_pointed_at(
             entry.get("chunk"),
             segments,
@@ -553,6 +624,12 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             )
         )
 
+    if considered and not findings:
+        _refused("every finding named no readable frase", raw, session)
+        return None
+
+    for kind, note in dropped_without_a_frase:
+        _dropped_without_a_frase(kind, note, raw, session)
     _dropped(reported, raw, f"session {session}")
     return BtAnalysis(findings=findings)
 
@@ -596,6 +673,10 @@ def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
     own because the two answers are not the same one: a missing element placed after frase N
     names frase N and resolves to the stretch after it, and one placed after the last frase
     names that frase and resolves to no stretch at all.
+
+    Only an int or a numeral string is read; a float such as `2.0` is neither and names no
+    position, whole-valued or not — the contract asks for an int, and a reply answering with
+    a float is not naming a frase the parser accepts.
     """
     if isinstance(raw, bool) or not isinstance(raw, int | str):
         return None
@@ -685,7 +766,7 @@ async def analyse_telling_back(
         SEGMENTS=segments_block(segments, language_code),
     )
     try:
-        raw = await call_agent(
+        raw = await room_agent().analyst.call_agent(
             role="analyst",
             system_prompt=system,
             user_content="Compare a tradução com o mapa.",
@@ -702,24 +783,6 @@ async def analyse_telling_back(
             session_id=session_id, reading="analysis", raw=raw, findings=analysis.findings
         )
     return analysis
-
-
-class CorrectionCheck(BaseModel):
-    """One verification of one corrected stretch.
-
-    ``resolved`` and ``findings`` are independent on purpose: a correction can answer the
-    finding it was asked about and still drop an element only that stretch carried, and it can
-    leave the finding standing while breaking nothing. Collapsing them into one verdict would
-    make the room unable to tell the team which of the two happened.
-
-    ``findings`` is what the room decided, not a copy of what the reader wrote: the losses the
-    reader's own count implies are already in it, and the ones it said twice are in it once.
-    The count itself is not carried here — nothing downstream asks what was enumerated, only
-    what it means for this stretch, and a field nobody reads is one more thing to keep true.
-    """
-
-    resolved: bool
-    findings: list[Finding] = Field(default_factory=list)
 
 
 #: What the verification may report. Deliberately short of the analyst's list: `missing` here
@@ -1067,7 +1130,7 @@ async def verify_correction(
         NEW_TELLING=corrected.transcript or "",
     )
     try:
-        raw = await call_agent(
+        raw = await room_agent().analyst.call_agent(
             role="correction check",
             system_prompt=system,
             user_content="Verifique a correção contra o achado.",
@@ -1363,7 +1426,7 @@ CLOSING_MISSING_TO_REHEARSAL = (
     "- End by handing the choice to the screen, not by asking for a spoken answer. The end of "
     "the story has not been told yet — nothing they recorded is wrong, and nothing they "
     "recorded will be lost. In one or two short sentences, tell them to record what is still "
-    "missing with the big microphone, and that when they finish they tap the green button to "
+    "missing with the circle, confirm it with the green check, and tap the wood disc to "
     "come back and check it. Do not offer to settle it later, do not ask them to choose "
     "between voices, and do not ask them to say anything out loud. "
     + _NEXT_ROUND
@@ -1396,8 +1459,15 @@ def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
     *"quer deixar para alinharmos mais na frente?"* came from. On a stretch, a missing element
     gets the same two microphones as every other finding there (decision of 2026-09-03,
     reversing ENG-710): the sibling closing that once named one microphone for it is gone.
-    What the screen offers the other kinds without a stretch is a product decision still open,
-    so they keep `CLOSING_SPOKEN` untouched.
+    What the screen offers the other kinds without a stretch was a product decision still
+    open; Henok closed it on 2026-09-25: `CLOSING_SPOKEN` stays. A fresh addition or unclear
+    can no longer reach here without a stretch at all — the parser drops one that names no
+    readable frase before it is ever a finding (ENG-1145), and refuses a reply that drops
+    every finding it named — so the only kind a fresh reply still hands this function
+    homeless is a missing. A row stored before ENG-1145 can still carry an addition or an
+    unclear with no stretch, and this function goes on answering that legacy shape exactly
+    as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed the two-microphone
+    screen even when it does have one.
 
     Returned with `{session_language}` still in it, for whoever fills the template to
     substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here

@@ -167,6 +167,17 @@ class UpstreamServiceError(Exception):
     """
 
 
+def upstream_or_validation_error(status_code: int, message: str) -> Exception:
+    """Their outage is not our client's bad request.
+
+    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
+    limit is: both mean ElevenLabs refused the request, not that the room said nothing.
+    """
+    if status_code in (401, 403, 429) or status_code >= 500:
+        return UpstreamServiceError(message)
+    return ValidationError(message)
+
+
 class UnreadableReply(Exception):
     """A model answered, and the answer could not be read — not a provider that is down.
 

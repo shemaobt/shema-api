@@ -9,7 +9,6 @@ from her file, never read off ours.
 from __future__ import annotations
 
 import json
-import sys
 from typing import Any
 
 import httpx
@@ -31,7 +30,7 @@ from app.services.internalization_room.turn_instructions import OPENING_INSTRUCT
 from app.services.internalization_room.verdict_turn import run_verdict_turn
 from scripts.sync_doctrine import REPO_ROOT
 from tests.text_seam_harness import RUNNER_KEY, the_app
-from tests.turn_harness import GUIDE, SPEAKER, settings
+from tests.turn_harness import GUIDE, SPEAKER, settings, the_room_agent_is
 
 PROMPTS = REPO_ROOT / "app/services/internalization_room/prompts"
 SEAM = "/api/internalization-room/text-seam"
@@ -89,9 +88,7 @@ class _Validators:
 @pytest.fixture
 def validators(monkeypatch: pytest.MonkeyPatch) -> _Validators:
     recorded = _Validators()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", recorded
-    )
+    the_room_agent_is(monkeypatch, turn=recorded)
     return recorded
 
 

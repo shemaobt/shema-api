@@ -15,7 +15,6 @@ lateness entirely.
 from __future__ import annotations
 
 import logging
-import sys
 from typing import Any
 
 import pytest
@@ -35,6 +34,7 @@ from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
 TEAM_ANSWER = "Noemi voltou para Belem com Rute no tempo da colheita"
@@ -146,11 +146,7 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
     session = await create_session(db_session, pericope=P, language="pt")
     voice = _RecordingVoice()
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"],
-        "call_agent",
-        _TeamSpeaksWhileTheGuideThinks(rival_factory, session.id),
-    )
+    the_room_agent_is(monkeypatch, turn=_TeamSpeaksWhileTheGuideThinks(rival_factory, session.id))
 
     late = await _ask_for_the_opening(client, session.id)
     assert late.status_code == 200, late.text[:300]
@@ -184,10 +180,8 @@ async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_t
 ) -> None:
     session = await create_session(db_session, pericope=P, language="pt")
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"],
-        "call_agent",
-        _TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id),
+    the_room_agent_is(
+        monkeypatch, turn=_TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id)
     )
 
     late = await _ask_for_the_opening(client, session.id)
@@ -213,11 +207,7 @@ async def test_an_opening_dropped_behind_the_teams_turn_is_never_classified(
 
     monkeypatch.setattr(sessions_api, "settle_coverage", _record)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"],
-        "call_agent",
-        _TeamSpeaksWhileTheGuideThinks(rival_factory, session.id),
-    )
+    the_room_agent_is(monkeypatch, turn=_TeamSpeaksWhileTheGuideThinks(rival_factory, session.id))
 
     late = await _ask_for_the_opening(client, session.id)
 
@@ -227,3 +217,63 @@ async def test_an_opening_dropped_behind_the_teams_turn_is_never_classified(
         "não guardou"
     )
     assert late.json()["classification_pending"] is False
+
+
+PREPARED = "Vamos ficar nesta parte."
+PREPARED_KEY = "tts/voice/m/f/prepared.mp3"
+
+
+@pytest.fixture()
+async def per_request_client(db_session, monkeypatch, rival_factory):
+    async with room_client(db_session, monkeypatch, per_request=rival_factory) as c:
+        yield c
+
+
+async def test_a_prepared_opening_handed_over_after_the_teams_first_turn_is_dropped_and_logged(
+    per_request_client,
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The team's turn lands between the opening's read of the empty session and its write —
+    the only window the prepared line has, since nothing it does in between waits on a model.
+    """
+    session = await create_session(db_session, pericope=P, language="pt")
+    session.prepared_speech = PREPARED
+    session.prepared_audio_key = PREPARED_KEY
+    session.prepared_pericope = P
+    await db_session.commit()
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
+
+    real_take_prepared = sessions_api.take_prepared
+
+    async def take_prepared_after_the_team_spoke(*args: Any, **kwargs: Any) -> Any:
+        async with rival_factory() as rival_db:
+            team = await get_session(rival_db, session.id)
+            await append_exchange(
+                rival_db, team, team_utterance=TEAM_ANSWER, guide_response=TEAM_TURN_LINE
+            )
+        return await real_take_prepared(*args, **kwargs)
+
+    monkeypatch.setattr(sessions_api, "take_prepared", take_prepared_after_the_team_spoke)
+
+    with caplog.at_level(logging.WARNING, logger=SESSIONS_LOGGER):
+        late = await _ask_for_the_opening(per_request_client, session.id)
+
+    assert late.status_code == 200, late.text[:300]
+    assert late.json()["audio_url"] == clip_url(PREPARED_KEY)
+    async with rival_factory() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
+    assert [message["text"] for message in reread.messages] == [TEAM_ANSWER, TEAM_TURN_LINE], (
+        "a abertura preparada levava 409 no guarda de version em vez de ser descartada"
+    )
+    assert session.id in caplog.text and "opening" in caplog.text, (
+        "descartada em silêncio, nada dizia que a abertura preparada chegou tarde"
+    )
+
+    again = await _ask_for_the_opening(per_request_client, session.id)
+    assert again.status_code == 200, again.text[:300]
+    assert again.json()["audio_url"] == clip_url(PREPARED_KEY), (
+        "o 409 não guardava a resposta, e o reenvio caía no _say_it_again com a fala da equipe"
+    )

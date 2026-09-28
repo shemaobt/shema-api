@@ -9,7 +9,6 @@ in `test_internalization_room_back_translation.py` exercises the plain `chunk` c
 """
 
 import logging
-import sys
 from typing import Any
 
 import pytest
@@ -23,6 +22,7 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     closing_block,
 )
+from tests.turn_harness import the_room_agent_is
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 P = "P03"
@@ -57,14 +57,13 @@ def _told() -> list[IRSegment]:
 
 @pytest.fixture
 def patch_analyst(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.back_translation"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             agent.system = system_prompt
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
         return agent
 
     return _install

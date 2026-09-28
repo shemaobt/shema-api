@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import Settings, get_settings
-from app.services.internalization_room.llm import cache_break_at_end, call_agent, voice_ladder
+from app.services.internalization_room.llm import cache_break_at_end, voice_ladder
 from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.prompt_body import extract_prompt_body
 from app.services.internalization_room.render import render
+from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.sessions import book_of
 
 HER_PROMPT = Path(__file__).parent / "prompts/vendor/golden_judge_system_prompt.md"
@@ -96,7 +97,7 @@ async def judge_session(
             SESSION_LANGUAGE=language,
         )
     )
-    raw = await call_agent(
+    raw = await room_agent().judge.call_agent(
         role="judge",
         system_prompt=system,
         user_content=f"{JUDGE_NOW}\n\n{transcript}",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from google.api_core.exceptions import Forbidden, NotFound
+from google.api_core.exceptions import Forbidden, NotFound, PreconditionFailed
 
 from app.core.config import Settings
 from app.services.platform import storage
@@ -11,10 +11,18 @@ from app.services.platform.storage import GcsPlatformStore
 
 
 class _Blob:
-    def __init__(self, *, data: bytes = b"", error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        data: bytes = b"",
+        error: Exception | None = None,
+        write_error: Exception | None = None,
+    ) -> None:
         self.data = data
         self.error = error
+        self.write_error = write_error
         self.asked: list[str] = []
+        self.uploads: list[tuple[bytes, str, int | None]] = []
 
     def exists(self) -> bool:
         self.asked.append("exists")
@@ -25,6 +33,14 @@ class _Blob:
         if self.error is not None:
             raise self.error
         return self.data
+
+    def upload_from_string(
+        self, data: bytes, *, content_type: str, if_generation_match: int | None = None
+    ) -> None:
+        self.uploads.append((data, content_type, if_generation_match))
+        if self.write_error is not None:
+            raise self.write_error
+        self.data = data
 
 
 def _settings() -> Settings:
@@ -72,3 +88,46 @@ async def test_a_bucket_that_refuses_the_read_is_an_error_not_a_missing_clip(
 
     with pytest.raises(Forbidden):
         await GcsPlatformStore(_settings()).get("tts/v/m/f/a.mp3")
+
+
+async def test_a_put_with_nothing_at_the_key_writes_once_with_the_generation_precondition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blob = _Blob()
+    _the_bucket_holds(monkeypatch, blob)
+
+    winner = await GcsPlatformStore(_settings()).put("tts/v/m/f/a.mp3", b"mine", "audio/mpeg")
+
+    assert winner == b"mine"
+    assert blob.uploads == [(b"mine", "audio/mpeg", 0)], (
+        "sem if_generation_match=0 duas instâncias que sintetizam a mesma linha nova ao mesmo "
+        "tempo ainda gravam duas renderizações, a segunda por cima"
+    )
+
+
+async def test_a_put_that_loses_the_generation_race_returns_the_winners_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blob = _Blob(data=b"theirs", write_error=PreconditionFailed("generation mismatch"))
+    _the_bucket_holds(monkeypatch, blob)
+
+    winner = await GcsPlatformStore(_settings()).put("tts/v/m/f/a.mp3", b"mine", "audio/mpeg")
+
+    assert winner == b"theirs", (
+        "a instância que perdia a corrida do put continuava servindo os próprios bytes: a "
+        "chave nomeia as palavras, não uma renderização"
+    )
+    assert blob.asked == ["download"], "a releitura na perda é o próprio put, não uma segunda ida"
+
+
+async def test_a_write_that_vanishes_right_after_losing_the_race_still_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blob = _Blob(
+        error=NotFound("no such object"),
+        write_error=PreconditionFailed("generation mismatch"),
+    )
+    _the_bucket_holds(monkeypatch, blob)
+
+    with pytest.raises(NotFound):
+        await GcsPlatformStore(_settings()).put("tts/v/m/f/a.mp3", b"mine", "audio/mpeg")

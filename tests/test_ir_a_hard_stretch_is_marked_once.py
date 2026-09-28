@@ -83,6 +83,7 @@ from tests.hard_stretch_harness import (
     voice as _voice,
 )
 from tests.room_harness import heard_every_part, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 WARNING = "warning"
 BLOCKING = "blocking"
@@ -471,7 +472,7 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
         said.append((system_prompt, user_content))
         return '{"evidence_sufficient": true, "findings": []}'
 
-    monkeypatch.setattr(service, "call_agent", _recorder)
+    the_room_agent_is(monkeypatch, analyst=_recorder)
 
     session = await room.create_session(db_session, pericope=P)
     earlier = await capture_segment(

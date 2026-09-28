@@ -1,10 +1,10 @@
 """What a session leaves behind about what it cost, and what it must never leave behind.
 
 These drive whole turns with the Anthropic client faked rather than with the usual
-`run_turn.call_agent` fake. The numbers this file is about — the tokens the provider reported,
-the rung that answered, how long the call took — do not exist at the `call_agent` seam, so a
-test written there would assert on its own fixture and would go on passing with the whole
-accounting deleted.
+`room_agent().turn.call_agent` fake. The numbers this file is about — the tokens the provider
+reported, the rung that answered, how long the call took — do not exist at the `call_agent`
+seam, so a test written there would assert on its own fixture and would go on passing with
+the whole accounting deleted.
 
 The expected dollars are worked out by hand from the published list prices and written in as
 literals, never recomputed the way the code under test computes them: a test that multiplies

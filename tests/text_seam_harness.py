@@ -11,9 +11,7 @@ and each module keeps the three-line fixture that calls it.
 
 from __future__ import annotations
 
-import importlib
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -22,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import router
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
-from app.services.internalization_room import golden_judge
 from tests.room_harness import CORRECTION_MARK
+from tests.turn_harness import the_room_agent_is
 
 RUNNER_KEY = "runner-de-teste"
 
@@ -60,9 +58,8 @@ class ScriptedAgent:
 
 
 def the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> ScriptedAgent:
-    module = sys.modules["app.services.internalization_room.run_turn"]
     agent = ScriptedAgent(list(script))
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, turn=agent)
     return agent
 
 
@@ -103,18 +100,16 @@ class Speaker:
 
 
 def the_analyst_reads(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
 def the_speaker_says(monkeypatch: pytest.MonkeyPatch) -> Speaker:
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
     voice = Speaker()
-    monkeypatch.setattr(turn_module, "call_agent", voice)
+    the_room_agent_is(monkeypatch, turn=voice)
     return voice
 
 
@@ -157,7 +152,7 @@ class Judge:
 
 def the_judge_answers(monkeypatch: pytest.MonkeyPatch, reply: str = json.dumps(A_VERDICT)) -> Judge:
     judge = Judge(reply)
-    monkeypatch.setattr(golden_judge, "call_agent", judge)
+    the_room_agent_is(monkeypatch, judge=judge)
     return judge
 
 

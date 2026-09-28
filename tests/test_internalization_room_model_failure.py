@@ -8,7 +8,6 @@ line between a canned answer the policy promises and a defect of ours that must 
 
 import asyncio
 import json
-import sys
 import threading
 from typing import Any
 
@@ -19,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -109,8 +109,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
 
 def _the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> None:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", _Agent(list(script)))
+    the_room_agent_is(monkeypatch, turn=_Agent(list(script)))
 
 
 async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
@@ -231,12 +230,11 @@ async def test_a_bug_in_the_rooms_own_checks_is_not_dressed_up_as_an_outage(
     it in a log nobody is watching instead of where someone would see it.
     """
     _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
-    module = sys.modules["app.services.internalization_room.run_turn"]
 
     def _explodes(*_args: Any, **_kwargs: Any) -> bool:
         raise AssertionError("a defect in the room's own bridge-language check")
 
-    monkeypatch.setattr(module, "strays_from", _explodes)
+    the_room_agent_is(monkeypatch, strays_from=_explodes)
     session_id = await _a_room_opening_a_passage(client)
 
     answered = await _the_room_takes_a_turn(client, session_id)
@@ -265,14 +263,13 @@ async def test_the_bridge_language_check_runs_beside_the_event_loop_not_on_it(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
-    module = sys.modules["app.services.internalization_room.run_turn"]
     ran_on: list[int] = []
 
     def _where_it_ran(text: str, language_code: str = "pt") -> bool:
         ran_on.append(threading.get_ident())
         return False
 
-    monkeypatch.setattr(module, "strays_from", _where_it_ran)
+    the_room_agent_is(monkeypatch, strays_from=_where_it_ran)
     session_id = await _a_room_opening_a_passage(client)
 
     answered = await _the_room_takes_a_turn(client, session_id)

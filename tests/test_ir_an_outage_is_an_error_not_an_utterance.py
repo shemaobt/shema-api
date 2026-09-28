@@ -15,7 +15,6 @@ normal turn on the same session. The circle stays alive at `done` (DOCTRINE §4)
 
 import json
 import logging
-import sys
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -34,6 +33,7 @@ from app.services.internalization_room import llm
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.turn_harness import the_room_agent_is
 
 MODEL = "claude-fable-5-1"
 
@@ -178,8 +178,7 @@ def _passes() -> str:
 
 
 def _the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> None:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", _Agent(list(script)))
+    the_room_agent_is(monkeypatch, turn=_Agent(list(script)))
 
 
 @pytest.fixture()

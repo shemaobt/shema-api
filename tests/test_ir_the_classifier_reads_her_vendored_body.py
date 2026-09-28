@@ -8,7 +8,6 @@ nothing else; the classifier has none.
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import pytest
@@ -29,6 +28,7 @@ from app.services.internalization_room.prompt_adaptations import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from scripts.sync_doctrine import REPO_ROOT
+from tests.turn_harness import the_room_agent_is
 
 PROMPTS = REPO_ROOT / "app/services/internalization_room/prompts"
 
@@ -43,14 +43,13 @@ def _her_body(name: str) -> str:
 async def test_the_room_sends_the_classifier_exactly_her_body_with_its_slots_filled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
     sent: dict[str, Any] = {}
 
     async def agent(*, system_prompt: str, **kwargs: Any) -> str:
         sent["system"] = system_prompt
         return '{"decisions": []}'
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, classifier=agent)
     state = initial_state("P01")
 
     await classify_coverage(

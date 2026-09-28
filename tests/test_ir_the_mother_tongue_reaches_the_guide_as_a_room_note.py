@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from typing import Any
 
 import httpx
@@ -17,7 +16,15 @@ from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
 from tests.text_seam_harness import GUIDE_LINE, RUNNER_KEY, the_app, the_models_answer
-from tests.turn_harness import GUIDE, VALIDATOR, FakeAgent, P, settings, the_agent_answers
+from tests.turn_harness import (
+    GUIDE,
+    VALIDATOR,
+    FakeAgent,
+    P,
+    settings,
+    the_agent_answers,
+    the_room_agent_is,
+)
 
 SEAM = "/api/internalization-room/text-seam"
 
@@ -255,9 +262,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
         heard.append(list(kwargs["conversation"]))
         return GUIDE_LINE
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _listening
-    )
+    the_room_agent_is(monkeypatch, turn=_listening)
 
     await seam.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": "a fome chegou"})
 
@@ -281,9 +286,7 @@ async def test_the_mother_tongue_turn_quotes_its_note_as_her_evidence_as_her_cod
             return json.dumps({"verdict": "pass", "issues": []})
         return GUIDE_LINE
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _listening
-    )
+    the_room_agent_is(monkeypatch, turn=_listening)
 
     await seam.post(
         f"{SEAM}/turn", json={"sessionId": session_id, "text": TERENA, "motherTongue": 40}

@@ -1,5 +1,4 @@
 import json
-import sys
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -19,6 +18,7 @@ from app.services.internalization_room.sessions import (
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
@@ -51,9 +51,7 @@ async def client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     from app.api.internalization_room import sessions as sessions_api
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _models
-    )
+    the_room_agent_is(monkeypatch, turn=_models)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
     monkeypatch.setattr(sessions_api, "settle_coverage", _settled_later)

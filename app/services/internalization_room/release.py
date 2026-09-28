@@ -7,10 +7,10 @@ clearly marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
 partial artifact — because a package missing the rehearsal audio, the telling-back, the
-analyst's reading of it, a stretch nobody told back or a recording nobody told back would
-look downstream exactly like a finished one; so would one composed for a panorama, which is
-not a draft of a passage at all. Those six are missing material, and nothing overrules them:
-there is nothing in a rehearsal nobody recorded for anybody to overrule.
+analyst's reading of it, a stretch nobody told back or a recording nobody told back would look
+downstream exactly like a finished one; so would one composed for a panorama, which is not a
+draft of a passage at all. Those six are missing material, and nothing overrules them: there
+is nothing in a rehearsal nobody recorded for anybody to overrule.
 
 The other two are Marcia's gate — an open finding the telling-back still carries, and a part
 of the rehearsal the team never heard through — and they are a dispute rather than a hole.
@@ -664,9 +664,12 @@ async def approve_release(
     one forcing, so compare-first never becomes a force the team can reach.
 
     It answers an unchanged packet with its release whatever stands, and not only over the
-    finding somebody overruled. That is the rule ADR 0014 wrote — the number says which
-    content was approved, and this content was — and it is wider than the force it was
-    reopened for.
+    finding somebody overruled. A stretch captured without words after the approval is the
+    case that shows the reach: the packet carries only the stretches the team told back, so
+    its hash does not move, and the team is answered with that release while
+    ``untold_stretch``, which no force waives, stands. That is the rule ADR 0014 wrote — the
+    number says which content was approved, and this content was — and it is wider than the
+    force it was reopened for.
 
     The number is one past the last, which two approvals arriving together can both read.
     The unique index is what refuses the second, and the refusal is answered rather than

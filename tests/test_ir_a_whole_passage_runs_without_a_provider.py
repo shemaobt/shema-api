@@ -11,7 +11,6 @@ commit rather than paid for by hand.
 from __future__ import annotations
 
 import json
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -33,7 +32,7 @@ from app.services.internalization_room.classify_coverage import (
 )
 from app.services.internalization_room.coverage import CoverageStatus, floor_met
 from tests.text_seam_harness import RUNNER_KEY, the_app
-from tests.turn_harness import INVITATION
+from tests.turn_harness import INVITATION, the_room_agent_is
 
 SEAM = "/api/internalization-room/text-seam"
 
@@ -121,9 +120,7 @@ async def test_ruth_one_runs_to_done_on_the_keyword_classifier_and_no_provider(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scripted = ScriptedRoom(THE_GUIDE_SAYS)
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", scripted
-    )
+    the_room_agent_is(monkeypatch, turn=scripted)
     monkeypatch.setattr(background, "classify_coverage", classify_coverage_by_keywords)
 
     created = await client.post(f"{SEAM}/session", json={"pericopeId": "P01", "language": "en"})
@@ -162,11 +159,7 @@ async def test_a_silence_only_mentioned_in_scene_one_does_not_hold_back_the_late
     silence = next(element for element in beads if element.key == "absence:1")
     for said in THE_TEAM_LEAVES_THE_SILENCE_UNTOLD:
         assert not _words(said) & _words(_shown_label(silence)), said
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"],
-        "call_agent",
-        ScriptedRoom(THE_GUIDE_SAYS),
-    )
+    the_room_agent_is(monkeypatch, turn=ScriptedRoom(THE_GUIDE_SAYS))
     monkeypatch.setattr(background, "classify_coverage", classify_coverage_by_keywords)
 
     created = await client.post(f"{SEAM}/session", json={"pericopeId": "P01", "language": "en"})

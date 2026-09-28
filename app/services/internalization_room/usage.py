@@ -135,10 +135,11 @@ class Spend:
 
 
 #: The ledger every call in flight adds itself to, when one is open. A context variable and
-#: not an argument threaded through `call_agent`: twenty-seven test fakes stand in for that
-#: function across thirteen files, and a parameter they never see is a parameter that records
-#: nothing in exactly the runs a regression would show up in. Each request owns its own copy,
-#: so two sessions answering at once cannot add to each other's total.
+#: not an argument threaded through `call_agent`: every test's fake for that function comes
+#: in through `room_agent()`, the door behind which turn, analyst, classifier and judge all
+#: sit, and a parameter none of them touches is a parameter that records nothing in exactly
+#: the runs a regression would show up in. Each request owns its own copy, so two sessions
+#: answering at once cannot add to each other's total.
 _OPEN: ContextVar[Spend | None] = ContextVar("internalization_room_spend", default=None)
 
 

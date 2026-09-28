@@ -22,7 +22,7 @@ from typing import Protocol
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 from app.services.platform.voices import language_hint
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ async def transcribe_speech(
 
     cfg = settings or get_settings()
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     http = client or _make_client()
     try:
@@ -83,7 +83,9 @@ async def transcribe_speech(
         logger.warning(
             "ElevenLabs STT failed: status=%s body=%s", response.status_code, response.text[:500]
         )
-        raise _upstream_or_validation_error(response.status_code)
+        raise upstream_or_validation_error(
+            response.status_code, f"Transcription request failed with status {response.status_code}"
+        )
 
     text = str(response.json().get("text") or "").strip()
     logger.info(
@@ -94,14 +96,6 @@ async def transcribe_speech(
         len(text),
     )
     return text
-
-
-def _upstream_or_validation_error(status_code: int) -> Exception:
-    """Their outage is not our client's bad request — same split as the TTS service."""
-    message = f"Transcription request failed with status {status_code}"
-    if status_code == 429 or status_code >= 500:
-        return UpstreamServiceError(message)
-    return ValidationError(message)
 
 
 def _make_client() -> httpx.AsyncClient:

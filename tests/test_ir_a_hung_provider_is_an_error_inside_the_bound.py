@@ -97,7 +97,7 @@ def the_client(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-async def test_the_guide_and_the_validator_each_carry_the_deadline_and_no_retries(
+async def test_the_guide_and_the_validator_each_carry_the_deadline_not_a_client_with_zero_retries(
     the_client,
 ) -> None:
     messages = _Scripted()
@@ -121,9 +121,9 @@ async def test_the_guide_and_the_validator_each_carry_the_deadline_and_no_retrie
         "nenhuma chamada tinha relógio: o SDK esperava 600 s por resposta, e a equipe "
         "ficava diante de um círculo que nunca respondia nem falhava"
     )
-    assert options["max_retries"] == 0, (
-        "duas tentativas escondidas do SDK dobravam e triplicavam a espera longa; a "
-        "recuperação honesta agora é um erro que a tela transforma em chamar uma pessoa"
+    assert "max_retries" not in options, (
+        "zerar o retry do SDK deixava a sala sozinha contra uma rejeição passageira: nem o "
+        "SDK nem a sala tentavam de novo, e um 429 de um segundo virava 502 na hora"
     )
 
 
@@ -236,7 +236,7 @@ class _Refusing:
 
 
 async def test_a_refused_call_says_who_asked_how_long_it_waited_and_that_it_erred(
-    the_client, caplog: pytest.LogCaptureFixture
+    the_client, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     the_client(
@@ -246,6 +246,7 @@ async def test_a_refused_call_says_who_asked_how_long_it_waited_and_that_it_erre
             )
         )
     )
+    monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
 
     with (
         caplog.at_level(logging.WARNING, logger="app.services.internalization_room.llm"),
@@ -255,8 +256,15 @@ async def test_a_refused_call_says_who_asked_how_long_it_waited_and_that_it_erre
             role="classifier", system_prompt="s", user_content="u", settings=_settings()
         )
 
-    (refused,) = _usage_lines(caplog)
-    assert refused.status == 529 and refused.rung == MODEL
-    assert refused.role == "classifier", "sem o papel, a linha não separa o Guia do classificador"
-    assert isinstance(refused.latency_ms, int)
-    assert refused.outcome == "error"
+    first, second = _usage_lines(caplog)
+    for refused in (first, second):
+        assert refused.status == 529 and refused.rung == MODEL
+        assert refused.role == "classifier", (
+            "sem o papel, a linha não separa o Guia do classificador"
+        )
+        assert isinstance(refused.latency_ms, int)
+        assert refused.outcome == "error"
+    assert (first.attempt, second.attempt) == (1, 2), (
+        "um 529 é uma pressa passageira: a sala tenta o mesmo degrau uma segunda vez antes "
+        "de desistir, e cada tentativa deixa sua própria linha de uso"
+    )

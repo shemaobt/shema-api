@@ -5,7 +5,7 @@ import logging
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 from app.services.project_health.voice.cache import CachedAudio, audio_cache
 from app.services.project_health.voice.voice_map import (
     MULTILINGUAL_VOICE_ID,
@@ -27,7 +27,7 @@ def _make_client() -> httpx.AsyncClient:
 
 def _require_api_key(cfg: Settings) -> str:
     if not cfg.ph_elevenlabs_api_key:
-        raise ValidationError("PH_ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("PH_ELEVENLABS_API_KEY is not configured")
     return cfg.ph_elevenlabs_api_key
 
 
@@ -72,16 +72,22 @@ async def synthesize_speech(
     }
 
     http = client or _make_client()
-    response = await http.post(
-        url, json=body, params={"output_format": cfg.elevenlabs_output_format}, headers=headers
-    )
+    try:
+        response = await http.post(
+            url, json=body, params={"output_format": cfg.elevenlabs_output_format}, headers=headers
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs TTS unreachable: %s", error)
+        raise UpstreamServiceError(f"Speech request could not reach ElevenLabs: {error}") from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs TTS failed: status=%s body=%s",
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"TTS request failed with status {response.status_code}")
+        raise upstream_or_validation_error(
+            response.status_code, f"TTS request failed with status {response.status_code}"
+        )
 
     entry = audio_cache.put(cache_key, response.content, mime_type="audio/mpeg")
     return entry, False
@@ -162,19 +168,28 @@ async def transcribe_audio(
         data["language_code"] = hint
 
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
-        headers={"xi-api-key": api_key, "accept": "application/json"},
-        files={"file": (upload_name, audio_bytes, resolved_mime)},
-        data=data,
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
+            headers={"xi-api-key": api_key, "accept": "application/json"},
+            files={"file": (upload_name, audio_bytes, resolved_mime)},
+            data=data,
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs STT unreachable: %s", error)
+        raise UpstreamServiceError(
+            f"Transcription request could not reach ElevenLabs: {error}"
+        ) from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs STT failed: status=%s body=%s",
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"Transcription request failed with status {response.status_code}")
+        raise upstream_or_validation_error(
+            response.status_code,
+            f"Transcription request failed with status {response.status_code}",
+        )
 
     payload = response.json()
     text = (payload.get("text") or "").strip()

@@ -15,6 +15,8 @@ import asyncio
 from dataclasses import dataclass
 from http import HTTPStatus
 
+from google.api_core.exceptions import PreconditionFailed
+
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
 
@@ -62,9 +64,9 @@ class GcsPlatformStore:
     async def exists(self, key: str) -> bool:
         return await asyncio.to_thread(self._exists_sync, key)
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        """Write the object (overwrites)."""
-        await asyncio.to_thread(self._put_sync, key, data, content_type)
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
+        """Write the object (write-once). Returns the bytes now durably at `key`."""
+        return await asyncio.to_thread(self._put_sync, key, data, content_type)
 
     async def stat(self, key: str) -> StoredObject | None:
         """What the bucket holds under `key`, without downloading it.
@@ -93,5 +95,10 @@ class GcsPlatformStore:
     def _exists_sync(self, key: str) -> bool:
         return bool(_blob(key, self._settings).exists())
 
-    def _put_sync(self, key: str, data: bytes, content_type: str) -> None:
-        _blob(key, self._settings).upload_from_string(data, content_type=content_type)
+    def _put_sync(self, key: str, data: bytes, content_type: str) -> bytes:
+        blob = _blob(key, self._settings)
+        try:
+            blob.upload_from_string(data, content_type=content_type, if_generation_match=0)
+        except PreconditionFailed:
+            return bytes(blob.download_as_bytes())
+        return data

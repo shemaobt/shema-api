@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from types import SimpleNamespace
 from typing import Any
 
@@ -33,6 +32,7 @@ from tests.text_seam_harness import (
     TEAM_LINE,
     the_models_answer,
 )
+from tests.turn_harness import the_room_agent_is
 
 SEAM = "/api/internalization-room/text-seam"
 CORRECTED_LINE = "Vamos ficar com o que a passagem conta."
@@ -329,8 +329,7 @@ async def test_every_model_call_of_the_turn_comes_back_with_its_rung_and_tokens(
     client, monkeypatch, caplog
 ) -> None:
     session_id = await _an_open_session(client)
-    run_turn = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(run_turn, "call_agent", llm.call_agent)
+    the_room_agent_is(monkeypatch, turn=llm.call_agent)
     wire = _Wire([GUIDE_LINE, json.dumps({"verdict": "pass", "issues": []})])
     monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: wire)
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")

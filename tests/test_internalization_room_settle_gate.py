@@ -8,7 +8,6 @@ element in P01).
 """
 
 import json
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -24,6 +23,7 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session, get_session
+from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
 ROOM_KEY = "sala-de-teste"
@@ -281,11 +281,7 @@ async def test_an_opening_naming_the_arc_and_the_tone_leaves_them_surfaced_and_n
 
     monkeypatch.setattr(sessions_api, "settle_coverage", background.settle_coverage)
     monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.classify_coverage"],
-        "call_agent",
-        _her_classifier,
-    )
+    the_room_agent_is(monkeypatch, classifier=_her_classifier)
     room.outcome = TurnOutcome(speech=OPENING, transcript="")
 
     await _the_room_opens(room, passage)
