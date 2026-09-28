@@ -35,7 +35,8 @@ from app.db.models.shema_eten import ShemaEtenCredit, ShemaEtenReport
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.models.shema import ShemaProjectUpdate
 from app.models.shema_eten import EtenYearReport, EtenYearSnapshot
-from app.services.shema import eten_report, region_scope, save_project
+from app.services.shema import eten_report, readership, region_scope, save_project
+from app.services.shema._scope import GLOBAL_ROLE
 from app.utils.shema_derivations import fiscal_year_of
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 
@@ -401,6 +402,7 @@ async def test_a_completion_saved_on_31_july_counts_for_the_year_that_closes(
             scope,
             project_id,
             ShemaProjectUpdate(status=ShemaProjectStatus.CONCLUIDO),
+            readership=readership(scope, {GLOBAL_ROLE}, platform_admin=False),
             user=strategist,
             expected_version=1,
             day=day,
