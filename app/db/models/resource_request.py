@@ -303,6 +303,15 @@ class RRRequest(Base):
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False, index=True
     )
+    #: The PME project the request belongs to — GATE-04 D1 (OBT-519), built by BE-19
+    #: (OBT-520). **Two writes and only two**: at creation, the project a member opens it
+    #: from, accepted only against a live membership (``create_draft``); and at the mesa's
+    #: approval, for a request that entered by the Admin's link, when the approval registers
+    #: the project (OBT-547). Nullable for that second door. Stamped and never derived: a
+    #: member who later leaves does not move what the mesa evaluated.
+    shema_project_id: Mapped[str | None] = mapped_column(
+        String(120), ForeignKey("shema_projects.id"), nullable=True, index=True
+    )
     revision_of_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("rr_snapshots.id", use_alter=True, name="fk_rr_requests_revision_of"),
