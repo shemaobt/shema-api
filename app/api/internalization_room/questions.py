@@ -134,11 +134,12 @@ async def heard(
     question_id: str,
     payload: HeardRequest | None = None,
     device_id: str = DeviceId,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    question = await service.get_question(db, question_id)
-    if question.device_id != device_id:
-        raise NotFoundError(f"Question {question_id} not found")
+    question = await service.get_question_for_device(
+        db, question_id, device_id=device_id, project_id=project_id
+    )
     await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
     return {"status": "heard"}
 
