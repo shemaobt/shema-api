@@ -18,9 +18,13 @@ request type, and the refusal names the three that exist.
 from the day and the cadence (``app/utils/shema_derivations.py``), so it has to know the cadence;
 titles, icons, attendees, feeds and readiness are the console's ``RITMO_MEETINGS``, and FE-44
 §9.0 forbids an endpoint that serves a vocabulary the frontend already has. That is also where
-the open question GATE-02 left - who the bridge people are, and whether the health assessment
-moves to the bimonthly meeting - lives: nothing here depends on the answer unless it changes a
-cadence or the set, and then it is one edit in :data:`MEETING_CADENCES`.
+GATE-02's second half landed on 28/set/2026: the health assessment feeds the bimonthly meeting
+(confirmed, and the console's reading already had it there), and the bridge people **are not
+defined yet** - the client does not have the list. The quarterly meeting therefore works without
+names: the server stores no attendee, and a log carries the meeting, the region, the day and the
+notes, whoever was in the room. When the bridge people are defined, nothing here changes unless
+the answer changes a cadence or the set - one edit in :data:`MEETING_CADENCES` - or makes
+``resourceCircle`` one of them, which is ``_meeting_log.py``'s audience to widen.
 
 **Two owners of one key, stated because they must agree.** The console compares a log's
 ``period`` against its own ``periodKey(cadence, today)`` as text, so a cadence written

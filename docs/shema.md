@@ -1277,8 +1277,9 @@ until the gate answers** — which is why §5.9 makes `shema_meeting_definitions
 >   a concurrent first insert, and an undo landing mid-write.
 > - **The log's audience is the health assessment's.** Its notes are a pastoral reading of a team,
 >   so `_meeting_log.py` composes `_health_audience.py`'s list instead of copying it:
->   `resourceCircle` is refused the log on all three routes, fail-closed until the client says the
->   bridge people include it. The region scope applies on both sides, and out of scope is a 403.
+>   `resourceCircle` is refused the log on all three routes, fail-closed until the client defines
+>   the bridge people and they turn out to include it. The region scope applies on both sides, and
+>   out of scope is a 403.
 > - **`global` is refused with the reason.** Every meeting kept is held per region.
 > - **The notes are the artifact.** GATE-02's own table answered which encounters produce what; no
 >   meeting produces a stored file, so the log carries no URL or storage key and opens no upload
@@ -1286,6 +1287,11 @@ until the gate answers** — which is why §5.9 makes `shema_meeting_definitions
 >
 > Readiness stays derived on the console (FE-44 §9.7): the Pulse's is FE-49 counting
 > `GET /forms/submissions`, not anything this module stores twice.
+>
+> **The half GATE-02 left open, as of 28/set/2026.** The health assessment feeds the bimonthly
+> meeting — confirmed by the client. The bridge people are **not defined yet**: the client does
+> not have the list, and asked for the quarterly meeting to work without specific names. Here it
+> already does, because the server stores no attendee. §10 item 13 keeps what is left.
 
 ### 9.3 GATE-03 — the Pulse file format ([OBT-389](https://linear.app/shema-obt/issue/OBT-389))
 
@@ -1392,7 +1398,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |
 | 12 | Whether `sensitive_country` records **who** raised it. Today it does not, and the import cannot tell a flag a coordinator ticked from the `true` it wrote itself fail-closed — so a hand-raised flag is cleared by the next `--apply --allow-lowering`. BE-16 gates the lowering on the one column that can answer (`sensitivity`, compared against `source`) and names every lowering in its report, which narrows the hole without closing it. Closing it is a write-path decision — an audit column, a `sensitive_country_source`, or a rule that the import never lowers what it did not insert — and it is not a migration script's to take, least of all on a model and a migration ten sibling branches already build on. | **BE-03** (§4.2's write path), with **BE-02** if it costs a column |
-| 13 | Who the *pessoas-ponte* of `trimestral_pi_pontes` are, and whether the health assessment moves to the bimonthly meeting (GATE-02's open half). The server holds neither attendees nor readiness, so the answer changes nothing here unless it changes a cadence or the set — one edit in `app/utils/shema_meetings.py` — or puts `resourceCircle` among the bridge people, which would open that one meeting's log to it. | **the client** (FE-49 carries the reading) |
+| 13 | ~~Whether the health assessment moves to the bimonthly meeting (GATE-02's open half).~~ **Answered by the client on 28/set/2026: yes, it feeds `bimestral_pi_campo`**, which is where FE-49 already read it; nothing on the server held it. **Still open, and not as a pending question: who the *pessoas-ponte* of `trimestral_pi_pontes` are.** The client does not have that information yet and asked for the meeting to work without specific names — which it already does here: the server stores no attendee, and a log is the meeting, the region, the day and the notes. When the list exists, it changes nothing here unless it changes a cadence or the set — one edit in `app/utils/shema_meetings.py` — or puts `resourceCircle` among the bridge people, which would open that meeting's log to it (`_meeting_log.py`). | **the client** (the definition), FE-49 (where it lands) |
 
 ---
 
