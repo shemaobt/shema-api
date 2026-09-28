@@ -90,8 +90,18 @@ class Settings(BaseSettings):
     #: production, so an unset variable deploys what it always did.
     gcs_oc_bucket: str = "tripod-image-uploads"
 
+    # Token lifetimes: one key per purpose, in the unit that purpose is measured in. The
+    # service that mints a token reads its own key; ``app/services/common/tokens/`` reads none
+    # of them and takes the number as an argument — the module is shared, the ceiling is not.
+    # A new token adds its key at the end of this block.
     password_reset_token_expire_minutes: int = 60
     access_invite_expire_days: int = 7
+    #: The longest a coordinator may ask a leader link to live (BE-12): three Pulse cycles.
+    #: The ceiling exists because *expiring* is a property of the credential rather than of
+    #: the coordinator's intention — a link that can be minted for a year is a link that will
+    #: be. The default of 45 days is ``_intake_tokens.py``'s, and this caps it.
+    shema_intake_link_max_days: int = 90
+
     email_provider: str = "log"
     resend_api_key: str = ""
 
