@@ -24,7 +24,7 @@ table and fails on any ``/api/shema`` route that does not carry the guard, with 
 allowlist stated there and empty today.
 
 **The PME's door is the other deliberate exception, and it is narrower rather than wider**
-(OBT-523, ``docs/shema.md`` §6.7). ``GET /api/shema/session`` is the console's sign-in read,
+(OBT-523, ``docs/shema.md`` §6.8). ``GET /api/shema/session`` is the console's sign-in read,
 and the mesa and the Gestor sign in holding no Shemá grant. So ``door`` carries ``DOOR`` —
 a Shemá role, or ``gestor``/``mesa`` held in the form, or the ``equipe`` a live project
 membership adds (OBT-524) — and holds the session and the two reads a member has: a

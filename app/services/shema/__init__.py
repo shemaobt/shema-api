@@ -98,7 +98,7 @@ reach over every roster cannot be handed to a read of the collection or the reco
 session's ``equipe`` for an account with a live membership. ``_roster.py`` is the live row of a
 pair and the shape one row leaves in; ``add_project_member`` and ``remove_project_member`` are the
 two writers, and removal marks rather than deletes; ``list_project_members`` and
-``list_my_projects`` are the two reads a member has. ``docs/shema.md`` §6.8 is the design.
+``list_my_projects`` are the two reads a member has. ``docs/shema.md`` §6.9 is the design.
 
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.

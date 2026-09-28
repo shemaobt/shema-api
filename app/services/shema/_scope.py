@@ -36,7 +36,7 @@ joins against.
 it; the product has no third answer, so nothing here offers one.
 
 **A project membership is the second kind of reach, and it lives here for the first paragraph's
-reason** (OBT-524, ``docs/shema.md`` §6.8). ``member_projects`` and ``roster_projects`` select
+reason** (OBT-524, ``docs/shema.md`` §6.9). ``member_projects`` and ``roster_projects`` select
 ``ShemaProject`` too, so a query that could hand a member somebody else's project is no more a
 thing a service can write by forgetting something than one that could hand a region's.
 """

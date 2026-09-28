@@ -5,7 +5,7 @@
 # coordinator, obtLab, resourceCircle, and the Admin (`admin`, "Admin da plataforma") —
 # seeded by scripts/seed_apps_roles.py.
 #
-# The session is the PME's door (docs/shema.md §6.7): it also admits an account holding
+# The session is the PME's door (docs/shema.md §6.8): it also admits an account holding
 # `gestor` or `mesa` in resource-request-form and nothing here, and answers every role the
 # account holds in `roles`. Since OBT-524 a live project membership is `equipe` and opens it
 # too, with the member's two reads (http/shema_members.http). Every other /api/shema route

@@ -2,7 +2,7 @@
 
 Four routes in two routers, and the split is who may reach them:
 
-* ``door_router`` is included into the PME's door (``docs/shema.md`` §6.7): ``GET`` of a project's
+* ``door_router`` is included into the PME's door (``docs/shema.md`` §6.8): ``GET`` of a project's
   roster and ``GET /me/projects``. A project member may hold no Shemá role at all — a live
   membership is what puts ``equipe`` in their session — so these two reads cannot sit behind the
   Shemá app gate. The door admits them; the service decides the rest, and a caller who reaches

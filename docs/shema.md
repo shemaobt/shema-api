@@ -203,7 +203,7 @@ The naming trips every newcomer once.
 | | |
 |---|---|
 | `app_key` | **`shema`** |
-| Role keys | **`globalStrategist`, `coordinator`, `obtLab`, `resourceCircle`**, and **`admin`** since OBT-523 (§6.7) |
+| Role keys | **`globalStrategist`, `coordinator`, `obtLab`, `resourceCircle`**, and **`admin`** since OBT-523 (§6.8) |
 | Seeded by | `scripts/seed_apps_roles.py`'s `SEED_APPS` and `APP_ROLES_OVERRIDE` — BE-03; `admin` by its `PLATFORM_ADMIN_APPS` and by `20260927_shema08` — OBT-523 |
 | Named in code | `app/api/shema/_deps.py` and nowhere else in the module |
 
@@ -218,7 +218,7 @@ one vocabulary is a second place to be wrong, and it would be read on every requ
 
 `admin` is lower-case and not camelCase because it is not one of the four personas: it is
 OBT-522's Admin, one role seeded in this app and in `resource-request-form` under the label
-*"Admin da plataforma"*, and not `users.is_platform_admin` (§6.7).
+*"Admin da plataforma"*, and not `users.is_platform_admin` (§6.8).
 
 `role_key` is `String(100)` free text scoped per app (`uq_roles_app_role_key`), so nothing
 in the platform objects.
@@ -249,7 +249,7 @@ docstring states the rule. Reading `users` for an account's existence or name is
 and neither reads a grant.
 
 Two things this module owns about identity: the region dimension of §6.1, which the platform
-has no column for, and — since OBT-524 — **project membership** (§6.8), the link from an account
+has no column for, and — since OBT-524 — **project membership** (§6.9), the link from an account
 to the Shemá projects whose team it is on.
 
 ### 2.5 What it deliberately does not share
@@ -281,7 +281,7 @@ bucket, which is the precedent, not a trespass).
 | Path | Owner | Holds |
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.7). The app key is named here and nowhere else in the module. |
+| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8). The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
@@ -295,13 +295,13 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
-| `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.7. |
+| `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.8. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
-| `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.8). The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
+| `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9). The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
 | `app/services/shema/_redaction.py` | **BE-04, built** | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
 | `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
-| `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.8. |
+| `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
 | `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
 | `app/services/shema/_directory.py` | BE-13 | A person's contact, their consents and their country — the **only** file in either package that names `ShemaIntercessor`. §6.4's fourth owner. |
@@ -427,7 +427,7 @@ Two behaviours to design around, both inherited from the sibling's §5.5 and bot
   `app/services/resource_request/holds_capability.py` does and says why.
 - **An app's `admin` role manages that app's roles** (`assert_can_manage_roles`, the predicate
   behind `/api/roles/assign` and `/revoke`). Since OBT-523 this app seeds one — the Admin of
-  §6.7 — so whoever is granted it concedes and revokes Shemá roles from that day, which is
+  §6.8 — so whoever is granted it concedes and revokes Shemá roles from that day, which is
   OBT-522's rule for the role. Nobody holds it until OBT-543 grants it.
 
 `scripts/grant_app_role.py` matching on `(user_id, app_id)` and **overwriting** `role_id` is a
@@ -684,7 +684,7 @@ behaviour on it.
 | 5.11 | **ETEN ledger** | `shema_eten_credits` | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule is **Open · GATE-01** (§9.1). |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
 | 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. One of the two things this module owns about identity (5.14 is the other). Empty means global. |
-| 5.14 | **Project members** | `shema_project_members` | OBT-524 | §6.8. **One live row per account and project**, as a partial unique index (`WHERE removed_at IS NULL`); **removal marks** `removed_at`/`removed_by` and never deletes, and coming back is a new row. **Only the Admin writes.** Read by the project's scope, its own live members and the Admin. A membership is **not** a region. |
+| 5.14 | **Project members** | `shema_project_members` | OBT-524 | §6.9. **One live row per account and project**, as a partial unique index (`WHERE removed_at IS NULL`); **removal marks** `removed_at`/`removed_by` and never deletes, and coming back is a new row. **Only the Admin writes.** Read by the project's scope, its own live members and the Admin. A membership is **not** a region. |
 
 > **BE-06 ([OBT-395](https://linear.app/shema-obt/issue/OBT-395)) built the record's
 > lifecycle on rows 5.1 and 5.2, and four decisions travel with it.**
@@ -848,7 +848,7 @@ out a role and no data.
 holding no regional role (and not `globalStrategist`) reaches nothing whatever rows it has,
 without the table being read. Nothing deletes an account's rows when its regional role is
 revoked, and a seat or an operator can leave one behind; without this, the `admin`, `gestor`
-and `mesa` of §6.7 would reach a region by accident of data. The three regional roles reach
+and `mesa` of §6.8 would reach a region by accident of data. The three regional roles reach
 exactly what they reached before.
 
 ### 6.2 What the region scope is *not* allowed to become
@@ -869,13 +869,13 @@ GET /api/shema/session -> {role: SessionRole, roles: SessionRole[], regionScope:
                            name: string | null}
 ```
 
-`roles` and the door it sits behind are OBT-523's, §6.7; `role` is the first of `roles`, kept
+`roles` and the door it sits behind are OBT-523's, §6.8; `role` is the first of `roles`, kept
 only through the transition.
 
 `GET /api/auth/my-roles` cannot answer this, because the grant has no region. The three parts
 come from three places and **none of them is a store of the session's own**: `role` (and, since
-OBT-523, `roles`) from `authorization_service.list_roles` — one read of both apps, §6.7, plus, since OBT-524, one
-read of `shema_project_members` for the `equipe` a live membership adds (§6.8); `regionScope` from
+OBT-523, `roles`) from `authorization_service.list_roles` — one read of both apps, §6.8, plus, since OBT-524, one
+read of `shema_project_members` for the `equipe` a live membership adds (§6.9); `regionScope` from
 `shema_user_regions` (`null` = global); and **`name` resolved from the org chart** (§5.8) —
 it is not a user profile field, and renaming a role-holder renames who the session says you
 are.
@@ -1143,7 +1143,7 @@ this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
 > artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
 > and withdrawal from an already-distributed file — is untouched by anything above.
 
-### 6.7 Seam F — the PME's door: one session over two apps' roles — **Decided; OBT-523**
+### 6.8 Seam F — the PME's door: one session over two apps' roles — **Decided; OBT-523**
 
 OBT-522 (22 and 25/sep) put the mesa, the Gestor and the Admin inside the PME: *"todos da mesa
 vão ter conta no PME com a função já definida"*. Their grants live in `resource-request-form`,
@@ -1160,14 +1160,14 @@ the mesa was refused at the door of a console it now belongs to. Six rules.
   so the list is closed: a key added here is a key added there.
 - **The door is a router of its own and opens one route.** `door` carries `DOOR` and holds
   `GET /session`; everything else stays under `authenticated`. *(OBT-524 added the member's two
-  reads behind it, and made the pin `DOOR_ROUTES`, by method and path — §6.8.)* An account the form made gets its
+  reads behind it, and made the pin `DOOR_ROUTES`, by method and path — §6.9.)* An account the form made gets its
   session and is refused by every other route — what each area shows it is OBT-544's.
   `tests/test_shema/test_access.py` pins the door's paths in `DOOR_PATHS`, so the next door
   route (OBT-524's `/me/projects`, for a member with no regional role) is a deliberate edit.
 - **Who passes: at least one role of the vocabulary, counted per app.** From `shema`, the four
   and `admin`; from `resource-request-form`, `gestor` and `mesa`. **Not** the form's `equipe`
   — `auto_approve` hands it to everybody who registers there, and OBT-524 turns it into a
-  project membership (§6.8: a live membership is the session's `equipe`) — nor `lider`, who has no account since 22/sep, nor the form's `admin` row:
+  project membership (§6.9: a live membership is the session's `equipe`) — nor `lider`, who has no account since 22/sep, nor the form's `admin` row:
   every guard below the door reads the `shema` grant, and a session answering *admin* off the
   form's row would name a power every admin route refuses. One `list_roles` read answers the
   door and the body (`_scope.session_roles`), so the two cannot disagree. An installation admin
@@ -1189,7 +1189,7 @@ grant it in both apps (the door reads the `shema` one), and an `admin` held in t
 role — the whole board. OBT-544: until it lands, an account at the door with no Shemá role is
 refused by every other route the console calls, `/regions` on sign-in included.
 
-### 6.8 Seam G — the member's reach: project membership — **Decided; OBT-524**
+### 6.9 Seam G — the member's reach: project membership — **Decided; OBT-524**
 
 OBT-522 (22 and 25/sep) made *the team* the project's members in the PME rather than the free
 text on the record (`team_leader`, `mentor`, `translators` stay, and the Notion export carries
@@ -1208,14 +1208,14 @@ them). `shema_project_members` is the link, and the form (OBT-520), *Solicitar r
   (the `shema` grant). The regional coordination does not add members (*"por enquanto não"* —
   Karina, 25/sep). A duplicate live membership is a 409 and an unknown account a 422.
 - **A live membership is the session's `equipe`.** `_scope.session_roles` adds it after reading
-  the grants, so a member holding no role anywhere passes the door (§6.7). The form's own
+  the grants, so a member holding no role anywhere passes the door (§6.8). The form's own
   `equipe` grant still does not: only the PME's link counts.
 - **The door holds the member's two reads**: `GET /projects/{id}/members` and `GET /me/projects`.
   `tests/test_shema/test_access.py` pins them in `DOOR_ROUTES`, by method and path, because the
   Admin's `POST` shares the roster's path behind the app gate.
 - **Three readers of a roster, and a type of their own.** The project's region scope, its own
   live members, and the Admin — who reaches every roster because it writes them and holds no
-  region (§6.7). `_scope.roster_projects` is the statement and `RosterReach` its input: not a
+  region (§6.8). `_scope.roster_projects` is the statement and `RosterReach` its input: not a
   `RegionScope`, so the Admin's reach over rosters cannot be handed to the collection or the
   record, and mypy says so. Anybody else gets the §6.1 answer, a 404 indistinguishable from a
   project that does not exist.
@@ -1327,7 +1327,7 @@ routers without touching `app/main.py` and without a second conversation about t
 `app/api/shema/__init__.py` now holds three routers: `router`, which `app/main.py` mounts and
 which carries no dependency of its own; `authenticated`, which carries
 `require_app_access(APP_KEY)` once; and — since OBT-523 — `door`, which carries the PME's door
-and holds `GET /session` (§6.7) and, since OBT-524, the member's two reads (§6.8). **Include your sub-router into `authenticated`.** That is
+and holds `GET /session` (§6.8) and, since OBT-524, the member's two reads (§6.9). **Include your sub-router into `authenticated`.** That is
 what makes the module deny-by-default — a route added by a later issue is refused for an
 account with no Shemá grant whether or not its author wired a guard — and it is a property of
 the file rather than a thing to remember. `router` stays plain so BE-12's two unauthenticated
