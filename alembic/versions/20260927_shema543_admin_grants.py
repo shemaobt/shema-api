@@ -1,13 +1,12 @@
 """the Admin grants: invites that carry regions, and a trail of every region scope change
 
 Revision ID: 20260927_shema543
-Revises: 20260927_shema08
+Revises: 20260927_shema524
 Create Date: 2026-09-27
 
-The parent is `20260927_shema08`, read with `uv run alembic heads` in this worktree on
-27/sep/2026, immediately before this file was written — a measurement, not a value to
-remember (`docs/shema.md` §7.1). OBT-524 and OBT-528 hang their own revisions off the same
-parent; whichever the user merges second re-points its `down_revision`. The id carries the
+The parent was `20260927_shema08` when this file was written (27/sep/2026); on 28/sep, when
+OBT-524 merged first, it was re-pointed to `20260927_shema524`, the head `alembic heads` read
+then — a measurement, not a value to remember (`docs/shema.md` §7.1). The id carries the
 issue number, as `20260927_shema531` does, so two siblings cannot mint the same `shema09`.
 
 Three changes, one issue (OBT-543, the Admin's access surface):
@@ -44,7 +43,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision = "20260927_shema543"
-down_revision = "20260927_shema08"
+down_revision = "20260927_shema524"
 branch_labels = None
 depends_on = None
 
