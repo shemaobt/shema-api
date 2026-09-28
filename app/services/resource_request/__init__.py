@@ -14,6 +14,7 @@ from app.services.resource_request.capabilities import (
     ROLE_CAPABILITIES,
     ROLES,
 )
+from app.services.resource_request.count_project_translations import count_project_translations
 from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.create_fund import create_fund
 from app.services.resource_request.endorse_request import endorse_request
@@ -63,6 +64,7 @@ __all__ = [
     "append_movement",
     "assign_fund",
     "attachment_download_url",
+    "count_project_translations",
     "create_draft",
     "create_fund",
     "endorse_request",

@@ -92,6 +92,7 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
         tpp_name=original.tpp_name,
         tpp_date=original.tpp_date,
         created_by=original.created_by,
+        shema_project_id=original.shema_project_id,
         revision_of_id=snapshot.id,
     )
     db.add(revision)

@@ -62,9 +62,17 @@ def _out(loaded: Loaded, reads_funds: bool) -> RequestOut:
 
 @router.post("/requests", status_code=status.HTTP_201_CREATED)
 async def create_request(
-    draft: RequestDraftIn, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+    draft: RequestDraftIn,
+    user: CanEditRequests,
+    db: Db,
+    reads_funds: ReadsFunds,
+    project_id: Annotated[
+        str | None,
+        Query(description="The PME project the request opens from; checked against membership."),
+    ] = None,
 ) -> RequestOut:
-    request = await service.create_draft(db, draft, author_id=user.id)
+    """``project_id`` rides in the query, beside the document and never inside it (BE-19)."""
+    request = await service.create_draft(db, draft, user, APP_KEY, project_id)
     loaded = await service.get_request(db, request.id, user, APP_KEY)
     return _out(loaded, reads_funds)
 
