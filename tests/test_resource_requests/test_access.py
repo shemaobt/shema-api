@@ -81,7 +81,7 @@ async def test_registering_no_longer_gets_you_in(db_session, rrf_app) -> None:
 
     request = await create_access_request(db_session, user.id, APP_KEY)
 
-    assert request.status != "approved"
+    assert request.status == "pending"
     assert await list_roles(db_session, user.id, APP_KEY) == []
 
 
