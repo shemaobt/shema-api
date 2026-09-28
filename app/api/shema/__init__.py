@@ -53,6 +53,7 @@ from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
 from app.api.shema.intercessor_exit import router as exit_router
 from app.api.shema.intercessors import router as intercessors_router
+from app.api.shema.meetings import router as meetings_router
 from app.api.shema.members import door_router as members_door_router
 from app.api.shema.members import router as members_router
 from app.api.shema.notifications import router as notifications_router
@@ -74,6 +75,7 @@ authenticated.include_router(projects_router)  # BE-05
 authenticated.include_router(health_assessments_router)  # BE-07
 authenticated.include_router(forms_router)  # BE-12
 authenticated.include_router(notifications_router)  # BE-15
+authenticated.include_router(meetings_router)  # BE-10
 authenticated.include_router(members_router)  # OBT-524
 authenticated.include_router(access_router)  # BE-22, OBT-543
 

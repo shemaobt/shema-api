@@ -105,6 +105,7 @@ session's ``equipe`` for an account with a live membership. ``_roster.py`` is th
 pair and the shape one row leaves in; ``add_project_member`` and ``remove_project_member`` are the
 two writers, and removal marks rather than deletes; ``list_project_members`` and
 ``list_my_projects`` are the two reads a member has. ``docs/shema.md`` §6.9 is the design.
+
 **OBT-543 landed the Admin's access surface** — ``/api/shema/access``, where OBT-522's Admin
 grants and revokes the roles of both applications the PME serves and invites whoever has no
 account yet. ``_grant_rules.py`` is its one owner of *what* may be granted and how: the
@@ -114,6 +115,15 @@ other. The services compose rather than reimplement — the platform's ``assign_
 every change), and the form's invite module behind this surface's own gate — and every
 refusal is answered before the first write. ``docs/shema.md``, *The Admin grants*, is the
 contract.
+
+**BE-10 landed the Rhythm's log** - a record that a meeting of one period happened in one
+region, never an agenda. ``log_meeting.py`` derives the period from the day and the meeting's
+cadence and replaces the period's entry rather than adding a second, with the unique constraint
+as the arbiter between two coordinators; ``undo_meeting.py`` deletes one period's entry and
+``list_meeting_log.py`` reads the caller's regions. ``_meeting_log.py`` owns the one rule all
+three ask: the log is read and written by ``_health_audience.py``'s audience - its notes are a
+pastoral reading of a team - inside the caller's region scope, and ``global`` is refused with the
+reason, because every meeting GATE-02 kept is held per region.
 
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
@@ -243,6 +253,7 @@ from app.services.shema.list_grant_changes import list_grant_changes
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_intercessors import list_intercessors
 from app.services.shema.list_invites import list_invites
+from app.services.shema.list_meeting_log import list_meeting_log
 from app.services.shema.list_my_projects import list_my_projects
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
 from app.services.shema.list_project_members import list_project_members
@@ -254,6 +265,7 @@ from app.services.shema.list_unacknowledged_needs import (
     list_unacknowledged_needs,
     unacknowledged_needs,
 )
+from app.services.shema.log_meeting import LoggedMeeting, log_meeting
 from app.services.shema.mark_notifications_read import mark_notifications_read
 from app.services.shema.media_download_url import (
     MediaLink,
@@ -279,6 +291,7 @@ from app.services.shema.set_intercessor_consent import (
     withdraw_intercessor_consent,
 )
 from app.services.shema.set_region_scope import held_regions, set_region_scope
+from app.services.shema.undo_meeting import undo_meeting
 from app.services.shema.update_intercessor import update_intercessor
 from app.services.shema.withdraw_invite import withdraw_invite
 
@@ -300,6 +313,7 @@ __all__ = [
     "ChangesSince",
     "GrantApps",
     "LeavingPerson",
+    "LoggedMeeting",
     "MediaLink",
     "Notice",
     "ProgressSource",
@@ -355,6 +369,7 @@ __all__ = [
     "list_intake_links",
     "list_intercessors",
     "list_invites",
+    "list_meeting_log",
     "list_my_projects",
     "list_notification_panel",
     "list_project_members",
@@ -363,6 +378,7 @@ __all__ = [
     "list_role_changes",
     "list_submissions",
     "list_unacknowledged_needs",
+    "log_meeting",
     "log_reference",
     "mark_notifications_read",
     "material_download_url",
@@ -413,6 +429,7 @@ __all__ = [
     "shared_prayer_text",
     "storage_key",
     "unacknowledged_needs",
+    "undo_meeting",
     "unwritable_fields",
     "update_intercessor",
     "validate_submission",
