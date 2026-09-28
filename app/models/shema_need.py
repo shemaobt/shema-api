@@ -1,8 +1,9 @@
 """What a client writes about a need, and what one need looks like once it leaves.
 
 ``app/models/shema_record.py`` holds :class:`~app.models.shema_record.ShemaNeedItem`, which is
-one need **on the record** — a coordination surface, carrying the truth, read by the person
-who filled it in. This file holds the other two halves BE-08 owns:
+one need **on the record** — read inside the console by whoever may open the record, and not
+reduced there, because a need carries no field of a place. This file holds the other two
+halves BE-08 owns:
 
 * :class:`ShemaNeedWrite`, what arrives in the record's ``PATCH`` under ``needsItems``. There
   is no needs endpoint in wave 1 (``docs/shema.md`` §5.4, FE-44 §9.5) and this is why there

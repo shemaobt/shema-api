@@ -253,9 +253,29 @@ async def collection(db_session, shema_app):
 
 @pytest.fixture()
 async def reader(db_session, shema_app):
-    """A ``globalStrategist``: every region, no admin flag, nothing else granted."""
+    """A ``globalStrategist``: every region, no admin flag, nothing else granted.
+
+    Since OBT-528 this reader is **coordination** and reads a sensitive project's truth, so the
+    tests below that prove the reduction read as :func:`lab_reader` instead.
+    """
     return await make_scoped_user(
         db_session, shema_app, email="global@shema.test", role_key="globalStrategist"
+    )
+
+
+@pytest.fixture()
+async def lab_reader(db_session, shema_app):
+    """An ``obtLab`` account over all seven regions: the whole collection, read as ``other``.
+
+    The same reach as :func:`reader` and a different reader — so the reduction the tests below
+    prove is the one every reader who is not coordination gets, measured over the same rows.
+    """
+    return await make_scoped_user(
+        db_session,
+        shema_app,
+        email="lab@shema.test",
+        role_key="obtLab",
+        regions=list(ShemaRegionKey),
     )
 
 
@@ -529,20 +549,24 @@ async def test_a_regional_scope_reaches_the_counts_and_not_only_the_results(
 ) -> None:
     """**The DoD's fourth line, first half.** A count is the cheapest leak in the module.
 
-    A coordinator scoped to Africa is told about two projects and about *two of everything
+    An account scoped to Africa is told about two projects and about *two of everything
     else*: the continent facet names Africa and nothing beside it, the team facet names the
-    two African bases and no others, and ``total`` is the size of their reach rather than of
-    the table. A number does not look like data, which is why a query written for a badge is
-    the one nobody thinks to scope.
+    African bases it may read and no others, and ``total`` is the size of their reach rather
+    than of the table. A number does not look like data, which is why a query written for a
+    badge is the one nobody thinks to scope.
+
+    The account is ``obtLab`` and not ``coordinator``: the scope is the same, and since OBT-528
+    Africa's coordinator reads the withheld project's base — the point here is the region, and
+    the reader is ``test_reader.py``'s.
     """
-    coordinator = await make_scoped_user(
+    regional = await make_scoped_user(
         db_session,
         shema_app,
         email="africa@shema.test",
-        role_key="coordinator",
+        role_key="obtLab",
         regions=[ShemaRegionKey.AFRICA],
     )
-    page = await fetch(client, db_session, coordinator)
+    page = await fetch(client, db_session, regional)
 
     assert set(ids(page)) == {"coptic-delta", "hausa-north"}
     assert page["total"] == 2
@@ -555,9 +579,7 @@ async def test_a_regional_scope_reaches_the_counts_and_not_only_the_results(
     # place the card beside it does not.
     assert set(page["counts"]["groups"]["team"]) == {"YWAM Khartoum"}
 
-    asked_for_another_region = await fetch(
-        client, db_session, coordinator, continent="south-america"
-    )
+    asked_for_another_region = await fetch(client, db_session, regional, continent="south-america")
     assert asked_for_another_region["items"] == []
     assert asked_for_another_region["counts"]["groups"]["continent"] == {"africa": 2}
 
@@ -582,21 +604,26 @@ async def test_a_regional_role_with_no_region_granted_reaches_nothing(
 
 
 async def test_the_sensitive_country_rule_reaches_the_counts_and_not_only_the_results(
-    client, db_session, collection, reader
+    client, db_session, collection, reader, lab_reader
 ) -> None:
     """**The DoD's fourth line, second half** — and the sharpest form of *they agree*.
 
-    ``coptic-delta`` is in Egypt and flagged. Its card says ``africa`` where its country would
-    be, its base is blank, and it plots at the region's centroid. The **country facet says the
-    same thing**: there is no ``Egypt`` key to count it under, it is counted under ``africa``,
-    and filtering by ``country=Egypt`` returns nothing while ``country=africa`` returns it. A
-    facet cannot name a place the payload beside it withholds, because it is reading that
-    payload.
+    ``coptic-delta`` is in Egypt and flagged. Read by anybody who is not coordination, its card
+    says ``africa`` where its country would be, its base is blank, and it plots at the region's
+    centroid. The **country facet says the same thing**: there is no ``Egypt`` key to count it
+    under, it is counted under ``africa``, and filtering by ``country=Egypt`` returns nothing
+    while ``country=africa`` returns it. A facet cannot name a place the payload beside it
+    withholds, because it is reading that payload.
+
+    The notice of how many were withheld is coordination's (GATE-04, OBT-528): this reader gets
+    ``null`` and the ``globalStrategist`` over the same collection gets the count — while the
+    card's own marker and the ``sensitive`` facet say the same to both.
     """
-    page = await fetch(client, db_session, reader)
+    page = await fetch(client, db_session, lab_reader)
     card = next(item for item in page["items"] if item["id"] == "coptic-delta")
 
     assert card["locationWithheld"] is True
+    assert card["readAs"] == "other"
     assert card["location"] == "africa"
     assert card["team"] == ""
     assert card["coords"] == [20.0, 5.0]
@@ -607,10 +634,14 @@ async def test_the_sensitive_country_rule_reaches_the_counts_and_not_only_the_re
     assert countries["africa"] == 1
     assert countries["Sudan"] == 1, "an unflagged African project keeps its own country"
 
-    assert (await fetch(client, db_session, reader, country="Egypt"))["matched"] == 0
-    assert ids(await fetch(client, db_session, reader, country="africa")) == ["coptic-delta"]
+    assert (await fetch(client, db_session, lab_reader, country="Egypt"))["matched"] == 0
+    assert ids(await fetch(client, db_session, lab_reader, country="africa")) == ["coptic-delta"]
     assert page["counts"]["groups"]["sensitive"] == {"yes": 1, "no": 8}
-    assert page["locationsWithheld"] == 1
+    assert page["locationsWithheld"] is None
+
+    coordination = await fetch(client, db_session, reader)
+    assert coordination["locationsWithheld"] == 1
+    assert coordination["counts"]["groups"]["sensitive"] == {"yes": 1, "no": 8}
 
 
 async def test_a_withheld_note_is_absent_rather_than_zero(
@@ -626,17 +657,18 @@ async def test_a_withheld_note_is_absent_rather_than_zero(
 
 
 async def test_the_search_cannot_be_used_to_confirm_a_withheld_country(
-    client, db_session, collection, reader
+    client, db_session, collection, lab_reader
 ) -> None:
     """A search is an output path and the cheapest one to forget.
 
     It returns no location at all — it returns whether a query *matched*, which a caller can
     read a country off. The haystack ``_redaction.py`` allows for a withheld project holds
-    nothing it is not already willing to say in a payload.
+    nothing it is not already willing to say in that reader's payload — and a reader who is not
+    coordination is given the region (OBT-528; coordination finds it by the place it reads).
     """
-    assert (await fetch(client, db_session, reader, q="Egypt"))["matched"] == 0
-    assert ids(await fetch(client, db_session, reader, q="coptic")) == ["coptic-delta"]
-    assert ids(await fetch(client, db_session, reader, q="Sudan")) == ["hausa-north"]
+    assert (await fetch(client, db_session, lab_reader, q="Egypt"))["matched"] == 0
+    assert ids(await fetch(client, db_session, lab_reader, q="coptic")) == ["coptic-delta"]
+    assert ids(await fetch(client, db_session, lab_reader, q="Sudan")) == ["hausa-north"]
 
 
 async def test_the_window_is_a_window_over_an_ordered_set_and_the_counts_are_not_paged(
@@ -697,7 +729,7 @@ async def test_the_five_orders_are_the_screens_five_orders(
 
 
 async def test_a_blank_sorts_last_and_a_withheld_base_is_a_blank(
-    client, db_session, collection, reader
+    client, db_session, collection, lab_reader
 ) -> None:
     """``blanksLast``, and the record that makes it interesting here.
 
@@ -705,9 +737,10 @@ async def test_a_blank_sorts_last_and_a_withheld_base_is_a_blank(
     screen, which is where nobody is looking for them. ``coptic-delta`` has a base — *YWAM
     Egypt* — and the payload does not, because the base names the place (FE-44 §8.1 rule 3).
     So the order is over what the caller was actually given, which is the only order that can
-    agree with what they see.
+    agree with what they see — read here by a reader who is not coordination, the one given the
+    blank (OBT-528).
     """
-    page = await fetch(client, db_session, reader, sort="team")
+    page = await fetch(client, db_session, lab_reader, sort="team")
     assert ids(page)[0] == "guarani-mbya"
     assert ids(page)[-1] == "coptic-delta"
     assert page["items"][-1]["team"] == ""

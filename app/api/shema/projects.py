@@ -29,7 +29,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 
-from app.api.shema._deps import CurrentUser, Db, Scope
+from app.api.shema._deps import CurrentUser, Db, Reading, Scope
 from app.core.exceptions import ERROR_CODE_CONFLICT, ValidationError
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.models.shema_projects import ShemaProjectPage, ShemaProjectQuery
@@ -58,8 +58,15 @@ router = APIRouter()
 ProjectQuery = Annotated[ShemaProjectQuery, Query()]
 
 
+#: One URL, two readers, two bodies — the collection and the record alike, since OBT-528 builds
+#: both for the caller's reader: nothing between the server and the reader may keep one.
+PER_READER_CACHE_CONTROL = "private, no-store"
+
+
 @router.get("/projects", response_model=ShemaProjectPage)
-async def list_projects(db: Db, scope: Scope, query: ProjectQuery) -> ShemaProjectPage:
+async def list_projects(
+    db: Db, scope: Scope, reading: Reading, query: ProjectQuery, response: Response
+) -> ShemaProjectPage:
     """Every project the caller's role and region allow, filtered, counted, ordered and paged.
 
     **The day is read here and injected**, so that everything below is a pure function of it —
@@ -71,8 +78,16 @@ async def list_projects(db: Db, scope: Scope, query: ProjectQuery) -> ShemaProje
     day is knowable and matters to the year an ETEN credit falls in; a read has no actor's
     timezone to consult and inventing a parameter for one would be an API surface serving a
     one-day edge on a threshold measured in months.
+
+    Each card is built for the caller's reader (OBT-528): a coordination reader's card carries
+    the truth of a sensitive place and everybody else's the region — the service decides, from
+    the ``Reading`` handed down here — so one URL answers two bodies, and the page carries
+    :data:`PER_READER_CACHE_CONTROL` for the reason the record does.
     """
-    return await browse_projects(db, scope, query, today=datetime.now(UTC).date())
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
+    return await browse_projects(
+        db, scope, query, readership=reading, today=datetime.now(UTC).date()
+    )
 
 
 #: The header a client states its own calendar day in — see :func:`_local_day`.
@@ -184,29 +199,42 @@ def _with_etag(record: ShemaProjectRecord, response: Response) -> ShemaProjectRe
     ``version`` is not one of FE-44's 73 keys and a 74th added to a frozen shape is how a
     contract stops being one — so the value the next save has to quote travels where HTTP
     already keeps it.
+
+    **And no cache may keep it** (OBT-528): one version of one record now reads as the truth to
+    coordination and as the region to everybody else, so a stored body is somebody's body. The
+    ``ETag`` stays what it is for — the version ``If-Match`` quotes — and
+    :data:`PER_READER_CACHE_CONTROL` keeps it from being a cache validator across readers.
     """
     response.headers["ETag"] = _etag(record.version)
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return record
 
 
 @router.get("/projects/{project_id}", response_model=ShemaProjectRecord)
 async def read_project(
-    project_id: str, db: Db, scope: Scope, user: CurrentUser, response: Response
+    project_id: str,
+    db: Db,
+    scope: Scope,
+    reading: Reading,
+    user: CurrentUser,
+    response: Response,
 ) -> ShemaProjectRecord:
     """One record, whole — what the ficha's ten tabs read, and the version its saves quote.
 
-    **This read carries the true location**, and it is the only one in the module that does:
-    FE-44 §9.0 states the split in a line — *the project read itself carries the true location,
-    it is a coordination surface* — and §8.1 rule 5 gives the reason, which is that hiding the
-    country from the record's own author is data loss rather than privacy. The shape therefore
-    does not inherit ``LeavingShape``, and ``tests/test_shema/test_privacy_owners.py`` carries
-    this route in ``COORDINATION_ROUTES`` so the exemption is a line somebody wrote.
+    **Built for the caller's reader** (OBT-528). BE-06 served the true place to anybody allowed
+    to open the record, on FE-44 §9.0's line that the project read is a coordination surface;
+    GATE-04 gave that truth to coordination alone. So a coordination reader gets the record as
+    it is and everybody else gets a sensitive project's region, inclusive na ficha — no route
+    in the module is exempt from the boundary, and ``tests/test_shema/test_privacy_owners.py``
+    names the routes that take the caller's reader in ``READER_ROUTES``.
 
     A project outside the caller's region is refused exactly as one that does not exist is —
     the two are indistinguishable on the wire on purpose (``app/services/shema/_scope.py``),
     and the log is what tells them apart for whoever has to investigate.
     """
-    record = await read_record(db, scope, project_id, user=user, today=datetime.now(UTC).date())
+    record = await read_record(
+        db, scope, project_id, readership=reading, user=user, today=datetime.now(UTC).date()
+    )
     return _with_etag(record, response)
 
 
@@ -215,6 +243,7 @@ async def create_record(
     payload: ShemaProjectCreate,
     db: Db,
     scope: Scope,
+    reading: Reading,
     user: CurrentUser,
     response: Response,
     local_day: Annotated[str | None, Header(alias=LOCAL_DAY_HEADER)] = None,
@@ -229,7 +258,7 @@ async def create_record(
     project = await create_project(
         db, scope, payload, user=user, day=_local_day(local_day, utc_today=today)
     )
-    return _with_etag(await build_record(db, project, today=today), response)
+    return _with_etag(await build_record(db, project, readership=reading, today=today), response)
 
 
 @router.patch(
@@ -242,6 +271,7 @@ async def patch_record(
     payload: ShemaProjectUpdate,
     db: Db,
     scope: Scope,
+    reading: Reading,
     user: CurrentUser,
     response: Response,
     if_match: Annotated[str, Header(alias="If-Match", description=_IF_MATCH)],
@@ -254,6 +284,10 @@ async def patch_record(
     overwrite inside one person's own payload, which no version guard between people can catch.
     Absent means unchanged, all the way down.
 
+    **And whatever the tab owns, the reader may not own all of it** (OBT-528): a reader who is
+    not coordination is refused the place and the flag — and, on a withheld record, the base and
+    the contacts it was handed empty — with a 403 naming the fields, before the version is read.
+
     The response is the **recomputed** record, including any progress history entry the save
     produced, because FE-44 §9.3 asks for exactly that: the record screen renders what the save
     actually wrote, not what it sent.
@@ -265,10 +299,11 @@ async def patch_record(
             scope,
             project_id,
             payload,
+            readership=reading,
             user=user,
             expected_version=_expected_version(if_match),
             day=_local_day(local_day, utc_today=today),
         )
     except RecordVersionConflict as conflict:
         return _conflict(conflict)
-    return _with_etag(await build_record(db, project, today=today), response)
+    return _with_etag(await build_record(db, project, readership=reading, today=today), response)
