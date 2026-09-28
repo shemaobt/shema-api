@@ -527,10 +527,16 @@ async def resolve_elsewhere(
 async def replies_for(
     db: AsyncSession, device_id: str, *, project_id: str | None
 ) -> list[IRQuestion]:
-    """Answers this device has not heard yet, from any session it ever held.
+    """Answers this device has not heard yet, from any session it ever held, in its project.
 
     A facilitator may answer hours later, when that passage is long closed. Scoping the
     reply to its session would drop it silently.
+
+    The project is the third filter, after the device and the unheard answer, and it reads on
+    the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
+    a caller that names one lists that project's questions and the ones that name none.
+    ``project_id=None`` is the shared key, which names no project, and it turns the rule off
+    and keeps the list by device.
     """
     query = (
         select(IRQuestion)
