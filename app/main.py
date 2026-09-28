@@ -131,7 +131,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         # Neither is CORS-safelisted: without this a browser client cannot read them at all.
         # The sound-necklace autosave version guard rides on ETag; X-Tts-Cached is what makes
-        # TTS cache warming observable.
+        # TTS cache warming observable. The range headers are left out on purpose; the test
+        # that pins this list says why.
         expose_headers=["ETag", "X-Tts-Cached"],
     )
 
