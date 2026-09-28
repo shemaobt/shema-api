@@ -14,7 +14,9 @@ async def describe_invite(db: AsyncSession, raw_token: str) -> InviteDescription
     This is the public endpoint's whole content, deliberately thin: enough for
     the front to route the person — ``account_exists`` False sends them to
     signup, True to login — and to say plainly when a link is expired, used or
-    revoked. It never grants anything and never returns the token back.
+    revoked. It never grants anything and never returns the token back. The
+    regions a Shemá invite carries are named too (OBT-543), so the page the link
+    opens can say what accepting gives.
     """
     token_hash = hash_refresh_token(raw_token)
     stmt = select(AccessInvite).where(AccessInvite.token_hash == token_hash)
@@ -35,4 +37,5 @@ async def describe_invite(db: AsyncSession, raw_token: str) -> InviteDescription
         role_key=role.role_key if role else "",
         role_label=role.label if role else "",
         account_exists=account_exists,
+        region_keys=list(invite.region_keys or []),
     )

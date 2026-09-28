@@ -15,7 +15,7 @@ No index on ``expires_at``: nothing reads by it. The two foreign-key indexes ser
 cascades, and the unique one on ``code_hash`` serves the exchange's lookup.
 
 Revision ID: 20260927_acc21
-Revises: 20260917_0001
+Revises: 20260927_shema543
 Create Date: 2026-09-27 00:00:00.000000
 """
 
@@ -26,7 +26,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260927_acc21"
-down_revision: str | None = "20260917_0001"
+down_revision: str | None = "20260927_shema543"
 branch_labels: str | None = None
 depends_on: str | None = None
 

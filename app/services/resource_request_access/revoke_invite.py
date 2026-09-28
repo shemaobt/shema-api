@@ -1,12 +1,10 @@
-from datetime import UTC, datetime
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
-from app.db.models.auth import AccessInvite, Role, User
+from app.db.models.auth import User
 from app.models.resource_request_access import InviteResponse
 from app.services.resource_request_access._gate import assert_can_revoke
 from app.services.resource_request_access._invite_status import invite_status
+from app.services.resource_request_access.invite_store import find_invite, recall_invite
 
 
 async def revoke_invite(db: AsyncSession, actor: User, invite_id: str) -> InviteResponse:
@@ -19,26 +17,12 @@ async def revoke_invite(db: AsyncSession, actor: User, invite_id: str) -> Invite
     """
     assert_can_revoke(actor)
 
-    invite = await db.get(AccessInvite, invite_id)
-    if not invite:
-        raise NotFoundError("Invitation not found.")
-
-    if invite.accepted_at is not None:
-        raise ConflictError(
-            "This invitation was already accepted; revoke the granted role instead."
-        )
-
-    if invite.revoked_at is None:
-        invite.revoked_at = datetime.now(UTC)
-        invite.revoked_by = actor.id
-        await db.commit()
-        await db.refresh(invite)
-
-    role = await db.get(Role, invite.role_id)
+    found = await find_invite(db, invite_id)
+    invite = await recall_invite(db, actor, found.invite)
     return InviteResponse(
         id=invite.id,
         email=invite.email,
-        role_key=role.role_key if role else "",
+        role_key=found.role_key,
         status=invite_status(invite),
         created_at=invite.created_at,
         expires_at=invite.expires_at,

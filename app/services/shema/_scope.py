@@ -34,21 +34,28 @@ joins against.
 
 **Reads and writes take the same value.** A regional holder who may read a region may write
 it; the product has no third answer, so nothing here offers one.
+
+**A project membership is the second kind of reach, and it lives here for the first paragraph's
+reason** (OBT-524, ``docs/shema.md`` §6.9). ``member_projects`` and ``roster_projects`` select
+``ShemaProject`` too, so a query that could hand a member somebody else's project is no more a
+thing a service can write by forgetting something than one that could hand a region's.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Collection, Sequence
+from collections.abc import Set as AbstractSet
 from typing import NamedTuple
 
-from sqlalchemy import ColumnElement, Select, false, select, true
+from sqlalchemy import ColumnElement, Select, false, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
+from app.db.models.shema_project_member import ShemaProjectMember
 from app.db.models.shema_region import ShemaUserRegion
 from app.services import authorization_service
 
@@ -66,18 +73,54 @@ RESOURCE_CIRCLE_ROLE = "resourceCircle"
 #: ``shema_user_regions`` reaches nothing — see :func:`region_scope`.
 REGIONAL_ROLES = (COORDINATOR_ROLE, OBT_LAB_ROLE, RESOURCE_CIRCLE_ROLE)
 
-#: The four Shemá role keys, in FE-44's own order — the ``SessionRole`` union of
-#: ``src/types/role.ts``, read verbatim rather than translated (``docs/shema.md`` §2.3).
-#:
-#: **That order is also widest-first, so it is the precedence** :func:`role_from` **reads**,
-#: and the two uses are one tuple on purpose. ``GET /api/shema/session`` owes the frontend
-#: exactly one ``SessionRole`` while an account legitimately holds more than one grant — a
-#: regional ``coordinator`` who is also ``resourceCircle`` is the example ``docs/shema.md``
-#: §4.2 uses for why grants go through ``grant_app_role`` and never through
-#: ``scripts/grant_app_role.py``. Answering by a written order is what keeps two calls from
-#: answering differently; a second tuple stating the same four keys is what would let the
-#: seed and the guard disagree.
+#: The four Shemá role keys, in FE-44's own order — the four personas the console's screens
+#: were drawn for, read verbatim from the frontend rather than translated (``docs/shema.md``
+#: §2.3). The seed, the four role aliases and their probes read this tuple, and it is also
+#: the head of :data:`ROLE_PRECEDENCE`, which is built from it rather than restating it: a
+#: second tuple naming the same four keys is what would let the seed and the session
+#: disagree.
 ROLE_KEYS = (GLOBAL_ROLE, COORDINATOR_ROLE, OBT_LAB_ROLE, RESOURCE_CIRCLE_ROLE)
+
+#: The Admin of OBT-522 — **one role for both apps**, seeded in ``shema`` and in
+#: ``resource-request-form`` by ``20260927_shema08`` and labelled *"Admin da plataforma"*.
+#: It is **not** ``users.is_platform_admin``, the Tripod installation's admin that passes every
+#: guard: this is a role somebody is granted — by OBT-543's surface, in both apps. It has no seat in
+#: the org chart and no region (:func:`scope_from_roles`).
+ADMIN_ROLE = "admin"
+
+#: The form's two privileged seats, spelled as the form spells them (``capabilities.ts``).
+#: Held in ``resource-request-form``, either one opens the PME's door on its own — *"todos da
+#: mesa vão ter conta no PME com a função já definida"*, 25/set — and neither reaches a region.
+GESTOR_ROLE = "gestor"
+MESA_ROLE = "mesa"
+
+#: **A project membership, not a grant.** OBT-522 retires ``equipe`` as a form role, and since
+#: OBT-524 the session answers it for an account that is a live member of at least one project
+#: (``shema_project_members``, :func:`holds_membership`) — which is what lets a member with no
+#: role anywhere through the PME's door. The form's own ``equipe`` grant — which
+#: ``auto_approve`` hands to everybody who registers there — still does not count
+#: (:data:`FORM_DOOR_ROLES`): only the PME's link does.
+EQUIPE_ROLE = "equipe"
+
+#: What the ``shema`` app seeds, and which of its grants the session counts.
+SHEMA_APP_ROLES = (*ROLE_KEYS, ADMIN_ROLE)
+
+#: Which of the form's grants the session counts. **Not** its ``admin``: every guard below the
+#: door — ``AdminUser``, ``Scope``, the app gate on every other route — reads the ``shema``
+#: grant, so a session answering *admin* off the form's row would name a power every admin
+#: route then refuses. ``equipe`` is the form's floor and ``lider`` has no account since
+#: 22/set; neither is a door.
+FORM_DOOR_ROLES = (GESTOR_ROLE, MESA_ROLE)
+
+#: The session's whole vocabulary, in the order ``roles`` is answered and ``role`` is picked.
+#:
+#: **The four Shemá roles come first**, widest-first as before, so every account that reached
+#: the console before this list existed keeps the ``role`` it had, byte for byte — ``role`` is
+#: kept on the wire only so no screen breaks during the transition, and an account holding
+#: ``globalStrategist``, ``admin`` and ``gestor`` still answers ``globalStrategist``. The new
+#: keys follow widest-first among themselves (Admin, Gestor, Mesa — OBT-522's hierarchy), and
+#: the reserved ``equipe`` closes the list. The frontend's ``SESSION_ROLES`` is this tuple.
+ROLE_PRECEDENCE = (*ROLE_KEYS, ADMIN_ROLE, GESTOR_ROLE, MESA_ROLE, EQUIPE_ROLE)
 
 
 class RegionScope(NamedTuple):
@@ -95,9 +138,9 @@ class RegionScope(NamedTuple):
 
     #: Every region. A platform admin, or a holder of ``globalStrategist``.
     global_: bool
-    #: The regions named in ``shema_user_regions``. **Empty and not global reaches
-    #: nothing**, which is this module's fail-closed floor rather than an accident of the
-    #: query — see :func:`region_scope`.
+    #: The regions named in ``shema_user_regions``, for an account holding a regional role.
+    #: **Empty and not global reaches nothing**, which is this module's fail-closed floor
+    #: rather than an accident of the query — see :func:`region_scope`.
     regions: frozenset[str]
 
     @property
@@ -140,13 +183,15 @@ async def region_scope(db: AsyncSession, user: User, app_key: str) -> RegionScop
     on approval and grants no region, so every approved account would land globally scoped
     by default. So a regional role with no row reaches nothing, and making such an account
     global is an explicit act — name its regions, or grant it ``globalStrategist`` as well.
+    The converse holds too: a row reaches nothing without a regional role to be the reach of
+    (:func:`scope_from_roles`), so the ``admin`` role gains no region by holding one.
     """
     if user.is_platform_admin:
         return RegionScope(global_=True, regions=frozenset())
     return await scope_from_roles(db, user, await granted_roles(db, user.id, app_key))
 
 
-async def scope_from_roles(db: AsyncSession, user: User, granted: set[str]) -> RegionScope:
+async def scope_from_roles(db: AsyncSession, user: User, granted: AbstractSet[str]) -> RegionScope:
     """:func:`region_scope`, for a caller that has already read the account's roles.
 
     ``GET /api/shema/session`` answers ``role`` and ``regionScope`` from one account, and
@@ -158,9 +203,18 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: set[str]) -> R
     redundant: this is a second public entry point, and one that answered a regional scope
     for an administrator because its caller happened not to check first would be a guard
     with a way around it.
+
+    **A region row is the reach of a regional role, and of nothing else** (OBT-523). An
+    account holding no regional role reaches nothing whatever rows it has — without reading
+    the table. That is what keeps ``admin``, ``gestor`` and ``mesa`` out of the region axis as
+    a property rather than an accident of data: nothing deletes an account's rows when its
+    regional role is revoked, and an org-chart seat or an operator can leave one behind. For
+    the three regional roles nothing changes.
     """
     if user.is_platform_admin or GLOBAL_ROLE in granted:
         return RegionScope(global_=True, regions=frozenset())
+    if not any(role in granted for role in REGIONAL_ROLES):
+        return RegionScope(global_=False, regions=frozenset())
 
     rows = await db.execute(
         select(ShemaUserRegion.region_key).where(ShemaUserRegion.user_id == user.id)
@@ -187,6 +241,12 @@ async def holders_reaching(
 
     Order is preserved, because the caller's order is ``list_role_holders``'s — by e-mail, so
     a recipient list is stable between calls and a test can assert one.
+
+    **Precondition: ``users`` hold a regional or the global role.** :func:`scope_from_roles`
+    refuses a region row to an account with no regional role; this function does not re-read
+    roles to say the same, because every caller passes holders of named regional roles
+    (``_needs.py``'s ``URGENT_NEED_ROLES``) and a second read per list is the cost it exists
+    to avoid.
     """
     if not users:
         return []
@@ -235,6 +295,9 @@ async def scopes_for(
     Every account in ``users`` gets an entry, including the ones with no row at all: the
     fail-closed floor of :func:`region_scope` is an empty, non-global scope and not a missing key,
     so a caller cannot read *reaches nothing* as *not answered*.
+
+    Same precondition as :func:`holders_reaching`: ``users`` hold a regional or the global role
+    (``_health_audience.py``'s ``HEALTH_AUDIENCE``), which is why a row here is read as reach.
     """
     by_user: dict[str, set[str]] = {}
     if users:
@@ -354,13 +417,113 @@ def refuse_out_of_scope(
     return NotFoundError("Project not found")
 
 
-def role_from(granted: set[str]) -> str | None:
-    """The one ``SessionRole`` to answer for an account that may hold several.
+async def session_roles(
+    db: AsyncSession, user_id: str, *, app_key: str, form_app_key: str
+) -> tuple[str, ...]:
+    """The roles ``GET /api/shema/session`` answers, from **one** read of both apps' grants.
 
-    Widest first, off :data:`ROLE_KEYS`, whose docstring carries the argument.
+    ``list_roles`` asked without an app key answers every live grant the account holds, so
+    the door and the body of the session are one query rather than one per app — and, being
+    the same value, they cannot disagree about who got in. Each grant counts only from the
+    app it belongs to: :data:`SHEMA_APP_ROLES` from ``app_key`` and :data:`FORM_DOOR_ROLES`
+    from ``form_app_key``. A key another product happens to share — six of them seed an
+    ``admin`` — is somebody else's role and never reaches this list.
 
-    ``None`` when the account holds no Shemá role at all, which the session endpoint cannot
-    see — ``require_app_access`` refuses first — but a service called from anywhere else
-    can, and answering a role nobody granted is the wrong half to guess on.
+    **And one read of the memberships** (OBT-524): a live row in ``shema_project_members``
+    adds :data:`EQUIPE_ROLE`, which is how a project member holding no grant at all passes the
+    door to the two reads a member has. It is not a grant and ``list_roles`` does not see it,
+    so it is a second query — but still one per request, whichever of the door's routes asked.
+
+    Read fresh, like :func:`granted_roles`, and for the same half: the session is asked once
+    per sign-in and decides what the console believes it may show.
     """
-    return next((role for role in ROLE_KEYS if role in granted), None)
+    counted = {app_key: SHEMA_APP_ROLES, form_app_key: FORM_DOOR_ROLES}
+    pairs = await authorization_service.list_roles(db, user_id)
+    held = {role for app, role in pairs if role in counted.get(app, ())}
+    if await holds_membership(db, user_id):
+        held.add(EQUIPE_ROLE)
+    return roles_from(held)
+
+
+def roles_from(granted: AbstractSet[str]) -> tuple[str, ...]:
+    """Every key of :data:`ROLE_PRECEDENCE` in ``granted``, in that order.
+
+    A set and not a sequence on purpose: a ``str`` is a sequence of strings, and a caller that
+    passed an app key by mistake would get the letters of ``"shema"`` checked one by one.
+    """
+    return tuple(role for role in ROLE_PRECEDENCE if role in granted)
+
+
+def role_from(granted: AbstractSet[str]) -> str | None:
+    """The one role the session still answers beside the list — **transitional** (OBT-523).
+
+    The first of :func:`roles_from`: :data:`ROLE_PRECEDENCE` carries why the four Shemá roles
+    lead. ``None`` when the account holds none of the vocabulary, which the session endpoint
+    only answers to an installation admin with no grant — the door refuses everybody else
+    first — and answering a role nobody granted is the wrong half to guess on.
+    """
+    return next(iter(roles_from(granted)), None)
+
+
+# --- the member's reach (OBT-524) -------------------------------------------------------------
+
+
+def _live_memberships(user_id: str) -> Select[tuple[str]]:
+    """The ids of the projects ``user_id`` is a live member of."""
+    return select(ShemaProjectMember.project_id).where(
+        ShemaProjectMember.user_id == user_id,
+        ShemaProjectMember.removed_at.is_(None),
+    )
+
+
+async def holds_membership(db: AsyncSession, user_id: str) -> bool:
+    """Whether ``user_id`` is a live member of any project — the session's :data:`EQUIPE_ROLE`."""
+    found = await db.execute(_live_memberships(user_id).limit(1))
+    return found.scalar_one_or_none() is not None
+
+
+def member_projects(user_id: str) -> Select[tuple[ShemaProject]]:
+    """The projects ``user_id`` is a live member of — what ``GET /api/shema/me/projects`` lists.
+
+    **A membership is not a region, and nothing here composes it into**
+    :func:`visible_projects`. A member reaches their projects' ids and names and their rosters;
+    the collection, the counts and the record stay where the region scope puts them, so a member
+    with no regional role reaches no other project — OBT-524's DoD, as a property of there being
+    no statement that could. What else a member is shown of their own project is OBT-544's to
+    decide, and composing this statement is how it would.
+    """
+    return select(ShemaProject).where(ShemaProject.id.in_(_live_memberships(user_id)))
+
+
+class RosterReach(NamedTuple):
+    """How far a caller reaches over the projects' **rosters** — a type of its own, on purpose.
+
+    Three readers and no fourth: the caller's region ``scope``, their own live memberships, and
+    the Admin, who reaches every roster. Membership is the Admin's to write (OBT-522, *só o admin
+    escreve*), and the Admin reaches no region (OBT-523): confined to the regions it holds, the one
+    role that writes rosters could write none.
+
+    **Not a** :class:`RegionScope`, and that is the guard. A global ``RegionScope`` handed to the
+    Admin would be one wrong annotation away from ``visible_projects``, ``read_record`` or
+    ``browse_projects`` — the whole collection and every record for an account that reaches no
+    region. A ``RosterReach`` cannot be passed to any of them, and mypy says so.
+    """
+
+    #: The caller's region scope, exactly as :func:`scope_from_roles` answered it.
+    scope: RegionScope
+    #: Whether the caller holds ``admin`` in ``shema`` — every roster, and nothing more.
+    admin: bool
+
+
+def roster_projects(reach: RosterReach, user_id: str) -> Select[tuple[ShemaProject]]:
+    """The projects whose members this caller may read — or, for the Admin, write.
+
+    Whoever the scope reaches, plus the projects ``user_id`` is a live member of, plus every
+    project for the Admin. A project outside all three is absent, and its callers refuse it as
+    :func:`refuse_out_of_scope` does — the same 404 an id that does not exist gets.
+    """
+    if reach.admin:
+        return select(ShemaProject)
+    return select(ShemaProject).where(
+        or_(within_scope(reach.scope), ShemaProject.id.in_(_live_memberships(user_id)))
+    )

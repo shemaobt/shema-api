@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import RoleError
-from app.db.models.auth import AccessInvite, Role, User, UserAppRole
+from app.db.models.auth import Role, User, UserAppRole
 from app.models.resource_request_access import (
     AccessAssignmentResponse,
     AccessOverviewResponse,
@@ -11,6 +11,7 @@ from app.models.resource_request_access import (
 from app.services.authorization.get_app_by_key import get_app_by_key
 from app.services.resource_request_access._gate import assert_can_grant
 from app.services.resource_request_access._invite_status import invite_status
+from app.services.resource_request_access.invite_store import find_invites
 
 
 async def list_access(db: AsyncSession, actor: User, app_key: str) -> AccessOverviewResponse:
@@ -50,23 +51,17 @@ async def list_access(db: AsyncSession, actor: User, app_key: str) -> AccessOver
         for assignment, email, display_name, role_key in (await db.execute(grants_stmt)).all()
     ]
 
-    invites_stmt = (
-        select(AccessInvite, Role.role_key)
-        .join(Role, Role.id == AccessInvite.role_id)
-        .where(AccessInvite.app_id == app.id, AccessInvite.accepted_at.is_(None))
-        .order_by(AccessInvite.created_at)
-    )
     invites = [
         InviteResponse(
-            id=invite.id,
-            email=invite.email,
-            role_key=role_key,
-            status=invite_status(invite),
-            created_at=invite.created_at,
-            expires_at=invite.expires_at,
-            created_by=invite.created_by,
+            id=row.invite.id,
+            email=row.invite.email,
+            role_key=row.role_key,
+            status=invite_status(row.invite),
+            created_at=row.invite.created_at,
+            expires_at=row.invite.expires_at,
+            created_by=row.invite.created_by,
         )
-        for invite, role_key in (await db.execute(invites_stmt)).all()
+        for row in await find_invites(db, [app_key])
     ]
 
     return AccessOverviewResponse(grants=grants, invites=invites)

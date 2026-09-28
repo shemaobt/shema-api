@@ -8,14 +8,22 @@ oversight.
 This package is a gate built *beside* ``assert_can_manage_roles``, not a change
 to it. That predicate is shared by eight applications and admits exactly
 "platform admin or the app's ``admin`` role": it is symmetric (one yes/no for
-grant and revoke alike) and this app seeds no ``admin`` role at all. Expressing
-"Gestor grants but cannot revoke" there would either complicate every other
-app's path or invent a role this app does not have. Domain policy for the
+grant and revoke alike), and this app seeded no ``admin`` role when the gate
+was written. Expressing "Gestor grants but cannot revoke" there would either
+complicate every other app's path or invent a role. Since OBT-523 the app does
+seed one — OBT-522's Admin, one role for both apps — which OBT-543 grants from the
+PME (``/api/shema/access``); whoever holds it passes that shared predicate for
+this app, which is why these two doors refuse to name an ``admin`` for anyone but
+the installation admin (``_rules.assert_role_grantable``). Domain policy for the
 resource-request-form lives with its domain instead; the shared file stays
 untouched and the other eight apps keep the behaviour they were tested with.
 
 "Admin" throughout means the platform admin (``User.is_platform_admin``) — the
-only Admin this app knows, and the account that already bypasses its guards.
+only Admin this gate knows, and the account that already bypasses its guards.
+OBT-522's Admin concedes through the PME's surface, which composes
+``invite_store`` and ``accept_invite`` here behind its own gate: OBT-549, which
+retires these doors, moves those two and ``_rules.assert_role_compatible`` into
+the Shemá module rather than deleting them.
 
 The grant rules shared by both doors: ``mesa`` and ``gestor`` are mutually
 exclusive (holding one blocks receiving the other until it is revoked);

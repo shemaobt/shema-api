@@ -15,13 +15,13 @@ from fastapi import APIRouter
 from fastapi.routing import APIRoute
 from sqlalchemy import select
 
-from app.api.shema._deps import APP_KEY
+from app.api.shema._deps import APP_KEY, FORM_APP_KEY
 from app.db.models.auth import Role
 from app.main import create_app
 from app.services.access_request._default_roles import default_role_for
 from app.services.authorization import list_roles
-from app.services.shema._scope import ROLE_KEYS
-from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS
+from app.services.shema._scope import ROLE_KEYS, ROLE_PRECEDENCE, SHEMA_APP_ROLES
+from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS, seeded_roles
 from tests.baker import grant_app_role, make_app, make_user
 from tests.test_shema.conftest import (
     PREFIX,
@@ -48,6 +48,34 @@ from tests.test_shema.conftest import (
 #: serve — the guard being absent is the premise of that file, not a gap in this one.
 UNAUTHENTICATED_PATHS: frozenset[str] = frozenset({f"{PREFIX}/intake/{{token}}"})
 
+#: Routes behind the PME's door rather than the Shemá app gate (OBT-523): reachable by an
+#: account holding ``gestor`` or ``mesa`` in the form, or only a live project membership, and
+#: nothing in ``shema``. The session, and OBT-524's two reads a member has; a fourth is a line
+#: somebody adds here on purpose.
+#:
+#: **Keyed by method and path**, since OBT-524 put a ``GET`` behind the door and the Admin's
+#: ``POST`` behind the app gate on one path, ``/projects/{project_id}/members``. Keyed by path
+#: alone, a ``PUT`` hung off the door on that path later — with no ``AdminUser`` — would pass
+#: here as the ``GET`` already listed. BE-06 made ``COORDINATION_ROUTES`` pairs for the same
+#: reason.
+DOOR_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", f"{PREFIX}/session"),
+        ("GET", f"{PREFIX}/projects/{{project_id}}/members"),
+        ("GET", f"{PREFIX}/me/projects"),
+    }
+)
+
+
+def _pairs(routes, prefix: str = "") -> set[tuple[str, str]]:
+    """Every ``(method, path)`` a route list serves; ``HEAD`` and ``OPTIONS`` are not counted."""
+    return {
+        (method, f"{prefix}{route.path}")
+        for route in routes
+        if isinstance(route, APIRoute)
+        for method in sorted(set(route.methods or ()) - {"HEAD", "OPTIONS"})
+    }
+
 
 def test_the_app_key_is_the_one_three_documents_name() -> None:
     """OBT-390's description, the ecosystem's ``CLAUDE.md`` §3.2 and FE-44's §9 prefix."""
@@ -71,8 +99,10 @@ def test_the_app_key_is_named_once_in_the_module() -> None:
     assert offenders == [], f"app key duplicated outside _deps.py: {offenders}"
 
 
-def test_the_seeded_roles_are_the_frontends_session_role_union() -> None:
-    """``SessionRole`` in ``src/types/role.ts``, verbatim and camelCase (``docs/shema.md`` §2.3).
+def test_the_seeded_roles_are_the_four_shema_roles_and_the_admin() -> None:
+    """The four personas FE-44 drew the console for, verbatim and camelCase (``docs/shema.md``
+    §2.3), plus OBT-522's ``admin`` — which is seeded as one entry for two apps rather than as
+    a fifth key in the override.
 
     Asserted against ``ROLE_KEYS`` rather than against four literals typed here, because a
     second copy of a four-key vocabulary is the defect the single tuple exists to prevent —
@@ -80,6 +110,40 @@ def test_the_seeded_roles_are_the_frontends_session_role_union() -> None:
     """
     assert APP_ROLES_OVERRIDE[APP_KEY] == list(ROLE_KEYS)
     assert ROLE_KEYS == ("globalStrategist", "coordinator", "obtLab", "resourceCircle")
+    assert [key for key, _label in seeded_roles(APP_KEY)] == list(SHEMA_APP_ROLES)
+
+
+def test_the_session_vocabulary_is_the_frontends_in_precedence_order() -> None:
+    """``SESSION_ROLES`` in the console's ``src/constants/roles.ts``, key for key and in the
+    same order — the console refuses a session carrying any key outside it, so a key added
+    here and not there locks people out, and the order is the ``role`` the console renders."""
+    assert ROLE_PRECEDENCE == (
+        "globalStrategist",
+        "coordinator",
+        "obtLab",
+        "resourceCircle",
+        "admin",
+        "gestor",
+        "mesa",
+        "equipe",
+    )
+
+
+def test_the_forms_app_key_here_is_the_forms_own() -> None:
+    """Written a second time in ``_deps.py``, as ``get_rr_app_id.py`` writes it; this is what
+    keeps the two from drifting apart in silence."""
+    from app.api.resource_requests._deps import APP_KEY as FORMS_OWN
+
+    assert FORM_APP_KEY == FORMS_OWN
+
+
+def test_the_form_seats_the_session_names_are_the_forms_own() -> None:
+    """``gestor``, ``mesa`` and ``equipe`` are the form's ids verbatim; a rename over there must
+    fail here rather than close the door on the mesa."""
+    from app.services.resource_request.capabilities import ROLES
+    from app.services.shema._scope import EQUIPE_ROLE, FORM_DOOR_ROLES
+
+    assert set(FORM_DOOR_ROLES) | {EQUIPE_ROLE} <= set(ROLES)
 
 
 def test_the_seeded_app_carries_the_url_password_reset_is_built_from() -> None:
@@ -135,8 +199,8 @@ def test_the_default_role_on_approval_is_not_the_unscoped_one() -> None:
 
 
 def test_every_role_key_has_a_probe() -> None:
-    """So the four aliases cannot quietly become three."""
-    assert sorted(ROLE_PROBES) == sorted(ROLE_KEYS)
+    """So the five aliases — the four and the Admin — cannot quietly become four."""
+    assert sorted(ROLE_PROBES) == sorted(SHEMA_APP_ROLES)
 
 
 # --- deny by default ---------------------------------------------------------------
@@ -170,6 +234,18 @@ def test_every_shema_route_is_guarded() -> None:
     assert unguarded == [], f"routes under {PREFIX} with no authentication: {unguarded}"
 
 
+def test_only_the_listed_paths_sit_behind_the_door() -> None:
+    """The door admits accounts the Shemá app gate would refuse, so what sits behind it is a
+    list somebody edits on purpose — read off the application the server builds."""
+    from app.api.shema import door
+
+    behind = _pairs(door.routes, PREFIX)
+    mounted = _pairs(create_app().routes)
+
+    assert behind == DOOR_ROUTES
+    assert behind <= mounted, "a door route was included after the door was mounted"
+
+
 def _reaches(dependant, target, depth: int = 0) -> bool:
     """Whether ``target`` appears anywhere in ``dependant``'s tree.
 
@@ -190,17 +266,14 @@ def test_every_authenticated_route_reaches_the_application() -> None:
     ``include_router`` copies routes at call time, so a sub-router included **after**
     ``router.include_router(authenticated)`` is included into an object the application never
     sees. The route does not raise; it 404s, which is the failure that does not look like
-    one. This compares the two sets directly.
+    one. This compares the two sets directly, by method and path: since OBT-524 a path can be
+    served by the door for one method and by ``authenticated`` for another, and a path already
+    mounted through the door would hide a ``POST`` that never arrived.
     """
     from app.api.shema import authenticated
 
-    app = create_app()
-    mounted = {route.path for route in app.routes if isinstance(route, APIRoute)}
-    missing = [
-        f"{PREFIX}{route.path}"
-        for route in authenticated.routes
-        if isinstance(route, APIRoute) and f"{PREFIX}{route.path}" not in mounted
-    ]
+    mounted = _pairs(create_app().routes)
+    missing = sorted(_pairs(authenticated.routes, PREFIX) - mounted)
     assert missing == [], (
         "included into `authenticated` after it was mounted, so the application never sees "
         f"it: {missing}"
@@ -276,6 +349,30 @@ async def test_a_role_alias_refuses_a_member_who_holds_a_different_role(
     assert "coordinator" in refused.json()["detail"]
 
 
+async def test_the_admin_alias_admits_the_shema_admin_and_refuses_every_other_persona(
+    db_session, client, shema_app, form_app
+) -> None:
+    """``AdminUser`` reads the ``admin`` role in ``shema``. Every other Shemá persona is refused
+    by it, and the form's ``admin`` row does not get past the app gate at all. **Not** an
+    installation admin, which would pass for the wrong reason."""
+    admin = await make_user(db_session, email="the-admin@shema.test")
+    await grant(db_session, admin, shema_app, "admin")
+    assert (
+        await client.get(ROLE_PROBES["admin"], headers=await auth_header(db_session, admin))
+    ).status_code == 200
+
+    for role in ROLE_KEYS:
+        other = await make_user(db_session, email=f"not-admin-{role.lower()}@shema.test")
+        await grant(db_session, other, shema_app, role)
+        res = await client.get(ROLE_PROBES["admin"], headers=await auth_header(db_session, other))
+        assert res.status_code == 403, role
+
+    form_admin = await make_user(db_session, email="form-admin@shema.test")
+    await grant(db_session, form_admin, form_app, "admin")
+    res = await client.get(ROLE_PROBES["admin"], headers=await auth_header(db_session, form_admin))
+    assert res.status_code == 403
+
+
 async def test_a_platform_admin_passes_without_any_grant(db_session, client, shema_app) -> None:
     """The installation's standing rule, pinned so the tests above cannot drift onto it.
 
@@ -318,7 +415,7 @@ async def test_the_module_never_queries_the_platforms_grant_tables_itself(
 async def test_the_seeded_role_rows_are_what_the_guard_looks_up(db_session, shema_app) -> None:
     """The fixture and the seed script must agree, or every guard test is testing a fixture."""
     stmt = select(Role.role_key).where(Role.app_id == shema_app.id)
-    assert sorted((await db_session.execute(stmt)).scalars()) == sorted(ROLE_KEYS)
+    assert sorted((await db_session.execute(stmt)).scalars()) == sorted(SHEMA_APP_ROLES)
 
 
 def test_the_probes_are_removed_after_the_fixture() -> None:
@@ -327,10 +424,11 @@ def test_the_probes_are_removed_after_the_fixture() -> None:
     Asserted so a leak fails here rather than as a mystery extra route in
     ``test_every_shema_route_is_guarded`` two files later.
     """
-    from app.api.shema import authenticated
+    from app.api.shema import authenticated, door
 
-    paths = {route.path for route in authenticated.routes if isinstance(route, APIRoute)}
-    assert not any(path.startswith("/_probe") for path in paths)
+    for mutated in (authenticated, door):
+        paths = {route.path for route in mutated.routes if isinstance(route, APIRoute)}
+        assert not any(path.startswith("/_probe") for path in paths)
 
 
 def test_the_module_router_is_a_plain_router_and_the_guard_is_on_the_inner_one() -> None:
@@ -340,11 +438,12 @@ def test_the_module_router_is_a_plain_router_and_the_guard_is_on_the_inner_one()
     unauthenticated intake routes to be added to it directly, in a line a reviewer sees.
     ``authenticated`` carries the guard, and everything else goes there.
     """
-    from app.api.shema import authenticated, router
+    from app.api.shema import authenticated, door, router
 
     assert isinstance(router, APIRouter)
     assert router.dependencies == []
     assert len(authenticated.dependencies) == 1
+    assert len(door.dependencies) == 1
 
 
 async def test_the_scope_dependency_is_refused_for_an_account_with_no_grant(
