@@ -26,7 +26,7 @@ router = APIRouter()
 async def read_session(user: DoorUser, db: Db, roles: SessionRoles) -> ShemaSession:
     """The signed-in persona: roles, region scope and the name the org chart gives it.
 
-    Guarded by the PME's door and not by the Shemá app gate (``docs/shema.md`` §6.7): the
+    Guarded by the PME's door and not by the Shemá app gate (``docs/shema.md`` §6.8): the
     mesa and the Gestor hold no Shemá role and sign in to the console anyway, and the answer
     to *which roles* is the response body. ``roles`` is the value the door admitted the caller
     on — FastAPI solves it once per request — so the body cannot name a role the door did not
