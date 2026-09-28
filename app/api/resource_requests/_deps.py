@@ -1,8 +1,9 @@
 """Shared dependencies for resource-request routers.
 
-``CurrentUser`` gates on holding *any* role in the app, the three role aliases gate
-on a specific one, and the nine capability aliases gate on what the product
-actually models. Capabilities are the ones routes should reach for: four of the
+``CurrentUser`` gates on holding *any* role in the app — a grant, or since BE-19
+(OBT-520) a live membership of a PME project, which is how the team holds ``equipe`` —
+the two role aliases gate on a specific one, and the nine capability aliases gate on
+what the product actually models. Capabilities are the ones routes should reach for: four of the
 nine belong to more than one role, and ``require_role`` cannot say OR — guarding
 ``view_evaluation`` as ``MesaUser`` would refuse the Gestor, which is the whole of
 that role's point. The table and the query behind them are
@@ -32,18 +33,43 @@ from typing import Annotated, Any
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.access_control import require_app_access, require_role
+from app.core.access_control import require_role
+from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
 from app.services.resource_request import holds_capability
+from app.services.resource_request._membership import held_roles
 
 APP_KEY = "resource-request-form"
 
 Db = Annotated[AsyncSession, Depends(get_db)]
 
-CurrentUser = Annotated[User, require_app_access(APP_KEY)]
-EquipeUser = Annotated[User, require_role(APP_KEY, "equipe")]
+
+async def _app_member(user: Annotated[User, Depends(get_current_user)], db: Db) -> User:
+    """The app's door: a grant here, **or a live membership of a PME project** (BE-19).
+
+    It was ``require_app_access(APP_KEY)`` until OBT-520, which admits whoever holds a row in
+    ``user_app_roles`` for this app. The team no longer does: GATE-04 D1 (OBT-519) made the
+    team the members of a project in the PME, and ``20260928_rr08`` revokes the ``equipe``
+    grants. So the door reads ``held_roles`` — the grants, plus ``equipe`` for a member — the
+    same answer the capabilities and the scope read, which is what keeps the three from
+    disagreeing about whether a member is the team.
+
+    The platform admin passes first, as they pass ``require_app_access``; and the refusal
+    keeps that guard's wording, because what it tells an outsider has not changed.
+    """
+    if user.is_platform_admin:
+        return user
+    if not await held_roles(db, user.id, APP_KEY):
+        raise AuthorizationError(
+            f"You don't have access to the '{APP_KEY}' application. "
+            "Please contact support to request access."
+        )
+    return user
+
+
+CurrentUser = Annotated[User, Depends(_app_member)]
 MesaUser = Annotated[User, require_role(APP_KEY, "mesa")]
 GestorUser = Annotated[User, require_role(APP_KEY, "gestor")]
 

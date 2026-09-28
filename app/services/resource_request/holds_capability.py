@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import authorization_service
+from app.services.resource_request._membership import held_roles
 from app.services.resource_request.capabilities import CAPABILITY_ROLES
 
 
@@ -8,11 +8,11 @@ async def holds_capability(db: AsyncSession, user_id: str, app_key: str, capabil
     """Whether ``user_id`` holds a role that carries ``capability`` in ``app_key``.
 
     The query half of the capability model: it reads the user's roles through
-    ``authorization_service.list_roles`` — the same call both platform guards make — and
-    answers against the module's own map. The wiring half is
-    ``require_capability`` in ``app/api/resource_requests/_deps.py``; the split is the
-    house rule applied literally, and it is the shape ``app/core/access_control.py``
-    already has.
+    ``held_roles`` — the grants, plus ``equipe`` for a live member of a PME project since
+    BE-19 (OBT-520, ``_membership.py``) — and answers against the module's own map. The
+    wiring half is ``require_capability`` in ``app/api/resource_requests/_deps.py``; the
+    split is the house rule applied literally, and it is the shape
+    ``app/core/access_control.py`` already has.
 
     ``app_key`` is a parameter rather than a module constant so that the key stays named
     once, in ``_deps.py``, which is where every other application in this repository keeps
@@ -59,6 +59,5 @@ async def holds_capability(db: AsyncSession, user_id: str, app_key: str, capabil
     if capability not in CAPABILITY_ROLES:
         raise ValueError(f"Unknown capability: {capability!r}")
 
-    granted = await authorization_service.list_roles(db, user_id, app_key)
-    held = {role_key for _app_key, role_key in granted}
+    held = await held_roles(db, user_id, app_key)
     return bool(held & CAPABILITY_ROLES[capability])

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest
+from app.services.resource_request._membership import member_project_ids
 from app.services.resource_request._scope import reach
 
 
@@ -13,7 +14,9 @@ async def list_requests(db: AsyncSession, user: User, app_key: str) -> list[RRRe
     made the sections their own table precisely so a listing never drags the 45 answers it
     does not show. ``ix_rr_requests_stage_created`` is the index that ordering rides on.
 
-    The Líder's middle reach is ``_scope.py``'s decision, restated in SQL: his own rows —
+    The team's reach is its own rows **and its projects' rows**, drafts included (GATE-04 D1
+    and D2, BE-19): a member reads what a teammate started. The Líder's middle reach is
+    ``_scope.py``'s decision, restated in SQL: his own rows —
     the ``equipe`` floor every account carries — plus everything submitted, and no draft
     of another team ever leaves the database for him.
 
@@ -26,11 +29,13 @@ async def list_requests(db: AsyncSession, user: User, app_key: str) -> list[RRRe
     reaches = await reach(db, user, app_key)
 
     if not reaches.every:
+        own = or_(
+            RRRequest.created_by == user.id,
+            RRRequest.shema_project_id.in_(member_project_ids(user.id)),
+        )
         if reaches.submitted:
-            stmt = stmt.where(
-                or_(RRRequest.created_by == user.id, RRRequest.submitted_at.is_not(None))
-            )
+            stmt = stmt.where(or_(own, RRRequest.submitted_at.is_not(None)))
         else:
-            stmt = stmt.where(RRRequest.created_by == user.id)
+            stmt = stmt.where(own)
 
     return list((await db.execute(stmt)).scalars().all())

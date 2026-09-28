@@ -10,7 +10,10 @@ So this is the one place in the module that reads a **role** rather than a capab
 it reads it for a scope rather than for a permission. Two narrow reaches are decided here;
 everything else reaches everything:
 
-* a caller who is only ``equipe`` reaches the requests it authored;
+* a caller who is only ``equipe`` reaches the requests it authored **and every request of
+  the projects it is a live member of**, drafts included — GATE-04 D1 and D2 (OBT-519),
+  built by BE-19 (OBT-520). Who may *edit* one of those is the instance's question
+  (OBT-534), never the scope's;
 * the **Líder de Base reaches every submitted request and no draft** — decided by BE-16
   (OBT-476, 30/aug/2026), not inherited. He reads to endorse, and what he endorses is a
   submitted, frozen document: a draft is the team's work still moving, and an endorsement
@@ -53,17 +56,13 @@ from typing import NamedTuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.services import authorization_service
+from app.services.resource_request._membership import TEAM_ROLE, held_roles
 
-TEAM_ROLE = "equipe"
 LEADER_ROLE = "lider"
 
 
 async def _granted_roles(db: AsyncSession, user: User, app_key: str) -> set[str]:
-    return {
-        role_key
-        for _app_key, role_key in await authorization_service.list_roles(db, user.id, app_key)
-    }
+    return await held_roles(db, user.id, app_key)
 
 
 class Reach(NamedTuple):
