@@ -42,6 +42,9 @@ ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
+#: A heard mark on a question nobody has answered. Its own code for the reason above: there is
+#: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
+ERROR_CODE_NOTHING_TO_HEAR: Final = "NOTHING_TO_HEAR"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
@@ -132,6 +135,15 @@ class ReplyMovedOn(ConflictError):
     Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
     promises a version to reload from, and there is none. The tablet reads any non-2xx as
     not heard and offers the reply again.
+    """
+
+
+class NothingToHear(ConflictError):
+    """A heard mark on a question that carries no reply.
+
+    Its own exception for the reason ReplyMovedOn is: there is no version to reload from.
+    A card the facilitator has not answered can never read as heard, whatever the tablet
+    sends; the tablet reads any non-2xx as not heard, and there was nothing to offer.
     """
 
 
@@ -320,6 +332,13 @@ async def handle_reply_moved_on(_request: Request, exc: ReplyMovedOn) -> JSONRes
     )
 
 
+async def handle_nothing_to_hear(_request: Request, exc: NothingToHear) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_HEAR),
+    )
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -450,6 +469,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ReleaseWithoutProject, handle_release_without_project)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
+    app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
