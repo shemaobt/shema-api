@@ -700,11 +700,13 @@ GATE-04 (OBT-519) and the access model of 22 and 25/sep/2026 (OBT-522) moved the
 app: a team is **the members of a project in the PME** (`shema_project_members`, OBT-524). Three
 reads change, and they change together so they cannot disagree:
 
-- **`_membership.held_roles`** is the one answer to *which of this app's roles does the account
-  hold*: the grants in `user_app_roles`, plus `equipe` when the account is a live member of any
-  project — the PME's own reading (`holds_membership`, `app/services/shema/_scope.py`), imported
-  and not restated. The app gate (`_deps._app_member`, which replaced `require_app_access` for
-  this app), `holds_capability` and `_scope.reach` all read it.
+- **A live membership holds `equipe`**, read through `_membership.is_member`, which imports the
+  PME's own `holds_membership` (`app/services/shema/_scope.py`) rather than restating it. **It
+  is asked only when the grants did not already answer** (PR #569, review): the app gate
+  (`_deps._app_member`, which replaced `require_app_access` for this app) reads the grants
+  through the role cache as before and asks the membership only for an account with no grant;
+  `holds_capability` asks it only when no granted role carries the capability; and
+  `_scope.reach` never asks it, because neither of its two answers depends on `equipe`.
 - **The scope**: a member reaches the requests they authored **and every request of their
   projects, drafts included** (GATE-04 D2). Who may *edit* one is the instance's question
   (OBT-534). `RequestStatusOut` does not move: tracking is still status and nothing else

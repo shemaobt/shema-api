@@ -34,12 +34,14 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import require_role
+from app.core.auth_cache import get_cached_roles, set_cached_roles
 from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
+from app.services import authorization_service
 from app.services.resource_request import holds_capability
-from app.services.resource_request._membership import held_roles
+from app.services.resource_request._membership import is_member
 
 APP_KEY = "resource-request-form"
 
@@ -52,16 +54,24 @@ async def _app_member(user: Annotated[User, Depends(get_current_user)], db: Db) 
     It was ``require_app_access(APP_KEY)`` until OBT-520, which admits whoever holds a row in
     ``user_app_roles`` for this app. The team no longer does: GATE-04 D1 (OBT-519) made the
     team the members of a project in the PME, and ``20260928_rr08`` revokes the ``equipe``
-    grants. So the door reads ``held_roles`` — the grants, plus ``equipe`` for a member — the
-    same answer the capabilities and the scope read, which is what keeps the three from
-    disagreeing about whether a member is the team.
+    grants.
+
+    **The grants are still read through the role cache** (``auth_cache``, ENG-551), exactly as
+    ``require_app_access`` reads them, so this door and ``require_role`` behind
+    ``MesaUser``/``GestorUser`` read the same thing — and **the membership is asked only when
+    there is no grant** (PR #569, review): an account that already holds a role here pays the
+    cached read and nothing more.
 
     The platform admin passes first, as they pass ``require_app_access``; and the refusal
     keeps that guard's wording, because what it tells an outsider has not changed.
     """
     if user.is_platform_admin:
         return user
-    if not await held_roles(db, user.id, APP_KEY):
+    roles = get_cached_roles(user.id, APP_KEY)
+    if roles is None:
+        roles = await authorization_service.list_roles(db, user.id, APP_KEY)
+        set_cached_roles(user.id, APP_KEY, roles)
+    if not roles and not await is_member(db, user.id):
         raise AuthorizationError(
             f"You don't have access to the '{APP_KEY}' application. "
             "Please contact support to request access."

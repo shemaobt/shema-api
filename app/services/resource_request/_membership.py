@@ -15,11 +15,12 @@ answers ``EQUIPE_ROLE`` from ``holds_membership`` (``app/services/shema/_scope.p
 this module reads the same fact through the same function rather than keeping a second
 statement of *who is a member*.
 
-``held_roles`` is therefore the one place that answers *which of this app's roles does
-the account hold*: the grants, plus ``equipe`` when a live membership exists. Every reader
-that used to call ``authorization_service.list_roles`` for this app — the app gate, the
-capabilities, the scope — reads it here instead, so the four cannot disagree about whether
-a member is the team.
+So the answer to *which of this app's roles does the account hold* is the grants, plus
+``equipe`` when a live membership exists — and **the membership is asked only when the grants
+did not already answer** (PR #569, review): the door asks it only for an account with no
+grant, the capabilities only when no granted role carries the one asked for, and the scope's
+two answers (``_scope.reach``) never need it at all. Every reader asks ``is_member`` here, so
+none of them keeps a second statement of *who is a member*.
 """
 
 from __future__ import annotations
@@ -34,8 +35,14 @@ from app.services import authorization_service
 TEAM_ROLE = "equipe"
 
 
-async def held_roles(db: AsyncSession, user_id: str, app_key: str) -> set[str]:
-    """The roles ``user_id`` holds in ``app_key``: the grants, and ``equipe`` for a member.
+async def granted_roles(db: AsyncSession, user_id: str, app_key: str) -> set[str]:
+    """The roles ``user_id`` was **granted** in ``app_key`` — ``user_app_roles``, read live."""
+    granted = await authorization_service.list_roles(db, user_id, app_key)
+    return {role_key for _app_key, role_key in granted}
+
+
+async def is_member(db: AsyncSession, user_id: str) -> bool:
+    """Whether ``user_id`` is a live member of any PME project — what holds ``equipe`` here.
 
     ``holds_membership`` is imported here and not at the top: ``app.services.shema._scope``
     reaches the access services, which reach ``holds_capability``, which reaches this module —
@@ -44,11 +51,7 @@ async def held_roles(db: AsyncSession, user_id: str, app_key: str) -> set[str]:
     """
     from app.services.shema._scope import holds_membership
 
-    granted = await authorization_service.list_roles(db, user_id, app_key)
-    held = {role_key for _app_key, role_key in granted}
-    if await holds_membership(db, user_id):
-        held.add(TEAM_ROLE)
-    return held
+    return await holds_membership(db, user_id)
 
 
 def member_project_ids(user_id: str) -> Select[tuple[str]]:

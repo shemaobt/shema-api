@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.resource_request._membership import held_roles
+from app.services.resource_request._membership import TEAM_ROLE, granted_roles, is_member
 from app.services.resource_request.capabilities import CAPABILITY_ROLES
 
 
@@ -8,8 +8,9 @@ async def holds_capability(db: AsyncSession, user_id: str, app_key: str, capabil
     """Whether ``user_id`` holds a role that carries ``capability`` in ``app_key``.
 
     The query half of the capability model: it reads the user's roles through
-    ``held_roles`` — the grants, plus ``equipe`` for a live member of a PME project since
-    BE-19 (OBT-520, ``_membership.py``) — and answers against the module's own map. The
+    ``granted_roles`` and, only when no grant carries the capability, the membership that
+    holds ``equipe`` since BE-19 (OBT-520, ``_membership.py``) — and answers against the
+    module's own map. The
     wiring half is ``require_capability`` in ``app/api/resource_requests/_deps.py``; the
     split is the house rule applied literally, and it is the shape
     ``app/core/access_control.py`` already has.
@@ -59,5 +60,7 @@ async def holds_capability(db: AsyncSession, user_id: str, app_key: str, capabil
     if capability not in CAPABILITY_ROLES:
         raise ValueError(f"Unknown capability: {capability!r}")
 
-    held = await held_roles(db, user_id, app_key)
-    return bool(held & CAPABILITY_ROLES[capability])
+    carriers = CAPABILITY_ROLES[capability]
+    if await granted_roles(db, user_id, app_key) & carriers:
+        return True
+    return TEAM_ROLE in carriers and await is_member(db, user_id)

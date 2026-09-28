@@ -56,13 +56,17 @@ from typing import NamedTuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.services.resource_request._membership import TEAM_ROLE, held_roles
+from app.services.resource_request._membership import TEAM_ROLE, granted_roles
 
 LEADER_ROLE = "lider"
 
 
 async def _granted_roles(db: AsyncSession, user: User, app_key: str) -> set[str]:
-    return await held_roles(db, user.id, app_key)
+    """The grants alone. ``reach``'s two answers never need the membership that holds
+    ``equipe``: *every* subtracts it and *submitted* reads ``lider``, so asking would be a
+    query whose answer changes nothing (PR #569, review). What a member reaches of their
+    projects is the listing's and the read's own clause, not a role."""
+    return await granted_roles(db, user.id, app_key)
 
 
 class Reach(NamedTuple):
