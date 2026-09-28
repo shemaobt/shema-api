@@ -544,7 +544,7 @@ async def mark_heard(
 ) -> IRQuestion:
     """The team played the reply; say so once.
 
-    ``heard_at`` means something only on an answered card (the model says so), so a question
+    ``heard_at`` means something only beside a reply (the column says so), so a question
     with no reply is refused rather than stamped — the Desk was showing "ouvida" on cards
     nobody had answered. And the instant is the first listen's: a second mark for the same
     reply, which the tablet sends whenever it plays a reply it has not yet been told is
