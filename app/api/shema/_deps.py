@@ -48,13 +48,15 @@ reads the ``shema`` grant, like every guard below the door.
 Gestor — whose grants live in ``resource-request-form`` — sign in to the console too. So the
 session sits on a router of its own, ``door`` in ``__init__.py``, guarded by :data:`DOOR`:
 an account passes when ``_scope.session_roles`` answers anything at all, which is a Shemá
-role or the ``admin`` role held in ``shema``, or ``gestor``/``mesa`` held in the form. It is
-**one** ``Depends`` object shared by the router and :data:`DoorUser`, so FastAPI solves it once
-per request, and the roles it read are the ones the handler answers — the door and the body
-cannot disagree. Every other route stays behind ``require_app_access(APP_KEY)``: the door
-opens the session and nothing else. ``FORM_APP_KEY`` is the form's key written a second
-time, as ``get_rr_app_id.py`` writes it, and ``tests/test_shema/test_access.py`` holds it to
-the form's own ``APP_KEY`` rather than this file importing the form's router package.
+role or the ``admin`` role held in ``shema``, ``gestor``/``mesa`` held in the form, or — since
+OBT-524 — ``equipe``, which a live project membership adds. It is **one** ``Depends`` object
+shared by the router and :data:`DoorUser`, so FastAPI solves it once per request, and the roles
+it read are the ones the handler answers — the door and the body cannot disagree. Every other
+route stays behind ``require_app_access(APP_KEY)``: the door opens the session and, since
+OBT-524, the two reads a member has — a project's roster and ``/me/projects``.
+``FORM_APP_KEY`` is the form's key written a second time, as ``get_rr_app_id.py`` writes it,
+and ``tests/test_shema/test_access.py`` holds it to the form's own ``APP_KEY`` rather than this
+file importing the form's router package.
 
 **One role key is also asked as a value and not only as a guard**, which is :data:`MayApply`
 below. It is not the capability map this file refuses: there is no table, no second
@@ -85,6 +87,7 @@ from app.services.shema._scope import (
     OBT_LAB_ROLE,
     RESOURCE_CIRCLE_ROLE,
     RegionScope,
+    RosterReach,
     granted_roles,
     scope_from_roles,
     session_roles,
@@ -196,3 +199,23 @@ async def _may_apply(user: CurrentUser, granted: Granted) -> bool:
 #: Whether the caller can apply what they are being shown. **A payload's shape, never a guard**
 #: — a route that must refuse a non-coordinator uses :data:`CoordinatorUser`, which refuses.
 MayApply = Annotated[bool, Depends(_may_apply)]
+
+
+async def _roster(user: SignedIn, db: Db, roles: SessionRoles) -> RosterReach:
+    """How far the caller reaches over the projects' rosters (OBT-524).
+
+    Built on the session's roles rather than on the Shemá grant, because a roster is read behind
+    the door: a project member may hold no Shemá role at all. It is the same :data:`SessionRoles`
+    the door already solved, so the grants are read once per request, and the region scope is
+    ``scope_from_roles`` over it — which is what ``GET /session`` answers ``regionScope`` from, and
+    which counts a row only under a regional role.
+
+    ``admin`` is the ``shema`` grant (the only ``admin`` the session counts), and it reaches every
+    roster and nothing else — ``_scope.RosterReach`` is why that cannot become a wider region.
+    """
+    scope = await scope_from_roles(db, user, set(roles))
+    return RosterReach(scope=scope, admin=ADMIN_ROLE in roles)
+
+
+#: The caller's reach over rosters, for a members route to pass straight into a service.
+Roster = Annotated[RosterReach, Depends(_roster)]

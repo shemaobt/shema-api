@@ -48,11 +48,33 @@ from tests.test_shema.conftest import (
 #: serve — the guard being absent is the premise of that file, not a gap in this one.
 UNAUTHENTICATED_PATHS: frozenset[str] = frozenset({f"{PREFIX}/intake/{{token}}"})
 
-#: Paths behind the PME's door rather than the Shemá app gate (OBT-523): reachable by an
-#: account holding ``gestor`` or ``mesa`` in the form and nothing in ``shema``. **One path**,
-#: and a second is a line somebody adds here on purpose — OBT-524's ``/me/projects`` is the
-#: one expected next.
-DOOR_PATHS: frozenset[str] = frozenset({f"{PREFIX}/session"})
+#: Routes behind the PME's door rather than the Shemá app gate (OBT-523): reachable by an
+#: account holding ``gestor`` or ``mesa`` in the form, or only a live project membership, and
+#: nothing in ``shema``. The session, and OBT-524's two reads a member has; a fourth is a line
+#: somebody adds here on purpose.
+#:
+#: **Keyed by method and path**, since OBT-524 put a ``GET`` behind the door and the Admin's
+#: ``POST`` behind the app gate on one path, ``/projects/{project_id}/members``. Keyed by path
+#: alone, a ``PUT`` hung off the door on that path later — with no ``AdminUser`` — would pass
+#: here as the ``GET`` already listed. BE-06 made ``COORDINATION_ROUTES`` pairs for the same
+#: reason.
+DOOR_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", f"{PREFIX}/session"),
+        ("GET", f"{PREFIX}/projects/{{project_id}}/members"),
+        ("GET", f"{PREFIX}/me/projects"),
+    }
+)
+
+
+def _pairs(routes, prefix: str = "") -> set[tuple[str, str]]:
+    """Every ``(method, path)`` a route list serves; ``HEAD`` and ``OPTIONS`` are not counted."""
+    return {
+        (method, f"{prefix}{route.path}")
+        for route in routes
+        if isinstance(route, APIRoute)
+        for method in sorted(set(route.methods or ()) - {"HEAD", "OPTIONS"})
+    }
 
 
 def test_the_app_key_is_the_one_three_documents_name() -> None:
@@ -217,11 +239,10 @@ def test_only_the_listed_paths_sit_behind_the_door() -> None:
     list somebody edits on purpose — read off the application the server builds."""
     from app.api.shema import door
 
-    app = create_app()
-    behind = {f"{PREFIX}{route.path}" for route in door.routes if isinstance(route, APIRoute)}
-    mounted = {route.path for route in app.routes if isinstance(route, APIRoute)}
+    behind = _pairs(door.routes, PREFIX)
+    mounted = _pairs(create_app().routes)
 
-    assert behind == DOOR_PATHS
+    assert behind == DOOR_ROUTES
     assert behind <= mounted, "a door route was included after the door was mounted"
 
 
@@ -245,17 +266,14 @@ def test_every_authenticated_route_reaches_the_application() -> None:
     ``include_router`` copies routes at call time, so a sub-router included **after**
     ``router.include_router(authenticated)`` is included into an object the application never
     sees. The route does not raise; it 404s, which is the failure that does not look like
-    one. This compares the two sets directly.
+    one. This compares the two sets directly, by method and path: since OBT-524 a path can be
+    served by the door for one method and by ``authenticated`` for another, and a path already
+    mounted through the door would hide a ``POST`` that never arrived.
     """
     from app.api.shema import authenticated
 
-    app = create_app()
-    mounted = {route.path for route in app.routes if isinstance(route, APIRoute)}
-    missing = [
-        f"{PREFIX}{route.path}"
-        for route in authenticated.routes
-        if isinstance(route, APIRoute) and f"{PREFIX}{route.path}" not in mounted
-    ]
+    mounted = _pairs(create_app().routes)
+    missing = sorted(_pairs(authenticated.routes, PREFIX) - mounted)
     assert missing == [], (
         "included into `authenticated` after it was mounted, so the application never sees "
         f"it: {missing}"
