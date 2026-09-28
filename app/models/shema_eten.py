@@ -23,7 +23,23 @@ inherits :class:`~app.models.shema_privacy.LeavingShape`: it is validated off th
 renderer downstream cannot leak what the row does not hold. The row declares no base and no
 contact: GATE-04 (1.5) answered *idioma, região e progresso; sem a base* for this report. It is
 an ``outside`` reader in OBT-528's words — withheld for every role, the region's own coordinator
-included — because an ETEN report is a document that leaves the system.
+included — because an ETEN report is a document that leaves the system. **The ``projectId``
+travels on the line**, the export's ``<language>-<place>`` slug: the client allowed it on
+28/sep/2026 (``docs/shema.md`` §9.4).
+
+**The data, the form, and the record are three things, and this module owns where they part.**
+The fields below are the *data* — every figure and the evidence behind it, filled by
+``app/services/shema/eten_report.py`` from ``account_for``. The *form* is how they leave: today
+FE-44 §9.8's, which is ``_OUTWARD``'s camelCase and ``country`` as a ``LocationDisplay``, and
+nothing else. The *record* is :meth:`EtenYearReport.recorded`, the data by field name, which
+reads no alias and no computed field. ETEN changes its own report's format every year, and the
+client had not received this year's on 28/sep/2026 — so **a new ETEN format is a presenter in
+this module**, a function from :class:`EtenYearReport` to the shape ETEN asks for — served,
+if the server writes ETEN's file, by a route of its own beside ``GET /eten/report``. It reads
+the lines as they already are, reduced.
+The rule does not move and the record does not move: if the format asks for a fact the line
+does not carry, that fact is a field here, filled in ``eten_report._line``, and it reaches the
+record by itself.
 """
 
 from __future__ import annotations
@@ -190,13 +206,14 @@ class EtenYearSnapshot(LeavingShape):
         return EtenLocationShown(location=get_country(self.location))
 
     def recorded(self) -> dict[str, Any]:
-        """This line as ``shema_eten_reports`` keeps it: everything but the place.
+        """This line as ``shema_eten_reports`` keeps it: everything but the place, by field name.
 
         The region and the withheld bit stand in for ``country``. A country copied into an
         append-only table is out of reach of a flag raised later — the boundary ``_audit.py``
-        keeps for the trail — and it is not an input of the credit.
+        keeps for the trail — and it is not an input of the credit. By field name and not by
+        alias, so the record does not follow the form (see the module docstring).
         """
-        line = self.model_dump(mode="json", by_alias=True, exclude={"country"})
+        line = self.model_dump(mode="json", exclude={"country"})
         line["region"] = (self.region_key or UNKNOWN_REGION).value
         return line
 
@@ -227,6 +244,20 @@ class EtenYearReport(BaseModel):
     #: The ``shema_eten_reports`` row holding this report's figures and their evidence.
     report_id: str | None = None
     recorded_at: datetime | None = None
+
+    def recorded(self) -> dict[str, Any]:
+        """What ``shema_eten_reports`` keeps of this report: its data, whatever form it left in.
+
+        Dumped off the model rather than off a second list of keys, so a field added here
+        reaches the record — and the digest — on its own. What stays out is named: ``as_of``
+        and the report's own id and time are metadata of the answer, not of its figures, and
+        each line is :meth:`EtenYearSnapshot.recorded`. A new ETEN format reshapes none of it.
+        """
+        report = self.model_dump(
+            mode="json", exclude={"as_of", "report_id", "recorded_at", "snapshots"}
+        )
+        report["snapshots"] = [line.recorded() for line in self.snapshots]
+        return report
 
 
 class EtenCreditEntry(BaseModel):

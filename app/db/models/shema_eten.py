@@ -107,6 +107,11 @@ class ShemaEtenReport(Base):
     ``_audit.py`` keeps for the trail and for the same reason. The country is not an input of the
     credit, so nothing the figure was computed from is lost.
 
+    **The content is the data, not the form the report left in** — written by
+    ``EtenYearReport.recorded()`` under the fields' own names, so a new ETEN format (it changes
+    every year) does not reshape what is kept: a fact it needs that the line lacks arrives as
+    one more key.
+
     **Append-only in the database** (the trigger ``shema_progress_history`` uses): a record of
     what was reported that can be edited records nothing. ``computed_by`` restricts for the
     trail's reason — a *who* that can be deleted is not a record of anything.

@@ -28,6 +28,12 @@ row into :class:`~app.models.shema_eten.EtenYearSnapshot`, a ``LeavingShape``; t
 lines that came out of it, which is how an aggregate cannot count a place the line beside it
 withholds — and a withheld project still counts, because a funder total that dropped it would be
 wrong. The recorded content carries the region and never the country.
+
+**This file computes and records; it does not decide the form.** The report leaves in
+FE-44 §9.8's shape because that is how :class:`~app.models.shema_eten.EtenYearReport`
+serialises, and it is recorded by :meth:`~app.models.shema_eten.EtenYearReport.recorded`, which
+reads the data and not that shape. ETEN's own format, when it arrives, is a presenter in
+``app/models/shema_eten.py`` and changes nothing here unless it asks for a new fact.
 """
 
 from __future__ import annotations
@@ -177,22 +183,6 @@ def _scope_key(scope: RegionScope) -> str:
     return "global" if regions is None else ",".join(regions)
 
 
-def _content(report: EtenYearReport) -> dict[str, Any]:
-    """What is recorded: the report as its shape dumps it, minus three deliberate omissions.
-
-    Built off the model rather than off a second list of keys, so a field added to
-    :class:`~app.models.shema_eten.EtenYearReport` reaches the record — and the digest — on its
-    own. What stays out is named: ``asOf`` and the report's own id and time are metadata of the
-    answer, not of its figures, and the lines are dumped by ``recorded()``, which puts the region
-    where the country would be.
-    """
-    content = report.model_dump(
-        mode="json", by_alias=True, exclude={"as_of", "report_id", "recorded_at", "snapshots"}
-    )
-    content["snapshots"] = [line.recorded() for line in report.snapshots]
-    return content
-
-
 def _digest(content: dict[str, Any]) -> str:
     canonical = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -210,7 +200,7 @@ async def _record(
     Compared against the **newest** row for the year and scope only, so a report that went A,
     then B, then A again is recorded three times: the third answer is not the first one.
     """
-    content = _content(report)
+    content = report.recorded()
     digest = _digest(content)
     scope_key = _scope_key(scope)
     newest = (

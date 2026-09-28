@@ -34,6 +34,7 @@ from app.db.models.shema_enums import (
 from app.db.models.shema_eten import ShemaEtenCredit, ShemaEtenReport
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.models.shema import ShemaProjectUpdate
+from app.models.shema_eten import EtenYearReport, EtenYearSnapshot
 from app.services.shema import eten_report, region_scope, save_project
 from app.utils.shema_derivations import fiscal_year_of
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
@@ -495,10 +496,32 @@ async def test_every_report_answered_is_recorded_with_its_payload(
     (row,) = await _recorded(db_session)
     assert body["reportId"] == row.id
     assert (row.year, row.scope_key, row.computed_by) == (YEAR, "global", strategist.id)
-    assert row.content["totalCredits"] == body["totalCredits"] == 1
+    assert row.content["total_credits"] == body["totalCredits"] == 1
     (line,) = row.content["snapshots"]
     assert (line["credits"], line["region"]) == (1, "south-america")
-    assert (line["startReading"]["entryId"], line["endReading"]["entryId"]) == (start_id, end_id)
+    readings = (line["start_reading"]["entry_id"], line["end_reading"]["entry_id"])
+    assert readings == (start_id, end_id)
+
+
+async def test_the_recorded_report_keeps_the_data_and_not_the_form(
+    client, db_session, strategist_headers
+) -> None:
+    """ETEN changes its report's format every year, and this year's had not reached the client
+    on 28/sep/2026. What is recorded is the data under the fields' own names — none of
+    FE-44 §9.8's spelling, no ``country`` display — so a new form leaves the record as it was."""
+    await closed_in_year(db_session, "forma")
+    body = await report(client, strategist_headers)
+
+    (row,) = await _recorded(db_session)
+    assert set(row.content) == set(EtenYearReport.model_fields) - {
+        "as_of",
+        "report_id",
+        "recorded_at",
+    }
+    data = {name for name, field in EtenYearSnapshot.model_fields.items() if not field.exclude}
+    (line,) = row.content["snapshots"]
+    assert set(line) == data | {"region"}
+    assert "country" in body["snapshots"][0]
 
 
 async def test_an_unchanged_report_is_recorded_once(client, db_session, strategist_headers) -> None:
@@ -522,9 +545,9 @@ async def test_a_changed_report_is_recorded_again_and_the_first_still_says_what_
 
     assert march["reportId"] != june["reportId"]
     first, second = await _recorded(db_session)
-    assert first.content["totalCredits"] == 1
-    assert second.content["totalCredits"] == 0
-    assert second.content["snapshots"][0]["creditsSource"] == "manual"
+    assert first.content["total_credits"] == 1
+    assert second.content["total_credits"] == 0
+    assert second.content["snapshots"][0]["credits_source"] == "manual"
 
 
 async def test_a_recorded_report_cannot_be_edited_or_deleted(
@@ -549,6 +572,8 @@ async def test_a_recorded_report_cannot_be_edited_or_deleted(
 async def test_a_withheld_project_leaves_as_its_region_and_nothing_else(
     client, db_session, strategist_headers
 ) -> None:
+    """The region, no base, no contact — and the ``projectId`` the line is found by, which the
+    client allowed to travel on 28/sep/2026 (``docs/shema.md`` §9.4)."""
     await closed_in_year(db_session, "oculto", sensitive=True, region=ShemaRegionKey.AFRICA)
     await closed_in_year(db_session, "aberto")
 

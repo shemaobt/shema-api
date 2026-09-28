@@ -15,6 +15,11 @@ between 21:00 and midnight on 31 July in UTC-3 the year that is closing is alrea
 closed. The day decides only whether the rule may read a record as it stands for the open year,
 which a record born in the product almost never needs — every change it has had wrote a history
 entry — and which a migrated record's copied count never gets.
+
+**``GET /eten/report`` answers FE-44 §9.8's form, the one in force.** ETEN's own format changes
+every year and this year's had not arrived on 28/sep/2026; when it does, it is a presenter in
+``app/models/shema_eten.py`` — served, if the server is the one that writes ETEN's file, by a
+route of its own here beside this one — and the console's contract does not change under it.
 """
 
 from __future__ import annotations
