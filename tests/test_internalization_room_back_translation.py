@@ -179,7 +179,7 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
             {
                 "findings": [
                     {"kind": "missing", "note": "Orfa não apareceu."},
-                    {"kind": "addition", "note": "Você falou de Belém."},
+                    {"kind": "addition", "chunk": 1, "note": "Você falou de Belém."},
                 ]
             }
         )
@@ -359,7 +359,7 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
         '{"kind":"missing","chunk":4,"where":"after","note":"b"},'
         '{"kind":"missing","chunk":2,"where":"inside","note":"c"},'
         '{"kind":"addition","chunk":1,"note":"d"},'
-        '{"kind":"unclear","chunk":9,"note":"e"}]}'
+        '{"kind":"missing","chunk":9,"note":"e"}]}'
     )
     four = [stretch(number, f"trecho {number}") for number in range(1, 5)]
 
@@ -381,9 +381,15 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
     ]
 
 
-async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
+async def test_a_missing_that_cannot_name_a_piece_falls_back_to_the_whole(
     patch_analyst,
 ) -> None:
+    """A missing element with no readable chunk still lands with no address at all.
+
+    Addition and unclear are different since ENG-1145: naming no chunk the parser can read —
+    `0` is out of the 1-based range and `"tres"` is not a number — drops either of them
+    instead of falling back to a homeless finding.
+    """
     patch_analyst(
         '{"findings":['
         '{"kind":"missing","chunk":null,"note":"a"},'
@@ -400,7 +406,7 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     )
 
     assert analysis is not None
-    assert [f.segment_id for f in analysis.findings] == [None, None, None]
+    assert [(f.kind, f.segment_id) for f in analysis.findings] == [(FindingKind.MISSING, None)]
 
 
 async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) -> None:
@@ -1488,16 +1494,32 @@ async def test_the_validator_sees_the_circle_the_check_and_the_wood_disc_too(pat
     assert "wood disc" in agent.briefs[0]
 
 
-@pytest.mark.parametrize("segment_id", ["segmento-2", None], ids=["on a stretch", "homeless"])
-@pytest.mark.parametrize("kind", [kind for kind in FindingKind if kind is not FindingKind.MISSING])
+@pytest.mark.parametrize(
+    ("kind", "segment_id"),
+    [
+        (FindingKind.ADDITION, "segmento-2"),
+        (FindingKind.UNCLEAR, "segmento-2"),
+        (FindingKind.ADDITION, None),
+        (FindingKind.UNCLEAR, None),
+    ],
+    ids=[
+        "addition on a stretch",
+        "unclear on a stretch",
+        "addition homeless (legacy row)",
+        "unclear homeless (legacy row)",
+    ],
+)
 def test_every_other_kind_closes_exactly_as_before(
     kind: FindingKind, segment_id: str | None
 ) -> None:
-    """What the screen offers these without a stretch is a product decision still open.
+    """Henok decided on 2026-09-25: `unclear` keeps `CLOSING_SPOKEN` on a stretch, for good.
 
-    Until it is taken, every kind but `missing` closes word for word as it did: the two voices
-    when a boundary question was asked on a stretch, the spoken answer otherwise — and an
-    evidence limit asks out loud even on a stretch, as before.
+    A fresh reply can no longer produce an addition or an unclear without a stretch (ENG-1145):
+    the parser drops one that names no readable frase before it ever becomes a finding, and
+    refuses a reply that drops every finding it named. The two homeless cases here are legacy
+    only — a row `closing_block` may still be handed from before this rule, per ADR 0038 — and
+    it answers them exactly as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed
+    the two-microphone screen even where it does have a stretch.
     """
     finding = Finding(kind=kind, note="Orfa", segment_id=segment_id)
     asked_on_a_stretch = segment_id is not None and kind is not FindingKind.UNCLEAR

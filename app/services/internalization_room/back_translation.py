@@ -490,6 +490,33 @@ def _landed_without_a_frase(raw: str, session: str) -> None:
     logger.warning("BT analyst missing finding without a chunk for session %s: %s", session, raw)
 
 
+def _dropped_without_a_frase(kind: FindingKind, note: str, raw: str, session: str) -> None:
+    """An addition or an unclear the analyst named no readable frase for; dropped, not raised.
+
+    A missing element still lands with no chunk at all — the story simply has not been told
+    that far, and `_landed_without_a_frase` counts it. The other two kinds are a statement
+    about a chunk, and one naming none, or one outside the reading the analyst was given,
+    names nothing the team can act on: it goes the way the retired evidence kind does,
+    dropped and the rest of the reply read, rather than reaching the tablet as a finding
+    with no stretch.
+
+    Said only once the reading has been accepted, the way `_dropped` is: a reply that drops
+    every one of its findings to this rule is refused instead (`_parse_analysis`), and
+    announcing a drop it then threw away whole would send the next investigation to the
+    wrong place.
+
+    The reply is behind it whole, as every other line in this file carries one.
+    """
+    logger.warning(
+        "BT reply named %s with no readable frase (note: %s); dropped it and read the rest "
+        "for session %s: %s",
+        kind.value,
+        note,
+        session,
+        raw,
+    )
+
+
 def _dropped(entries: list[Any], raw: str, about: str) -> None:
     """A name the room retired left the reply, and the rest of it was read.
 
@@ -529,6 +556,14 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     kept, because refusing a reply whole over a name the prompt itself stopped offering is
     the ENG-719 failure with a different trigger — a team stopped three times by a round
     with no verdict, for a reading the room could have used.
+
+    An addition or an unclear naming no chunk this reading has, or one outside it, is
+    dropped the same way (ENG-1145) — but a reply left with nothing at all once every one of
+    its findings dropped for that reason is not a clean reading: it is refused like a
+    malformed reply, through the same `_refused` this function already returns None from,
+    because a reply that named findings and lost every one of them to an unreadable frase is
+    the ENG-719 failure again — a good telling-back blessed on the strength of a reply that
+    said nothing usable.
     """
     session = _session_of(segments)
     text = raw.strip()
@@ -545,9 +580,11 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         return None
 
     reported = parsed["findings"]
+    considered = [one for one in reported if not _is_the_retired_evidence_kind(one)]
 
     findings: list[Finding] = []
-    for entry in [one for one in reported if not _is_the_retired_evidence_kind(one)]:
+    dropped_without_a_frase: list[tuple[FindingKind, str]] = []
+    for entry in considered:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
@@ -563,6 +600,9 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
         chunk = _chunk_named(entry.get("chunk"), segments)
+        if chunk is None and kind is not FindingKind.MISSING:
+            dropped_without_a_frase.append((kind, note))
+            continue
         lands_on = _segment_pointed_at(
             entry.get("chunk"),
             segments,
@@ -584,6 +624,12 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             )
         )
 
+    if considered and not findings:
+        _refused("every finding named no readable frase", raw, session)
+        return None
+
+    for kind, note in dropped_without_a_frase:
+        _dropped_without_a_frase(kind, note, raw, session)
     _dropped(reported, raw, f"session {session}")
     return BtAnalysis(findings=findings)
 
@@ -627,6 +673,10 @@ def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
     own because the two answers are not the same one: a missing element placed after frase N
     names frase N and resolves to the stretch after it, and one placed after the last frase
     names that frase and resolves to no stretch at all.
+
+    Only an int or a numeral string is read; a float such as `2.0` is neither and names no
+    position, whole-valued or not — the contract asks for an int, and a reply answering with
+    a float is not naming a frase the parser accepts.
     """
     if isinstance(raw, bool) or not isinstance(raw, int | str):
         return None
@@ -1409,8 +1459,15 @@ def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
     *"quer deixar para alinharmos mais na frente?"* came from. On a stretch, a missing element
     gets the same two microphones as every other finding there (decision of 2026-09-03,
     reversing ENG-710): the sibling closing that once named one microphone for it is gone.
-    What the screen offers the other kinds without a stretch is a product decision still open,
-    so they keep `CLOSING_SPOKEN` untouched.
+    What the screen offers the other kinds without a stretch was a product decision still
+    open; Henok closed it on 2026-09-25: `CLOSING_SPOKEN` stays. A fresh addition or unclear
+    can no longer reach here without a stretch at all — the parser drops one that names no
+    readable frase before it is ever a finding (ENG-1145), and refuses a reply that drops
+    every finding it named — so the only kind a fresh reply still hands this function
+    homeless is a missing. A row stored before ENG-1145 can still carry an addition or an
+    unclear with no stretch, and this function goes on answering that legacy shape exactly
+    as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed the two-microphone
+    screen even when it does have one.
 
     Returned with `{session_language}` still in it, for whoever fills the template to
     substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here

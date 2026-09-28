@@ -91,7 +91,11 @@ async def test_an_accepted_analysis_reading_leaves_an_info_record(
     raw = json.dumps(
         {
             "findings": [
-                {"kind": "addition", "note": "você me disse que ela ficaria junto das servas"}
+                {
+                    "kind": "addition",
+                    "chunk": 1,
+                    "note": "você me disse que ela ficaria junto das servas",
+                }
             ]
         }
     )
