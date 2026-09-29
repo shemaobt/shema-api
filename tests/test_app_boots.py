@@ -91,6 +91,36 @@ def test_the_grant_packages_import_in_either_order(first: str) -> None:
     assert finished.returncode == 0, f"{first} primeiro não importa:\n{finished.stderr}"
 
 
+@pytest.mark.parametrize("first", ["app.services.shema", "app.services.resource_request"])
+def test_the_form_s_notifiers_bind_the_pme_s_bell_in_either_order(first: str) -> None:
+    """The form's two notifiers import ``app.services.shema._request_notices`` (OBT-541), and the
+    Shemá package reaches the form's through the invite module — so each order is a process of
+    its own, and each checks that the two functions the notifiers call are bound as functions.
+    Imported from the submodule and never from the package: in the Shemá-first order the package
+    is still initialising when the notifiers load."""
+    probe = (
+        f"import importlib, sys; importlib.import_module({first!r}); "
+        "import app.services.shema, app.services.resource_request; "
+        "arrival = sys.modules['app.services.resource_request.notify_arrival']; "
+        "decision = sys.modules['app.services.resource_request.notify_decision']; "
+        "assert callable(arrival.ring_arrival) and callable(decision.ring_decision)"
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "DATABASE_URL": "sqlite+aiosqlite:///./boot-check.db",
+            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
+            "INNGEST_DEV": "1",
+        },
+    )
+
+    assert finished.returncode == 0, f"{first} primeiro não importa:\n{finished.stderr}"
+
+
 def test_no_dto_module_reaches_up_into_the_service_layer() -> None:
     """The rule whose breach let the cycle close, checked where it can be seen.
 

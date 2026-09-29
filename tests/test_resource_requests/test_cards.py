@@ -15,12 +15,10 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
 from app.models.resource_request import RequestCardOut
 from app.services.shema import set_region_scope
-from scripts.seed_apps_roles import seeded_roles
-from tests.baker import make_app, make_role, make_user
+from tests.baker import make_user
 from tests.test_resource_requests.conftest import auth_header, grant, make_membership
 from tests.test_resource_requests.test_requests import REQUESTS, _decide, draft
 
-SHEMA_APP_KEY = "shema"
 PROJECT = "kadiweu"
 CARDS = f"{REQUESTS}/cards"
 EVALUATION_KEYS = {"scores", "comments", "evaluator_id", "attendees", "team_note", "total"}
@@ -28,15 +26,6 @@ EVALUATION_KEYS = {"scores", "comments", "evaluator_id", "attendees", "team_note
 
 def project_cards(project_id: str = PROJECT) -> str:
     return f"/api/resource-requests/projects/{project_id}/requests"
-
-
-@pytest.fixture()
-async def shema_app(db_session):
-    """The PME's app row and its seeded roles — what ``seed_apps_roles.py`` writes."""
-    app = await make_app(db_session, app_key=SHEMA_APP_KEY, name="Shemá", auto_approve=False)
-    for role_key, label in seeded_roles(SHEMA_APP_KEY):
-        await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
-    return app
 
 
 @pytest.fixture()
