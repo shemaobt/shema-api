@@ -830,7 +830,75 @@ member of any project**, and `projects` are those projects' ids — what a start
 already has. `my-roles` is platform surface and serves every app, which is why the membership is
 not grafted onto it.
 
-### 5.5 Two platform behaviours to design around
+### 5.4.5 The external request link — BE-26 (OBT-537): **PR A built**, B and C **contracted here**
+
+GATE-04 D1 and D4 (OBT-519): a team is a PME project's members **or**, while the project does not
+exist, the holder of the Admin's request link — Karina, 25/set: *"os dois, tanto quem já tem conta
+no PME quanto quem ainda não tem pode fazer uma solicitação"*. The holder has **no account** until
+the mesa's approval registers the project (OBT-547). The issue lands in three PRs so that the two
+issues waiting on it can start before it ends; **this section is the contract for all three**, so
+the PME's dialog (OBT-544) and the public screen (FE-55, OBT-542) can be built against it.
+
+**PR A — built (29/sep/2026): the schema and the Admin's routes.**
+
+- `rr_request_links` (`20260929_rr10`): `email` (stored lower-cased), `token_hash` (unique),
+  `code_hash`, `code_attempts`, `project_hint` (free text the Admin types — *"equipe X, língua Y"*;
+  nothing joins on it), `expires_at` (`rr_request_link_expire_days`, 60), `verified_at`,
+  `revoked_at`, `created_by`, `created_at`. Both secrets are minted by `app/services/common/tokens`
+  (BE-20) and **only their digests are stored**.
+- `rr_requests.request_link_id` and `started_by_link_id`, nullable FKs. A request is born with
+  **either** `shema_project_id` **or** `request_link_id` — a service rule of PR C and not a CHECK,
+  because OBT-547's approval later gives it a project too and keeps the link. **One open instance
+  per link**, `uq_rr_requests_one_open_per_link`, BE-25's rule with the link as the team.
+- The Admin's routes — a session at the door and `_links.require_link_admin` in the service: the
+  platform admin, or `admin` **in either app** (OBT-522 seeds one Admin in both), and nobody else:
+
+  ```
+  POST /api/resource-requests/links                 {email, project_hint?} -> 201 IssuedRequestLinkOut
+  GET  /api/resource-requests/links                                       -> RequestLinkOut[]  (newest first)
+  POST /api/resource-requests/links/{id}/revoke                           -> RequestLinkOut    (idempotent)
+  ```
+
+  `RequestLinkOut` is `{id, email, project_hint, status, expires_at, verified_at, revoked_at,
+  created_by, created_at}`, every moment with its offset; `status` is `pending` · `verified` ·
+  `expired` · `revoked`, read by the token module's order (revoked, then expired, then used — a
+  request link is multi-use, so *verified* is its first use and not its end). `IssuedRequestLinkOut`
+  adds **`token` and `code`, returned once** and nowhere else. The link's URL is the form's
+  `/link/{token}`. Revoked and expired links stay listed; revoking keeps the first `revoked_at`.
+
+**Why a code beside the token — ours, not the client's.** The URL alone opens nothing: a link seen
+in a log, a `Referer` or a forwarded screenshot is not enough without the six digits, and five wrong
+ones revoke it. Until PR C sends the e-mail, the Admin's screen is what hands both over.
+
+**PR B — contracted: the public door and the link session.**
+
+```
+GET  /api/resource-requests/link/{token}           -> {status, email_hint, project_hint, expires_at}
+POST /api/resource-requests/link/{token}/verify     {code} -> {session, expires_at}
+```
+
+Both public, limited per address and per token digest. An unknown token is **404**; the state of a
+known one is read, never refused, so the screen can say *expired* or *revoked*. `email_hint` masks
+the address (`e***@fora.org`). Verifying with the right code on a `pending` or `verified` link
+answers a **link session**: a JWT with `aud="rr_link"`, `sub` = the link's id, thirty days, sent
+back as a bearer token. A wrong code is **401** and counts; the **fifth revokes** the link. An
+`expired` or `revoked` link answers **410** to verify. A **subject resolver** in `_deps.py` accepts
+a user session **or** a link session and hands every route one `Actor`; no route signature
+changes. A link `Actor` reaches **its own link's requests** and nothing else — not another link's,
+not a project's — and holds `edit_requests` for them alone.
+
+**PR C — contracted: the request by the link.**
+
+- `POST /requests/start` with a link session starts the instance **bound to the link**:
+  `request_link_id` and `started_by_link_id` set, `created_by` the issuing Admin (the column is
+  `NOT NULL` and a link is no person), `shema_project_id` null. A second open one is **409**;
+  `cancel` frees it (BE-25).
+- `submit` by the link records the electronic acceptance with the typed `tpp_name`, the link's
+  e-mail and the link's id (BE-18 with a link subject), and refuses a `leader_email` equal to the
+  link's address — whoever asks never endorses their own request (OBT-522).
+- Arrival and decision notices go **by e-mail** to the link's address, with the link to follow the
+  request; there is no in-app notice for a link holder. The first e-mail also carries the link and
+  its code.
 
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and
   `require_role` each return early on `user.is_platform_admin` before consulting a grant.
