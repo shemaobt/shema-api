@@ -202,6 +202,19 @@ async def test_the_admin_writes_a_teams_instance(db_session, client, rrf_app) ->
 
     assert read.json()["can_edit"] is True
     assert res.status_code == 200, res.text
+    assert res.json()["can_edit"] is True
+
+
+async def test_the_starters_own_save_answers_can_edit(db_session, client, rrf_app) -> None:
+    """The ``PATCH`` answers ``can_edit`` without asking the roles again — the autosave is the
+    call a field connection pays most — and the answer is still the rule's."""
+    _ana, ana = await member_of(db_session, "kadiweu", "ana@instancia.test")
+    started = (await start(client, ana)).json()
+
+    res = await client.patch(f"{REQUESTS}/{started['id']}", json=draft(), headers=ana)
+
+    assert res.status_code == 200, res.text
+    assert res.json()["can_edit"] is True
 
 
 async def test_the_listing_says_who_writes_each_row(db_session, client, rrf_app) -> None:

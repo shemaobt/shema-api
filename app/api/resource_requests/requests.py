@@ -25,8 +25,12 @@ envelope takes it and ``of()`` demands it with no default, so a route added late
 serve the column by forgetting to think about it.
 
 **``can_edit`` is the other fact that varies by caller** (BE-25, OBT-534): whether this caller
-writes this instance now. It is read once per call through ``service.editing`` and handed to
-``of()``, which demands it with no default for ``reads_funds``' reason.
+writes this instance now. The reads ask ``service.editing`` once per call and hand it to
+``of()``, which demands it with no default for ``reads_funds``' reason. **The three writes that
+end in a known state do not ask at all**: a ``PATCH`` that got past ``require_editor`` is by
+construction the pen on an open draft, so ``True``; a cancelled or submitted instance is
+written by nobody, so ``False``. Asking again would read the roles a second time on the
+autosave, the call a field connection pays most often (PR #572, review).
 
 The endorsement route guards on ``CanEndorseRequest`` and takes no body: like the submit
 above it, the act is the payload — who and when are stamped from the session, and a body
@@ -132,7 +136,7 @@ async def cancel_request(
     The row is marked, never deleted, and the answer is the request as it now stands.
     """
     loaded = await service.cancel_request(db, request_id, user, APP_KEY)
-    return _out(loaded, reads_funds, await service.editing(db, user, APP_KEY))
+    return RequestOut.of(loaded.request, document(*loaded), reads_funds=reads_funds, can_edit=False)
 
 
 @router.patch("/requests/{request_id}")
@@ -154,12 +158,11 @@ async def update_request(
     """
     saved = await service.update_draft(db, request_id, draft, user, APP_KEY, saved_at)
     discarded = None if saved.discarded is None else DiscardedOut(**saved.discarded._asdict())
-    editing = await service.editing(db, user, APP_KEY)
     return RequestSavedOut.of(
         saved.loaded.request,
         document(*saved.loaded),
         reads_funds=reads_funds,
-        can_edit=editing.can_edit(saved.loaded.request),
+        can_edit=True,
         discarded=discarded,
     )
 
