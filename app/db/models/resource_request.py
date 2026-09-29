@@ -766,10 +766,25 @@ class RRRequestFieldHistory(_RRFieldHistory, Base):
     __tablename__ = "rr_request_field_history"
     __table_args__ = (
         Index("ix_rr_request_field_history_request_changed", "request_id", "changed_at"),
+        CheckConstraint(
+            "(changed_by IS NULL) <> (changed_by_link_id IS NULL)",
+            name="ck_rr_request_field_history_one_author",
+        ),
     )
 
     request_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("rr_requests.id", ondelete="CASCADE"), index=True
+    )
+    #: **The author is a person or a request link, exactly one** (BE-26, OBT-537). A link's
+    #: holder has no account (GATE-04 D4), and writing the issuing Admin's id in ``changed_by``
+    #: would make the trail say the Admin typed what the team typed — the one lie D7's trail
+    #: exists not to tell. So this table, and only this one, takes a link as its author; the
+    #: evaluation's trail is written by the mesa, always a person, and keeps the mixin's rule.
+    changed_by: Mapped[str | None] = mapped_column(  # type: ignore[assignment]
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    changed_by_link_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("rr_request_links.id"), nullable=True
     )
 
 

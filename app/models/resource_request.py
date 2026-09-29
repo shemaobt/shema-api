@@ -631,12 +631,16 @@ class FieldChangeOut(BaseModel):
     value at all against one that was asked and left blank. ``changed_by`` is a user id
     and deliberately not a resolved name: the trail is append-only and a name is not — it
     is resolved at display time, so a rename does not contradict the record.
+
+    **Exactly one of ``changed_by`` and ``changed_by_link_id`` is set** (BE-26, OBT-537): a
+    request filled by the Admin's link was typed by the link's holder, who has no account.
     """
 
     field_key: str
     old_value: str | None
     new_value: str | None
-    changed_by: str
+    changed_by: str | None
+    changed_by_link_id: str | None
     changed_at: datetime
 
     @classmethod
@@ -646,6 +650,7 @@ class FieldChangeOut(BaseModel):
             old_value=row.old_value,
             new_value=row.new_value,
             changed_by=row.changed_by,
+            changed_by_link_id=row.changed_by_link_id,
             changed_at=row.changed_at,
         )
 

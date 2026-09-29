@@ -151,11 +151,18 @@ def field_changes(
 def record_request_trail(
     db: AsyncSession,
     request_id: str,
-    changed_by: str,
+    changed_by: str | None,
     before: Mapping[str, str | None],
     after: Mapping[str, str | None],
+    *,
+    changed_by_link_id: str | None = None,
 ) -> list[RRRequestFieldHistory]:
-    """Add one trail row per field that moved, in the caller's open transaction."""
+    """Add one trail row per field that moved, in the caller's open transaction.
+
+    The author is a person (``changed_by``) or a request link (``changed_by_link_id``,
+    BE-26) — exactly one, which the table's CHECK holds too."""
+    if (changed_by is None) == (changed_by_link_id is None):
+        raise ValueError("a trail row has exactly one author: a person or a request link")
     now = datetime.now(UTC)
     rows = [
         RRRequestFieldHistory(
@@ -164,6 +171,7 @@ def record_request_trail(
             old_value=change.old_value,
             new_value=change.new_value,
             changed_by=changed_by,
+            changed_by_link_id=changed_by_link_id,
             changed_at=now,
         )
         for change in field_changes(before, after)
