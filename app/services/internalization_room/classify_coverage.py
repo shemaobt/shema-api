@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import unicodedata
+from collections.abc import Sequence
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -195,6 +197,17 @@ def _parse(raw: str) -> dict[str, list[str]] | None:
     return verdict
 
 
+def _every_one_landed(
+    readings: Sequence[list[dict[str, list[str]]] | None],
+) -> list[dict[str, list[str]]] | None:
+    landed: list[dict[str, list[str]]] = []
+    for reading in readings:
+        if reading is None:
+            return None
+        landed.extend(reading)
+    return landed
+
+
 async def classify_coverage(
     *,
     coverage_state: dict[str, str],
@@ -214,11 +227,12 @@ async def classify_coverage(
     names. Narrowing the offer to the pointer's scene let one bead left at `surfaced` hold
     every later scene off the list for the rest of the session (ADR 0034).
 
-    The offer is read in readings of `_BEADS_PER_READING`, each shown the same exchange and
-    only its own beads, and merged once when every reading has landed. A reading that does
-    not land is read again in halves, down to a single bead; one that still does not leaves
-    the tracker untouched, because a classification applied in part lights beads by which
-    reading happened to finish rather than by what the team told.
+    The offer is read in readings of `_BEADS_PER_READING`, all at once, each shown the same
+    exchange and only its own beads, and merged once when every reading has landed. A
+    reading that does not land is read again in two halves at once, down to a single bead;
+    one that still does not leaves the tracker untouched, because a classification applied
+    in part lights beads by which reading happened to finish rather than by what the team
+    told.
     """
     cfg = settings or get_settings()
 
@@ -227,9 +241,8 @@ async def classify_coverage(
         offered[start : start + _BEADS_PER_READING]
         for start in range(0, max(len(offered), 1), _BEADS_PER_READING)
     ]
-    gathered: dict[str, list[str]] = {"surfaced": [], "engaged": []}
-    while readings:
-        beads = readings.pop(0)
+
+    async def classify_reading(beads: list[Element]) -> list[dict[str, list[str]]] | None:
         system = render(
             cache_break_before(classifier_prompt, "{{COVERAGE_ELEMENTS}}"),
             SESSION_LANGUAGE=session_language,
@@ -251,32 +264,36 @@ async def classify_coverage(
             )
         except Exception:
             logger.exception("Coverage classification failed; leaving the tracker untouched")
-            return coverage_state
+            return None
 
         verdict = _parse(raw)
-        if verdict is None:
-            if len(beads) <= 1:
-                logger.warning(
-                    "Coverage reading of %s never landed; leaving the tracker untouched",
-                    [element.key for element in beads],
-                )
-                return coverage_state
-            half = len(beads) // 2
+        if verdict is not None:
+            _report_unknown_elements(verdict, pericope_num)
+            return [_only_offered(verdict, beads)]
+        if len(beads) <= 1:
             logger.warning(
-                "Coverage reading of %d beads did not land; read again in two halves",
-                len(beads),
+                "Coverage reading of %s never landed; leaving the tracker untouched",
+                [element.key for element in beads],
             )
-            readings[:0] = [beads[:half], beads[half:]]
-            continue
-        _report_unknown_elements(verdict, pericope_num)
-        for status, keys in _only_offered(verdict, beads).items():
-            gathered[status].extend(keys)
+            return None
+        half = len(beads) // 2
+        logger.warning(
+            "Coverage reading of %d beads did not land; read again in two halves", len(beads)
+        )
+        return _every_one_landed(
+            await asyncio.gather(classify_reading(beads[:half]), classify_reading(beads[half:]))
+        )
 
+    landed = _every_one_landed(
+        await asyncio.gather(*(classify_reading(beads) for beads in readings))
+    )
+    if landed is None:
+        return coverage_state
     return merge(
         coverage_state,
         pericope_num=pericope_num,
-        surfaced=gathered["surfaced"],
-        engaged=gathered["engaged"],
+        surfaced=[key for verdict in landed for key in verdict["surfaced"]],
+        engaged=[key for verdict in landed for key in verdict["engaged"]],
     )
 
 
