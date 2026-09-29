@@ -229,7 +229,7 @@ async def test_the_analyst_is_shown_only_stretches_that_count(
     assert THE_RETOLD not in analyst.shown[-1]
 
 
-async def _part_2_is_recorded_again_while_the_analyst_reads(
+def _part_2_is_recorded_again_while_the_analyst_reads(
     db: AsyncSession, session: IRSession, parts: list[IRTake], analyst: ScriptedAnalyst
 ) -> None:
     async def _the_team_records_part_2_again() -> None:
@@ -249,7 +249,7 @@ async def test_a_part_recorded_again_while_the_analyst_reads_is_not_stored_as_a_
     """
     session, parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [{"findings": [_addition(2)]}]
-    await _part_2_is_recorded_again_while_the_analyst_reads(db_session, session, parts, analyst)
+    _part_2_is_recorded_again_while_the_analyst_reads(db_session, session, parts, analyst)
 
     await _finish(client, db_session, session.id)
 
@@ -266,11 +266,13 @@ async def test_a_passage_whose_part_was_recorded_again_while_read_is_not_stored_
     """
     session, parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [{"findings": []}]
-    await _part_2_is_recorded_again_while_the_analyst_reads(db_session, session, parts, analyst)
+    _part_2_is_recorded_again_while_the_analyst_reads(db_session, session, parts, analyst)
 
     await _finish(client, db_session, session.id)
 
-    assert (await stored_telling_back(db_session, session)).checked is False
+    stored = await stored_telling_back(db_session, session)
+    assert stored.checked is False
+    assert stored.verdict is None
 
 
 async def test_a_swap_with_one_half_on_a_replaced_stretch_leaves_whole(

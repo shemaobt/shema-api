@@ -226,6 +226,11 @@ async def save_the_spoken_verdict(
     Called once the words exist as audio, or once the caller has decided there will be none.
     A verdict stored before its clip would be served back by the repeat-press guard as a turn
     the team heard, when what they heard was the error.
+
+    A verdict read from stretches that changed while it was being read is not stored as a
+    blessing: `checked` strikes the passage off the wheel and the cached verdict would be served
+    back for a passage the team has since recorded again. It is stored as the upload left it —
+    not checked, no verdict — and carries only findings on stretches that count.
     """
     standing = await final_segments(db, session.id)
     state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in standing))
