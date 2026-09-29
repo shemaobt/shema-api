@@ -13,7 +13,7 @@ module keeps the three-line fixture that calls it — which is also how `release
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator, Iterable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -110,11 +110,17 @@ class ScriptedAnalyst:
     def __init__(self) -> None:
         self.readings: list[dict[str, Any]] = []
         self.verifications: list[str] = []
+        self.verification: dict[str, Any] = {"resolved": True, "findings": []}
+        self.shown: list[str] = []
+        self.on_reading: Callable[[], Awaitable[None]] | None = None
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
         if CORRECTION_MARK in system_prompt:
             self.verifications.append(system_prompt)
-            return json.dumps({"resolved": True, "findings": []})
+            return json.dumps(self.verification)
+        self.shown.append(system_prompt)
+        if self.on_reading is not None:
+            await self.on_reading()
         read = self.readings.pop(0) if self.readings else {"findings": []}
         return json.dumps({"evidence_sufficient": True, **read})
 

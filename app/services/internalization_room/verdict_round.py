@@ -32,6 +32,7 @@ from app.services.internalization_room.back_translation import (
     current_findings,
     findings_after_correction,
     findings_block,
+    findings_on_stretches_that_count,
     findings_remaining,
     segments_block,
     the_finding_that_leads,
@@ -42,6 +43,7 @@ from app.services.internalization_room.background import the_correction_ahead, t
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import append_exchange, save_back_translation
 from app.services.internalization_room.takes import current_parts
 from app.services.internalization_room.validated_turn import TurnOutcome
@@ -167,6 +169,7 @@ async def check_the_telling_back(
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
+    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
     current = current_findings(state)
     finding = the_finding_that_leads(state)
     state.checked = finding is None
@@ -222,6 +225,9 @@ async def save_the_spoken_verdict(
     A verdict stored before its clip would be served back by the repeat-press guard as a turn
     the team heard, when what they heard was the error.
     """
+    state.findings = findings_on_stretches_that_count(
+        state.findings, (one.id for one in await final_segments(db, session.id))
+    )
     session = await append_exchange(
         db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
     )

@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -1081,6 +1082,19 @@ def findings_after_correction(
             for at, finding in enumerate(findings)
         ]
     return [*check.findings, *(one for at, one in enumerate(findings) if at not in answered)]
+
+
+def findings_on_stretches_that_count(
+    findings: list[Finding], counting: Iterable[str]
+) -> list[Finding]:
+    """What is left of the findings once the stretches that stopped counting are gone.
+
+    A correction replaces a stretch and a part recorded again abandons one, and a finding still
+    addressed to either sends the team to a row that is no longer on their screen. A finding
+    addressed to no stretch — a missing element placed after everything told — keeps its shape.
+    """
+    standing = set(counting)
+    return [one for one in findings if one.segment_id is None or one.segment_id in standing]
 
 
 async def verify_correction(
