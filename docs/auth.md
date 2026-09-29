@@ -56,10 +56,15 @@ and to no `Referer`; the receiving app reads it, exchanges it and clears the URL
   that leaked into a session with no end, one that survives the password reset that revoked
   every other.
 - The account is re-read, not taken from the cache, and must be active.
-- The app must exist (else 422 `UNKNOWN_REFERENCE`), and the account must hold a live role in
-  it or be a platform admin (else 403) — `require_app_access`'s rule, read from the database
-  because minting a credential is a write that matters, the distinction `holds_capability`
-  draws (`docs/resource_requests.md` §5.5).
+- The app must exist (else 422 `UNKNOWN_REFERENCE`), and the account must be let in by that
+  app's door (else 403), read from the database because minting a credential is a write that
+  matters, the distinction `holds_capability` draws (`docs/resource_requests.md` §5.5). For
+  every app the door is `require_app_access`'s rule: a platform admin, or a live role in the
+  app. **The resource-request form's door is wider** (BE-19, OBT-520): a live member of a PME
+  project enters it with no grant, because that is who the team is since GATE-04. The handoff
+  asks the form's own `enters_the_form` (`docs/resource_requests.md` §5.4.1) rather than a copy
+  of it — a copy is what refused the member the door admits, and the PME → form flow
+  (OBT-538, OBT-544) with it. A membership opens no other app.
 - `context` is a JSON object the server never reads — the PME sends `{"projectId": …}` so the
   form opens the right instance — handed back exactly as it came. At most 1024 bytes of
   compact UTF-8 JSON, and no `NaN` or `Infinity`; either refusal is 422

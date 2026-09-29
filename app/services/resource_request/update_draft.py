@@ -9,6 +9,7 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRBudgetLine, RRRequestSections
 from app.models.resource_request import RequestDraftIn
 from app.services.resource_request._document import document, split
+from app.services.resource_request._editing import require_editor
 from app.services.resource_request._loading import Loaded, load
 from app.services.resource_request._trail import document_fields, record_request_trail
 from app.services.resource_request.get_request import get_request
@@ -84,6 +85,7 @@ async def update_draft(
     ``1200.50``, not the wire's ``1200.5``.
     """
     loaded = await get_request(db, request_id, user, app_key)
+    await require_editor(db, loaded.request, user, app_key)
 
     if loaded.request.submitted_at is not None:
         raise ConflictError(

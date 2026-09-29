@@ -11,6 +11,7 @@ from app.db.models.resource_request import (
     RRRequestSections,
     RRSnapshot,
 )
+from app.services.resource_request._editing import require_editor
 from app.services.resource_request.get_request import get_request
 
 
@@ -59,6 +60,7 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
     ``tpp_name``/``tpp_date`` do carry — typed content of the team's, not a server act.
     """
     loaded = await get_request(db, request_id, user, app_key)
+    await require_editor(db, loaded.request, user, app_key)
 
     snapshot = (
         await db.execute(
@@ -92,6 +94,7 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
         tpp_name=original.tpp_name,
         tpp_date=original.tpp_date,
         created_by=original.created_by,
+        shema_project_id=original.shema_project_id,
         revision_of_id=snapshot.id,
     )
     db.add(revision)

@@ -545,8 +545,13 @@ def role_from(granted: AbstractSet[str]) -> str | None:
 # --- the member's reach (OBT-524) -------------------------------------------------------------
 
 
-def _live_memberships(user_id: str) -> Select[tuple[str]]:
-    """The ids of the projects ``user_id`` is a live member of."""
+def live_membership_ids(user_id: str) -> Select[tuple[str]]:
+    """The ids of the projects ``user_id`` is a live member of — the one statement of *live*.
+
+    Public because the resource-request form reads the same fact (BE-19, OBT-520): a live
+    member of a project is its team there, and ``resource_request/_membership.py`` filters and
+    checks by this statement instead of keeping a second ``removed_at IS NULL`` beside it.
+    """
     return select(ShemaProjectMember.project_id).where(
         ShemaProjectMember.user_id == user_id,
         ShemaProjectMember.removed_at.is_(None),
@@ -555,7 +560,7 @@ def _live_memberships(user_id: str) -> Select[tuple[str]]:
 
 async def holds_membership(db: AsyncSession, user_id: str) -> bool:
     """Whether ``user_id`` is a live member of any project — the session's :data:`EQUIPE_ROLE`."""
-    found = await db.execute(_live_memberships(user_id).limit(1))
+    found = await db.execute(live_membership_ids(user_id).limit(1))
     return found.scalar_one_or_none() is not None
 
 
@@ -569,7 +574,7 @@ def member_projects(user_id: str) -> Select[tuple[ShemaProject]]:
     no statement that could. What else a member is shown of their own project is OBT-544's to
     decide, and composing this statement is how it would.
     """
-    return select(ShemaProject).where(ShemaProject.id.in_(_live_memberships(user_id)))
+    return select(ShemaProject).where(ShemaProject.id.in_(live_membership_ids(user_id)))
 
 
 class RosterReach(NamedTuple):
@@ -602,5 +607,5 @@ def roster_projects(reach: RosterReach, user_id: str) -> Select[tuple[ShemaProje
     if reach.admin:
         return select(ShemaProject)
     return select(ShemaProject).where(
-        or_(within_scope(reach.scope), ShemaProject.id.in_(_live_memberships(user_id)))
+        or_(within_scope(reach.scope), ShemaProject.id.in_(live_membership_ids(user_id)))
     )

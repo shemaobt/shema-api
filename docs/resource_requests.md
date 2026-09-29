@@ -694,6 +694,49 @@ vitest suite — but it means this emission cannot go stale at the source, which
 weakness §9 had to design around. The two checks fail for different reasons and both are
 needed: one says the emission is old, the other says the vendored copy and the map disagree.
 
+### 5.4.1 The team is a project's members, not a grant — **Built** (BE-19, OBT-520, 28/sep/2026)
+
+GATE-04 (OBT-519) and the access model of 22 and 25/sep/2026 (OBT-522) moved the team out of this
+app: a team is **the members of a project in the PME** (`shema_project_members`, OBT-524). Three
+reads change, and they change together so they cannot disagree:
+
+- **A live membership holds `equipe`**, read through `_membership.is_member`, which imports the
+  PME's own `holds_membership` (`app/services/shema/_scope.py`) rather than restating it — and
+  the ids a member reaches come from the same file's `live_membership_ids`, so *live* is one
+  `removed_at IS NULL` for both modules. **It
+  is asked only when the grants did not already answer** (PR #569, review): the app gate
+  (`_deps._app_member`, which replaced `require_app_access` for this app) reads the grants
+  through the role cache as before and asks the membership only for an account with no grant;
+  **who enters the form** — a platform admin, a grant, or a live membership — is written once,
+  in `enters_the_form`, and asked by that gate (`cached=True`) and by the handoff that opens the
+  form from the PME (`create_handoff`, `cached=False`, because minting a credential reads the
+  grants live — `docs/auth.md`), so the two doors cannot disagree about a member;
+  `holds_capability` asks it only when no granted role carries the capability; and
+  `_scope.reach` never asks it, because neither of its two answers depends on `equipe`.
+- **The scope**: a member reaches the requests they authored **and every request of their
+  projects, drafts included** (GATE-04 D2). **Reading is not editing**: `update_draft`,
+  `store_attachment` and `open_revision` ask `_editing.require_editor` after the scope, so a
+  teammate reads a draft somebody else started and gets a 403 on writing it; the author and
+  whoever reaches the whole board (mesa, Gestor, platform admin — GATE-02 D4) still edit. Who
+  edits a project's instance for good is OBT-534's. `RequestStatusOut` does not move: tracking is still status and nothing else
+  (GATE-03 D4).
+- **The project a request belongs to**: `rr_requests.shema_project_id`, nullable FK. Stamped at
+  creation from `?project_id=` **checked against the caller's live memberships**, never read from
+  the document (`RequestDraftIn` forbids it). A member of exactly one project may leave it unsaid;
+  a member of several must say which. The mesa, the Gestor and the platform admin may open with
+  no project or name any that exists. The second write — a link request's project, at the mesa's
+  approval — is OBT-547's. `count_project_translations` is the number the one-per-project rule
+  reads (OBT-508): submitted `traducao`, revisions not counted twice.
+
+`20260928_rr08` adds the column, **revokes** every live `equipe` grant of this app and turns
+`auto_approve` off. Three things GATE-04 D5 asks for that it deliberately does not do: the
+`equipe` role row stays (a key of the capability table, pinned by tests and by the seed script);
+`lider` stays until OBT-535's link endorsement exists; and the existing test requests are **not**
+deleted, because four tables here are append-only and deleting them means lifting
+`rr_reject_write()` and erasing ledger movements — its own reviewed step. `_default_roles.py`
+keeps mapping the app to `equipe` for the platform's `test_every_app_is_approvable`: with
+`auto_approve` off, an approval is an Admin's act (GATE-04 D3).
+
 ### 5.5 Two platform behaviours to design around
 
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and

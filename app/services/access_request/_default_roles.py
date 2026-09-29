@@ -5,14 +5,15 @@ Approval assigns a role by key, so an app missing from this map falls through to
 at approval time instead of a grant. Every app whose roles do not include ``analyst``
 therefore needs its own entry here.
 
-``resource-request-form`` maps to ``equipe``, the least-privileged of its three roles.
-It justified itself by the frontend's ``DEFAULT_ROLE`` in ``capabilities.ts`` until
-FE-24 (OBT-466) removed that constant: the mocked session was its last reader, and a
-*papel default* sitting beside the capability table is what the next person reaches for
-when nobody has signed in. The mapping did not move — ``equipe`` is still the floor — only
-the reason it pointed at. It now stands on this app's own capability table
-(``app/services/resource_request/capabilities.py``), where ``equipe`` holds
-``edit_requests`` and nothing else.
+``resource-request-form`` maps to ``equipe``, the least-privileged of its four roles, and
+**since BE-19 (OBT-520) no approval reaches it by itself.** Registering was how a team got in
+while ``auto_approve`` was on (GATE-02 D1); GATE-04 (OBT-519) moved the team to the PME — a
+team is the members of a project there — and ``20260928_rr08`` turns ``auto_approve`` off and
+revokes the ``equipe`` grants. The entry stays for the platform's own guard,
+``test_every_app_is_approvable``: without it approval falls to ``analyst``, which this app does
+not define, and a reviewed request would grant nothing while reading as granted — the bug
+that guard exists because it recurred four times. So an approval is now a person's act, and
+GATE-04 D3 says whose: only the Admin manages access.
 
 Whether approval happens automatically at all is ``apps.auto_approve``, and for this app
 it is true since ``20260828_rr02`` — GATE-02 D1, *"quem tiver uma conta"*. The two are one

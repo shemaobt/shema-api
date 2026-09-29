@@ -390,6 +390,53 @@ async def test_moving_status_to_concluido_stamps_the_savers_local_day(
     assert await _completed(db_session, "dia-local") == yesterday
 
 
+async def test_the_record_serves_the_day_the_save_stamped_and_null_once_it_is_cleared(
+    client, db_session, strategist_headers
+) -> None:
+    """OBT-413: the stamp travels on the record as ``completedDate`` — the answer to the save
+    and every read after it — because FE-50's annual report reads it off ``Project``."""
+    await listed(db_session, "servido")
+    yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    saved = await _patch_status(
+        client,
+        strategist_headers,
+        "servido",
+        "concluido",
+        **{"X-Shema-Local-Date": yesterday.isoformat()},
+    )
+    read = (await client.get(f"{PROJECTS}/servido", headers=strategist_headers)).json()
+
+    assert saved["completedDate"] == read["completedDate"] == yesterday.isoformat()
+
+    reopened = await _patch_status(client, strategist_headers, "servido", "em-andamento")
+    assert reopened["completedDate"] is None
+
+
+async def test_a_tab_saved_after_the_stamp_still_saves_and_keeps_the_day(
+    client, db_session, strategist_headers
+) -> None:
+    """Today's save, against a record that now carries ``completedDate``: the console sends the
+    fields a tab owns (``SERVER_WRITABLE``) and never the stamp, so the save goes through and
+    the day it read is the day that stays."""
+    await listed(db_session, "depois-do-carimbo")
+    stamped = (await _patch_status(client, strategist_headers, "depois-do-carimbo", "concluido"))[
+        "completedDate"
+    ]
+    etag = (await client.get(f"{PROJECTS}/depois-do-carimbo", headers=strategist_headers)).headers[
+        "ETag"
+    ]
+
+    response = await client.patch(
+        f"{PROJECTS}/depois-do-carimbo",
+        json={"statusComments": "relatório entregue"},
+        headers={**strategist_headers, "If-Match": etag},
+    )
+
+    assert response.status_code == 200, response.text
+    assert stamped is not None
+    assert response.json()["completedDate"] == stamped
+
+
 async def test_a_completion_saved_on_31_july_counts_for_the_year_that_closes(
     db_session, strategist
 ) -> None:
@@ -477,6 +524,30 @@ async def test_the_client_cannot_write_the_completion_date(
     )
     assert response.status_code == 422
     assert await _completed(db_session, "escrita") is None
+
+
+async def test_a_create_cannot_carry_the_completion_date_either(
+    client, db_session, strategist_headers
+) -> None:
+    """The record serves ``completedDate`` since OBT-413, and the write still has no such field:
+    a create that sends it back is refused whole and files nothing."""
+    response = await client.post(
+        PROJECTS,
+        json={
+            "id": "criado-com-data",
+            "languageName": "Lingua datada",
+            "bridgeLanguage": "Portugues",
+            "team": OPEN_BASE,
+            "objective": ["NT"],
+            "status": "concluido",
+            "completedDate": "2020-01-01",
+        },
+        headers=strategist_headers,
+    )
+
+    assert response.status_code == 422
+    assert "completedDate" in response.text
+    assert await db_session.get(ShemaProject, "criado-com-data") is None
 
 
 # --- the recorded report ---------------------------------------------------------------------

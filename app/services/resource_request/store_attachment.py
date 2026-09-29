@@ -16,6 +16,7 @@ from app.services.resource_request._attachment_rules import (
     attachment_type,
 )
 from app.services.resource_request._attachment_storage import GCS_RR_BUCKET, storage_key
+from app.services.resource_request._editing import require_editor
 from app.services.resource_request.get_request import get_request
 
 
@@ -42,7 +43,8 @@ async def store_attachment(
     """Store the budget file for a draft this caller reaches, replacing any current one.
 
     The scope guard is ``get_request``'s — the same 404-for-out-of-scope the request
-    itself answers — and the draft rule is ``update_draft``'s: a submitted request is
+    itself answers — then ``require_editor``'s: a teammate who reads the draft does not swap
+    its file (OBT-520). The draft rule is ``update_draft``'s: a submitted request is
     frozen under the mesa's eyes, so the file may not move either; the way back in is a
     revision.
 
@@ -63,6 +65,7 @@ async def store_attachment(
     validation error because by this point the bytes have already been read.
     """
     loaded = await get_request(db, request_id, user, app_key)
+    await require_editor(db, loaded.request, user, app_key)
 
     if loaded.request.submitted_at is not None:
         raise ConflictError(

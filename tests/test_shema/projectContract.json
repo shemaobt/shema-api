@@ -2,7 +2,7 @@
   "source": {
     "repository": "shemaobt/project-management-ecosystem",
     "file": "src/types/project.ts",
-    "commit": "8bcf35cace0785242419e3f1ff1ab0941a30f1e6"
+    "commit": "20fbc3b50dfe4f80e5086b1cff25a75ed47bdcbe"
   },
   "required": [
     "id",
@@ -62,12 +62,14 @@
     "lastUpdated"
   ],
   "optional": [
+    "completedDate",
     "healthPhysical",
     "healthHistory",
     "prayerVisibility",
     "prayerRequestsAudio",
     "pastoralInterventionWhen",
     "location2",
+    "readAs",
     "portion",
     "facilitator",
     "teamLeaderContact",
@@ -79,6 +81,7 @@
     "storiesTranslated",
     "readyVesselsAudioHours",
     "mediaPhotos",
-    "mediaVideos"
+    "mediaVideos",
+    "derived"
   ]
 }

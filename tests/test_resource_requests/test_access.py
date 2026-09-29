@@ -64,27 +64,25 @@ def test_seed_apps_has_no_duplicate_keys() -> None:
 def test_an_approved_access_request_grants_a_role_this_app_has() -> None:
     """Without its own entry the dispatch falls back to `analyst`, which this app does
     not have — approval would raise RoleError instead of granting. The same regression
-    translation-helper already hit once.
+    translation-helper already hit once. Since BE-19 no approval happens by itself: the
+    entry serves an Admin's review, never a registration.
     """
     assert default_role_for(APP_KEY) == "equipe"
     assert default_role_for(APP_KEY) in APP_ROLES_OVERRIDE[APP_KEY]
 
 
-async def test_registering_gets_you_in_as_equipe_without_review(db_session, rrf_app) -> None:
-    """GATE-02 D1, end to end: *"quem tiver uma conta"*.
+async def test_registering_no_longer_gets_you_in(db_session, rrf_app) -> None:
+    """The reverse of GATE-02 D1, end to end: ``20260928_rr08`` turned ``auto_approve`` off.
 
-    ``20260828_rr02`` sets ``apps.auto_approve`` and ``_default_roles`` names the role; this
-    asserts what the pair actually does, which is the guarantee the client bought. The
-    migration itself is not exercised — the suite runs on SQLite and builds its schema from
-    the models — so the fixture carries the row the migration writes.
+    The form has no login since the 22/sep meeting (OBT-522), and whoever registers now waits
+    for a review that has no role to grant — the door is a project membership in the PME.
     """
     user = await make_user(db_session, email="signup@rrf.test")
 
     request = await create_access_request(db_session, user.id, APP_KEY)
 
-    assert request.status == "approved"
-    assert request.review_reason == "auto-approved"
-    assert await list_roles(db_session, user.id, APP_KEY) == [(APP_KEY, "equipe")]
+    assert request.status == "pending"
+    assert await list_roles(db_session, user.id, APP_KEY) == []
 
 
 def test_the_app_key_is_named_once_in_the_module() -> None:

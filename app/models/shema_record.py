@@ -11,7 +11,7 @@ who may open it (``_scope.py``); the reader decides what they read. No route is 
 more, and ``tests/test_shema/test_privacy_owners.py``'s ``READER_ROUTES`` names the ones that
 take the caller's reader.
 
-**The shape is FE-44's ``Project``, key for key: 55 required and 18 optional.**
+**The shape is FE-44's ``Project``, key for key: 55 required and 21 optional.**
 ``src/types/__tests__/contract.test.ts`` pins that split in both directions on the other side,
 and ``tests/test_shema/test_record_shape.py`` pins it here against the same source — so a
 field added to the table stays out of the wire until somebody adds it to this file, and a key
@@ -29,9 +29,15 @@ instruction rather than a liberty:
   because the contract still lists them as required keys and ``src/fixtures/__tests__`` asserts
   they stay empty. Emitting them is what keeps a whole ``Project`` round-trippable through
   ``POST``; storing one would be a second owner of a fact ``shema_region_teams`` owns.
-* **``completedDate`` is not emitted.** It is a column (GATE-01 item 6) and it is not one of
-  FE-44's 73 keys; ``save_project`` writes it (BE-11) and the ETEN report is where it is read,
-  and a server that invents a 74th key is the reason a frozen contract stops being one.
+* **``completedDate`` is served, and never written by a client.** It is a column (GATE-01
+  item 6) that ``save_project`` stamps on the move into ``concluido`` (BE-11). It stayed off the
+  wire while FE-44's ``Project`` did not have it — a server that invents a key is how a frozen
+  contract stops being one — and it travels since the contract's owner added it: the console's
+  ``Project`` gained ``completedDate?: string`` for the annual report and ETEN (FE-50, PME #64,
+  28/sep/2026), and OBT-413 asked the record to carry it. A day or ``null``, never a place. The
+  write shape (``app/models/shema.py``) has no such field, so a client that sends it is refused
+  with the rest of what the write does not take; the console never sends it, because its
+  ``SERVER_WRITABLE`` is the gate its saves go through.
 * **``mediaPhotos[].image`` is always ``null``.** The bytes have no serving path: BE-04 built
   the authorization predicate and named *the storage half* as belonging to the issue that
   first serves media (BE-09/BE-14), and a ``src`` invented here would freeze the guess that
@@ -470,14 +476,14 @@ class ShemaProjectRecord(SessionShape):
     ``app/services/shema/read_record.py`` and default to empty, so a record built from a row
     alone is honest rather than wrong.
 
-    The fields run in the contract's own order: the 55 the export has first, then the 18 the
+    The fields run in the contract's own order: the 55 the export has first, then the ones the
     product added — where **absent means absent and never an empty default**, which is what
     every ``| None = None`` below the aggregates is for — and then the six collections.
 
     **It is a** :class:`~app.models.shema_privacy.SessionShape`, built with
     :meth:`~app.models.shema_privacy.LeavingShape.read_by` for the caller's reader — the module
-    docstring carries the argument. Two keys beyond the contract travel with that:
-    ``locationWithheld`` and ``readAs``, both additive.
+    docstring carries the argument. One key beyond the contract travels with that,
+    ``locationWithheld``, additive; ``readAs`` is the contract's own since FE-48 (OBT-532).
     """
 
     model_config = _OUTWARD
@@ -565,6 +571,9 @@ class ShemaProjectRecord(SessionShape):
     other_progress: list[ShemaOtherProgressRow] | None = None
     stories_translated: str | None = None
     ready_vessels_audio_hours: str | None = None
+    #: The day the project moved into ``concluido``, stamped by ``save_project`` — module
+    #: docstring. ``None`` for every project that is not finished or finished before BE-11.
+    completed_date: date | None = None
 
     needs_items: list[ShemaNeedItem] = Field(default_factory=list)
     materials: list[ShemaProjectMaterial] = Field(default_factory=list)
@@ -574,8 +583,8 @@ class ShemaProjectRecord(SessionShape):
     media_videos: list[ShemaProjectVideo] | None = None
 
     #: **The concurrency token**, excluded from the payload and handed to the client as the
-    #: response's ``ETag``. It is not one of FE-44's 73 keys and adding a 74th to a frozen
-    #: shape is how a contract stops being one; a header is where HTTP already keeps the
+    #: response's ``ETag``. It is not one of FE-44's keys and adding one the contract does not
+    #: have is how a contract stops being one; a header is where HTTP already keeps the
     #: version of a thing you are about to conditionally write.
     version: int = Field(default=1, exclude=True)
 

@@ -16,9 +16,17 @@ survives the password reset that revoked every other. Requiring the session's ow
 token, read through the same ``read_live_refresh_token`` as ``/refresh``, is what makes
 *requires a valid session* a check rather than a signature.
 
-**The grant is ``require_app_access``'s rule**: a platform admin passes, and anybody else
-needs a live role in the app. It is restated here rather than called because that guard is a
-FastAPI dependency with the key fixed at wiring time, and this key arrives in the body.
+**The grant is the destination's own door, read live.** For every app that door is
+``require_app_access``'s rule — a platform admin passes, and anybody else needs a live role in
+the app — restated here rather than called because that guard is a FastAPI dependency with the
+key fixed at wiring time, and this key arrives in the body. **The resource-request form is the
+one app whose door is wider** (BE-19, OBT-520): a live member of a PME project enters it with
+no grant, because that is who the team is since GATE-04 (OBT-519). Its rule is
+``enters_the_form``, asked here with ``cached=False`` and not restated, because a copy is what
+refused the member the door admits and killed the PME → form flow (OBT-538, OBT-544) before it
+started. A membership opens nothing else: every other app still asks for a grant.
+``FORM_APP_KEY`` repeats ``_deps.APP_KEY`` because a service may not import a router, and a test
+keeps the two equal.
 
 **The context is checked here, not in the request model.** It is opaque, so all there is to
 check is that it is small and plain: at most ``HANDOFF_CONTEXT_MAX_BYTES`` of compact UTF-8
@@ -50,6 +58,9 @@ from app.services.authorization.get_app_by_key import get_app_by_key
 from app.services.authorization.list_roles import list_roles
 from app.services.common import tokens
 
+#: The resource-request form — the one app whose door admits more than a grant (BE-19).
+FORM_APP_KEY = "resource-request-form"
+
 
 def _check_context(context: dict[str, Any] | None) -> None:
     """Refuse a context that is not small, plain JSON — measured in bytes, not characters."""
@@ -69,6 +80,20 @@ def _check_context(context: dict[str, Any] | None) -> None:
         )
 
 
+async def _enters(db: AsyncSession, account: User, app_key: str) -> bool:
+    """Whether ``account`` may enter ``app_key`` — its door's rule, read from the database.
+
+    ``enters_the_form`` is imported here and not at the top: ``app.services`` imports this
+    package before it binds ``authorization_service``, which the form's services read — a cycle
+    at import time only, the one ``_membership.is_member`` sidesteps the same way.
+    """
+    if app_key == FORM_APP_KEY:
+        from app.services.resource_request import enters_the_form
+
+        return await enters_the_form(db, account, app_key, cached=False)
+    return account.is_platform_admin or bool(await list_roles(db, account.id, app_key))
+
+
 async def create_handoff(
     db: AsyncSession,
     user: User,
@@ -82,7 +107,7 @@ async def create_handoff(
     """Mint one code that opens ``app_key`` as ``user``, or refuse before writing anything.
 
     401 when ``refresh_token`` is not a live session of ``user``; 403 when the account is no
-    longer active or holds no grant in the app; 422 when no app has that key, or when the
+    longer active or may not enter the app; 422 when no app has that key, or when the
     context is too heavy or not plain JSON.
     """
     _check_context(context)
@@ -98,7 +123,7 @@ async def create_handoff(
     if app is None:
         raise UnknownReferenceError(f"app_key: no application is registered as '{app_key}'.")
 
-    if not account.is_platform_admin and not await list_roles(db, account.id, app.app_key):
+    if not await _enters(db, account, app.app_key):
         raise AuthorizationError(
             f"You hold no role in the '{app_key}' application, so no handoff to it is issued."
         )
