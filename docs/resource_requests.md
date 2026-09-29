@@ -900,6 +900,8 @@ not a project's — and holds `edit_requests` for them alone.
   request; there is no in-app notice for a link holder. The first e-mail also carries the link and
   its code.
 
+### 5.5 Two platform behaviours to design around
+
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and
   `require_role` each return early on `user.is_platform_admin` before consulting a grant.
   Negative tests written per role must not use an admin account, and no capability check
