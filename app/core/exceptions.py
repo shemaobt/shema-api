@@ -46,8 +46,8 @@ ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
 #: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
 ERROR_CODE_NOTHING_TO_HEAR: Final = "NOTHING_TO_HEAR"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
-#: A correction or a division aimed at a stretch that no longer counts. Its own code for the
-#: reason above: the tablet drops the pending translation and re-reads its stretches, which is
+#: A correction or a division aimed at a stretch that no longer counts. Its own code because
+#: the tablet acts on it: it drops the pending translation and re-reads its stretches, which is
 #: the wrong response to every other BAD_REQUEST, and it must not tell the two apart by the words.
 ERROR_CODE_STRETCH_NO_LONGER_COUNTS: Final = "STRETCH_NO_LONGER_COUNTS"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -186,7 +186,7 @@ class ValidationError(Exception):
 
 
 class StretchNoLongerCounts(ValidationError):
-    """A stretch that was replaced, or whose rehearsal was recorded again, was addressed anyway.
+    """A stretch that was replaced, or whose Part was recorded again, was addressed anyway.
 
     Its own exception for the reason ERROR_CODE_STRETCH_NO_LONGER_COUNTS gives; still a 400.
     """
