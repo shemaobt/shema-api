@@ -783,6 +783,37 @@ consegue preencher"* — and never Karina's.
   of the roles per call, not per row), so the screen (FE-53, OBT-539) reads the answer instead of
   re-deriving the rule. `RequestStatusOut` is untouched: the team's ceiling stays four fields.
 
+### 5.4.3 The request card, and who reads a project's requests from the PME — **Built** (BE-24, OBT-536, 29/sep/2026)
+
+**One projection, two readers.** `RequestCardOut` is a request drawn as a card, and
+`RequestCardOut.of` is its only constructor: the PME's project page reads it through
+`GET /projects/{project_id}/requests` (OBT-544), and the form's tracking list reads it through
+`GET /requests/cards` (FE-46, OBT-514), which serves the same rows and scope as `GET /requests`.
+`GET /requests` itself is unchanged: it is the envelope the form's sync reads, and a screen that
+draws cards should not have to carry documents to do it.
+
+- **The ceiling is GATE-03 D4's.** The card carries `reg_name`, `request_type`,
+  `amount_requested` and `currency` (which request — the team's own document, and what the client
+  asked for on 18/set), `stage`, `created_at`, `submitted_at`, `endorsed` and `decision` (the
+  journey), and `open`, `can_edit` and `started_by_name` (the instance, BE-25). **Nothing of the
+  evaluation** — no scores, comments, attendees or evaluator — and **not `team_note`** either,
+  because a card is read by the mesa, the Gestor and the PME's coordinators, and that note is
+  addressed to the team. No place and no base. `extra="forbid"`, proven on the payload in
+  `test_cards.py`. The field list is ours, not the client's.
+- **`started_by_name` only while the instance is open**, where *"em preenchimento por X"* is the
+  sentence the PME's button needs. On a submitted request the card names nobody.
+- **No trip per row**: the decisions of every listed request come from one statement, the
+  starters' names from another, and `can_edit` from the caller's roles read once (`_cards.py`).
+- **Who reads a project's cards**: the platform admin; `admin`, `mesa` or `gestor` in either app
+  (the Admin of OBT-522 is one role seeded in both); a PME regional role whose scope reaches the
+  project's region (`scope_from_roles` + `reaches`, imported from `app/services/shema/_scope.py`,
+  which also gives `globalStrategist` every project); or a live member of the project.
+  **Everyone else gets 404**, a missing project included — the Shemá module's convention — and the
+  refusal is logged through `refuse_out_of_scope` like every other scoped miss in the PME.
+- **The route asks for a session and nothing else**, the one route in this module shaped so: the
+  module's own gate (`_app_member`) would refuse a regional coordinator who holds no role in the
+  form, and that coordinator is exactly who this read is for.
+
 ### 5.5 Two platform behaviours to design around
 
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and
@@ -1628,7 +1659,9 @@ And seven items with **no gate**, which need issues rather than answers:
    and `Multi` are not — so four of those five drop that too. Writing either would say a
    section was asked when it never was. It belongs with the contract's §6.1 question about
    whether that chip survives beside the *solicitante*, and it needs the same owner:
-   **before INT-04**, which builds the card against a real endpoint.
+   **before INT-04**, which builds the card against a real endpoint. **BE-24's
+   `RequestCardOut` (§5.4.3) is not this card**: it is the tracking and project-page card, and
+   it carries neither chip, so this item stays open.
 7. ~~**`rr_funds` carries no active/retired flag, and a fund can never be deleted**~~
    **Closed by BE-10** (OBT-471, 30/aug/2026): `retired_at` is the flag and it landed with
    its reader — `FundOut.retired`, `fund_balances`, and the 409 that refuses to retire a
