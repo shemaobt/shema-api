@@ -213,19 +213,22 @@ async def auth_header(db_session, user) -> dict[str, str]:
 async def grant(db_session, user, app, role_key: str):
     """Give ``user`` one of the app's already-seeded roles.
 
-    **``equipe`` also makes ``user`` the one member of a project of their own** (BE-19,
-    OBT-520). The team is a project's members since GATE-04 (OBT-519), and a member of
-    exactly one project opens requests in it without naming it; a project per account keeps
-    every team apart exactly as the account-shaped scope did, so the isolation these tests
-    already prove stays what they prove. The grant is kept beside the membership because an
-    account may still carry it, and the union reads both.
+    **``equipe`` makes ``user`` the one member of a project of their own, and nothing else**
+    (BE-19, OBT-520). The team is a project's members since GATE-04 (OBT-519) and
+    ``20260928_rr08`` revoked every ``equipe`` grant, so the production shape of a team account
+    is a membership with no row in ``user_app_roles`` — and that is the shape every test here
+    enters by, so the door and the capabilities are exercised through the membership rather
+    than through a grant no account holds any more. A member of exactly one project opens
+    requests in it without naming it; a project per account keeps every team apart exactly as
+    the account-shaped scope did, so the isolation these tests already prove stays what they
+    prove.
     """
     from sqlalchemy import select
 
     from app.db.models.auth import Role
 
     if role_key == "equipe":
-        await make_membership(db_session, user, own_project_id(user))
+        return await make_membership(db_session, user, own_project_id(user))
 
     stmt = select(Role).where(Role.app_id == app.id, Role.role_key == role_key)
     role = (await db_session.execute(stmt)).scalar_one()

@@ -232,13 +232,13 @@ async def test_manage_funds_is_held_by_the_mesa_and_the_gestor_alike(
 async def test_an_account_with_two_roles_answers_by_their_union(
     db_session, client, rrf_app, privileged: str
 ) -> None:
-    """Two roles on one account is the ordinary shape here, not a curiosity.
+    """Two roles on one account is an ordinary shape here, not a curiosity.
 
-    ``auto_approve`` is on since ``20260828_rr02`` — GATE-02 D1, *"quem tiver uma conta"* —
-    so every account that registers is already ``equipe`` before anybody grants it anything
-    else. A mesa member is ``equipe`` **plus** ``mesa``, and a Gestor is ``equipe`` plus
-    ``gestor``: the floor accumulates rather than being replaced, and ``user_app_roles``
-    carries a row per grant with no constraint on ``(user_id, app_id)`` to say otherwise.
+    Since BE-19 (OBT-520) the two halves come from different places: ``equipe`` from a live
+    membership of a PME project, which is the only way a team account holds it after
+    ``20260928_rr08`` revoked the grants, and ``mesa`` or ``gestor`` from a grant. A project
+    member who also sits on the mesa is that account, and the grant must add to the
+    membership rather than stand in for it.
 
     Asserted through the whole table against the **union** of the two roles, because that is
     what ``held & CAPABILITY_ROLES[capability]`` computes and the sweep above never exercised
@@ -249,9 +249,9 @@ async def test_an_account_with_two_roles_answers_by_their_union(
     await grant(db_session, user, rrf_app, privileged)
     headers = await auth_header(db_session, user)
 
-    assert sorted(await list_roles(db_session, user.id, APP_KEY)) == sorted(
-        [(APP_KEY, "equipe"), (APP_KEY, privileged)]
-    ), "the second grant replaced the first instead of adding to it"
+    assert await list_roles(db_session, user.id, APP_KEY) == [(APP_KEY, privileged)], (
+        "equipe is held through the membership, never as a grant"
+    )
 
     union = ROLE_CAPABILITIES["equipe"] | ROLE_CAPABILITIES[privileged]
     for capability in CAPABILITIES:

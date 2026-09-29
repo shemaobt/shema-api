@@ -196,7 +196,11 @@ async def test_granting_to_a_user_that_does_not_exist_is_a_422(db_session, clien
 async def test_the_overview_is_visible_to_those_who_concede_and_hidden_below(
     db_session, client, rrf_app
 ) -> None:
-    """FE-30's screen: gestor and admin read it; equipe is refused."""
+    """FE-30's screen: gestor and admin read it; equipe is refused.
+
+    The overview lists **grants**, and since BE-19 (OBT-520) a team account holds none — it is
+    ``equipe`` through a live membership of a PME project — so it is absent from the list and
+    still refused the screen."""
     _gestor, gestor_headers = await _actor(db_session, rrf_app, "gestor", "gestor4@rrf.example")
     _equipe, equipe_headers = await _actor(db_session, rrf_app, "equipe", "equipe2@rrf.example")
 
@@ -206,5 +210,5 @@ async def test_the_overview_is_visible_to_those_who_concede_and_hidden_below(
     assert seen.status_code == 200
     granted = {(g["email"], g["role_key"]) for g in seen.json()["grants"]}
     assert ("gestor4@rrf.example", "gestor") in granted
-    assert ("equipe2@rrf.example", "equipe") in granted
+    assert "equipe2@rrf.example" not in {email for email, _role in granted}
     assert refused.status_code == 403
