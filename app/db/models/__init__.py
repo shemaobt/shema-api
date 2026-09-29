@@ -108,7 +108,11 @@ from app.db.models.shema_intercessor import ShemaIntercessor
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
 from app.db.models.shema_meeting import ShemaMeetingLogEntry
 from app.db.models.shema_need import ShemaNeed
-from app.db.models.shema_notification import ShemaNotificationPrefs, ShemaNotificationRead
+from app.db.models.shema_notification import (
+    ShemaNotificationPrefs,
+    ShemaNotificationRead,
+    ShemaRequestNotice,
+)
 from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.db.models.shema_project_member import ShemaProjectMember
@@ -236,6 +240,7 @@ __all__ = [
     "ShemaRecordEdit",
     "ShemaRegionKey",
     "ShemaRegionTeam",
+    "ShemaRequestNotice",
     "ShemaRoleChange",
     "ShemaRoleKey",
     "ShemaScopeChange",
