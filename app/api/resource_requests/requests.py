@@ -40,7 +40,7 @@ that could carry them would be a body that could lie about who vouched.
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.api.resource_requests._deps import (
     APP_KEY,
@@ -50,8 +50,12 @@ from app.api.resource_requests._deps import (
     Db,
     ReadsFunds,
 )
+from app.api.shema._deps import APP_KEY as SHEMA_APP_KEY
+from app.core.auth_middleware import get_current_user
+from app.db.models.auth import User
 from app.models.resource_request import (
     DiscardedOut,
+    RequestCardOut,
     RequestDraftIn,
     RequestOut,
     RequestSavedOut,
@@ -59,10 +63,26 @@ from app.models.resource_request import (
     SubmissionOut,
 )
 from app.services import resource_request as service
+from app.services.resource_request._cards import CardFacts
 from app.services.resource_request._document import document
 from app.services.resource_request._loading import Loaded
 
 router = APIRouter(tags=["resource requests"])
+
+SignedIn = Annotated[User, Depends(get_current_user)]
+
+
+def _cards(facts: list[CardFacts]) -> list[RequestCardOut]:
+    return [
+        RequestCardOut.of(
+            fact.request,
+            decision=fact.decision,
+            open=fact.open,
+            can_edit=fact.can_edit,
+            started_by_name=fact.started_by_name,
+        )
+        for fact in facts
+    ]
 
 
 def _out(loaded: Loaded, reads_funds: bool, editing: service.Editing) -> RequestOut:
@@ -117,6 +137,28 @@ async def list_requests(user: CanReadRequests, db: Db, reads_funds: ReadsFunds) 
         RequestOut.of(row, {}, reads_funds=reads_funds, can_edit=editing.can_edit(row))
         for row in rows
     ]
+
+
+@router.get("/requests/cards")
+async def list_request_cards(user: CanReadRequests, db: Db) -> list[RequestCardOut]:
+    """The same rows as ``GET /requests``, drawn as cards (BE-24): what the tracking list
+    reads, and the same projection the PME's project page reads. Declared before
+    ``/requests/{request_id}`` so ``cards`` is never taken for an id."""
+    return _cards(await service.list_request_cards(db, user, APP_KEY))
+
+
+@router.get("/projects/{project_id}/requests")
+async def list_project_requests(project_id: str, user: SignedIn, db: Db) -> list[RequestCardOut]:
+    """The requests of one PME project, as cards (BE-24, OBT-536).
+
+    **A session and nothing else at the door**, and that is the one route in this module
+    shaped so: the PME's regional coordinator reads this and holds no role in the form, so
+    this module's gate would refuse the very reader the route exists for. Who reaches the
+    project — board roles, the region, the membership — is the service's, and everyone else
+    meets the Shemá module's 404.
+    """
+    facts = await service.list_project_requests(db, project_id, user, APP_KEY, SHEMA_APP_KEY)
+    return _cards(facts)
 
 
 @router.get("/requests/{request_id}")

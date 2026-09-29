@@ -326,6 +326,72 @@ class RequestStatusOut(BaseModel):
     team_note: str | None
 
 
+class RequestCardOut(BaseModel):
+    """A request drawn as a card — BE-24 (OBT-536), one shape for the PME and the form.
+
+    **Which request, where it is, and whether it was decided — and nothing of the evaluation.**
+    ``reg_name`` (A0), ``request_type``, ``amount_requested`` and ``currency`` say *which*
+    request, and all four are the team's own document — the client asked for them by name on
+    18/set (FE-46, OBT-514). ``stage``, ``submitted_at``, ``endorsed`` and ``decision`` are the
+    journey, the same ceiling GATE-03 D4 gave ``RequestStatusOut``. **``team_note`` is not
+    here**: it is addressed to the team, and a card is read by the mesa, the Gestor and the
+    PME's coordinators too. ``can_edit``, ``open`` and ``started_by_name`` are the instance
+    (BE-25): whether the caller writes it, whether one is being filled in, and by whom — the
+    name only while it is open, where *"em preenchimento por X"* is the sentence.
+
+    No place and no base: a sensitive project's location is the PME's to read, not a request
+    card's. ``extra="forbid"`` is the guard that holds, and ``test_cards.py`` proves it on the
+    payload rather than on a screen. The choice of fields is ours, not the client's.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    reg_name: str
+    request_type: RRRequestType
+    amount_requested: Decimal | None
+    currency: RRCurrency
+    stage: RRStage
+    created_at: datetime
+    submitted_at: datetime | None
+    endorsed: bool
+    decision: RRDecision | None
+    open: bool
+    can_edit: bool
+    started_by_name: str | None
+
+    @classmethod
+    def of(
+        cls,
+        request: RRRequest,
+        *,
+        decision: RRDecision | None,
+        open: bool,
+        can_edit: bool,
+        started_by_name: str | None,
+    ) -> Self:
+        """The only constructor, so the two routes that serve cards cannot drift apart.
+
+        ``open`` arrives decided rather than recomputed here: the service decides it once and
+        names the starter from the same answer, so the two cannot disagree (PR #574, review).
+        """
+        return cls(
+            id=request.id,
+            reg_name=request.reg_name,
+            request_type=request.request_type,
+            amount_requested=request.amount_requested,
+            currency=request.currency,
+            stage=request.stage,
+            created_at=request.created_at,
+            submitted_at=request.submitted_at,
+            endorsed=request.endorsed_at is not None,
+            decision=decision,
+            open=open,
+            can_edit=can_edit,
+            started_by_name=started_by_name,
+        )
+
+
 class RequestDraftIn(BaseModel):
     """A request as it is being filled. Shape is enforced; completeness is not.
 
