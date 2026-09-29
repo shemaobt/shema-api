@@ -26,6 +26,8 @@ from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_fund_options import fund_options
+from app.services.resource_request.list_project_requests import list_project_requests
+from app.services.resource_request.list_request_cards import list_request_cards
 from app.services.resource_request.list_request_history import list_request_history
 from app.services.resource_request.list_requests import list_requests
 from app.services.resource_request.list_transitions import transitions_of_request
@@ -82,6 +84,8 @@ __all__ = [
     "get_evaluation",
     "get_request",
     "holds_capability",
+    "list_project_requests",
+    "list_request_cards",
     "list_request_history",
     "list_requests",
     "move_request",
