@@ -1084,19 +1084,6 @@ def findings_after_correction(
     return [*check.findings, *(one for at, one in enumerate(findings) if at not in answered)]
 
 
-def findings_on_stretches_that_count(
-    findings: list[Finding], counting: Iterable[str]
-) -> list[Finding]:
-    """What is left of the findings once the stretches that stopped counting are gone.
-
-    A correction replaces a stretch and a part recorded again abandons one, and a finding still
-    addressed to either sends the team to a row that is no longer on their screen. A finding
-    addressed to no stretch — a missing element placed after everything told — keeps its shape.
-    """
-    standing = set(counting)
-    return [one for one in findings if one.segment_id is None or one.segment_id in standing]
-
-
 async def verify_correction(
     *,
     findings: list[Finding],
@@ -1325,6 +1312,24 @@ def findings_after_a_part_is_recorded_again(
         if addition in leaving or missing in leaving:
             leaving |= {addition, missing}
     return [finding for at, finding in enumerate(findings) if at not in leaving]
+
+
+def findings_on_stretches_that_count(
+    findings: list[Finding], counting: Iterable[str]
+) -> list[Finding]:
+    """What is left of the findings once whatever stopped counting takes its Swap with it.
+
+    A correction replaces a stretch and a part recorded again abandons one, and a finding still
+    addressed to either sends the team to a row that is no longer on their screen. The rule is
+    the one a part recorded again already follows, so the two cannot drift apart.
+    """
+    standing = set(counting)
+    gone = {
+        one.segment_id
+        for one in findings
+        if one.segment_id is not None and one.segment_id not in standing
+    }
+    return findings_after_a_part_is_recorded_again(findings, gone)
 
 
 def current_findings(state: BackTranslationState) -> list[Finding]:

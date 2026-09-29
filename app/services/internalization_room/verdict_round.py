@@ -44,6 +44,7 @@ from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.segments import told_back as stretches_told_back
 from app.services.internalization_room.sessions import append_exchange, save_back_translation
 from app.services.internalization_room.takes import current_parts
 from app.services.internalization_room.validated_turn import TurnOutcome
@@ -226,14 +227,20 @@ async def save_the_spoken_verdict(
     A verdict stored before its clip would be served back by the repeat-press guard as a turn
     the team heard, when what they heard was the error.
     """
-    state.findings = findings_on_stretches_that_count(
-        state.findings, (one.id for one in await final_segments(db, session.id))
-    )
+    standing = await final_segments(db, session.id)
+    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in standing))
+    read_as_it_stands = state.already_analysed(stretches_told_back(standing))
+    if not read_as_it_stands:
+        state.checked = False
     session = await append_exchange(
         db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
     )
-    state.verdict = VoicedVerdict(
-        clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
+    state.verdict = (
+        VoicedVerdict(
+            clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
+        )
+        if read_as_it_stands
+        else None
     )
     await save_back_translation(db, session, state)
     return session

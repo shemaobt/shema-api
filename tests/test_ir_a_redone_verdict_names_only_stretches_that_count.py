@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSegment, IRSession
+from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.segments import capture_segment, final_segments
 from tests.hard_stretch_harness import FROM_THE_DATABASE
 from tests.room_harness import (
@@ -102,7 +102,9 @@ async def _retell(db: AsyncSession, session: IRSession, stretch: IRSegment) -> I
     )
 
 
-async def _rerecorded_and_told_again(db: AsyncSession, session: IRSession, part) -> IRSegment:
+async def _rerecorded_and_told_again(
+    db: AsyncSession, session: IRSession, part: IRTake
+) -> IRSegment:
     fresh = await record_the_part_again(db, session, part, sha256="f" * 64)
     return await tell_back_about(db, session, fresh, transcript=THE_TOLD_AGAIN)
 
@@ -227,22 +229,75 @@ async def test_the_analyst_is_shown_only_stretches_that_count(
     assert THE_RETOLD not in analyst.shown[-1]
 
 
-async def test_a_part_recorded_again_while_the_analyst_reads_is_not_left_a_finding(
+async def _part_2_is_recorded_again_while_the_analyst_reads(
+    db: AsyncSession, session: IRSession, parts: list[IRTake], analyst: ScriptedAnalyst
+) -> None:
+    async def _the_team_records_part_2_again() -> None:
+        await record_the_part_again(db, session, parts[1], sha256="f" * 64)
+
+    analyst.on_reading = _the_team_records_part_2_again
+
+
+async def test_a_part_recorded_again_while_the_analyst_reads_is_not_stored_as_a_finding(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
 ) -> None:
     """T5. The upload lands between the analyst's call and the save of what it said.
 
     The double performs the product's own verb when it is called, so the finding the analyst
-    then returns is on a stretch that stopped counting before the verdict was saved.
+    then returns is on a stretch that stopped counting before the verdict was saved. What is
+    stored carries none of it; the answer of that one turn was decided before the upload.
     """
     session, parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [{"findings": [_addition(2)]}]
+    await _part_2_is_recorded_again_while_the_analyst_reads(db_session, session, parts, analyst)
 
-    async def _the_team_records_part_2_again() -> None:
-        await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
-
-    analyst.on_reading = _the_team_records_part_2_again
     await _finish(client, db_session, session.id)
 
-    standing = {stretch.id for stretch in await _standing(db_session, session.id)}
-    assert set(await _addressed(db_session, session)) <= standing
+    assert await _addressed(db_session, session) == []
+
+
+async def test_a_passage_whose_part_was_recorded_again_while_read_is_not_stored_as_checked(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    """A clean reading of stretches that changed under it blesses a passage nobody heard.
+
+    `checked` strikes the passage off the wheel, and part 2 was recorded again and never told
+    back: what the upload left — not checked — is what stays.
+    """
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": []}]
+    await _part_2_is_recorded_again_while_the_analyst_reads(db_session, session, parts, analyst)
+
+    await _finish(client, db_session, session.id)
+
+    assert (await stored_telling_back(db_session, session)).checked is False
+
+
+async def test_a_swap_with_one_half_on_a_replaced_stretch_leaves_whole(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    """The addition on frase 1 and the missing placed after it are one thing (ADR 0018).
+
+    The missing lands on stretch 2, which the retelling replaces; the addition on stretch 1
+    must not be left alone to be met next round as a thing of its own. With both gone the
+    list is empty, so the closing reading decides what the passage still holds.
+    """
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [
+        {
+            "findings": [
+                _addition(1),
+                {"kind": "missing", "note": "o fim da frase", "chunk": 1, "where": "after"},
+                {"kind": "silence", "note": "o silêncio da história", "chunk": 2},
+            ]
+        },
+        {"findings": [_addition(3, "Orfa foi junto")]},
+    ]
+    await _finish(client, db_session, session.id)
+    await _retell(db_session, session, (await _standing(db_session, session.id))[1])
+
+    verdict = await _finish(client, db_session, session.id)
+
+    third = (await _standing(db_session, session.id))[2]
+    assert await _addressed(db_session, session) == [third.id]
+    assert verdict["finding_segment_id"] == third.id
