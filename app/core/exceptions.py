@@ -46,6 +46,10 @@ ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
 #: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
 ERROR_CODE_NOTHING_TO_HEAR: Final = "NOTHING_TO_HEAR"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
+#: A correction or a division aimed at a stretch that no longer counts. Its own code for the
+#: reason above: the tablet drops the pending translation and re-reads its stretches, which is
+#: the wrong response to every other BAD_REQUEST, and it must not tell the two apart by the words.
+ERROR_CODE_STRETCH_NO_LONGER_COUNTS: Final = "STRETCH_NO_LONGER_COUNTS"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
 # reshaping the request.
@@ -179,6 +183,13 @@ class UnknownReferenceError(Exception):
 
 class ValidationError(Exception):
     pass
+
+
+class StretchNoLongerCounts(ValidationError):
+    """A stretch that was replaced, or whose rehearsal was recorded again, was addressed anyway.
+
+    Its own exception for the reason ERROR_CODE_STRETCH_NO_LONGER_COUNTS gives; still a 400.
+    """
 
 
 class UpstreamServiceError(Exception):
@@ -339,6 +350,15 @@ async def handle_nothing_to_hear(_request: Request, exc: NothingToHear) -> JSONR
     )
 
 
+async def handle_stretch_no_longer_counts(
+    _request: Request, exc: StretchNoLongerCounts
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_STRETCH_NO_LONGER_COUNTS),
+    )
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -474,6 +494,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
+    app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
