@@ -134,6 +134,14 @@ the data moves. ``record_eten_credit.py`` is the only writer of the ledger and o
 manual figure; ``list_eten_credits.py`` reads it. ``save_project`` stamps ``completed_date``,
 which is the date the rule reads.
 
+**OBT-541 rang the PME's bell for the resource-request form.** The form's decision and arrival
+notices, until then written only into the form's own app, are also written into this one by
+``_request_notices.py`` — ``ring_decision`` for whoever started the request, ``ring_arrival``
+for the Admin and the Gestor — which the form's two notifiers call beside their own halves. Each
+row carries a ``shema_request_notices`` detail with the project and the registered name and
+stage, and ``list_notification_panel.py`` answers them as two more kinds, pointing at a project
+only for a reader who reaches it.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -220,6 +228,7 @@ from app.services.shema._redaction import (
     unwritable_fields,
     withheld_note,
 )
+from app.services.shema._request_notices import ring_arrival, ring_decision
 from app.services.shema._scope import (
     NO_COORDINATION,
     Readership,
@@ -432,6 +441,8 @@ __all__ = [
     "review_intercessor",
     "revoke_grant",
     "revoke_intake_link",
+    "ring_arrival",
+    "ring_decision",
     "roll_up",
     "roster_projects",
     "save_notification_prefs",

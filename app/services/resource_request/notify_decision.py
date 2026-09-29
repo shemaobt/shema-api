@@ -8,12 +8,14 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRDecision, RRRequest
 from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_rr_app_id import get_rr_app_id
+from app.services.resource_request._decision_stage import DECISION_STAGE
 from app.services.resource_request._notices import (
     Letter,
     letter,
     product_name,
     request_name,
 )
+from app.services.shema._request_notices import ring_decision
 
 EVENT_TYPE = "rr_decision"
 
@@ -82,6 +84,9 @@ async def notify_decision(
     The in-app row is staged inside the caller's transaction — ``commit=False``, the flag
     BE-13 added to ``create_notification`` — so the notice and the decision land together
     or not at all. The e-mail is a value handed back: the caller commits, then posts it.
+
+    Whoever started the request hears it in the PME's bell too (``ring_decision``, OBT-541),
+    with the registered name and the stage and nothing the mesa wrote.
     """
     app_id = await get_rr_app_id(db)
     team = await db.get(User, request.created_by)
@@ -105,6 +110,13 @@ async def notify_decision(
         body=body,
         actor_id=actor_id,
         commit=False,
+    )
+    await ring_decision(
+        db,
+        starter_id=request.started_by,
+        project_id=request.shema_project_id,
+        name=request.reg_name,
+        stage=DECISION_STAGE[decision],
     )
 
     return [

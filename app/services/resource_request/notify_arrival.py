@@ -14,6 +14,7 @@ from app.services.resource_request._notices import (
     product_name,
     request_name,
 )
+from app.services.shema._request_notices import ring_arrival
 
 EVENT_TYPE = "rr_request_submitted"
 
@@ -36,7 +37,17 @@ async def notify_arrival(
 
     The submitter is excluded, for the account that holds both a team role and a board
     one: nobody needs to be told about their own act.
+
+    The PME's bell is rung first (``ring_arrival``, OBT-541): its audience — the Admin and the
+    Gestor — is not the board's, so it cannot wait behind the board's early return below.
     """
+    await ring_arrival(
+        db,
+        form_app_key=app_key,
+        project_id=request.shema_project_id,
+        name=request.reg_name,
+        actor_id=actor_id,
+    )
     watchers = await board_watchers(db, app_key, exclude=actor_id)
     if not watchers:
         return []
