@@ -149,29 +149,31 @@ async def test_a_budget_cell_is_recorded_by_its_category(db_session, client, rrf
     assert rows[0].new_value == "150.50"
 
 
-async def test_the_mesa_editing_is_recorded_as_the_mesa(db_session, client, rrf_app) -> None:
-    """Owner and editor are different facts: D4 lets the mesa edit what the team wrote,
-    and D7 is what keeps that from being silent."""
+async def test_the_admin_editing_is_recorded_as_the_admin(db_session, client, rrf_app) -> None:
+    """Owner and editor are different facts, and D7 is what keeps that from being silent.
+
+    Since BE-25 (OBT-534) the one who writes an instance besides its starter is the Admin —
+    the mesa no longer does (GATE-02 D4, revised by Daniel on 23/sep/2026)."""
     team_headers = await as_team(db_session, rrf_app)
     created = await create(client, team_headers)
 
-    mesa_user = await make_user(db_session, email="mesa-editora@rr.test")
-    await grant(db_session, mesa_user, rrf_app, "mesa")
-    mesa_headers = await auth_header(db_session, mesa_user)
+    admin = await make_user(db_session, email="admin-editora@rr.test", is_platform_admin=True)
+    admin_headers = await auth_header(db_session, admin)
 
     changed = draft()
-    changed["fields"]["reg_name"] = "corrigido pela mesa"
-    res = await client.patch(f"{REQUESTS}/{created['id']}", json=changed, headers=mesa_headers)
+    changed["fields"]["reg_name"] = "corrigido pelo Admin"
+    res = await client.patch(f"{REQUESTS}/{created['id']}", json=changed, headers=admin_headers)
     assert res.status_code == 200, res.text
 
     rows = await trail_rows(db_session, created["id"])
     assert len(rows) == 1
-    assert rows[0].changed_by == mesa_user.id
+    assert rows[0].changed_by == admin.id
 
     stored = (
         await db_session.execute(select(RRRequest).where(RRRequest.id == created["id"]))
     ).scalar_one()
-    assert stored.created_by != mesa_user.id, "editing must not move ownership"
+    assert stored.created_by != admin.id, "editing must not move ownership"
+    assert stored.started_by != admin.id, "editing must not move the pen either"
 
 
 async def test_two_saves_read_back_in_order(db_session, client, rrf_app) -> None:

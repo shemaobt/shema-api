@@ -172,13 +172,20 @@ async def test_the_listing_names_each_requests_type_without_its_document(
 
     A asserção de que o documento continua vazio fica, e é metade do teste: o
     campo entra na **espinha**, não é o documento voltando pela porta dos fundos.
+
+    Cada tipo é enviado antes do próximo abrir: desde a BE-25 (OBT-534) um projeto tem
+    uma instância aberta por vez, e a equipe do teste é um projeto só.
     """
     headers = await as_team(db_session, rrf_app)
     for request_type in v.REQUEST_TYPES:
         over: dict[str, object] = {}
         if request_type in v.TYPES_WITH_TEAM:
             over["team"] = [{"name": "Ana", "role": "coordenação"}]
-        await create(client, headers, request_type=request_type, **over)
+        if request_type in v.TYPES_WITH_TRAINING_PROFILE:
+            over["checks"] = {"teamtype": ["tradutores"], "trainformat": ["cursos"]}
+        created = await create(client, headers, request_type=request_type, **over)
+        sent = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+        assert sent.status_code == 200, sent.text
 
     res = await client.get(REQUESTS, headers=headers)
 
@@ -248,6 +255,10 @@ async def test_the_envelope_grew_by_two_spine_fields_and_by_nothing_of_the_evalu
     ``fund_id`` não está neste conjunto e é assim que tem de ser: ele é servido a
     ``manage_funds``, e o envelope da equipe fica onde a GATE-03 D4 o deixou. Quem conta
     a chave para quem a lê é ``test_sem_fundo_a_mesa_le_nulo_e_a_equipe_nao_le_chave_nenhuma``.
+
+    A BE-25 (OBT-534) acrescentou os três campos da instância — ``started_by``,
+    ``cancelled_at`` e ``can_edit`` — e nenhum deles é da avaliação: quem segura a caneta,
+    se ela foi largada e se quem pergunta pode escrever.
     """
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
@@ -261,6 +272,9 @@ async def test_the_envelope_grew_by_two_spine_fields_and_by_nothing_of_the_evalu
         "submitted_at",
         "endorsed_by",
         "endorsed_at",
+        "started_by",
+        "cancelled_at",
+        "can_edit",
         "created_at",
         "updated_at",
         "document",
@@ -580,16 +594,16 @@ async def test_submitting_twice_is_refused(db_session, client, rrf_app) -> None:
 
 
 @pytest.mark.parametrize("other_role", ["mesa", "gestor"])
-async def test_the_mesa_and_the_gestor_read_and_edit_but_do_not_sign(
+async def test_the_mesa_and_the_gestor_read_but_neither_edit_nor_sign(
     db_session, client, rrf_app, other_role: str
 ) -> None:
-    """Submitting is the electronic acceptance (OBT-483), so only the author submits.
+    """Submitting is the electronic acceptance (OBT-483), so only the starter submits.
 
-    Both roles hold ``edit_requests`` and reach every draft, and both of those stay true —
-    the read and the edit below still answer 200. What must not happen is the third thing:
-    a button either can reach signing in ``created_by``'s name. The refusal has to say that
-    reason, not *no permission* — the guard's own message would be the capability one, and
-    the caller holds the capability.
+    Both roles hold ``edit_requests`` and reach every draft. The read stays 200; **the edit
+    is 403 since BE-25** (OBT-534), which revises GATE-02 D4 on Daniel's decision of
+    23/sep/2026 — *apenas quem iniciou a escrita consegue preencher*. And the submission
+    refusal has to say its own reason, not *no permission* — the guard's message would be
+    the capability one, and the caller holds the capability.
 
     Neither account is a platform admin, deliberately: ``require_capability`` waves admins
     through by the installation's standing rule (``_deps.py``), so an admin here would get
@@ -613,7 +627,7 @@ async def test_the_mesa_and_the_gestor_read_and_edit_but_do_not_sign(
     assert read.json()["submitted_at"] is None
     assert (
         await client.patch(f"{REQUESTS}/{created['id']}", json=draft(), headers=headers)
-    ).status_code == 200
+    ).status_code == 403
 
 
 async def test_another_team_cannot_submit_what_it_cannot_reach(db_session, client, rrf_app) -> None:
