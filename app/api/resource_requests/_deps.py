@@ -34,14 +34,11 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import require_role
-from app.core.auth_cache import get_cached_roles, set_cached_roles
 from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
-from app.services import authorization_service
-from app.services.resource_request import holds_capability
-from app.services.resource_request._membership import is_member
+from app.services.resource_request import enters_the_form, holds_capability
 
 APP_KEY = "resource-request-form"
 
@@ -56,22 +53,17 @@ async def _app_member(user: Annotated[User, Depends(get_current_user)], db: Db) 
     team the members of a project in the PME, and ``20260928_rr08`` revokes the ``equipe``
     grants.
 
-    **The grants are still read through the role cache** (``auth_cache``, ENG-551), exactly as
-    ``require_app_access`` reads them, so this door and ``require_role`` behind
-    ``MesaUser``/``GestorUser`` read the same thing — and **the membership is asked only when
-    there is no grant** (PR #569, review): an account that already holds a role here pays the
-    cached read and nothing more.
+    **The rule is** ``enters_the_form``'s, not this door's: the handoff that opens the form from
+    the PME asks the same question, and two copies of it are how the handoff came to refuse the
+    member this door admits. What the door keeps is its trade, ``cached=True`` — the grants are
+    read through the role cache (``auth_cache``, ENG-551), exactly as ``require_app_access``
+    reads them, so this door and ``require_role`` behind ``MesaUser``/``GestorUser`` read the
+    same thing, and the membership is asked only when there is no grant (PR #569, review).
 
-    The platform admin passes first, as they pass ``require_app_access``; and the refusal
-    keeps that guard's wording, because what it tells an outsider has not changed.
+    The refusal keeps ``require_app_access``'s wording, because what it tells an outsider has
+    not changed.
     """
-    if user.is_platform_admin:
-        return user
-    roles = get_cached_roles(user.id, APP_KEY)
-    if roles is None:
-        roles = await authorization_service.list_roles(db, user.id, APP_KEY)
-        set_cached_roles(user.id, APP_KEY, roles)
-    if not roles and not await is_member(db, user.id):
+    if not await enters_the_form(db, user, APP_KEY, cached=True):
         raise AuthorizationError(
             f"You don't have access to the '{APP_KEY}' application. "
             "Please contact support to request access."

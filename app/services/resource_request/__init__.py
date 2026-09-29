@@ -18,6 +18,7 @@ from app.services.resource_request.count_project_translations import count_proje
 from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.create_fund import create_fund
 from app.services.resource_request.endorse_request import endorse_request
+from app.services.resource_request.enters_the_form import enters_the_form
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.get_request import get_request
@@ -68,6 +69,7 @@ __all__ = [
     "create_draft",
     "create_fund",
     "endorse_request",
+    "enters_the_form",
     "evaluation_fields",
     "fund_balances",
     "fund_options",

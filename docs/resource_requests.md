@@ -705,6 +705,10 @@ reads change, and they change together so they cannot disagree:
   is asked only when the grants did not already answer** (PR #569, review): the app gate
   (`_deps._app_member`, which replaced `require_app_access` for this app) reads the grants
   through the role cache as before and asks the membership only for an account with no grant;
+  **who enters the form** — a platform admin, a grant, or a live membership — is written once,
+  in `enters_the_form`, and asked by that gate (`cached=True`) and by the handoff that opens the
+  form from the PME (`create_handoff`, `cached=False`, because minting a credential reads the
+  grants live — `docs/auth.md`), so the two doors cannot disagree about a member;
   `holds_capability` asks it only when no granted role carries the capability; and
   `_scope.reach` never asks it, because neither of its two answers depends on `equipe`.
 - **The scope**: a member reaches the requests they authored **and every request of their

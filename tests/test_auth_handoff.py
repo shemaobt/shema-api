@@ -35,6 +35,7 @@ from httpx import ASGITransport
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.resource_requests._deps import APP_KEY as FORM_APP_KEY
 from app.core.auth_cache import _roles_cache, _user_cache, set_cached_roles, set_cached_user
 from app.core.config import get_settings
 from app.core.database import Base
@@ -50,6 +51,7 @@ from app.services.auth import (
 from app.services.common import tokens
 from app.utils.jwt import decode_token
 from tests.baker import grant_app_role, make_app, make_user
+from tests.test_resource_requests.conftest import make_membership
 
 #: The package ``__init__`` rebinds this name to the function, so the module itself is
 #: reached through the import machinery.
@@ -289,6 +291,79 @@ async def test_a_platform_admin_is_handed_off_as_require_app_access_admits_them(
     response = await client.post(HANDOFF, json=a_body(refresh), headers=headers)
 
     assert response.status_code == 201
+
+
+# --- the form's door is wider than a grant (BE-19, OBT-520) ---------------------------------
+
+
+@pytest.fixture()
+async def form(db_session: AsyncSession) -> App:
+    return await make_app(db_session, app_key=FORM_APP_KEY, name="Resource Request Form")
+
+
+async def a_project_member(db: AsyncSession, *, email: str = "team@example.com"):
+    """A live member of a PME project holding no grant anywhere — the team since GATE-04."""
+    user = await make_user(db, email=email)
+    membership = await make_membership(db, user, "projeto-da-equipe")
+    headers, refresh = await a_session(db, user)
+    return membership, headers, refresh
+
+
+async def test_a_project_member_with_no_grant_is_handed_a_code_for_the_form(
+    client, db_session, form
+) -> None:
+    """The PME → form flow (OBT-538, OBT-544): the form's door admits a live member of a
+    project, so the code that opens it has to be minted for one — or the flow never starts."""
+    membership, headers, refresh = await a_project_member(db_session)
+
+    response = await client.post(
+        HANDOFF,
+        json=a_body(refresh, app_key=FORM_APP_KEY, context={"projectId": membership.project_id}),
+        headers=headers,
+    )
+
+    assert response.status_code == 201, response.text
+    [row] = await codes_in(db_session)
+    assert (row.user_id, row.app_id) == (membership.user_id, form.id)
+
+
+@pytest.mark.parametrize("case", ["never-a-member", "membership-removed"])
+async def test_an_account_with_no_grant_and_no_live_membership_is_refused_the_form(
+    client, db_session, form, case
+) -> None:
+    if case == "never-a-member":
+        user = await make_user(db_session, email="outsider@example.com")
+        headers, refresh = await a_session(db_session, user)
+    else:
+        membership, headers, refresh = await a_project_member(db_session)
+        membership.removed_at = datetime.now(UTC)
+        await db_session.commit()
+
+    response = await client.post(
+        HANDOFF, json=a_body(refresh, app_key=FORM_APP_KEY), headers=headers
+    )
+
+    assert response.status_code == 403
+    assert await codes_in(db_session) == []
+
+
+async def test_a_project_membership_opens_no_app_but_the_form(
+    client, db_session, form, target
+) -> None:
+    """Membership holds the form's ``equipe`` and nothing else: every other app still asks
+    for a grant of its own."""
+    _membership, headers, refresh = await a_project_member(db_session)
+
+    response = await client.post(HANDOFF, json=a_body(refresh), headers=headers)
+
+    assert response.status_code == 403
+    assert await codes_in(db_session) == []
+
+
+def test_the_form_the_handoff_widens_is_the_form_module_s_own_key() -> None:
+    """The key is written again in ``create_handoff.py`` because a service may not import a
+    router; this keeps that copy from drifting from ``_deps.APP_KEY`` in silence."""
+    assert import_module("app.services.auth.create_handoff").FORM_APP_KEY == FORM_APP_KEY
 
 
 async def test_a_member_is_handed_a_code_for_the_app_it_asked_for(
