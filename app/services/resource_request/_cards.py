@@ -31,6 +31,9 @@ class CardFacts(NamedTuple):
 
     request: RRRequest
     decision: RRDecision | None
+    #: Whether this is the instance being filled in — ``is_open``, decided here once, so the
+    #: card cannot say *not open* while still naming who is filling it in (PR #574, review).
+    open: bool
     can_edit: bool
     #: Who is filling the instance in, for *"em preenchimento por X"* — only for an open
     #: instance, where the sentence exists. A submitted request is the team's, and naming one
@@ -74,14 +77,16 @@ async def cards_of(
     decisions = await _decisions(db, [row.id for row in rows])
     starters = {row.started_by for row in rows if is_open(row) and row.started_by is not None}
     names = await _starter_names(db, starters)
-    return [
-        CardFacts(
-            request=row,
-            decision=decisions.get(row.id),
-            can_edit=editing.can_edit(row),
-            started_by_name=(
-                names.get(row.started_by) if is_open(row) and row.started_by else None
-            ),
+    facts = []
+    for row in rows:
+        open_ = is_open(row)
+        facts.append(
+            CardFacts(
+                request=row,
+                decision=decisions.get(row.id),
+                open=open_,
+                can_edit=editing.can_edit(row),
+                started_by_name=names.get(row.started_by) if open_ and row.started_by else None,
+            )
         )
-        for row in rows
-    ]
+    return facts

@@ -366,10 +366,15 @@ class RequestCardOut(BaseModel):
         request: RRRequest,
         *,
         decision: RRDecision | None,
+        open: bool,
         can_edit: bool,
         started_by_name: str | None,
     ) -> Self:
-        """The only constructor, so the two routes that serve cards cannot drift apart."""
+        """The only constructor, so the two routes that serve cards cannot drift apart.
+
+        ``open`` arrives decided rather than recomputed here: the service decides it once and
+        names the starter from the same answer, so the two cannot disagree (PR #574, review).
+        """
         return cls(
             id=request.id,
             reg_name=request.reg_name,
@@ -381,7 +386,7 @@ class RequestCardOut(BaseModel):
             submitted_at=request.submitted_at,
             endorsed=request.endorsed_at is not None,
             decision=decision,
-            open=request.submitted_at is None and request.cancelled_at is None,
+            open=open,
             can_edit=can_edit,
             started_by_name=started_by_name,
         )
