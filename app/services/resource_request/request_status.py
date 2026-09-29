@@ -4,7 +4,7 @@ from typing import NamedTuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.resource_request import RRDecision, RRRequestType, RRStage
+from app.db.models.resource_request import RRDecision, RRRequest, RRRequestType, RRStage
 from app.services.resource_request._evaluation import team_outcome
 from app.services.resource_request.get_request import get_request
 
@@ -42,9 +42,14 @@ async def request_status(
     The scoped spine read stays whole — it is ``get_request``'s, and one owner of the row
     scope is worth more here than the two statements a second door would save.
     """
-    request = (await get_request(db, request_id, user, app_key)).request
-    decision, team_note = await team_outcome(db, request_id)
+    return await status_of(db, (await get_request(db, request_id, user, app_key)).request)
 
+
+async def status_of(db: AsyncSession, request: RRRequest) -> RequestStatus:
+    """The projection itself, for a request its caller already reached — an account through
+    ``get_request``, a request link through ``read_as.status_for`` (BE-26, OBT-537). One owner
+    for the five values, so the ceiling above is written on the code that runs for both."""
+    decision, team_note = await team_outcome(db, request.id)
     return RequestStatus(
         request_type=request.request_type,
         stage=request.stage,

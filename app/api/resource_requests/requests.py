@@ -46,9 +46,10 @@ from app.api.resource_requests._deps import (
     APP_KEY,
     CanEditRequests,
     CanEndorseRequest,
-    CanReadRequests,
     Db,
+    ReaderReadsFunds,
     ReadsFunds,
+    RequestReader,
 )
 from app.api.shema._deps import APP_KEY as SHEMA_APP_KEY
 from app.core.auth_middleware import get_current_user
@@ -85,7 +86,7 @@ def _cards(facts: list[CardFacts]) -> list[RequestCardOut]:
     ]
 
 
-def _out(loaded: Loaded, reads_funds: bool, editing: service.Editing) -> RequestOut:
+def _out(loaded: Loaded, reads_funds: bool, editing: service.Edits) -> RequestOut:
     return RequestOut.of(
         loaded.request,
         document(*loaded),
@@ -129,10 +130,14 @@ async def create_request(
 
 
 @router.get("/requests")
-async def list_requests(user: CanReadRequests, db: Db, reads_funds: ReadsFunds) -> list[RequestOut]:
-    """The spine only — the documents are not read by a listing and are not sent to one."""
-    rows = await service.list_requests(db, user, APP_KEY)
-    editing = await service.editing(db, user, APP_KEY)
+async def list_requests(
+    reader: RequestReader, db: Db, reads_funds: ReaderReadsFunds
+) -> list[RequestOut]:
+    """The spine only — the documents are not read by a listing and are not sent to one.
+
+    A link session reads its own link's requests (BE-26, OBT-537); an account, its scope."""
+    rows = await service.requests_for(db, reader, APP_KEY)
+    editing = await service.edits_for(db, reader, APP_KEY)
     return [
         RequestOut.of(row, {}, reads_funds=reads_funds, can_edit=editing.can_edit(row))
         for row in rows
@@ -140,11 +145,11 @@ async def list_requests(user: CanReadRequests, db: Db, reads_funds: ReadsFunds) 
 
 
 @router.get("/requests/cards")
-async def list_request_cards(user: CanReadRequests, db: Db) -> list[RequestCardOut]:
+async def list_request_cards(reader: RequestReader, db: Db) -> list[RequestCardOut]:
     """The same rows as ``GET /requests``, drawn as cards (BE-24): what the tracking list
     reads, and the same projection the PME's project page reads. Declared before
     ``/requests/{request_id}`` so ``cards`` is never taken for an id."""
-    return _cards(await service.list_request_cards(db, user, APP_KEY))
+    return _cards(await service.cards_for(db, reader, APP_KEY))
 
 
 @router.get("/projects/{project_id}/requests")
@@ -163,10 +168,10 @@ async def list_project_requests(project_id: str, user: SignedIn, db: Db) -> list
 
 @router.get("/requests/{request_id}")
 async def read_request(
-    request_id: str, user: CanReadRequests, db: Db, reads_funds: ReadsFunds
+    request_id: str, reader: RequestReader, db: Db, reads_funds: ReaderReadsFunds
 ) -> RequestOut:
-    loaded = await service.get_request(db, request_id, user, APP_KEY)
-    return _out(loaded, reads_funds, await service.editing(db, user, APP_KEY))
+    loaded = await service.request_for(db, request_id, reader, APP_KEY)
+    return _out(loaded, reads_funds, await service.edits_for(db, reader, APP_KEY))
 
 
 @router.post("/requests/{request_id}/cancel")

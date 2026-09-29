@@ -830,7 +830,7 @@ member of any project**, and `projects` are those projects' ids — what a start
 already has. `my-roles` is platform surface and serves every app, which is why the membership is
 not grafted onto it.
 
-### 5.4.5 The external request link — BE-26 (OBT-537): **PR A built**, B and C **contracted here**
+### 5.4.5 The external request link — BE-26 (OBT-537): **PRs A and B built**, C **contracted here**
 
 GATE-04 D1 and D4 (OBT-519): a team is a PME project's members **or**, while the project does not
 exist, the holder of the Admin's request link — Karina, 25/set: *"os dois, tanto quem já tem conta
@@ -870,7 +870,7 @@ the PME's dialog (OBT-544) and the public screen (FE-55, OBT-542) can be built a
 in a log, a `Referer` or a forwarded screenshot is not enough without the six digits, and five wrong
 ones revoke it. Until PR C sends the e-mail, the Admin's screen is what hands both over.
 
-**PR B — contracted: the public door and the link session.**
+**PR B — built (29/sep/2026): the public door and the link session.**
 
 ```
 GET  /api/resource-requests/link/{token}           -> {status, email_hint, project_hint, expires_at}
@@ -886,6 +886,34 @@ back as a bearer token. A wrong code is **401** and counts; the **fifth revokes*
 a user session **or** a link session and hands every route one `Actor`; no route signature
 changes. A link `Actor` reaches **its own link's requests** and nothing else — not another link's,
 not a project's — and holds `edit_requests` for them alone.
+
+What PR B built, and where the contract above met the code:
+
+- **The resolver is `reader_with` in `_deps.py`**, and only the four reads a team makes take it:
+  `GET /requests`, `GET /requests/{id}`, `GET /requests/cards` (`RequestReader`, *edit or endorse*)
+  and `GET /requests/{id}/status` (`TeamReader`, *edit*). A link session answers `LinkActor`;
+  any other bearer takes the user path this module already had — the door, then the capability —
+  unchanged. Every other route keeps its user-only guard, so a link session is **401** there.
+  `read_as.py` is the one dispatch between the two subjects, so no router branches on them; a link
+  never reads the fund (`ReaderReadsFunds` answers false), and `can_edit` is its own open instance
+  (`started_by_link_id`).
+- **The link row is read on every call**, so revoking a link or letting it expire ends every
+  session it opened, with no list of sessions to chase.
+- **A session never outlives its link**: it dies at thirty days or at the link's own
+  `expires_at`, whichever is first, so the date it answers is one it reaches. And **the right
+  code zeroes the count** — the five stop a guesser, not a second phone that mistyped before
+  getting it right (PR #577, review).
+- **The refusals carry a `code`**: a wrong code is **401** `LINK_CODE_WRONG` with `attempts_left`;
+  a link expired or revoked — the fifth wrong code included — is **410** `LINK_GONE`. The attempt
+  count is a guarded `UPDATE … + 1`, so two wrong codes at once are two, and the code is compared
+  by digest in constant time.
+- **Two stacked limits**, the leader link's pattern (`app/api/shema/forms.py`): per address, and
+  per **token digest** — a forwarded link worked by many phones is one token.
+- ⚠️ **`python-jose` checks the audience only when the token has one.** Decoding with
+  `audience="rr_link"` accepted a **user access token**, which carries no `aud`, as a link session
+  naming the user's id. It never became a door — no link has a user's id, so the resolver answered
+  401 — but the test that tried it is what found it, and `link_session_subject` now demands
+  `aud == "rr_link"` and no `type` claim. Whoever adds another bearer audience here should know it.
 
 **PR C — contracted: the request by the link.**
 
