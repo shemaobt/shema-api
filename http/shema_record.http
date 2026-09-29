@@ -136,3 +136,24 @@ If-Match: "3"
 {
   "regionalCoordinator": "Joana"
 }
+
+### Concluding — the server stamps the saver's day, and the record serves it as completedDate
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: "3"
+X-Shema-Local-Date: 2026-09-11
+
+{
+  "status": "concluido"
+}
+
+### The completion day is the server's — a write that carries completedDate is refused (422)
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: "4"
+
+{
+  "completedDate": "2020-01-01"
+}

@@ -335,7 +335,7 @@ bucket, which is the precedent, not a trespass).
 | `app/utils/shema_derivations.py` | **BE-05, built**; BE-10; BE-11 | FE-44 §7's nine pure functions of `(record, now)`, and §7.5's period keys in a block of their own (BE-10). **Not** in the service package — see below. BE-11 added §7.8's ETEN block at the end: the fiscal year, `completion_date_after` and `account_for`. |
 | `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
 | `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
-| `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key, plus `derived`, `locationWithheld` and `readAs` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
+| `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 21, key for key (`derived`, `readAs` and, since OBT-413, `completedDate` are the contract's own keys now), plus `locationWithheld` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
 | `app/db/models/shema_audit.py` | **BE-06, built** | `shema_record_edits` — the trail: who moved which field, when, from what to what. Append-only, by the same trigger `shema_progress_history` uses. |
 | `app/services/shema/_audit.py` | **BE-06, built** | The trail's writer and its one reader. Names no guarded column and records no guarded **value**. |
 | `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
@@ -792,7 +792,12 @@ behaviour on it.
 >   report has already given.
 > - **`save_project` stamps `completed_date`** with the saver's day on the move into
 >   `concluido`, clears it on the way out, and never on a create; the stamp is a `completedDate`
->   row in `shema_record_edits`, which is the event a credit is traced back to.
+>   row in `shema_record_edits`, which is the event a credit is traced back to. **The record
+>   serves it as `completedDate`** (`YYYY-MM-DD` or `null`) since OBT-413 (29/sep/2026): the
+>   console's `Project` gained the key for FE-50's annual report and ETEN (PME #64), so it is the
+>   contract's key, not one the server invented. It is the server's to write: the
+>   write shape has no such field, so a `PATCH` or `POST` that carries it is a 422 on the whole
+>   save, and the console's saves never carry it (`SERVER_WRITABLE`).
 > - **Every report answered is recorded** in `shema_eten_reports` (append-only, deduplicated
 >   against the newest row for the same year and scope), so the report sent in July still says
 >   what it said after the data moves — the issue's *store the snapshot with the report*. Each
