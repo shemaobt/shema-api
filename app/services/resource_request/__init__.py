@@ -1,6 +1,7 @@
 from app.services.resource_request._editing import Editing, editing
 from app.services.resource_request._fund_assignment import require_assigned_fund
 from app.services.resource_request._fund_choices import FundOption
+from app.services.resource_request._links import link_status
 from app.services.resource_request._trail import evaluation_fields, record_evaluation_trail
 from app.services.resource_request.allocation_of_fund import FundAllocation, allocation_of_fund
 from app.services.resource_request.append_movement import append_movement
@@ -19,6 +20,7 @@ from app.services.resource_request.capabilities import (
 from app.services.resource_request.count_project_translations import count_project_translations
 from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.create_fund import create_fund
+from app.services.resource_request.create_request_link import IssuedLink, create_request_link
 from app.services.resource_request.endorse_request import endorse_request
 from app.services.resource_request.enters_the_form import enters_the_form
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
@@ -29,6 +31,7 @@ from app.services.resource_request.list_fund_options import fund_options
 from app.services.resource_request.list_project_requests import list_project_requests
 from app.services.resource_request.list_request_cards import list_request_cards
 from app.services.resource_request.list_request_history import list_request_history
+from app.services.resource_request.list_request_links import list_request_links
 from app.services.resource_request.list_requests import list_requests
 from app.services.resource_request.list_transitions import transitions_of_request
 from app.services.resource_request.move_request import BoardMoved, move_request
@@ -42,6 +45,7 @@ from app.services.resource_request.request_status import RequestStatus, request_
 from app.services.resource_request.reserved_fund_names import RESERVED_FUND_NAMES
 from app.services.resource_request.retire_fund import retire_fund
 from app.services.resource_request.reverse_movement import reverse_movement
+from app.services.resource_request.revoke_request_link import revoke_request_link
 from app.services.resource_request.save_evaluation import save_evaluation
 from app.services.resource_request.set_allocation import set_allocation
 from app.services.resource_request.start_request import start_request
@@ -66,6 +70,7 @@ __all__ = [
     "FundBalance",
     "FundMoved",
     "FundOption",
+    "IssuedLink",
     "RequestStatus",
     "Saved",
     "Submitted",
@@ -77,6 +82,7 @@ __all__ = [
     "count_project_translations",
     "create_draft",
     "create_fund",
+    "create_request_link",
     "editing",
     "endorse_request",
     "enters_the_form",
@@ -86,9 +92,11 @@ __all__ = [
     "get_evaluation",
     "get_request",
     "holds_capability",
+    "link_status",
     "list_project_requests",
     "list_request_cards",
     "list_request_history",
+    "list_request_links",
     "list_requests",
     "move_request",
     "movements_of_fund",
@@ -102,6 +110,7 @@ __all__ = [
     "require_assigned_fund",
     "retire_fund",
     "reverse_movement",
+    "revoke_request_link",
     "save_evaluation",
     "set_allocation",
     "start_request",

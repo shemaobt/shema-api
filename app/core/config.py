@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     #: another and for that app to exchange the code, short enough that a code left in a
     #: browser history is dead before anyone reads it. Sixty seconds is the issue's number.
     auth_handoff_code_expire_seconds: int = 60
+    #: How long an external request link lives (BE-26, OBT-537): long enough to fill a form in
+    #: the field and follow it to a decision — the issue's sixty days.
+    rr_request_link_expire_days: int = 60
     #: How many handoff exchanges one address may attempt in a minute. The exchange is the
     #: handoff's one public route; the code's 256 bits are what guard it, and this is the
     #: second line. Beside the code's life rather than in the router because OBT-527 puts
