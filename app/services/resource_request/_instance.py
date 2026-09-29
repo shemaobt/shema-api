@@ -23,22 +23,29 @@ _ALREADY_OPEN = (
     "This project already has a request being filled in. Only one is open at a time: "
     "whoever started it submits or cancels it first."
 )
+_ALREADY_OPEN_BY_LINK = (
+    "This link already has a request being filled in. Submit or cancel it before starting another."
+)
 
 
-async def refuse_a_second_open(db: AsyncSession, project_id: str | None) -> None:
-    if project_id is None:
+async def refuse_a_second_open(
+    db: AsyncSession, project_id: str | None, *, link_id: str | None = None
+) -> None:
+    """Refuse a second open instance of the project — or of the link, its twin (BE-26)."""
+    if project_id is None and link_id is None:
         return
+    team = (
+        RRRequest.shema_project_id == project_id
+        if project_id is not None
+        else RRRequest.request_link_id == link_id
+    )
     open_one = await db.execute(
         select(RRRequest.id)
-        .where(
-            RRRequest.shema_project_id == project_id,
-            RRRequest.submitted_at.is_(None),
-            RRRequest.cancelled_at.is_(None),
-        )
+        .where(team, RRRequest.submitted_at.is_(None), RRRequest.cancelled_at.is_(None))
         .limit(1)
     )
     if open_one.scalar_one_or_none() is not None:
-        raise ConflictError(_ALREADY_OPEN)
+        raise ConflictError(_ALREADY_OPEN_BY_LINK if project_id is None else _ALREADY_OPEN)
 
 
 async def flush_the_instance(db: AsyncSession) -> None:
@@ -47,8 +54,9 @@ async def flush_the_instance(db: AsyncSession) -> None:
         await db.flush()
     except IntegrityError as collided:
         await db.rollback()
-        if "uq_rr_requests_one_open_per_project" in str(collided.orig) or "shema_project_id" in str(
-            collided.orig
-        ):
+        said = str(collided.orig)
+        if "uq_rr_requests_one_open_per_project" in said or "shema_project_id" in said:
             raise ConflictError(_ALREADY_OPEN) from None
+        if "uq_rr_requests_one_open_per_link" in said or "request_link_id" in said:
+            raise ConflictError(_ALREADY_OPEN_BY_LINK) from None
         raise

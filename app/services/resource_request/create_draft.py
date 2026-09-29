@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthorizationError, UnknownReferenceError, UnprocessableValueError
@@ -7,6 +9,7 @@ from app.db.models.shema import ShemaProject
 from app.models.resource_request import RequestDraftIn
 from app.services.resource_request._document import split
 from app.services.resource_request._instance import flush_the_instance, refuse_a_second_open
+from app.services.resource_request._link_actor import LinkActor
 from app.services.resource_request._membership import is_member_of, member_project_ids
 from app.services.resource_request._scope import reach
 
@@ -53,10 +56,36 @@ async def _project_for(
     return project_id
 
 
+async def _instance_of_link(
+    db: AsyncSession, actor: LinkActor, project_id: str | None, spine: dict[str, Any]
+) -> RRRequest:
+    """The instance a request link starts — BE-26 (OBT-537).
+
+    **Bound to the link and to no project**: a request is born with a project or with a link,
+    never both, and the mesa's approval is what gives it a project later (OBT-547). Naming a
+    project from a link is refused rather than ignored, because silently dropping it would let
+    a caller believe the request was filed there.
+
+    ``created_by`` is the Admin who issued the link — the column is ``NOT NULL`` and a link is
+    no person — and ``started_by`` is empty: ``started_by_link_id`` holds the pen. Who *typed*
+    is the link, and the trail says so (``_writer.trail_author``); who is *filed under* is the
+    Admin, which is only the scope's bookkeeping.
+    """
+    if project_id is not None:
+        raise UnprocessableValueError("A request link opens a request of its own, with no project.")
+    await refuse_a_second_open(db, None, link_id=actor.link.id)
+    return RRRequest(
+        **spine,
+        created_by=actor.link.created_by,
+        request_link_id=actor.link.id,
+        started_by_link_id=actor.link.id,
+    )
+
+
 async def create_draft(
     db: AsyncSession,
     draft: RequestDraftIn,
-    user: User,
+    user: User | LinkActor,
     app_key: str,
     project_id: str | None = None,
 ) -> RRRequest:
@@ -78,13 +107,15 @@ async def create_draft(
     ``POST /requests/start`` and ``POST /requests`` both land here, so the lock cannot be
     stepped around by choosing the older door.
     """
-    project = await _project_for(db, user, app_key, project_id)
-    await refuse_a_second_open(db, project)
     parts = split(draft)
-
-    request = RRRequest(
-        **parts.spine, created_by=user.id, started_by=user.id, shema_project_id=project
-    )
+    if isinstance(user, LinkActor):
+        request = await _instance_of_link(db, user, project_id, parts.spine)
+    else:
+        project = await _project_for(db, user, app_key, project_id)
+        await refuse_a_second_open(db, project)
+        request = RRRequest(
+            **parts.spine, created_by=user.id, started_by=user.id, shema_project_id=project
+        )
     db.add(request)
     await flush_the_instance(db)
 

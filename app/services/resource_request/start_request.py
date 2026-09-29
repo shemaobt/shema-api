@@ -3,13 +3,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest, RRRequestType
 from app.models.resource_request import RequestDraftIn
+from app.services.resource_request._link_actor import LinkActor
 from app.services.resource_request.create_draft import create_draft
 
 
 async def start_request(
     db: AsyncSession,
     request_type: RRRequestType,
-    user: User,
+    user: User | LinkActor,
     app_key: str,
     project_id: str | None = None,
 ) -> RRRequest:
