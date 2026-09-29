@@ -15,15 +15,8 @@ async def list_requests(db: AsyncSession, user: User, app_key: str) -> list[RRRe
     does not show. ``ix_rr_requests_stage_created`` is the index that ordering rides on.
 
     The team's reach is its own rows **and its projects' rows**, drafts included (GATE-04 D1
-    and D2, BE-19): a member reads what a teammate started. The Líder's middle reach is
-    ``_scope.py``'s decision, restated in SQL: his own rows —
-    the ``equipe`` floor every account carries — plus everything submitted, and no draft
-    of another team ever leaves the database for him.
-
-    **The roles are read once and both answers come from it.** The two halves used to be
-    two calls, and since ``auto_approve`` makes everyone ``equipe`` the first always said
-    *narrower* and the second always ran — so every team member paid the same three-table
-    join twice on every load of this list (PR #281, review).
+    and D2, BE-19): a member reads what a teammate started. The base leader has no reach here
+    since BE-23 (OBT-535) — no account, one request, through the link's public door.
 
     **A cancelled instance is not listed, for anyone** (BE-25, OBT-534). It was given up and
     nobody may type into it; listing it would put a dead draft beside the one the project
@@ -41,9 +34,6 @@ async def list_requests(db: AsyncSession, user: User, app_key: str) -> list[RRRe
             RRRequest.created_by == user.id,
             RRRequest.shema_project_id.in_(member_project_ids(user.id)),
         )
-        if reaches.submitted:
-            stmt = stmt.where(or_(own, RRRequest.submitted_at.is_not(None)))
-        else:
-            stmt = stmt.where(own)
+        stmt = stmt.where(own)
 
     return list((await db.execute(stmt)).scalars().all())

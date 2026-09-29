@@ -9,20 +9,17 @@ nine belong to more than one role, and ``require_role`` cannot say OR — guardi
 that role's point. The table and the query behind them are
 ``app/services/resource_request/capabilities.py``; what lives here is the wiring.
 
-``CanReadRequests`` is the one alias built on an OR of capabilities rather than on
-one, because reading is not a row of the contract's table and must not become one:
-it rides on ``edit_requests`` for the three roles that write, and on
-``endorse_request`` for the Líder de Base, whose whole role is the reading his
-signature requires (BE-16). Which rows that reading reaches stays ``_scope.py``'s.
+Reading rides on ``edit_requests``, and which rows it reaches stays ``_scope.py``'s. BE-16's
+OR with ``endorse_request`` left with the base leader's account (BE-23, OBT-535): the leader
+reads through the endorsement link's public door (``endorse.py``) and holds no session here.
 
 ``APP_KEY`` is named here and nowhere else in the module, which is where every
 other application in this repository keeps its own. The service layer takes it as
 a parameter rather than re-declaring it, so the literal has one home even now that
 the module has two halves.
 
-The four role keys are the ids of the frontend's ``capabilities.ts`` verbatim —
-``equipe``, ``mesa``, ``gestor``, ``lider`` — and since BE-03 the pairing is no
-longer held by hand: ``capabilities.json`` is vendored from that file's own
+The role keys are the ids of the frontend's ``capabilities.ts`` verbatim, and since BE-03
+the pairing is no longer held by hand: ``capabilities.json`` is vendored from that file's own
 emission and ``test_capabilities.py`` refuses a mismatch.
 """
 
@@ -108,29 +105,6 @@ def require_capability(capability: str) -> Any:
     return Depends(_check)
 
 
-def require_any_capability(*capabilities: str) -> Any:
-    """Gate on holding at least one of ``capabilities`` — the OR a single guard cannot say.
-
-    Everything ``require_capability`` records holds here too: chained behind
-    ``CurrentUser``, admits a platform admin by the installation's standing rule, and an
-    unknown capability raises out of ``holds_capability`` rather than refusing forever.
-    The refusal names every capability that would have opened the door, because the
-    person reading the message holds none of them and should learn what the door is.
-    """
-
-    async def _check(user: CurrentUser, db: Db) -> User:
-        if user.is_platform_admin:
-            return user
-        for capability in capabilities:
-            if await holds_capability(db, user.id, APP_KEY, capability):
-                return user
-        raise AuthorizationError(
-            f"One of the capabilities {', '.join(capabilities)} is required for this action."
-        )
-
-    return Depends(_check)
-
-
 def reads_capability(capability: str) -> Any:
     """Whether the caller holds ``capability`` — a **fact handed to the handler**, never a
     door that refuses.
@@ -166,10 +140,8 @@ CanManageFunds = Annotated[User, require_capability("manage_funds")]
 CanMoveBoard = Annotated[User, require_capability("move_board")]
 CanAssignFund = Annotated[User, require_capability("assign_fund")]
 CanAllocateFunds = Annotated[User, require_capability("allocate_funds")]
-CanEndorseRequest = Annotated[User, require_capability("endorse_request")]
 CanAdministerFunds = Annotated[User, require_capability("administer_funds")]
 CanGrantAccess = Annotated[User, require_capability("grant_access")]
-CanReadRequests = Annotated[User, require_any_capability("edit_requests", "endorse_request")]
 
 ReadsFunds = Annotated[bool, reads_capability("manage_funds")]
 
@@ -209,7 +181,7 @@ def reader_with(*capabilities: str) -> Any:
     return Depends(_resolve)
 
 
-RequestReader = Annotated[User | LinkActor, reader_with("edit_requests", "endorse_request")]
+RequestReader = Annotated[User | LinkActor, reader_with("edit_requests")]
 TeamReader = Annotated[User | LinkActor, reader_with("edit_requests")]
 
 
