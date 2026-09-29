@@ -27,8 +27,10 @@ async def endorse_by_link(
       code's verification does;
     * **not verified** — the code is what proves the address, and the token alone is a URL that
       may have travelled;
-    * **twice** — a signature is not a value to update. The spend is a guarded ``UPDATE … WHERE
-      used_at IS NULL``, so two endorsements at once are one, and the loser is told;
+    * **twice** — a signature is not a value to update, and read before the clock, so a second
+      try on day 15 is told the request is endorsed rather than that the link is gone. The
+      spend is a guarded ``UPDATE … WHERE used_at IS NULL``, so two endorsements at once are
+      one, and the loser is told;
     * **a request already endorsed** — by an older link, or by a BE-16 account before the
       change.
 
@@ -39,11 +41,10 @@ async def endorse_by_link(
     """
     link = await find_endorsement(db, raw_token)
     now = datetime.now(UTC)
-    state = endorsement_status(link, now)
-    if state in ("expired", "revoked"):
-        return "gone"
-    if state == "used":
+    if link.used_at is not None:
         raise ConflictError("This request was already endorsed through this link.")
+    if endorsement_status(link, now) in ("expired", "revoked"):
+        return "gone"
     if link.verified_at is None:
         raise AuthorizationError("Confirm the code sent with this link before endorsing.")
 

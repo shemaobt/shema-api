@@ -31,8 +31,10 @@ async def verify_endorsement(db: AsyncSession, raw_token: str, code: str) -> Cod
 
     **It answers no session.** The leader signs once and reads one request, so the proof is the
     row's own ``verified_at``, which the read and the endorsement check: a session would be a
-    second credential to revoke for no second use. A spent link still verifies, so the leader
-    can reread what was signed.
+    second credential to revoke for no second use. A spent link still verifies **until it
+    expires**, so the leader can reread what was signed within the link's fourteen days;
+    after them the request stays endorsed and the page says so, with no document
+    (``read_endorsement``, PR #579, review).
     """
     link = await find_endorsement(db, raw_token)
     now = datetime.now(UTC)

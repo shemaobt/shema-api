@@ -4,7 +4,7 @@ from typing import Any, Literal, NamedTuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.resource_request import RRRequest, RRSnapshot
+from app.db.models.resource_request import RREndorsementLink, RRRequest, RRSnapshot
 from app.services.resource_request._endorsement import endorsement_status, find_endorsement
 from app.services.resource_request._notices import request_name
 from app.services.resource_request.read_request_link import mask_email
@@ -18,7 +18,7 @@ class PublicEndorsement(NamedTuple):
     request_name: str
     expires_at: datetime
     #: The request as it was submitted — only once the code was confirmed, and never after
-    #: the link expired or was revoked.
+    #: the link expired or was revoked, endorsed or not.
     document: dict[str, Any] | None
 
 
@@ -37,22 +37,32 @@ async def read_endorsement(db: AsyncSession, raw_token: str) -> PublicEndorsemen
     link = await find_endorsement(db, raw_token)
     request = await db.get(RRRequest, link.request_id)
     assert request is not None
-    state = _state(endorsement_status(link, datetime.now(UTC)), link.verified_at is not None)
+    alive = endorsement_status(link, datetime.now(UTC)) in ("pending", "used")
+    state = _state(link, alive)
     return PublicEndorsement(
         status=state,
         email_hint=mask_email(link.email),
         request_name=request_name(request),
         expires_at=link.expires_at,
-        document=await _frozen(db, request.id) if state in ("verified", "endorsed") else None,
+        document=await _frozen(db, request.id) if alive and link.verified_at else None,
     )
 
 
-def _state(token_state: str, verified: bool) -> EndorsementState:
-    if token_state == "used":
+def _state(link: RREndorsementLink, alive: bool) -> EndorsementState:
+    """**An endorsed link reads ``endorsed`` for good** — the invite's order, *used* before
+    *expired*, because this link is spent by one act (PR #579, review). The token module reads
+    the multi-use order, ``expired`` first, and would answer *expired* on day 15 for a request
+    that is endorsed; the fact outlives the link. **The document does not**: it is served only
+    while the link is alive, so the leader rereads what was signed for fourteen days and not
+    for as long as an old e-mail survives. *Endorsed* is read even before *revoked*: five wrong
+    codes on a spent link revoke it, and they do not undo the endorsement."""
+    if link.used_at is not None:
         return "endorsed"
-    if token_state == "pending":
-        return "verified" if verified else "pending"
-    return "expired" if token_state == "expired" else "revoked"
+    if link.revoked_at is not None:
+        return "revoked"
+    if not alive:
+        return "expired"
+    return "verified" if link.verified_at is not None else "pending"
 
 
 async def _frozen(db: AsyncSession, request_id: str) -> dict[str, Any] | None:
