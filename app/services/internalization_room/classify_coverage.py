@@ -49,6 +49,12 @@ _DECISIONS: dict[str, Any] = {
 #: {{SESSION_LANGUAGE}} carries what language the team speaks.
 _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
 
+#: How many beads one reading of the exchange is shown. The doctrine fixes the reading's
+#: output ceiling and its thinking spends out of the same ceiling, so a whole passage offered
+#: at once came back cut mid-list; a reading this size finishes under it, and one that still
+#: does not is read again in halves.
+_BEADS_PER_READING = 11
+
 
 def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -> None:
     """Say when a decision names an element this passage does not hold.
@@ -144,7 +150,7 @@ def _the_object_in(text: str) -> str:
     return text[opens : closes + 1]
 
 
-def _parse(raw: str) -> dict[str, list[str]]:
+def _parse(raw: str) -> dict[str, list[str]] | None:
     """Bucket the classifier's decisions into the two lists `merge` advances.
 
     The reply's shape belongs to `prompts/classifier_system_prompt.md`, which asks for a
@@ -160,6 +166,11 @@ def _parse(raw: str) -> dict[str, list[str]]:
     exit answering a shorter dict raises `KeyError` out of the one path whose whole job is
     to leave coverage untouched — which is what three hand-written copies of the same
     literal were waiting to do the next time the scale grew.
+
+    A reply that is not a decisions object at all — most often one cut off mid-list when the
+    reading ran out of room — answers `None` rather than empty buckets: it says nothing about
+    the beads it was shown, and reading it as "nothing moved" is what left a whole telling
+    at 0 of 44. No prefix is salvaged from it.
     """
     verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
     text = raw.strip()
@@ -170,13 +181,13 @@ def _parse(raw: str) -> dict[str, list[str]]:
         parsed: Any = json.loads(_the_object_in(text))
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
-        return verdict
+        return None
     if not isinstance(parsed, dict):
-        return verdict
+        return None
     decisions = parsed.get("decisions")
     if not isinstance(decisions, list):
         logger.warning("Coverage classifier returned no decisions list: %s", raw[:300])
-        return verdict
+        return None
     for entry in decisions:
         element_id = entry.get("element_id") if isinstance(entry, dict) else None
         new_status = entry.get("new_status") if isinstance(entry, dict) else None
@@ -205,42 +216,70 @@ async def classify_coverage(
     It is offered every bead still short of `engaged`, whatever scene the Scene pointer
     names. Narrowing the offer to the pointer's scene let one bead left at `surfaced` hold
     every later scene off the list for the rest of the session (ADR 0034).
+
+    The offer is read in readings of `_BEADS_PER_READING`, each shown the same exchange and
+    only its own beads, and merged once when every reading has landed. A reading that does
+    not land is read again in halves, down to a single bead; one that still does not leaves
+    the tracker untouched, because a classification applied in part lights beads by which
+    reading happened to finish rather than by what the team told.
     """
     cfg = settings or get_settings()
 
     offered = remaining(coverage_state, pericope_num)
-    system = render(
-        cache_break_before(classifier_prompt, "{{COVERAGE_ELEMENTS}}"),
-        SESSION_LANGUAGE=session_language,
-        SCENES=_scenes_block(pericope_num),
-        COVERAGE_ELEMENTS=_unresolved_block(coverage_state, offered),
-        TEAM_UTTERANCE=team_utterance or _NO_TEAM_UTTERANCE_YET,
-        GUIDE_RESPONSE=guide_response,
-    )
-
-    try:
-        raw = await room_agent().classifier.call_agent(
-            role="classifier",
-            system_prompt=system,
-            user_content="Classify this exchange now. Return only the JSON object.",
-            ladder=classifier_ladder(cfg),
-            max_output_tokens=6000,
-            thinks=True,
-            schema=_DECISIONS,
-            settings=cfg,
+    readings = [
+        offered[start : start + _BEADS_PER_READING]
+        for start in range(0, max(len(offered), 1), _BEADS_PER_READING)
+    ]
+    gathered: dict[str, list[str]] = {"surfaced": [], "engaged": []}
+    while readings:
+        beads = readings.pop(0)
+        system = render(
+            cache_break_before(classifier_prompt, "{{COVERAGE_ELEMENTS}}"),
+            SESSION_LANGUAGE=session_language,
+            SCENES=_scenes_block(pericope_num),
+            COVERAGE_ELEMENTS=_unresolved_block(coverage_state, beads),
+            TEAM_UTTERANCE=team_utterance or _NO_TEAM_UTTERANCE_YET,
+            GUIDE_RESPONSE=guide_response,
         )
-    except Exception:
-        logger.exception("Coverage classification failed; leaving the tracker untouched")
-        return coverage_state
+        try:
+            raw = await room_agent().classifier.call_agent(
+                role="classifier",
+                system_prompt=system,
+                user_content="Classify this exchange now. Return only the JSON object.",
+                ladder=classifier_ladder(cfg),
+                max_output_tokens=6000,
+                thinks=True,
+                schema=_DECISIONS,
+                settings=cfg,
+            )
+        except Exception:
+            logger.exception("Coverage classification failed; leaving the tracker untouched")
+            return coverage_state
 
-    verdict = _parse(raw)
-    _report_unknown_elements(verdict, pericope_num)
-    verdict = _only_offered(verdict, offered)
+        verdict = _parse(raw)
+        if verdict is None:
+            if len(beads) <= 1:
+                logger.warning(
+                    "Coverage reading of %s never landed; leaving the tracker untouched",
+                    [element.key for element in beads],
+                )
+                return coverage_state
+            half = len(beads) // 2
+            logger.warning(
+                "Coverage reading of %d beads did not land; read again in two halves",
+                len(beads),
+            )
+            readings[:0] = [beads[:half], beads[half:]]
+            continue
+        _report_unknown_elements(verdict, pericope_num)
+        for status, keys in _only_offered(verdict, beads).items():
+            gathered[status].extend(keys)
+
     return merge(
         coverage_state,
         pericope_num=pericope_num,
-        surfaced=verdict["surfaced"],
-        engaged=verdict["engaged"],
+        surfaced=gathered["surfaced"],
+        engaged=gathered["engaged"],
     )
 
 

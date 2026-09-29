@@ -53,8 +53,10 @@ def the_classifier_answers(monkeypatch: pytest.MonkeyPatch):
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-            agent.system = system_prompt
+            agent.systems.append(system_prompt)
             return reply
+
+        agent.systems = []
 
         the_room_agent_is(monkeypatch, classifier=agent)
         return agent
@@ -168,7 +170,8 @@ async def test_a_settle_offers_every_bead_short_of_engaged_whatever_scene_holds_
         pericope_num=P,
     )
 
-    assert set(_the_ids_shown(agent.system)) == set(element_keys(P)) - set(worked), (
+    shown = {key for system in agent.systems for key in _the_ids_shown(system)}
+    assert shown == set(element_keys(P)) - set(worked), (
         "com o silêncio da cena 1 só levantado, o ponteiro ficava na cena 1 e o classificador "
         "nunca via uma conta das cenas 2, 3 e 4, por mais que a equipe as contasse"
     )
