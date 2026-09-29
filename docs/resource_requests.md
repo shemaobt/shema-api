@@ -996,8 +996,11 @@ Daniel, 23/set: *solicitante nunca endossa*.
   `status` is `pending` · `verified` · `endorsed` · `expired` · `revoked`. **No link session**: the
   leader reads one request and signs once, so `verified_at` on the row is the proof the read and the
   act check — a session would be a second credential to revoke for no second use. The fifth wrong
-  code revokes, the right one zeroes the count, and a spent link still verifies so the leader can
-  reread what was signed.
+  code revokes, the right one zeroes the count, and a spent link still verifies **until it
+  expires**, so the leader can reread what was signed within the fourteen days. **An endorsed
+  link reads `endorsed` for good** — the invite's order, *used* before *expired* and before
+  *revoked*, because this link is spent by one act — while the document stops being served when
+  the link dies (PR #579, review).
 - **The stamp is the link's**: `endorsed_at`, `endorsed_email` (the link's address),
   `endorsement_link_id`, `leader_name` (typed on the page — there is no account to read it from) and
   `leader_date`; `used_at` on the link, spent by a guarded `UPDATE … WHERE used_at IS NULL`, so two
@@ -1008,8 +1011,10 @@ Daniel, 23/set: *solicitante nunca endossa*.
 - **The Admin's resend**, `POST /requests/{id}/endorsement/resend` — the Admin alone
   (`require_link_admin`), a session at the door like the request links: revokes the live link and
   mails a fresh one. It answers `{sent}` and **no secret** — the Admin reading the code would be one
-  more person able to endorse. A draft or an endorsed request is **409**. A different leader is a
-  revision (FE-47), not a resend.
+  more person able to endorse. A draft, an endorsed request, or one that **names no leader** — every
+  request submitted before `20260930_rr12` — is **409**; `sent` is what the provider accepted, not
+  whether a letter was built (PR #579, review). A different leader is a revision (FE-47), not a
+  resend.
 - **The board already refused an unendorsed card** (`guard_endorsement`, 4/set/2026); this issue
   tests that the link's act is what opens `analise`.
 

@@ -352,6 +352,43 @@ async def test_the_leader_can_reread_what_was_signed(db_session, client, rrf_app
     assert (await client.get(f"{PUBLIC}/{token}")).json()["document"] is not None
 
 
+async def test_an_endorsed_link_reads_endorsed_past_its_clock_and_stops_serving_the_request(
+    db_session, client, rrf_app, posted
+) -> None:
+    """The fact outlives the link, the document does not (PR #579, review): the invite's
+    order, *used* before *expired*, for a link spent by one act."""
+    await submitted(db_session, client, rrf_app)
+    token = await endorsed(client, posted)
+    _, code = secrets_in(to_leader(posted)[0])
+    link = (await db_session.execute(select(RREndorsementLink))).scalar_one()
+    link.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.commit()
+
+    page = (await client.get(f"{PUBLIC}/{token}")).json()
+    again = await client.post(f"{PUBLIC}/{token}", json={"leader_name": "Outra Pessoa"})
+    verify = await client.post(f"{PUBLIC}/{token}/verify", json={"code": code})
+
+    assert page["status"] == "endorsed"
+    assert page["document"] is None
+    assert again.status_code == 409, "told it is endorsed, not that the link is gone"
+    assert verify.status_code == 410
+
+
+async def test_wrong_codes_on_a_spent_link_do_not_undo_the_endorsement(
+    db_session, client, rrf_app, posted
+) -> None:
+    await submitted(db_session, client, rrf_app)
+    token = await endorsed(client, posted)
+    _, code = secrets_in(to_leader(posted)[0])
+
+    for _ in range(5):
+        await client.post(f"{PUBLIC}/{token}/verify", json={"code": wrong(code)})
+
+    page = (await client.get(f"{PUBLIC}/{token}")).json()
+    assert page["status"] == "endorsed"
+    assert page["document"] is None
+
+
 async def test_the_old_account_route_is_gone(db_session, client, rrf_app) -> None:
     request_id = await submitted(db_session, client, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
@@ -406,6 +443,42 @@ async def test_an_endorsed_request_or_a_draft_is_not_resent(
     unsent = await client.post(f"{REQUESTS}/{moving['id']}/endorsement/resend", headers=admin)
 
     assert (signed.status_code, unsent.status_code) == (409, 409)
+
+
+async def test_a_request_with_no_leader_is_not_resent(db_session, client, rrf_app, posted) -> None:
+    """Every request submitted before ``20260930_rr12`` names nobody (PR #579, review): a link
+    addressed to ``""`` is not a resend, and ``sent`` would have claimed a letter left."""
+    request_id = await submitted(db_session, client, rrf_app)
+    row = await db_session.get(RRRequest, request_id)
+    row.leader_email = ""
+    await db_session.commit()
+    before = len(posted)
+
+    res = await client.post(
+        f"{REQUESTS}/{request_id}/endorsement/resend", headers=await as_admin(db_session)
+    )
+
+    assert res.status_code == 409, res.text
+    assert "no base leader" in res.json()["detail"]
+    assert len(posted) == before
+
+
+async def test_sent_is_what_the_provider_accepted(
+    db_session, client, rrf_app, posted, monkeypatch
+) -> None:
+    request_id = await submitted(db_session, client, rrf_app)
+
+    async def _refused(**_: object) -> bool:
+        return False
+
+    monkeypatch.setattr("app.services.resource_request._notices.send_email", _refused)
+
+    res = await client.post(
+        f"{REQUESTS}/{request_id}/endorsement/resend", headers=await as_admin(db_session)
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json() == {"sent": False}
 
 
 # ——— a revision, and the board ——————————————————————————————————————————————————————
