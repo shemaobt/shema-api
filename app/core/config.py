@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     #: the issue's number, and never past the link itself — the resolver reads the link's state
     #: on every call, so a revoked or expired link ends every session it opened.
     rr_link_session_expire_days: int = 30
+    #: How long a base leader's endorsement link lives (BE-23, OBT-535): fourteen days, the
+    #: issue's number. The Admin's resend issues a fresh one when it runs out.
+    rr_endorsement_link_expire_days: int = 14
     #: How many handoff exchanges one address may attempt in a minute. The exchange is the
     #: handoff's one public route; the code's 256 bits are what guard it, and this is the
     #: second line. Beside the code's life rather than in the router because OBT-527 puts

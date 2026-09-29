@@ -287,17 +287,19 @@ class RRRequest(Base):
     person — anonymise, deactivate, keep — is BE-15's (OBT-475) and is not a default to
     pick in a column definition.
 
-    ``endorsed_by`` and ``endorsed_at`` are the Líder de Base's endorsement — the act
-    itself, GATE-02/GATE-03 D2 entering the system (BE-16, OBT-476). Both are stamped by
-    the server in ``endorse_request.py`` and neither is typable through a payload, the
-    exact shape ``created_by``/``submitted_at`` already give the team's acceptance.
-    ``leader_name`` and ``leader_date`` stay the contract's display pair and since BE-16
-    are **born from the same act** — the endorser's account and day — rather than demanded
-    of the client's typing (OBT-483 took them out of the required set; this issue gives
-    them their writer). The keys stay askable in a draft, but nothing reads a typed leader
-    line as an endorsement: the rule below reads ``endorsed_at``, which only the act
-    writes. ``endorsed_by`` restricts on delete like every authorship column here — a
-    record of who vouched is worth nothing if the who can be forgotten (D7).
+    ``endorsed_at`` is the Líder de Base's endorsement — the act itself, GATE-02/GATE-03 D2
+    entering the system (BE-16, OBT-476). **Since BE-23 (OBT-535) the leader has no account**:
+    the team types ``leader_email``, submission mails that address a link and a code
+    (``rr_endorsement_links``), and whoever confirms the code endorses — so the act is stamped
+    as ``endorsed_email`` and ``endorsement_link_id``, the link's address and the link itself,
+    never typable through a payload. ``endorsed_by`` stays for the endorsements BE-16's
+    accounts gave before the change, and nothing writes it any more; it restricts on delete
+    like every authorship column here (D7).
+    ``leader_name`` and ``leader_date`` stay the contract's display pair and are **born from
+    the same act** — the name the leader types when endorsing and the day of it — rather than
+    demanded of the client's typing (OBT-483). The keys stay askable in a draft, but nothing
+    reads a typed leader line as an endorsement: the rule below reads ``endorsed_at``, which
+    only the act writes.
 
     **Where an unendorsed request stops — written here for BE-08, which enforces it.** A
     request without an endorsement leaves ``triagem`` only for ``recusado``: declining
@@ -350,6 +352,19 @@ class RRRequest(Base):
         String(36), ForeignKey("users.id"), nullable=True
     )
     endorsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: The base leader's address, typed by the team in the draft and required to submit
+    #: (BE-23, OBT-535). Where the endorsement link goes; never the requester's own.
+    leader_email: Mapped[str] = mapped_column(String(320), default="", server_default="")
+    #: The address the endorsement came from — the link's, stamped by the act.
+    endorsed_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    #: The link the endorsement was given through.
+    endorsement_link_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "rr_endorsement_links.id", use_alter=True, name="fk_rr_requests_endorsement_link"
+        ),
+        nullable=True,
+    )
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False, index=True
     )
@@ -398,6 +413,46 @@ class RRRequest(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class RREndorsementLink(Base):
+    """The link a base leader endorses through — BE-23 (OBT-535).
+
+    The leader has no account (OBT-522, 22/set). Submission mails the address the team typed a
+    link tied to **this request** and a six-digit code; confirming the code lets the holder read
+    the frozen request and endorse it. Karina, 25/set: *"o líder continua entrando por link de
+    código… o link é emitido através das informações dadas pela equipe"*.
+
+    Two secrets and neither is stored, minted by ``app/services/common/tokens`` (BE-20).
+    ``code_attempts`` counts wrong codes and the fifth revokes. ``verified_at`` is the first
+    right code; ``used_at`` is the endorsement, and the token module's *used* — this link is
+    spent by one act, unlike the request link, which is why ``verified_at`` is not its *used*.
+    **One live link per request** (``uq_rr_endorsement_links_one_live``): the Admin's resend
+    revokes the live one before it issues another.
+    """
+
+    __tablename__ = "rr_endorsement_links"
+    __table_args__ = (
+        Index(
+            "uq_rr_endorsement_links_one_live",
+            "request_id",
+            unique=True,
+            postgresql_where=text("used_at IS NULL AND revoked_at IS NULL"),
+            sqlite_where=text("used_at IS NULL AND revoked_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    request_id: Mapped[str] = mapped_column(String(36), ForeignKey("rr_requests.id"), index=True)
+    email: Mapped[str] = mapped_column(String(320))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class RRRequestSections(Base):
