@@ -25,7 +25,7 @@ none of them keeps a second statement of *who is a member*.
 
 from __future__ import annotations
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.shema_project_member import ShemaProjectMember
@@ -55,11 +55,14 @@ async def is_member(db: AsyncSession, user_id: str) -> bool:
 
 
 def member_project_ids(user_id: str) -> Select[tuple[str]]:
-    """The ids of the projects ``user_id`` is a live member of, as a subquery to filter by."""
-    return select(ShemaProjectMember.project_id).where(
-        ShemaProjectMember.user_id == user_id,
-        ShemaProjectMember.removed_at.is_(None),
-    )
+    """The ids of the projects ``user_id`` is a live member of, as a subquery to filter by.
+
+    The PME's ``live_membership_ids``, imported late for ``is_member``'s reason, so *live* is
+    written once — in ``app/services/shema/_scope.py``, beside ``holds_membership``.
+    """
+    from app.services.shema._scope import live_membership_ids
+
+    return live_membership_ids(user_id)
 
 
 async def is_member_of(db: AsyncSession, user_id: str, project_id: str) -> bool:

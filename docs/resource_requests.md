@@ -701,7 +701,9 @@ app: a team is **the members of a project in the PME** (`shema_project_members`,
 reads change, and they change together so they cannot disagree:
 
 - **A live membership holds `equipe`**, read through `_membership.is_member`, which imports the
-  PME's own `holds_membership` (`app/services/shema/_scope.py`) rather than restating it. **It
+  PME's own `holds_membership` (`app/services/shema/_scope.py`) rather than restating it — and
+  the ids a member reaches come from the same file's `live_membership_ids`, so *live* is one
+  `removed_at IS NULL` for both modules. **It
   is asked only when the grants did not already answer** (PR #569, review): the app gate
   (`_deps._app_member`, which replaced `require_app_access` for this app) reads the grants
   through the role cache as before and asks the membership only for an account with no grant;
