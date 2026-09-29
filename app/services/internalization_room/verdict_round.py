@@ -152,6 +152,8 @@ async def check_the_telling_back(
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
+    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
+
     if not state.findings and state.verified_since_whole_reading:
         closing = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
@@ -169,7 +171,6 @@ async def check_the_telling_back(
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
-    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
     current = current_findings(state)
     finding = the_finding_that_leads(state)
     state.checked = finding is None

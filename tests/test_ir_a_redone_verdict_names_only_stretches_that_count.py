@@ -155,6 +155,25 @@ async def test_a_correction_leaves_no_finding_on_the_stretch_it_replaced(
     assert await _addressed(db_session, session) == ([] if resolved else [retold.id])
 
 
+async def test_a_list_the_replacement_emptied_still_gets_the_closing_reading(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    """The retelling answers the leading finding; the one left stood on the replaced stretch.
+
+    Empty by a verification, it is not measured until the closing reading has looked at the
+    whole passage: the verdict carries what that reading raises and does not bless the passage.
+    """
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [_addition(2), _unclear(2)]}, {"findings": [_addition(3)]}]
+    await _finish(client, db_session, session.id)
+    await _retell(db_session, session, (await _standing(db_session, session.id))[1])
+
+    verdict = await _finish(client, db_session, session.id)
+
+    assert verdict["checked"] is False
+    assert verdict["finding_kind"] == "addition"
+
+
 @pytest.mark.parametrize("reading", ["whole", "closing", "correction check"])
 async def test_whichever_reading_ran_every_saved_finding_addresses_a_stretch_that_counts(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst, reading: str
