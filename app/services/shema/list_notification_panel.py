@@ -1,4 +1,4 @@
-"""The panel: what BE-07, BE-08 and BE-12 already delivered, plus the one kind nobody wrote.
+"""The panel: what BE-07, BE-08, BE-12 and the form delivered, plus the one kind nobody wrote.
 
 ``docs/shema.md`` §5.10 gives the rule this file follows: **route by role and region before
 capping at thirty.** The routing already happened once, at the moment each delivered notice
@@ -11,6 +11,15 @@ project merely stayed quiet; it is filtered by the same audience health and need
 Circle) and by the caller's own ``RegionScope``, through ``browse_projects``'s stale preset,
 which is already scoped and already redacted.
 
+**A request notice points at its project only for a reader who reaches it** (OBT-541). The
+form's arrival and decision carry their project in ``shema_request_notices`` so the console can
+open its record; but a project's id is its slug, which names a place, and the Admin and the
+Gestor who hear of every arrival reach no region. So the pointer is answered when the project is
+inside the caller's scope or the caller is one of its live members — the collection's own rule,
+through ``within_scope`` and ``live_membership_ids`` — and is ``None`` otherwise, where the record
+would have answered 404 anyway. The name and the stage are answered to every recipient: the
+board already reads both on the form's card.
+
 **The cap is applied last, over the union, and it is what makes the rule true rather than
 stated.** Capping either half first would let one kind evict the other's newest entries for a
 recipient with a lot of both; sorting the merged list by ``created_at`` and cutting once is the
@@ -21,18 +30,26 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.shema_notification import ShemaNotificationRead
+from app.db.models.resource_request import RRStage
+from app.db.models.shema import ShemaProject
+from app.db.models.shema_notification import ShemaNotificationRead, ShemaRequestNotice
 from app.models.shema_notification import NotificationKind, ShemaNotificationEntry
 from app.models.shema_projects import ShemaProjectCard, ShemaProjectQuery
 from app.services.notifications import get_shema_app_id, list_notifications
 from app.services.shema._health_audience import reads_assessments
 from app.services.shema._health_notice import EVENT_TYPE as HEALTH_EVENT_TYPE
 from app.services.shema._needs import URGENT_NEED_EVENT
-from app.services.shema._scope import NO_COORDINATION, RegionScope
+from app.services.shema._request_notices import REQUEST_ARRIVAL_EVENT, REQUEST_DECISION_EVENT
+from app.services.shema._scope import (
+    NO_COORDINATION,
+    RegionScope,
+    live_membership_ids,
+    within_scope,
+)
 from app.services.shema._submission_notices import ARRIVAL_EVENT, PRAYER_EVENT
 from app.services.shema.browse_projects import browse_projects
 from app.utils.shema_derivations import StaleStatus
@@ -42,7 +59,7 @@ PANEL_CAP = 30
 
 STALE_TITLE = "A project has gone quiet"
 
-#: The panel's ``kind`` for a delivered notice's ``event_type`` — off the three writers' own
+#: The panel's ``kind`` for a delivered notice's ``event_type`` — off the four writers' own
 #: constants, not a substring guess, so a fifth writer's spelling fails loudly here instead of
 #: quietly landing on the wrong kind (or matching one it never meant).
 _KIND_BY_EVENT_TYPE: dict[str, NotificationKind] = {
@@ -50,6 +67,8 @@ _KIND_BY_EVENT_TYPE: dict[str, NotificationKind] = {
     URGENT_NEED_EVENT: "need",
     ARRIVAL_EVENT: "field",
     PRAYER_EVENT: "prayer",
+    REQUEST_ARRIVAL_EVENT: "requestArrival",
+    REQUEST_DECISION_EVENT: "requestDecision",
 }
 
 #: Which kinds page a recipient rather than merely inform them. The event type already says
@@ -118,6 +137,28 @@ async def _read_stale_ids(db: AsyncSession, user_id: str, ids: list[str]) -> set
     return set((await db.execute(stmt)).scalars())
 
 
+async def _request_notices(
+    db: AsyncSession, scope: RegionScope, user_id: str, notification_ids: list[str]
+) -> tuple[dict[str, ShemaRequestNotice], set[str]]:
+    """The request details of these rows, and which of their projects this caller reaches."""
+    if not notification_ids:
+        return {}, set()
+    rows = await db.execute(
+        select(ShemaRequestNotice).where(ShemaRequestNotice.notification_id.in_(notification_ids))
+    )
+    details = {detail.notification_id: detail for detail in rows.scalars()}
+    project_ids = {detail.project_id for detail in details.values()}
+    if not project_ids:
+        return details, set()
+    reached = await db.execute(
+        select(ShemaProject.id).where(
+            ShemaProject.id.in_(project_ids),
+            or_(within_scope(scope), ShemaProject.id.in_(live_membership_ids(user_id))),
+        )
+    )
+    return details, set(reached.scalars())
+
+
 async def list_notification_panel(
     db: AsyncSession, scope: RegionScope, user: User, *, app_key: str, today: date
 ) -> list[ShemaNotificationEntry]:
@@ -127,9 +168,12 @@ async def list_notification_panel(
     a scope applied by a permissive keyword is a scope the next caller forgets.
     """
     app_id = await get_shema_app_id(db)
+    rows = await list_notifications(db, user.id, app_id, limit=PANEL_CAP)
+    details, reached = await _request_notices(db, scope, user.id, [row.id for row in rows])
     delivered = []
-    for row in await list_notifications(db, user.id, app_id, limit=PANEL_CAP):
+    for row in rows:
         kind = _kind_of(row.event_type)
+        detail = details.get(row.id)
         delivered.append(
             ShemaNotificationEntry(
                 id=row.id,
@@ -137,10 +181,12 @@ async def list_notification_panel(
                 title=row.title,
                 body=row.body,
                 urgent=_is_urgent(kind),
-                project_id=None,
+                project_id=detail.project_id if detail and detail.project_id in reached else None,
                 region=None,
                 created_at=row.created_at,
                 is_read=row.is_read,
+                request_name=detail.request_name if detail else None,
+                request_stage=RRStage(detail.stage) if detail else None,
             )
         )
 

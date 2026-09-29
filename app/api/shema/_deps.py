@@ -240,3 +240,21 @@ async def _roster(user: SignedIn, db: Db, roles: SessionRoles) -> RosterReach:
 
 #: The caller's reach over rosters, for a members route to pass straight into a service.
 Roster = Annotated[RosterReach, Depends(_roster)]
+
+
+async def _door_scope(user: SignedIn, db: Db, roles: SessionRoles) -> RegionScope:
+    """The region scope of a caller behind the door, where no Shemá grant is required (OBT-541).
+
+    :data:`Scope` is chained behind the app gate, so it refuses the Gestor and the member the
+    notification panel now answers — the resource-request form's notices are addressed to them
+    (``_request_notices.py``). This is the same value ``GET /session`` answers ``regionScope``
+    from and :func:`_roster` builds on: ``scope_from_roles`` over the session's roles, which
+    counts a region row only under a regional role. So a Gestor, a mesa or a member reaches no
+    region — the fail-closed floor — and a Shemá role-holder reaches exactly what
+    :data:`Scope` would have given them.
+    """
+    return await scope_from_roles(db, user, set(roles))
+
+
+#: The caller's region scope behind the door — for a route every door account may call.
+DoorScope = Annotated[RegionScope, Depends(_door_scope)]
