@@ -37,6 +37,7 @@ def segment_view(segment: IRSegment) -> SegmentView:
         ends_ms=segment.ends_ms,
         pass_number=segment.pass_number,
         told=segment.transcript is not None,
+        bridge_take_id=segment.bridge_take_id,
     )
 
 

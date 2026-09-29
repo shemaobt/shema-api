@@ -14,6 +14,7 @@ from app.api.internalization_room._deps import (
     require_room_caller,
     room_caller_dep,
 )
+from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
@@ -30,7 +31,6 @@ from app.models.internalization_room import (
     HardStretchView,
     NeedsPersonResponse,
     PersonArrivedResponse,
-    SegmentView,
     SessionStateResponse,
     SpokenSegment,
     TurnResponse,
@@ -382,17 +382,7 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     finding = room.the_finding_that_leads(state)
     return BackTranslationProgress(
         scope=state.scope,
-        segments=[
-            SegmentView(
-                segment_id=segment.id,
-                take_id=segment.take_id,
-                starts_ms=segment.starts_ms,
-                ends_ms=segment.ends_ms,
-                pass_number=segment.pass_number,
-                told=segment.transcript is not None,
-            )
-            for segment in await room.final_segments(db, session.id)
-        ],
+        segments=[segment_view(one) for one in await room.final_segments(db, session.id)],
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
