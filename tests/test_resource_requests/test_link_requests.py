@@ -251,7 +251,7 @@ async def test_issuing_a_link_mails_the_link_and_the_code(
     ).json()
 
     assert [letter["to"] for letter in posted] == ["equipe@fora.org"]
-    assert f"https://form.example/link/{body['token']}" in posted[0]["html"]
+    assert f"https://form.example/solicitar/{body['token']}" in posted[0]["html"]
     assert body["code"] in posted[0]["html"]
 
 

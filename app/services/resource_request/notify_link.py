@@ -34,7 +34,8 @@ async def link_letter(
 ) -> Letter | None:
     """The letter that delivers a link and its code, or ``None`` with nowhere to point it.
 
-    The URL is the form's ``app_url`` from the app registry plus ``/link/{token}``. An
+    The URL is the form's ``app_url`` from the app registry plus ``/solicitar/{token}`` — the
+    public page FE-55 (OBT-542) builds, not this API's ``/link/{token}``. An
     installation with no ``app_url`` sends nothing rather than a letter with no link in it —
     the Admin's answer still carries both secrets, and handing them over is then theirs.
     """
@@ -47,7 +48,7 @@ async def link_letter(
         subject=LINK_TITLE,
         template="rr_link.html.jinja",
         app_name=app.name,
-        url=f"{app.app_url.rstrip('/')}/link/{token}",
+        url=f"{app.app_url.rstrip('/')}/solicitar/{token}",
         code=code,
         project_hint=link.project_hint,
         expires=_day(link.expires_at),

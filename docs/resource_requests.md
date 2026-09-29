@@ -864,7 +864,9 @@ the PME's dialog (OBT-544) and the public screen (FE-55, OBT-542) can be built a
   `expired` · `revoked`, read by the token module's order (revoked, then expired, then used — a
   request link is multi-use, so *verified* is its first use and not its end). `IssuedRequestLinkOut`
   adds **`token` and `code`, returned once** and nowhere else. The link's URL is the form's
-  `/link/{token}`. Revoked and expired links stay listed; revoking keeps the first `revoked_at`.
+  public page `/solicitar/{token}` (FE-55, OBT-542) — the address the e-mail carries, which calls
+  this API's `/link/{token}` routes. Revoked and expired links stay listed; revoking keeps the first
+  `revoked_at`.
 
 **Why a code beside the token — ours, not the client's.** The URL alone opens nothing: a link seen
 in a log, a `Referer` or a forwarded screenshot is not enough without the six digits, and five wrong

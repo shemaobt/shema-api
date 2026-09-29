@@ -382,7 +382,8 @@ class IssuedRequestLinkOut(RequestLinkOut):
     """The answer to issuing a link: the link, plus its token and code — **once**.
 
     Only their digests are stored, so this is the only place either exists after the call.
-    The link's URL is the form's ``/link/{token}``; the code is what verification asks for.
+    The link's URL is the form's public page, ``/solicitar/{token}`` (FE-55, OBT-542); the
+    code is what verification asks for.
     """
 
     token: str
