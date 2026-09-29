@@ -8,5 +8,9 @@
     <p style="color: #333; font-size: 15px; line-height: 1.5; margin: 0; white-space: pre-line;">{{ team_note }}</p>
   </div>
   {% endif %}
+  {% if link_holder %}
+  <p style="color: #666; font-size: 14px; line-height: 1.5;">Open the request link you received to follow your request.</p>
+  {% else %}
   <p style="color: #666; font-size: 14px; line-height: 1.5;">Sign in to the {{ app_name }} to follow your request.</p>
+  {% endif %}
 {% endblock %}

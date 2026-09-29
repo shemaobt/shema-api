@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
 from app.db.models.resource_request import RRDecision, RREvaluation, RRRequest, RRSnapshot
-from app.services.resource_request._editing import Editing
+from app.services.resource_request._editing import Edits
 
 
 class CardFacts(NamedTuple):
@@ -70,9 +70,7 @@ async def _starter_names(db: AsyncSession, ids: set[str]) -> dict[str, str | Non
     return dict(rows.tuples().all())
 
 
-async def cards_of(
-    db: AsyncSession, rows: Sequence[RRRequest], editing: Editing
-) -> list[CardFacts]:
+async def cards_of(db: AsyncSession, rows: Sequence[RRRequest], editing: Edits) -> list[CardFacts]:
     """The card facts of ``rows``, in their order, from two statements whatever their count."""
     decisions = await _decisions(db, [row.id for row in rows])
     starters = {row.started_by for row in rows if is_open(row) and row.started_by is not None}

@@ -5,14 +5,12 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, ValidationError
-from app.db.models.auth import User
 from app.db.models.resource_request import RRBudgetLine, RRRequestSections
 from app.models.resource_request import RequestDraftIn
 from app.services.resource_request._document import document, split
-from app.services.resource_request._editing import require_editor
 from app.services.resource_request._loading import Loaded, load
 from app.services.resource_request._trail import document_fields, record_request_trail
-from app.services.resource_request.get_request import get_request
+from app.services.resource_request._writer import Writer, reach_for_writing, trail_author
 from app.utils.stored_time import as_utc
 
 
@@ -33,7 +31,7 @@ async def update_draft(
     db: AsyncSession,
     request_id: str,
     draft: RequestDraftIn,
-    user: User,
+    user: Writer,
     app_key: str,
     client_saved_at: datetime | None = None,
 ) -> Saved:
@@ -84,8 +82,7 @@ async def update_draft(
     the payload, so the trail records what every later read will show — the money render's
     ``1200.50``, not the wire's ``1200.5``.
     """
-    loaded = await get_request(db, request_id, user, app_key)
-    await require_editor(db, loaded.request, user, app_key)
+    loaded = await reach_for_writing(db, request_id, user, app_key)
 
     if loaded.request.submitted_at is not None:
         raise ConflictError(
@@ -133,9 +130,9 @@ async def update_draft(
     record_request_trail(
         db,
         request_id,
-        changed_by=user.id,
         before=before,
         after=document_fields(document(*written)),
+        **trail_author(user),
     )
 
     await db.commit()

@@ -99,7 +99,9 @@ async def _pme(db: AsyncSession) -> App | None:
     return app
 
 
-async def _arrival_recipients(db: AsyncSession, form_app_key: str, exclude: str) -> list[str]:
+async def _arrival_recipients(
+    db: AsyncSession, form_app_key: str, exclude: str | None
+) -> list[str]:
     """The Admin off the ``shema`` grant and the Gestor off the form's, once each, by e-mail."""
     admins = await authorization_service.list_role_holders(db, SHEMA_APP_KEY, (ADMIN_ROLE,))
     gestores = await authorization_service.list_role_holders(db, form_app_key, (GESTOR_ROLE,))
@@ -147,12 +149,14 @@ async def ring_arrival(
     form_app_key: str,
     project_id: str | None,
     name: str,
-    actor_id: str,
+    actor_id: str | None,
 ) -> int:
     """Tell the Admin and the Gestor, in the PME, that a request arrived; answer how many.
 
     Staged with ``commit=False`` — the caller, ``submit_request``, owns the commit. An arrival
     is always in ``triagem``: a revision is a new request, and it starts there too.
+    ``actor_id`` is ``None`` when a link submitted (OBT-537) — which also has no project, so it
+    never gets as far as the recipients.
     """
     if project_id is None:
         logger.info(

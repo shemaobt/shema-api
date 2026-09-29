@@ -25,9 +25,9 @@ from fastapi import APIRouter
 from app.api.resource_requests._deps import (
     APP_KEY,
     CanEditEvaluation,
-    CanEditRequests,
     CanViewEvaluation,
     Db,
+    TeamReader,
 )
 from app.models.resource_request import (
     EvaluationOut,
@@ -57,7 +57,9 @@ async def save_evaluation(
 
 
 @router.get("/requests/{request_id}/status")
-async def read_status(request_id: str, user: CanEditRequests, db: Db) -> RequestStatusOut:
-    """Stage, submitted_at, decision and team_note — and nothing else, by contract."""
-    status = await service.request_status(db, request_id, user, APP_KEY)
+async def read_status(request_id: str, reader: TeamReader, db: Db) -> RequestStatusOut:
+    """Stage, submitted_at, decision and team_note — and nothing else, by contract.
+
+    A link session reads the status of its own link's request (BE-26, OBT-537)."""
+    status = await service.status_for(db, request_id, reader, APP_KEY)
     return RequestStatusOut(**status._asdict())

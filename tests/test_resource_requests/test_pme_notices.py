@@ -20,13 +20,13 @@ from importlib import import_module
 import pytest
 from sqlalchemy import select
 
+from app.core.rate_limit import limiter
 from app.db.models.auth import User
 from app.db.models.notification import Notification
-from app.db.models.resource_request import RRRequest, RRRequestType, RRStage
+from app.db.models.resource_request import RRRequest, RRStage
 from app.db.models.shema_notification import ShemaRequestNotice
 from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
-from app.services.resource_request import notify_arrival
 from app.services.shema import list_notification_panel, region_scope
 from tests.baker import make_user
 from tests.test_resource_requests.conftest import grant, make_membership
@@ -34,10 +34,12 @@ from tests.test_resource_requests.test_evaluations import (
     REQUESTS,
     as_gestor,
     decidable,
+    endorse,
     give_fund,
     put_evaluation,
 )
-from tests.test_resource_requests.test_requests import as_mesa, as_team
+from tests.test_resource_requests.test_link_requests import holder
+from tests.test_resource_requests.test_requests import as_mesa, as_team, draft
 
 #: As chaves de avaliação, nas duas grafias em que poderiam vazar — a da coluna e a do fio.
 EVALUATION_KEYS = {
@@ -66,6 +68,14 @@ ENTRY_KEYS = {
     "requestName",
     "requestStage",
 }
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """O link verifica o código numa rota pública com limite por endereço."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture()
@@ -269,21 +279,47 @@ async def test_a_chegada_toca_o_sino_do_admin_e_do_gestor(
 # ——— o link externo: sem sino, e o e-mail continua ————————————————————————————————
 
 
-async def test_um_pedido_sem_quem_iniciou_nao_toca_o_sino_e_o_email_sai(
+async def test_um_pedido_de_link_nao_toca_o_sino_e_o_email_sai(
     db_session, client, rrf_app, shema_app, posted
 ) -> None:
-    """O pedido de link da OBT-537 tem link e não pessoa: ``started_by`` nulo e, até o
-    cadastro pela aprovação, projeto nulo. Montado aqui anulando os dois depois do envio,
-    porque o envio por link ainda não existe. A decisão não toca o sino do PME; a carta sai
-    como hoje — para ``created_by``, e a linha do próprio formulário continua, que é do
-    formulário e da OBT-537."""
+    """O pedido pelo link do Admin (OBT-537), de ponta a ponta: sem conta e sem projeto, ele
+    não toca o sino do PME nem na chegada nem na decisão — e as cartas saem como antes: a
+    chegada para o Gestor e o recibo para o link; a decisão para o endereço do link."""
+    await pme_admin(db_session, shema_app, email="admin-pme@rr.test")
+    await as_gestor(db_session, rrf_app)
+    _issuer, _link, headers = await holder(db_session, client, email="equipe@fora.org")
+    started = (await client.post(REQUESTS, json=draft(), headers=headers)).json()
+
+    submitted = await client.post(f"{REQUESTS}/{started['id']}/submit", headers=headers)
+    assert submitted.status_code == 200, submitted.text
+    request = await request_row(db_session, started["id"])
+    assert (request.started_by, request.shema_project_id) == (None, None)
+    assert await all_pme_notices(db_session, shema_app) == []
+    assert {"gestor@rr.test", "equipe@fora.org"} <= {letter["to"] for letter in posted}
+
+    await endorse(db_session, started["id"])
+    await give_fund(db_session, started["id"])
+    posted.clear()
+    res = await put_evaluation(
+        client, await as_mesa(db_session, rrf_app), started["id"], decision="approved"
+    )
+
+    assert res.status_code == 200, res.text
+    assert await all_pme_notices(db_session, shema_app) == []
+    assert [letter["to"] for letter in posted] == ["equipe@fora.org"]
+
+
+async def test_um_pedido_sem_quem_iniciou_nao_toca_o_sino_mesmo_fora_do_link(
+    db_session, client, rrf_app, shema_app, posted
+) -> None:
+    """A regra lê as colunas, não a origem: um pedido sem ``started_by`` — o seed deixa assim —
+    não toca o sino na decisão, e a carta do formulário sai para ``created_by`` como hoje."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
     await pme_admin(db_session, shema_app)
     created = await decidable(db_session, client, team)
     request = await request_row(db_session, created["id"])
     request.started_by = None
-    request.shema_project_id = None
     await db_session.commit()
     before = len(await all_pme_notices(db_session, shema_app))
     posted.clear()
@@ -293,30 +329,6 @@ async def test_um_pedido_sem_quem_iniciou_nao_toca_o_sino_e_o_email_sai(
 
     assert len(await all_pme_notices(db_session, shema_app)) == before
     assert [letter["to"] for letter in posted] == ["equipe@rr.test"]
-
-
-async def test_a_chegada_de_um_pedido_sem_projeto_nao_toca_o_sino_e_as_cartas_saem(
-    db_session, client, rrf_app, shema_app
-) -> None:
-    """A chegada do mesmo pedido de link, pelo notificador — a rota de envio ainda exige quem
-    iniciou. Admin e Gestor não recebem nada no PME; a mesa e o Gestor recebem a carta."""
-    await pme_admin(db_session, shema_app)
-    await as_gestor(db_session, rrf_app)
-    await as_mesa(db_session, rrf_app)
-    holder = await make_user(db_session, email="link@rr.test")
-    request = RRRequest(
-        request_type=RRRequestType.TRADUCAO, reg_name="Pedido pelo link", created_by=holder.id
-    )
-    db_session.add(request)
-    await db_session.flush()
-
-    letters = await notify_arrival(
-        db_session, request=request, actor_id=holder.id, app_key=rrf_app.app_key
-    )
-    await db_session.commit()
-
-    assert await all_pme_notices(db_session, shema_app) == []
-    assert sorted(letter.to for letter in letters) == ["gestor@rr.test", "mesa@rr.test"]
 
 
 # ——— o teto da GATE-03 D4 ———————————————————————————————————————————————————————————

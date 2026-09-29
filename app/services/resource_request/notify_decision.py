@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.resource_request import RRDecision, RRRequest
+from app.db.models.resource_request import RRDecision, RRRequest, RRRequestLink
 from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_rr_app_id import get_rr_app_id
 from app.services.resource_request._decision_stage import DECISION_STAGE
@@ -15,6 +15,7 @@ from app.services.resource_request._notices import (
     product_name,
     request_name,
 )
+from app.services.resource_request.notify_link import decision_letter
 from app.services.shema._request_notices import ring_decision
 
 EVENT_TYPE = "rr_decision"
@@ -81,6 +82,10 @@ async def notify_decision(
     decision implies a column, a column never implies a decision. A card dragged by hand
     tells nobody anything, and ``test_notifications.py`` says so in a test of its own.
 
+    **A request that entered by the Admin's link is told by e-mail, at the link's address, and
+    nowhere else** (BE-26, OBT-537): its ``created_by`` is the Admin who issued the link — a
+    bookkeeping owner, not the team — and the holder has no account to hold an in-app notice.
+
     The in-app row is staged inside the caller's transaction — ``commit=False``, the flag
     BE-13 added to ``create_notification`` — so the notice and the decision land together
     or not at all. The e-mail is a value handed back: the caller commits, then posts it.
@@ -88,14 +93,21 @@ async def notify_decision(
     Whoever started the request hears it in the PME's bell too (``ring_decision``, OBT-541),
     with the registered name and the stage and nothing the mesa wrote.
     """
+    title, sentence = DECISION_COPY[decision]
+    note = _note(decision, team_note)
+
+    if request.request_link_id is not None:
+        link = await db.get(RRRequestLink, request.request_link_id)
+        if link is None:
+            return []
+        return [await decision_letter(db, request, link, title, sentence, note)]
+
     app_id = await get_rr_app_id(db)
     team = await db.get(User, request.created_by)
     if team is None:
         return []
 
-    title, sentence = DECISION_COPY[decision]
     name = request_name(request)
-    note = _note(decision, team_note)
 
     body = f"{name} {sentence}"
     if note is not None:

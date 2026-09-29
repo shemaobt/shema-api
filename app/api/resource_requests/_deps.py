@@ -34,11 +34,17 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import require_role
-from app.core.auth_middleware import get_current_user
+from app.core.auth_middleware import get_current_user, oauth2_scheme
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
-from app.services.resource_request import enters_the_form, holds_capability
+from app.services.resource_request import (
+    LinkActor,
+    enters_the_form,
+    holds_capability,
+    link_actor,
+)
+from app.services.resource_request.link_session import link_session_subject
 
 APP_KEY = "resource-request-form"
 
@@ -166,3 +172,69 @@ CanGrantAccess = Annotated[User, require_capability("grant_access")]
 CanReadRequests = Annotated[User, require_any_capability("edit_requests", "endorse_request")]
 
 ReadsFunds = Annotated[bool, reads_capability("manage_funds")]
+
+
+def reader_with(*capabilities: str) -> Any:
+    """Resolve the caller to **a user or a request link** — BE-26 (OBT-537), PR B.
+
+    The subject resolver BE-01 foresaw: a bearer token that is a link session (``aud=rr_link``,
+    ``link_session.py``) answers the link's ``LinkActor``, and the resolver refuses it with a
+    401 once the link is revoked or expired; any other token takes the user path this module
+    already had — the app's door (``_app_member``) and then any one of ``capabilities`` —
+    unchanged. The route's signature does not change, only what its reader can be, and the
+    service decides what each reaches (``read_as.py``).
+
+    Only the reads a team makes take it today; the writes a link makes are PR C's.
+    """
+
+    async def _resolve(db: Db, token: str = Depends(oauth2_scheme)) -> User | LinkActor:
+        link_id = link_session_subject(token)
+        if link_id is not None:
+            return await link_actor(db, link_id)
+
+        from app.services import auth_service
+
+        user = await _app_member(
+            await auth_service.get_current_user_from_access_token(db, token), db
+        )
+        if user.is_platform_admin:
+            return user
+        for capability in capabilities:
+            if await holds_capability(db, user.id, APP_KEY, capability):
+                return user
+        raise AuthorizationError(
+            f"One of the capabilities {', '.join(capabilities)} is required for this action."
+        )
+
+    return Depends(_resolve)
+
+
+RequestReader = Annotated[User | LinkActor, reader_with("edit_requests", "endorse_request")]
+TeamReader = Annotated[User | LinkActor, reader_with("edit_requests")]
+
+
+async def _reader_reads_funds(reader: RequestReader, db: Db) -> bool:
+    """``ReadsFunds`` for a route whose reader may be a link: a link never reads the fund."""
+    if isinstance(reader, LinkActor):
+        return False
+    if reader.is_platform_admin:
+        return True
+    return await holds_capability(db, reader.id, APP_KEY, "manage_funds")
+
+
+ReaderReadsFunds = Annotated[bool, Depends(_reader_reads_funds)]
+
+#: The writes a request link makes (BE-26, OBT-537, PR C): start, save, submit, cancel. For an
+#: account the guard is ``edit_requests``, exactly what ``CanEditRequests`` asked before.
+TeamWriter = Annotated[User | LinkActor, reader_with("edit_requests")]
+
+
+async def _writer_reads_funds(writer: TeamWriter, db: Db) -> bool:
+    if isinstance(writer, LinkActor):
+        return False
+    if writer.is_platform_admin:
+        return True
+    return await holds_capability(db, writer.id, APP_KEY, "manage_funds")
+
+
+WriterReadsFunds = Annotated[bool, Depends(_writer_reads_funds)]

@@ -132,7 +132,7 @@ a migration, not a refactor."*
 | `languages` | **Not shared. No FK.** | The form's A1 stores language name, ISO code, family, dialects, speaker count and literacy rate as **free text typed by the team**, next to vocabulary answers for vitality and writing system (contract §1.2). `languages` is `name` plus a unique three-character `code`. A FK would reject exactly the population this product serves — the contract's own vocabulary has *língua ágrafa* as a first-class answer. Text fields. |
 | `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. This row carried a condition — *if GATE-02 answers team access with an org* — and **the gate answered with individual accounts** (D1), so the condition never fires. The one shape that could still reach for it is BE-16's Líder de Base, who endorses *"que o projeto pertence à base dele"*: a base is not an `organizations` row today, and whoever builds it decides whether it becomes one. |
 | `phases`, `project_phases` | **Not applicable.** | The board's six columns are this product's own key space (contract §4.1) and are not workflow phases of a translation project. |
-| `notifications` | **Shared, and used as it stands** (BE-13, OBT-480). | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, and GATE-03 D5/D6 gave it an owner. This row's own instruction was followed literally — the existing table was read rather than a new one built. What the module added around it: `get_rr_app_id` beside its two siblings, a `commit=False` flag on `create_notification` so a caller that owns its transaction can stage a notice **inside** it, and **no detail table** — `notification_meaning_map_details` is one application's, and a resource-request one would have no reader until something deep-links. (The PME's copy of the same two notices has one reader and one table, in the Shemá module — §5.4.5.) Recipients are read through the auth spine (`authorization_service.list_role_holders`), never by this module joining `user_app_roles` itself: §2.2 above. |
+| `notifications` | **Shared, and used as it stands** (BE-13, OBT-480). | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, and GATE-03 D5/D6 gave it an owner. This row's own instruction was followed literally — the existing table was read rather than a new one built. What the module added around it: `get_rr_app_id` beside its two siblings, a `commit=False` flag on `create_notification` so a caller that owns its transaction can stage a notice **inside** it, and **no detail table** — `notification_meaning_map_details` is one application's, and a resource-request one would have no reader until something deep-links. (The PME's copy of the same two notices has one reader and one table, in the Shemá module — §5.4.6.) Recipients are read through the auth spine (`authorization_service.list_role_holders`), never by this module joining `user_app_roles` itself: §2.2 above. |
 | `permissions`, `role_permissions` | **Not usable.** | They exist as tables and are **not wired into `access_control.py`** — the guards check roles only. See §5.4. |
 
 ### 2.4 There is no Shemá module to coexist with — **finding**
@@ -830,7 +830,135 @@ member of any project**, and `projects` are those projects' ids — what a start
 already has. `my-roles` is platform surface and serves every app, which is why the membership is
 not grafted onto it.
 
-### 5.4.5 The form's notices in the PME's bell — **Built** (BE-21, OBT-541, 29/sep/2026)
+### 5.4.5 The external request link — BE-26 (OBT-537): **built**, in three PRs
+
+GATE-04 D1 and D4 (OBT-519): a team is a PME project's members **or**, while the project does not
+exist, the holder of the Admin's request link — Karina, 25/set: *"os dois, tanto quem já tem conta
+no PME quanto quem ainda não tem pode fazer uma solicitação"*. The holder has **no account** until
+the mesa's approval registers the project (OBT-547). The issue lands in three PRs so that the two
+issues waiting on it can start before it ends; **this section is the contract for all three**, so
+the PME's dialog (OBT-544) and the public screen (FE-55, OBT-542) can be built against it.
+
+**PR A — built (29/sep/2026): the schema and the Admin's routes.**
+
+- `rr_request_links` (`20260929_rr10`): `email` (stored lower-cased), `token_hash` (unique),
+  `code_hash`, `code_attempts`, `project_hint` (free text the Admin types — *"equipe X, língua Y"*;
+  nothing joins on it), `expires_at` (`rr_request_link_expire_days`, 60), `verified_at`,
+  `revoked_at`, `created_by`, `created_at`. Both secrets are minted by `app/services/common/tokens`
+  (BE-20) and **only their digests are stored**.
+- `rr_requests.request_link_id` and `started_by_link_id`, nullable FKs. A request is born with
+  **either** `shema_project_id` **or** `request_link_id` — a service rule of PR C and not a CHECK,
+  because OBT-547's approval later gives it a project too and keeps the link. **One open instance
+  per link**, `uq_rr_requests_one_open_per_link`, BE-25's rule with the link as the team.
+- The Admin's routes — a session at the door and `_links.require_link_admin` in the service: the
+  platform admin, or `admin` **in either app** (OBT-522 seeds one Admin in both), and nobody else:
+
+  ```
+  POST /api/resource-requests/links                 {email, project_hint?} -> 201 IssuedRequestLinkOut
+  GET  /api/resource-requests/links                                       -> RequestLinkOut[]  (newest first)
+  POST /api/resource-requests/links/{id}/revoke                           -> RequestLinkOut    (idempotent)
+  ```
+
+  `RequestLinkOut` is `{id, email, project_hint, status, expires_at, verified_at, revoked_at,
+  created_by, created_at}`, every moment with its offset; `status` is `pending` · `verified` ·
+  `expired` · `revoked`, read by the token module's order (revoked, then expired, then used — a
+  request link is multi-use, so *verified* is its first use and not its end). `IssuedRequestLinkOut`
+  adds **`token` and `code`, returned once** and nowhere else. The link's URL is the form's
+  public page `/solicitar/{token}` (FE-55, OBT-542) — the address the e-mail carries, which calls
+  this API's `/link/{token}` routes. Revoked and expired links stay listed; revoking keeps the first
+  `revoked_at`.
+
+**Why a code beside the token — ours, not the client's.** The URL alone opens nothing: a link seen
+in a log, a `Referer` or a forwarded screenshot is not enough without the six digits, and five wrong
+ones revoke it. Until PR C sends the e-mail, the Admin's screen is what hands both over.
+
+**PR B — built (29/sep/2026): the public door and the link session.**
+
+```
+GET  /api/resource-requests/link/{token}           -> {status, email_hint, project_hint, expires_at}
+POST /api/resource-requests/link/{token}/verify     {code} -> {session, expires_at}
+```
+
+Both public, limited per address and per token digest. An unknown token is **404**; the state of a
+known one is read, never refused, so the screen can say *expired* or *revoked*. `email_hint` masks
+the address (`e***@fora.org`). Verifying with the right code on a `pending` or `verified` link
+answers a **link session**: a JWT with `aud="rr_link"`, `sub` = the link's id, thirty days, sent
+back as a bearer token. A wrong code is **401** and counts; the **fifth revokes** the link. An
+`expired` or `revoked` link answers **410** to verify. A **subject resolver** in `_deps.py` accepts
+a user session **or** a link session and hands every route one `Actor`; no route signature
+changes. A link `Actor` reaches **its own link's requests** and nothing else — not another link's,
+not a project's — and holds `edit_requests` for them alone.
+
+What PR B built, and where the contract above met the code:
+
+- **The resolver is `reader_with` in `_deps.py`**, and only the four reads a team makes take it:
+  `GET /requests`, `GET /requests/{id}`, `GET /requests/cards` (`RequestReader`, *edit or endorse*)
+  and `GET /requests/{id}/status` (`TeamReader`, *edit*). A link session answers `LinkActor`;
+  any other bearer takes the user path this module already had — the door, then the capability —
+  unchanged. Every other route keeps its user-only guard, so a link session is **401** there.
+  `read_as.py` is the one dispatch between the two subjects, so no router branches on them; a link
+  never reads the fund (`ReaderReadsFunds` answers false), and `can_edit` is its own open instance
+  (`started_by_link_id`).
+- **The link row is read on every call**, so revoking a link or letting it expire ends every
+  session it opened, with no list of sessions to chase.
+- **A session never outlives its link**: it dies at thirty days or at the link's own
+  `expires_at`, whichever is first, so the date it answers is one it reaches. And **the right
+  code zeroes the count** — the five stop a guesser, not a second phone that mistyped before
+  getting it right (PR #577, review).
+- **The refusals carry a `code`**: a wrong code is **401** `LINK_CODE_WRONG` with `attempts_left`;
+  a link expired or revoked — the fifth wrong code included — is **410** `LINK_GONE`. The attempt
+  count is a guarded `UPDATE … + 1`, so two wrong codes at once are two, and the code is compared
+  by digest in constant time.
+- **Two stacked limits**, the leader link's pattern (`app/api/shema/forms.py`): per address, and
+  per **token digest** — a forwarded link worked by many phones is one token.
+- ⚠️ **`python-jose` checks the audience only when the token has one.** Decoding with
+  `audience="rr_link"` accepted a **user access token**, which carries no `aud`, as a link session
+  naming the user's id. It never became a door — no link has a user's id, so the resolver answered
+  401 — but the test that tried it is what found it, and `link_session_subject` now demands
+  `aud == "rr_link"` and no `type` claim. Whoever adds another bearer audience here should know it.
+
+**PR C — built (29/sep/2026): the request by the link.**
+
+- `POST /requests/start` with a link session starts the instance **bound to the link**:
+  `request_link_id` and `started_by_link_id` set, `created_by` the issuing Admin (the column is
+  `NOT NULL` and a link is no person), `shema_project_id` null. A second open one is **409**;
+  `cancel` frees it (BE-25).
+- `submit` by the link records the electronic acceptance with the typed `tpp_name`, the link's
+  e-mail and the link's id (BE-18 with a link subject), and refuses a `leader_email` equal to the
+  link's address — whoever asks never endorses their own request (OBT-522).
+- Arrival and decision notices go **by e-mail** to the link's address, with the link to follow the
+  request; there is no in-app notice for a link holder. The first e-mail also carries the link and
+  its code.
+
+What PR C built, and where it met the contract:
+
+- **One writing door for both subjects**, `_writer.reach_for_writing`: the read scope, then the pen
+  — a person's is BE-25's (`require_editor`), a link's is *the link that started the instance*.
+  Start, `POST /requests`, `PATCH`, `submit` and `cancel` take `TeamWriter` (`edit_requests` for an
+  account, unchanged); every other write keeps its user-only guard, the revision included.
+- **The trail names the link, never the Admin** (`20260929_rr11`): `rr_request_field_history.changed_by`
+  became nullable, `changed_by_link_id` joined it, and `ck_rr_request_field_history_one_author`
+  holds exactly one. Writing the issuing Admin's id there would have made D7's trail say the Admin
+  typed what the team typed. The evaluation's trail is untouched — the mesa is always a person —
+  and the downgrade **refuses** to run over a row a link wrote rather than erase it.
+  `FieldChangeOut` carries both columns.
+- **`created_by` of a link's request is the issuing Admin** — bookkeeping only, because the column
+  is `NOT NULL` and a link is no person. Nothing reads it as the team: `notify_decision` tells the
+  **link's address** by e-mail and writes no in-app notice for a link request.
+- **Three letters to the holder, all by e-mail** (`notify_link.py`): the link and its code when the
+  Admin issues it (posted after the commit; an installation with no `app_url` sends none and the
+  Admin's answer still carries both), the receipt on submission, the decision. The later two cannot
+  carry the link again — only its digest is stored — so they say to open the link already received.
+- **What this issue does not do, named rather than implied:**
+  - **the leader's e-mail differing from the link's is not checked**, because the form has no
+    leader-e-mail field yet: it arrives with the endorsement by link (OBT-535, OBT-540), and that
+    rule is theirs to enforce where the field is born;
+  - **the budget attachment by link** — `store_attachment` still takes a user — which FE-55
+    (OBT-542) needs if a link holder is to attach a file;
+  - **the revision by link**, after a *revisar* decision: the holder reads the decision and cannot
+    reopen yet.
+
+### 5.4.6 The form's notices in the PME's bell — **Built** (BE-21, OBT-541, 29/sep/2026)
 
 The decision and the arrival (BE-13) were written only into this app, and the PME's bell reads
 the `shema` app — so somebody who works only in the PME never heard either. Both notifiers now
@@ -855,9 +983,12 @@ change: the row in this app and the letter after the commit go out as before.
   is why the tests of this module that seed no `shema` app see no difference.
 - **Staged, never committed.** `create_notification(..., commit=False)` inside the caller's
   transaction, like this module's own row; `test_pme_notices.py` spies on the PME's binding too.
-- **For OBT-537**: the link's e-mail belongs to this module's halves; the PME's call reads
-  `started_by` and `shema_project_id` and stays silent for a link request as long as a link
-  request has neither.
+- **A request that entered by the link (§5.4.5) never rings the PME.** `notify_decision` answers
+  it with the link's letter and returns before the PME's call; its arrival reaches
+  `ring_arrival` with no project and no person behind it (`actor_id` is `None` on a link's
+  submission), and a notice with no record to point at is not written. If the approval (OBT-547)
+  ever stamps a project on a link request *and* a person as `started_by`, the decision would
+  start ringing the starter — the rule reads the two columns, not where the request came from.
 
 ### 5.5 Two platform behaviours to design around
 
