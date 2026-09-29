@@ -41,10 +41,16 @@ def answers(request_type: str = "traducao") -> dict[str, str]:
     return filled
 
 
+#: The base leader every test draft names (BE-23, OBT-535): required to submit, and nobody's
+#: own address among the accounts these tests sign in with.
+LEADER_EMAIL = "lider@base.org"
+
+
 def draft(request_type: str = "traducao", **over: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "request_type": request_type,
         "currency": "BRL",
+        "leader_email": LEADER_EMAIL,
         "declaration": True,
         "fields": answers(request_type),
         "langs": [],
@@ -259,6 +265,9 @@ async def test_the_envelope_grew_by_two_spine_fields_and_by_nothing_of_the_evalu
     A BE-25 (OBT-534) acrescentou os três campos da instância — ``started_by``,
     ``cancelled_at`` e ``can_edit`` — e nenhum deles é da avaliação: quem segura a caneta,
     se ela foi largada e se quem pergunta pode escrever.
+
+    A BE-23 (OBT-535) acrescentou ``endorsed_email``, o endereço do link por onde o líder de
+    base endossou — o mesmo fato de ``endorsed_at``, dito por quem, já que o líder não tem conta.
     """
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
@@ -272,6 +281,7 @@ async def test_the_envelope_grew_by_two_spine_fields_and_by_nothing_of_the_evalu
         "submitted_at",
         "endorsed_by",
         "endorsed_at",
+        "endorsed_email",
         "started_by",
         "cancelled_at",
         "can_edit",

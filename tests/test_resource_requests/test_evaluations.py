@@ -81,16 +81,16 @@ async def give_fund(db_session, request_id: str, fund_id: str = "linguas") -> No
 
 
 async def endorse(db_session, request_id: str) -> None:
-    """The Líder de Base's endorsement, as the precondition it is for anything past
-    ``triagem`` (BE-16, OBT-476). The route exists — ``POST /requests/{id}/endorse`` — and
-    this shortcut is ``give_fund``'s twin for the same reason: these tests are about what
-    happens *after* a card may be analysed, not about who signs it, and driving a second
-    endpoint with a fourth account would say nothing they assert. ``test_endorsement.py``
-    is what pins the real act, and ``endorsed_at`` is the column the rule reads."""
+    """The base leader's endorsement, as the precondition it is for anything past
+    ``triagem`` (BE-16, OBT-476). The act is the link's since BE-23 (OBT-535) — a code, a
+    page, a name — and this shortcut is ``give_fund``'s twin for the same reason: these
+    tests are about what happens *after* a card may be analysed, not about who signs it.
+    ``test_endorsement.py`` is what pins the real act, and ``endorsed_at`` is the column the
+    rule reads."""
     request = (
         await db_session.execute(select(RRRequest).where(RRRequest.id == request_id))
     ).scalar_one()
-    request.endorsed_by = request.created_by
+    request.endorsed_email = request.leader_email
     request.endorsed_at = datetime.now(UTC)
     await db_session.commit()
 

@@ -101,11 +101,16 @@ client answer, and both are recorded in contract §5.3:
   mesa's fixture account matching, the very trap the ``administer_funds`` paragraph above
   already names.
 
+**Since BE-23 (OBT-535) nothing on this server reads ``lider`` or ``endorse_request``.** The
+22/set meeting took the base leader's account away (OBT-522): the leader endorses through a
+link with a code mailed at submission (``endorse_by_link``), which no role and no capability
+guards. The row and the column stay here only because this table mirrors the frontend's
+emission (``capabilities.json``) and ``test_capabilities.py`` refuses a mismatch — they leave
+when FE-49 (OBT-517) retires the role on the form and re-emits. Until then they are a mirror
+with no reader: no guard, no scope and no notice asks for either.
+
 Reading is not a row of this table and must not become one (``_scope.py`` §5.3 reasoning):
-it rides on ``edit_requests`` for the three roles that write, and on ``endorse_request``
-for the Líder, who reads what he signs — ``require_any_capability`` in ``_deps.py`` is
-that OR, and the Líder's reach itself (submitted requests, no drafts) is decided in
-``_scope.py``, in writing.
+it rides on ``edit_requests``, and which rows it reaches is decided in ``_scope.py``.
 """
 
 #: The ten ids of the frontend's ``CAPABILITIES``, in its order.

@@ -7,11 +7,9 @@ handlers, so nothing here maps a status code by hand.
 No SQLAlchemy model is named here either — ``CLAUDE.md`` §2 keeps them out of the api layer,
 and ``RequestOut.of`` is where a row becomes an envelope.
 
-**The writes guard on ``CanEditRequests``, the reads on ``CanReadRequests``, and the scope is not
-here.** The three original roles hold ``edit_requests`` (GATE-02 D4), and which instance each may
-write is the service's pen, not the guard's (BE-25); the Líder de Base holds only
-``endorse_request`` and reads what he signs (BE-16), which is why the two GETs take the OR alias and
-every route that changes a document does not. Both answer *may act on requests* and say nothing
+**The writes guard on ``edit_requests`` and the scope is not here.** The roles hold
+``edit_requests`` (GATE-02 D4), and which instance each may write is the service's pen, not the
+guard's (BE-25). The guards answer *may act on requests* and say nothing
 about which ones — which rows a caller reaches is decided in
 ``app/services/resource_request/_scope.py``, where the reason is written: putting it in the router
 would be an access rule outside the layer that owns access rules, and a listing that filtered in two
@@ -32,9 +30,9 @@ construction the pen on an open draft, so ``True``; a cancelled or submitted ins
 written by nobody, so ``False``. Asking again would read the roles a second time on the
 autosave, the call a field connection pays most often (PR #572, review).
 
-The endorsement route guards on ``CanEndorseRequest`` and takes no body: like the submit
-above it, the act is the payload — who and when are stamped from the session, and a body
-that could carry them would be a body that could lie about who vouched.
+**The endorsement is not a route here any more** (BE-23, OBT-535): the base leader has no
+account and endorses through the link submission mails him (``endorse.py``, public). What
+stays here is the Admin's resend of that link.
 """
 
 from datetime import datetime
@@ -45,7 +43,6 @@ from fastapi import APIRouter, Depends, Query, status
 from app.api.resource_requests._deps import (
     APP_KEY,
     CanEditRequests,
-    CanEndorseRequest,
     Db,
     ReaderReadsFunds,
     ReadsFunds,
@@ -58,6 +55,7 @@ from app.core.auth_middleware import get_current_user
 from app.db.models.auth import User
 from app.models.resource_request import (
     DiscardedOut,
+    EndorsementResentOut,
     RequestCardOut,
     RequestDraftIn,
     RequestOut,
@@ -231,17 +229,12 @@ async def submit_request(
     )
 
 
-@router.post("/requests/{request_id}/endorse")
-async def endorse_request(
-    request_id: str, user: CanEndorseRequest, db: Db, reads_funds: ReadsFunds
-) -> RequestOut:
-    """No body: the endorsement is an act over what is stored, stamped from the session.
-
-    No reload either: the service reads the request to check it and hands back what it
-    read, unlike the two routes above, whose row is new (PR #281, review).
-    """
-    loaded = await service.endorse_request(db, request_id, user, APP_KEY)
-    return _out(loaded, reads_funds, await service.editing(db, user, APP_KEY))
+@router.post("/requests/{request_id}/endorsement/resend")
+async def resend_endorsement(request_id: str, user: SignedIn, db: Db) -> EndorsementResentOut:
+    """The Admin alone, decided in the service: a session at the door and nothing else, like
+    the request links (``links.py``) — the PME's Admin may hold no role in the form."""
+    resent = await service.resend_endorsement(db, request_id, user, APP_KEY, SHEMA_APP_KEY)
+    return EndorsementResentOut(sent=resent.sent)
 
 
 @router.post("/requests/{request_id}/revise", status_code=status.HTTP_201_CREATED)

@@ -1,0 +1,8 @@
+{% extends "_base.html.jinja" %}
+{% block content %}
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">Hello,</p>
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">A team named you as the base leader who endorses <strong>{{ request_name }}</strong>, a request sent to the Resource Circle.</p>
+  <p style="color: #333; font-size: 16px; line-height: 1.5;"><a href="{{ url }}" style="color: #c2410c;">Open the request</a> to read it and endorse it. When the page asks for a code, type this one:</p>
+  <p style="color: #333; font-size: 24px; letter-spacing: .2em; font-weight: bold; margin: 16px 0;">{{ code }}</p>
+  <p style="color: #666; font-size: 14px; line-height: 1.5;">The link is valid until {{ expires }}. The Resource Circle does not analyse the request before it is endorsed.</p>
+{% endblock %}

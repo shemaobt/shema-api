@@ -42,6 +42,7 @@ from pydantic import (
     ValidationInfo,
     field_validator,
     model_serializer,
+    validate_email,
 )
 
 from app.db.models.resource_request import (
@@ -485,6 +486,11 @@ class RequestDraftIn(BaseModel):
 
     request_type: RRRequestType
     currency: RRCurrency = RRCurrency.BRL
+    #: Where the endorsement link goes — the base leader's address (BE-23, OBT-535). Blank
+    #: while the draft moves; ``submit_request`` requires it and refuses the requester's own.
+    #: Beside ``fields`` and not inside it: it is not one of the contract's 45 answers but
+    #: where the act is sent, so it costs the emitted vocabulary nothing.
+    leader_email: str = Field(default="", max_length=320)
     fields: dict[str, str] = Field(default_factory=dict)
     declaration: bool = False
     langs: list[dict[str, str]] = Field(default_factory=list)
@@ -493,6 +499,15 @@ class RequestDraftIn(BaseModel):
     checks: ChecksIn = Field(default_factory=ChecksIn)
     budget: list[BudgetLineIn] = Field(default_factory=list)
     stated_total: Decimal | None = None
+
+    @field_validator("leader_email")
+    @classmethod
+    def _an_address_or_nothing(cls, value: str) -> str:
+        """Lower-cased, so the requester's own address cannot pass under another spelling."""
+        value = value.strip().lower()
+        if value:
+            validate_email(value)
+        return value
 
     @field_validator("fields")
     @classmethod
@@ -595,6 +610,18 @@ class RequestDraftIn(BaseModel):
         return value
 
 
+class EndorsementResentOut(BaseModel):
+    """The Admin's resend (BE-23, OBT-535): whether a letter left, and no secret.
+
+    ``sent`` is false on an installation with no ``app_url``: the link exists and nothing
+    carried it, which the Admin has to know to do anything about it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sent: bool
+
+
 class StartIn(BaseModel):
     """*Iniciar*: which of the three forms, and — when the caller must say — which project.
 
@@ -679,6 +706,9 @@ class RequestOut(BaseModel):
     so four boxes of which exactly one ever lights is not progress; it is a status wearing a
     bar's clothes. It gets shown to the client with the screen in hand (FE-28).
 
+    ``endorsed_email`` rides beside them since BE-23 (OBT-535): the leader endorses by link
+    and has no account, so the address the link went to is who endorsed.
+
     ``endorsed_by``/``endorsed_at`` ride in the envelope, not the document (BE-16): the
     act is state that moves around the frozen thing, exactly like ``submitted_at`` — and
     the team seeing *endorsed on this date* is status, which GATE-03 D4 allows, not the
@@ -738,6 +768,7 @@ class RequestOut(BaseModel):
     submitted_at: datetime | None
     endorsed_by: str | None
     endorsed_at: datetime | None
+    endorsed_email: str | None
     started_by: str | None
     cancelled_at: datetime | None
     can_edit: bool
@@ -804,6 +835,7 @@ class RequestOut(BaseModel):
             submitted_at=request.submitted_at,
             endorsed_by=request.endorsed_by,
             endorsed_at=request.endorsed_at,
+            endorsed_email=request.endorsed_email,
             started_by=request.started_by,
             cancelled_at=request.cancelled_at,
             can_edit=can_edit,

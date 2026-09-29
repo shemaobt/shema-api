@@ -30,7 +30,6 @@ from app.db.models.resource_request import (
 )
 from app.services.resource_request import list_fund_options as options_service
 from app.services.resource_request._fund_choices import options_from
-from tests.test_resource_requests.test_endorsement import as_lider
 from tests.test_resource_requests.test_evaluations import (
     as_gestor,
     endorse,
@@ -477,30 +476,6 @@ async def test_sem_fundo_a_mesa_le_nulo_e_a_equipe_nao_le_chave_nenhuma(
     assert da_mesa["fund_id"] is None
 
     assert "fund_id" not in (await client.get(f"{REQUESTS}/{card}", headers=team)).json()
-
-
-async def test_o_lider_que_alcanca_toda_submetida_nao_conta_pedidos_por_fundo(
-    db_session, client, rrf_app
-) -> None:
-    """O vazamento agregado que a versão larga tinha nomeado e adiado para a INT-06.
-
-    O Líder de Base alcança **toda** solicitação submetida (``_scope.py``) porque endossa,
-    e com o campo na espinha para todo mundo ele passaria a contar quantos pedidos puxam
-    de cada fundo sem conseguir nomear nenhum — id opaco não é anonimato quando se pode
-    agrupar por ele. Ele não tem ``manage_funds``, então não há o que agrupar, e não sobra
-    nada desta porta para a revisão adversarial pesar.
-    """
-    team = await as_team(db_session, rrf_app)
-    mesa = await as_mesa(db_session, rrf_app)
-    lider = await as_lider(db_session, rrf_app)
-    await make_fund(db_session, "linguas", "Shema Línguas")
-    card = await submitted(client, team)
-    assert (await put_fund(client, mesa, card, "linguas")).status_code == 200
-
-    assert "fund_id" not in (await client.get(f"{REQUESTS}/{card}", headers=lider)).json()
-    assert all(
-        "fund_id" not in linha for linha in (await client.get(REQUESTS, headers=lider)).json()
-    )
 
 
 async def test_give_fund_e_o_endpoint_escrevem_a_mesma_coluna(db_session, client, rrf_app) -> None:

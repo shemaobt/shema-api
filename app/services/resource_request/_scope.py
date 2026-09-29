@@ -15,37 +15,21 @@ everything else reaches everything:
   the projects it is a live member of**, drafts included — GATE-04 D1 and D2 (OBT-519),
   built by BE-19 (OBT-520). Who may *edit* one of those is the instance's question
   (OBT-534), never the scope's;
-* the **Líder de Base reaches every submitted request and no draft** — decided by BE-16
-  (OBT-476, 30/aug/2026), not inherited. He reads to endorse, and what he endorses is a
-  submitted, frozen document: a draft is the team's work still moving, and an endorsement
-  of a moving document would vouch for whatever it becomes. His own drafts stay reachable
-  through the ``equipe`` floor every account carries. The subtraction below deliberately
-  errs wide for a *fifth* role nobody has scoped yet — reaching too much gets noticed and
-  decided, the way this role was; inheriting the team's narrow view silently would not.
-
-**"His base" has no representation in this system, and that is recorded rather than
-implied.** The endorsement, in the client's own words, is the Líder confirming *"que o
-projeto realmente pertence à base dele"* — the attestation is his, not the system's.
-Nothing in the form's 45 questions names a base (they stay 45; adding one is the client's
-call, not ours), ``rr_requests`` carries no organization column, and the platform's
-``organizations`` tables are another product's aggregates this module has never read —
-wiring one to the other would invent a membership model the client has never seen, to
-verify a fact the client asked the Líder to attest. So every Líder reaches every
-submitted request, and which base's leader vouched for which request is exactly what his
-signature records: ``endorsed_by`` is a person, not a guess. The day the client wants
-bases in the system, that is a form question and a granting process (BE-17), never a
-silent scope patch here.
+* **the base leader reaches nothing here**, and that is BE-23 (OBT-535): since the 22/set
+  meeting the leader has no account and reads the one request a link was mailed for, through
+  the link's own public door (``read_endorsement``), never through this scope. BE-16's middle
+  reach — every submitted request, no draft — left with the account it was built for, and
+  ``20260930_rr12`` revokes every live ``lider`` grant, so the subtraction below never meets one.
 
 **The wide rule subtracts rather than tests for membership, and that is the whole of it.**
 An account carries a row per grant, ``user_app_roles`` has no constraint on ``(user_id,
 app_id)``, and since ``20260828_rr02`` turned ``auto_approve`` on every account that
 registers is already ``equipe`` — so a mesa member is ``equipe`` **plus** ``mesa``, and
-that is the ordinary account rather than an exotic one. ``granted - {TEAM_ROLE,
-LEADER_ROLE}`` asks whether anything besides the two narrow reaches is held, which stays
+that is the ordinary account rather than an exotic one. ``granted - {TEAM_ROLE}``
+asks whether anything besides the narrow reach is held, which stays
 true for that account. Asked the other way round, as ``TEAM_ROLE in granted``, it would
 answer *team* for exactly the mesa member it was written to serve and hide the board from
-them. A Líder who is also mesa reaches everything by the same subtraction, and the wide
-answer is right for the same reason. ``holds_capability`` reads the same union for
+them. ``holds_capability`` reads the same union for
 capabilities, with the grant rules that stand beside it.
 
 A platform admin reaches everything, as they pass every other guard in this module
@@ -59,48 +43,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.services.resource_request._membership import TEAM_ROLE, granted_roles
 
-LEADER_ROLE = "lider"
-
 
 async def _granted_roles(db: AsyncSession, user: User, app_key: str) -> set[str]:
-    """The grants alone. ``reach``'s two answers never need the membership that holds
-    ``equipe``: *every* subtracts it and *submitted* reads ``lider``, so asking would be a
-    query whose answer changes nothing (PR #569, review). What a member reaches of their
-    projects is the listing's and the read's own clause, not a role."""
+    """The grants alone. ``reach`` never needs the membership that holds ``equipe``: *every*
+    subtracts it, so asking would be a query whose answer changes nothing (PR #569, review).
+    What a member reaches of their projects is the listing's and the read's own clause, not a
+    role."""
     return await granted_roles(db, user.id, app_key)
 
 
 class Reach(NamedTuple):
-    """How far a caller reaches, as the two answers the scope actually has.
+    """How far a caller reaches.
 
-    **One value and not two functions**, because the two answers come from one fact — the
-    set of roles the account holds — and asking them separately meant reading that set
-    twice. ``_granted_roles`` does not memoise (``holds_capability`` says why it reads the
-    database on every call, and the cache the tests clear is ``require_app_access``'s), so
-    a caller that took both answers ran the same three-table join twice per request. That
-    is the ordinary team account since ``20260828_rr02`` turned ``auto_approve`` on:
-    everyone is ``equipe``, so ``every`` is false for every team member and the second
-    question was always asked. Read once, answered twice (PR #281, review).
+    A value and not a bare bool so a second narrow reach, if one is ever decided, lands as a
+    field its callers must read rather than a meaning squeezed into the first. BE-16's
+    *submitted* reach was one, and it left with the base leader's account (BE-23, OBT-535).
     """
 
     #: The whole board's worth of requests — the mesa, the Gestor, the platform admin.
     every: bool
-    #: The Líder's middle reach: every submitted request, no draft of another team.
-    submitted: bool
 
 
 async def reach(db: AsyncSession, user: User, app_key: str) -> Reach:
     """The caller's reach, from one read of their roles.
 
     A platform admin short-circuits before the query, as they pass every other guard in
-    this module — and both answers are true for them, though only ``every`` is ever read:
-    a reach that contains everything contains the submitted half of it.
+    this module.
     """
     if user.is_platform_admin:
-        return Reach(every=True, submitted=True)
+        return Reach(every=True)
 
     granted = await _granted_roles(db, user, app_key)
-    return Reach(
-        every=bool(granted - {TEAM_ROLE, LEADER_ROLE}),
-        submitted=LEADER_ROLE in granted,
-    )
+    return Reach(every=bool(granted - {TEAM_ROLE}))

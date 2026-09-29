@@ -11,7 +11,8 @@ spine columns, the 45 answers inside ``rr_request_sections.content`` and the 26 
 ``rr_budget_lines`` — because ``document()`` already merges the first two back into
 ``fields`` and carries the budget beside them. ``document_fields`` flattens that document:
 
-* ``request_type``, ``currency``, ``declaration`` — the three top-level answers, by name.
+* ``request_type``, ``currency``, ``leader_email``, ``declaration`` — the top-level answers,
+  by name (``leader_email`` since BE-23, OBT-535).
 * every key of ``fields`` — the 45 answers, the six promoted ones among them, so a trail
   reader never has to know which six are columns (the same promise the read path makes).
 * ``budget.<category_key>.<column>`` — one key per cell of the budget grid, which is what
@@ -92,6 +93,7 @@ def document_fields(doc: Mapping[str, Any]) -> dict[str, str | None]:
     flat: dict[str, str | None] = {
         "request_type": doc["request_type"],
         "currency": doc["currency"],
+        "leader_email": doc.get("leader_email", ""),
         "declaration": "true" if doc["declaration"] else "false",
     }
     flat.update(doc.get("fields", {}))
