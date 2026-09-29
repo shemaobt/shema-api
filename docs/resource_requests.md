@@ -814,6 +814,22 @@ draws cards should not have to carry documents to do it.
   module's own gate (`_app_member`) would refuse a regional coordinator who holds no role in the
   form, and that coordinator is exactly who this read is for.
 
+### 5.4.4 Who the account is in the form — `GET /me` — **Built** (FE-52, OBT-538, 29/sep/2026)
+
+`GET /api/auth/my-roles` answers **grants**, and since `20260928_rr08` (§5.4.1) the team holds
+none here: `equipe` is a membership of a PME project. So for every team account that route
+answered an empty list, and the form — which turned that list into its session role — refused
+the team at login and signed it out at every boot revalidation. Found building FE-52, whose
+handoff would have met the same empty list.
+
+`GET /api/resource-requests/me` is the form's own answer, by the rule its door already applies
+(`enters_the_form`): `roles` are the account's grants here **plus `equipe` when it is a live
+member of any project**, and `projects` are those projects' ids — what a start may name
+(§5.4.2). A session is the only guard: an account with neither a grant nor a membership is
+**told** so, with empty lists, and the form says *without a role in this app*, the sentence it
+already has. `my-roles` is platform surface and serves every app, which is why the membership is
+not grafted onto it.
+
 ### 5.5 Two platform behaviours to design around
 
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and
