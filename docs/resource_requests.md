@@ -830,7 +830,7 @@ member of any project**, and `projects` are those projects' ids — what a start
 already has. `my-roles` is platform surface and serves every app, which is why the membership is
 not grafted onto it.
 
-### 5.4.5 The external request link — BE-26 (OBT-537): **PRs A and B built**, C **contracted here**
+### 5.4.5 The external request link — BE-26 (OBT-537): **built**, in three PRs
 
 GATE-04 D1 and D4 (OBT-519): a team is a PME project's members **or**, while the project does not
 exist, the holder of the Admin's request link — Karina, 25/set: *"os dois, tanto quem já tem conta
@@ -864,7 +864,9 @@ the PME's dialog (OBT-544) and the public screen (FE-55, OBT-542) can be built a
   `expired` · `revoked`, read by the token module's order (revoked, then expired, then used — a
   request link is multi-use, so *verified* is its first use and not its end). `IssuedRequestLinkOut`
   adds **`token` and `code`, returned once** and nowhere else. The link's URL is the form's
-  `/link/{token}`. Revoked and expired links stay listed; revoking keeps the first `revoked_at`.
+  public page `/solicitar/{token}` (FE-55, OBT-542) — the address the e-mail carries, which calls
+  this API's `/link/{token}` routes. Revoked and expired links stay listed; revoking keeps the first
+  `revoked_at`.
 
 **Why a code beside the token — ours, not the client's.** The URL alone opens nothing: a link seen
 in a log, a `Referer` or a forwarded screenshot is not enough without the six digits, and five wrong
@@ -915,7 +917,7 @@ What PR B built, and where the contract above met the code:
   401 — but the test that tried it is what found it, and `link_session_subject` now demands
   `aud == "rr_link"` and no `type` claim. Whoever adds another bearer audience here should know it.
 
-**PR C — contracted: the request by the link.**
+**PR C — built (29/sep/2026): the request by the link.**
 
 - `POST /requests/start` with a link session starts the instance **bound to the link**:
   `request_link_id` and `started_by_link_id` set, `created_by` the issuing Admin (the column is
@@ -927,6 +929,34 @@ What PR B built, and where the contract above met the code:
 - Arrival and decision notices go **by e-mail** to the link's address, with the link to follow the
   request; there is no in-app notice for a link holder. The first e-mail also carries the link and
   its code.
+
+What PR C built, and where it met the contract:
+
+- **One writing door for both subjects**, `_writer.reach_for_writing`: the read scope, then the pen
+  — a person's is BE-25's (`require_editor`), a link's is *the link that started the instance*.
+  Start, `POST /requests`, `PATCH`, `submit` and `cancel` take `TeamWriter` (`edit_requests` for an
+  account, unchanged); every other write keeps its user-only guard, the revision included.
+- **The trail names the link, never the Admin** (`20260929_rr11`): `rr_request_field_history.changed_by`
+  became nullable, `changed_by_link_id` joined it, and `ck_rr_request_field_history_one_author`
+  holds exactly one. Writing the issuing Admin's id there would have made D7's trail say the Admin
+  typed what the team typed. The evaluation's trail is untouched — the mesa is always a person —
+  and the downgrade **refuses** to run over a row a link wrote rather than erase it.
+  `FieldChangeOut` carries both columns.
+- **`created_by` of a link's request is the issuing Admin** — bookkeeping only, because the column
+  is `NOT NULL` and a link is no person. Nothing reads it as the team: `notify_decision` tells the
+  **link's address** by e-mail and writes no in-app notice for a link request.
+- **Three letters to the holder, all by e-mail** (`notify_link.py`): the link and its code when the
+  Admin issues it (posted after the commit; an installation with no `app_url` sends none and the
+  Admin's answer still carries both), the receipt on submission, the decision. The later two cannot
+  carry the link again — only its digest is stored — so they say to open the link already received.
+- **What this issue does not do, named rather than implied:**
+  - **the leader's e-mail differing from the link's is not checked**, because the form has no
+    leader-e-mail field yet: it arrives with the endorsement by link (OBT-535, OBT-540), and that
+    rule is theirs to enforce where the field is born;
+  - **the budget attachment by link** — `store_attachment` still takes a user — which FE-55
+    (OBT-542) needs if a link holder is to attach a file;
+  - **the revision by link**, after a *revisar* decision: the holder reads the decision and cannot
+    reopen yet.
 
 ### 5.5 Two platform behaviours to design around
 

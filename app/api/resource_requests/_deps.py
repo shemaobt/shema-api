@@ -223,3 +223,18 @@ async def _reader_reads_funds(reader: RequestReader, db: Db) -> bool:
 
 
 ReaderReadsFunds = Annotated[bool, Depends(_reader_reads_funds)]
+
+#: The writes a request link makes (BE-26, OBT-537, PR C): start, save, submit, cancel. For an
+#: account the guard is ``edit_requests``, exactly what ``CanEditRequests`` asked before.
+TeamWriter = Annotated[User | LinkActor, reader_with("edit_requests")]
+
+
+async def _writer_reads_funds(writer: TeamWriter, db: Db) -> bool:
+    if isinstance(writer, LinkActor):
+        return False
+    if writer.is_platform_admin:
+        return True
+    return await holds_capability(db, writer.id, APP_KEY, "manage_funds")
+
+
+WriterReadsFunds = Annotated[bool, Depends(_writer_reads_funds)]

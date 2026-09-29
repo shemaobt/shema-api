@@ -50,6 +50,8 @@ from app.api.resource_requests._deps import (
     ReaderReadsFunds,
     ReadsFunds,
     RequestReader,
+    TeamWriter,
+    WriterReadsFunds,
 )
 from app.api.shema._deps import APP_KEY as SHEMA_APP_KEY
 from app.core.auth_middleware import get_current_user
@@ -97,23 +99,23 @@ def _out(loaded: Loaded, reads_funds: bool, editing: service.Edits) -> RequestOu
 
 @router.post("/requests/start", status_code=status.HTTP_201_CREATED)
 async def start_request(
-    start: StartIn, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+    start: StartIn, user: TeamWriter, db: Db, reads_funds: WriterReadsFunds
 ) -> RequestOut:
     """*Iniciar*: the project's instance, empty, with the caller holding the pen (BE-25).
 
     409 when the project already has one open — whoever started it submits or cancels first.
     """
     request = await service.start_request(db, start.request_type, user, APP_KEY, start.project_id)
-    loaded = await service.get_request(db, request.id, user, APP_KEY)
-    return _out(loaded, reads_funds, await service.editing(db, user, APP_KEY))
+    loaded = await service.request_for(db, request.id, user, APP_KEY)
+    return _out(loaded, reads_funds, await service.edits_for(db, user, APP_KEY))
 
 
 @router.post("/requests", status_code=status.HTTP_201_CREATED)
 async def create_request(
     draft: RequestDraftIn,
-    user: CanEditRequests,
+    user: TeamWriter,
     db: Db,
-    reads_funds: ReadsFunds,
+    reads_funds: WriterReadsFunds,
     project_id: Annotated[
         str | None,
         Query(description="The PME project the request opens from; checked against membership."),
@@ -125,8 +127,8 @@ async def create_request(
     through it with the document in hand; it starts the instance under the same lock.
     """
     request = await service.create_draft(db, draft, user, APP_KEY, project_id)
-    loaded = await service.get_request(db, request.id, user, APP_KEY)
-    return _out(loaded, reads_funds, await service.editing(db, user, APP_KEY))
+    loaded = await service.request_for(db, request.id, user, APP_KEY)
+    return _out(loaded, reads_funds, await service.edits_for(db, user, APP_KEY))
 
 
 @router.get("/requests")
@@ -176,7 +178,7 @@ async def read_request(
 
 @router.post("/requests/{request_id}/cancel")
 async def cancel_request(
-    request_id: str, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+    request_id: str, user: TeamWriter, db: Db, reads_funds: WriterReadsFunds
 ) -> RequestOut:
     """No body: the starter or the Admin gives the instance up, and the project is free again.
 
@@ -190,9 +192,9 @@ async def cancel_request(
 async def update_request(
     request_id: str,
     draft: RequestDraftIn,
-    user: CanEditRequests,
+    user: TeamWriter,
     db: Db,
-    reads_funds: ReadsFunds,
+    reads_funds: WriterReadsFunds,
     saved_at: Annotated[
         datetime | None,
         Query(description="When the client last saved its own copy, for latest-wins."),
@@ -216,7 +218,7 @@ async def update_request(
 
 @router.post("/requests/{request_id}/submit")
 async def submit_request(
-    request_id: str, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+    request_id: str, user: TeamWriter, db: Db, reads_funds: WriterReadsFunds
 ) -> SubmissionOut:
     """No body: the draft is already here, and the snapshot freezes what was saved."""
     submitted = await service.submit_request(db, request_id, user, APP_KEY)

@@ -9,9 +9,11 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest, RRSnapshot
 from app.models.resource_request import RequestSubmissionIn
 from app.services.resource_request._document import document
+from app.services.resource_request._link_actor import LinkActor
 from app.services.resource_request._notices import post
-from app.services.resource_request.get_request import get_request
 from app.services.resource_request.notify_arrival import notify_arrival
+from app.services.resource_request.notify_link import receipt_letter
+from app.services.resource_request.read_as import request_for
 
 
 class Submitted(NamedTuple):
@@ -19,7 +21,9 @@ class Submitted(NamedTuple):
     snapshot: RRSnapshot
 
 
-async def submit_request(db: AsyncSession, request_id: str, user: User, app_key: str) -> Submitted:
+async def submit_request(
+    db: AsyncSession, request_id: str, user: User | LinkActor, app_key: str
+) -> Submitted:
     """Freeze what is stored, and stop the document moving under the mesa.
 
     **It takes no payload**, and that is the load-bearing choice. GATE-03 D1 answered that
@@ -55,6 +59,11 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     name goes on the acceptance*, which no grant can transfer. The message says the real
     reason — not *no permission* but *only the person who filled it signs*.
 
+    **By a request link** (BE-26, OBT-537) the acceptance is the link's: the link that started
+    the instance (``started_by_link_id``) signs, the typed ``tpp_name`` is the name, and the
+    link's own address is the e-mail — immutable on the link row, so the id names both. The
+    mesa and the Gestores are told as for any arrival, and the holder gets a receipt by e-mail.
+
     **The author it compares against is ``started_by``, not ``created_by``** (BE-25, OBT-534):
     the two agree for every request a person opens, and stop agreeing the day a link opens
     one (BE-26), so the acceptance is compared with the column that says who holds the pen.
@@ -85,9 +94,15 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     cannot un-submit anything. Arrival is announced once, here — a draft still being typed
     announces nothing, and a card dragged later announces nothing either.
     """
-    loaded = await get_request(db, request_id, user, app_key)
+    loaded = await request_for(db, request_id, user, app_key)
 
-    if loaded.request.started_by != user.id:
+    if isinstance(user, LinkActor):
+        if loaded.request.started_by_link_id != user.link.id:
+            raise AuthorizationError(
+                "Submitting is the electronic acceptance, and only the link that started this "
+                "request signs it."
+            )
+    elif loaded.request.started_by != user.id:
         raise AuthorizationError(
             "Submitting is the electronic acceptance, and only whoever started this "
             "request signs it. Reading stays open to the team; signing in the starter's "
@@ -122,7 +137,10 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     db.add(snapshot)
     loaded.request.submitted_at = datetime.now(UTC)
 
-    letters = await notify_arrival(db, request=loaded.request, actor_id=user.id, app_key=app_key)
+    actor_id = None if isinstance(user, LinkActor) else user.id
+    letters = await notify_arrival(db, request=loaded.request, actor_id=actor_id, app_key=app_key)
+    if isinstance(user, LinkActor):
+        letters.append(await receipt_letter(db, loaded.request, user.link))
 
     await db.commit()
     await db.refresh(loaded.request)

@@ -8,6 +8,8 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRRequestLink
 from app.services.common import tokens
 from app.services.resource_request._links import require_link_admin
+from app.services.resource_request._notices import post
+from app.services.resource_request.notify_link import link_letter
 
 
 class IssuedLink(NamedTuple):
@@ -29,7 +31,9 @@ async def create_request_link(
 
     Two secrets are minted, and neither is kept: the **token** the link's URL carries and the
     six-digit **code** verification asks for (``tokens.mint`` and ``tokens.mint_code``, BE-20).
-    Both leave once, in this answer; the e-mail that delivers them to the address is PR C's. The
+    Both leave in this answer and in one e-mail to the address (``notify_link.link_letter``),
+    posted after the commit — best-effort, as every letter of this module is, so a provider
+    outage never un-issues a link; the Admin's answer still carries both. The
     code is what makes the URL alone not enough — a link seen in a log, a ``Referer`` or a
     screenshot opens nothing without it — and five wrong codes revoke the link (PR B).
 
@@ -53,4 +57,8 @@ async def create_request_link(
     db.add(link)
     await db.commit()
     await db.refresh(link)
+
+    delivery = await link_letter(db, link, token.raw, code.raw)
+    if delivery is not None:
+        await post([delivery])
     return IssuedLink(link=link, token=token.raw, code=code.raw)

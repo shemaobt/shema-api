@@ -204,15 +204,14 @@ async def test_a_revoked_link_ends_every_session_it_opened(db_session, client, r
     assert (await client.get(REQUESTS, headers=headers)).status_code == 401
 
 
-async def test_a_session_opens_no_route_but_the_four_reads(db_session, client, rrf_app) -> None:
-    """Every other route keeps its user-only guard: a link session is refused there."""
+async def test_a_session_opens_only_the_teams_routes(db_session, client, rrf_app) -> None:
+    """The reads and the writes of a team (PR C) take a link session; the rest keep their
+    user-only guard — the revision, the Admin's links, the account's own ``/me``."""
     admin, body = await issued_link(db_session, client)
     own = await request_of_link(db_session, admin, body["id"])
     headers = await session_for(client, body)
 
-    assert (
-        await client.patch(f"{REQUESTS}/{own}", json=draft(), headers=headers)
-    ).status_code == 401
+    assert (await client.post(f"{REQUESTS}/{own}/revise", headers=headers)).status_code == 401
     assert (await client.get(LINKS, headers=headers)).status_code == 401
     assert (await client.get("/api/auth/me", headers=headers)).status_code == 401
 

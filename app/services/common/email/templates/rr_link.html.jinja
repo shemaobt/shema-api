@@ -1,0 +1,8 @@
+{% extends "_base.html.jinja" %}
+{% block content %}
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">Hello,</p>
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">You were invited to request resources from the Resource Circle{% if project_hint %} for <strong>{{ project_hint }}</strong>{% endif %}.</p>
+  <p style="color: #333; font-size: 16px; line-height: 1.5;"><a href="{{ url }}" style="color: #c2410c;">Open your request link</a> and type this code when it asks for one:</p>
+  <p style="color: #333; font-size: 24px; letter-spacing: .2em; font-weight: bold; margin: 16px 0;">{{ code }}</p>
+  <p style="color: #666; font-size: 14px; line-height: 1.5;">The link is valid until {{ expires }}. Keep this e-mail: the same link is how you follow your request after you send it.</p>
+{% endblock %}
