@@ -48,6 +48,7 @@ from app.services.resource_request.start_request import start_request
 from app.services.resource_request.store_attachment import store_attachment
 from app.services.resource_request.submit_request import Submitted, submit_request
 from app.services.resource_request.update_draft import Discarded, Saved, update_draft
+from app.services.resource_request.who_am_i import FormIdentity, who_am_i
 
 __all__ = [
     "CAPABILITIES",
@@ -59,6 +60,7 @@ __all__ = [
     "BoardMoved",
     "Discarded",
     "Editing",
+    "FormIdentity",
     "FundAllocation",
     "FundAssignment",
     "FundBalance",
@@ -107,4 +109,5 @@ __all__ = [
     "submit_request",
     "transitions_of_request",
     "update_draft",
+    "who_am_i",
 ]

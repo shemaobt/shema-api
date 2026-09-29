@@ -326,6 +326,20 @@ class RequestStatusOut(BaseModel):
     team_note: str | None
 
 
+class FormIdentityOut(BaseModel):
+    """Who the signed-in account is **in the form** — FE-52 (OBT-538).
+
+    ``roles`` are its grants in this app plus ``equipe`` when it is a live member of a PME
+    project, the door's own rule; ``projects`` are those projects. ``GET /api/auth/my-roles``
+    answers grants only, which since BE-19 left every team account with none.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    roles: list[str]
+    projects: list[str]
+
+
 class RequestCardOut(BaseModel):
     """A request drawn as a card — BE-24 (OBT-536), one shape for the PME and the form.
 
