@@ -193,18 +193,23 @@ async def ring_decision(
     project_id: str | None,
     name: str,
     stage: RRStage,
+    actor_id: str | None,
 ) -> int:
     """Tell whoever started the request, in the PME, the stage its decision put it in.
 
     ``stage`` is the column the decision implies, never the decision's own vocabulary: the
     notice names a stage, as the team's status does (GATE-03 D4). Staged with
-    ``commit=False`` — the caller, ``save_evaluation``, owns the commit.
+    ``commit=False`` — the caller, ``save_evaluation``, owns the commit. ``actor_id`` is who
+    decided, compared and never written: the mesa, the Gestor or the Admin who started a
+    request for the team and then decided it is not told of their own act.
     """
     if starter_id is None or project_id is None:
         logger.info(
             "resource request decided with no starter or no project; the PME's bell stays silent",
             extra={"shema_operation": "ring_decision"},
         )
+        return 0
+    if starter_id == actor_id:
         return 0
     app = await _pme(db)
     if app is None:

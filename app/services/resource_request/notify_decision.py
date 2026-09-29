@@ -129,6 +129,7 @@ async def notify_decision(
         project_id=request.shema_project_id,
         name=request.reg_name,
         stage=DECISION_STAGE[decision],
+        actor_id=actor_id,
     )
 
     return [

@@ -101,6 +101,7 @@ def test_a_request_notice_can_carry_nothing_but_a_name_and_a_stage() -> None:
         "project_id",
         "name",
         "stage",
+        "actor_id",
     ]
     assert list(inspect.signature(ring_arrival).parameters) == [
         "db",
@@ -201,6 +202,28 @@ async def test_whoever_submits_is_not_told_of_their_own_arrival(
 # --- who hears a decision --------------------------------------------------------------------
 
 
+async def test_whoever_started_and_then_decided_is_not_told_of_their_own_decision(
+    db_session, shema_app, form_app
+) -> None:
+    """The mesa, the Gestor and the Admin may start a request for a team; deciding it after
+    is their own act."""
+    project = await make_shema_project(db_session, project_id="kadiweu", region_key=AFRICA)
+    mesa = await make_user(db_session, email="mesa-starter@notices.test")
+
+    told = await ring_decision(
+        db_session,
+        starter_id=mesa.id,
+        project_id=project.id,
+        name="Kadiwéu",
+        stage=RRStage.APROVADO,
+        actor_id=mesa.id,
+    )
+    await db_session.commit()
+
+    assert told == 0
+    assert await _rows(db_session, shema_app, mesa.id) == []
+
+
 async def test_the_decision_rings_only_whoever_started_the_request(
     db_session, shema_app, form_app
 ) -> None:
@@ -215,6 +238,7 @@ async def test_the_decision_rings_only_whoever_started_the_request(
         project_id=project.id,
         name="Kadiwéu",
         stage=RRStage.REVISAR,
+        actor_id=None,
     )
     await db_session.commit()
 
@@ -246,6 +270,7 @@ async def test_a_request_with_no_project_or_no_starter_rings_nothing(
             project_id=project_id,
             name="Kadiwéu",
             stage=RRStage.APROVADO,
+            actor_id=None,
         )
         assert told == 0
     await db_session.commit()
@@ -269,6 +294,7 @@ async def test_without_the_pme_installed_the_form_is_not_refused(db_session, for
             project_id=project.id,
             name="Kadiwéu",
             stage=RRStage.APROVADO,
+            actor_id=None,
         )
         == 0
     )
@@ -299,6 +325,7 @@ async def test_the_panel_lists_both_request_kinds_with_their_project(
         project_id=project.id,
         name="Kadiwéu 2026",
         stage=RRStage.CONDICIONAL,
+        actor_id=None,
     )
     await db_session.commit()
 
@@ -327,7 +354,12 @@ async def test_the_entry_answers_under_the_pme_s_own_field_names(
     starter = await make_user(db_session, email="starter@notices.test")
     await _member(db_session, starter, project.id)
     await ring_decision(
-        db_session, starter_id=starter.id, project_id=project.id, name="", stage=RRStage.APROVADO
+        db_session,
+        starter_id=starter.id,
+        project_id=project.id,
+        name="",
+        stage=RRStage.APROVADO,
+        actor_id=None,
     )
     await db_session.commit()
 
@@ -378,7 +410,12 @@ async def test_the_gestor_and_the_member_read_their_notices_behind_the_door(
     await _member(db_session, starter, project.id)
     await _arrive(db_session, project.id, starter.id)
     await ring_decision(
-        db_session, starter_id=starter.id, project_id=project.id, name="K", stage=RRStage.APROVADO
+        db_session,
+        starter_id=starter.id,
+        project_id=project.id,
+        name="K",
+        stage=RRStage.APROVADO,
+        actor_id=None,
     )
     await db_session.commit()
 

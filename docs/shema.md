@@ -840,7 +840,7 @@ behaviour on it.
 >   through. A snapshot, like every name this module keeps in a trail. `stage` is text with a
 >   CHECK over the five stages a notice announces, not the form's native enum.
 > - **Who hears what is the door's own reading.** The decision reaches `started_by`; the arrival
->   reaches `admin` off the `shema` grant and `gestor` off the form's, never the actor; the mesa
+>   reaches `admin` off the `shema` grant and `gestor` off the form's; neither reaches the actor; the mesa
 >   is told in the form. No region routing: the Admin and the Gestor reach none and read every
 >   request (BE-24). A request with no project — the Admin's link (OBT-537), a card the board
 >   opened, a seed — rings nothing here, and an installation with no `shema` app rings nothing

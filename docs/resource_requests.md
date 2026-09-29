@@ -966,8 +966,8 @@ also call `app/services/shema/_request_notices.py`, beside their own two halves,
 change: the row in this app and the letter after the commit go out as before.
 
 - **Who.** The decision reaches **`started_by`** (§5.4.2), who holds the pen — a member, or the
-  Admin, the mesa or the Gestor who started it; `created_by` keeps receiving this app's row and
-  the e-mail. The arrival reaches the **Admin** (the `shema` grant, the one every PME guard
+  Admin, the mesa or the Gestor who started it, unless that starter is who decided;
+  `created_by` keeps receiving this app's row and the e-mail. The arrival reaches the **Admin** (the `shema` grant, the one every PME guard
   reads) and the **Gestor** (this app's grant), never the submitter; the mesa is told here, where
   it works. `notify_arrival` rings the PME **before** its board early return, because the two
   audiences are not the same list.
