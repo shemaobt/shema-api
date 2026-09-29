@@ -165,3 +165,35 @@ async def test_every_reading_is_shown_the_same_exchange_and_each_bead_exactly_on
     for system_prompt, _ in agent.readings:
         assert WHOLE_TELLING in system_prompt
         assert GUIDE_RESPONSE in system_prompt
+
+
+async def test_a_reading_that_names_a_bead_it_was_not_shown_moves_nothing_for_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = element_keys(P)[0]
+    named_elsewhere: list[str] = []
+
+    async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        ids = _the_ids_shown(system_prompt)
+        if first not in ids:
+            return _all_engaged([])
+        stray = next(key for key in element_keys(P) if key not in ids)
+        named_elsewhere.append(stray)
+        return _all_engaged([first, stray])
+
+    the_room_agent_is(monkeypatch, classifier=agent)
+
+    settled = await classify_coverage(
+        coverage_state=initial_state(P),
+        team_utterance=WHOLE_TELLING,
+        guide_response=GUIDE_RESPONSE,
+        classifier_prompt=CLASSIFIER,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert settled[first] == CoverageStatus.ENGAGED.value
+    assert settled[named_elsewhere[0]] == CoverageStatus.NOT_ENCOUNTERED.value, (
+        "uma leitura movia uma conta que só outra leitura foi mostrada, "
+        "e que essa outra leitura não nomeou"
+    )

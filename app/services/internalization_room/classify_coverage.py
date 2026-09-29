@@ -92,7 +92,7 @@ def _only_offered(verdict: dict[str, list[str]], offered: list[Element]) -> dict
     dropped = sorted({key for named in verdict.values() for key in named} - keys)
     if dropped:
         logger.warning(
-            "Coverage classifier named %d elements not offered this turn: %s",
+            "Coverage classifier named %d elements not offered to this reading: %s",
             len(dropped),
             dropped[:5],
         )
