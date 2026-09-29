@@ -5,9 +5,15 @@ no account, and the rule is the same one read for them: **the link that started 
 writes it**, and nothing else does on the link's side. A link writes its own instance and
 never another link's or a project's; a cancelled instance takes no write from anyone.
 
-``reach_for_writing`` is the one door every write by either subject goes through, so the
-read scope and the pen are checked together and in that order — out of reach is 404 before
-*not yours* is 403, the order ``get_request`` and ``require_editor`` already keep.
+``reach_for_writing`` is the door the **draft's** writes go through — saving and cancelling —
+so the read scope and the pen are checked together and in that order: out of reach is 404
+before *not yours* is 403, the order ``get_request`` and ``require_editor`` already keep.
+
+**Submitting is deliberately not one of them.** It is the electronic acceptance, and only the
+starter signs — the person in ``started_by`` or the link in ``started_by_link_id`` — so the
+Admin that ``require_editor`` admits must not pass there. ``submit_request`` reads through
+``request_for`` and checks the signer itself (BE-18). A new write route decides which of the
+two it is before it picks a door.
 """
 
 from typing import TypedDict

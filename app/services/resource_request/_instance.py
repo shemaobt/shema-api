@@ -1,4 +1,5 @@
-"""One open instance per project — GATE-04 D6 (OBT-519, Daniel, 23/sep/2026), BE-25 (OBT-534).
+"""One open instance per project, or per link — GATE-04 D6 (OBT-519, Daniel, 23/sep/2026),
+BE-25 (OBT-534) and BE-26 (OBT-537).
 
 *Open* is a row neither submitted nor cancelled. Two things carry the rule and they are not
 redundant: ``uq_rr_requests_one_open_per_project`` is the guarantee, and it is what holds when
@@ -6,8 +7,10 @@ two members press *Iniciar* in the same second; the question asked here first is
 the ordinary case a sentence instead of an integrity error. ``flush_the_instance`` turns the
 index's refusal into the same 409, so the race and the ordinary case read alike on the wire.
 
-A request with no project is outside the rule by construction — the board's door (FE-41) and
-the link's (BE-26) until OBT-547 registers the project. **The rule counts open instances, and
+**A request entered by the Admin's link has no project and is inside the rule all the same**:
+its team is the link, and ``uq_rr_requests_one_open_per_link`` holds one open per link, with a
+sentence of its own. Only a request opened from the board with no project (FE-41) is outside
+the rule, by construction — ``NULL`` never collides. **The rule counts open instances, and
 OBT-508's *uma solicitação de tradução por projeto* counts submitted ones**: two rules, one line
 each (``count_project_translations``), and neither reads the other.
 """
