@@ -22,7 +22,7 @@ from app.services.resource_request.count_project_translations import count_proje
 from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.create_fund import create_fund
 from app.services.resource_request.create_request_link import IssuedLink, create_request_link
-from app.services.resource_request.endorse_request import endorse_request
+from app.services.resource_request.endorse_by_link import endorse_by_link
 from app.services.resource_request.enters_the_form import enters_the_form
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_evaluation import get_evaluation
@@ -49,9 +49,15 @@ from app.services.resource_request.read_as import (
     requests_for,
     status_for,
 )
+from app.services.resource_request.read_endorsement import (
+    EndorsementState,
+    PublicEndorsement,
+    read_endorsement,
+)
 from app.services.resource_request.read_request_link import PublicLink, read_request_link
 from app.services.resource_request.rename_fund import rename_fund
 from app.services.resource_request.request_status import RequestStatus, request_status
+from app.services.resource_request.resend_endorsement import Resent, resend_endorsement
 from app.services.resource_request.reserved_fund_names import RESERVED_FUND_NAMES
 from app.services.resource_request.retire_fund import retire_fund
 from app.services.resource_request.reverse_movement import reverse_movement
@@ -62,6 +68,7 @@ from app.services.resource_request.start_request import start_request
 from app.services.resource_request.store_attachment import store_attachment
 from app.services.resource_request.submit_request import Submitted, submit_request
 from app.services.resource_request.update_draft import Discarded, Saved, update_draft
+from app.services.resource_request.verify_endorsement import CodeRefused, verify_endorsement
 from app.services.resource_request.verify_request_link import (
     Refused,
     Verified,
@@ -77,9 +84,11 @@ __all__ = [
     "ROLE_CAPABILITIES",
     "AttachmentLink",
     "BoardMoved",
+    "CodeRefused",
     "Discarded",
     "Editing",
     "Edits",
+    "EndorsementState",
     "FormIdentity",
     "FundAllocation",
     "FundAssignment",
@@ -88,10 +97,12 @@ __all__ = [
     "FundOption",
     "IssuedLink",
     "LinkActor",
+    "PublicEndorsement",
     "PublicLink",
     "Reader",
     "Refused",
     "RequestStatus",
+    "Resent",
     "Saved",
     "Submitted",
     "Verified",
@@ -107,7 +118,7 @@ __all__ = [
     "create_request_link",
     "editing",
     "edits_for",
-    "endorse_request",
+    "endorse_by_link",
     "enters_the_form",
     "evaluation_fields",
     "fund_balances",
@@ -128,6 +139,7 @@ __all__ = [
     "notify_arrival",
     "notify_decision",
     "open_revision",
+    "read_endorsement",
     "read_request_link",
     "record_evaluation_trail",
     "rename_fund",
@@ -135,6 +147,7 @@ __all__ = [
     "request_status",
     "requests_for",
     "require_assigned_fund",
+    "resend_endorsement",
     "retire_fund",
     "reverse_movement",
     "revoke_request_link",
@@ -146,6 +159,7 @@ __all__ = [
     "submit_request",
     "transitions_of_request",
     "update_draft",
+    "verify_endorsement",
     "verify_request_link",
     "who_am_i",
 ]

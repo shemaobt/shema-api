@@ -44,13 +44,19 @@ def link_status(link: RRRequestLink, now: datetime) -> LinkStatus:
 
 
 async def require_link_admin(
-    db: AsyncSession, user: User, app_key: str, shema_app_key: str
+    db: AsyncSession,
+    user: User,
+    app_key: str,
+    shema_app_key: str,
+    refusal: str = "Only the Admin issues, lists and revokes request links.",
 ) -> None:
-    """Refuse anyone but the Admin — the platform admin, or ``admin`` in either app."""
+    """Refuse anyone but the Admin — the platform admin, or ``admin`` in either app.
+
+    ``refusal`` says what was refused: the endorsement's resend (BE-23) is the Admin's too."""
     if user.is_platform_admin:
         return
     if ADMIN_ROLE in await granted_roles(db, user.id, app_key):
         return
     if ADMIN_ROLE in await granted_roles(db, user.id, shema_app_key):
         return
-    raise AuthorizationError("Only the Admin issues, lists and revokes request links.")
+    raise AuthorizationError(refusal)
