@@ -21,7 +21,7 @@ its existence here would contradict the read one route over. A cancelled instanc
 **409** to every write, whoever asks: it was given up, and the way forward is a new start.
 """
 
-from typing import NamedTuple
+from typing import NamedTuple, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,12 @@ async def is_admin(db: AsyncSession, user: User, app_key: str) -> bool:
     if user.is_platform_admin:
         return True
     return ADMIN_ROLE in await granted_roles(db, user.id, app_key)
+
+
+class Edits(Protocol):
+    """Whether *this caller* writes a given instance — a user's ``Editing`` or a link's."""
+
+    def can_edit(self, request: RRRequest) -> bool: ...
 
 
 class Editing(NamedTuple):
