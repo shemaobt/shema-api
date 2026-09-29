@@ -28,7 +28,7 @@ the snapshot's bytes, and since BE-16 it is not one — the endorsement writes `
 and ``leader_date`` on the spine *after* the freeze, so the live document shows the Líder's
 line and ``rr_snapshots.document`` goes on saying what the team sent. **The snapshot carries
 the document as submitted; the live request carries the endorsed line** (PR #281, review),
-and ``endorse_request`` is where the reasons are. It is the only such value:
+and ``endorse_by_link`` (BE-23, OBT-535) is where the reasons are. It is the only such value:
 ``update_draft`` refuses every other edit to a submitted request and ``rr_snapshots`` is
 append-only in the database, so whoever compares the two documents finds that one difference
 and no other.
@@ -93,6 +93,7 @@ def split(draft: RequestDraftIn) -> Split:
     spine: dict[str, Any] = {
         "request_type": draft.request_type,
         "currency": draft.currency,
+        "leader_email": draft.leader_email,
         "declaration": draft.declaration,
     }
     for key in SPINE_TEXT_FIELDS:
@@ -152,6 +153,7 @@ def document(
     return {
         "request_type": request.request_type.value,
         "currency": request.currency.value,
+        "leader_email": request.leader_email,
         "declaration": request.declaration,
         "fields": answers,
         "langs": content.get("langs", []),
