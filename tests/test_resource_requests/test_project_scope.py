@@ -10,9 +10,16 @@ the one-per-project rule reads.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import func, select
 
-from app.db.models.resource_request import RRRequest
+from app.db.models.resource_request import (
+    RRAttachment,
+    RRDecision,
+    RRRequest,
+    RRRequestFieldHistory,
+)
+from app.services.oral_collector import gcs_utils
 from app.services.resource_request import count_project_translations
 from tests.baker import make_user
 from tests.test_resource_requests.conftest import (
@@ -22,7 +29,8 @@ from tests.test_resource_requests.conftest import (
     make_project,
     own_project_id,
 )
-from tests.test_resource_requests.test_requests import REQUESTS, create, draft
+from tests.test_resource_requests.test_attachments import PDF, FakeStore, put_file
+from tests.test_resource_requests.test_requests import REQUESTS, _decide, create, draft
 
 
 async def member_of(db_session, project_id: str, email: str):
@@ -131,9 +139,6 @@ async def test_the_board_opens_with_or_without_a_project(db_session, client, rrf
 
 async def test_a_revision_stays_in_the_project(db_session, client, rrf_app) -> None:
     """What the mesa evaluated stays that project's, and so does what it asked to revise."""
-    from app.db.models.resource_request import RRDecision
-    from tests.test_resource_requests.test_requests import _decide
-
     team = await make_user(db_session, email="revisa@rr.test")
     await grant(db_session, team, rrf_app, "equipe")
     headers = await auth_header(db_session, team)
@@ -172,6 +177,102 @@ async def test_a_member_reads_a_teammates_draft_and_submission_and_nothing_of_an
     assert foreign["id"] not in listed
     assert (await client.get(f"{REQUESTS}/{teammate_draft['id']}", headers=bia)).status_code == 200
     assert (await client.get(f"{REQUESTS}/{foreign['id']}", headers=bia)).status_code == 404
+
+
+# ——— what a member writes: reading a teammate's request is not editing it ——————————————
+
+
+@pytest.fixture()
+def storage(monkeypatch) -> FakeStore:
+    fake = FakeStore()
+    monkeypatch.setattr(gcs_utils, "upload_gcs_object", fake.upload)
+    return fake
+
+
+async def _count(db_session, model, request_id: str) -> int:
+    stmt = select(func.count()).select_from(model).where(model.request_id == request_id)
+    return (await db_session.execute(stmt)).scalar_one()
+
+
+async def test_a_teammate_reads_a_draft_but_does_not_edit_it(db_session, client, rrf_app) -> None:
+    """OBT-520: the draft is *só leitura para quem não o iniciou*. Who edits a project's
+    instance is OBT-534's to decide, so until then the scope that opens the read does not
+    open the write — and no trail is written in the teammate's name."""
+    _ana, ana = await member_of(db_session, "kadiweu", "ana@rr.test")
+    _bia, bia = await member_of(db_session, "kadiweu", "bia@rr.test")
+    started = await create(client, ana)
+
+    res = await client.patch(
+        f"{REQUESTS}/{started['id']}",
+        json=draft(team=[{"name": "Bia", "role": "coordenação"}]),
+        headers=bia,
+    )
+
+    assert res.status_code == 403, res.text
+    assert await _count(db_session, RRRequestFieldHistory, started["id"]) == 0
+
+
+async def test_the_board_still_edits_a_teams_draft(db_session, client, rrf_app) -> None:
+    """GATE-02 D4 stands until OBT-534: the mesa reaches the whole board and edits there."""
+    _ana, ana = await member_of(db_session, "kadiweu", "ana@rr.test")
+    mesa = await make_user(db_session, email="mesa@rr.test")
+    await grant(db_session, mesa, rrf_app, "mesa")
+    started = await create(client, ana)
+
+    res = await client.patch(
+        f"{REQUESTS}/{started['id']}",
+        json=draft(team=[{"name": "Mesa", "role": "coordenação"}]),
+        headers=await auth_header(db_session, mesa),
+    )
+
+    assert res.status_code == 200, res.text
+
+
+async def test_a_teammate_does_not_replace_the_budget_file(
+    db_session, client, rrf_app, storage
+) -> None:
+    """Refused before a byte reaches the bucket, so no object is left behind either."""
+    _ana, ana = await member_of(db_session, "kadiweu", "ana@rr.test")
+    _bia, bia = await member_of(db_session, "kadiweu", "bia@rr.test")
+    started = await create(client, ana)
+
+    res = await put_file(client, started["id"], bia, PDF, "application/pdf", filename="b.pdf")
+
+    assert res.status_code == 403, res.text
+    assert storage.objects == {}
+    assert await _count(db_session, RRAttachment, started["id"]) == 0
+
+
+async def test_a_teammate_does_not_open_a_revision_of_anothers_request(
+    db_session, client, rrf_app
+) -> None:
+    _ana, ana = await member_of(db_session, "kadiweu", "ana@rr.test")
+    _bia, bia = await member_of(db_session, "kadiweu", "bia@rr.test")
+    started = await create(client, ana)
+    await client.post(f"{REQUESTS}/{started['id']}/submit", headers=ana)
+    await _decide(db_session, started["id"], RRDecision.REVISE)
+
+    res = await client.post(f"{REQUESTS}/{started['id']}/revise", headers=bia)
+
+    assert res.status_code == 403, res.text
+    revisions = (
+        select(func.count()).select_from(RRRequest).where(RRRequest.revision_of_id.is_not(None))
+    )
+    assert (await db_session.execute(revisions)).scalar_one() == 0
+
+
+async def test_a_teammate_does_not_sign_anothers_draft(db_session, client, rrf_app) -> None:
+    """Submitting was already the author's alone — it is the electronic acceptance; held here
+    beside the three writes the project scope opened, so the list is whole."""
+    _ana, ana = await member_of(db_session, "kadiweu", "ana@rr.test")
+    _bia, bia = await member_of(db_session, "kadiweu", "bia@rr.test")
+    started = await create(client, ana)
+
+    res = await client.post(f"{REQUESTS}/{started['id']}/submit", headers=bia)
+
+    assert res.status_code == 403, res.text
+    row = await db_session.get(RRRequest, started["id"])
+    assert row.submitted_at is None
 
 
 # ——— the count the one-per-project rule reads ——————————————————————————————————

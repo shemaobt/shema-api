@@ -714,8 +714,11 @@ reads change, and they change together so they cannot disagree:
   `holds_capability` asks it only when no granted role carries the capability; and
   `_scope.reach` never asks it, because neither of its two answers depends on `equipe`.
 - **The scope**: a member reaches the requests they authored **and every request of their
-  projects, drafts included** (GATE-04 D2). Who may *edit* one is the instance's question
-  (OBT-534). `RequestStatusOut` does not move: tracking is still status and nothing else
+  projects, drafts included** (GATE-04 D2). **Reading is not editing**: `update_draft`,
+  `store_attachment` and `open_revision` ask `_editing.require_editor` after the scope, so a
+  teammate reads a draft somebody else started and gets a 403 on writing it; the author and
+  whoever reaches the whole board (mesa, Gestor, platform admin — GATE-02 D4) still edit. Who
+  edits a project's instance for good is OBT-534's. `RequestStatusOut` does not move: tracking is still status and nothing else
   (GATE-03 D4).
 - **The project a request belongs to**: `rr_requests.shema_project_id`, nullable FK. Stamped at
   creation from `?project_id=` **checked against the caller's live memberships**, never read from
