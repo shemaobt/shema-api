@@ -211,6 +211,40 @@ class RRFund(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class RRRequestLink(Base):
+    """A request link the Admin issues to someone outside the PME — BE-26 (OBT-537).
+
+    GATE-04 D1 and D4 (OBT-519): a team is a PME project's members, **or**, while the project
+    does not exist, the holder of the Admin's request link — Karina, 25/set: *"os dois, tanto
+    quem já tem conta no PME quanto quem ainda não tem pode fazer uma solicitação"*. The holder
+    has **no account** until the mesa's approval registers the project (OBT-547).
+
+    Two secrets and neither is stored: ``token_hash`` is the digest of the token the link's URL
+    carries, and ``code_hash`` the digest of the six-digit code verification asks for, both
+    minted by ``app/services/common/tokens`` (BE-20). ``code_attempts`` counts wrong codes; the
+    fifth revokes (PR B). ``verified_at`` is the first successful verification — the token
+    module's *used*, under the name this purpose gives it.
+
+    ``project_hint`` is free text the Admin writes — *"equipe X, língua Y"* — so the link reads
+    as something in the listing; it is **not** a project and nothing joins on it.
+    ``created_by`` restricts on delete like every authorship column of this module (GATE-02 D7).
+    """
+
+    __tablename__ = "rr_request_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    project_hint: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class RRRequest(Base):
     """The queried spine of a request document.
 
@@ -289,6 +323,13 @@ class RRRequest(Base):
             postgresql_where=text("submitted_at IS NULL AND cancelled_at IS NULL"),
             sqlite_where=text("submitted_at IS NULL AND cancelled_at IS NULL"),
         ),
+        Index(
+            "uq_rr_requests_one_open_per_link",
+            "request_link_id",
+            unique=True,
+            postgresql_where=text("submitted_at IS NULL AND cancelled_at IS NULL"),
+            sqlite_where=text("submitted_at IS NULL AND cancelled_at IS NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -335,6 +376,18 @@ class RRRequest(Base):
     #: BE-15's trail is written about it — and the partial unique index above stops counting
     #: it, which is what frees the project for another member to start.
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: The Admin's link the request entered by, when it did — BE-26 (OBT-537). A request is
+    #: born with **either** ``shema_project_id`` **or** this, never both (a service rule, not a
+    #: CHECK: the mesa's approval later gives it a project too, OBT-547, and keeps this). One
+    #: open instance per link, by ``uq_rr_requests_one_open_per_link`` — BE-25's rule, with the
+    #: link as the team.
+    request_link_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("rr_request_links.id"), nullable=True, index=True
+    )
+    #: The link that started the instance, in place of ``started_by`` — a link is no person.
+    started_by_link_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("rr_request_links.id"), nullable=True
+    )
     revision_of_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("rr_snapshots.id", use_alter=True, name="fk_rr_requests_revision_of"),
