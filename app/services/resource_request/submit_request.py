@@ -46,14 +46,20 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
 
     **Because submitting is signing, only the author submits — and that refusal lives
     here, not in the router's guard.** ``CanEditRequests`` is held by all three roles
-    (GATE-02 D4: the mesa may edit what the team wrote), and ``_scope.py`` lets the mesa
-    and the Gestor reach every draft — both stay true: they keep reading and editing. What
+    (GATE-02 D4), and ``_scope.py`` lets the mesa and the Gestor reach every draft — they
+    keep reading, and since BE-25 writing a draft is its starter's (``_editing.py``). What
     they may not do is press a button that signs in ``created_by``'s name, so the check
     compares the caller to the author rather than asking what the caller may do. It binds
     the platform admin too, deliberately, where every guard in ``_deps.py`` waves them
     through: those answer *may act here*, an installation rule; this one answers *whose
     name goes on the acceptance*, which no grant can transfer. The message says the real
     reason — not *no permission* but *only the person who filled it signs*.
+
+    **The author it compares against is ``started_by``, not ``created_by``** (BE-25, OBT-534):
+    the two agree for every request a person opens, and stop agreeing the day a link opens
+    one (BE-26), so the acceptance is compared with the column that says who holds the pen.
+    The Admin who started an instance for a team is its starter, and submits it; the Admin
+    who did not, does not — which is the same no-grant-transfers-a-signature rule above.
 
     The signature lines the paper form carried follow from the same answer, in
     ``resource_request_vocabularies.py`` (OBT-483): ``tpp_date``, ``leader_name`` and
@@ -81,12 +87,15 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     """
     loaded = await get_request(db, request_id, user, app_key)
 
-    if loaded.request.created_by != user.id:
+    if loaded.request.started_by != user.id:
         raise AuthorizationError(
-            "Submitting is the electronic acceptance, and only the account that filled "
-            "this draft signs it. Reading and editing stay open; signing in the "
-            "author's name does not."
+            "Submitting is the electronic acceptance, and only whoever started this "
+            "request signs it. Reading stays open to the team; signing in the starter's "
+            "name does not."
         )
+
+    if loaded.request.cancelled_at is not None:
+        raise ConflictError("This request was cancelled; start a new one instead.")
 
     if loaded.request.submitted_at is not None:
         raise ConflictError("This request was already submitted.")

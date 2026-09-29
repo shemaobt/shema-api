@@ -1,3 +1,4 @@
+from app.services.resource_request._editing import Editing, editing
 from app.services.resource_request._fund_assignment import require_assigned_fund
 from app.services.resource_request._fund_choices import FundOption
 from app.services.resource_request._trail import evaluation_fields, record_evaluation_trail
@@ -8,6 +9,7 @@ from app.services.resource_request.attachment_download_url import (
     AttachmentLink,
     attachment_download_url,
 )
+from app.services.resource_request.cancel_request import cancel_request
 from app.services.resource_request.capabilities import (
     CAPABILITIES,
     CAPABILITY_ROLES,
@@ -40,6 +42,7 @@ from app.services.resource_request.retire_fund import retire_fund
 from app.services.resource_request.reverse_movement import reverse_movement
 from app.services.resource_request.save_evaluation import save_evaluation
 from app.services.resource_request.set_allocation import set_allocation
+from app.services.resource_request.start_request import start_request
 from app.services.resource_request.store_attachment import store_attachment
 from app.services.resource_request.submit_request import Submitted, submit_request
 from app.services.resource_request.update_draft import Discarded, Saved, update_draft
@@ -53,6 +56,7 @@ __all__ = [
     "AttachmentLink",
     "BoardMoved",
     "Discarded",
+    "Editing",
     "FundAllocation",
     "FundAssignment",
     "FundBalance",
@@ -65,9 +69,11 @@ __all__ = [
     "append_movement",
     "assign_fund",
     "attachment_download_url",
+    "cancel_request",
     "count_project_translations",
     "create_draft",
     "create_fund",
+    "editing",
     "endorse_request",
     "enters_the_form",
     "evaluation_fields",
@@ -92,6 +98,7 @@ __all__ = [
     "reverse_movement",
     "save_evaluation",
     "set_allocation",
+    "start_request",
     "store_attachment",
     "submit_request",
     "transitions_of_request",

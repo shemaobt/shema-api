@@ -6,6 +6,7 @@ from app.db.models.resource_request import RRBudgetLine, RRRequest, RRRequestSec
 from app.db.models.shema import ShemaProject
 from app.models.resource_request import RequestDraftIn
 from app.services.resource_request._document import split
+from app.services.resource_request._instance import flush_the_instance, refuse_a_second_open
 from app.services.resource_request._membership import is_member_of, member_project_ids
 from app.services.resource_request._scope import reach
 
@@ -70,13 +71,22 @@ async def create_draft(
     ``stage`` is left to the column's own default, ``triagem``. A request that has not been
     submitted is not on the board yet, and giving it a stage here would be this service
     deciding something BE-08 owns.
+
+    **Opening a request is starting the project's instance** (BE-25, OBT-534): the caller
+    becomes ``started_by`` — the one member who writes it until it is submitted or cancelled —
+    and a project that already has an open one refuses a second with 409 (``_instance.py``).
+    ``POST /requests/start`` and ``POST /requests`` both land here, so the lock cannot be
+    stepped around by choosing the older door.
     """
     project = await _project_for(db, user, app_key, project_id)
+    await refuse_a_second_open(db, project)
     parts = split(draft)
 
-    request = RRRequest(**parts.spine, created_by=user.id, shema_project_id=project)
+    request = RRRequest(
+        **parts.spine, created_by=user.id, started_by=user.id, shema_project_id=project
+    )
     db.add(request)
-    await db.flush()
+    await flush_the_instance(db)
 
     db.add(RRRequestSections(request_id=request.id, content=parts.sections))
     for line in parts.budget:

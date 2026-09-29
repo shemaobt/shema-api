@@ -1,7 +1,8 @@
 """Which requests a caller reaches — the axis capabilities were never built to answer.
 
-``edit_requests`` belongs to all three roles (GATE-02 D4: the mesa may edit what the team
-wrote), so the capability says *may edit a request* and says nothing about **which** ones.
+``edit_requests`` belongs to all three roles (GATE-02 D4), so the capability says *may edit a
+request* and says nothing about **which** ones — neither which it reaches, decided here, nor
+which it writes, which is the instance's pen since BE-25 (``_editing.py``, OBT-534).
 The frontend's table has no scope column and should not grow one: adding
 ``read_all_requests`` would put a row the client never saw into contract §5.3, which is a
 client artefact.

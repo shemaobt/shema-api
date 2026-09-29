@@ -57,9 +57,9 @@ async def test_the_lider_reads_every_submitted_request_and_no_draft(
     403 for the standing reason — out of scope must not confirm the id exists.
     """
     team = await as_team(db_session, rrf_app)
-    moving = await create(client, team)
     frozen = await create(client, team)
     await client.post(f"{REQUESTS}/{frozen['id']}/submit", headers=team)
+    moving = await create(client, team)
     lider = await as_lider(db_session, rrf_app)
 
     listed = (await client.get(REQUESTS, headers=lider)).json()
@@ -80,9 +80,9 @@ async def test_a_lider_who_is_also_equipe_keeps_his_own_drafts_and_no_others(
     ``Reach.every``.
     """
     team = await as_team(db_session, rrf_app)
-    others_draft = await create(client, team)
     others_submitted = await create(client, team)
     await client.post(f"{REQUESTS}/{others_submitted['id']}/submit", headers=team)
+    others_draft = await create(client, team)
 
     user = await make_user(db_session, email="lider-equipe@rr.test")
     await grant(db_session, user, rrf_app, "equipe")

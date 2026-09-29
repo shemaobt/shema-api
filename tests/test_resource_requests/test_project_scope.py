@@ -165,9 +165,9 @@ async def test_a_member_reads_a_teammates_draft_and_submission_and_nothing_of_an
     _bia, bia = await member_of(db_session, "kadiweu", "bia@rr.test")
     _caio, caio = await member_of(db_session, "fataluku", "caio@rr.test")
 
-    teammate_draft = await create(client, ana)
     teammate_sent = await create(client, ana)
     await client.post(f"{REQUESTS}/{teammate_sent['id']}/submit", headers=ana)
+    teammate_draft = await create(client, ana)
     foreign = await create(client, caio)
 
     listed = {row["id"] for row in (await client.get(REQUESTS, headers=bia)).json()}
@@ -212,20 +212,28 @@ async def test_a_teammate_reads_a_draft_but_does_not_edit_it(db_session, client,
     assert await _count(db_session, RRRequestFieldHistory, started["id"]) == 0
 
 
-async def test_the_board_still_edits_a_teams_draft(db_session, client, rrf_app) -> None:
-    """GATE-02 D4 stands until OBT-534: the mesa reaches the whole board and edits there."""
+async def test_the_board_reads_a_teams_draft_and_does_not_edit_it(
+    db_session, client, rrf_app
+) -> None:
+    """BE-25 (OBT-534) closed what BE-19 left open: the mesa reaches the whole board and
+    reads the draft there, and writing it is the starter's — GATE-02 D4, revised by Daniel
+    on 23/sep/2026."""
     _ana, ana = await member_of(db_session, "kadiweu", "ana@rr.test")
     mesa = await make_user(db_session, email="mesa@rr.test")
     await grant(db_session, mesa, rrf_app, "mesa")
+    mesa_headers = await auth_header(db_session, mesa)
     started = await create(client, ana)
 
+    read = await client.get(f"{REQUESTS}/{started['id']}", headers=mesa_headers)
     res = await client.patch(
         f"{REQUESTS}/{started['id']}",
         json=draft(team=[{"name": "Mesa", "role": "coordenação"}]),
-        headers=await auth_header(db_session, mesa),
+        headers=mesa_headers,
     )
 
-    assert res.status_code == 200, res.text
+    assert read.status_code == 200
+    assert read.json()["can_edit"] is False
+    assert res.status_code == 403, res.text
 
 
 async def test_a_teammate_does_not_replace_the_budget_file(
@@ -286,9 +294,17 @@ async def test_the_count_is_submitted_translations_of_the_project_and_nothing_el
 
     sent = await create(client, ana)
     await client.post(f"{REQUESTS}/{sent['id']}/submit", headers=ana)
+    training = await create(
+        client,
+        ana,
+        request_type="treinamento",
+        team=[{"name": "Ana", "role": "coordenação"}],
+        checks={"teamtype": ["tradutores"], "trainformat": ["cursos"]},
+    )
+    assert (
+        await client.post(f"{REQUESTS}/{training['id']}/submit", headers=ana)
+    ).status_code == 200
     await create(client, ana)
-    training = await create(client, ana, request_type="treinamento")
-    await client.post(f"{REQUESTS}/{training['id']}/submit", headers=ana)
     elsewhere = await create(client, caio)
     await client.post(f"{REQUESTS}/{elsewhere['id']}/submit", headers=caio)
 

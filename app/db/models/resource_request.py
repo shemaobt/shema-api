@@ -280,7 +280,16 @@ class RRRequest(Base):
     """
 
     __tablename__ = "rr_requests"
-    __table_args__ = (Index("ix_rr_requests_stage_created", "stage", "created_at"),)
+    __table_args__ = (
+        Index("ix_rr_requests_stage_created", "stage", "created_at"),
+        Index(
+            "uq_rr_requests_one_open_per_project",
+            "shema_project_id",
+            unique=True,
+            postgresql_where=text("submitted_at IS NULL AND cancelled_at IS NULL"),
+            sqlite_where=text("submitted_at IS NULL AND cancelled_at IS NULL"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     request_type: Mapped[RRRequestType] = mapped_column(_REQUEST_TYPE)
@@ -312,6 +321,20 @@ class RRRequest(Base):
     shema_project_id: Mapped[str | None] = mapped_column(
         String(120), ForeignKey("shema_projects.id"), nullable=True, index=True
     )
+    #: Who holds the instance's pen — GATE-04 D2 and D6 (OBT-519), built by BE-25 (OBT-534).
+    #: Equal to ``created_by`` for every request a person opens, and kept apart from it
+    #: because the two answer different questions and will stop agreeing: ``created_by`` is
+    #: the account a request is *filed under* (scope, notices), ``started_by`` is who *writes
+    #: and signs it*. A request opened by the Admin's link (BE-26, OBT-537) has a link as its
+    #: starter and no person, which is why this is nullable. Only the starter or the Admin
+    #: edits, cancels and submits (``_editing.py``).
+    started_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    #: When the starter or the Admin gave the instance up (``cancel_request``). The row stays —
+    #: BE-15's trail is written about it — and the partial unique index above stops counting
+    #: it, which is what frees the project for another member to start.
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revision_of_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("rr_snapshots.id", use_alter=True, name="fk_rr_requests_revision_of"),

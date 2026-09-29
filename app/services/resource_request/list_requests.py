@@ -24,8 +24,16 @@ async def list_requests(db: AsyncSession, user: User, app_key: str) -> list[RRRe
     two calls, and since ``auto_approve`` makes everyone ``equipe`` the first always said
     *narrower* and the second always ran — so every team member paid the same three-table
     join twice on every load of this list (PR #281, review).
+
+    **A cancelled instance is not listed, for anyone** (BE-25, OBT-534). It was given up and
+    nobody may type into it; listing it would put a dead draft beside the one the project
+    actually has open. The row is still read by id (``get_request``) — it is history.
     """
-    stmt = select(RRRequest).order_by(RRRequest.created_at.desc())
+    stmt = (
+        select(RRRequest)
+        .where(RRRequest.cancelled_at.is_(None))
+        .order_by(RRRequest.created_at.desc())
+    )
     reaches = await reach(db, user, app_key)
 
     if not reaches.every:

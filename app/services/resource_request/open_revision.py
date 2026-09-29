@@ -11,7 +11,8 @@ from app.db.models.resource_request import (
     RRRequestSections,
     RRSnapshot,
 )
-from app.services.resource_request._editing import require_editor
+from app.services.resource_request._editing import require_reviser
+from app.services.resource_request._instance import flush_the_instance, refuse_a_second_open
 from app.services.resource_request.get_request import get_request
 
 
@@ -29,6 +30,13 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
     team cannot reopen a request the mesa approved or declined, and a request nobody has
     evaluated has nothing to revise. Reading ``rr_evaluations.decision`` is this rule; the
     evaluation itself is BE-06's and nothing here writes one.
+
+    **The revision is the project's new instance, and it is born under the instance's rules**
+    (BE-25, OBT-534): the pen goes to whoever held the old one (``started_by`` is copied, like
+    ``created_by``), and a project that meanwhile opened another draft refuses the revision
+    with 409, because two open instances in one project is the one state GATE-04 D6 forbids.
+    Who may *open* it is ``require_reviser`` — the starter or the board — and not
+    ``require_editor``: reopening a frozen request is not typing into a draft.
 
     **A *conditional* decision does not reopen a draft, and after 28/aug/2026 that has to
     be written here.** The client's answer about revision — *"caso tenha a necessidade de
@@ -60,7 +68,7 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
     ``tpp_name``/``tpp_date`` do carry — typed content of the team's, not a server act.
     """
     loaded = await get_request(db, request_id, user, app_key)
-    await require_editor(db, loaded.request, user, app_key)
+    await require_reviser(db, loaded.request, user, app_key)
 
     snapshot = (
         await db.execute(
@@ -94,11 +102,13 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
         tpp_name=original.tpp_name,
         tpp_date=original.tpp_date,
         created_by=original.created_by,
+        started_by=original.started_by,
         shema_project_id=original.shema_project_id,
         revision_of_id=snapshot.id,
     )
+    await refuse_a_second_open(db, original.shema_project_id)
     db.add(revision)
-    await db.flush()
+    await flush_the_instance(db)
 
     content = dict(loaded.sections.content) if loaded.sections is not None else {}
     db.add(RRRequestSections(request_id=revision.id, content=content))
