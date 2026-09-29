@@ -132,7 +132,7 @@ a migration, not a refactor."*
 | `languages` | **Not shared. No FK.** | The form's A1 stores language name, ISO code, family, dialects, speaker count and literacy rate as **free text typed by the team**, next to vocabulary answers for vitality and writing system (contract §1.2). `languages` is `name` plus a unique three-character `code`. A FK would reject exactly the population this product serves — the contract's own vocabulary has *língua ágrafa* as a first-class answer. Text fields. |
 | `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. This row carried a condition — *if GATE-02 answers team access with an org* — and **the gate answered with individual accounts** (D1), so the condition never fires. The one shape that could still reach for it is BE-16's Líder de Base, who endorses *"que o projeto pertence à base dele"*: a base is not an `organizations` row today, and whoever builds it decides whether it becomes one. |
 | `phases`, `project_phases` | **Not applicable.** | The board's six columns are this product's own key space (contract §4.1) and are not workflow phases of a translation project. |
-| `notifications` | **Shared, and used as it stands** (BE-13, OBT-480). | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, and GATE-03 D5/D6 gave it an owner. This row's own instruction was followed literally — the existing table was read rather than a new one built. What the module added around it: `get_rr_app_id` beside its two siblings, a `commit=False` flag on `create_notification` so a caller that owns its transaction can stage a notice **inside** it, and **no detail table** — `notification_meaning_map_details` is one application's, and a resource-request one would have no reader until something deep-links. Recipients are read through the auth spine (`authorization_service.list_role_holders`), never by this module joining `user_app_roles` itself: §2.2 above. |
+| `notifications` | **Shared, and used as it stands** (BE-13, OBT-480). | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, and GATE-03 D5/D6 gave it an owner. This row's own instruction was followed literally — the existing table was read rather than a new one built. What the module added around it: `get_rr_app_id` beside its two siblings, a `commit=False` flag on `create_notification` so a caller that owns its transaction can stage a notice **inside** it, and **no detail table** — `notification_meaning_map_details` is one application's, and a resource-request one would have no reader until something deep-links. (The PME's copy of the same two notices has one reader and one table, in the Shemá module — §5.4.5.) Recipients are read through the auth spine (`authorization_service.list_role_holders`), never by this module joining `user_app_roles` itself: §2.2 above. |
 | `permissions`, `role_permissions` | **Not usable.** | They exist as tables and are **not wired into `access_control.py`** — the guards check roles only. See §5.4. |
 
 ### 2.4 There is no Shemá module to coexist with — **finding**
@@ -829,6 +829,35 @@ member of any project**, and `projects` are those projects' ids — what a start
 **told** so, with empty lists, and the form says *without a role in this app*, the sentence it
 already has. `my-roles` is platform surface and serves every app, which is why the membership is
 not grafted onto it.
+
+### 5.4.5 The form's notices in the PME's bell — **Built** (BE-21, OBT-541, 29/sep/2026)
+
+The decision and the arrival (BE-13) were written only into this app, and the PME's bell reads
+the `shema` app — so somebody who works only in the PME never heard either. Both notifiers now
+also call `app/services/shema/_request_notices.py`, beside their own two halves, which do not
+change: the row in this app and the letter after the commit go out as before.
+
+- **Who.** The decision reaches **`started_by`** (§5.4.2), who holds the pen — a member, or the
+  Admin, the mesa or the Gestor who started it; `created_by` keeps receiving this app's row and
+  the e-mail. The arrival reaches the **Admin** (the `shema` grant, the one every PME guard
+  reads) and the **Gestor** (this app's grant), never the submitter; the mesa is told here, where
+  it works. `notify_arrival` rings the PME **before** its board early return, because the two
+  audiences are not the same list.
+- **What.** The registered name and the stage — GATE-03 D4's ceiling, the card's line (§5.4.3).
+  No `team_note`, no `comments`, no score, no attendee, and no `actor_id`: on a decision the actor
+  is the evaluator. The stage is `DECISION_STAGE[decision]` for a decision and `triagem` for an
+  arrival. The title is a constant and the name is in the body, because `notifications.title` is
+  200 characters and `reg_name` is 255.
+- **When it stays silent.** A request with **no `started_by` or no `shema_project_id`** rings
+  nothing in the PME: the Admin's link (OBT-537) has no person behind it and, until the approval
+  registers it, no project; a card the board opened with no project has no record to point at.
+  Their e-mail is unchanged. A server with no `shema` app rings nothing and refuses nothing — which
+  is why the tests of this module that seed no `shema` app see no difference.
+- **Staged, never committed.** `create_notification(..., commit=False)` inside the caller's
+  transaction, like this module's own row; `test_pme_notices.py` spies on the PME's binding too.
+- **For OBT-537**: the link's e-mail belongs to this module's halves; the PME's call reads
+  `started_by` and `shema_project_id` and stays silent for a link request as long as a link
+  request has neither.
 
 ### 5.5 Two platform behaviours to design around
 
