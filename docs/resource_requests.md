@@ -591,7 +591,7 @@ fourth role exists for:
 
 | Capability | `equipe` | `mesa` | `gestor` | `lider` | Settled by |
 |---|---|---|---|---|---|
-| `edit_requests` | ✅ | ✅ | ✅ | — | **GATE-02 D4** — *"a mesa pode alterar também"* |
+| `edit_requests` | ✅ | ✅ | ✅ | — | **GATE-02 D4** — *"a mesa pode alterar também"*; **which instance** each writes is BE-25's (§5.4.2), and it is no longer the mesa's |
 | `view_evaluation` | — | ✅ | ✅ | — | already decided |
 | `edit_evaluation` | — | ✅ | — | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
 | `manage_funds` | — | ✅ | ✅ | — | already decided |
@@ -716,9 +716,9 @@ reads change, and they change together so they cannot disagree:
 - **The scope**: a member reaches the requests they authored **and every request of their
   projects, drafts included** (GATE-04 D2). **Reading is not editing**: `update_draft`,
   `store_attachment` and `open_revision` ask `_editing.require_editor` after the scope, so a
-  teammate reads a draft somebody else started and gets a 403 on writing it; the author and
-  whoever reaches the whole board (mesa, Gestor, platform admin — GATE-02 D4) still edit. Who
-  edits a project's instance for good is OBT-534's. `RequestStatusOut` does not move: tracking is still status and nothing else
+  teammate reads a draft somebody else started and gets a 403 on writing it. Who writes an
+  instance for good landed a day later with BE-25 (§5.4.2): its starter and the Admin, and no
+  longer the board. `RequestStatusOut` does not move: tracking is still status and nothing else
   (GATE-03 D4).
 - **The project a request belongs to**: `rr_requests.shema_project_id`, nullable FK. Stamped at
   creation from `?project_id=` **checked against the caller's live memberships**, never read from
@@ -736,6 +736,52 @@ deleted, because four tables here are append-only and deleting them means liftin
 `rr_reject_write()` and erasing ledger movements — its own reviewed step. `_default_roles.py`
 keeps mapping the app to `equipe` for the platform's `test_every_app_is_approvable`: with
 `auto_approve` off, an approval is an Admin's act (GATE-04 D3).
+
+### 5.4.2 The instance: who holds the pen — **Built** (BE-25, OBT-534, 29/sep/2026)
+
+GATE-04 D2 and D6 (OBT-519, Daniel, 23/sep/2026): a member presses *Iniciar*, only they write the
+request until it is submitted or cancelled, the rest of the team reads it, and a project has
+**one open instance at a time**. The decision is Daniel's — *"apenas quem iniciou a escrita
+consegue preencher"* — and never Karina's.
+
+- **`rr_requests.started_by`** (nullable FK) is who holds the pen, and **`cancelled_at`** marks
+  an instance given up. `started_by` equals `created_by` for every request a person opens and is
+  kept apart from it because the two answer different questions: `created_by` is who a request
+  is filed under, `started_by` is who writes and signs it. A link-opened request (BE-26,
+  OBT-537) will have a link and no person, which is why it is nullable. `20260929_rr09` backfills
+  it from `created_by`.
+- **One open per project** is `uq_rr_requests_one_open_per_project`, a unique index on
+  `shema_project_id` over the rows neither submitted nor cancelled, declared with both
+  `postgresql_where` and `sqlite_where` so the suite exercises the same lock production has.
+  `_instance.refuse_a_second_open` asks first so the ordinary case reads as a sentence; the index
+  is what holds the race, and `flush_the_instance` answers its refusal as the same **409**.
+  Requests with no project are outside it by construction (`NULL` never collides). **This
+  counts open instances; OBT-508's one-per-project counts submitted ones** — two rules, one line
+  each.
+- **Starting**: `POST /requests/start` (`StartIn`: `request_type`, optional `project_id`) opens
+  an empty instance; `POST /requests` stays as the door that starts it with a document in hand.
+  Both land in `create_draft`, so neither steps around the lock or the project check.
+- **The pen**: `_editing.require_editor` lets through `started_by` and **the Admin** —
+  `is_platform_admin`, or this app's `admin` grant (OBT-522) — and nobody else, for the `PATCH`
+  and the attachment. **The mesa and the Gestor read and answer 403 on writing, which revises
+  GATE-02 D4 (27/aug/2026)**; the revision is Daniel's, 23/sep/2026. Only the platform admin
+  reaches these routes today: the `admin` role carries no capability of the frontend's table,
+  so `CanEditRequests` refuses it first — widening that is a re-emission of
+  `capabilities.json`, not a line here.
+- **Submitting** compares the caller with `started_by`, not `created_by` (BE-18 with the right
+  subject). The Admin who started an instance for a team submits it; one who did not, does not.
+- **Cancelling**: `POST /requests/{id}/cancel`, starter or Admin, drafts only (a submitted one
+  answers 409). It **marks and never deletes** — the row, its document and its BE-15 trail stay
+  — and the index lets go of it. The listing stops showing it; reading it by id still works.
+  Every write to a cancelled instance answers 409. GATE-04's table says *cancelar apaga o
+  rascunho*; the issue narrowed it to a mark, and that narrowing is Daniel's.
+- **The revision is the project's next instance**: it inherits `started_by` from the request it
+  revises, and a project that meanwhile opened another draft refuses it with 409. Who may open
+  one is `require_reviser` — the starter or the board — because reopening a frozen request is
+  not typing into a draft, and it is the one door GATE-02 D4 keeps.
+- **`can_edit` rides on every envelope**, computed for the caller (`_editing.Editing`, one read
+  of the roles per call, not per row), so the screen (FE-53, OBT-539) reads the answer instead of
+  re-deriving the rule. `RequestStatusOut` is untouched: the team's ceiling stays four fields.
 
 ### 5.5 Two platform behaviours to design around
 
@@ -880,8 +926,8 @@ the gate's own closing comment said: *"nenhum muda a forma do agregado"*.
 - **Whether the Ponto focal's signature becomes an electronic acceptance — answered *sim*,
   28/aug/2026 (OBT-483).** Submitting **is** signing: `created_by` says who and
   `submitted_at` says when, both stamped by the server, and `submit_request` now refuses any
-  caller who is not the author — the mesa and the Gestor keep reading and editing under
-  GATE-02 D4 and do not sign in the team's name. `tpp_date`, `leader_name` and `leader_date`
+  caller who is not the author — the mesa and the Gestor keep reading and do not sign in the
+  team's name (and since BE-25 they no longer edit a draft either, §5.4.2). `tpp_date`, `leader_name` and `leader_date`
   left the required-at-submission set (`_ALWAYS_REQUIRED`); their columns stay, and
   `tpp_name` stays demanded because it is the requester the mesa reads on the card — the
   account that submits may not be the Ponto focal. The prediction above held: the answer
