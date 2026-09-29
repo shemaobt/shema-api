@@ -21,7 +21,7 @@ TITLE = "A new request arrived"
 
 
 async def notify_arrival(
-    db: AsyncSession, *, request: RRRequest, actor_id: str, app_key: str
+    db: AsyncSession, *, request: RRRequest, actor_id: str | None, app_key: str
 ) -> list[Letter]:
     """Write everyone's in-app notice; hand back their letters for after the commit.
 
