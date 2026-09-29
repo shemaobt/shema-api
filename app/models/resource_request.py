@@ -451,6 +451,21 @@ class RequestDraftIn(BaseModel):
         return value
 
 
+class StartIn(BaseModel):
+    """*Iniciar*: which of the three forms, and — when the caller must say — which project.
+
+    Not the document: the instance starts empty, and what a member types goes through
+    ``PATCH`` like every other save. ``project_id`` is optional because a member of exactly one
+    project may leave it unsaid (``create_draft._project_for``); the Admin, a member of
+    several, and anyone starting from the PME's pass code (OBT-527) name it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_type: RRRequestType
+    project_id: str | None = None
+
+
 class DiscardedOut(BaseModel):
     """Told to a client whose copy lost, with both timestamps so it can say why.
 
@@ -521,6 +536,13 @@ class RequestOut(BaseModel):
     evaluation, which §5.3 closes. The display pair the paper form had (``leader_name``,
     ``leader_date``) stays inside the document, where the contract's 45 keys put it.
 
+    **``started_by``, ``cancelled_at`` and ``can_edit`` are the instance** (BE-25, OBT-534):
+    who holds the pen, whether it was given up, and whether *this caller* may write it now —
+    so the screen reads the answer instead of re-deriving the rule (FE-53, OBT-539).
+    ``can_edit`` is the only field here that varies by caller rather than by row, the way
+    ``fund_id``'s presence does. None of the three reaches ``RequestStatusOut``, whose four
+    fields are the team's ceiling (GATE-03 D4) and stay four.
+
     **``request_type`` and ``fund_id`` joined the spine on 4/set/2026**, and both are
     columns that already existed — no migration, and no second query, since ``of()`` reads
     the row it is already handed.
@@ -567,6 +589,9 @@ class RequestOut(BaseModel):
     submitted_at: datetime | None
     endorsed_by: str | None
     endorsed_at: datetime | None
+    started_by: str | None
+    cancelled_at: datetime | None
+    can_edit: bool
     created_at: datetime
     updated_at: datetime
     document: dict[str, Any]
@@ -593,7 +618,13 @@ class RequestOut(BaseModel):
 
     @classmethod
     def of(
-        cls, request: RRRequest, document: dict[str, Any], *, reads_funds: bool, **extra: Any
+        cls,
+        request: RRRequest,
+        document: dict[str, Any],
+        *,
+        reads_funds: bool,
+        can_edit: bool,
+        **extra: Any,
     ) -> Self:
         """Build the envelope from a request row.
 
@@ -609,6 +640,9 @@ class RequestOut(BaseModel):
         answer to a write carries ``discarded`` and the answer to a submission carries
         ``snapshot_id``, and a base-typed constructor would hand both back as the parent and
         let a route promise a field it never returns.
+
+        ``can_edit`` has no default for ``reads_funds``' reason: it is about the **caller**,
+        and a route added later must decide it rather than inherit a guess (BE-25).
         """
         fund = {"fund_id": request.fund_id} if reads_funds else {}
         return cls(
@@ -621,6 +655,9 @@ class RequestOut(BaseModel):
             submitted_at=request.submitted_at,
             endorsed_by=request.endorsed_by,
             endorsed_at=request.endorsed_at,
+            started_by=request.started_by,
+            cancelled_at=request.cancelled_at,
+            can_edit=can_edit,
             created_at=request.created_at,
             updated_at=request.updated_at,
             document=document,
