@@ -10,6 +10,7 @@ from app.services.common import tokens
 from app.services.resource_request._links import link_status
 from app.services.resource_request.link_session import encode_link_session
 from app.services.resource_request.read_request_link import find_link
+from app.utils.stored_time import as_utc
 
 #: The fifth wrong code revokes the link — the issue's number.
 MAX_CODE_ATTEMPTS: Final = 5
@@ -37,8 +38,13 @@ async def verify_request_link(db: AsyncSession, raw_token: str, code: str) -> Ve
       code_attempts = code_attempts + 1``, so two wrong codes at once are two, never one — the
       argument ``exchange_handoff`` makes for its spend. What protects a six-digit code is its
       attempt limit (BE-20's ``mint_code`` says so), so the limit must not be raceable.
-    * The right code marks the first ``verified_at`` and answers a session. A link is
-      multi-use: verifying again, from another phone, is legitimate and answers a new session.
+    * The right code marks the first ``verified_at``, **zeroes the count** and answers a
+      session. A link is multi-use: verifying again, from another phone, is legitimate — and a
+      phone that mistyped four times before getting it right must not leave the link one try
+      from revocation for everyone else. The five stop a guesser, who never gets it right
+      (PR #577, review).
+    * **The session never outlives the link**: its expiry is the earlier of thirty days and the
+      link's own ``expires_at``, so the date the screen shows is one the session reaches.
 
     The code is compared by digest and in constant time.
     """
@@ -66,8 +72,8 @@ async def verify_request_link(db: AsyncSession, raw_token: str, code: str) -> Ve
         await db.commit()
         return Refused(reason="wrong_code", attempts_left=MAX_CODE_ATTEMPTS - attempts)
 
-    if link.verified_at is None:
-        link.verified_at = now
-        await db.commit()
-    session, expires_at = encode_link_session(link.id, now)
+    link.verified_at = link.verified_at or now
+    link.code_attempts = 0
+    await db.commit()
+    session, expires_at = encode_link_session(link.id, now, not_after=as_utc(link.expires_at))
     return Verified(session=session, expires_at=expires_at)

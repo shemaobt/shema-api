@@ -230,3 +230,40 @@ async def test_a_session_for_a_link_that_does_not_exist_is_401(client, rrf_app) 
     res = await client.get(REQUESTS, headers={"Authorization": f"Bearer {token}"})
 
     assert res.status_code == 401
+
+
+async def test_the_right_code_zeroes_the_count(db_session, client, rrf_app) -> None:
+    """A second phone that mistyped four times and then got it right must not leave the link
+    one try from revocation for everyone else (PR #577, review)."""
+    _admin, body = await issued_link(db_session, client)
+    wrong = "999999" if body["code"] != "999999" else "000000"
+
+    async def wrong_four_times() -> list[int]:
+        return [
+            (
+                await client.post(f"{PUBLIC}/{body['token']}/verify", json={"code": wrong})
+            ).status_code
+            for _ in range(4)
+        ]
+
+    first = await wrong_four_times()
+    await client.post(f"{PUBLIC}/{body['token']}/verify", json={"code": body["code"]})
+    second = await wrong_four_times()
+
+    assert first == second == [401, 401, 401, 401]
+    link = await db_session.get(RRRequestLink, body["id"])
+    await db_session.refresh(link)
+    assert link.revoked_at is None
+
+
+async def test_the_session_never_outlives_its_link(db_session, client, rrf_app) -> None:
+    """Verifying ten days before the link ends answers those ten days, not thirty."""
+    _admin, body = await issued_link(db_session, client)
+    link = await db_session.get(RRRequestLink, body["id"])
+    link.expires_at = datetime.now(UTC) + timedelta(days=10)
+    await db_session.commit()
+
+    res = await client.post(f"{PUBLIC}/{body['token']}/verify", json={"code": body["code"]})
+
+    expires = datetime.fromisoformat(res.json()["expires_at"])
+    assert expires <= datetime.now(UTC) + timedelta(days=10, minutes=1)

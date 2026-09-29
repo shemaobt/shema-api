@@ -899,6 +899,10 @@ What PR B built, and where the contract above met the code:
   (`started_by_link_id`).
 - **The link row is read on every call**, so revoking a link or letting it expire ends every
   session it opened, with no list of sessions to chase.
+- **A session never outlives its link**: it dies at thirty days or at the link's own
+  `expires_at`, whichever is first, so the date it answers is one it reaches. And **the right
+  code zeroes the count** — the five stop a guesser, not a second phone that mistyped before
+  getting it right (PR #577, review).
 - **The refusals carry a `code`**: a wrong code is **401** `LINK_CODE_WRONG` with `attempts_left`;
   a link expired or revoked — the fifth wrong code included — is **410** `LINK_GONE`. The attempt
   count is a guarded `UPDATE … + 1`, so two wrong codes at once are two, and the code is compared

@@ -17,12 +17,12 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest
 from app.services.resource_request._cards import CardFacts, cards_of
 from app.services.resource_request._editing import Edits, editing
-from app.services.resource_request._evaluation import team_outcome
 from app.services.resource_request._link_actor import LinkActor, get_link_request, link_requests
 from app.services.resource_request._loading import Loaded
 from app.services.resource_request.get_request import get_request
+from app.services.resource_request.list_request_cards import list_request_cards
 from app.services.resource_request.list_requests import list_requests
-from app.services.resource_request.request_status import RequestStatus
+from app.services.resource_request.request_status import RequestStatus, status_of
 
 Reader = User | LinkActor
 
@@ -46,19 +46,15 @@ async def request_for(db: AsyncSession, request_id: str, reader: Reader, app_key
 
 
 async def cards_for(db: AsyncSession, reader: Reader, app_key: str) -> list[CardFacts]:
-    rows = await requests_for(db, reader, app_key)
-    return await cards_of(db, rows, await edits_for(db, reader, app_key))
+    """An account's cards are ``list_request_cards``' — the BE-24 owner of *one projection, two
+    readers* — and a link's are the same ``cards_of`` over its own rows."""
+    if isinstance(reader, LinkActor):
+        return await cards_of(db, await link_requests(db, reader), reader)
+    return await list_request_cards(db, reader, app_key)
 
 
 async def status_for(
     db: AsyncSession, request_id: str, reader: Reader, app_key: str
 ) -> RequestStatus:
-    request = (await request_for(db, request_id, reader, app_key)).request
-    decision, team_note = await team_outcome(db, request_id)
-    return RequestStatus(
-        request_type=request.request_type,
-        stage=request.stage,
-        submitted_at=request.submitted_at,
-        decision=decision,
-        team_note=team_note,
-    )
+    """The team's status, projected by ``request_status.status_of`` for either reader."""
+    return await status_of(db, (await request_for(db, request_id, reader, app_key)).request)

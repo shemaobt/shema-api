@@ -25,10 +25,17 @@ from app.core.config import get_settings
 LINK_SESSION_AUDIENCE = "rr_link"
 
 
-def encode_link_session(link_id: str, now: datetime | None = None) -> tuple[str, datetime]:
+def encode_link_session(
+    link_id: str, now: datetime | None = None, *, not_after: datetime | None = None
+) -> tuple[str, datetime]:
+    """A session for ``link_id``, dying at thirty days or at ``not_after``, whichever is first —
+    the caller passes the link's own expiry, so a session never promises a day its link will
+    not reach."""
     settings = get_settings()
     now = now or datetime.now(UTC)
     expires_at = now + timedelta(days=settings.rr_link_session_expire_days)
+    if not_after is not None:
+        expires_at = min(expires_at, not_after)
     payload = {
         "sub": link_id,
         "aud": LINK_SESSION_AUDIENCE,
