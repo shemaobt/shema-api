@@ -12,7 +12,8 @@ from app.services.resource_request._notices import post
 
 class Resent(NamedTuple):
     request: RRRequest
-    #: Whether a letter left: an installation with no ``app_url`` has nowhere to point one.
+    #: Whether the provider accepted the letter — false with no ``app_url`` to point one at, and
+    #: false when the provider refused it.
     sent: bool
 
 
@@ -27,8 +28,11 @@ async def resend_endorsement(
     to the leader's address only — the Admin reading them would be one more person able to
     endorse a request that is not theirs to vouch for.
 
-    Refused for a request not submitted (no link exists before the form is complete) and for
-    one already endorsed (a spent link is not reissued).
+    Refused for a request not submitted (no link exists before the form is complete), for one
+    already endorsed (a spent link is not reissued), and for one that names no leader — every
+    request submitted before ``20260930_rr12`` carries an empty ``leader_email``, and a link
+    addressed to nobody is not a resend (PR #579, review). ``sent`` is what the provider
+    accepted, not whether a letter was built.
     """
     await require_link_admin(
         db, user, app_key, shema_app_key, refusal="Only the Admin resends an endorsement link."
@@ -40,10 +44,14 @@ async def resend_endorsement(
         raise ConflictError("The endorsement link is issued at submission; this is a draft.")
     if request.endorsed_at is not None:
         raise ConflictError("This request was already endorsed.")
+    if not request.leader_email:
+        raise ConflictError(
+            "This request names no base leader: it was submitted before the address was asked "
+            "for. A revision is how the team gives one."
+        )
 
     letter = await issue_endorsement(db, request)
     await db.commit()
     await db.refresh(request)
-    if letter is not None:
-        await post([letter])
-    return Resent(request=request, sent=letter is not None)
+    accepted = await post([letter]) if letter is not None else 0
+    return Resent(request=request, sent=accepted > 0)
