@@ -157,20 +157,17 @@ def _parse(raw: str) -> dict[str, list[str]] | None:
     `decisions` array. Reading two top-level status keys instead left both buckets empty on
     every well-formed reply, so no bead ever moved and no session ever reached done.
 
-    The table carries one slot per status the prompt can send, and it is the same table on
-    every exit. A status the prompt no longer names — `partially_engaged`, the band an echo
-    used to land in — falls through to the log and moves nothing: a model still answering
-    with it is a stale prompt, not a bead the team earned.
-
-    It is built once and every exit answers that one. The caller indexes the result, so an
-    exit answering a shorter dict raises `KeyError` out of the one path whose whole job is
-    to leave coverage untouched — which is what three hand-written copies of the same
-    literal were waiting to do the next time the scale grew.
+    The table carries one slot per status the prompt can send. A status the prompt no longer
+    names — `partially_engaged`, the band an echo used to land in — falls through to the log
+    and moves nothing: a model still answering with it is a stale prompt, not a bead the
+    team earned.
 
     A reply that is not a decisions object at all — most often one cut off mid-list when the
     reading ran out of room — answers `None` rather than empty buckets: it says nothing about
     the beads it was shown, and reading it as "nothing moved" is what left a whole telling
-    at 0 of 44. No prefix is salvaged from it.
+    at 0 of 44. No prefix is salvaged from it. Only a reply that did carry a decisions list
+    answers the table, and it always answers the whole of it, because the caller indexes
+    both slots.
     """
     verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
     text = raw.strip()
