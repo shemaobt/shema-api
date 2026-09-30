@@ -28,6 +28,11 @@ exactly one seat to look up: the role has a seat in the chart, and the scope nam
 one region. Global scope, a scope spanning two regions, ``globalStrategist``, and an
 unassigned seat all land on ``display_name`` — and the last of those is not an edge case
 today but the normal one, because all twenty-one seats ship unassigned on purpose.
+
+**``apps`` is the registry's row, read once per sign-in** (OBT-544). The form's address is
+``apps.app_url`` — the value its own letters build their links from — so the console opens
+the form where the form says it lives, and a registry without the value answers ``None``
+rather than an address the console would have to invent.
 """
 
 from __future__ import annotations
@@ -38,7 +43,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaRegionKey, ShemaRoleKey
 from app.db.models.shema_org_chart import ShemaRegionTeam
-from app.models.shema_session import ShemaSession
+from app.models.shema_session import SessionApps, ShemaSession
+from app.services.authorization.get_app_by_key import get_app_by_key
 from app.services.shema._scope import RegionScope, role_from, roles_from, scope_from_roles
 
 
@@ -66,7 +72,16 @@ async def _resolve_name(
     return user.display_name or None
 
 
-async def get_session(db: AsyncSession, user: User, *, roles: tuple[str, ...]) -> ShemaSession:
+async def _app_url(db: AsyncSession, app_key: str) -> str | None:
+    """The registry's address for ``app_key``, without a trailing slash, or ``None``."""
+    app = await get_app_by_key(db, app_key)
+    url = (app.app_url or "").strip().rstrip("/") if app is not None else ""
+    return url or None
+
+
+async def get_session(
+    db: AsyncSession, user: User, *, roles: tuple[str, ...], form_app_key: str
+) -> ShemaSession:
     """The signed-in persona, as FE-44 §9.13 froze it and OBT-523 widened it.
 
     ``roles`` is what the PME's door already read — ``_scope.session_roles`` — handed down
@@ -80,6 +95,9 @@ async def get_session(db: AsyncSession, user: User, *, roles: tuple[str, ...]) -
     No cache. The session is asked once per sign-in rather than once per request; a cache
     here would buy nothing and would hold a persona that a rename in the org chart is
     supposed to change immediately.
+
+    ``form_app_key`` is handed in by the router, as ``session_roles`` takes it: a service does
+    not import the router that names it.
     """
     held = frozenset(roles)
     role = role_from(held)
@@ -89,4 +107,5 @@ async def get_session(db: AsyncSession, user: User, *, roles: tuple[str, ...]) -
         roles=list(roles_from(held)),
         regionScope=scope.wire,
         name=await _resolve_name(db, user, role, scope),
+        apps=SessionApps(resourceRequestForm=await _app_url(db, form_app_key)),
     )

@@ -1023,11 +1023,14 @@ Two temptations, refused here so nobody spends a week on them:
 
 ```
 GET /api/shema/session -> {role: SessionRole, roles: SessionRole[], regionScope: RegionKey[] | null,
-                           name: string | null}
+                           name: string | null, apps: {resourceRequestForm: string | null}}
 ```
 
 `roles` and the door it sits behind are OBT-523's, §6.8; `role` is the first of `roles`, kept
-only through the transition.
+only through the transition. `apps` is OBT-544's: the form's `apps.app_url` from the registry,
+without a trailing slash, `null` when the registry has no row or no value — the address for the
+PME's *Solicitar recurso* and *Resource Circle* entry (project-management-ecosystem#70), so the
+console holds no constant for it.
 
 `GET /api/auth/my-roles` cannot answer this, because the grant has no region. The three parts
 come from three places and **none of them is a store of the session's own**: `role` (and, since
@@ -1555,8 +1558,13 @@ without the form's mesa × Gestor exclusion.~~ **Closed by OBT-543** (§6.10): t
 both rows, and `/api/roles/assign` and `/revoke` refuse the two apps to anyone but an
 installation admin. The form's owner:
 `admin` holds no capability in the form's table, and the form's `reach()` counts it as a fifth
-role — the whole board. OBT-544: until it lands, an account at the door with no Shemá role is
-refused by every other route the console calls, `/regions` on sign-in included.
+role — the whole board. OBT-544: until its console half lands, an account at the door with no
+Shemá role is refused by every other route the console calls, `/regions` on sign-in included. The
+server's half is this module's — the session answers `apps` (§6.3). The console's half is the PME's
+[project-management-ecosystem#70](https://github.com/shemaobt/project-management-ecosystem/pull/70):
+once it merges, an account holding no Shemá grant stops reading `/regions` on sign-in, and one
+holding only `gestor`/`mesa` sees the topbar and the *Resource Circle* entry and none of the six
+areas. The server refuses those areas exactly as before either way.
 
 ### 6.9 Seam G — the member's reach: project membership — **Decided; OBT-524**
 
@@ -1595,8 +1603,10 @@ them). `shema_project_members` is the link, and the form (OBT-520), *Solicitar r
   project that does not exist.
 - **A membership is not a region.** `visible_projects` does not read it: a member reaches their
   projects' refs (`/me/projects`, `_scope.member_projects`) and rosters, and no other project.
-  What else a member sees of their own project — the record included — is OBT-544's, and
-  composing `member_projects` is how it would.
+  What else a member sees of their own project — the record included — was left to OBT-544,
+  and composing `member_projects` is how it would. **Still open**: OBT-544 kept this module to
+  the session's `apps`, so a member holding no regional role reads the project's request cards
+  (`GET /api/resource-requests/projects/{id}/requests`) and not its record.
 
 **A coordination surface that redacts nothing.** The roster names people, not places: a member of a
 project in a sensitive country is named on it, to the people who reach that project. `name` is the
@@ -1718,6 +1728,85 @@ reveals nothing `/api/auth/my-roles` does not.
 **Residuals, named.** Until OBT-549, the Gestor still concedes through the form's door, and an
 installation admin can still invite `admin` there — that acceptance writes the form's row only.
 The account lookup does not list project memberships, which are OBT-524's table.
+
+### 6.11 Seam I — the project the mesa's approval files, and the Admin's conference — **Decided; OBT-547**
+
+Karina, 25/sep: *"se o projeto for aprovado pela mesa ele é cadastrado sim, os membros também"*;
+Daniel, 25/sep: *"sim, o admin confere antes"*. A team outside the PME asks through the Admin's
+request link (`docs/resource_requests.md` §5.4.5); when the mesa approves such a request, the PME
+gains a project **pending confirmation**, and the Admin confirms or discards it. Seven rules.
+
+- **The approval files it, in the decision's transaction.** `save_evaluation` calls
+  `create_pending_project_from_request` when it records `approved` on a request with a
+  `request_link_id` and no `shema_project_id` — beside the ledger movement and the notices, under
+  the same commit. `conditional` files nothing: it is not `approved` and moves no money. The call
+  hands values over — the snapshot the mesa evaluated, the request's id, the link's id — and this
+  module imports nothing of the form's services (`_request_notices.py`'s reason).
+- **What the form carries becomes the project, and nothing else does** (`_filing.part_a`). The
+  language's name and code (A1: `lang_name`/`lang_iso`, or the first row of the slim variant's
+  table; the registered name, A0, when nobody typed a language), the place (A2's
+  `people_location`, or A1's `tr_location`), `status = planejado`, `sensitive_country = false`
+  and the region derived by `_redaction.derive_region`. The base (`team`) is empty: the form asks
+  none. The id is a UUID, as the console mints for a record born in the product. The people it
+  proposes are `shema_project_pending_members` — the A4's name and role, **with no e-mail**, and
+  the link's own address under the requester's name (`tpp_name`).
+- **Idempotent by request and by link.** A request that filed a project files nothing again; a
+  link with a live project — pending or confirmed, not discarded — files nothing either: one team,
+  one project. A request approved after its link's project was confirmed is stamped with it at the
+  approval; while the project is pending, the confirmation stamps every request of the link.
+  `uq_shema_projects_source_request` and the partial `uq_shema_projects_live_source_link` hold both
+  rules against a race. **Neither source is a foreign key**: `rr_requests.shema_project_id` points
+  back, and a pair naming each other could be deleted in no order.
+- **Nobody reads a pending project through the scope — the Admin and an installation admin
+  included.** `_scope.registered` is composed into `within_scope`, `member_projects` and
+  `roster_projects`, so the collection, the counts, the record, the needs, the ETEN report, the
+  notification panel, the rosters and any export that starts where every reader starts (OBT-403)
+  cannot see one. The Atlas shows a project once it is confirmed. The Admin reads pending ones
+  only through `_scope.pending_projects`, a statement of its own that no reader of the collection
+  composes, and decides them through `_scope.filed_projects`.
+- **Only the Admin reads and decides**, behind `AdminUser`, with the standing read fresh on each
+  act (`_grant_rules.require_admin_in`). The list is built for the Admin's reader
+  (`readership`): the place as typed, on `COORDINATION_EVERYWHERE`'s hypothesis (§6.4).
+- **Confirming** applies the Admin's adjustments and the flag — `sensitiveCountry` has no default
+  in the body, so a client that forgets it is refused rather than read as *not sensitive*; a
+  `languageCode`, `location` or `team` left out keeps what was filed (`model_fields_set`, as the
+  record's save reads it), since a blank place would derive the region to `other` —
+  re-derives the region, clears `pending_confirmation`, writes the trail under the Admin's name
+  (version one: nobody could have read the record before), and stamps `shema_project_id` on every
+  request of the link that has none. Each address on the list: an account (by e-mail, case aside)
+  joins the team as OBT-524's membership, with the Admin as `added_by`; an address with no account
+  is **invited to the team** — BE-22's `access_invites` row naming `project_id` and **no role**
+  (`role_id` is nullable under `ck_access_invites_role_or_project`), read as `equipe` wherever a
+  role would be, listed in `GET /access/invites` with `projectId`, recallable there, its link to
+  the PME's `/convite` and its letter after the commit. Accepting it is the membership
+  (`apply_invited_membership`); already a member is not a refusal. A blank address is left out and
+  named back in `withoutEmail`; the same address twice is one person.
+- **Discarding** marks and never deletes — `discarded_at`, `discarded_by` and a required reason —
+  keeps the project out of every read, frees its link for a later approval, and leaves the request
+  exactly as it was: approved, with no project. The answer says so.
+
+**The routes.** Request and response keys are camelCase.
+
+| Route | Body | Answers |
+|---|---|---|
+| `GET /pending-projects` | — | `[{id, languageName, languageCode, location, team, requestId, requestName, filedAt, members: [{name, role, email}], locationWithheld}]`, oldest first, `Cache-Control: private, no-store` |
+| `POST /projects/{id}/confirm` | `{languageName, languageCode?, location?, team?, sensitiveCountry, members?: [{name?, email?}]}` | `{id, languageName, requestIds, joined: [{email, userId}], invited: [{email, inviteId, inviteUrl, emailSent}], withoutEmail}` — each link once |
+| `POST /projects/{id}/reject` | `{reason}` | `{id, reason, discardedAt, requestId, requestProjectId: null, detail}` |
+
+The list is not `/projects/pending`: the record's `GET /projects/{project_id}` is included before
+this router and would take `pending` for an id.
+
+**Refusals.** Any Shemá role but `admin`: 403, `Role 'admin' is required for this action.` The
+mesa and the Gestor: 403 at the app gate. An id no approval filed: 404 `Project not found`. A
+project already decided: 409 — `This project was already confirmed.` or `This project was
+discarded; it is not confirmed or discarded again.` A body without `sensitiveCountry`, a blank
+reason, a malformed address: 422, FastAPI's field errors.
+
+**Open, and named.** GATE §9.5's fail-closed rule — *an unrecognised country is sensitive until
+confirmed* — is the seed's; a project filed by an approval is born not sensitive because the issue
+says so, and the Admin decides at the conference. Whether the client wants the seed's rule here
+too is a question for Karina. The request link stays valid after its project is confirmed;
+revoking it is the Admin's act.
 
 ---
 

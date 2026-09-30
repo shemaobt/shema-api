@@ -13,6 +13,13 @@ module with the routes that call them; deleting it with the form's doors would t
 invitations with it.
 
 Acceptance is not here: ``accept_invite`` is its own operation, with its own transaction.
+
+**An invitation to a project's team carries no role** (OBT-547). Confirming a project the mesa's
+approval filed invites each proposed member with no account, and what accepting gives is a
+membership (OBT-524), not a grant — so the row names the project and no role, and it is read
+everywhere else as :data:`TEAM_ROLE`, the word the PME's session answers for a membership. It is
+written inside the confirmation's transaction, which is why :func:`issue_team_invite` flushes and
+does not commit: the project, the memberships and the invitations are one act.
 """
 
 import secrets
@@ -26,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError, RoleError
 from app.db.models.auth import AccessInvite, App, Role, User
+from app.db.models.shema_project_member import MEMBER_ROLE
 from app.services.auth.hash_refresh_token import hash_refresh_token
 from app.services.authorization.get_app_by_key import get_app_by_key
 from app.services.authorization.get_role import get_role
@@ -33,6 +41,10 @@ from app.services.authorization.get_role import get_role
 #: Where a link lands when the app row names no URL — a development console. One place, so the
 #: two doors cannot disagree about it.
 FALLBACK_APP_URL = "http://localhost:5173"
+
+#: How an invitation to a project's team reads where a role would: it grants none, and the
+#: membership it gives is what the PME's session calls ``equipe``.
+TEAM_ROLE = MEMBER_ROLE
 
 
 class IssuedInvite(NamedTuple):
@@ -50,6 +62,13 @@ class InviteRow(NamedTuple):
     invite: AccessInvite
     app_key: str
     role_key: str
+
+
+class IssuedTeamInvite(NamedTuple):
+    """A new invitation to a project's team and its raw token, which leaves this module once."""
+
+    invite: AccessInvite
+    raw_token: str
 
 
 async def issue_invite(
@@ -107,6 +126,29 @@ async def issue_invite(
     return IssuedInvite(invite=invite, app=app, role=role, raw_token=raw_token)
 
 
+async def issue_team_invite(
+    db: AsyncSession, actor: User, app: App, email: str, project_id: str
+) -> IssuedTeamInvite:
+    """Stage a single-use invitation to ``project_id``'s team, in the caller's transaction.
+
+    No role, and no refusal of a second pending one: the caller writes one per address of a list
+    it has already made unique, for a project nobody could invite to before.
+    """
+    raw_token = secrets.token_hex(32)
+    invite = AccessInvite(
+        app_id=app.id,
+        role_id=None,
+        project_id=project_id,
+        email=email.strip().lower(),
+        token_hash=hash_refresh_token(raw_token),
+        expires_at=datetime.now(UTC) + timedelta(days=get_settings().access_invite_expire_days),
+        created_by=actor.id,
+    )
+    db.add(invite)
+    await db.flush()
+    return IssuedTeamInvite(invite=invite, raw_token=raw_token)
+
+
 def invite_link(app: App, raw_token: str, *, page: str = "invite") -> str:
     """The link a letter carries: the landing app's own URL, its invitation page, the token."""
     base_url = app.app_url.rstrip("/") if app.app_url else FALLBACK_APP_URL
@@ -117,8 +159,12 @@ def _rows() -> Select[tuple[AccessInvite, str, str]]:
     return (
         select(AccessInvite, App.app_key, Role.role_key)
         .join(App, App.id == AccessInvite.app_id)
-        .join(Role, Role.id == AccessInvite.role_id)
+        .outerjoin(Role, Role.id == AccessInvite.role_id)
     )
+
+
+def _row(invite: AccessInvite, app_key: str, role_key: str | None) -> InviteRow:
+    return InviteRow(invite, app_key, role_key or TEAM_ROLE)
 
 
 async def find_invite(
@@ -137,7 +183,7 @@ async def find_invite(
     if found is None:
         raise NotFoundError("Invitation not found.")
     invite, app_key, role_key = found
-    return InviteRow(invite, app_key, role_key)
+    return _row(invite, app_key, role_key)
 
 
 async def find_invites(
@@ -157,9 +203,7 @@ async def find_invites(
     stmt = stmt.order_by(order, AccessInvite.id)
     if limit is not None:
         stmt = stmt.limit(limit)
-    return [
-        InviteRow(invite, app_key, role_key) for invite, app_key, role_key in await db.execute(stmt)
-    ]
+    return [_row(invite, app_key, role_key) for invite, app_key, role_key in await db.execute(stmt)]
 
 
 async def recall_invite(db: AsyncSession, actor: User, invite: AccessInvite) -> AccessInvite:

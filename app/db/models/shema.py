@@ -140,6 +140,20 @@ from progress, so the function is already total over *not one of the six* — wh
 NULL is. All 127 export records carry one of the six, so this is not a state the seed
 produces; it is the state of a record nobody has said anything about, and defaulting it to
 ``desconhecido`` would be the server asserting an answer on the record's behalf.
+
+**A project the mesa's approval filed is a row before it is a record** (OBT-547). When the mesa
+approves a request that came by the Admin's link, the PME gains a project *pending
+confirmation* — ``pending_confirmation`` true — built from what the form carries, and the Admin
+confirms or discards it. Until then it is outside every read of the module: the predicate lives
+in ``app/services/shema/_scope.py``'s ``within_scope``, which every collection, count and record
+read composes, so nothing that reads through the scope can see it. ``source_request_id`` and
+``source_link_id`` say which request and which link filed it, and they carry the idempotency —
+one project per request, and one live project per link among those not discarded. **Neither is a
+foreign key**: ``rr_requests.shema_project_id`` points back at this table, so a pair that named
+each other could be deleted in no order (the suite's sweep, and PostgreSQL without deferred
+constraints); they are provenance, as ``shema_scope_changes``' ids are. A discarded one keeps
+``pending_confirmation`` and gains ``discarded_at``, ``discarded_by`` and the reason, so it stays
+out of every read and frees its link.
 """
 
 from datetime import date, datetime
@@ -214,6 +228,14 @@ class ShemaProject(Base):
         Index("ix_shema_projects_region_status", "region_key", "status"),
         Index("ix_shema_projects_last_updated", "last_updated"),
         Index("ix_shema_projects_language_name", "language_name"),
+        Index("uq_shema_projects_source_request", "source_request_id", unique=True),
+        Index(
+            "uq_shema_projects_live_source_link",
+            "source_link_id",
+            unique=True,
+            postgresql_where=text("discarded_at IS NULL"),
+            sqlite_where=text("discarded_at IS NULL"),
+        ),
     )
 
     #: The export's slug (``afrikaans-kaaps``), never a minted uuid — FE-44 §5.1.
@@ -413,6 +435,22 @@ class ShemaProject(Base):
     #: The saver's name **as it was then**, so the record can say *saved by Maria at 14:02*
     #: without a join and without following a later rename.
     updated_by_name: Mapped[str] = mapped_column(String(200), default="", server_default="")
+
+    #: Filed by the mesa's approval and not yet confirmed by the Admin (OBT-547). True keeps the
+    #: row out of every read that goes through the scope, and a discarded one stays true.
+    pending_confirmation: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    #: The request whose approval filed this project. NULL for every record not born that way.
+    source_request_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The Admin's link that request came by — one live project per link.
+    source_link_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    discarded_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    discarded_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    #: Why the Admin discarded it, as typed. NULL on everything never discarded.
+    discard_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()

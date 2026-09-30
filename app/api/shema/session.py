@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.shema._deps import Db, DoorUser, SessionRoles
+from app.api.shema._deps import FORM_APP_KEY, Db, DoorUser, SessionRoles
 from app.models.shema_session import ShemaSession
 from app.services.shema import get_session
 
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.get("/session", response_model=ShemaSession)
 async def read_session(user: DoorUser, db: Db, roles: SessionRoles) -> ShemaSession:
-    """The signed-in persona: roles, region scope and the name the org chart gives it.
+    """The signed-in persona: roles, region scope, the org chart's name, and the form's address.
 
     Guarded by the PME's door and not by the Shemá app gate (``docs/shema.md`` §6.8): the
     mesa and the Gestor hold no Shemá role and sign in to the console anyway, and the answer
@@ -32,4 +32,4 @@ async def read_session(user: DoorUser, db: Db, roles: SessionRoles) -> ShemaSess
     on — FastAPI solves it once per request — so the body cannot name a role the door did not
     count.
     """
-    return await get_session(db, user, roles=roles)
+    return await get_session(db, user, roles=roles, form_app_key=FORM_APP_KEY)

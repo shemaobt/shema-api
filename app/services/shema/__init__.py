@@ -142,6 +142,15 @@ row carries a ``shema_request_notices`` detail with the project and the register
 stage, and ``list_notification_panel.py`` answers them as two more kinds, pointing at a project
 only for a reader who reaches it.
 
+**OBT-547 registers a project from the mesa's approval.** ``save_evaluation`` calls
+``create_pending_project_from_request`` when it records ``approved`` on a request that came by the
+Admin's link: a project *pending confirmation* is filed from the form's Parte A (``_filing.py``),
+with the people it proposes, in the decision's transaction. ``_scope.registered`` keeps it out of
+every statement a reader starts from; ``list_pending_projects`` is the Admin's one read of it, and
+``confirm_project`` and ``reject_pending_project`` the Admin's two acts — the first seats the
+team's accounts and invites the rest to it, and ``apply_invited_membership`` is what accepting such
+an invitation does. ``docs/shema.md`` §6.11 is the design.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -241,9 +250,11 @@ from app.services.shema._scope import (
     RosterReach,
     holders_reaching,
     member_projects,
+    pending_projects,
     reaches,
     readership,
     region_scope,
+    registered,
     roster_projects,
     visible_projects,
     within_scope,
@@ -253,10 +264,15 @@ from app.services.shema._submission_notices import notify_submission
 from app.services.shema.add_intercessor import add_intercessor
 from app.services.shema.add_project_member import add_project_member
 from app.services.shema.append_assessment import append_assessment
+from app.services.shema.apply_invited_membership import apply_invited_membership
 from app.services.shema.apply_invited_scope import apply_invited_scope
 from app.services.shema.browse_projects import browse_projects
+from app.services.shema.confirm_project import confirm_project
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
+from app.services.shema.create_pending_project_from_request import (
+    create_pending_project_from_request,
+)
 from app.services.shema.eten_report import eten_report
 from app.services.shema.find_account import account_grants, find_account
 from app.services.shema.generate_prayer_pulse import PrayerPulse, generate_prayer_pulse
@@ -282,6 +298,7 @@ from app.services.shema.list_invites import list_invites
 from app.services.shema.list_meeting_log import list_meeting_log
 from app.services.shema.list_my_projects import list_my_projects
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
+from app.services.shema.list_pending_projects import list_pending_projects
 from app.services.shema.list_prayer_requests import list_prayer_requests
 from app.services.shema.list_project_members import list_project_members
 from app.services.shema.list_projects import list_projects
@@ -304,6 +321,7 @@ from app.services.shema.read_record import build_record, read_changes_since, rea
 from app.services.shema.read_submission import as_received, list_submissions, read_submission
 from app.services.shema.receive_submission import receive_submission
 from app.services.shema.record_eten_credit import ETEN_LEDGER_AUDIENCE, record_eten_credit
+from app.services.shema.reject_pending_project import reject_pending_project
 from app.services.shema.remove_intercessor import remove_intercessor
 from app.services.shema.remove_project_member import remove_project_member
 from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
@@ -357,6 +375,7 @@ __all__ = [
     "add_intercessor",
     "add_project_member",
     "append_assessment",
+    "apply_invited_membership",
     "apply_invited_scope",
     "apply_needs",
     "apply_submission",
@@ -370,9 +389,11 @@ __all__ = [
     "can_export_notes",
     "can_share_media",
     "changes_since",
+    "confirm_project",
     "count_projects",
     "count_projects_by_region",
     "create_intake_link",
+    "create_pending_project_from_request",
     "create_project",
     "current_definition",
     "definition_at",
@@ -409,6 +430,7 @@ __all__ = [
     "list_meeting_log",
     "list_my_projects",
     "list_notification_panel",
+    "list_pending_projects",
     "list_prayer_requests",
     "list_project_members",
     "list_projects",
@@ -429,6 +451,7 @@ __all__ = [
     "notify_submission",
     "notify_urgent",
     "open_exit_link",
+    "pending_projects",
     "plan_needs",
     "prayer_visibility",
     "publish_definition",
@@ -449,6 +472,8 @@ __all__ = [
     "record_update",
     "recorded_decision",
     "region_scope",
+    "registered",
+    "reject_pending_project",
     "remove_intercessor",
     "remove_project_member",
     "require_reads_assessments",

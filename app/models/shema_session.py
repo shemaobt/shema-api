@@ -1,9 +1,14 @@
-"""What ``GET /api/shema/session`` answers — the signed-in persona, four fields.
+"""What ``GET /api/shema/session`` answers — the signed-in persona, and where the form lives.
 
-FE-44 §9.13 froze three of them, and OBT-523 added the fourth::
+FE-44 §9.13 froze three fields, OBT-523 added the fourth and OBT-544 the fifth::
 
     { role: SessionRole, roles: SessionRole[], regionScope: RegionKey[] | null,
-      name: string | null }
+      name: string | null, apps: { resourceRequestForm: string | null } }
+
+**``apps`` is the registry's answer, not the console's.** The PME opens the resource-request
+form in a new tab — *Solicitar recurso*, the *Resource Circle* entry, the external request
+link's address — and the form's address is ``apps.app_url``, the same row the form's own
+letters read. Serving it here is what keeps it out of a constant in the console.
 
 ``GET /api/auth/my-roles`` cannot answer it because the platform's grant has no region
 (FE-44 §3.1); the region is this module's own axis and ``app/services/shema/_scope.py``
@@ -41,6 +46,19 @@ nothing is refused before the handler runs.
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class SessionApps(BaseModel):
+    """The addresses of the apps the PME opens, read off the registry (OBT-544).
+
+    ``None`` when the registry has no row or no ``app_url`` for the app: the console then
+    draws nothing that would open it, rather than a button that leads nowhere. No trailing
+    slash, so the console appends a path without guessing.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    resource_request_form: str | None = Field(default=None, alias="resourceRequestForm")
+
+
 class ShemaSession(BaseModel):
     """The persona the console renders its whole authorization *display* from.
 
@@ -64,3 +82,5 @@ class ShemaSession(BaseModel):
     #: Resolved from the org chart, falling back to the account's own ``display_name``.
     #: ``app/services/shema/get_session.py`` carries the rule and the argument for it.
     name: str | None = None
+    #: Where the apps the PME opens live — the registry's ``app_url`` (OBT-544).
+    apps: SessionApps = Field(default_factory=SessionApps)
