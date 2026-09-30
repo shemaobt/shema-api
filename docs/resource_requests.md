@@ -975,7 +975,10 @@ change: the row in this app and the letter after the commit go out as before.
   No `team_note`, no `comments`, no score, no attendee, and no `actor_id`: on a decision the actor
   is the evaluator. The stage is `DECISION_STAGE[decision]` for a decision and `triagem` for an
   arrival. The title is a constant and the name is in the body, because `notifications.title` is
-  200 characters and `reg_name` is 255.
+  200 characters and `reg_name` is 255. **A request with no registered name is stored as `""`, not
+  as the fallback:** the generic reference is language-bound, so each reader names it in its own —
+  the English body with `FALLBACK_NAME`, the console with its `notif_request_unnamed` — and the
+  panel answers `requestName: ""` for the console to do that.
 - **When it stays silent.** A request with **no `started_by` or no `shema_project_id`** rings
   nothing in the PME: the Admin's link (OBT-537) has no person behind it and, until the approval
   registers it, no project; a card the board opened with no project has no record to point at.

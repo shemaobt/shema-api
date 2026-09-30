@@ -86,7 +86,8 @@ class ShemaNotificationEntry(BaseModel):
     is_read: bool
     #: The two request kinds only (OBT-541): the registered name and the stage, as the notice
     #: told them — GATE-03 D4's whole ceiling. Named as the console's own type names them,
-    #: ``requestName`` and ``requestStage``, so the wire is the frozen type verbatim.
+    #: ``requestName`` and ``requestStage``, so the wire is the frozen type verbatim. A request with
+    #: no registered name answers ``""`` and the console names it generically in its own language.
     request_name: str | None = None
     request_stage: RRStage | None = None
 
