@@ -96,7 +96,8 @@ Reading is not a row of this table and must not become one (``_scope.py`` §5.3 
 it rides on ``edit_requests``, and which rows it reaches is decided in ``_scope.py``.
 """
 
-#: The nine ids of the frontend's ``CAPABILITIES``, in its order.
+#: The eight ids of the frontend's ``CAPABILITIES``, in its order. ``grant_access`` left with
+#: the form's access screen (FE-56, OBT-549): roles are granted in the PME now.
 CAPABILITIES: tuple[str, ...] = (
     "edit_requests",
     "view_evaluation",
@@ -106,7 +107,6 @@ CAPABILITIES: tuple[str, ...] = (
     "assign_fund",
     "allocate_funds",
     "administer_funds",
-    "grant_access",
 )
 
 #: The roles of the frontend's table — the ones ``scripts/seed_apps_roles.py`` writes for this
@@ -138,7 +138,6 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "move_board",
             "allocate_funds",
             "administer_funds",
-            "grant_access",
         }
     ),
 }
