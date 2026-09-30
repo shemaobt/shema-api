@@ -11,8 +11,9 @@ first character of the file is written.
 **Generating is not sending** (the issue's *out of scope*). Nothing is written: not the
 intercessors' ``last_sent_at``, not an exit link — both belong to the send, which happens however
 the organisation sends today. What is kept is a log line: who generated a Pulse, when, over which
-scope and with how many requests — the after-the-fact question *was my request in that file* is
-answerable from it — and never a word of what the file said.
+scope and with how many requests. Never which requests, and never a word of what the file said:
+naming them would copy the content into a log, which is read by more people and kept longer than
+the file it describes (``_redaction.log_reference``'s argument).
 """
 
 from __future__ import annotations

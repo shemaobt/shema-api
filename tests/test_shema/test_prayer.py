@@ -150,9 +150,6 @@ async def patch(client, headers, project_id: str, body: dict, version: int = 1):
     )
 
 
-# --- the bold line: an unauthorized request cannot be placed in any output ------------------
-
-
 async def test_an_unauthorized_request_cannot_be_placed_on_the_wall(client, circle, mixed) -> None:
     """The project's request kept in coordination and a need nobody shared are both on the rows
     the wall is built from, and neither reaches it — while the two authorized ones beside them
@@ -212,9 +209,6 @@ async def test_the_other_outputs_of_today_carry_no_unauthorized_request(
     assert KEPT not in report.text and KEPT_NEED not in report.text
 
 
-# --- stored with explicit authorization, and the default is unauthorized -------------------
-
-
 async def test_a_request_nobody_authorized_reaches_neither_the_wall_nor_the_pulse(
     client, db_session, circle
 ) -> None:
@@ -227,9 +221,6 @@ async def test_a_request_nobody_authorized_reaches_neither_the_wall_nor_the_puls
     file = await pulse(client, circle)
     assert KEPT not in file and KEPT_NEED not in file
     assert "Nenhum pedido autorizado" in file
-
-
-# --- authorization is per request -----------------------------------------------------------
 
 
 async def test_authorization_is_per_request_not_per_project(client, db_session, circle) -> None:
@@ -365,9 +356,6 @@ async def test_a_pulse_import_without_a_consent_answer_does_not_inherit_the_last
     assert await wall(client, circle) == []
 
 
-# --- withdrawal takes effect on every future output -----------------------------------------
-
-
 async def test_withdrawal_takes_the_request_out_of_the_next_wall_and_the_next_pulse(
     client, db_session, circle, coordinator
 ) -> None:
@@ -397,9 +385,6 @@ async def test_withdrawal_takes_the_request_out_of_the_next_wall_and_the_next_pu
     assert response.json()["prayerRequests"] == SHARED
 
 
-# --- one path, and the place transformed before the file is written -------------------------
-
-
 async def test_the_pulse_carries_exactly_what_the_wall_carries(
     client, db_session, circle, mixed
 ) -> None:
@@ -420,20 +405,26 @@ async def test_the_pulse_carries_exactly_what_the_wall_carries(
     for entry in body:
         assert entry["text"] in file
     assert file.count("• ") == 4
+    assert [entry["text"] for entry in body if entry["answered"]] == [
+        "Orem pelo conserto do telhado"
+    ]
     assert "(respondido)" in file
 
 
 async def test_a_sensitive_country_is_transformed_before_the_pulse_is_written(
-    client, db_session, circle
+    client, db_session, shema_app
 ) -> None:
     """An authorized request from a sensitive country still leaves without its place: the
-    region where the country would be, no base, no slug."""
+    region where the country would be, no base, no slug. The project sits in a region that is
+    not the fallback, so a Pulse that named ``other`` for every withheld entry would fail."""
+    circle = await person(db_session, shema_app, "resourceCircle", regions=(HOME, AWAY))
     await seed(
         db_session,
         "nevoa-lugar-secreto",
         text=SHARED,
         visibility=ShemaPrayerVisibility.REDE,
         sensitive=True,
+        region=AWAY,
         location="Lugar Secreto, Vila Escondida",
         team="Base Lugar Secreto",
         language="Língua Névoa",
@@ -452,24 +443,26 @@ async def test_a_sensitive_country_is_transformed_before_the_pulse_is_written(
 
     assert "Lugar Secreto" not in file and "Vila Escondida" not in file
     assert "nevoa-lugar-secreto" not in file
-    assert "• Língua Névoa — América Central" in file
+    assert "• Língua Névoa — África" in file
     assert "• Língua Orvalho — Terra Aberta" in file
     assert "Base Terra Aberta" not in file
 
     english = await pulse(client, circle, lang="en")
-    assert "• Língua Névoa — Central America" in english
+    assert "• Língua Névoa — Africa" in english
 
 
 async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_base(
-    client, db_session, coordinator
+    client, db_session, shema_app
 ) -> None:
     """The wall is an output path: the region's own coordinator reads the region here too."""
+    coordinator = await person(db_session, shema_app, "coordinator", regions=(HOME, AWAY))
     await seed(
         db_session,
         "pico-lugar-secreto",
         text=SHARED,
         visibility=ShemaPrayerVisibility.REDE,
         sensitive=True,
+        region=AWAY,
         location="Lugar Secreto",
         team="Base Lugar Secreto",
     )
@@ -486,7 +479,7 @@ async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_ba
 
     withheld = body["pico-lugar-secreto"]
     assert withheld["country"] == "" and withheld["base"] == ""
-    assert withheld["locationWithheld"] is True and withheld["region"] == HOME.value
+    assert withheld["locationWithheld"] is True and withheld["region"] == AWAY.value
     assert "Lugar Secreto" not in str(withheld)
     open_entry = body["quinta-vale"]
     assert open_entry["country"] == "Terra Aberta" and open_entry["base"] == "Base Terra Aberta"
@@ -504,9 +497,6 @@ async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_ba
         "answered",
         "date",
     }
-
-
-# --- the file ---------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -549,9 +539,6 @@ async def test_the_pulse_says_it_is_for_the_network_only_and_cannot_be_recalled(
 
 async def test_a_language_the_console_does_not_speak_is_refused(client, circle) -> None:
     assert (await client.get(PULSE, params={"lang": "fr"}, headers=circle)).status_code == 422
-
-
-# --- who reads an unauthorized request, and who generates the Pulse --------------------------
 
 
 async def test_the_record_hides_an_unauthorized_request_from_the_resource_circle(

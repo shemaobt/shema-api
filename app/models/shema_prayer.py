@@ -3,9 +3,9 @@
 **The entry is a leaving shape and it is built from the project row**, which is the whole of the
 sensitive-country half of BE-09 (``docs/shema.md`` §6.4, §9.3). ``location`` and ``base`` are
 declared so that :class:`~app.models.shema_privacy.LeavingShape` reduces them in its own
-validator, before anything serialises them: a withheld project's entry carries its region where
-the place would be, an empty base, ``country: ""`` and ``locationWithheld: true`` — FE-44 §9.6's
-shape. The Pulse is rendered from these entries and from nothing else, so the transformation
+validator, before anything serialises them: a withheld project's entry carries ``country: ""``,
+an empty base and ``locationWithheld: true`` beside the ``region`` every entry carries — FE-44
+§9.6's shape. The Pulse is rendered from these entries and from nothing else, so the transformation
 happens once, before serialization, and the file inherits it.
 
 **The Pulse's format is one function and nothing leans on it.** GATE-03 left it to us —
