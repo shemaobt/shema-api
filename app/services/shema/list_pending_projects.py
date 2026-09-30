@@ -52,7 +52,9 @@ async def list_pending_projects(
             await db.execute(
                 select(RRRequest.id, RRRequest.reg_name).where(RRRequest.id.in_(request_ids))
             )
-        ).tuples()
+        )
+        .tuples()
+        .all()
     )
 
     return [
