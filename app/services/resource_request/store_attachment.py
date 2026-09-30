@@ -2,6 +2,7 @@
 
 import hashlib
 from datetime import UTC, datetime
+from typing import TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,8 @@ from app.services.resource_request._attachment_rules import (
     attachment_type,
 )
 from app.services.resource_request._attachment_storage import GCS_RR_BUCKET, storage_key
-from app.services.resource_request._writer import Writer, reach_for_writing, trail_author
+from app.services.resource_request._link_actor import LinkActor
+from app.services.resource_request._writer import Writer, reach_for_writing
 
 
 def _display_name(filename: str | None, extension: str) -> str:
@@ -28,12 +30,16 @@ def _display_name(filename: str | None, extension: str) -> str:
     return candidate[:255] if candidate else f"orcamento{extension}"
 
 
-def _author(writer: Writer) -> dict[str, str | None]:
-    author = trail_author(writer)
-    return {
-        "uploaded_by": author["changed_by"],
-        "uploaded_by_link_id": author["changed_by_link_id"],
-    }
+class AttachmentAuthor(TypedDict):
+    uploaded_by: str | None
+    uploaded_by_link_id: str | None
+
+
+def attachment_author(writer: Writer) -> AttachmentAuthor:
+    """The file's author for ``writer`` — never the Admin who issued a link (FE-55, OBT-542)."""
+    if isinstance(writer, LinkActor):
+        return {"uploaded_by": None, "uploaded_by_link_id": writer.link.id}
+    return {"uploaded_by": writer.id, "uploaded_by_link_id": None}
 
 
 async def store_attachment(
@@ -110,7 +116,7 @@ async def store_attachment(
         size_bytes=len(data),
         sha256=sha256,
         storage_key=key,
-        **_author(writer),
+        **attachment_author(writer),
     )
     db.add(attachment)
     await db.commit()
