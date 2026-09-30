@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated
 
 import httpx
 import pytest
@@ -40,19 +39,11 @@ from app.api.resource_requests._deps import (
     CanViewEvaluation,
     CurrentUser,
     MesaUser,
-    require_capability,
 )
-from app.db.models.auth import User
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.resource_request import CAPABILITIES
 from scripts.seed_apps_roles import seeded_roles
 from tests.baker import make_app, make_role, make_user_app_role
-
-#: ``endorse_request`` is the one probe built here rather than off a named alias: since BE-23
-#: (OBT-535) no route guards on it — the base leader endorses by link, with no account — and
-#: the capability survives only as the frontend's mirror until FE-49 (OBT-517) re-emits. The
-#: probe keeps the mirror honest until then.
-EndorseProbe = Annotated[User, require_capability("endorse_request")]
 
 PROBE = "/api/resource-requests/_probe"
 MESA_PROBE = "/api/resource-requests/_probe/mesa"
@@ -196,10 +187,6 @@ async def client(db_session):
 
     @probe.get("/_probe/cap/allocate_funds")
     async def _probe_allocate_funds(user: CanAllocateFunds) -> dict[str, str]:
-        return {"email": user.email}
-
-    @probe.get("/_probe/cap/endorse_request")
-    async def _probe_endorse_request(user: EndorseProbe) -> dict[str, str]:
         return {"email": user.email}
 
     @probe.get("/_probe/cap/administer_funds")
