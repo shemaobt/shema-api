@@ -30,17 +30,23 @@ id. The file names its log row, so a copy found later leads back to it. The row 
 before the response is written — a file that leaves unlogged is the failure the issue names,
 and a logged file that failed to leave is only a false alarm.
 
-**Why it does not need to be asynchronous.** The file is the caller's scope, which is the same
-collection ``GET /api/shema/projects`` answers in one request, read in a fixed number of
-statements — three, whatever the number of projects — and rendered in memory. The issue's rule
-is *asynchronous rather than slow*; ``tests/test_shema/test_transfer.py`` pins that the
-statements do not grow with the collection, and the pull request carries the measurement.
+**Why it is not a job to poll.** The issue's rule is *asynchronous rather than slow*, and the
+export is not slow where it could be: the file is the caller's scope — the collection
+``GET /api/shema/projects`` already answers in one request — read in three statements whatever
+the number of projects (``tests/test_shema/test_transfer.py`` pins that they do not grow). What
+does grow is the part with no I/O, a row validated and written per project, and that runs in a
+worker thread (:func:`_write`), so a coordinator exporting two thousand projects does not hold
+the event loop every other request is waiting on. The pull request carries the measurement; a
+queued job would have changed FE-44 §9.12's ``GET`` into two routes and a store for a cost that
+is not there to measure.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import NamedTuple
 
@@ -48,6 +54,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
+from app.db.models.shema import ShemaProject
 from app.db.models.shema_export import ShemaExport
 from app.db.models.shema_need import ShemaNeed
 from app.models.shema_prayer import PulseLanguage
@@ -64,7 +71,7 @@ from app.models.shema_transfer import (
     withheld_sentence,
 )
 from app.services.shema._audit import author_name
-from app.services.shema._consent import authorized_requests_by_project
+from app.services.shema._consent import AuthorizedRequest, authorized_requests_by_project
 from app.services.shema._media_sharing import can_export_notes
 from app.services.shema._redaction import withheld_note
 from app.services.shema._scope import Readership, RegionScope
@@ -103,6 +110,69 @@ async def _open_needs(db: AsyncSession, ids: list[str]) -> dict[str, int]:
     return dict((await db.execute(stmt)).tuples().all())
 
 
+class _Header(NamedTuple):
+    """What the header knows before a row is built: which record it is, when, by whom, where."""
+
+    export_id: str
+    generated_at: datetime
+    generated_by: str
+    scope: list[str] | None
+    addressee: ShemaReader
+
+
+class _Written(NamedTuple):
+    body: str
+    withheld: int
+
+
+def _write(
+    projects: Sequence[ShemaProject],
+    authorized: Mapping[str, Sequence[AuthorizedRequest]],
+    open_needs: Mapping[str, int],
+    header: _Header,
+    file_format: ExportFormat,
+    language: PulseLanguage,
+) -> _Written:
+    """The rows through the boundary, the header addressed, the file rendered — no I/O at all.
+
+    **Run off the event loop** (:func:`export_projects`), because it is the one part of an export
+    that grows with the collection: validating a row per project and writing it out. Every value it
+    reads is already loaded — the rows came whole from one ``SELECT`` and the requests and the
+    counts are plain values — so it touches no session and needs none.
+    """
+    notes_leave = can_export_notes(EXPORT_AUDIENCE)
+    rows = [
+        ExportedProject.model_validate(project).model_copy(
+            update={
+                "open_needs": open_needs.get(project.id, 0),
+                "shared_prayer_requests": [request.text for request in authorized[project.id]],
+                "exported_notes": project.notes if notes_leave else None,
+            }
+        )
+        for project in projects
+    ]
+    withheld = withheld_note(rows, header.addressee)
+    contains, confidential = export_copy(language)
+    meta = ExportMeta(
+        export_id=header.export_id,
+        contains=contains,
+        confidential=confidential,
+        generated_at=header.generated_at,
+        generated_by=header.generated_by,
+        scope=header.scope,
+        format=file_format,
+        project_count=len(rows),
+        locations_withheld=withheld,
+        withheld_note=withheld_sentence(withheld, language),
+    )
+    body = (
+        render_json(meta, rows)
+        if file_format is ExportFormat.JSON
+        else render_csv(meta, rows, language)
+    )
+    return _Written(body=body, withheld=sum(1 for row in rows if row.location_withheld))
+
+
 async def export_projects(
     db: AsyncSession,
     scope: RegionScope,
@@ -123,52 +193,30 @@ async def export_projects(
     ids = [project.id for project in projects]
     authorized = await authorized_requests_by_project(db, projects)
     open_needs = await _open_needs(db, ids)
-    notes_leave = can_export_notes(EXPORT_AUDIENCE)
 
-    rows = [
-        ExportedProject.model_validate(project).model_copy(
-            update={
-                "open_needs": open_needs.get(project.id, 0),
-                "shared_prayer_requests": [request.text for request in authorized[project.id]],
-                "exported_notes": project.notes if notes_leave else None,
-            }
-        )
-        for project in projects
-    ]
-
-    addressee = ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER
-    withheld = withheld_note(rows, addressee)
-    contains, confidential = export_copy(language)
     export_id = str(uuid.uuid4())
-    meta = ExportMeta(
+    addressee = ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER
+    header = _Header(
         export_id=export_id,
-        contains=contains,
-        confidential=confidential,
         generated_at=now,
         generated_by=author_name(user),
         scope=scope.wire,
-        format=file_format,
-        project_count=len(rows),
-        locations_withheld=withheld,
-        withheld_note=withheld_sentence(withheld, language),
+        addressee=addressee,
     )
-    body = (
-        render_json(meta, rows)
-        if file_format is ExportFormat.JSON
-        else render_csv(meta, rows, language)
+    written = await asyncio.to_thread(
+        _write, projects, authorized, open_needs, header, file_format, language
     )
 
     request_ids = [request.id for project in projects for request in authorized[project.id]]
-    withheld_rows = sum(1 for row in rows if row.location_withheld)
     db.add(
         ShemaExport(
             id=export_id,
             exported_by=user.id,
-            exported_by_name=meta.generated_by,
+            exported_by_name=header.generated_by,
             scope_key=_scope_key(scope),
             format=file_format.value,
-            project_count=len(rows),
-            withheld_count=withheld_rows,
+            project_count=len(projects),
+            withheld_count=written.withheld,
             project_ids=ids,
             request_ids=request_ids,
             created_at=now,
@@ -185,8 +233,8 @@ async def export_projects(
             "shema_scope_global": scope.global_,
             "shema_scope_regions": sorted(scope.regions),
             "shema_format": file_format.value,
-            "shema_projects": len(rows),
-            "shema_withheld": withheld_rows,
+            "shema_projects": len(projects),
+            "shema_withheld": written.withheld,
             "shema_requests": len(request_ids),
         },
     )
@@ -194,5 +242,5 @@ async def export_projects(
         export_id=export_id,
         filename=export_filename(now.date(), file_format),
         media_type=MEDIA_TYPES[file_format],
-        body=body,
+        body=written.body,
     )

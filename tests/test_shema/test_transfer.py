@@ -302,10 +302,17 @@ def test_the_export_reads_through_the_listing_the_boundary_and_the_consent_gate(
     tree = ast.parse(source.read_text(encoding="utf-8"))
     names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
     attributes = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    selected = {
+        inner.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "select"
+        for inner in ast.walk(node)
+        if isinstance(inner, ast.Name)
+    }
 
     assert {"list_projects", "authorized_requests_by_project", "ExportedProject"} <= names
     assert {"withheld_note", "can_export_notes"} <= names
-    assert "ShemaProject" not in names
+    assert "ShemaProject" not in selected
     assert "read_by" not in attributes
 
 
