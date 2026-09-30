@@ -315,7 +315,10 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
 | `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. OBT-531 added `POST …/{id}/review`. |
 | `app/api/shema/intercessor_exit.py` | **OBT-531, built** | The module's **second** unauthenticated seam: `GET`/`POST /intercessors/leave/{token}`, the intercessor's exit link. §6.4's OBT-531 note. |
-| `app/api/shema/transfer.py` | BE-14 | Export and import. |
+| `app/api/shema/transfer.py` | **BE-14, built** | `GET /export/projects?format=json\|csv&lang=` and `POST /import/projects` — FE-44 §9.12. §6.4's *What BE-14 built*. |
+| `app/models/shema_transfer.py` | **BE-14, built** | `ExportedProject`, the export's allowlist — a `LeavingShape` built for nobody — the header's words in `pt-BR` and `en`, the CSV's hygiene, and the import's answer and refusal keys. |
+| `app/services/shema/export_projects.py`, `import_projects.py` | **BE-14, built** | The file, through the listing's scope, the boundary and the consent gate, and logged; its inverse, checked whole and applied through `create_project`/`save_project` under one commit. |
+| `app/db/models/shema_export.py` | **BE-14, built** | `shema_exports`, append-only: who exported which projects and requests, when, over which scope — ids and counts, never text. |
 | `app/api/shema/notifications.py` | BE-15; OBT-541 | The derived panel, preferences, read state. Since OBT-541 the panel and its read mark sit behind the door (§6.8); the preferences stay behind the app gate. |
 | `app/services/shema/_request_notices.py` | **OBT-541, built** | The resource-request form's arrival and decision, rung in the PME's bell: who is told (the starter; the Admin off the `shema` grant and the Gestor off the form's), with the registered name and the stage and nothing else, and the `shema_request_notices` detail each row carries. |
 | `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.8. |
@@ -1281,6 +1284,78 @@ region. `list_notification_panel.py` answers a request notice's `projectId` only
 project is inside the scope of, or who is one of its live members, through `within_scope` and
 `live_membership_ids`; everybody else gets `null`, which is §6.1's answer for a project out of
 scope. The notification row itself carries no slug and no place in its title or body.
+
+#### What BE-14 built — the export and the import
+
+**The export is this section's rules at the one boundary where nothing is governed afterwards**
+([OBT-403](https://linear.app/shema-obt/issue/OBT-403)). `GET /api/shema/export/projects` is one
+code path through the filters every read already uses, never a payload assembled from rows: the
+caller's scope through `list_projects` (the listing's own query), each row validated into
+`ExportedProject` — FE-44 §8.4's allowlist of 24 keys, a `LeavingShape` built **for nobody**, so
+`outside` — the prayer requests as `_consent.authorized_requests_by_project` answers them, and the
+notes asked of `can_export_notes` under `publico`, which says no. A column added to the table later
+is out of the file until somebody declares it on the shape. A sensitive project leaves with its
+region key where the place was, an empty base and `locationWithheld: true` **whoever exports** —
+the region's own coordinator included, because a file is what leaves.
+
+**The route takes the caller's reader, and only to address the header.** How many places were
+withheld is a line for coordination (GATE-04, 1.3) — `withheld_note`, told who the exporter is —
+and every other reader, like a file with nothing withheld, gets no line at all. The header also
+says what the file holds, when it was made and by whom, over which scope, that it is confidential,
+and which log row it is. `READER_ROUTES` lists the route with that argument, and
+`export_projects.py` calls no `read_by`, which the tree test holds.
+
+**Every file is logged before it is handed back**, in `shema_exports` (append-only, the trigger
+`shema_eten_reports` uses): who, when, the scope, the format, how many rows and how many withheld,
+and the ids of the projects and the prayer requests that went out — never text, so a withdrawn
+request does not outlive its withdrawal in a table nobody can edit.
+
+**Formats: `json` and `csv`, and that is a departure to record.** FE-44 §9.12 freezes
+`format=json|csv`; on 28/aug/2026 the client answered PDF, a spreadsheet and a text document. The
+CSV is the spreadsheet — BOM, `;`, every formula lead neutralised, as the console's own export —
+and PDF and a text document are not built: each needs a renderer this repository does not carry
+and a layout somebody has to review. The contract lives in the PME and is not edited from here;
+the difference is recorded in this paragraph and in the pull request until one of the two changes.
+The words of the header are the console's catalogue values copied into
+`app/models/shema_transfer.py`; the cells are data — ISO days, FE-44's vocabulary values, the
+region key where a place is withheld.
+
+**A large export is not a job to poll.** The file is the collection `GET /api/shema/projects`
+already answers in one request, read in three statements whatever its size
+(`test_the_export_does_not_grow_its_queries_with_the_collection`), and the part that grows — a row
+validated and written per project — runs in a worker thread. Measured on 30/sep/2026 with the
+machine shared by four runs: 127 projects in about 60 ms, 2,000 in 0.3–0.7 s, the same order as the
+Projetos read of the same 2,000.
+
+**The import is the inverse risk, and it gets the write's rules, not a second set.**
+`POST /api/shema/import/projects` reads the raw body, so the console's five refusal keys
+(`import_invalid_json`, `import_is_export`, `import_not_list`, `import_bad_record` with the 1-based
+index, `import_duplicate_id`) are the server's too. The exported file is recognised by what it
+holds — the wrapper, any row of it, any payload that says it was reduced, the CSV by the sentence
+it opens with. Every record is validated by `ShemaProjectCreate` before the database is read, and
+then applied through `create_project` (an id the caller's scope does not hold) or `save_project`
+at the current version (one it does), both with `commit=False`, and committed once: a refusal on
+the tenth record takes the first nine with it. So the region scope, the reader's fields
+(OBT-528), the prayer request's reader (BE-09), the trail and the notices are a typed save's.
+Nothing is deleted: a project the file does not name is left alone.
+
+**Nothing in a file authorizes anything.** `prayerVisibility`, the recording and a need's
+`prayerShared` and `acknowledged` are dropped before validation; an imported request arrives as
+the write leaves any request whose authorization was not restated — a new or changed text
+unauthorized, an unchanged one as the organisation left it — and the file can neither publish nor
+withdraw one. **The sensitive flag moves one way**: a file may raise it and may not clear it on a
+withheld record (`_redaction.never_lowered`), BE-16's rule for the Notion import, because a backup
+taken before a project was flagged would otherwise publish its place by momentum. What the server
+writes from something else — the health projection, the progress history, media, materials,
+`derived`, `readAs`, `locationWithheld`, `completedDate`, the org chart's three names — is dropped
+too, and `ignoredFields` in the answer names every key that was, so an import is never read as
+having restored what it could not.
+
+**Residuals, named.** A slug that exists outside the caller's reach is answered 409 by
+`create_project`, the existence oracle `POST /projects` already has; the import inherits it by
+being the same path. The free text of an authorized request, the language name and the vitality
+can still name a place — this section's residuals. The header's language reuses BE-09's
+`PulseLanguage`, which is the console's two locales under a name that says *Pulse*.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
