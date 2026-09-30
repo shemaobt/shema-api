@@ -155,8 +155,13 @@ from app.services.shema._audit import (
     field_changes,
 )
 from app.services.shema._consent import (
+    PRAYER_AUDIENCE,
+    AuthorizedRequest,
+    authorized_requests,
+    authorized_requests_by_project,
     prayer_visibility,
     reaches_prayer_wall,
+    reads_withheld_requests,
     shared_prayer_audio,
     shared_prayer_text,
 )
@@ -254,6 +259,7 @@ from app.services.shema.count_projects import count_projects, count_projects_by_
 from app.services.shema.create_intake_link import create_intake_link
 from app.services.shema.eten_report import eten_report
 from app.services.shema.find_account import account_grants, find_account
+from app.services.shema.generate_prayer_pulse import PrayerPulse, generate_prayer_pulse
 from app.services.shema.get_notification_prefs import get_notification_prefs
 from app.services.shema.get_project import get_project
 from app.services.shema.get_region_team import get_region_team
@@ -276,6 +282,7 @@ from app.services.shema.list_invites import list_invites
 from app.services.shema.list_meeting_log import list_meeting_log
 from app.services.shema.list_my_projects import list_my_projects
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
+from app.services.shema.list_prayer_requests import list_prayer_requests
 from app.services.shema.list_project_members import list_project_members
 from app.services.shema.list_projects import list_projects
 from app.services.shema.list_regions import list_regions
@@ -328,16 +335,19 @@ __all__ = [
     "NEEDS_FIELD_KEY",
     "NO_COORDINATION",
     "PANEL_CAP",
+    "PRAYER_AUDIENCE",
     "UNACKNOWLEDGED_AFTER_DAYS",
     "URGENT_NEED_EVENT",
     "URGENT_NEED_ROLES",
     "Aggregates",
+    "AuthorizedRequest",
     "ChangesSince",
     "GrantApps",
     "LeavingPerson",
     "LoggedMeeting",
     "MediaLink",
     "Notice",
+    "PrayerPulse",
     "ProgressSource",
     "Readership",
     "RecordVersionConflict",
@@ -353,6 +363,8 @@ __all__ = [
     "archived_answers",
     "as_received",
     "author_name",
+    "authorized_requests",
+    "authorized_requests_by_project",
     "browse_projects",
     "build_record",
     "can_export_notes",
@@ -372,6 +384,7 @@ __all__ = [
     "field_changes",
     "find_account",
     "form_fields",
+    "generate_prayer_pulse",
     "get_notification_prefs",
     "get_project",
     "get_region_team",
@@ -396,6 +409,7 @@ __all__ = [
     "list_meeting_log",
     "list_my_projects",
     "list_notification_panel",
+    "list_prayer_requests",
     "list_project_members",
     "list_projects",
     "list_regions",
@@ -427,6 +441,7 @@ __all__ = [
     "read_submission",
     "readership",
     "reads_assessments",
+    "reads_withheld_requests",
     "receive_submission",
     "recipients",
     "record_eten_credit",
