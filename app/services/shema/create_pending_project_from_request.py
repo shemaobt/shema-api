@@ -84,7 +84,7 @@ async def create_pending_project_from_request(
         id=str(uuid.uuid4()),
         language_name=seed.language_name,
         language_code=seed.language_code,
-        location=seed.location,
+        location=seed.place,
         status=ShemaProjectStatus.PLANEJADO,
         sensitive_country=False,
         pending_confirmation=True,

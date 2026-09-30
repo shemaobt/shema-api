@@ -38,7 +38,7 @@ from app.db.models.resource_request import RRRequest
 #: ``shema_projects``' own widths for the three columns the form fills.
 _LANGUAGE_NAME_WIDTH = 200
 _LANGUAGE_CODE_WIDTH = 50
-_LOCATION_WIDTH = 500
+_PLACE_WIDTH = 500
 
 
 class ProposedMember(NamedTuple):
@@ -54,7 +54,7 @@ class PartA(NamedTuple):
 
     language_name: str
     language_code: str
-    location: str
+    place: str
     members: tuple[ProposedMember, ...]
 
 
@@ -79,7 +79,7 @@ def part_a(document: Mapping[str, Any], *, link_email: str) -> PartA:
         _text(fields.get("lang_name")) or _text(first.get("name")) or _text(fields.get("reg_name"))
     )
     language_code = _text(fields.get("lang_iso")) or _text(first.get("code"))
-    location = _text(fields.get("people_location")) or _text(fields.get("tr_location"))
+    place = _text(fields.get("people_location")) or _text(fields.get("tr_location"))
 
     members = [
         ProposedMember(name=_text(row.get("name")), role=_text(row.get("role")), email="")
@@ -94,7 +94,7 @@ def part_a(document: Mapping[str, Any], *, link_email: str) -> PartA:
     return PartA(
         language_name=language_name[:_LANGUAGE_NAME_WIDTH],
         language_code=language_code[:_LANGUAGE_CODE_WIDTH],
-        location=location[:_LOCATION_WIDTH],
+        place=place[:_PLACE_WIDTH],
         members=tuple(members),
     )
 
