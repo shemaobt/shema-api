@@ -22,8 +22,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UpstreamServiceError, ValidationError
-from app.db.models.internalization_room import IRSessionStatus, IRTake, IRTakeKind
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.db.models.internalization_room import IRSegment, IRSessionStatus, IRTake, IRTakeKind
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from tests.hard_stretch_harness import (
     AUDIO,
     DEVICE,
@@ -113,6 +113,13 @@ async def _tell(
     )
 
 
+async def _segment_rows(db: AsyncSession, session_id: str) -> list[str]:
+    result = await db.execute(
+        select(IRSegment.id).where(IRSegment.session_id == session_id).order_by(IRSegment.id)
+    )
+    return list(result.scalars().all())
+
+
 async def _retro_takes(db: AsyncSession, session_id: str) -> list[IRTake]:
     result = await db.execute(
         select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO)
@@ -133,6 +140,7 @@ async def test_a_first_telling_with_no_words_is_refused_and_is_no_stretch(
 ) -> None:
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)
+    before = await _segment_rows(db_session, session_id)
 
     refused = await _tell(client, session_id, take_id, 1, heard)
 
@@ -140,9 +148,8 @@ async def test_a_first_telling_with_no_words_is_refused_and_is_no_stretch(
     body = refused.json()
     assert body["code"] == "WORDLESS_TELLING"
     assert body["detail"]
-    session = await row(db_session, session_id)
-    _, the_line = choose(FailSafe.INAUDIBLE, session.language, turn=len(session.messages or []))
-    assert body["fixed_line"] == the_line
+    assert body["fixed_line"] == "D0"
+    assert await _segment_rows(db_session, session_id) == before
     assert await current(db_session, session_id) == []
 
 
@@ -154,8 +161,9 @@ async def test_an_empty_retelling_is_refused_and_counts_nothing(
     await told(client, session_id, take_id, 1)
     (standing,) = await current(db_session, session_id)
     tellings = standing.tellings
+    before = await _segment_rows(db_session, session_id)
 
-    for _ in range(3):
+    for _ in range(RETELLS_BEFORE_A_WARNING):
         refused = await _tell(client, session_id, take_id, 1, "", again=True)
         assert refused.status_code == 422, refused.text
         assert refused.json()["code"] == "WORDLESS_TELLING"
@@ -163,8 +171,12 @@ async def test_an_empty_retelling_is_refused_and_counts_nothing(
     (after,) = await current(db_session, session_id)
     assert after.id == standing.id
     assert after.tellings == tellings
+    assert await _segment_rows(db_session, session_id) == before
     assert await marks(db_session, session_id) == []
     assert (await row(db_session, session_id)).status is not IRSessionStatus.NEEDS_PERSON
+    read = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    assert read.status_code == 200, read.text
+    assert read.json()["halt"] is None
 
 
 async def test_the_recording_of_a_refused_telling_stays_kept(
