@@ -177,12 +177,6 @@ def _order(line: EtenYearSnapshot) -> tuple[int, int, tuple[str, str], str]:
     return (-credits, -line.advanced, collation_key(line.language_name), line.project_id)
 
 
-def _scope_key(scope: RegionScope) -> str:
-    """``global``, or the regions as ``RegionScope.wire`` already orders them."""
-    regions = scope.wire
-    return "global" if regions is None else ",".join(regions)
-
-
 def _digest(content: dict[str, Any]) -> str:
     canonical = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -202,7 +196,7 @@ async def _record(
     """
     content = report.recorded()
     digest = _digest(content)
-    scope_key = _scope_key(scope)
+    scope_key = scope.key
     newest = (
         await db.execute(
             select(ShemaEtenReport)

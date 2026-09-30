@@ -29,6 +29,7 @@ from sqlalchemy import Enum, String, Text, event, select
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
+from app.db.models.shema_eten import ShemaEtenReport
 from app.db.models.shema_export import ShemaExport
 from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
@@ -555,6 +556,27 @@ async def test_the_export_log_cannot_be_edited(client, db_session, strategist) -
     with pytest.raises(Exception, match="append-only"):
         await db_session.commit()
     await db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("role_key", "regions", "key"),
+    [("globalStrategist", (), "global"), ("coordinator", (HOME, AWAY), "africa,other")],
+    ids=["global", "two regions"],
+)
+async def test_the_export_log_and_the_eten_log_file_a_scope_under_one_key(
+    client, db_session, shema_app, role_key, regions, key
+) -> None:
+    """The join an after-the-fact question makes — which reports and which files did this scope
+    produce — holds only while the two logs spell a scope the same way."""
+    headers = await person(db_session, shema_app, role_key, regions=regions)
+    await seed(db_session, "vale-das-contas")
+    await export(client, headers)
+    report = await client.get(f"{PREFIX}/eten/report", params={"year": 2026}, headers=headers)
+    assert report.status_code == 200, report.text
+
+    exported = (await db_session.execute(select(ShemaExport.scope_key))).scalar_one()
+    reported = (await db_session.execute(select(ShemaEtenReport.scope_key))).scalar_one()
+    assert exported == reported == key
 
 
 async def test_the_export_does_not_grow_its_queries_with_the_collection(

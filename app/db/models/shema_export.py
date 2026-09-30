@@ -44,8 +44,8 @@ class ShemaExport(Base):
     )
     #: The exporter's name **as it was then** — the name the file itself printed.
     exported_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    #: ``global``, or the caller's regions sorted and comma-joined — ``shema_eten_reports``'
-    #: own spelling of a scope, so the two logs join on it.
+    #: ``global``, or the caller's regions sorted and comma-joined — ``RegionScope.key``, the
+    #: spelling ``shema_eten_reports`` files a scope under too, so the two logs join on it.
     scope_key: Mapped[str] = mapped_column(String(200), nullable=False)
     #: ``json`` or ``csv``.
     format: Mapped[str] = mapped_column(String(8), nullable=False)

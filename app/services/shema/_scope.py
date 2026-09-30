@@ -170,6 +170,18 @@ class RegionScope(NamedTuple):
         """
         return None if self.global_ else sorted(self.regions)
 
+    @property
+    def key(self) -> str:
+        """The scope as one string — ``global``, or the regions as :attr:`wire` orders them.
+
+        What a log files a scope under: ``shema_eten_reports`` and ``shema_exports`` both store
+        it in ``scope_key``, and a question asked later — which reports and which files did this
+        scope produce — joins the two on it. **One spelling, owned here**, so the join cannot
+        split by one log changing its own.
+        """
+        regions = self.wire
+        return "global" if regions is None else ",".join(regions)
+
 
 async def granted_roles(db: AsyncSession, user_id: str, app_key: str) -> set[str]:
     """The role keys this account holds in ``app_key``, read fresh.

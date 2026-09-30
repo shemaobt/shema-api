@@ -75,7 +75,6 @@ from app.services.shema._consent import AuthorizedRequest, authorized_requests_b
 from app.services.shema._media_sharing import can_export_notes
 from app.services.shema._redaction import withheld_note
 from app.services.shema._scope import Readership, RegionScope
-from app.services.shema.eten_report import _scope_key
 from app.services.shema.list_projects import list_projects
 from app.utils.shema_facets import OPEN_NEED_STATUSES
 
@@ -212,7 +211,7 @@ async def export_projects(
             id=export_id,
             exported_by=user.id,
             exported_by_name=header.generated_by,
-            scope_key=_scope_key(scope),
+            scope_key=scope.key,
             format=file_format.value,
             project_count=len(projects),
             withheld_count=written.withheld,

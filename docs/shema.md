@@ -1352,9 +1352,10 @@ and which log row it is. `READER_ROUTES` lists the route with that argument, and
 `export_projects.py` calls no `read_by`, which the tree test holds.
 
 **Every file is logged before it is handed back**, in `shema_exports` (append-only, the trigger
-`shema_eten_reports` uses): who, when, the scope, the format, how many rows and how many withheld,
-and the ids of the projects and the prayer requests that went out — never text, so a withdrawn
-request does not outlive its withdrawal in a table nobody can edit.
+`shema_eten_reports` uses): who, when, the scope (`RegionScope.key`, the spelling
+`shema_eten_reports` files a scope under too, so the two logs join), the format, how many rows
+and how many withheld, and the ids of the projects and the prayer requests that went out — never
+text, so a withdrawn request does not outlive its withdrawal in a table nobody can edit.
 
 **Formats: `json` and `csv`, and that is a departure to record.** FE-44 §9.12 freezes
 `format=json|csv`; on 28/aug/2026 the client answered PDF, a spreadsheet and a text document. The
