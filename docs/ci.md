@@ -19,7 +19,7 @@ carries `main` into `dev`.
 | Workflow | What it gates |
 |---|---|
 | Checks | One job, one check on the pull request, four commands in a queue under a 10-minute ceiling: `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), and `mypy app/`, then the file marked `fresh_interpreter`. `main` runs three more commands here, the two doctrine passes and the canon drift check; this branch has no job for them and neither promotion invented one. |
-| Test | The pytest suite on SQLite in four processes split by file, with the schema created once per process, selecting out the tests marked `migration` or `fresh_interpreter`, under a 7-minute ceiling. `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
+| Test | The pytest suite on SQLite in four processes split by file, with the schema created once per process, selecting out the tests marked `migration` or `fresh_interpreter`, under a 12-minute ceiling. `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
 | Migrations | The graph stands at one head with no duplicate revision ids, the newest migrations walk down and back up on a clean Postgres, then the eight tests marked `migration` run with `DATABASE_URL` cleared so they build their own SQLite files instead of running against the job's Postgres. |
 | Deploy | A push to `main` builds the image, upgrades the production database and deploys to Cloud Run. |
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |

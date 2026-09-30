@@ -20,11 +20,8 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Twelve, the ceiling `main` moved to with ENG-1092. This branch's suite outgrew seven: at
-    # 4768 tests the job passed seven minutes and cancelled green runs (shema-api#592), and
-    # building each suite's test app once per process instead of once per test brought the
-    # local run from 153 s to 113 s, which is headroom for a suite still growing, not a reason
-    # to come back down.
+    # Twelve, the ceiling `main` moved to with ENG-1092: at 4768 tests this branch's job passed
+    # seven minutes and cancelled green runs (shema-api#592). ADR 0031 has the measurements.
     # The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
     # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
     timeout-minutes: 12

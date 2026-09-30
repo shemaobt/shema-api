@@ -223,7 +223,7 @@ async def naive_client(db_session):
     validator runs again, which ``test_reader.py`` pins for the reader).
 
     The dependency aliases are imported at module level for the reason
-    ``conftest.client`` states: with ``from __future__ import annotations`` FastAPI resolves
+    ``conftest.shema_test_app`` states: with ``from __future__ import annotations`` FastAPI resolves
     every annotation against this module's globals, and a name bound inside the fixture would
     be read as a query parameter instead of a dependency.
     """

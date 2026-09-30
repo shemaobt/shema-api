@@ -139,12 +139,13 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 #: A job with no `timeout-minutes` inherits GitHub's 360-minute default, which is how a hung
 #: run stayed "pending" for six hours instead of turning red (ENG-913). The canon check was
 #: the last job left without one. ENG-969 puts every gate under a ceiling: 10 for checks
-#: (was lint), whose four commands cost well under a minute of work, and 7 for test, the
-#: number #475 sets on `main` against a step measured there at 2m04-2m31. Migrations carries
+#: (was lint), whose four commands cost well under a minute of work, and 12 for test, the
+#: number ENG-1092 set on `main`, after seven cancelled green runs of this branch's 4768
+#: tests (shemaobt/shema-api#592). Migrations carries
 #: 7 for parity with `main`, where the whole job measured 3m04 on shemaobt/shema-api#474's
 #: own run once the `-m migration` step was added; this branch's own run measured 1m53.
 JOB_TIMEOUT_MINUTES = {
-    ("test.yml", "test"): 7,
+    ("test.yml", "test"): 12,
     ("checks.yml", "checks"): 10,
     ("migrations.yml", "migrations"): 7,
 }

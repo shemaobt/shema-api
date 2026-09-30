@@ -430,7 +430,7 @@ async def test_the_seeded_role_rows_are_what_the_guard_looks_up(db_session, shem
 
 
 def test_the_probes_are_removed_after_the_fixture() -> None:
-    """The client fixture mutates a module-level router, so it truncates in a ``finally``.
+    """The test app fixture mutates a module-level router, so it truncates in a ``finally``.
 
     Asserted so a leak fails here rather than as a mystery extra route in
     ``test_every_shema_route_is_guarded`` two files later.
