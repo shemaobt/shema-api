@@ -462,6 +462,35 @@ async def test_a_sensitive_country_is_transformed_before_the_pulse_is_written(
     assert "• Língua Névoa — Africa" in english
 
 
+@pytest.mark.parametrize("lang", ["pt-BR", "en"])
+async def test_the_pulse_names_no_place_it_cannot_tell(client, db_session, circle, lang) -> None:
+    """``other`` is the console's *América Central* and also where every country the map does not
+    know falls, so an entry whose country the Pulse does not print — withheld, or never written —
+    goes out with no place rather than a guess, in a file that cannot be recalled."""
+    await seed(
+        db_session,
+        "sereno-lugar-secreto",
+        text=SHARED,
+        visibility=ShemaPrayerVisibility.REDE,
+        sensitive=True,
+        location="Lugar Secreto",
+        language="Língua Sereno",
+    )
+    await seed(
+        db_session,
+        "tordo",
+        text=SHARED_NEED,
+        visibility=ShemaPrayerVisibility.REDE,
+        location="",
+        language="Língua Tordo",
+    )
+
+    lines = (await pulse(client, circle, lang=lang)).splitlines()
+
+    assert "• Língua Sereno" in lines and "• Língua Tordo" in lines
+    assert not any("Central" in line or "Lugar Secreto" in line for line in lines)
+
+
 async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_base(
     client, db_session, shema_app
 ) -> None:
@@ -666,7 +695,12 @@ async def test_the_resource_circle_still_works_the_needs_it_does_not_share(
         project.id,
         {
             "needsItems": [
-                {"id": row.id, "status": "in-progress", "prayerShared": True},
+                {
+                    "id": row.id,
+                    "status": "in-progress",
+                    "description": SHARED_NEED,
+                    "prayerShared": True,
+                },
                 {"category": "training", "description": "Oficina de gravação"},
             ]
         },
@@ -676,6 +710,47 @@ async def test_the_resource_circle_still_works_the_needs_it_does_not_share(
     await db_session.refresh(row)
     assert row.prayer_shared is True and row.status.value == "in-progress"
     assert texts(await wall(client, circle)) == {SHARED_NEED}
+
+
+async def test_the_resource_circle_may_not_keep_a_share_on_a_text_it_rewrote(
+    client, db_session, circle
+) -> None:
+    """The flag does not move, and the decision is still there: restating ``prayerShared`` over a
+    new description is sharing the new text, and the team authorized the one it replaced."""
+    project = await seed(db_session, "vime-rio")
+    row = await need(db_session, project, SHARED_NEED, shared=True)
+
+    response = await patch(
+        client,
+        circle,
+        project.id,
+        {"needsItems": [{"id": row.id, "description": KEPT_NEED, "prayerShared": True}]},
+    )
+
+    assert response.status_code == 403, response.text
+    assert "prayerShared" in response.text
+    await db_session.refresh(row)
+    assert (row.description, row.prayer_shared) == (SHARED_NEED, True)
+    assert texts(await wall(client, circle)) == {SHARED_NEED}
+    assert KEPT_NEED not in await pulse(client, circle)
+
+
+async def test_a_need_the_resource_circle_rewrites_leaves_the_wall(
+    client, db_session, circle
+) -> None:
+    """Without the flag the rewrite is the Resource Circle's to make, and the rule withdraws the
+    authorization it was not given — the refusal above is of the restatement, not of the text."""
+    project = await seed(db_session, "vime-lago")
+    row = await need(db_session, project, SHARED_NEED, shared=True)
+
+    response = await patch(
+        client, circle, project.id, {"needsItems": [{"id": row.id, "description": KEPT_NEED}]}
+    )
+
+    assert response.status_code == 200, response.text
+    await db_session.refresh(row)
+    assert (row.description, row.prayer_shared) == (KEPT_NEED, False)
+    assert await wall(client, circle) == []
 
 
 @pytest.mark.parametrize(
