@@ -1,0 +1,59 @@
+# Shemá — export and import (BE-14 · OBT-403)
+#
+# The export is a report that leaves, not a backup that returns. Four things to know before
+# running anything below:
+#   * the file is the caller's scope, and every row is reduced for everybody: a project in a
+#     sensitive country leaves with its region where the place was, an empty base and
+#     `locationWithheld: true` — the region's own coordinator included;
+#   * the header says what the file holds, when and by whom it was made, over which scope, and
+#     that it is confidential; how many places were withheld is told to coordination only;
+#   * every file is recorded in `shema_exports` before it is handed back — `meta.exportId` (and
+#     the CSV's "Registro deste arquivo" line) names the row;
+#   * the import is coordination's (globalStrategist or coordinator): the OBT Lab and the
+#     Resource Circle get a 403. It refuses the exported file, and a record read for anybody but
+#     coordination. It takes a JSON list of `Project` records, checks all of them before applying
+#     any, applies them as one write, and takes no authorization from the file:
+#     `prayerVisibility`, the recording and a need's `prayerShared` are ignored.
+#
+# Before running: seed the app and its roles, grant one, and give the account a region.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py coord.local@test.com shema coordinator
+
+@baseUrl = http://localhost:8000
+@accessToken = {{shema_login.response.body.tokens.access_token}}
+
+### Login — named, so every request below reuses the token
+# @name shema_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coord.local@test.com",
+  "password": "password123"
+}
+
+### The caller's projects as JSON — `{meta, projects}`
+GET {{baseUrl}}/api/shema/export/projects?format=json
+Authorization: Bearer {{accessToken}}
+
+### The same, as the spreadsheet: CSV with a BOM, `;`-separated, headed in English
+GET {{baseUrl}}/api/shema/export/projects?format=csv&lang=en
+Authorization: Bearer {{accessToken}}
+
+### Import one record — created if the caller's scope does not hold the id, updated if it does
+POST {{baseUrl}}/api/shema/import/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+[
+  {
+    "id": "lingua-exemplo-vale-novo",
+    "languageName": "Língua Exemplo",
+    "bridgeLanguage": "Português",
+    "team": "Base Exemplo",
+    "objective": ["NT"],
+    "location": "Vale Novo",
+    "prayerRequests": "Arrives unauthorized, whatever the line below says.",
+    "prayerVisibility": "rede"
+  }
+]

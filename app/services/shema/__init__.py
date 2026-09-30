@@ -151,6 +151,14 @@ every statement a reader starts from; ``list_pending_projects`` is the Admin's o
 team's accounts and invites the rest to it, and ``apply_invited_membership`` is what accepting such
 an invitation does. ``docs/shema.md`` §6.11 is the design.
 
+**BE-14 landed the export and the import.** ``export_projects.py`` is the file: the caller's scope
+through ``list_projects``, each row through the boundary as ``outside`` whoever exports, the prayer
+requests as ``_consent.authorized_requests_by_project`` answers them, a header addressed to the
+exporter, and a row in ``shema_exports`` for every file that leaves. ``import_projects.py`` is its
+inverse: the file read and recognised, every record checked by the write's own model before
+anything is applied, and all of them applied through ``create_project`` and ``save_project`` under
+one commit — with no authorization taken from the file and the sensitive flag never lowered by it.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -274,6 +282,7 @@ from app.services.shema.create_pending_project_from_request import (
     create_pending_project_from_request,
 )
 from app.services.shema.eten_report import eten_report
+from app.services.shema.export_projects import ExportFile, export_projects
 from app.services.shema.find_account import account_grants, find_account
 from app.services.shema.generate_prayer_pulse import PrayerPulse, generate_prayer_pulse
 from app.services.shema.get_notification_prefs import get_notification_prefs
@@ -281,6 +290,7 @@ from app.services.shema.get_project import get_project
 from app.services.shema.get_region_team import get_region_team
 from app.services.shema.get_session import get_session
 from app.services.shema.grant_role import grant_role
+from app.services.shema.import_projects import ImportRefused, import_projects
 from app.services.shema.import_submission import apply_submission, import_submission
 from app.services.shema.leave_intercessor import (
     EXIT_LINK_DAYS,
@@ -360,7 +370,9 @@ __all__ = [
     "Aggregates",
     "AuthorizedRequest",
     "ChangesSince",
+    "ExportFile",
     "GrantApps",
+    "ImportRefused",
     "LeavingPerson",
     "LoggedMeeting",
     "MediaLink",
@@ -402,6 +414,7 @@ __all__ = [
     "eten_report",
     "exit_url",
     "expires_on",
+    "export_projects",
     "field_changes",
     "find_account",
     "form_fields",
@@ -413,6 +426,7 @@ __all__ = [
     "grant_role",
     "held_regions",
     "holders_reaching",
+    "import_projects",
     "import_submission",
     "is_authorized",
     "is_withheld",

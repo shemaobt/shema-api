@@ -25,7 +25,9 @@ a validator, so the three things a query-side caller needs are:
   because ``location`` lives here (BE-06; the function's own docstring carries the trade);
 * :func:`unwritable_fields` — the write path's other question (OBT-528): which of the fields a
   save sent this reader may not write, because a field that is withheld from a reader is not
-  one that reader may type over.
+  one that reader may type over;
+* :func:`never_lowered` — the import's one-way rule on the flag (BE-14): a file may raise it and
+  may not clear it.
 
 **This is the only file in** ``app/services/shema/`` **and** ``app/api/shema/`` **allowed to
 read the guarded columns.** ``tests/test_shema/test_privacy_owners.py`` globs both packages
@@ -37,8 +39,9 @@ applied per endpoint is a rule the next endpoint forgets; a glob is not.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from collections.abc import Set as AbstractSet
+from typing import Any
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
@@ -190,3 +193,23 @@ def unwritable_fields(
     if is_withheld(project):
         refused |= set(sent) & WITHHELD_WRITES
     return sorted(refused)
+
+
+def never_lowered(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str, Any]:
+    """``sent`` without a ``False`` for the flag of a record that is withheld — the import's rule.
+
+    **A file may raise the flag and may never lower it** (BE-14). Raising protects and lowering
+    exposes, so only one of the two directions is allowed to happen by the momentum of a bulk
+    operation: a backup taken before somebody flagged a project, imported back, would otherwise
+    publish that project's place in every file and on every card from then on, and nobody would
+    have decided it. BE-16's Notion import holds the same line for the same reason
+    (``docs/shema.md`` §9.5). Coordination still clears a flag one record at a time, on the record,
+    where the decision is a person's.
+
+    ``sent`` is a write's fields by name; the answer is the same mapping, less the flag when it
+    would have cleared it. The caller says what it dropped.
+    """
+    kept = dict(sent)
+    if is_withheld(project) and kept.get("sensitive_country") is False:
+        del kept["sensitive_country"]
+    return kept
