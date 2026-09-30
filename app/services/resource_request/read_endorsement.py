@@ -19,8 +19,10 @@ class PublicEndorsement(NamedTuple):
     request_name: str
     expires_at: datetime
     #: When the team submitted — the acceptance date section 11 stamps on the page the leader
-    #: reads (FE-54, OBT-540). Always set: the link is issued at submission.
-    submitted_at: datetime | None
+    #: reads (FE-54, OBT-540). Never null: ``submit_request`` stamps it in the same
+    #: transaction that issues the link, and a second submission is a conflict, so a request
+    #: reachable through an endorsement token has always been submitted (PR #592, review).
+    submitted_at: datetime
     #: The request as it was submitted — only once the code was confirmed, and never after
     #: the link expired or was revoked, endorsed or not.
     document: dict[str, Any] | None
@@ -41,6 +43,7 @@ async def read_endorsement(db: AsyncSession, raw_token: str) -> PublicEndorsemen
     link = await find_endorsement(db, raw_token)
     request = await db.get(RRRequest, link.request_id)
     assert request is not None
+    assert request.submitted_at is not None, "an endorsement link is issued at submission"
     alive = endorsement_status(link, datetime.now(UTC)) in ("pending", "used")
     state = _state(link, alive)
     return PublicEndorsement(
@@ -48,7 +51,7 @@ async def read_endorsement(db: AsyncSession, raw_token: str) -> PublicEndorsemen
         email_hint=mask_email(link.email),
         request_name=request_name(request),
         expires_at=as_utc(link.expires_at),
-        submitted_at=None if request.submitted_at is None else as_utc(request.submitted_at),
+        submitted_at=as_utc(request.submitted_at),
         document=await _frozen(db, request.id) if alive and link.verified_at else None,
     )
 
