@@ -646,10 +646,10 @@ async def _tellings(db: AsyncSession, session_id: str) -> list[int]:
 
 
 async def _asks_for_a_person(client: httpx.AsyncClient, session_id: str) -> bool:
-    """Whether the room has stopped and put a person in front of the team."""
+    """Whether the room has asked for a person to come to the team."""
     state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
     assert state.status_code == 200, state.text
-    return bool(state.json()["status"] == IRSessionStatus.NEEDS_PERSON.value)
+    return state.json()["halt"] is not None
 
 
 async def _correct(
@@ -941,12 +941,12 @@ async def test_a_divide_for_a_session_the_room_does_not_hold_is_404_the_session_
 
 
 async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.AsyncClient) -> None:
-    """The stopping survives the answer that carried it.
+    """The ask survives the answer that carried it.
 
     The reply to the correction says `needs_person`, and a client that ignores that field would
-    otherwise lose the one moment the room asked for help. It is written into the session's own
-    status too, so the next read of the session finds it — the room stays stopped rather than
-    having mentioned it once.
+    otherwise lose the one moment the room asked for help. It stands on the session too, so the
+    next read of the session finds it as a warning — the room goes on and keeps asking, rather
+    than having mentioned it once (ENG-1163).
     """
     session_id, _, _ = await _one_told_stretch(client)
     for _ in range(RETELLS_BEFORE_A_WARNING):
@@ -955,4 +955,5 @@ async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.Asyn
 
     state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
 
-    assert state.json()["status"] == IRSessionStatus.NEEDS_PERSON.value
+    assert state.json()["status"] == IRSessionStatus.IN_PROGRESS.value
+    assert state.json()["halt"] == "warning"

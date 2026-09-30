@@ -293,7 +293,7 @@ def the_halt_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """The halt the mark calls, made to fail where it is called from.
 
     Patched in `hard_stretches`, because that is the name the call site reads: the module binds
-    `mark_needs_person` by a bare import, so patching it on `sessions` reaches nothing. If the
+    `raise_a_warning` by a bare import, so patching it on `sessions` reaches nothing. If the
     call site ever stops reading that name the two cases below fail loudly at `pytest.raises`,
     which is the right way for a seam to rot.
     """
@@ -302,7 +302,7 @@ def the_halt_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _raise(*_, **__):
         raise RuntimeError("the halt could not be written")
 
-    monkeypatch.setattr(hard_stretches, "mark_needs_person", _raise)
+    monkeypatch.setattr(hard_stretches, "raise_a_warning", _raise)
 
 
 @pytest.fixture()

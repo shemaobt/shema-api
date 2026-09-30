@@ -14,6 +14,7 @@ from app.core.room_enums import HaltKind
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
 from app.models.internalization_room import PlayedTake
+from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     findings_after_a_part_is_recorded_again,
@@ -341,10 +342,11 @@ async def append_exchange(
 
     A turn that lands is the proof a person came back, so it also releases
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
-    `attend` is the other, and is the one a facilitator controls (ENG-609). The lift itself
-    is untouched by that slice: the team resuming still ends the halt, and both kinds of halt
-    end this way. Only a halt already standing when the turn began is lifted: one the tablet
-    raised while the Guide was still answering is a request nobody has answered yet.
+    `attend` is the other, and is the one a facilitator controls (ENG-609). The team resuming
+    ends a blocking halt and never a warning (ENG-1163): a warning refuses nothing, so the team
+    going on is no sign anybody came, and it stands until a facilitator attends the session.
+    Only a halt already standing when the turn began is lifted: one the tablet raised while
+    the Guide was still answering is a request nobody has answered yet.
 
     It clears `lifted_halt`, which is the record of a halt an outstanding visit lifted and
     which undoing that visit would put back, when the visit is the one the row carried as the
@@ -384,7 +386,7 @@ async def append_exchange(
             nothing_to_put_back,
             and_(
                 IRSession.halts_raised == session.halts_raised,
-                IRSession.lifted_halt == session.halt_kind,
+                IRSession.lifted_halt == HaltKind.BLOCKING.value,
             ),
         )
         values["status"] = case(
@@ -553,9 +555,11 @@ def session_is_done(session: IRSession) -> bool:
 async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:
     """The sessions that need somebody, among the caller's own teams, newest first.
 
-    Two states wait on a person and no third one does: a room that halted asked for
-    someone to come, and a finished passage is waiting to be carried into Refine through
-    the release route. A session still under way is waiting on the team, not on the
+    Three things wait on a person and no fourth one does: a room that halted asked for
+    someone to come, a room under a standing warning asked for someone to come and watch
+    while it goes on (ENG-1163 — the warning is not a status, so it is named here beside the
+    two states), and a finished passage is waiting to be carried into Refine through the
+    release route. Any other session still under way is waiting on the team, not on the
     facilitator.
 
     **Scoped to the teams the caller facilitates, and a team is a project.** The route this
@@ -573,9 +577,10 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     A session with no `project_id` belongs to no team and reaches nobody, which is the
     same rule questions follow — unowned is nobody's, not everybody's.
 
-    The two halves drain differently, and only one of them drains at all. `NEEDS_PERSON`
-    leaves by two doors: a turn that lands is the team resuming, and a facilitator marking
-    the room attended (`attend`) is the person saying they went. The second door is why the
+    The halves drain differently, and only the halts drain at all. A warning leaves by one
+    door, a facilitator marking the room attended. `NEEDS_PERSON` leaves by two doors: a turn
+    that lands is the team resuming, and a facilitator marking the room attended (`attend`)
+    is the person saying they went. The second door is why the
     first is no longer the whole sentence — a room helped by somebody who then left drained
     only when the team next spoke, which may be never. `DONE` is
     terminal — nothing in this service writes a status back out of it, and reading the
@@ -589,7 +594,10 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     result = await db.execute(
         select(IRSession)
         .where(
-            IRSession.status.in_((IRSessionStatus.NEEDS_PERSON, IRSessionStatus.DONE)),
+            or_(
+                IRSession.status.in_((IRSessionStatus.NEEDS_PERSON, IRSessionStatus.DONE)),
+                halt.a_warning_stands(),
+            ),
             confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
         )
         .order_by(IRSession.updated_at.desc())
@@ -598,21 +606,37 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
 
 
 async def mark_needs_person(
-    db: AsyncSession, session: IRSession, *, kind: HaltKind, commit: bool = True
+    db: AsyncSession, session: IRSession, *, commit: bool = True
 ) -> IRSession:
-    """Halt the room, saying which kind of halt this is.
+    """Halt the room with a blocking halt: it cannot go on until a person comes.
 
-    ``kind`` is required and has no default, because the two are different walks for whoever
-    reads the queue and a default would quietly make one of them the other. The three writers
-    each know their own: the tablet's route and the hard stop cannot go on, and a stretch
-    crossing into a hard stretch refuses nothing.
+    ``halts_raised`` counts blocking halts only: it is how a landing turn tells the halt it
+    began in from one raised while the Guide was answering, and a warning is neither.
+    """
+    _a_new_ask(session, kind=HaltKind.BLOCKING)
+    session.status = IRSessionStatus.NEEDS_PERSON
+    session.halts_raised = IRSession.halts_raised + 1
+    return await _written(db, session, commit=commit)
+
+
+async def raise_a_warning(
+    db: AsyncSession, session: IRSession, *, commit: bool = True
+) -> IRSession:
+    """Call somebody over without stopping the room: a stretch crossed into a hard stretch.
+
+    **The status is not written** (ENG-1163). A warning refuses nothing, so the session stays
+    where it was — in progress, or done — and the warning stands beside it until a facilitator
+    attends the session (``halt.standing``).
+    """
+    _a_new_ask(session, kind=HaltKind.WARNING)
+    session.warned_at = datetime.now(UTC)
+    return await _written(db, session, commit=commit)
+
+
+def _a_new_ask(session: IRSession, *, kind: HaltKind) -> None:
+    """What every halt writes, whichever its kind.
 
     The kind is written on every halt and cleared by none — see ``halt.last``.
-
-    ``commit=False`` leaves the transaction open so a caller can write more in it. The mark of a
-    hard stretch is the one that needs it: the row that records the crossing and the halt that
-    asks for somebody are one fact, and committed apart a failure between them leaves a stretch
-    marked hard in a room that never asked for anybody.
 
     **A new ask is an unattended ask**, so the visit that answered the *previous* halt is
     cleared here. The stamps are what a facilitator reads to skip a row a colleague already
@@ -620,14 +644,28 @@ async def mark_needs_person(
     halt. Sharper than it looks: a successful ``attend`` takes the row off the queue, so a
     halted row could only ever carry stamps by carrying stale ones — the field would have been
     delivered exclusively by that mistake.
+
+    **A warning that visit ended stays ended.** A warning stands while nobody is marked as
+    having gone, so clearing the stamps alone would bring it back for a room somebody already
+    walked to. Once the stamps go the visit can no longer be undone, so what it ended is final.
     """
-    session.status = IRSessionStatus.NEEDS_PERSON
+    if session.attended_at is not None:
+        session.warned_at = None
     session.halt_kind = kind.value
-    session.halts_raised = IRSession.halts_raised + 1
     session.attended_at = None
     session.attended_by = None
     session.lifted_halt = None
     session.person_arrived_at = None
+
+
+async def _written(db: AsyncSession, session: IRSession, *, commit: bool) -> IRSession:
+    """Close the halt's write, or leave the transaction open when ``commit`` is False.
+
+    ``commit=False`` leaves the transaction open so a caller can write more in it. The mark of a
+    hard stretch is the one that needs it: the row that records the crossing and the halt that
+    asks for somebody are one fact, and committed apart a failure between them leaves a stretch
+    marked hard in a room that never asked for anybody.
+    """
     if commit:
         await db.commit()
         await db.refresh(session)
@@ -645,7 +683,7 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
     team pressing again because nothing visibly happened would keep resetting the one fact
     the Desk reads off this row.
 
-    The moment belongs to the halt it answers, so ``mark_needs_person`` clears it: a room that
+    The moment belongs to the halt it answers, so every new halt clears it: a room that
     stopped again is asking again, and carrying the arrival forward would show the new halt as
     already answered by somebody who came for the old one.
 
@@ -665,17 +703,19 @@ async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
 
 
 async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
-    """A facilitator says they went to this room, which lifts a halt of either kind.
+    """A facilitator says they went to this room, which ends every halt standing.
 
     **Both kinds, and that had to be decided rather than assumed.** A warning refuses nothing
     and the room could go on without anybody — but the warning exists to bring somebody, and
     once they are there it has done its work; leaving it standing would keep the team on a
-    queue nobody can drain.
+    queue nobody can drain. When a blocking halt stands over a warning, one visit ends both
+    (ADR 0039): whoever came is in the room for either.
 
-    **This is not the only exit, and saying so would be false.** ``append_exchange`` goes on
-    lifting either kind on the next landing turn, which is deliberate and untouched. What this
-    adds is an exit the *facilitator* controls: the team's turn drains the queue on the team's
-    schedule, and the person who went may well leave before the team speaks again.
+    **The only exit a warning has.** The warning ends because ``attended_at`` is now set, and
+    nothing else is written for it: undoing the visit clears the stamp and the warning stands
+    again. ``append_exchange`` goes on lifting a blocking halt on the next landing turn, which
+    is the team's exit; this is the one the *facilitator* controls, and the person who went
+    may well leave before the team speaks again.
 
     **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved on
     every tap would record when somebody last touched the Desk rather than when they went to
@@ -691,7 +731,7 @@ async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
         session.attended_at = datetime.now(UTC)
         session.attended_by = by
     if session.status is IRSessionStatus.NEEDS_PERSON:
-        session.lifted_halt = session.halt_kind
+        session.lifted_halt = HaltKind.BLOCKING.value
         session.status = IRSessionStatus.IN_PROGRESS
     await db.commit()
     await db.refresh(session)
@@ -710,6 +750,10 @@ async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
     row their queue showed a minute stale, changes their mind, and a conversation in full flow
     stops with a kind belonging to a halt somebody cleared an hour earlier. ``lifted_halt`` is
     the fact that was missing, and a visit that lifted nothing undoes to nothing.
+
+    A warning the visit ended comes back without being written: it stands while ``warned_at``
+    is set and nobody is marked as having gone, so clearing the stamps is all it takes, and no
+    landing turn in between can have ended it.
 
     ``DONE`` is terminal and this is not a way back into a passage the floor closed; the
     stamps still clear, because the claim being withdrawn is about the visit, not the passage.

@@ -23,8 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import router
 from app.core.config import get_settings
 from app.core.room_enums import HaltKind
-from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
+from app.db.models.internalization_room import IRTakeKind
 from app.services import internalization_room as room
+from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.takes import takes_of
 from tests.hard_stretch_harness import row
@@ -334,14 +335,14 @@ async def test_the_warning_a_round_raises_for_a_hard_stretch_outlives_the_rounds
     await _a_round(client, session_id, CAUSA_A_MAIS)
     await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
     before = await row(db_session, session_id)
-    assert before.status is IRSessionStatus.IN_PROGRESS, (
-        "uma rodada que não cruzou trecho nenhum parava a sala do mesmo jeito"
+    assert halt.standing(before) is None, (
+        "uma rodada que não cruzou trecho nenhum pedia uma pessoa do mesmo jeito"
     )
 
     await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
 
     after = await row(db_session, session_id)
-    assert after.status is IRSessionStatus.NEEDS_PERSON, (
+    assert halt.standing(after) is HaltKind.WARNING, (
         "a terceira contagem do mesmo trecho pedia uma pessoa, e o veredito da mesma rodada"
         " soltava o pedido antes de alguém vê-lo"
     )

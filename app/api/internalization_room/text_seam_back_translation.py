@@ -27,7 +27,6 @@ from app.api.internalization_room.text_seam import (
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
-from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import PlayedTake
 from app.models.internalization_room_text_seam import (
@@ -183,7 +182,7 @@ async def play_a_round(
             told_back=verdict.told_back,
         )
         if crossed:
-            await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
+            await room.raise_a_warning(db, session)
 
     return TextRoundResponse(
         sessionId=session.id,

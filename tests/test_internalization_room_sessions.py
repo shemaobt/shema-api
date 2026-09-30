@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSessionStatus
+from app.services.internalization_room import halt
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -199,7 +200,7 @@ async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
 async def test_a_session_needing_a_person_is_marked(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
 
-    session = await mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+    session = await mark_needs_person(db_session, session)
 
     assert session.status is IRSessionStatus.NEEDS_PERSON
 
@@ -230,14 +231,14 @@ async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: As
     await db_session.commit()
 
     assert await note_a_hard_stretch(db_session, session, told) is False
-    assert session.status is not IRSessionStatus.NEEDS_PERSON
+    assert halt.standing(session) is None
 
     told.tellings = RETELLS_BEFORE_A_WARNING
     await db_session.commit()
 
     assert await note_a_hard_stretch(db_session, session, told) is True
-    assert session.status is IRSessionStatus.NEEDS_PERSON
-    assert session.halt_kind == HaltKind.WARNING.value
+    assert session.status is IRSessionStatus.IN_PROGRESS
+    assert halt.standing(session) is HaltKind.WARNING
 
 
 async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
