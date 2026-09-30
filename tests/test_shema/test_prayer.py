@@ -844,6 +844,26 @@ async def test_the_wall_and_the_pulse_are_scoped(
     assert SHARED in file and SHARED_NEED not in file
 
 
+async def test_a_project_the_admin_has_not_confirmed_reaches_neither_the_wall_nor_the_pulse(
+    client, db_session, circle, strategist
+) -> None:
+    """A project the mesa's approval filed is nobody's until the Admin confirms it (OBT-547), and
+    the wall starts where every reader starts — so an authorized request on one, and a need it
+    shared, reach neither output, for the global seat either."""
+    pending = await seed(
+        db_session, "sereia-vale", text=KEPT, visibility=ShemaPrayerVisibility.REDE
+    )
+    pending.pending_confirmation = True
+    await db_session.commit()
+    await need(db_session, pending, KEPT_NEED, shared=True)
+    await seed(db_session, "sabia-vale", text=SHARED, visibility=ShemaPrayerVisibility.REDE)
+
+    assert texts(await wall(client, circle)) == {SHARED}
+    assert texts(await wall(client, strategist)) == {SHARED}
+    file = await pulse(client, circle)
+    assert SHARED in file and KEPT not in file and KEPT_NEED not in file
+
+
 async def test_the_wall_reads_the_needs_of_its_own_projects_only(db_session) -> None:
     """The one query for needs is keyed by the projects handed in, so a need of a project out of
     scope cannot ride along with one in it."""

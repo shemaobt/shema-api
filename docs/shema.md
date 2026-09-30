@@ -864,6 +864,8 @@ behaviour on it.
 >   row and built for nobody — `outside`, so the region's own coordinator reads the region there
 >   too; the Pulse (`generate_prayer_pulse`) is the wall rendered; BE-14's export reads
 >   `authorized_requests_by_project`. None of the three has a path to the columns of its own.
+>   The wall's projects are `visible_projects`, so a project the Admin has not confirmed
+>   (OBT-547's `registered`) is on neither the wall nor the Pulse, for any reader.
 > - **An authorization belongs to the request it was given for.** The project holds one request,
 >   so a new one lands where the last one was and would inherit its `rede` — and the Pulso Mensal
 >   writes the visibility only when the leader answers it. So a text or recording written without
