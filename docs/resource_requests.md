@@ -598,7 +598,7 @@ fourth role exists for:
 | `move_board` | — | ✅ | **✅** | — | **GATE-02 D3** — the cell that moved |
 | `assign_fund` | — | ✅ | — | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
 | `allocate_funds` | — | — | ✅ | — | **GATE-01 D6** — the first capability the mesa does not hold |
-| `endorse_request` | — | — | — | **✅** | **GATE-02 D2** — the Líder's only verb (BE-16). **A mirror with no reader since BE-23** (§5.4.6): the leader endorses by link, with no account |
+| ~~`endorse_request`~~ | — | — | — | ~~✅~~ | **GATE-02 D2** — the Líder's only verb (BE-16). **Retired by FE-49** (OBT-517, §5.4.6): the leader endorses by link, with no account, and the row and the column left the table |
 
 **Reading is not a row of this table and must not become one.** It rides on `edit_requests`,
 and which rows it reaches is `_scope.py`'s and not a capability at all (§6.2). Until BE-23 the
@@ -1021,10 +1021,12 @@ Daniel, 23/set: *solicitante nunca endossa*.
 **What left.** `endorse_request.py` and `POST /requests/{id}/endorse`; `CanEndorseRequest`,
 `CanReadRequests` and `require_any_capability`; the Líder's *submitted* reach in `_scope.py`
 (`Reach` keeps `every` alone); and every live `lider` grant, revoked by `20260930_rr12` as `rr08`
-revoked `equipe`. **What stays, on purpose:** the `lider` row and the `endorse_request` column of
-the capability map, the seed and the vendored `capabilities.json` — a mirror of the frontend's
-emission that `test_capabilities.py` pins. Nothing on the server reads either; they leave when
-FE-49 (OBT-517) retires the role on the form and re-emits.
+revoked `equipe`. **And then the table** (FE-49, OBT-517, 30/sep/2026): the frontend retired the role and the
+capability and re-emitted `capabilities.json`, vendored here; `ROLES`, `CAPABILITIES` and
+`ROLE_CAPABILITIES` follow it. **The seed keeps the `lider` row** as `RETIRED_ROLES`: existing
+installations have it, `20260930_rr12` revoked every grant on it, and deleting a row other tables
+point at is not a side effect of retiring a capability. A grant on it that somehow survived answers
+403 everywhere (`test_a_retired_lider_grant_opens_nothing`).
 
 ### 5.4.7 The form's notices in the PME's bell — **Built** (BE-21, OBT-541, 29/sep/2026)
 

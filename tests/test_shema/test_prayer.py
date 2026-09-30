@@ -42,6 +42,17 @@ KEPT_NEED = "Orem pela dívida do gerador que a equipe não quer que se espalhe"
 SHARED = "Orem pela colheita do vale e pela saúde dos tradutores"
 SHARED_NEED = "Orem pela viagem de barco até a aldeia de Pedra Clara"
 
+#: A create the console would send: the four required fields and a place that derives to ``HOME``.
+CREATE = {
+    "id": "junco-vale",
+    "languageName": "Língua Junco",
+    "bridgeLanguage": "Português",
+    "team": "Base Junco",
+    "objective": ["NT"],
+    "location": "Vale Novo",
+    "prayerRequests": "",
+}
+
 
 async def seed(
     db_session,
@@ -603,6 +614,107 @@ async def test_the_resource_circle_still_writes_the_rest_of_the_record(
     assert response.status_code == 200, response.text
     await db_session.refresh(project)
     assert project.prayer_requests == KEPT
+
+
+@pytest.mark.parametrize(
+    ("shared", "row"),
+    [
+        (False, {"prayerShared": True}),
+        (True, {"prayerShared": False}),
+        (None, {"category": "financial", "description": KEPT_NEED, "prayerShared": True}),
+    ],
+    ids=["shares-a-kept-need", "unshares-a-shared-need", "raises-a-need-already-shared"],
+)
+async def test_the_resource_circle_may_not_decide_what_a_need_shares(
+    client, db_session, circle, shared, row
+) -> None:
+    """A need's ``prayerShared`` is an authorization like the project's visibility: the role that
+    shares with the network does not decide it, in either direction, on a need it raises or on
+    one that exists. Nothing is written and nothing reaches the wall or the Pulse."""
+    project = await seed(db_session, "vime-vale")
+    existing = None
+    if shared is not None:
+        existing = await need(db_session, project, KEPT_NEED, shared=shared)
+        row = {"id": existing.id, **row}
+
+    response = await patch(client, circle, project.id, {"needsItems": [row]})
+
+    assert response.status_code == 403, response.text
+    assert "prayerShared" in response.text
+    stored = (await db_session.execute(select(ShemaNeed))).scalars().all()
+    assert [(item.id, item.prayer_shared) for item in stored] == (
+        [] if existing is None else [(existing.id, shared)]
+    )
+    await db_session.refresh(project)
+    assert project.version == 1
+    if not shared:
+        assert await wall(client, circle) == []
+        assert KEPT_NEED not in await pulse(client, circle)
+
+
+async def test_the_resource_circle_still_works_the_needs_it_does_not_share(
+    client, db_session, circle
+) -> None:
+    """The needs are the Resource Circle's own work: the console re-sends the whole row, flag
+    included, and a row whose flag does not move is not a decision about it."""
+    project = await seed(db_session, "vime-serra")
+    row = await need(db_session, project, SHARED_NEED, shared=True)
+
+    response = await patch(
+        client,
+        circle,
+        project.id,
+        {
+            "needsItems": [
+                {"id": row.id, "status": "in-progress", "prayerShared": True},
+                {"category": "training", "description": "Oficina de gravação"},
+            ]
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    await db_session.refresh(row)
+    assert row.prayer_shared is True and row.status.value == "in-progress"
+    assert texts(await wall(client, circle)) == {SHARED_NEED}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"prayerVisibility": "rede", "prayerRequests": KEPT},
+        {"needsItems": [{"category": "financial", "description": KEPT_NEED, "prayerShared": True}]},
+    ],
+    ids=["authorizes-the-request", "shares-a-need"],
+)
+async def test_the_resource_circle_may_not_authorize_on_a_create_either(
+    client, db_session, circle, body
+) -> None:
+    """A create shows its author what they type, so the text is theirs to write — the decision to
+    share it is not, on a new record any more than on an old one.
+
+    The request's session is this test's, so it is rolled back here as the request's own is
+    discarded when the refusal leaves the handler: nothing was committed."""
+    payload = {**CREATE, **body}
+
+    response = await client.post(PROJECTS, json=payload, headers=circle)
+
+    assert response.status_code == 403, response.text
+    assert "prayerVisibility" in response.text or "prayerShared" in response.text
+    await db_session.rollback()
+    assert (await db_session.execute(select(ShemaProject))).scalars().all() == []
+
+
+async def test_the_resource_circle_still_creates_a_record_with_its_request_kept(
+    client, db_session, circle
+) -> None:
+    """The console's create sends every field it holds, the empty request among them."""
+    response = await client.post(
+        PROJECTS, json={**CREATE, "prayerRequests": KEPT, "needsItems": []}, headers=circle
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["prayerVisibility"] is None
+    assert await wall(client, circle) == []
 
 
 @pytest.mark.parametrize("role_key", ["coordinator", "obtLab", "globalStrategist"])

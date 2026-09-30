@@ -25,6 +25,7 @@ from app.services.authorization import list_roles
 from app.services.resource_request import (
     CAPABILITIES,
     CAPABILITY_ROLES,
+    RETIRED_ROLES,
     ROLE_CAPABILITIES,
     ROLES,
     holds_capability,
@@ -99,8 +100,13 @@ def test_the_map_is_the_emission_capability_by_capability() -> None:
 
 
 def test_the_roles_are_the_ones_this_app_seeds() -> None:
-    """The map and the role rows have to name the same four, or a cell reaches nobody."""
-    assert sorted(ROLES) == sorted(APP_ROLES_OVERRIDE[APP_KEY])
+    """The map and the role rows have to name the same roles, or a cell reaches nobody.
+
+    The seed also carries the retired ones (FE-49, OBT-517): a row existing installations
+    have, holding no capability here.
+    """
+    assert sorted(ROLES + RETIRED_ROLES) == sorted(APP_ROLES_OVERRIDE[APP_KEY])
+    assert not set(ROLES) & set(RETIRED_ROLES)
     assert sorted(ROLE_CAPABILITIES) == sorted(ROLES)
 
 
@@ -156,17 +162,12 @@ async def test_a_team_token_reaches_no_evaluation_and_no_fund(db_session, client
         assert capability in res.json()["detail"]
 
 
-async def test_the_lider_endorses_and_does_nothing_else(db_session, client, rrf_app) -> None:
-    """GATE-02 D2, the narrowest of the four: one capability, and none of the others.
+async def test_a_retired_lider_grant_opens_nothing(db_session, client, rrf_app) -> None:
+    """The Líder de Base's role row survives the retirement (FE-49, OBT-517) and holds nothing.
 
-    Since BE-23 (OBT-535) this pins **the mirror** and nothing a route reads: the leader has no
-    account and endorses by link, and no guard asks for ``endorse_request``. The row stays
-    until FE-49 (OBT-517) re-emits the table without it.
-
-    Named beside the team's sweep for the same reason that one is: this is the guarantee
-    the endorsement model rests on. The Líder who could edit would sign what he himself
-    wrote, and the Líder who could see the evaluation would read what §5.3 closes to
-    everyone outside the mesa and the Gestor.
+    ``20260930_rr12`` revoked every grant on it, and the map no longer names it — so a grant
+    that somehow survived answers 403 on every capability, which is the whole point of
+    retiring a role rather than leaving it in the table with a column nobody reads.
     """
     user = await make_user(db_session, email="lider@rrf.test")
     await grant(db_session, user, rrf_app, "lider")
@@ -175,8 +176,7 @@ async def test_the_lider_endorses_and_does_nothing_else(db_session, client, rrf_
     for capability in CAPABILITIES:
         res = await client.get(CAP_PROBES[capability], headers=headers)
 
-        expected = 200 if capability == "endorse_request" else 403
-        assert res.status_code == expected, f"lider · {capability}: got {res.status_code}"
+        assert res.status_code == 403, f"lider · {capability}: got {res.status_code}"
 
 
 async def test_the_gestor_moves_the_board_and_does_not_score(db_session, client, rrf_app) -> None:
@@ -276,10 +276,8 @@ async def test_the_union_answers_where_one_role_alone_would_refuse(
     even if the guard read a single role and dropped the rest. This pair does not: reading
     only the first leaves ``allocate_funds`` refused, reading only the last leaves
     ``edit_evaluation`` and ``assign_fund`` refused, and the pair's whole union answers 200
-    **only** for an answer taken over it. Since BE-16 the union is no longer everything:
-    ``endorse_request`` is the Líder's alone, and the pair meeting a 403 there is the same
-    fact asserted from the other side — no accumulation of privileged roles buys the
-    signature.
+    **only** for an answer taken over it. The union is not everything either: ``grant_access``
+    and the fund verbs split between the two, which is what the per-capability loop reads.
 
     The exclusivity that keeps these two off one account is a rule of ours (28/aug/2026) and
     not a sentence of the client's, and it is applied where a grant is written rather than
@@ -299,7 +297,6 @@ async def test_the_union_answers_where_one_role_alone_would_refuse(
 
         expected = 200 if capability in union else 403
         assert res.status_code == expected, f"the union lost {capability}"
-    assert "endorse_request" not in union, "the discriminating 403 above lost its subject"
 
 
 async def test_an_account_with_no_role_is_refused_by_the_app_gate(
