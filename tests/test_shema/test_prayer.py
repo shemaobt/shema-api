@@ -470,6 +470,35 @@ async def test_a_sensitive_country_is_transformed_before_the_pulse_is_written(
     assert "• Língua Névoa — Africa" in english
 
 
+@pytest.mark.parametrize("lang", ["pt-BR", "en"])
+async def test_the_pulse_names_no_place_it_cannot_tell(client, db_session, circle, lang) -> None:
+    """``other`` is the console's *América Central* and also where every country the map does not
+    know falls, so an entry whose country the Pulse does not print — withheld, or never written —
+    goes out with no place rather than a guess, in a file that cannot be recalled."""
+    await seed(
+        db_session,
+        "sereno-lugar-secreto",
+        text=SHARED,
+        visibility=ShemaPrayerVisibility.REDE,
+        sensitive=True,
+        location="Lugar Secreto",
+        language="Língua Sereno",
+    )
+    await seed(
+        db_session,
+        "tordo",
+        text=SHARED_NEED,
+        visibility=ShemaPrayerVisibility.REDE,
+        location="",
+        language="Língua Tordo",
+    )
+
+    lines = (await pulse(client, circle, lang=lang)).splitlines()
+
+    assert "• Língua Sereno" in lines and "• Língua Tordo" in lines
+    assert not any("Central" in line or "Lugar Secreto" in line for line in lines)
+
+
 async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_base(
     client, db_session, shema_app
 ) -> None:

@@ -20,7 +20,11 @@ file prints the country, and ``tests/test_shema/test_privacy_owners.py`` reads t
 package's tree, not the type — ``app/models/`` is where a shape's rule and its sentences live.
 The region names are the console's catalogue values (``continent_*`` in the PME's ``pt-BR`` and
 ``en``), copied rather than re-derived, as ``REGION_LABEL_KEYS`` copies the keys: a file that
-leaves has no i18next to render them.
+leaves has no i18next to render them. **Six of the seven.** The console calls ``other``
+*América Central*, and ``other`` is also where every country its map does not list and every
+empty location fall (``ShemaRegionKey``, the PME's ``FALLBACK_REGION``) — so the key cannot tell
+a team in Central America from a team the server could not place, and the Pulse, which cannot be
+recalled, prints no place for it rather than a guess.
 """
 
 from __future__ import annotations
@@ -144,7 +148,6 @@ _COPY: Final[dict[PulseLanguage, _PulseCopy]] = {
             ShemaRegionKey.ASIA: "Ásia",
             ShemaRegionKey.OCEANIA: "Pacífico",
             ShemaRegionKey.EUROPE: "Europa",
-            ShemaRegionKey.OTHER: "América Central",
         },
     ),
     PulseLanguage.EN: _PulseCopy(
@@ -165,7 +168,6 @@ _COPY: Final[dict[PulseLanguage, _PulseCopy]] = {
             ShemaRegionKey.ASIA: "Asia",
             ShemaRegionKey.OCEANIA: "Pacific",
             ShemaRegionKey.EUROPE: "Europe",
-            ShemaRegionKey.OTHER: "Central America",
         },
     ),
 }
@@ -189,9 +191,9 @@ def render_prayer_pulse(
 
     The two sentences come first, before any request, so a file cut short by a forward still
     says them. Each entry is the language and the country, or the region where the country is
-    withheld, then the request as the team wrote it. No project id: the slug is
-    ``<language>-<place>``. No base, no date per entry: neither helps anybody pray, and each is
-    one more thing a forwarded file carries.
+    withheld — nothing where the region is ``other`` — then the request as the team wrote it.
+    No project id: the slug is ``<language>-<place>``. No base, no date per entry: neither helps
+    anybody pray, and each is one more thing a forwarded file carries.
     """
     copy = _COPY[language]
     lines = [
@@ -203,8 +205,8 @@ def render_prayer_pulse(
         _counted(copy, len(entries)),
     ]
     for entry in entries:
-        place = entry.country or copy.regions[entry.region]
-        heading = f"• {entry.language} — {place}"
+        place = entry.country or copy.regions.get(entry.region, "")
+        heading = f"• {entry.language} — {place}" if place else f"• {entry.language}"
         if entry.answered:
             heading = f"{heading} ({copy.answered})"
         lines.extend(["", heading])
