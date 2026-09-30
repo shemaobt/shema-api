@@ -68,7 +68,7 @@ The language the team tells back in, and which the analyst reads.
 _Avoid_: L2, Portuguese, Língua-ponte
 
 **Stretch** (`segment`; frase, in Marcia's method and her prompts):
-The persistent, addressable object of one told slice of the passage: a slice of a rehearsal take, the matching back-translation take, the transcript, the order and the pass. A correction is a new row that supersedes the previous one, never an edit.
+The persistent, addressable object of one told slice of the passage: a slice of a rehearsal take, the matching back-translation take, the transcript, the order and the pass. A correction is a new row that supersedes the previous one, never an edit. A telling with no words is refused, never a stretch.
 _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk (the ephemeral position in one reading, not this object)
 
 **Chunk**:

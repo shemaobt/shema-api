@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError
+from app.core.exceptions import ValidationError, WordlessTelling
 from app.core.stage_clock import stage, stopwatch
 from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
@@ -55,7 +55,7 @@ async def add_chunk(
     be transcribed, and a back translation nobody can listen to is a claim about a recording
     rather than the recording itself. Storing after the hearing would lose it in the two
     moments the team re-records: a transcriber that times out raises past the store, and a
-    chunk nobody could make out returns before it.
+    chunk nobody could make out is refused after it.
 
     `retelling` says the team is telling one stretch back a second time after a finding, and
     the address they send is that stretch's own. So a retelling is a **new version of the
@@ -68,15 +68,11 @@ async def add_chunk(
     A retelling of a slice no stretch currently covers is a first telling: the untold stretch
     the room leads the team to arrives with the flag on and nothing to replace.
 
-    **The attempt is counted, not the transcript.** A telling nobody could make out captures no
-    stretch, so it is counted on the row that is standing. Leaving it free meant that during a
-    transcriber outage — when every attempt comes back empty — the team could tell one stretch
-    forever without ever reaching three, and the room's only route to a person was unreachable
-    exactly when the room was broken.
-
-    That ask is a `WARNING` and not a hard stop (ENG-706): the room wants somebody to come and
-    watch, and refuses nothing — the team may go on telling. Naming the kind is what lets the
-    Desk tell this walk from the one where the room has actually stopped.
+    **A telling with no words is refused, not counted.** A transcript that is empty, or only
+    what the transcriber wrote about the audio, answers 422 `WORDLESS_TELLING` with the name of
+    the inaudible line: no stretch, no count toward the warning, and the recording stays kept.
+    A transcriber that is down is not that — it raises `UpstreamServiceError` and answers 502,
+    which the tablet sends again.
 
     `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
     slice inside **that file** — where the team let it play and where they stopped it. All
@@ -124,14 +120,8 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
-        warned = retold is not None and await room.count_an_empty_telling(db, session, retold)
-        return BackTranslationChunkResponse(
-            session_id=session.id,
-            chunks=len(told),
-            captured=False,
-            pass_number=pass_number,
-            needs_person=warned,
-        )
+        _, line = choose(FailSafe.INAUDIBLE, session.language, turn=len(session.messages or []))
+        raise WordlessTelling(line)
     warned = await room.capture_and_note_a_hard_stretch(
         db,
         session,

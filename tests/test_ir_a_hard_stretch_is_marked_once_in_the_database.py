@@ -260,8 +260,9 @@ async def test_the_second_writer_of_one_mark_loses_quietly(
     """The fourth telling finds the mark already written and asks for nobody.
 
     It is the same thing the losing writer of a race sees — a row already there — reached by
-    the road a test can drive. Both roads into the mark are taken: the telling nobody could make
-    out, and the one that was captured. Neither may ask again, and neither may touch the visit.
+    the road a test can drive. The telling nobody could make out is refused since ENG-1164 and
+    no longer counts, so it must leave the mark and the visit as they were; the one that was
+    captured is the road into the mark, and it may not ask again nor touch the visit.
 
     It is also the proof that swallowing the conflict inside a savepoint leaves the transaction
     usable on SQLite: the captured telling right after it writes and commits.
@@ -277,9 +278,8 @@ async def test_the_second_writer_of_one_mark_loses_quietly(
     unheard = await _tell(client, session_id, take_id, 1, again=True)
     captured = await _tell(client, session_id, take_id, 1, again=True, saying="e mais uma vez")
 
-    assert unheard.status_code == 200, unheard.text
+    assert unheard.status_code == 422, unheard.text
     assert captured.status_code == 200, captured.text
-    assert unheard.json()["needs_person"] is False
     assert captured.json()["needs_person"] is False
     assert len(await _marks(db_session, session_id)) == 1
     after = await _row(db_session, session_id)

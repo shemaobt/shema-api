@@ -144,15 +144,15 @@ async def test_a_transcriber_that_never_answers_does_not_take_the_stretch_with_i
     assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
 
 
-async def test_a_stretch_with_no_transcript_is_still_stored(
+async def test_a_stretch_with_no_transcript_is_refused_and_its_take_is_still_stored(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session_id, take_id = await _rehearsed(client)
 
     answer = await _tell_back(client, session_id, take_id)
 
-    assert answer.status_code == 200
-    assert answer.json()["captured"] is False
+    assert answer.status_code == 422
+    assert answer.json()["code"] == "WORDLESS_TELLING"
 
     rows = (
         (
@@ -195,17 +195,17 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     )
 
 
-async def test_a_transcriber_outage_still_counts_the_telling(
+async def test_a_transcriber_outage_counts_nothing_and_is_a_server_failure(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Every attempt comes back empty during an outage, and every one used to be free.
+    """An outage is not a telling nobody could make out: it is a 502 the tablet sends again.
 
-    `RETELLS_BEFORE_A_WARNING` was never reached, so the room's only route to a person was
-    unreachable exactly when the room was broken. The count lives on the stretch now, and an
-    attempt nobody could make out captures no stretch — so it is counted on the row that is
-    standing, which is the one the team was telling.
+    The empty answer used to be counted so that the room's route to a person stayed open while
+    the room was broken. A telling with no words is now refused and counts nothing, and a
+    transcriber that is down raises past `heard`: neither reaches the count.
     """
     from app.api.internalization_room import back_translation as bt_api
+    from app.core.exceptions import UpstreamServiceError
 
     session_id, take_id = await _rehearsed(client)
 
@@ -216,14 +216,13 @@ async def test_a_transcriber_outage_still_counts_the_telling(
     told = await _tell_back(client, session_id, take_id)
     assert told.status_code == 200, told.text
 
-    async def _silence(*_: Any, **__: Any) -> str:
-        return ""
+    async def _down(*_: Any, **__: Any) -> str:
+        raise UpstreamServiceError("a transcricao esta fora do ar")
 
-    monkeypatch.setattr(bt_api, "heard", _silence)
+    monkeypatch.setattr(bt_api, "heard", _down)
     outage = await _tell_back(client, session_id, take_id, retelling="true")
 
-    assert outage.status_code == 200, outage.text
-    assert outage.json()["captured"] is False
+    assert outage.status_code == 502, outage.text
     db_session.expire_all()
     standing = list(
         (
@@ -234,9 +233,7 @@ async def test_a_transcriber_outage_still_counts_the_telling(
             )
         ).scalars()
     )
-    assert [one.tellings for one in standing] == [2], (
-        "durante uma queda toda tentativa volta vazia, e nenhuma delas contava"
-    )
+    assert [one.tellings for one in standing] == [1], "uma queda não é uma tentativa contada"
 
 
 async def test_reaching_the_number_warns_and_still_takes_the_next_telling(
@@ -314,9 +311,15 @@ async def test_a_stretch_whose_slice_is_not_a_slice_is_refused(
 
 
 async def test_a_stretch_with_a_real_slice_is_still_accepted(
-    client: httpx.AsyncClient,
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The positive control: a rule that refused every slice would pass the case above."""
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a equipe contou o trecho"
+
+    monkeypatch.setattr(bt_api, "heard", _heard)
     session_id, take_id = await _rehearsed(client)
 
     accepted = await _tell_back(client, session_id, take_id)
