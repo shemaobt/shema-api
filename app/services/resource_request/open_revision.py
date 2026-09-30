@@ -1,8 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError
-from app.db.models.auth import User
+from app.core.exceptions import AuthorizationError, ConflictError
 from app.db.models.resource_request import (
     RRBudgetLine,
     RRDecision,
@@ -13,10 +12,30 @@ from app.db.models.resource_request import (
 )
 from app.services.resource_request._editing import require_reviser
 from app.services.resource_request._instance import flush_the_instance, refuse_a_second_open
-from app.services.resource_request.get_request import get_request
+from app.services.resource_request._link_actor import LinkActor
+from app.services.resource_request._writer import Writer
+from app.services.resource_request.read_as import request_for
 
 
-async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: str) -> RRRequest:
+async def _require_reviser(
+    db: AsyncSession, request: RRRequest, writer: Writer, app_key: str
+) -> None:
+    """``require_reviser`` for a person; for a request link, the link that started the request.
+
+    A link's holder has no account and no board to stand on, so the only link that reopens a
+    request is the one in ``started_by_link_id`` — the pen of the original, as a person's is
+    ``started_by``. Another link never reaches the request at all (404 from ``request_for``).
+    """
+    if isinstance(writer, LinkActor):
+        if request.started_by_link_id != writer.link.id:
+            raise AuthorizationError("Only the link that started this request opens its revision.")
+        return
+    await require_reviser(db, request, writer, app_key)
+
+
+async def open_revision(
+    db: AsyncSession, request_id: str, writer: Writer, app_key: str
+) -> RRRequest:
     """Reopen an evaluated request as a new draft, linked back to what was evaluated.
 
     A revision is a **new row**, never an edit. The mesa's comments reference section
@@ -69,9 +88,16 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
     so does ``leader_email`` (BE-23, OBT-535): the revision goes back to the same base leader
     unless the team changes the address, which is exactly what a revision is for. Its new
     link is issued when the revision is submitted, like any other.
+
+    **A request entered by the Admin's link revises under that link** (FE-55, OBT-542). Its
+    holder reopens it — the link that started it, never another — and the revision inherits
+    ``request_link_id`` and ``started_by_link_id``, so the pen stays with the link and the new
+    draft is still that link's one open instance: ``refuse_a_second_open`` reads the link when
+    there is no project. Copied for whoever opens it — the board reopening a link's request
+    leaves it the link's, as its reopening a project's leaves it the project's.
     """
-    loaded = await get_request(db, request_id, user, app_key)
-    await require_reviser(db, loaded.request, user, app_key)
+    loaded = await request_for(db, request_id, writer, app_key)
+    await _require_reviser(db, loaded.request, writer, app_key)
 
     snapshot = (
         await db.execute(
@@ -108,9 +134,11 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
         created_by=original.created_by,
         started_by=original.started_by,
         shema_project_id=original.shema_project_id,
+        request_link_id=original.request_link_id,
+        started_by_link_id=original.started_by_link_id,
         revision_of_id=snapshot.id,
     )
-    await refuse_a_second_open(db, original.shema_project_id)
+    await refuse_a_second_open(db, original.shema_project_id, link_id=original.request_link_id)
     db.add(revision)
     await flush_the_instance(db)
 

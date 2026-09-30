@@ -60,12 +60,14 @@ class LinkCodeIn(BaseModel):
 
 
 class LinkSessionOut(BaseModel):
-    """The link session: a bearer token for this module's routes, and when it dies."""
+    """The link session: a bearer token for this module's routes, when it dies, and the link's
+    address — whole, because the code that was sent to it has just been typed (FE-55)."""
 
     model_config = ConfigDict(extra="forbid")
 
     session: str
     expires_at: datetime
+    email: str
 
 
 @router.get("/link/{token}")
@@ -87,7 +89,9 @@ async def verify_link(
     expired or revoked link — the fifth wrong code included — is 410."""
     outcome = await service.verify_request_link(db, token, body.code)
     if isinstance(outcome, service.Verified):
-        return LinkSessionOut(session=outcome.session, expires_at=outcome.expires_at)
+        return LinkSessionOut(
+            session=outcome.session, expires_at=outcome.expires_at, email=outcome.email
+        )
     if outcome.reason == "gone":
         return JSONResponse(
             status_code=status.HTTP_410_GONE,

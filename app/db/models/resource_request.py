@@ -551,6 +551,12 @@ class RRAttachment(Base):
     reason: the file entered the record under somebody's name, and that name is part of
     what the mesa relied on.
 
+    **The name may be a link's** (FE-55, OBT-542): whoever fills a request by the Admin's link
+    has no account, so ``uploaded_by`` is nullable and ``uploaded_by_link_id`` names the link —
+    the pair ``rr11`` gave the request's trail, for the same reason. Writing the issuing Admin's
+    id would make the record say the Admin sent a file the team sent.
+    ``ck_rr_attachments_one_author`` holds exactly one of the two.
+
     ``attachment_note`` is untouched by all of this: it stays one of the contract's 45
     text keys inside ``rr_request_sections.content``, the free note beside the file — a
     team that cannot upload still says what it sent.
@@ -566,6 +572,10 @@ class RRAttachment(Base):
             postgresql_where=text("superseded_at IS NULL"),
             sqlite_where=text("superseded_at IS NULL"),
         ),
+        CheckConstraint(
+            "(uploaded_by IS NULL) <> (uploaded_by_link_id IS NULL)",
+            name="ck_rr_attachments_one_author",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -577,7 +587,12 @@ class RRAttachment(Base):
     size_bytes: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     storage_key: Mapped[str] = mapped_column(String(512))
-    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    uploaded_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    uploaded_by_link_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("rr_request_links.id"), nullable=True
+    )
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
