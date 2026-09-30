@@ -703,7 +703,12 @@ async def test_the_resource_circle_still_works_the_needs_it_does_not_share(
         project.id,
         {
             "needsItems": [
-                {"id": row.id, "status": "in-progress", "prayerShared": True},
+                {
+                    "id": row.id,
+                    "status": "in-progress",
+                    "description": SHARED_NEED,
+                    "prayerShared": True,
+                },
                 {"category": "training", "description": "Oficina de gravação"},
             ]
         },
