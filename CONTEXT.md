@@ -45,6 +45,10 @@ _Avoid_: panel, dashboard, Mesa
 A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 
+**Attention** (*Atendimento*):
+The Desk's page of everything that waits for an action of the facilitator across every team: the halted rooms, the rooms under a warning, the open raised hands and the halted tablets, each with its reason and since when. A finished passage waits for nobody there.
+_Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
+
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
 _Avoid_: bot, assistant, Sala
@@ -240,6 +244,10 @@ _Avoid_: blockage, lockup, Parada
 **Halt kind** (`halt_kind`):
 Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
+
+**Halt reason** (`halt_reason`):
+Why the room asked for a person, in one of five families the tablet names when it asks: the device was refused, the server kept failing, the sound or the recorder failed, the session was lost, or the room and the server disagree. A warning's reason is the hard stretch. A halt that names none reads as "the room stopped".
+_Avoid_: cause, error, message, detail, Motivo da parada
 
 **Warning**:
 The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
