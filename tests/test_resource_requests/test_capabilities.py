@@ -159,6 +159,10 @@ async def test_a_team_token_reaches_no_evaluation_and_no_fund(db_session, client
 async def test_the_lider_endorses_and_does_nothing_else(db_session, client, rrf_app) -> None:
     """GATE-02 D2, the narrowest of the four: one capability, and none of the others.
 
+    Since BE-23 (OBT-535) this pins **the mirror** and nothing a route reads: the leader has no
+    account and endorses by link, and no guard asks for ``endorse_request``. The row stays
+    until FE-49 (OBT-517) re-emits the table without it.
+
     Named beside the team's sweep for the same reason that one is: this is the guarantee
     the endorsement model rests on. The Líder who could edit would sign what he himself
     wrote, and the Líder who could see the evaluation would read what §5.3 closes to

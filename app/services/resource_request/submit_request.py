@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,11 +9,27 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest, RRSnapshot
 from app.models.resource_request import RequestSubmissionIn
 from app.services.resource_request._document import document
+from app.services.resource_request._endorsement import issue_endorsement
 from app.services.resource_request._link_actor import LinkActor
 from app.services.resource_request._notices import post
 from app.services.resource_request.notify_arrival import notify_arrival
 from app.services.resource_request.notify_link import receipt_letter
 from app.services.resource_request.read_as import request_for
+
+
+def _requester_email(user: User | LinkActor) -> str:
+    """Who is asking: the link's address, or the starter's account — the only caller that
+    gets this far, by the check above."""
+    email = user.link.email if isinstance(user, LinkActor) else user.email
+    return email.strip().lower()
+
+
+def _leader_fault(leader_email: str, requester_email: str) -> str | None:
+    if not leader_email:
+        return "the base leader's e-mail is required: the endorsement link goes there"
+    if leader_email == requester_email:
+        return "the base leader cannot be whoever requests: a requester never endorses"
+    return None
 
 
 class Submitted(NamedTuple):
@@ -84,6 +100,15 @@ async def submit_request(
     request that was legitimately submitted. Only that half was answered; whether there is a
     paper archive to migrate is still open and was never this function's.
 
+    **The base leader's e-mail is required, and it is never the requester's own** (BE-23,
+    OBT-535): the endorsement link goes to that address, and *solicitante nunca endossa* —
+    Daniel, 23/set. The requester is the link's address when a link submits and the
+    starter's account otherwise, compared lower-cased. Both faults ride the same located
+    400 as an unanswered question (``loc: ["leader_email"]``), so the screen marks the
+    field. **Submitting issues the endorsement link** (``_endorsement.issue_endorsement``):
+    the link is born with the complete form and never before it — Daniel, 25/set — in this
+    transaction, and its letter leaves with the others, after the commit.
+
     Nothing here moves the card. A submitted request is in ``triagem`` because that is where
     it was created, and every stage change afterwards is BE-08's with its ledger movement
     attached.
@@ -116,6 +141,7 @@ async def submit_request(
         raise ConflictError("This request was already submitted.")
 
     frozen = document(*loaded)
+    located: list[dict[str, Any]] = []
     try:
         RequestSubmissionIn.model_validate(frozen)
     except PydanticValidationError as incomplete:
@@ -123,15 +149,24 @@ async def submit_request(
         # truncated dump of the stored document, which is what made the sentence
         # unparseable and made the frontend's key scan invent faults. The other two only
         # drop noise a client has no use for — a docs URL and Pydantic's own context.
-        located = incomplete.errors(include_url=False, include_context=False, include_input=False)
+        located = [
+            {"loc": list(error["loc"]), "msg": error["msg"]}
+            for error in incomplete.errors(
+                include_url=False, include_context=False, include_input=False
+            )
+        ]
+    leader = _leader_fault(loaded.request.leader_email, _requester_email(user))
+    if leader is not None:
+        located.append({"loc": ["leader_email"], "msg": leader})
+    if located:
         raise IncompleteSubmission(
             "This request cannot be submitted yet: "
             + "; ".join(
                 f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
                 for error in located
             ),
-            [{"loc": list(error["loc"]), "msg": error["msg"]} for error in located],
-        ) from None
+            located,
+        )
 
     snapshot = RRSnapshot(request_id=request_id, document=frozen)
     db.add(snapshot)
@@ -141,6 +176,9 @@ async def submit_request(
     letters = await notify_arrival(db, request=loaded.request, actor_id=actor_id, app_key=app_key)
     if isinstance(user, LinkActor):
         letters.append(await receipt_letter(db, loaded.request, user.link))
+    endorsement = await issue_endorsement(db, loaded.request)
+    if endorsement is not None:
+        letters.append(endorsement)
 
     await db.commit()
     await db.refresh(loaded.request)

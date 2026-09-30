@@ -65,7 +65,10 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
     ``endorsed_at`` stay at their defaults on the new row) nor the display pair born from
     it (BE-16): a signature given to a frozen version does not follow a text that is about
     to change, and a revision goes back to its base's leader like any other new document.
-    ``tpp_name``/``tpp_date`` do carry — typed content of the team's, not a server act.
+    ``tpp_name``/``tpp_date`` do carry — typed content of the team's, not a server act — and
+    so does ``leader_email`` (BE-23, OBT-535): the revision goes back to the same base leader
+    unless the team changes the address, which is exactly what a revision is for. Its new
+    link is issued when the revision is submitted, like any other.
     """
     loaded = await get_request(db, request_id, user, app_key)
     await require_reviser(db, loaded.request, user, app_key)
@@ -101,6 +104,7 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
         declaration=original.declaration,
         tpp_name=original.tpp_name,
         tpp_date=original.tpp_date,
+        leader_email=original.leader_email,
         created_by=original.created_by,
         started_by=original.started_by,
         shema_project_id=original.shema_project_id,

@@ -222,6 +222,7 @@ def test_every_key_of_a_document_reaches_the_trail() -> None:
     moved: dict[str, Any] = {
         "request_type": "treinamento",
         "currency": "USD",
+        "leader_email": "outro@base.org",
         "declaration": not doc["declaration"],
         "fields": {**doc["fields"], "reg_name": "outro nome"},
         "langs": [{"name": "Xerente", "code": "xer"}],

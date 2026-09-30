@@ -132,7 +132,7 @@ a migration, not a refactor."*
 | `languages` | **Not shared. No FK.** | The form's A1 stores language name, ISO code, family, dialects, speaker count and literacy rate as **free text typed by the team**, next to vocabulary answers for vitality and writing system (contract §1.2). `languages` is `name` plus a unique three-character `code`. A FK would reject exactly the population this product serves — the contract's own vocabulary has *língua ágrafa* as a first-class answer. Text fields. |
 | `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. This row carried a condition — *if GATE-02 answers team access with an org* — and **the gate answered with individual accounts** (D1), so the condition never fires. The one shape that could still reach for it is BE-16's Líder de Base, who endorses *"que o projeto pertence à base dele"*: a base is not an `organizations` row today, and whoever builds it decides whether it becomes one. |
 | `phases`, `project_phases` | **Not applicable.** | The board's six columns are this product's own key space (contract §4.1) and are not workflow phases of a translation project. |
-| `notifications` | **Shared, and used as it stands** (BE-13, OBT-480). | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, and GATE-03 D5/D6 gave it an owner. This row's own instruction was followed literally — the existing table was read rather than a new one built. What the module added around it: `get_rr_app_id` beside its two siblings, a `commit=False` flag on `create_notification` so a caller that owns its transaction can stage a notice **inside** it, and **no detail table** — `notification_meaning_map_details` is one application's, and a resource-request one would have no reader until something deep-links. (The PME's copy of the same two notices has one reader and one table, in the Shemá module — §5.4.6.) Recipients are read through the auth spine (`authorization_service.list_role_holders`), never by this module joining `user_app_roles` itself: §2.2 above. |
+| `notifications` | **Shared, and used as it stands** (BE-13, OBT-480). | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, and GATE-03 D5/D6 gave it an owner. This row's own instruction was followed literally — the existing table was read rather than a new one built. What the module added around it: `get_rr_app_id` beside its two siblings, a `commit=False` flag on `create_notification` so a caller that owns its transaction can stage a notice **inside** it, and **no detail table** — `notification_meaning_map_details` is one application's, and a resource-request one would have no reader until something deep-links. (The PME's copy of the same two notices has one reader and one table, in the Shemá module — §5.4.7.) Recipients are read through the auth spine (`authorization_service.list_role_holders`), never by this module joining `user_app_roles` itself: §2.2 above. |
 | `permissions`, `role_permissions` | **Not usable.** | They exist as tables and are **not wired into `access_control.py`** — the guards check roles only. See §5.4. |
 
 ### 2.4 There is no Shemá module to coexist with — **finding**
@@ -332,7 +332,7 @@ Two things are decided and two are BE-02's:
 not projection* is a statement about serializers — there is one builder, so the freeze cannot
 drift from the read path by being written twice. It was never a promise that a later read of
 a submitted request returns the snapshot's bytes, and since the endorsement exists it is not
-one: `endorse_request` writes `leader_name` and `leader_date` on the spine **after** the
+one: the endorsement (`endorse_by_link` since BE-23, §5.4.6) writes `leader_name` and `leader_date` on the spine **after** the
 freeze. **The snapshot carries the document as submitted; the live request carries the
 endorsed line** (BE-16, OBT-476, 30/aug/2026 — PR #281, review). Three things agree on it:
 `rr_snapshots` is append-only in the database, so re-stamping is not an available shape; a
@@ -598,12 +598,12 @@ fourth role exists for:
 | `move_board` | — | ✅ | **✅** | — | **GATE-02 D3** — the cell that moved |
 | `assign_fund` | — | ✅ | — | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
 | `allocate_funds` | — | — | ✅ | — | **GATE-01 D6** — the first capability the mesa does not hold |
-| `endorse_request` | — | — | — | **✅** | **GATE-02 D2** — the Líder's only verb (BE-16) |
+| `endorse_request` | — | — | — | **✅** | **GATE-02 D2** — the Líder's only verb (BE-16). **A mirror with no reader since BE-23** (§5.4.6): the leader endorses by link, with no account |
 
-**Reading is not a row of this table and must not become one.** The Líder holds no
-`edit_requests` and still has to read what he signs, so `CanReadRequests` is an **OR** over
-`edit_requests` and `endorse_request` — the one alias in `_deps.py` built on two capabilities.
-Which rows that reading reaches is `_scope.py`'s and not a capability at all (§6.2).
+**Reading is not a row of this table and must not become one.** It rides on `edit_requests`,
+and which rows it reaches is `_scope.py`'s and not a capability at all (§6.2). Until BE-23 the
+Líder read through an **OR** over `edit_requests` and `endorse_request` (`CanReadRequests`); that
+alias left with his account (§5.4.6).
 
 Mirror it from `src/auth/capabilities.ts` field for field; that file is the owner and this is
 the copy. Two things about it are easy to get wrong from the table alone. **`manage_funds` is
@@ -611,9 +611,9 @@ the Painel's entry gate**, not a money permission — narrowing it to make room 
 `allocate_funds` would take the whole panel away from the mesa. And **`assign_fund` and
 `allocate_funds` are control capabilities, not screen ones**: they live inside a surface some
 other capability already opened, which is why neither adds a route of its own.
-`endorse_request` is the third control capability and the exception to that second half — it
-sits on a screen the Líder reaches through `CanReadRequests`, and the act itself needs a
-route (`POST /requests/{id}/endorse`).
+`endorse_request` was the third control capability and the exception to that second half —
+its act had a route, `POST /requests/{id}/endorse`, which BE-23 removed with the account behind
+it (§5.4.6).
 
 **Two of those cells were re-asked on 28/aug/2026, and both came back where they were.**
 `edit_evaluation` had been recorded as *confirmed rather than merely left standing* while the
@@ -642,7 +642,8 @@ capability and the mesa does not hold it, `POST /requests/{id}/endorse` is the a
 rows he reads is `_scope.py`'s — every submitted request and no draft of another team. The
 rule that an unendorsed request does not proceed is written on `RRRequest` and enforced by
 BE-08's transition service, which is the one half that does not land here. It is the only
-issue that touches both repositories.
+issue that touches both repositories. **BE-23 (OBT-535) retired the account** — the leader
+endorses by a link with a code — and with it the route, the scope and the guard (§5.4.6).
 
 Four of the eight are held by **more than one role**, and `require_role` cannot express an
 OR. Guarding `view_evaluation` as `MesaUser` would refuse the Gestor, whose whole point is
@@ -731,7 +732,8 @@ reads change, and they change together so they cannot disagree:
 `20260928_rr08` adds the column, **revokes** every live `equipe` grant of this app and turns
 `auto_approve` off. Three things GATE-04 D5 asks for that it deliberately does not do: the
 `equipe` role row stays (a key of the capability table, pinned by tests and by the seed script);
-`lider` stays until OBT-535's link endorsement exists; and the existing test requests are **not**
+`lider` stays until OBT-535's link endorsement exists — `20260930_rr12` revokes its grants
+(§5.4.6); and the existing test requests are **not**
 deleted, because four tables here are append-only and deleting them means lifting
 `rr_reject_write()` and erasing ledger movements — its own reviewed step. `_default_roles.py`
 keeps mapping the app to `equipe` for the platform's `test_every_app_is_approvable`: with
@@ -892,7 +894,7 @@ not a project's — and holds `edit_requests` for them alone.
 What PR B built, and where the contract above met the code:
 
 - **The resolver is `reader_with` in `_deps.py`**, and only the four reads a team makes take it:
-  `GET /requests`, `GET /requests/{id}`, `GET /requests/cards` (`RequestReader`, *edit or endorse*)
+  `GET /requests`, `GET /requests/{id}`, `GET /requests/cards` (`RequestReader`, *edit*; *or endorse* until BE-23)
   and `GET /requests/{id}/status` (`TeamReader`, *edit*). A link session answers `LinkActor`;
   any other bearer takes the user path this module already had — the door, then the capability —
   unchanged. Every other route keeps its user-only guard, so a link session is **401** there.
@@ -950,15 +952,81 @@ What PR C built, and where it met the contract:
   Admin's answer still carries both), the receipt on submission, the decision. The later two cannot
   carry the link again — only its digest is stored — so they say to open the link already received.
 - **What this issue does not do, named rather than implied:**
-  - **the leader's e-mail differing from the link's is not checked**, because the form has no
-    leader-e-mail field yet: it arrives with the endorsement by link (OBT-535, OBT-540), and that
-    rule is theirs to enforce where the field is born;
+  - ~~**the leader's e-mail differing from the link's is not checked**~~ — **closed by BE-23**
+    (§5.4.6): `submit_request` refuses a `leader_email` equal to the link's address, as it does
+    the starter's account;
   - **the budget attachment by link** — `store_attachment` still takes a user — which FE-55
     (OBT-542) needs if a link holder is to attach a file;
   - **the revision by link**, after a *revisar* decision: the holder reads the decision and cannot
     reopen yet.
 
-### 5.4.6 The form's notices in the PME's bell — **Built** (BE-21, OBT-541, 29/sep/2026)
+### 5.4.6 The base leader endorses by link, with no account — **Built** (BE-23, OBT-535, 30/sep/2026)
+
+The 22/set meeting took the Líder de Base's account away (OBT-522). Karina, 25/set: *"o líder
+continua entrando por link de código… o link é emitido através das informações dadas pela
+equipe"*; Daniel, 25/set: *"o link só pode ficar disponível após todo o forms ser preenchido"*;
+Daniel, 23/set: *solicitante nunca endossa*.
+
+**The model.**
+
+- `rr_requests.leader_email` — typed by the team in the draft, **beside `fields` and not inside
+  it**: it is where the act is sent, not one of the contract's 45 answers, so the emitted
+  vocabulary does not move. Validated as an address and lower-cased on every save; it travels in
+  `document()` (so `PATCH` round-trips it, the trail records it and the snapshot freezes it) and a
+  revision inherits it.
+- **`submit` requires it and refuses the requester's own** — the starter's account, or the link's
+  address for a link request (§5.4.5), compared lower-cased. Both faults ride the located 400 as
+  `loc: ["leader_email"]`, beside any unanswered question, so the screen marks the field.
+- **Submitting issues the link** (`_endorsement.issue_endorsement`): `rr_endorsement_links` holds the
+  request, the address, the two digests (`tokens.mint`/`mint_code`, BE-20), attempts, a **14-day**
+  expiry (`rr_endorsement_link_expire_days`), `verified_at`, `used_at` and `revoked_at`. **One live
+  link per request** (`uq_rr_endorsement_links_one_live`, *not used and not revoked*). The letter
+  (`rr_endorsement.html.jinja`) carries `{app_url}/endossar/{token}` and the code in its own line,
+  and leaves **after the commit** with the arrival notices (BE-12); with no `app_url` none leaves.
+- **The public door** (`endorse.py`), no session, the request link's two stacked limits:
+
+  ```
+  GET  /api/resource-requests/endorse/{token}          → status, email_hint, request_name, expires_at,
+                                                          document (the frozen snapshot; only once verified)
+  POST /api/resource-requests/endorse/{token}/verify   {code}        → 200 · 401 ENDORSEMENT_CODE_WRONG
+                                                                        (attempts_left) · 410 ENDORSEMENT_LINK_GONE
+  POST /api/resource-requests/endorse/{token}          {leader_name} → 200 · 403 unverified · 409 twice · 410 gone
+  ```
+
+  `status` is `pending` · `verified` · `endorsed` · `expired` · `revoked`. **No link session**: the
+  leader reads one request and signs once, so `verified_at` on the row is the proof the read and the
+  act check — a session would be a second credential to revoke for no second use. The fifth wrong
+  code revokes, the right one zeroes the count, and a spent link still verifies **until it
+  expires**, so the leader can reread what was signed within the fourteen days. **An endorsed
+  link reads `endorsed` for good** — the invite's order, *used* before *expired* and before
+  *revoked*, because this link is spent by one act — while the document stops being served when
+  the link dies (PR #579, review).
+- **The stamp is the link's**: `endorsed_at`, `endorsed_email` (the link's address),
+  `endorsement_link_id`, `leader_name` (typed on the page — there is no account to read it from) and
+  `leader_date`; `used_at` on the link, spent by a guarded `UPDATE … WHERE used_at IS NULL`, so two
+  endorsements at once are one. `endorsed_by` stays for the endorsements BE-16's accounts gave and
+  nothing writes it. `RequestOut` carries `endorsed_email`.
+- **The document the leader reads is the snapshot** — Partes A and B as submitted, no evaluation.
+  There is nothing to redact beyond that: the form asks no country and no base.
+- **The Admin's resend**, `POST /requests/{id}/endorsement/resend` — the Admin alone
+  (`require_link_admin`), a session at the door like the request links: revokes the live link and
+  mails a fresh one. It answers `{sent}` and **no secret** — the Admin reading the code would be one
+  more person able to endorse. A draft, an endorsed request, or one that **names no leader** — every
+  request submitted before `20260930_rr12` — is **409**; `sent` is what the provider accepted, not
+  whether a letter was built (PR #579, review). A different leader is a revision (FE-47), not a
+  resend.
+- **The board already refused an unendorsed card** (`guard_endorsement`, 4/set/2026); this issue
+  tests that the link's act is what opens `analise`.
+
+**What left.** `endorse_request.py` and `POST /requests/{id}/endorse`; `CanEndorseRequest`,
+`CanReadRequests` and `require_any_capability`; the Líder's *submitted* reach in `_scope.py`
+(`Reach` keeps `every` alone); and every live `lider` grant, revoked by `20260930_rr12` as `rr08`
+revoked `equipe`. **What stays, on purpose:** the `lider` row and the `endorse_request` column of
+the capability map, the seed and the vendored `capabilities.json` — a mirror of the frontend's
+emission that `test_capabilities.py` pins. Nothing on the server reads either; they leave when
+FE-49 (OBT-517) retires the role on the form and re-emits.
+
+### 5.4.7 The form's notices in the PME's bell — **Built** (BE-21, OBT-541, 29/sep/2026)
 
 The decision and the arrival (BE-13) were written only into this app, and the PME's bell reads
 the `shema` app — so somebody who works only in the PME never heard either. Both notifiers now

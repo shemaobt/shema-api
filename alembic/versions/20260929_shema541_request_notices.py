@@ -1,12 +1,13 @@
 """shema_request_notices: what a resource-request notice in the PME's bell points at and says
 
 Revision ID: 20260929_shema541
-Revises: 20260929_rr11
+Revises: 20260930_rr12
 Create Date: 2026-09-29
 
 OBT-541 (BE-21). The parent was `20260929_rr09` when this file was written (29/sep/2026); the
 same day OBT-537 merged `20260929_rr10` and `rr11` into `dev`, and it was re-pointed to
-`20260929_rr11`, the head `alembic heads` read after merging — a measurement, not a value to
+`20260929_rr11`; on 30/sep OBT-535 merged `20260930_rr12` on top of that, and it was re-pointed
+again, to `20260930_rr12` — each time the head `alembic heads` read after merging — a measurement, not a value to
 remember (`docs/shema.md` §7.1). The id carries the issue number, as `20260927_shema524`,
 `shema531` and `shema543` do, so two siblings cannot mint the same `shemaNN`.
 
@@ -32,7 +33,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260929_shema541"
-down_revision: str | None = "20260929_rr11"
+down_revision: str | None = "20260930_rr12"
 branch_labels = None
 depends_on = None
 

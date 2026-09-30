@@ -20,6 +20,7 @@ from fastapi import APIRouter
 from app.api.resource_requests.allocations import router as allocations_router
 from app.api.resource_requests.attachments import router as attachments_router
 from app.api.resource_requests.board import router as board_router
+from app.api.resource_requests.endorse import router as endorse_router
 from app.api.resource_requests.evaluations import router as evaluations_router
 from app.api.resource_requests.fund_assignment import router as fund_assignment_router
 from app.api.resource_requests.funds import router as funds_router
@@ -40,4 +41,5 @@ router.include_router(attachments_router)
 router.include_router(history_router)
 router.include_router(links_router)
 router.include_router(link_public_router)
+router.include_router(endorse_router)
 router.include_router(me_router)
