@@ -32,6 +32,7 @@ from app.services.internalization_room.back_translation import (
     current_findings,
     findings_after_correction,
     findings_block,
+    findings_on_stretches_that_count,
     findings_remaining,
     segments_block,
     the_finding_that_leads,
@@ -42,6 +43,8 @@ from app.services.internalization_room.background import the_correction_ahead, t
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.segments import told_back as stretches_told_back
 from app.services.internalization_room.sessions import append_exchange, save_back_translation
 from app.services.internalization_room.takes import current_parts
 from app.services.internalization_room.validated_turn import TurnOutcome
@@ -150,6 +153,8 @@ async def check_the_telling_back(
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
+    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
+
     if not state.findings and state.verified_since_whole_reading:
         closing = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
@@ -221,12 +226,26 @@ async def save_the_spoken_verdict(
     Called once the words exist as audio, or once the caller has decided there will be none.
     A verdict stored before its clip would be served back by the repeat-press guard as a turn
     the team heard, when what they heard was the error.
+
+    A verdict read from stretches that changed while it was being read is not stored as a
+    blessing: `checked` strikes the passage off the wheel and the cached verdict would be served
+    back for a passage the team has since recorded again. It is stored as the upload left it —
+    not checked, no verdict — and carries only findings on stretches that count.
     """
+    standing = await final_segments(db, session.id)
+    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in standing))
+    read_as_it_stands = state.already_analysed(stretches_told_back(standing))
+    if not read_as_it_stands:
+        state.checked = False
     session = await append_exchange(
         db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
     )
-    state.verdict = VoicedVerdict(
-        clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
+    state.verdict = (
+        VoicedVerdict(
+            clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
+        )
+        if read_as_it_stands
+        else None
     )
     await save_back_translation(db, session, state)
     return session
