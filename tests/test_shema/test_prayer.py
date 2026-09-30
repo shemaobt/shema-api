@@ -183,14 +183,6 @@ async def test_the_filter_the_export_reuses_yields_no_unauthorized_request(
     assert {request.text for request in authorized[shared.id]} == {SHARED, SHARED_NEED}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "OBT-403 (BE-14) builds GET /api/shema/export/projects on this branch. The test is the "
-        "third case of OBT-398's bold DoD line and is written here on purpose: when the route "
-        "arrives it passes, the suite goes red, and OBT-403 removes this mark."
-    ),
-)
 async def test_an_unauthorized_request_is_absent_from_the_export(client, strategist, mixed) -> None:
     for fmt in ("json", "csv"):
         response = await client.get(EXPORT, params={"format": fmt}, headers=strategist)
