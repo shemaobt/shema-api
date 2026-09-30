@@ -349,7 +349,15 @@ async def import_projects(
         for record in records:
             project = existing.get(record.payload.id)
             if project is None:
-                await create_project(db, scope, record.payload, user=user, day=day, commit=False)
+                await create_project(
+                    db,
+                    scope,
+                    record.payload,
+                    readership=readership,
+                    user=user,
+                    day=day,
+                    commit=False,
+                )
                 created += 1
                 continue
             payload, kept_raised = _unlowered(project, record)
