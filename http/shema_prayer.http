@@ -1,0 +1,40 @@
+# Shemá — prayer wall and Prayer Pulse (BE-09 · OBT-398)
+#
+# The wall is every request the teams authorized to be shared with the intercessor network,
+# inside the caller's region scope; the Pulse is the same list as a text file for the network.
+#
+# Three things to know before running anything below:
+#   * a request reaches either one only when it is authorized — the project's own request with
+#     `prayerVisibility: "rede"`, a need with `prayerShared: true`. NULL is `coordenacao`;
+#   * a project in a sensitive country comes back with `country: ""`, `base: ""` and
+#     `locationWithheld: true` for every role, and the Pulse names its region instead;
+#   * the Pulse is `resourceCircle`'s — any other role is refused with 403.
+#
+# Before running: seed the app and its roles, grant one, and give the account a region.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py circulo.local@test.com shema resourceCircle
+
+@baseUrl = http://localhost:8000
+@accessToken = {{shema_login.response.body.tokens.access_token}}
+
+### Login — named, so every request below reuses the token
+# @name shema_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "circulo.local@test.com",
+  "password": "password123"
+}
+
+### The wall — FE-44 §9.6's PrayerRequest[], newest first
+GET {{baseUrl}}/api/shema/prayer/requests
+Authorization: Bearer {{accessToken}}
+
+### The Prayer Pulse, in Portuguese — a text file, saved as pulso-de-oracao-<day>.txt
+GET {{baseUrl}}/api/shema/prayer/pulse
+Authorization: Bearer {{accessToken}}
+
+### The Prayer Pulse, in English
+GET {{baseUrl}}/api/shema/prayer/pulse?lang=en
+Authorization: Bearer {{accessToken}}
