@@ -1061,6 +1061,34 @@ change: the row in this app and the letter after the commit go out as before.
   ever stamps a project on a link request *and* a person as `started_by`, the decision would
   start ringing the starter — the rule reads the two columns, not where the request came from.
 
+### 5.4.8 The approval registers the link's project in the PME — **Built** (BE-23 of the PME, OBT-547, 30/sep/2026)
+
+Karina, 25/set: *"se o projeto for aprovado pela mesa ele é cadastrado sim, os membros também"*;
+Daniel, 25/set: *"sim, o admin confere antes"*. The design is the PME's, `docs/shema.md` §6.11;
+this section is what it asks of this module and what it writes here.
+
+- **One call in `save_evaluation`, and nothing else of this module changes.** When the save records
+  `approved` on a request with a `request_link_id` and no `shema_project_id`, it calls
+  `app/services/shema/create_pending_project_from_request.py` after `notify_decision` and before the
+  commit, handing it the latest snapshot's `document`, the request's id and the link's id. The PME's
+  pending project and the proposed members are staged in the decision's transaction, so a decision
+  that rolls back files nothing. `conditional`, `revise` and `declined` call nothing. The Shemá
+  module imports no service of this one — only the models — as `_request_notices.py` already does.
+- **What it reads of the document**: `fields.reg_name`, `lang_name`, `lang_iso`,
+  `people_location`, `tr_location` and `tpp_name`; the first row of `langs`; the `name` and `role` of
+  every `team` row. A renamed key or a reshaped table there is a change to the PME's filing too.
+- **`shema_project_id` is written later than §5.4.1 says**: not at the approval, but when the Admin
+  **confirms** the project — on every request of the link that has none, drafts included, since the
+  link stood in for a team that now has a project. A request of the link approved *after* its
+  project was confirmed is stamped at its own approval. The column's other write, at creation from a
+  member's project, is untouched. `started_by` is never written, so §5.4.7's decision notice keeps
+  going to the link's address and nowhere in the PME.
+- **Discarding leaves the request alone** — approved, with no project — and the Admin's answer says
+  so.
+
+`rr_requests` gains no column: the pending project points at the request (`source_request_id`,
+`source_link_id`, no foreign key), not the other way round.
+
 ### 5.5 Two platform behaviours to design around
 
 - **A platform admin bypasses both guards unconditionally.** `require_app_access` and
