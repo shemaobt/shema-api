@@ -143,18 +143,20 @@ COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset()
 #: The four record and collection routes, and the health-assessment ``POST``, build their
 #: answer for it. The two form imports take it because an import is a person writing the record,
 #: and ``save_project`` asks the writer's reader which fields they may write; their answer names
-#: no place. A route added here is one that reads as the caller — an export, a report or a
-#: download must not be, because what leaves is built for ``outside`` whoever asked for it.
+#: no place. The Admin's list of pending projects (OBT-547) reads the place the team typed, for
+#: the Admin to confirm or correct it, as a console read. A route added here is one that reads as
+#: the caller — an export, a report or a download must not be, because what leaves is built for
+#: ``outside`` whoever asked for it.
 #:
 #: **BE-14's two, and why neither is that route.** The projects import is the form imports'
 #: case — a person writing records, answered with a count — and asks the reader one question
 #: more, whether the importer coordinates anything, because only coordination imports. The
-#: export takes the reader to
-#: **address its header** — how many places were withheld is coordination's to be told
-#: (GATE-04, 1.3) — and builds every row for ``outside``: ``export_projects.py`` calls no
-#: ``read_by``, which :func:`test_only_the_console_reads_build_a_shape_for_the_sessions_reader`
-#: holds, and ``tests/test_shema/test_transfer.py`` exports as the region's own coordinator and
-#: finds no place in the file.
+#: export takes the reader to **address its header** — how many places were withheld is
+#: coordination's to be told (GATE-04, 1.3) — and builds every row for ``outside``:
+#: ``export_projects.py`` calls no ``read_by``, which
+#: :func:`test_only_the_console_reads_build_a_shape_for_the_sessions_reader` holds, and
+#: ``tests/test_shema/test_transfer.py`` exports as the region's own coordinator and finds no
+#: place in the file.
 READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("GET", f"{PREFIX}/projects"),
@@ -164,15 +166,17 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
         ("POST", f"{PREFIX}/forms/submissions"),
         ("POST", f"{PREFIX}/forms/submissions/{{submission_id}}/import"),
+        ("GET", f"{PREFIX}/pending-projects"),
         ("GET", f"{PREFIX}/export/projects"),
         ("POST", f"{PREFIX}/import/projects"),
     }
 )
 
-#: The two services that build a shape for the session's reader: the Projetos screen's cards
-#: and the record. Every other leaving shape in the module is built with no reader, which is
-#: ``outside``.
-SESSION_READS = frozenset({"browse_projects.py", "read_record.py"})
+#: The services that build a shape for the session's reader: the Projetos screen's cards, the
+#: record, and — OBT-547 — the Admin's list of pending projects, a console read of the place the
+#: team typed that the Admin confirms or corrects. Every other leaving shape in the module is built
+#: with no reader, which is ``outside``.
+SESSION_READS = frozenset({"browse_projects.py", "read_record.py", "list_pending_projects.py"})
 
 #: Routes under ``/api/shema`` whose subject is a **person**, not a project, so the project
 #: vocabulary above misreads their fields — BE-13's two directories.

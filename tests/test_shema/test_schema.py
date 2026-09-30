@@ -137,14 +137,16 @@ EXPORT_BACKED_NULL_IS_A_STATE = (
 #: mint new ids for the 127 that already have theirs.
 EXPORT_BACKED_PRIMARY_KEY = ("id",)
 
-#: Neither side of FE-44's cut: nine columns this schema added. Two answer a gate before it
+#: Neither side of FE-44's cut: fifteen columns this schema added. Two answer a gate before it
 #: can ask (``approved_units_unverified`` for §10 item 7, ``completed_date`` for GATE-01
 #: item 6), two are the module's own (``region_key`` derived, ``source`` the export row kept
 #: verbatim), two are the platform's housekeeping, and three are BE-06's write path:
 #: ``version`` is the value a ``PATCH`` cites in ``If-Match`` and the only counter
 #: ``save_project`` moves, and the ``updated_by`` pair is who moved it — the name is kept
 #: beside the id because the org chart can rename a person after the edit and the trail has
-#: to still read as it did.
+#: to still read as it did. The last six are OBT-547's: a project the mesa's approval filed
+#: waits for the Admin — ``pending_confirmation`` keeps it out of every read, the two sources
+#: are the request and the link that filed it, and a discard is marked with who, when and why.
 ADDED_BY_THE_SCHEMA = (
     "approved_units_unverified",
     "completed_date",
@@ -155,6 +157,12 @@ ADDED_BY_THE_SCHEMA = (
     "version",
     "updated_by",
     "updated_by_name",
+    "pending_confirmation",
+    "source_request_id",
+    "source_link_id",
+    "discarded_at",
+    "discarded_by",
+    "discard_reason",
 )
 
 #: FE-44 §5.1's own two numbers. The table's column count is derived from them, not equal to

@@ -1,15 +1,15 @@
 """shema_exports: who exported which projects, when, over which scope
 
 Revision ID: 20260930_shema403
-Revises: 20260929_shema541
+Revises: 20260930_shema547
 Create Date: 2026-09-30
 
-OBT-403 (BE-14). The parent is `20260929_shema541`, the head `alembic heads` read in this
-worktree on 30/sep/2026, and a measurement rather than a value to remember (`docs/shema.md`
-§7.1): OBT-547 authors a migration against `dev` in the same batch and merges first, so this
-file is re-pointed onto whatever head that leaves. The id carries the issue number, as
-`shema524`, `shema531`, `shema541` and `shema543` do, so two siblings cannot mint the same
-`shemaNN`.
+OBT-403 (BE-14). The parent was `20260929_shema541` when this file was written (30/sep/2026);
+OBT-547 authored `20260930_shema547` on the same parent in the same batch and merged into `dev`
+first, and this file was re-pointed to it — the head `alembic heads` read after merging, a
+measurement rather than a value to remember (`docs/shema.md` §7.1). The id carries the issue
+number, as `shema524`, `shema531`, `shema541` and `shema543` do, so two siblings cannot mint the
+same `shemaNN`.
 
 The issue asks that exports be logged — *who exported what, when* — because once the file has
 left, the trail is the only thing that can answer an after-the-fact question. One row per file,
@@ -28,7 +28,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260930_shema403"
-down_revision: str | None = "20260929_shema541"
+down_revision: str | None = "20260930_shema547"
 branch_labels = None
 depends_on = None
 

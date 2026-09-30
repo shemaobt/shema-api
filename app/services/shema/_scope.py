@@ -49,6 +49,15 @@ who may *reach* a project and who may read its place are two different questions
 reason** (OBT-524, ``docs/shema.md`` §6.9). ``member_projects`` and ``roster_projects`` select
 ``ShemaProject`` too, so a query that could hand a member somebody else's project is no more a
 thing a service can write by forgetting something than one that could hand a region's.
+
+**A project the mesa's approval filed is nobody's until the Admin confirms it** (OBT-547,
+``docs/shema.md`` §6.11). :func:`registered` is the predicate, and it is composed into
+:func:`within_scope`, :func:`member_projects` and :func:`roster_projects` — every statement here
+that hands out a project — so the collection, the counts, the record, the needs, the ETEN report,
+the notification panel, the rosters and whatever export reads through the scope cannot see one,
+for any reader, an installation admin included. The Admin reads them through
+:func:`pending_projects` and decides them through :func:`filed_projects`, two statements of their
+own that no reader of the collection composes.
 """
 
 from __future__ import annotations
@@ -58,7 +67,7 @@ from collections.abc import Collection, Sequence
 from collections.abc import Set as AbstractSet
 from typing import NamedTuple
 
-from sqlalchemy import ColumnElement, Select, false, or_, select, true
+from sqlalchemy import ColumnElement, Select, and_, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -349,11 +358,22 @@ async def scopes_for(
     }
 
 
+def registered() -> ColumnElement[bool]:
+    """The projects that are records — every row but one the Admin has not confirmed (OBT-547).
+
+    A project the mesa's approval filed waits in ``pending_confirmation`` until the Admin
+    confirms it, and a discarded one waits there for good. Composed into every statement below
+    that hands out a project, so the exclusion is a property of the scope rather than of each
+    reader — the export a later issue writes inherits it by starting where every reader starts.
+    """
+    return ShemaProject.pending_confirmation.is_(False)
+
+
 def within_scope(scope: RegionScope) -> ColumnElement[bool]:
     """The ``WHERE`` clause of the region axis, as one expression every reader shares.
 
-    A global caller gets a literal true rather than an absent predicate, so a caller can
-    compose this into any statement without branching on the scope — which is what keeps
+    A global caller gets :func:`registered` alone rather than an absent predicate, so a caller
+    can compose this into any statement without branching on the scope — which is what keeps
     the branch from being rewritten slightly differently by the next reader.
 
     An empty, non-global scope gets a literal false: the fail-closed floor written as SQL,
@@ -362,10 +382,10 @@ def within_scope(scope: RegionScope) -> ColumnElement[bool]:
     away on the grounds that a primary key is never null, and this one must survive that.
     """
     if scope.global_:
-        return true()
+        return registered()
     if not scope.regions:
         return false()
-    return ShemaProject.region_key.in_(sorted(scope.regions))
+    return and_(registered(), ShemaProject.region_key.in_(sorted(scope.regions)))
 
 
 def visible_projects(scope: RegionScope) -> Select[tuple[ShemaProject]]:
@@ -378,7 +398,8 @@ def visible_projects(scope: RegionScope) -> Select[tuple[ShemaProject]]:
 
     An aggregate is the one exception and composes :func:`within_scope` into a ``count()``
     of its own instead; ``app/services/shema/count_projects.py`` carries the reason, which
-    is that a count layered onto *this* statement loses its ``FROM`` for a global caller.
+    is that a count layered onto *this* statement lost its ``FROM`` for a global caller while
+    that caller's predicate named no column.
     """
     return select(ShemaProject).where(within_scope(scope))
 
@@ -593,7 +614,9 @@ def member_projects(user_id: str) -> Select[tuple[ShemaProject]]:
     no statement that could. What else a member is shown of their own project is OBT-544's to
     decide, and composing this statement is how it would.
     """
-    return select(ShemaProject).where(ShemaProject.id.in_(live_membership_ids(user_id)))
+    return select(ShemaProject).where(
+        registered(), ShemaProject.id.in_(live_membership_ids(user_id))
+    )
 
 
 class RosterReach(NamedTuple):
@@ -620,11 +643,45 @@ def roster_projects(reach: RosterReach, user_id: str) -> Select[tuple[ShemaProje
     """The projects whose members this caller may read — or, for the Admin, write.
 
     Whoever the scope reaches, plus the projects ``user_id`` is a live member of, plus every
-    project for the Admin. A project outside all three is absent, and its callers refuse it as
-    :func:`refuse_out_of_scope` does — the same 404 an id that does not exist gets.
+    project for the Admin — every :func:`registered` one: a roster written on a project nobody
+    confirmed would be a membership reaching a project nobody may see. A project outside all
+    three is absent, and its callers refuse it as :func:`refuse_out_of_scope` does — the same
+    404 an id that does not exist gets.
     """
     if reach.admin:
-        return select(ShemaProject)
+        return select(ShemaProject).where(registered())
     return select(ShemaProject).where(
-        or_(within_scope(reach.scope), ShemaProject.id.in_(live_membership_ids(user_id)))
+        registered(),
+        or_(within_scope(reach.scope), ShemaProject.id.in_(live_membership_ids(user_id))),
+    )
+
+
+# --- the projects the mesa's approval filed (OBT-547) ------------------------------------------
+
+
+def filed_projects() -> Select[tuple[ShemaProject]]:
+    """Every project an approval filed, whatever became of it — what the Admin decides on.
+
+    Confirmed, pending and discarded alike, so the Admin's two acts can tell *already decided*
+    (409) from *no such project* (404). The Admin alone reaches it, behind ``AdminUser``, and no
+    reader of the collection composes it.
+    """
+    return select(ShemaProject).where(ShemaProject.source_request_id.is_not(None))
+
+
+def pending_projects() -> Select[tuple[ShemaProject]]:
+    """The projects waiting for the Admin — filed, not confirmed and not discarded."""
+    return filed_projects().where(
+        ShemaProject.pending_confirmation.is_(True), ShemaProject.discarded_at.is_(None)
+    )
+
+
+def live_project_of_link(link_id: str) -> Select[tuple[ShemaProject]]:
+    """The project a link already filed and nobody discarded — pending or confirmed.
+
+    One per link, by ``uq_shema_projects_live_source_link``: a second request of the same team
+    approved later must not file the team twice.
+    """
+    return filed_projects().where(
+        ShemaProject.source_link_id == link_id, ShemaProject.discarded_at.is_(None)
     )

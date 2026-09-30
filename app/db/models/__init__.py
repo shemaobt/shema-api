@@ -115,6 +115,7 @@ from app.db.models.shema_notification import (
     ShemaRequestNotice,
 )
 from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
+from app.db.models.shema_pending_member import ShemaProjectPendingMember
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.db.models.shema_project_member import ShemaProjectMember
 from app.db.models.shema_region import ShemaUserRegion
@@ -238,6 +239,7 @@ __all__ = [
     "ShemaProgressEntry",
     "ShemaProject",
     "ShemaProjectMember",
+    "ShemaProjectPendingMember",
     "ShemaProjectStatus",
     "ShemaRecordEdit",
     "ShemaRegionKey",

@@ -1,5 +1,5 @@
-"""``GET /api/shema/session`` — the shape FE-44 §9.13 froze, the name rule BE-03 decided, and
-the roles list OBT-523 added.
+"""``GET /api/shema/session`` — the shape FE-44 §9.13 froze, the name rule BE-03 decided, the
+roles list OBT-523 added, and the form's address OBT-544 added.
 
 The endpoint exists because ``GET /api/auth/my-roles`` cannot answer it: the platform's
 grant has no region. What it adds over the platform's session is the region, the org chart's
@@ -27,7 +27,7 @@ ASIA = ShemaRegionKey.ASIA
 async def _session(db_session, user) -> ShemaSession:
     """The service, fed what the door would have read — the two halves of the real route."""
     roles = await session_roles(db_session, user.id, app_key=APP_KEY, form_app_key=FORM_APP_KEY)
-    return await get_session(db_session, user, roles=roles)
+    return await get_session(db_session, user, roles=roles, form_app_key=FORM_APP_KEY)
 
 
 async def seat(db_session, region: ShemaRegionKey, role: ShemaRoleKey, holder: str) -> None:
@@ -44,8 +44,8 @@ async def seat(db_session, region: ShemaRegionKey, role: ShemaRoleKey, holder: s
 # --- the wire shape ------------------------------------------------------------------
 
 
-async def test_the_response_carries_the_four_keys(db_session, client, shema_app):
-    """``{role, roles, regionScope, name}``, camelCase, exactly as the console reads it.
+async def test_the_response_carries_the_five_keys(db_session, client, shema_app):
+    """``{role, roles, regionScope, name, apps}``, camelCase, exactly as the console reads it.
 
     The ``regionScope`` spelling is asserted on the JSON and not on the Python attribute,
     because the alias is the only thing standing between the house's snake_case and a
@@ -58,7 +58,7 @@ async def test_the_response_carries_the_four_keys(db_session, client, shema_app)
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
 
     assert res.status_code == 200
-    assert sorted(res.json()) == ["name", "regionScope", "role", "roles"]
+    assert sorted(res.json()) == ["apps", "name", "regionScope", "role", "roles"]
     assert res.json()["role"] == "coordinator"
     assert res.json()["roles"] == ["coordinator"]
     assert res.json()["regionScope"] == ["africa"]
@@ -184,7 +184,9 @@ async def test_the_service_answers_in_precedence_whatever_order_it_is_handed(db_
     key outside the vocabulary a caller slips in never reaches the wire."""
     user = await make_user(db_session, email="handed@shema.test")
 
-    session = await get_session(db_session, user, roles=("mesa", "lider", "admin", "obtLab"))
+    session = await get_session(
+        db_session, user, roles=("mesa", "lider", "admin", "obtLab"), form_app_key=FORM_APP_KEY
+    )
 
     assert session.roles == ["obtLab", "admin", "mesa"]
     assert session.role == "obtLab"
@@ -298,6 +300,67 @@ async def test_the_name_is_null_when_there_is_no_seat_and_no_display_name(
     assert res.json()["name"] is None
 
 
+# --- the form's address --------------------------------------------------------------
+
+
+async def test_apps_carries_the_forms_address_from_the_registry(
+    db_session, client, shema_app, form_app
+):
+    """The console opens the form where the registry says it lives — the same ``app_url``
+    the form's own letters read — so no address is written in the console. A trailing slash
+    is dropped here, once, so the console appends ``/entrar`` without guessing."""
+    form_app.app_url = "https://formulario.exemplo.org/"
+    await db_session.commit()
+    user = await make_scoped_user(
+        db_session, shema_app, email="apps@shema.test", role_key="coordinator", regions=[AFRICA]
+    )
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert res.json()["apps"] == {"resourceRequestForm": "https://formulario.exemplo.org"}
+
+
+async def test_apps_is_null_when_the_registry_has_no_address(
+    db_session, client, shema_app, form_app
+):
+    """No value is an answer the console reads as *draw nothing that opens the form* — never
+    an address it would have to invent."""
+    user = await make_scoped_user(
+        db_session, shema_app, email="noaddress@shema.test", role_key="coordinator", regions=[ASIA]
+    )
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert form_app.app_url is None
+    assert res.json()["apps"] == {"resourceRequestForm": None}
+
+
+async def test_apps_is_null_when_the_form_is_not_registered(db_session, shema_app):
+    """An installation without the form's row at all answers the same ``null``, not a 500."""
+    user = await make_scoped_user(
+        db_session, shema_app, email="noform@shema.test", role_key="obtLab", regions=[ASIA]
+    )
+
+    assert (await _session(db_session, user)).apps.resource_request_form is None
+
+
+async def test_a_mesa_only_account_reads_the_forms_address_too(
+    db_session, client, shema_app, form_app
+):
+    """The mesa holds nothing in the PME but its door, and the *Resource Circle* entry is the
+    one thing the console draws for it: the address has to reach it through the same read."""
+    form_app.app_url = "https://formulario.exemplo.org"
+    await db_session.commit()
+    user = await make_user(db_session, email="mesaonly@shema.test")
+    await grant(db_session, user, form_app, "mesa")
+
+    res = await client.get(SESSION, headers=await auth_header(db_session, user))
+
+    assert res.status_code == 200
+    assert res.json()["roles"] == ["mesa"]
+    assert res.json()["apps"]["resourceRequestForm"] == "https://formulario.exemplo.org"
+
+
 # --- the guard -----------------------------------------------------------------------
 
 
@@ -377,3 +440,9 @@ def test_every_field_is_nullable(field: str) -> None:
     """These three are ``| null`` in the contract, each for its own reason, and a required
     one would 500 rather than answer."""
     assert ShemaSession().model_dump()[field] is None
+
+
+def test_apps_is_an_object_even_when_nothing_is_known() -> None:
+    """The console reads ``session.apps.resourceRequestForm``; ``apps`` itself is never
+    ``null``, so there is one missing state to handle and not two."""
+    assert ShemaSession().model_dump(by_alias=True)["apps"] == {"resourceRequestForm": None}
