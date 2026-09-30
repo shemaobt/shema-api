@@ -33,7 +33,6 @@ from app.api.resource_requests._deps import (
     CanAssignFund,
     CanEditEvaluation,
     CanEditRequests,
-    CanGrantAccess,
     CanManageFunds,
     CanMoveBoard,
     CanViewEvaluation,
@@ -191,10 +190,6 @@ async def client(db_session):
 
     @probe.get("/_probe/cap/administer_funds")
     async def _probe_administer_funds(user: CanAdministerFunds) -> dict[str, str]:
-        return {"email": user.email}
-
-    @probe.get("/_probe/cap/grant_access")
-    async def _probe_grant_access(user: CanGrantAccess) -> dict[str, str]:
         return {"email": user.email}
 
     test_app = FastAPI()

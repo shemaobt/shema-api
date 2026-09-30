@@ -8,12 +8,11 @@ the way Alembic drives them against a real one — the ENG-373 precedent. The CI
 clean Postgres only ever takes the *skip* branch, because the apps are not there; this file
 is the only place the insert runs.
 
-**Seeding the role opened a door this file also keeps shut.** The form's two access doors
-grant any role the app has, and the Gestor may use them; with an ``admin`` row in the form a
-Gestor could name an Admin, who passes the shared ``assert_can_manage_roles`` and revokes
-through ``/api/roles``. ``resource_request_access`` now refuses that to all but an
-installation admin, and the refusals are asserted here, beside the seed that made them
-necessary.
+**Seeding the role opened a door this file kept shut until the door itself left.** The
+form's two access doors granted any role the app had, and a Gestor could have named an
+Admin through them; four cases here asserted the refusal. FE-56 (OBT-549, 30/sep/2026)
+retired those doors with the form's access screen — roles are granted in the PME, by the
+Admin alone — and the four cases left with them.
 """
 
 from __future__ import annotations
@@ -21,14 +20,11 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-import pytest
 from sqlalchemy import select
 
 from app.api.shema._deps import APP_KEY, FORM_APP_KEY
-from app.core.exceptions import AuthorizationError
-from app.db.models.auth import AccessInvite, App, Role, UserAppRole
+from app.db.models.auth import App, Role, UserAppRole
 from app.services.authorization import assert_can_manage_roles
-from app.services.resource_request_access import create_invite, grant_access
 from app.services.shema._scope import ADMIN_ROLE
 from scripts.seed_apps_roles import (
     PLATFORM_ADMIN_APPS,
@@ -178,49 +174,3 @@ async def test_an_admin_holder_may_manage_that_apps_roles(db_session, shema_app)
     await grant(db_session, admin, shema_app, ADMIN_ROLE)
 
     await assert_can_manage_roles(db_session, admin, APP_KEY)
-
-
-async def test_a_gestor_cannot_name_an_admin_in_the_form(db_session, form_app) -> None:
-    gestor = await make_user(db_session, email="gestor-names@admin.example")
-    await grant(db_session, gestor, form_app, "gestor")
-    target = await make_user(db_session, email="target@admin.example")
-
-    with pytest.raises(AuthorizationError):
-        await grant_access(db_session, gestor, target.id, FORM_APP_KEY, ADMIN_ROLE)
-
-    held = select(UserAppRole.id).where(UserAppRole.user_id == target.id)
-    assert (await db_session.execute(held)).all() == []
-
-
-async def test_a_gestor_cannot_invite_an_admin_to_the_form(db_session, form_app) -> None:
-    gestor = await make_user(db_session, email="gestor-invites@admin.example")
-    await grant(db_session, gestor, form_app, "gestor")
-
-    with pytest.raises(AuthorizationError):
-        await create_invite(db_session, gestor, FORM_APP_KEY, "someone@admin.example", ADMIN_ROLE)
-
-    assert (await db_session.execute(select(AccessInvite.id))).all() == []
-
-
-async def test_a_gestor_still_grants_the_forms_own_roles(db_session, form_app) -> None:
-    """The refusal is about one key; the Gestor's concession of the rest is unchanged."""
-    gestor = await make_user(db_session, email="gestor-mesa@admin.example")
-    await grant(db_session, gestor, form_app, "gestor")
-    target = await make_user(db_session, email="new-equipe@admin.example")
-
-    assignment = await grant_access(db_session, gestor, target.id, FORM_APP_KEY, "equipe")
-
-    assert assignment.user_id == target.id
-
-
-async def test_an_installation_admin_can_still_name_an_admin_in_the_form(
-    db_session, form_app
-) -> None:
-    installation = await make_user(
-        db_session, email="installation@admin.example", is_platform_admin=True
-    )
-    target = await make_user(db_session, email="named@admin.example")
-
-    assignment = await grant_access(db_session, installation, target.id, FORM_APP_KEY, ADMIN_ROLE)
-
-    assert assignment.user_id == target.id
