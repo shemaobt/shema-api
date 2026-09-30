@@ -17,7 +17,6 @@ from app.api.internalization_room._deps import (
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
-from app.core.room_enums import HaltKind
 from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
@@ -589,7 +588,7 @@ async def ask_for_a_person(
     already halted still reported `in_progress` and no facilitator could be told.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
-    await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db, session)
     return NeedsPersonResponse(
         session_id=session.id,
         needs_person=session.status is IRSessionStatus.NEEDS_PERSON,

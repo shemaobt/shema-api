@@ -10,7 +10,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRHardStretch, IRSessionStatus
 from app.services.internalization_room import sessions as service
 from tests.room_harness import record_the_part_again, rehearsed_in_parts, stretch_on
@@ -19,7 +18,7 @@ from tests.room_harness import record_the_part_again, rehearsed_in_parts, stretc
 @pytest.fixture()
 async def halted(db_session: AsyncSession):
     session = await service.create_session(db_session, pericope="P01")
-    await service.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+    await service.mark_needs_person(db_session, session)
     assert session.status is IRSessionStatus.NEEDS_PERSON
     return session
 

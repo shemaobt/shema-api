@@ -22,7 +22,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRHardStretch, IRSegment, IRSession
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.segments import (
@@ -32,7 +31,7 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
-    mark_needs_person,
+    raise_a_warning,
     save_back_translation,
 )
 
@@ -84,7 +83,7 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
     except IntegrityError:
         return False
 
-    await mark_needs_person(db, session, kind=HaltKind.WARNING, commit=False)
+    await raise_a_warning(db, session, commit=False)
     return True
 
 
@@ -149,7 +148,7 @@ async def count_an_empty_telling(db: AsyncSession, session: IRSession, stretch: 
 
     The count and the mark land in **one** transaction, closed here. Committed apart, a failure
     between them left the count at the number with no mark, which is a stretch the room can
-    never ask about again on the reading `mark_needs_person` gives it.
+    never ask about again on the reading `raise_a_warning` gives it.
 
     A row that no longer counts, or one the team divided, is refused before anything is counted
     on it — the same answer the captured path gets from `capture_segment`. Unguarded, a tablet

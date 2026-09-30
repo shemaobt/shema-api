@@ -36,7 +36,6 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.core.room_enums import HaltKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
@@ -348,7 +347,7 @@ async def test_a_session_left_in_the_middle_and_a_halted_one_are_still_answered(
     halted = await a_session(
         db_session, project_id=project.id, opened_at=datetime(2026, 8, 19, 9, 0, tzinfo=UTC)
     )
-    await room.mark_needs_person(db_session, halted, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, halted)
 
     history = await read_history(client, project.id, headers)
 
@@ -362,7 +361,7 @@ async def test_a_session_halted_before_any_turn_landed_is_still_answered(client,
     """
     _user, project, headers = await a_facilitator(db_session)
     halted = await a_session(db_session, project_id=project.id, entered=False)
-    await room.mark_needs_person(db_session, halted, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, halted)
 
     history = await read_history(client, project.id, headers)
 
@@ -376,7 +375,7 @@ async def test_a_halt_that_never_had_a_turn_outlives_being_attended(client, db_s
     """
     _user, project, headers = await a_facilitator(db_session)
     halted = await a_session(db_session, project_id=project.id, entered=False)
-    await room.mark_needs_person(db_session, halted, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, halted)
 
     await room.attend(db_session, halted, by="quem-foi")
 
@@ -578,7 +577,7 @@ async def test_a_halted_session_says_it_is_waiting_for_a_person(client, db_sessi
     """
     _user, project, headers = await a_facilitator(db_session)
     session = await a_session(db_session, project_id=project.id)
-    await room.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, session)
 
     [card] = await read_history(client, project.id, headers)
 
@@ -605,7 +604,7 @@ async def test_a_turn_that_lands_lifts_the_halt(client, db_session):
     """
     _user, project, headers = await a_facilitator(db_session)
     session = await a_session(db_session, project_id=project.id)
-    await room.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, session)
 
     await room.append_exchange(db_session, session, team_utterance="oi", guide_response="ok")
 
@@ -634,7 +633,7 @@ async def test_a_session_that_ended_is_never_reported_as_still_halted(client, db
     await room.apply_coverage(db_session, completed.id, dict.fromkeys(element_keys(P), ENGAGED))
 
     abandoned = await a_session(db_session, project_id=project.id)
-    await room.mark_needs_person(db_session, abandoned, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, abandoned)
     abandoned.updated_at = datetime.now(UTC) - SESSION_IDLE_LIMIT - timedelta(minutes=1)
     await db_session.commit()
 
@@ -666,6 +665,7 @@ async def test_the_cards_shape_names_every_field_the_desk_reads(client, db_sessi
         "state",
         "needs_person",
         "last_halt",
+        "halt",
         "attended_at",
         "attended_by",
         "person_arrived_at",
