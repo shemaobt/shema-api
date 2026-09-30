@@ -41,6 +41,10 @@ _Avoid_: project (in prose; it is the schema's word for the same entity), user, 
 The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
 _Avoid_: panel, dashboard, Mesa
 
+**Nudge**:
+A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
+_Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
+
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
 _Avoid_: bot, assistant, Sala
