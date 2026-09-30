@@ -883,10 +883,12 @@ behaviour on it.
 >   (*não dá para editar o que não se vê*). The same reading BE-12 took for the submission inbox
 >   and FE-44 §5.8 for the prayer notice. **Nor does it decide what is shared**: a need's
 >   `prayerShared` is the team's authorization too, so a batch from it that raises a shared need,
->   shares one or unshares one is a 403 (`undecidable_shares`) — read off the values, because the
->   console sends a need back whole and a flag that does not move decides nothing. On a create it
->   writes the text it types (OBT-528's create exception, for the same reason) and not `rede`
->   (`authorized_on_create`). `refuse_prayer_decisions` is the one refusal for the three.
+>   shares one, unshares one or keeps one shared over a description it rewrote is a 403
+>   (`undecidable_shares`) — read off the values, because the console sends a need back whole and
+>   a flag that leaves the share where `need_written` would leave it without the flag decides
+>   nothing. A rewrite sent without the flag is still its to make, and unshares the need. On a
+>   create it writes the text it types (OBT-528's create exception, for the same reason) and not
+>   `rede` (`authorized_on_create`). `refuse_prayer_decisions` is the one refusal for the three.
 > - **The recording travels nowhere yet.** `prayer_requests_audio` takes any string a save writes,
 >   so signing what it holds would let a writer mint a link to any object in `shema-private`; the
 >   wall omits FE-44's optional `audioUrl` and the Pulse is text. An audio-only request reaches
@@ -1926,6 +1928,10 @@ byte-identically, and only the Pulse is archivable. Those are DoD lines, not for
 > whose leader has not been named: plain text, one entry after another, in `pt-BR` or `en`, in
 > `app/models/shema_prayer.py`'s `render_prayer_pulse`. **It is a hypothesis until that test**;
 > changing it is replacing that function, and the gate, the scope and the reduction do not move.
+> Where the country is not printed, the entry names its region in the console's words — six of
+> the seven: the console calls `other` *América Central*, and `other` is also where every country
+> the map does not list and every empty location fall, so a file that cannot be recalled prints
+> no place for it rather than a guess.
 
 > The offline artifact is this project's highest technical risk: an unknown Android phone, no
 > connectivity, and a file round trip through WhatsApp. **Prove it on a real device early.**
