@@ -977,11 +977,14 @@ Two temptations, refused here so nobody spends a week on them:
 
 ```
 GET /api/shema/session -> {role: SessionRole, roles: SessionRole[], regionScope: RegionKey[] | null,
-                           name: string | null}
+                           name: string | null, apps: {resourceRequestForm: string | null}}
 ```
 
 `roles` and the door it sits behind are OBT-523's, §6.8; `role` is the first of `roles`, kept
-only through the transition.
+only through the transition. `apps` is OBT-544's: the form's `apps.app_url` from the registry,
+without a trailing slash, `null` when the registry has no row or no value — the address for the
+PME's *Solicitar recurso* and *Resource Circle* entry (project-management-ecosystem#70), so the
+console holds no constant for it.
 
 `GET /api/auth/my-roles` cannot answer this, because the grant has no region. The three parts
 come from three places and **none of them is a store of the session's own**: `role` (and, since
@@ -1509,8 +1512,13 @@ without the form's mesa × Gestor exclusion.~~ **Closed by OBT-543** (§6.10): t
 both rows, and `/api/roles/assign` and `/revoke` refuse the two apps to anyone but an
 installation admin. The form's owner:
 `admin` holds no capability in the form's table, and the form's `reach()` counts it as a fifth
-role — the whole board. OBT-544: until it lands, an account at the door with no Shemá role is
-refused by every other route the console calls, `/regions` on sign-in included.
+role — the whole board. OBT-544: until its console half lands, an account at the door with no
+Shemá role is refused by every other route the console calls, `/regions` on sign-in included. The
+server's half is this module's — the session answers `apps` (§6.3). The console's half is the PME's
+[project-management-ecosystem#70](https://github.com/shemaobt/project-management-ecosystem/pull/70):
+once it merges, an account holding no Shemá grant stops reading `/regions` on sign-in, and one
+holding only `gestor`/`mesa` sees the topbar and the *Resource Circle* entry and none of the six
+areas. The server refuses those areas exactly as before either way.
 
 ### 6.9 Seam G — the member's reach: project membership — **Decided; OBT-524**
 
@@ -1549,8 +1557,10 @@ them). `shema_project_members` is the link, and the form (OBT-520), *Solicitar r
   project that does not exist.
 - **A membership is not a region.** `visible_projects` does not read it: a member reaches their
   projects' refs (`/me/projects`, `_scope.member_projects`) and rosters, and no other project.
-  What else a member sees of their own project — the record included — is OBT-544's, and
-  composing `member_projects` is how it would.
+  What else a member sees of their own project — the record included — was left to OBT-544,
+  and composing `member_projects` is how it would. **Still open**: OBT-544 kept this module to
+  the session's `apps`, so a member holding no regional role reads the project's request cards
+  (`GET /api/resource-requests/projects/{id}/requests`) and not its record.
 
 **A coordination surface that redacts nothing.** The roster names people, not places: a member of a
 project in a sensitive country is named on it, to the people who reach that project. `name` is the
