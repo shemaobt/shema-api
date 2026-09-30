@@ -416,10 +416,17 @@ class Readership(NamedTuple):
     Region rows are per account and not per role (``shema_user_regions``), so an account holding
     ``coordinator`` and ``obtLab`` is coordination in every region it reaches. The org chart is
     not consulted: a seat names who holds a role, and the grant is what the guards read.
+
+    **It also carries the prayer request's reader (BE-09)**, because the record read and its write
+    are the two places that ask and both already take this value. Who reads a request nobody
+    authorized is ``_consent.py``'s rule; ``app/api/shema/_deps.py`` asks it and sets the bit here.
     """
 
     #: The regions this caller coordinates: all of them, their own, or none.
     coordination: RegionScope
+    #: Whether this caller reads a prayer request that has not been authorized to leave
+    #: coordination — ``_consent.reads_withheld_requests``. ``False`` unless somebody said so.
+    withheld_prayer: bool = False
 
     def reader_of(self, region_key: ShemaRegionKey | str) -> ShemaReader:
         """``coordination`` for a project in a region this caller coordinates, ``other`` else."""

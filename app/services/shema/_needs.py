@@ -72,6 +72,7 @@ from app.services import authorization_service
 from app.services.notifications import create_notification, get_shema_app_id
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.shema import _audit
+from app.services.shema._consent import need_written
 from app.services.shema._scope import COORDINATOR_ROLE, OBT_LAB_ROLE, holders_reaching
 
 #: What ``notifications.event_type`` carries for this notice. Dotted and namespaced by the
@@ -305,10 +306,13 @@ def _apply(need: ShemaNeed, row: ShemaNeedWrite, *, user: User | None, day: date
 
     The same :func:`sent_columns` the decision was taken over, so *what moved* and *what is
     written* cannot disagree — a column the check ignored and the write applied would be a
-    version bump nobody asked for, or worse, a value nobody sent.
+    version bump nobody asked for, or worse, a value nobody sent. The one column added is
+    ``_consent.need_written``'s: a shared need whose description moves without ``prayerShared``
+    restated is unshared, because the authorization was given for the text it replaced (BE-09).
     """
-    for column in sent_columns(row):
-        setattr(need, column, getattr(row, column))
+    sent = {column: getattr(row, column) for column in sent_columns(row)}
+    for column, value in need_written(need, sent).items():
+        setattr(need, column, value)
     if row.submitted_at is not None:
         need.submitted_at = row.submitted_at
     if row.acknowledged:

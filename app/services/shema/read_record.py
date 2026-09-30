@@ -14,9 +14,12 @@ as *there is no unscoped query to call* holds here by there being no id to query
 coordination reader gets the true place and everybody else the region, and the reduction is
 applied by the act of validating the row into
 :class:`~app.models.shema_record.ShemaProjectRecord` for that reader — this file only says who
-reads. The three authorization columns behind every ``authorization`` key are still read by
-their one owner: ``_media_sharing.recorded_decision`` builds the shape and hands it over, and
-``tests/test_shema/test_privacy_owners.py`` is what keeps that true of the next file too.
+reads. The prayer request is the same shape of answer from its own owner (BE-09): a reader
+outside ``_consent.PRAYER_AUDIENCE`` gets a request nobody authorized as ``""``, and
+``_consent.request_as_read`` is what decides it. The three authorization columns behind every
+``authorization`` key are still read by their one owner: ``_media_sharing.recorded_decision``
+builds the shape and hands it over, and ``tests/test_shema/test_privacy_owners.py`` is what keeps
+that true of the next file too.
 
 **The write path re-reads through here.** FE-44 §9.3 requires the response to carry *the
 recomputed record, including the new progressHistory entry*, because the record screen renders
@@ -49,6 +52,7 @@ from app.models.shema_record import (
     ShemaProjectVideo,
 )
 from app.services.shema._audit import ChangesSince, changes_since
+from app.services.shema._consent import request_as_read
 from app.services.shema._media_sharing import recorded_decision
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
@@ -176,6 +180,7 @@ async def build_record(
     reader = readership.reader_of(project.region_key)
     record = ShemaProjectRecord.read_by(project, reader).model_copy(
         update={
+            **request_as_read(project, reads_withheld=readership.withheld_prayer),
             "needs_items": needs,
             "materials": materials,
             "media_photos": photos or None,

@@ -83,6 +83,7 @@ from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
+from app.services.shema._consent import reads_withheld_requests
 from app.services.shema._scope import (
     ADMIN_ROLE,
     COORDINATOR_ROLE,
@@ -212,8 +213,14 @@ async def _reading(user: CurrentUser, granted: Granted, scope: Scope) -> Readers
     No database read of its own: :func:`_granted` and :func:`_scope` are resolved once per
     request, and the rule is ``_scope.readership``'s. Like :data:`Scope`, the router hands the
     value to a service and does nothing else with it.
+
+    The prayer request's reader rides on the same value (BE-09) and its rule is
+    ``_consent.reads_withheld_requests``'s, asked from the same grant.
     """
-    return readership(scope, granted, platform_admin=user.is_platform_admin)
+    reading = readership(scope, granted, platform_admin=user.is_platform_admin)
+    return reading._replace(
+        withheld_prayer=reads_withheld_requests(granted, platform_admin=user.is_platform_admin)
+    )
 
 
 #: The caller's readership, for a handler to pass into the service that builds the payload.

@@ -303,7 +303,9 @@ bucket, which is the precedent, not a trespass).
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
 | `app/services/shema/_health_audience.py` | **BE-07, built** | Who may read a reading of a team, and who is told when one turns critical — one list, two uses. |
 | `app/services/shema/_health_notice.py` | **BE-07, built** | What a notice about a struggling team may say, which is the part of that feature that needed deciding. |
-| `app/api/shema/prayer.py` | BE-09 | The wall, and the intercessor network — the routes are under `/prayer/` whoever writes them, and §1.3 C3 leaves open which issue that is. |
+| `app/api/shema/prayer.py` | **BE-09, built** | The wall, `GET /prayer/requests` (any Shemá role, in its scope), and the Prayer Pulse, `GET /prayer/pulse?lang=pt-BR\|en` (`resourceCircle`). The network's routes share the prefix and live in `intercessors.py` (§1.3 C3). |
+| `app/models/shema_prayer.py` | **BE-09, built** | `PrayerRequestEntry` — FE-44's `PrayerRequest`, a `LeavingShape` validated off the project row — and `render_prayer_pulse`, **the Pulse's format and the only place it lives** (§9.3). |
+| `app/services/shema/list_prayer_requests.py`, `generate_prayer_pulse.py` | **BE-09, built** | The wall, derived on every call; the Pulse, which is the wall rendered and logged without its content. |
 | `app/api/shema/meetings.py` | **BE-10, built** | The log: `GET`/`POST /meetings/log`, `DELETE /meetings/log/{meetingId}/{scopeKey}/{period}`. No definitions route — §9.2. |
 | `app/utils/shema_meetings.py` | **BE-10, built** | GATE-02's set as the server needs it: the three logged meetings and their cadences. Titles, attendees and readiness stay in the console's `RITMO_MEETINGS`. |
 | `app/services/shema/_meeting_log.py` | **BE-10, built** | The log's one rule, for reads and writes: `_health_audience.py`'s audience, inside the caller's region scope; `global` refused with the reason. |
@@ -324,10 +326,10 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/{find_account,grant_role,revoke_grant,send_invite,withdraw_invite,list_invites,list_grant_changes,apply_invited_scope}.py` | **OBT-543, built** | One operation each. **Flat, against the issue's `access/**`**: every structural scan of this package (`test_layering.py`, `test_privacy_owners.py`, `test_people_privacy.py`, `test_scope.py`, `test_needs.py`) reads `*.py` without recursing, and a sub-package would sit outside all of them. |
 | `app/models/shema_grant.py`, `app/db/models/shema_grant.py` | **OBT-543, built** | The surface's wire shapes; and `shema_scope_changes`, the append-only trail of every region scope change. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
-| `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9) — whose one statement, `live_membership_ids`, is public since BE-19 (OBT-520), because the resource-request form reads the same fact. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. |
+| `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9) — whose one statement, `live_membership_ids`, is public since BE-19 (OBT-520), because the resource-request form reads the same fact. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. **BE-09:** `Readership.withheld_prayer`, whether the caller reads a request nobody authorized — `_consent.py`'s rule, set by `_deps._reading`. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
 | `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question. The only reader of the guarded columns in the two `shema` packages. §6.4. |
-| `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
+| `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to. |
 | `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
 | `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
@@ -850,6 +852,52 @@ behaviour on it.
 >   the project is inside the caller's scope or the caller is one of its live members, and `null`
 >   otherwise — where the record would have answered 404 anyway. The name and the stage go to
 >   every recipient: the board already reads both on the form's card.
+
+> **BE-09 ([OBT-398](https://linear.app/shema-obt/issue/OBT-398)) built row 5.6 — the wall, the
+> authorization of a request and the Prayer Pulse — and stored nothing**, so the row's invariant
+> holds as written: a withdrawn request is absent from the next read because there is no copy.
+>
+> - **One assembly of what may leave.** `_consent.authorized_requests` is FE-44's
+>   `buildPrayerRequests` per project: the project's request under `reaches_prayer_wall`, each need
+>   under its own `prayer_shared`, a request with no text left out. The wall
+>   (`list_prayer_requests`) wraps it in `PrayerRequestEntry`, a `LeavingShape` validated off the
+>   row and built for nobody — `outside`, so the region's own coordinator reads the region there
+>   too; the Pulse (`generate_prayer_pulse`) is the wall rendered; BE-14's export reads
+>   `authorized_requests_by_project`. None of the three has a path to the columns of its own.
+>   The wall's projects are `visible_projects`, so a project the Admin has not confirmed
+>   (OBT-547's `registered`) is on neither the wall nor the Pulse, for any reader.
+> - **An authorization belongs to the request it was given for.** The project holds one request,
+>   so a new one lands where the last one was and would inherit its `rede` — and the Pulso Mensal
+>   writes the visibility only when the leader answers it. So a text or recording written without
+>   the visibility in the same write clears an authorized request to NULL (`request_written`, in
+>   `save_project` — the import included — and in `append_assessment`), and a shared need whose
+>   description is rewritten without `prayerShared` is unshared (`need_written`). Stating it keeps
+>   it: the health wizard sends both, and the console's consent control sits beside the text. The
+>   media rule, *replacing the artifact resets the decision*, applied to the request.
+> - **Who reads a request nobody authorized is the health assessment's audience**
+>   (`PRAYER_AUDIENCE = HEALTH_AUDIENCE`): `globalStrategist`, `coordinator` and `obtLab` in their
+>   scope, and an installation admin. The request is raised in the assessment and kept on the
+>   health tab, and `coordenacao` is *the people who follow up and support*. `resourceCircle` —
+>   the wall's audience, the role that shares with the network — reads what the team authorized:
+>   the record answers it `prayerRequests: ""` and no recording for an unauthorized request
+>   (`request_as_read`, carried by `Readership.withheld_prayer`, which `_deps._reading` sets), and
+>   a `PATCH` from it naming the text, the recording or the visibility is a 403 on every record
+>   (*não dá para editar o que não se vê*). The same reading BE-12 took for the submission inbox
+>   and FE-44 §5.8 for the prayer notice. **Nor does it decide what is shared**: a need's
+>   `prayerShared` is the team's authorization too, so a batch from it that raises a shared need,
+>   shares one, unshares one or keeps one shared over a description it rewrote is a 403
+>   (`undecidable_shares`) — read off the values, because the console sends a need back whole and
+>   a flag that leaves the share where `need_written` would leave it without the flag decides
+>   nothing. A rewrite sent without the flag is still its to make, and unshares the need. On a
+>   create it writes the text it types (OBT-528's create exception, for the same reason) and not
+>   `rede` (`authorized_on_create`). `refuse_prayer_decisions` is the one refusal for the three.
+> - **The recording travels nowhere yet.** `prayer_requests_audio` takes any string a save writes,
+>   so signing what it holds would let a writer mint a link to any object in `shema-private`; the
+>   wall omits FE-44's optional `audioUrl` and the Pulse is text. An audio-only request reaches
+>   neither until the recording has an upload path whose keys the server mints.
+> - **Generating is not sending.** The Pulse writes nothing — not `last_sent_at`, not an exit link;
+>   both are the send's, which is out of scope — and logs who generated it, over which scope and
+>   with how many requests, never a word of what it said.
 
 **Two shapes worth naming because they are easy to get wrong the same way the sibling did.**
 The health assessment (5.3) is the module's counterpart of
@@ -1960,6 +2008,21 @@ what belongs in the file more than the format does.
 
 Also not open: the import is idempotent and transactional, the submission is archived
 byte-identically, and only the Pulse is archivable. Those are DoD lines, not format choices.
+
+> **BE-09 built the Prayer Pulse's half of the rule, and the format is one function.** Karina
+> (22/sep) separated the two Pulses: the *Pulso Mensal* comes back from the field (BE-12), the
+> *Pulso de Oração* goes out to the network. For the second, only authorized requests go in, the
+> place is reduced before serialization — the entries are leaving shapes, and the file is
+> rendered from them and nothing else — and the file itself says it is for the intercessor network
+> only, that whoever receives it does not forward it, and that what was sent cannot be recalled
+> (3.1, 3.3). The format was delegated, *o mais simples possível*, to be measured in a field test
+> whose leader has not been named: plain text, one entry after another, in `pt-BR` or `en`, in
+> `app/models/shema_prayer.py`'s `render_prayer_pulse`. **It is a hypothesis until that test**;
+> changing it is replacing that function, and the gate, the scope and the reduction do not move.
+> Where the country is not printed, the entry names its region in the console's words — six of
+> the seven: the console calls `other` *América Central*, and `other` is also where every country
+> the map does not list and every empty location fall, so a file that cannot be recalled prints
+> no place for it rather than a guess.
 
 > The offline artifact is this project's highest technical risk: an unknown Android phone, no
 > connectivity, and a file round trip through WhatsApp. **Prove it on a real device early.**

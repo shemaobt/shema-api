@@ -62,6 +62,7 @@ from app.api.shema.members import router as members_router
 from app.api.shema.notifications import door_router as notifications_door_router
 from app.api.shema.notifications import router as notifications_router
 from app.api.shema.pending_projects import router as pending_projects_router
+from app.api.shema.prayer import router as prayer_router
 from app.api.shema.projects import router as projects_router
 from app.api.shema.regions import router as regions_router
 from app.api.shema.session import router as session_router
@@ -84,6 +85,7 @@ authenticated.include_router(meetings_router)  # BE-10
 authenticated.include_router(members_router)  # OBT-524
 authenticated.include_router(access_router)  # BE-22, OBT-543
 authenticated.include_router(eten_router)  # BE-11
+authenticated.include_router(prayer_router)  # BE-09
 authenticated.include_router(pending_projects_router)  # OBT-547
 
 #: **The module's first deliberate hole**, and it is this line rather than a missing dependency.

@@ -256,7 +256,12 @@ async def create_record(
     """
     today = datetime.now(UTC).date()
     project = await create_project(
-        db, scope, payload, user=user, day=_local_day(local_day, utc_today=today)
+        db,
+        scope,
+        payload,
+        readership=reading,
+        user=user,
+        day=_local_day(local_day, utc_today=today),
     )
     return _with_etag(await build_record(db, project, readership=reading, today=today), response)
 

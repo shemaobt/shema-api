@@ -64,7 +64,9 @@ including ``prayer_requests``, whose one reader is ``_consent.py`` — are appli
 ``app/models/shema_health.py``'s ``RECORD_FIELDS``, which is the honest differ shape
 ``_audit.py`` describes and defends: a write driven by a list singles nothing out, so
 ``tests/test_shema/test_privacy_owners.py``'s glob sees no targeted read and there is nothing
-for it to see.
+for it to see. They pass through ``_consent.request_written`` on the way, which withdraws an
+authorization a new request arrived without — the wizard sends both together, so that path keeps
+what the mentor stated (BE-09).
 
 **The pastoral escalation is stored and never derived.** FE-44 §5.9 is explicit that the
 suggestion is made with its reasons and never applied — ``needsPastoralIntervention`` stays
@@ -85,6 +87,7 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.models.shema_health import RECORD_FIELDS, ShemaHealthAssessmentSubmission
 from app.services.shema import _audit
+from app.services.shema._consent import request_written
 from app.services.shema._health_audience import require_reads_assessments
 from app.services.shema._health_notice import entered_critical, notify_critical
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
@@ -275,9 +278,13 @@ async def append_assessment(
     if on_record is None or before is OverallHealth.NA or _sort_key(newest)[0] >= on_record:
         _project_onto(project, newest)
 
-    for column in RECORD_FIELDS:
-        if column in payload.model_fields_set:
-            setattr(project, column, getattr(payload, column))
+    sent = {
+        column: getattr(payload, column)
+        for column in RECORD_FIELDS
+        if column in payload.model_fields_set
+    }
+    for column, value in request_written(project, sent).items():
+        setattr(project, column, value)
 
     version = await _bump_version(db, project)
     project.version = version
