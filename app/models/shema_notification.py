@@ -2,9 +2,10 @@
 
 ``docs/shema.md`` §5.10 decides what the panel is: **derived, never stored**, so its entries
 carry no row of their own. Two kinds feed it. The events with a discrete moment — a health
-reading turning critical (BE-07), an urgent need (BE-08), a Pulse arriving (BE-12) — are
-already staged as ordinary rows in the platform's ``notifications`` table, routed by role and
-by region at the moment they were written; this module lists its own slice of that table. The
+reading turning critical (BE-07), an urgent need (BE-08), a Pulse arriving (BE-12), and since
+OBT-541 a resource request arriving or being decided in the form — are already staged as
+ordinary rows in the platform's ``notifications`` table, routed by role and by region at the
+moment they were written; this module lists its own slice of that table. The
 one kind with **no** discrete moment — a project going quiet — has nothing to write at the
 instant it happens, because nothing happens: it is a fact about the calendar, computed fresh
 every time the panel is read, off ``app/services/shema/browse_projects.py``'s own stale
@@ -16,8 +17,13 @@ key (``south-america``, ``asia``, …) every ``RegionScope`` already answers in 
 (``docs/shema.md`` §6.1), not a location, a country or a base — the same distinction FE-44's
 own ``AppNotification.region`` draws. The body a notice carries is built by
 ``app/services/shema/_health_notice.py``, ``_needs.py`` and ``_submission_notices.py``, each of
-which names no guarded column by design; this file only lists what they already wrote plus the
-one computed kind, so there is nothing here left to redact.
+which names no guarded column by design, and by ``_request_notices.py``, which carries a
+request's registered name and stage and nothing else; this file only lists what they already
+wrote plus the one computed kind, so there is nothing here left to redact. The one field that
+could say more than it should is a request notice's ``project_id`` — a project's id is its
+export slug, ``<language>-<place>`` — and ``list_notification_panel.py`` answers it only to a
+reader who reaches that project, which is §6.1's rule: whoever a project is out of scope for
+does not learn it exists.
 
 ``ShemaNotificationPrefsOut`` mirrors FE-44's frozen ``NotificationPrefs``: ``enabled``, a
 nested ``channels`` triple, ``when``/``scope`` as free text (FE-44 §5.8 leaves their vocabulary
@@ -35,12 +41,16 @@ from typing import Literal
 from pydantic import AliasGenerator, BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from app.db.models.resource_request import RRStage
 from app.db.models.shema_notification import ShemaNotificationPrefs
 
-#: The five kinds FE-44 §5.8 freezes: the three delivered event types, plus the one computed
-#: kind (``stale``) that has no event at all. Closed rather than open, so a sixth spelling
-#: fails typing instead of landing on the panel unnoticed.
-NotificationKind = Literal["health", "need", "prayer", "field", "stale"]
+#: The five kinds FE-44 §5.8 froze — the delivered health, need, prayer and field notices, plus
+#: the one computed kind (``stale``) that has no event at all — and, since OBT-541, the
+#: resource-request form's two, its arrival and its decision, rung in the PME's bell. Closed
+#: rather than open, so an eighth spelling fails typing instead of landing on the panel unnoticed.
+NotificationKind = Literal[
+    "health", "need", "prayer", "field", "stale", "requestArrival", "requestDecision"
+]
 
 _OUTWARD = ConfigDict(
     from_attributes=True,
@@ -74,6 +84,12 @@ class ShemaNotificationEntry(BaseModel):
     region: str | None = None
     created_at: datetime
     is_read: bool
+    #: The two request kinds only (OBT-541): the registered name and the stage, as the notice
+    #: told them — GATE-03 D4's whole ceiling. Named as the console's own type names them,
+    #: ``requestName`` and ``requestStage``, so the wire is the frozen type verbatim. A request with
+    #: no registered name answers ``""`` and the console names it generically in its own language.
+    request_name: str | None = None
+    request_stage: RRStage | None = None
 
 
 class ShemaNotificationChannels(BaseModel):

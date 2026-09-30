@@ -43,7 +43,9 @@ from app.api.resource_requests._deps import (
     require_capability,
 )
 from app.db.models.auth import User
+from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.resource_request import CAPABILITIES
+from scripts.seed_apps_roles import seeded_roles
 from tests.baker import make_app, make_role, make_user_app_role
 
 #: ``endorse_request`` is the one probe built here rather than off a named alias: since BE-23
@@ -114,6 +116,20 @@ async def rrf_app(db_session):
     ):
         await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
 
+    return app
+
+
+@pytest.fixture()
+async def shema_app(db_session):
+    """The PME's app row and its seeded roles — what ``seed_apps_roles.py`` writes.
+
+    Most tests here run without it, and that is the production shape they prove: the form's
+    notices ring the PME's bell only where the ``shema`` app exists (OBT-541). The cards
+    (BE-24) and the PME's notices need it.
+    """
+    app = await make_app(db_session, app_key=SHEMA_APP_KEY, name="Shemá", auto_approve=False)
+    for role_key, label in seeded_roles(SHEMA_APP_KEY):
+        await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
     return app
 
 

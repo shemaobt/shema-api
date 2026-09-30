@@ -21,7 +21,10 @@ later.
 is, and it is one application's. A request's notice names its request in words instead;
 FE-28's screen is a list of the team's own requests, not a deep link, so a
 ``notification_resource_request_details`` would be a table with no reader — and the day
-one has a reader it is a migration, which is a different issue's to own.
+one has a reader it is a migration, which is a different issue's to own. The PME's copy of
+these two notices (OBT-541) does have one — the project's record — and carries its pointer in
+the Shemá module's own table (``app/services/shema/_request_notices.py``); the rows written
+here still have none.
 
 **The copy is English, and that is a pendency rather than a decision.** Every notification
 title and every e-mail template in this repository is English, including the password

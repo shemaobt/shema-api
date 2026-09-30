@@ -58,8 +58,9 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
 
 #: Routes behind the PME's door rather than the Shemá app gate (OBT-523): reachable by an
 #: account holding ``gestor`` or ``mesa`` in the form, or only a live project membership, and
-#: nothing in ``shema``. The session, and OBT-524's two reads a member has; a fourth is a line
-#: somebody adds here on purpose.
+#: nothing in ``shema``. The session, OBT-524's two reads a member has, and OBT-541's panel and
+#: read mark — the form's notices are addressed to those accounts; a sixth is a line somebody
+#: adds here on purpose.
 #:
 #: **Keyed by method and path**, since OBT-524 put a ``GET`` behind the door and the Admin's
 #: ``POST`` behind the app gate on one path, ``/projects/{project_id}/members``. Keyed by path
@@ -71,6 +72,8 @@ DOOR_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", f"{PREFIX}/session"),
         ("GET", f"{PREFIX}/projects/{{project_id}}/members"),
         ("GET", f"{PREFIX}/me/projects"),
+        ("GET", f"{PREFIX}/notifications"),
+        ("POST", f"{PREFIX}/notifications/read"),
     }
 )
 

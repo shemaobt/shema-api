@@ -316,7 +316,8 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. OBT-531 added `POST …/{id}/review`. |
 | `app/api/shema/intercessor_exit.py` | **OBT-531, built** | The module's **second** unauthenticated seam: `GET`/`POST /intercessors/leave/{token}`, the intercessor's exit link. §6.4's OBT-531 note. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
-| `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
+| `app/api/shema/notifications.py` | BE-15; OBT-541 | The derived panel, preferences, read state. Since OBT-541 the panel and its read mark sit behind the door (§6.8); the preferences stay behind the app gate. |
+| `app/services/shema/_request_notices.py` | **OBT-541, built** | The resource-request form's arrival and decision, rung in the PME's bell: who is told (the starter; the Admin off the `shema` grant and the Gestor off the form's), with the registered name and the stage and nothing else, and the `shema_request_notices` detail each row carries. |
 | `app/api/shema/session.py` | BE-03 **· built**; OBT-523 | `GET /api/shema/session` — §6.3, behind the door of §6.8. |
 | `app/api/shema/access.py` | **OBT-543, built** | The Admin's seven routes under `/access` — §6.10. |
 | `app/services/shema/_grant_rules.py` | **OBT-543, built** | The one owner of what the Admin's surface grants and how: the vocabulary (built from `_scope.py`), `admin` in both apps, regions with a regional role and with no other, and the fresh check of the Admin's own standing. |
@@ -553,8 +554,11 @@ can stage a notice **inside** it.
   `require_app_access("meaning-map-generator")` and reads `get_mm_app_id`. BE-15 writes
   `app/api/shema/notifications.py` and adds `get_shema_app_id` beside `get_mm_app_id` /
   `get_rr_app_id` — and exports it (§1.3 C2).
-- **No Shemá detail table.** `notification_meaning_map_details` is one product's, and a Shemá
-  one would have no reader until something deep-links.
+- **No Shemá detail table** — until something deep-linked. `notification_meaning_map_details` is
+  one product's, and a Shemá one would have had no reader. **OBT-541 is that reader**: the
+  resource-request form's notices, rung in the PME's bell, lead to the project's record, so each
+  of those rows carries `shema_request_notices` — the project, and the registered name and stage
+  the console renders in its own language. The other kinds still carry none.
 - **There is no channel delivery of any kind** — no e-mail, no push, no WhatsApp, anywhere in
   `app/services/notifications/`. FE-44 §5.8's `NotificationPrefs` records the choice of three
   channels; BE-15 inherits a preference with nothing behind it, and that is the honest state
@@ -710,7 +714,7 @@ behaviour on it.
 | 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. **OBT-531:** a contact untouched for more than a year — the latest of entry, review and send — is **flagged for review**, served as `reviewDue` and never derived by the client; and a person with no account **leaves through an exit link**, which is the same erasure. |
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
 | 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. ~~**Whether the definitions are a table at all is Open · GATE-02** (§9.2).~~ **Answered by GATE-02 on 22/set: the set is global, so there is no definitions table** — §9.2. |
-| 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads` | BE-02, BE-15 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
+| 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads`, `shema_request_notices` (OBT-541) | BE-02, BE-15, OBT-541 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
 | 5.11 | **ETEN ledger** | `shema_eten_credits`, `shema_eten_reports` (BE-11) | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule was **Open · GATE-01** (§9.1) and closed on 25/sep/2026 — BE-11's note below. |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
 | 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. One of the two things this module owns about identity (5.14 is the other). Empty means global. |
@@ -826,6 +830,26 @@ behaviour on it.
 > - **The line is an `outside` reader**: withheld for every role, the region's own coordinator
 >   included, and still counted in the totals. `test_privacy_owners.py`'s route audit now walks
 >   computed fields as well, with `EtenLocationShown` on a named allowlist.
+
+> **OBT-541 (BE-21) rang the PME's bell for the resource-request form**, and three decisions
+> travel with it.
+>
+> - **A detail table, because the notice finally points somewhere.** `shema_request_notices` is
+>   keyed by the `notifications` row and holds the project, the registered name and the stage —
+>   GATE-03 D4's whole ceiling, as columns, so nothing of the evaluation has one to arrive
+>   through. A snapshot, like every name this module keeps in a trail. `stage` is text with a
+>   CHECK over the five stages a notice announces, not the form's native enum.
+> - **Who hears what is the door's own reading.** The decision reaches `started_by`; the arrival
+>   reaches `admin` off the `shema` grant and `gestor` off the form's; neither reaches the actor; the mesa
+>   is told in the form. No region routing: the Admin and the Gestor reach none and read every
+>   request (BE-24). A request with no project — the Admin's link (OBT-537), a card the board
+>   opened, a seed — rings nothing here, and an installation with no `shema` app rings nothing
+>   and refuses the form nothing.
+> - **The pointer is answered only to a reader who reaches the project.** A project's id is its
+>   export slug, which names a place (§6.4). The panel answers `projectId` on a request notice when
+>   the project is inside the caller's scope or the caller is one of its live members, and `null`
+>   otherwise — where the record would have answered 404 anyway. The name and the stage go to
+>   every recipient: the board already reads both on the form's card.
 
 **Two shapes worth naming because they are easy to get wrong the same way the sibling did.**
 The health assessment (5.3) is the module's counterpart of
@@ -1250,6 +1274,14 @@ the record read a coordination surface, because the issue names *list* among the
 and FE-44 §8.7 says display is never enforcement. OBT-528 closed the second: the record is a
 leaving shape too, built for its reader.
 
+**A notification that points at a project leaks its slug** (OBT-541). A project's id is the
+export slug, `<language>-<place>`, so a notice that carries it tells its reader where a project
+is — and the resource-request form's arrival reaches the Admin and the Gestor, who reach no
+region. `list_notification_panel.py` answers a request notice's `projectId` only to a reader the
+project is inside the scope of, or who is one of its live members, through `within_scope` and
+`live_membership_ids`; everybody else gets `null`, which is §6.1's answer for a project out of
+scope. The notification row itself carries no slug and no place in its title or body.
+
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
 FE-44 §7 pins nine derivations over all 127 records at `2026-05-14` in
@@ -1447,7 +1479,8 @@ the mesa was refused at the door of a console it now belongs to. Six rules.
   so the list is closed: a key added here is a key added there.
 - **The door is a router of its own and opens one route.** `door` carries `DOOR` and holds
   `GET /session`; everything else stays under `authenticated`. *(OBT-524 added the member's two
-  reads behind it, and made the pin `DOOR_ROUTES`, by method and path — §6.9.)* An account the form made gets its
+  reads behind it, and made the pin `DOOR_ROUTES`, by method and path — §6.9; OBT-541 added the
+  notification panel and its read mark.)* An account the form made gets its
   session and is refused by every other route — what each area shows it is OBT-544's.
   `tests/test_shema/test_access.py` pins the door's paths in `DOOR_PATHS`, so the next door
   route (OBT-524's `/me/projects`, for a member with no regional role) is a deliberate edit.
@@ -1502,7 +1535,12 @@ them). `shema_project_members` is the link, and the form (OBT-520), *Solicitar r
   `equipe` grant still does not: only the PME's link counts.
 - **The door holds the member's two reads**: `GET /projects/{id}/members` and `GET /me/projects`.
   `tests/test_shema/test_access.py` pins them in `DOOR_ROUTES`, by method and path, because the
-  Admin's `POST` shares the roster's path behind the app gate.
+  Admin's `POST` shares the roster's path behind the app gate. **OBT-541 added the notification
+  panel and its read mark** (`GET /notifications`, `POST /notifications/read`): the form's
+  notices are addressed to the Gestor and to whoever started a request, accounts only the door
+  admits. Their scope is `DoorScope` — `scope_from_roles` over the session's roles, which reaches
+  no region without a regional role — so such an account reads its own rows and no stale
+  reading. The preferences stay behind the app gate.
 - **Three readers of a roster, and a type of their own.** The project's region scope, its own
   live members, and the Admin — who reaches every roster because it writes them and holds no
   region (§6.8). `_scope.roster_projects` is the statement and `RosterReach` its input: not a

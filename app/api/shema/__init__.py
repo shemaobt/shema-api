@@ -27,8 +27,10 @@ any ``/api/shema`` route that does not carry the guard and is not in its allowli
 (OBT-523, ``docs/shema.md`` §6.8). ``GET /api/shema/session`` is the console's sign-in read,
 and the mesa and the Gestor sign in holding no Shemá grant. So ``door`` carries ``DOOR`` —
 a Shemá role, or ``gestor``/``mesa`` held in the form, or the ``equipe`` a live project
-membership adds (OBT-524) — and holds the session and the two reads a member has: a
-project's roster and ``/me/projects``. An account the form made gets those answered and is
+membership adds (OBT-524) — and holds the session, the two reads a member has — a
+project's roster and ``/me/projects`` — and, since OBT-541, the notification panel and its read
+mark, because the resource-request form's notices are addressed to accounts only the door
+admits. An account the form made gets those answered and is
 still refused by every route under ``authenticated``. A route belongs on ``door`` only if
 every account at the door may call it and the service decides what it answers;
 ``tests/test_shema/test_access.py`` pins the door's routes, by method and path, in
@@ -57,6 +59,7 @@ from app.api.shema.intercessors import router as intercessors_router
 from app.api.shema.meetings import router as meetings_router
 from app.api.shema.members import door_router as members_door_router
 from app.api.shema.members import router as members_router
+from app.api.shema.notifications import door_router as notifications_door_router
 from app.api.shema.notifications import router as notifications_router
 from app.api.shema.projects import router as projects_router
 from app.api.shema.regions import router as regions_router
@@ -99,12 +102,13 @@ router.include_router(intake_router)
 router.include_router(exit_router)
 
 #: The PME's door: the session read, for any account holding a role of the session's
-#: vocabulary in either app (OBT-523), and the member's two reads (OBT-524). Everything else
-#: stays under ``authenticated``.
+#: vocabulary in either app (OBT-523), the member's two reads (OBT-524), and the notification
+#: panel and its read mark (OBT-541). Everything else stays under ``authenticated``.
 door = APIRouter(dependencies=[DOOR])
 
 door.include_router(session_router)  # BE-03, OBT-523
 door.include_router(members_door_router)  # OBT-524
+door.include_router(notifications_door_router)  # OBT-541
 
 router.include_router(door)
 

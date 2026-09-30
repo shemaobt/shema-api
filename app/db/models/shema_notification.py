@@ -2,9 +2,14 @@
 
 ``docs/shema.md`` §5.10 decides the shape by deciding what is *not* stored: **the panel's
 entries are derived from the projects**, so the platform's ``notifications`` table is the
-wrong home for them and this module has no detail table of its own. What a store is needed
-for is the two things a derivation cannot hold — what a person asked to be told about, and
-what they have already seen.
+wrong home for them. What a store is needed for is the two things a derivation cannot hold —
+what a person asked to be told about, and what they have already seen.
+
+**One detail table, and it exists because something finally deep-links** (OBT-541). §4.6 said
+a Shemá detail table would have no reader until a notice pointed somewhere; the resource-request
+form's two notices, rung into this app's bell, point at the project's record. So each of those
+rows carries its project, and the registered name and stage the console renders in its own
+language, in :class:`ShemaRequestNotice` — beside the platform's row, never inside it.
 
 Entry ids are stable derivations of what a row renders — ``health:{projectId}:{date}``,
 ``need:{projectId}:{category}:{submittedAt}`` — never of a position, because a removed need
@@ -26,7 +31,7 @@ which ``get_oc_app_id`` was not.
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, text
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -103,3 +108,40 @@ class ShemaNotificationRead(Base):
     )
     entry_id: Mapped[str] = mapped_column(String(200), primary_key=True)
     read_at: Mapped[datetime] = mapped_column(UtcDateTime(timezone=True), server_default=func.now())
+
+
+class ShemaRequestNotice(Base):
+    """What a resource-request notice rung in the PME's bell points at and says (OBT-541).
+
+    One row per ``notifications`` row the form's notices write into the ``shema`` app, keyed by
+    that row. Three facts and no fourth, which is GATE-03 D4's ceiling written as a schema: the
+    **project** the notice leads to, and the request's **registered name** and **stage** as they
+    were when it was told — a snapshot, so a later rename or move does not rewrite what a notice
+    said. Nothing of the evaluation has a column here to arrive through.
+
+    ``stage`` is text and not the form's native ``rr_stage_enum``: that type is the sibling
+    module's to migrate, and a second table holding it would pin its every change to this one.
+    The CHECK keeps the value to the five stages a notice can announce — the arrival's ``triagem``
+    and the four a decision implies; ``analise`` is absent because a card merely moving there
+    tells nobody anything.
+
+    ``project_id`` restricts on delete like the request's own foreign key does — a project with
+    requests cannot be deleted, so the notices of those requests cannot be orphaned by it.
+    """
+
+    __tablename__ = "shema_request_notices"
+    __table_args__ = (
+        CheckConstraint(
+            "stage IN ('triagem', 'aprovado', 'condicional', 'revisar', 'recusado')",
+            name="ck_shema_request_notices_stage",
+        ),
+    )
+
+    notification_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("notifications.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(120), ForeignKey("shema_projects.id"), nullable=False
+    )
+    request_name: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    stage: Mapped[str] = mapped_column(String(20))
