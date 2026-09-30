@@ -1,5 +1,5 @@
 {
-  "emitted_from": "ff2a289fe793dfccf66255ed3895536fe1f1995d",
+  "emitted_from": "a24e8ee6b289965045f8a508b02aa6d14ce4bd7f",
   "capabilities": [
     "edit_requests",
     "view_evaluation",
@@ -8,7 +8,6 @@
     "move_board",
     "assign_fund",
     "allocate_funds",
-    "endorse_request",
     "administer_funds",
     "grant_access"
   ],
@@ -23,7 +22,6 @@
   "controlCapabilities": [
     "assign_fund",
     "allocate_funds",
-    "endorse_request",
     "administer_funds"
   ],
   "roles": [
@@ -66,16 +64,6 @@
         "allocate_funds",
         "administer_funds",
         "grant_access"
-      ]
-    },
-    {
-      "id": "lider",
-      "name": {
-        "pt": "Líder de Base",
-        "en": "Base Leader"
-      },
-      "can": [
-        "endorse_request"
       ]
     }
   ]

@@ -15,6 +15,7 @@ from app.services.resource_request.cancel_request import cancel_request
 from app.services.resource_request.capabilities import (
     CAPABILITIES,
     CAPABILITY_ROLES,
+    RETIRED_ROLES,
     ROLE_CAPABILITIES,
     ROLES,
 )
@@ -80,6 +81,7 @@ __all__ = [
     "CAPABILITIES",
     "CAPABILITY_ROLES",
     "RESERVED_FUND_NAMES",
+    "RETIRED_ROLES",
     "ROLES",
     "ROLE_CAPABILITIES",
     "AttachmentLink",
