@@ -124,9 +124,9 @@ async def shema_app(db_session):
     return app
 
 
-@pytest.fixture()
-async def client(db_session):
-    """An ASGI client running the probe router, the module's own router and auth.
+@pytest.fixture(scope="session")
+def resource_requests_test_app():
+    """The probe router, the module's own router and auth, built once per process.
 
     The module router is mounted at the same prefix the application mounts it at, so the
     lifecycle tests exercise the real paths — ``/api/resource-requests/requests`` — through
@@ -148,7 +148,6 @@ async def client(db_session):
     from app.api.auth import router as auth_router
     from app.api.resource_requests import router as module_router
     from app.api.resource_requests.access import router as access_router
-    from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     probe = APIRouter()
@@ -204,11 +203,19 @@ async def client(db_session):
     test_app.include_router(auth_router, prefix="/api/auth")
     register_exception_handlers(test_app)
 
+    return test_app
+
+
+@pytest.fixture()
+async def client(resource_requests_test_app, db_session):
+    """An ASGI client on the shared app, reading and writing through this test's ``db_session``."""
+    from app.core.database import get_db
+
     async def _get_db():
         yield db_session
 
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
+    resource_requests_test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=resource_requests_test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 

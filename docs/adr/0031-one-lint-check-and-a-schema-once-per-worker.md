@@ -74,3 +74,12 @@ those guards out of `sqlite_master`, drops them, empties the tables and writes t
 inside its own transaction. Cases in `test_shema` and `test_resource_requests` hold that
 guard by asserting it raises, so removing it for good was never on the table. The sweep
 measures 0.023-0.029 s against 0.25-0.32 s for the 104-table DDL cycle.
+
+**The test app follows the schema.** The per-test cost that grew on dev was not the sweep but
+the suites' `client` fixtures, each of which built a FastAPI app and registered every route
+of its module before every test: about 150 ms a test in `test_shema`, most of it spent in
+`include_router`. Each suite's app is now built once per process, and a test only points the
+app's `get_db` override at its own session. The Shemá probes are still mounted on the shared
+routers for the build and taken off again before the first test runs, so the application a
+case builds with `create_app()` never carries them. Measured locally with the CI command:
+setup from 400 s to 250 s across 4768 tests, the run from 153 s to 113 s.

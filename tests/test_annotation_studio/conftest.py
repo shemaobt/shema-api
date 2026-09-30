@@ -23,9 +23,9 @@ async def as_app(db_session):
     return app
 
 
-@pytest.fixture()
-async def client(db_session):
-    """An ASGI client whose handlers run against the test session.
+@pytest.fixture(scope="session")
+def annotation_studio_test_app():
+    """The annotation-studio router under test, built once per process.
 
     Mounts only the annotation-studio router (with the real exception handlers, so
     AuthorizationError → 403) to avoid the full app's lifespan/inngest startup.
@@ -35,18 +35,25 @@ async def client(db_session):
     from fastapi import FastAPI
 
     from app.api.annotation_studio import router as as_router
-    from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
     test_app.include_router(as_router, prefix="/api/annotation-studio")
     register_exception_handlers(test_app)
 
+    return test_app
+
+
+@pytest.fixture()
+async def client(annotation_studio_test_app, db_session):
+    """An ASGI client on the shared app, reading and writing through this test's ``db_session``."""
+    from app.core.database import get_db
+
     async def _get_db():
         yield db_session
 
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
+    annotation_studio_test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=annotation_studio_test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
