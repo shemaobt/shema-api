@@ -881,8 +881,12 @@ behaviour on it.
 >   (`request_as_read`, carried by `Readership.withheld_prayer`, which `_deps._reading` sets), and
 >   a `PATCH` from it naming the text, the recording or the visibility is a 403 on every record
 >   (*não dá para editar o que não se vê*). The same reading BE-12 took for the submission inbox
->   and FE-44 §5.8 for the prayer notice. **A create is not refused**, the exception OBT-528
->   already declared for the place: the creator sees what they type.
+>   and FE-44 §5.8 for the prayer notice. **Nor does it decide what is shared**: a need's
+>   `prayerShared` is the team's authorization too, so a batch from it that raises a shared need,
+>   shares one or unshares one is a 403 (`undecidable_shares`) — read off the values, because the
+>   console sends a need back whole and a flag that does not move decides nothing. On a create it
+>   writes the text it types (OBT-528's create exception, for the same reason) and not `rede`
+>   (`authorized_on_create`). `refuse_prayer_decisions` is the one refusal for the three.
 > - **The recording travels nowhere yet.** `prayer_requests_audio` takes any string a save writes,
 >   so signing what it holds would let a writer mint a link to any object in `shema-private`; the
 >   wall omits FE-44's optional `audioUrl` and the Pulse is text. An audio-only request reaches

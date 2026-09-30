@@ -36,8 +36,8 @@ the wall still travels inside a shape that withholds the place, because the shap
 its visibility and every need under its own ``prayer_shared`` — and the wall, the Prayer Pulse
 and BE-14's export all read it rather than the rows. The two questions the issue added are
 answered beside it: **who reads a request nobody authorized** (:data:`PRAYER_AUDIENCE`, applied
-to the record by :func:`request_as_read` and to its write by
-:func:`refuse_unreadable_request_writes`), and **what an authorization is attached to** — the
+to the record by :func:`request_as_read` and to every write of a request or a share by
+:func:`refuse_prayer_decisions`), and **what an authorization is attached to** — the
 request it was given for, so a new text arriving without one is unauthorized again
 (:func:`request_written`, :func:`need_written`).
 """
@@ -58,6 +58,8 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaPrayerVisibility
 from app.db.models.shema_need import ShemaNeed
+from app.models.shema import ShemaProjectUpdate
+from app.models.shema_need import ShemaNeedWrite
 from app.models.shema_prayer import PrayerSource
 from app.services.shema._health_audience import HEALTH_AUDIENCE
 from app.services.shema._redaction import log_reference
@@ -260,25 +262,74 @@ def unreadable_request_writes(sent: Collection[str], *, reads_withheld: bool) ->
     return sorted(set(sent) & set(REQUEST_COLUMNS))
 
 
-def refuse_unreadable_request_writes(
-    project: ShemaProject, sent: Collection[str], *, reads_withheld: bool, user: User
+#: A need's authorization, in the client's spelling — the one name a refused batch is given.
+NEED_SHARE: Final = "needsItems.prayerShared"
+
+
+def undecidable_shares(
+    creates: Iterable[ShemaNeedWrite],
+    updates: Iterable[tuple[ShemaNeed, ShemaNeedWrite]],
+    *,
+    reads_withheld: bool,
+) -> list[str]:
+    """``[NEED_SHARE]`` when a needs batch decides a need's authorization this reader may not.
+
+    A need's ``prayer_shared`` is the team's authorization as much as the project's visibility
+    is, so the rule of :func:`unreadable_request_writes` holds for it: the role that shares with
+    the network does not decide it, in either direction — raising a need already shared, sharing
+    one, unsharing one. **Read off the values and not the names**, unlike the request's fields:
+    the console sends a need back whole, flag included, and a row whose flag does not move
+    decides nothing — refusing the name would refuse the Resource Circle every save of the needs
+    it works. The reader already reads every need's flag, so the answer tells them nothing.
+
+    A rewritten description can still unshare a need (:func:`need_written`): that is the rule
+    withdrawing an authorization given for another text, not the reader deciding one.
+    """
+    if reads_withheld:
+        return []
+    decided = any(row.prayer_shared for row in creates) or any(
+        "prayer_shared" in row.model_fields_set and row.prayer_shared != need.prayer_shared
+        for need, row in updates
+    )
+    return [NEED_SHARE] if decided else []
+
+
+def authorized_on_create(payload: ShemaProjectUpdate, *, reads_withheld: bool) -> list[str]:
+    """The request's authorization, when a create by a reader outside the audience carries it.
+
+    A create shows its author what they type, so the text and the recording are theirs to write
+    — OBT-528's exception for the place, for the same reason. The decision to share them is not:
+    ``rede`` on a new record is the same decision as on an old one. By value, because the
+    console's create sends every field it holds.
+    """
+    if reads_withheld or payload.prayer_visibility is not ShemaPrayerVisibility.REDE:
+        return []
+    return [REQUEST_VISIBILITY]
+
+
+def refuse_prayer_decisions(
+    project: ShemaProject, refused: Sequence[str], *, user: User, operation: str
 ) -> None:
-    """Raise :func:`unreadable_request_writes`' answer as a 403 naming the fields, and log it."""
-    refused = unreadable_request_writes(sent, reads_withheld=reads_withheld)
+    """Raise ``refused`` as a 403 naming the fields in the client's spelling, and log it.
+
+    One sentence for the three answers above, because the rule is one: the request, the
+    recording and every authorization are the coordination's and the OBT Lab's to write.
+    """
     if not refused:
         return
+    named = [name if "." in name else to_camel(name) for name in refused]
     logger.warning(
-        "shema authorization refused: a prayer request this reader may not write",
+        "shema authorization refused: a prayer request or share this reader may not write",
         extra={
-            "shema_operation": "save_project",
+            "shema_operation": operation,
             "shema_user_id": user.id,
-            "shema_refused_fields": refused,
+            "shema_refused_fields": named,
             **log_reference(project),
         },
     )
     raise AuthorizationError(
-        f"{', '.join(to_camel(name) for name in refused)}: "
-        "only the coordination and the OBT Lab write a prayer request and its authorization"
+        f"{', '.join(named)}: only the coordination and the OBT Lab write a prayer request and "
+        "decide what is shared with the network"
     )
 
 

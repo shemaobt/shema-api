@@ -53,7 +53,8 @@ column's one reader, so ``tests/test_shema/test_privacy_owners.py`` needs no all
 for it. The same goes for the reader's refusal: *which* fields a reader may not write is
 ``_redaction.unwritable_fields``'s answer, from the names the payload set, and this file only
 raises it. The prayer request has the same two answers from its own owner (BE-09):
-``_consent.refuse_unreadable_request_writes`` refuses it to a reader who cannot read it, and
+``_consent.refuse_prayer_decisions`` refuses a request or a need's share to a reader outside its
+audience — on a create too, where only the authorization is refused — and
 ``_consent.request_written`` withdraws an authorization the new request did not restate.
 """
 
@@ -73,7 +74,13 @@ from app.db.models.shema import ShemaProject
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.services.shema import _audit, _needs
 from app.services.shema._audit import ChangesSince, FieldChange
-from app.services.shema._consent import refuse_unreadable_request_writes, request_written
+from app.services.shema._consent import (
+    authorized_on_create,
+    refuse_prayer_decisions,
+    request_written,
+    undecidable_shares,
+    unreadable_request_writes,
+)
 from app.services.shema._progress import (
     Aggregates,
     ProgressSource,
@@ -332,8 +339,13 @@ async def save_project(
         raise refuse_out_of_scope(scope, user=user, operation="save_project", project_id=project_id)
 
     _refuse_what_the_reader_may_not_write(project, payload, readership, user=user)
-    refuse_unreadable_request_writes(
-        project, payload.model_fields_set, reads_withheld=readership.withheld_prayer, user=user
+    refuse_prayer_decisions(
+        project,
+        unreadable_request_writes(
+            payload.model_fields_set, reads_withheld=readership.withheld_prayer
+        ),
+        user=user,
+        operation="save_project",
     )
 
     if project.version != expected_version:
@@ -350,6 +362,12 @@ async def save_project(
 
     batch = _needs.needs_payload(payload)
     plan = _needs.NeedPlan() if batch is None else await _needs.plan_needs(db, project, batch)
+    refuse_prayer_decisions(
+        project,
+        undecidable_shares(plan.creates, plan.updates, reads_withheld=readership.withheld_prayer),
+        user=user,
+        operation="save_project",
+    )
 
     changed = [column for column in _audit.AUDITED_COLUMNS if before[column] != merged[column]]
     if not changed and not plan:
@@ -405,6 +423,7 @@ async def create_project(
     scope: RegionScope,
     payload: ShemaProjectCreate,
     *,
+    readership: Readership,
     user: User,
     day: date,
     source: ProgressSource | None = None,
@@ -478,6 +497,15 @@ async def create_project(
 
     batch = _needs.needs_payload(payload)
     plan = _needs.NeedPlan() if batch is None else await _needs.plan_needs(db, project, batch)
+    refuse_prayer_decisions(
+        project,
+        [
+            *authorized_on_create(payload, reads_withheld=readership.withheld_prayer),
+            *undecidable_shares(plan.creates, (), reads_withheld=readership.withheld_prayer),
+        ],
+        user=user,
+        operation="create_project",
+    )
     need_changes, urgent = await _needs.apply_needs(db, project, plan, user=user, day=day)
 
     entry = record_progress(
