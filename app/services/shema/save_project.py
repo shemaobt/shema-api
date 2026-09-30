@@ -52,7 +52,9 @@ This file may read ``location``: it does so through ``_redaction.derive_region``
 column's one reader, so ``tests/test_shema/test_privacy_owners.py`` needs no allowlist entry
 for it. The same goes for the reader's refusal: *which* fields a reader may not write is
 ``_redaction.unwritable_fields``'s answer, from the names the payload set, and this file only
-raises it.
+raises it. The prayer request has the same two answers from its own owner (BE-09):
+``_consent.refuse_unreadable_request_writes`` refuses it to a reader who cannot read it, and
+``_consent.request_written`` withdraws an authorization the new request did not restate.
 """
 
 from __future__ import annotations
@@ -71,6 +73,7 @@ from app.db.models.shema import ShemaProject
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.services.shema import _audit, _needs
 from app.services.shema._audit import ChangesSince, FieldChange
+from app.services.shema._consent import refuse_unreadable_request_writes, request_written
 from app.services.shema._progress import (
     Aggregates,
     ProgressSource,
@@ -174,7 +177,7 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     sent.pop("id", None)
     sent.pop("needs_items", None)
 
-    for column, value in sent.items():
+    for column, value in request_written(project, sent).items():
         merged[column] = value
 
     for column in ("book_progress", "story_progress"):
@@ -329,6 +332,9 @@ async def save_project(
         raise refuse_out_of_scope(scope, user=user, operation="save_project", project_id=project_id)
 
     _refuse_what_the_reader_may_not_write(project, payload, readership, user=user)
+    refuse_unreadable_request_writes(
+        project, payload.model_fields_set, reads_withheld=readership.withheld_prayer, user=user
+    )
 
     if project.version != expected_version:
         raise RecordVersionConflict(
