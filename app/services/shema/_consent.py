@@ -277,21 +277,37 @@ def undecidable_shares(
     A need's ``prayer_shared`` is the team's authorization as much as the project's visibility
     is, so the rule of :func:`unreadable_request_writes` holds for it: the role that shares with
     the network does not decide it, in either direction — raising a need already shared, sharing
-    one, unsharing one. **Read off the values and not the names**, unlike the request's fields:
-    the console sends a need back whole, flag included, and a row whose flag does not move
-    decides nothing — refusing the name would refuse the Resource Circle every save of the needs
-    it works. The reader already reads every need's flag, so the answer tells them nothing.
+    one, unsharing one, or keeping one shared over a description it was not given for. **Read
+    off the values and not the names**, unlike the request's fields: the console sends a need
+    back whole, flag included, and a row that leaves the share where it stood decides nothing —
+    refusing the name would refuse the Resource Circle every save of the needs it works. The
+    reader already reads every need's flag, so the answer tells them nothing.
 
-    A rewritten description can still unshare a need (:func:`need_written`): that is the rule
-    withdrawing an authorization given for another text, not the reader deciding one.
+    A rewritten description sent without the flag still unshares the need (:func:`need_written`):
+    that is the rule withdrawing an authorization given for another text, not the reader
+    deciding one.
     """
     if reads_withheld:
         return []
     decided = any(row.prayer_shared for row in creates) or any(
-        "prayer_shared" in row.model_fields_set and row.prayer_shared != need.prayer_shared
-        for need, row in updates
+        _decides_share(need, row) for need, row in updates
     )
     return [NEED_SHARE] if decided else []
+
+
+def _decides_share(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
+    """Whether ``row``'s flag leaves ``need`` shared otherwise than the rule would without it.
+
+    Without the flag, :func:`need_written` keeps the stored share or, for a rewritten
+    description, withdraws it. A flag that agrees with that is a restatement; one that does not
+    is a decision — the flag moving, or ``prayerShared: true`` beside a new description, which is
+    the share carried over to a text nobody authorized.
+    """
+    if "prayer_shared" not in row.model_fields_set:
+        return False
+    sent = {name: getattr(row, name) for name in row.model_fields_set - {"prayer_shared"}}
+    left: bool = need_written(need, sent).get("prayer_shared", need.prayer_shared)
+    return row.prayer_shared != left
 
 
 def authorized_on_create(payload: ShemaProjectUpdate, *, reads_withheld: bool) -> list[str]:
@@ -360,7 +376,11 @@ def request_written(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str,
 
 
 def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:
-    """:func:`request_written` for a need: a rewritten description is unshared unless restated."""
+    """:func:`request_written` for a need: a rewritten description is unshared unless restated.
+
+    Only the audience restates: :func:`undecidable_shares` refuses the restatement to anybody
+    else before this runs.
+    """
     written = dict(sent)
     if "prayer_shared" in written or not need.prayer_shared:
         return written

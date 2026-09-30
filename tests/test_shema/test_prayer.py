@@ -686,6 +686,47 @@ async def test_the_resource_circle_still_works_the_needs_it_does_not_share(
     assert texts(await wall(client, circle)) == {SHARED_NEED}
 
 
+async def test_the_resource_circle_may_not_keep_a_share_on_a_text_it_rewrote(
+    client, db_session, circle
+) -> None:
+    """The flag does not move, and the decision is still there: restating ``prayerShared`` over a
+    new description is sharing the new text, and the team authorized the one it replaced."""
+    project = await seed(db_session, "vime-rio")
+    row = await need(db_session, project, SHARED_NEED, shared=True)
+
+    response = await patch(
+        client,
+        circle,
+        project.id,
+        {"needsItems": [{"id": row.id, "description": KEPT_NEED, "prayerShared": True}]},
+    )
+
+    assert response.status_code == 403, response.text
+    assert "prayerShared" in response.text
+    await db_session.refresh(row)
+    assert (row.description, row.prayer_shared) == (SHARED_NEED, True)
+    assert texts(await wall(client, circle)) == {SHARED_NEED}
+    assert KEPT_NEED not in await pulse(client, circle)
+
+
+async def test_a_need_the_resource_circle_rewrites_leaves_the_wall(
+    client, db_session, circle
+) -> None:
+    """Without the flag the rewrite is the Resource Circle's to make, and the rule withdraws the
+    authorization it was not given — the refusal above is of the restatement, not of the text."""
+    project = await seed(db_session, "vime-lago")
+    row = await need(db_session, project, SHARED_NEED, shared=True)
+
+    response = await patch(
+        client, circle, project.id, {"needsItems": [{"id": row.id, "description": KEPT_NEED}]}
+    )
+
+    assert response.status_code == 200, response.text
+    await db_session.refresh(row)
+    assert (row.description, row.prayer_shared) == (KEPT_NEED, False)
+    assert await wall(client, circle) == []
+
+
 @pytest.mark.parametrize(
     "body",
     [
