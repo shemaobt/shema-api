@@ -10,8 +10,10 @@ breaks password recovery and nothing else, silently. The loop below only fills a
 row rather than a re-run of this script.
 
 ``APP_ROLES_OVERRIDE`` carries the apps whose roles are not ``DEFAULT_ROLES``. For
-``resource-request-form`` the four keys are the role ids of the frontend's
-``capabilities.ts`` verbatim, not a translation of them, and ``shema``'s four are the
+``resource-request-form`` the keys are the role ids of the frontend's ``capabilities.ts``
+verbatim, not a translation of them, **plus the roles it retired** — ``lider`` since FE-49
+(OBT-517), a row installations have and ``20260930_rr12`` stripped of every grant
+(``RETIRED_ROLES`` in ``capabilities.py``); and ``shema``'s four are the
 ``SessionRole`` union of its own ``src/types/role.ts`` on the same rule — camelCase against
 this repository's mostly snake_case habit, because ``GET /api/shema/session`` answers one of
 them and a translation table between two spellings of one vocabulary is a second place to be
@@ -21,8 +23,9 @@ nothing in the platform objects.
 **The Admin of OBT-522 is one role applied to two apps, and not a fifth key in two
 overrides.** ``PLATFORM_ADMIN_APPS`` seeds ``admin`` — labelled *"Admin da plataforma"* — in
 ``shema`` and ``resource-request-form``, beside each app's own roles. It stays out of
-``APP_ROLES_OVERRIDE`` on purpose: the form's list there is its frontend's role ids, pinned by
-``tests/test_resource_requests/`` against ``capabilities.ts``, and the Admin is not one of them.
+``APP_ROLES_OVERRIDE`` on purpose: the form's list there is its frontend's role ids plus the
+retired ones, pinned by ``tests/test_resource_requests/`` against ``capabilities.ts``, and the
+Admin is neither.
 The label applies only to those two apps; every other app's ``admin`` keeps its own. Existing
 installations get the same row from ``20260927_shema08``, which writes the same key and label;
 ``tests/test_shema/test_admin_role.py`` holds the two to each other.

@@ -18,6 +18,7 @@ from app.db.models.auth import Role
 from app.services.access_request import create_access_request
 from app.services.access_request._default_roles import default_role_for
 from app.services.authorization import list_roles
+from app.services.resource_request import RETIRED_ROLES
 from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS
 from tests.baker import grant_app_role, make_app, make_user
 from tests.test_resource_requests.conftest import (
@@ -48,12 +49,15 @@ def test_the_seeded_app_carries_the_url_fe25_emails_are_built_from() -> None:
     assert app_url == "https://resourceform.shemaywam.com"
 
 
-def test_the_seeded_roles_are_the_frontends_role_ids() -> None:
+def test_the_seeded_roles_are_the_frontends_role_ids_plus_the_retired() -> None:
     """No longer a literal typed here: ``FRONTEND_ROLE_IDS`` is read from the emission the
     frontend produces from ``src/auth/capabilities.ts``. A role renamed over there fails
     this, which is the check BE-00 left this test waiting for.
+
+    The seed also carries the roles the frontend retired (``RETIRED_ROLES``, FE-49, OBT-517):
+    installations have those rows, their grants were revoked, and nothing grants them again.
     """
-    assert APP_ROLES_OVERRIDE[APP_KEY] == FRONTEND_ROLE_IDS
+    assert APP_ROLES_OVERRIDE[APP_KEY] == [*FRONTEND_ROLE_IDS, *RETIRED_ROLES]
 
 
 def test_seed_apps_has_no_duplicate_keys() -> None:
@@ -191,4 +195,4 @@ async def test_my_roles_is_empty_for_an_account_with_no_grant(db_session, client
 
 async def test_the_seeded_roles_are_all_grantable(db_session, rrf_app) -> None:
     result = await db_session.execute(select(Role.role_key).where(Role.app_id == rrf_app.id))
-    assert sorted(result.scalars().all()) == sorted(FRONTEND_ROLE_IDS)
+    assert sorted(result.scalars().all()) == sorted([*FRONTEND_ROLE_IDS, *RETIRED_ROLES])
