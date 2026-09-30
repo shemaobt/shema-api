@@ -1419,6 +1419,13 @@ writes from something else — the health projection, the progress history, medi
 too, and `ignoredFields` in the answer names every key that was, so an import is never read as
 having restored what it could not.
 
+**A project pending confirmation (§6.11) is in neither direction**, and neither file adds a filter
+for it: the export starts at `list_projects`, the import reads what it may update through
+`visible_projects`, and both compose `_scope.registered` by starting where every reader starts. The
+file never carries it, its request or its id in `shema_exports`; an import naming its id is refused
+409 by the create, nothing applied — confirming or correcting it is the Admin's act on the project
+(`test_a_pending_project_never_reaches_the_file`, `test_the_import_cannot_reach_a_pending_project`).
+
 **Residuals, named.** A slug that exists outside the caller's reach is answered 409 by
 `create_project`, the existence oracle `POST /projects` already has; the import inherits it by
 being the same path. The free text of an authorized request, the language name and the vitality

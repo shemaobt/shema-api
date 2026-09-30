@@ -329,6 +329,44 @@ async def test_a_row_outside_the_scope_never_reaches_the_file(
     assert SHARED not in body
 
 
+async def pending(db_session, project_id: str) -> ShemaProject:
+    """A project the mesa's approval filed and the Admin has not confirmed (OBT-547), in the
+    region the writers reach — with a request that would otherwise be on the wall."""
+    project = await seed(
+        db_session,
+        project_id,
+        language="Língua Ainda Não Confirmada",
+        text=SHARED,
+        visibility=ShemaPrayerVisibility.REDE,
+    )
+    project.pending_confirmation = True
+    await db_session.commit()
+    return project
+
+
+@pytest.mark.parametrize("fmt", FORMATS)
+@pytest.mark.parametrize("role", ["strategist", "coordinator"])
+async def test_a_pending_project_never_reaches_the_file(
+    client, db_session, shema_app, role, fmt
+) -> None:
+    """OBT-547's *pendente invisível nos exports*, by the scope and not by a filter of the
+    export's own: the file starts where every reader starts, and the pending project is not
+    there — nor its request, nor in the log of what left."""
+    headers = await persona(db_session, shema_app, role)
+    await seed(db_session, "vale-registrado")
+    await pending(db_session, "vale-pendente")
+
+    body = text_of(await export(client, headers, fmt))
+
+    assert "vale-registrado" in body
+    assert "vale-pendente" not in body
+    assert "Língua Ainda Não Confirmada" not in body
+    assert SHARED not in body
+    (entry,) = (await db_session.execute(select(ShemaExport))).scalars().all()
+    assert entry.project_ids == ["vale-registrado"]
+    assert entry.request_ids == []
+
+
 @pytest.mark.parametrize("fmt", FORMATS)
 @pytest.mark.parametrize("role", list(PERSONAS))
 async def test_a_sensitive_place_base_and_contacts_never_reach_the_file(
@@ -922,6 +960,26 @@ async def test_a_slug_that_exists_out_of_reach_refuses_the_file(
     assert response.status_code == 409, response.text
     assert await stored(db_session, "vale-de-passagem") is None
     assert (await stored(db_session, "vale-alheio")).region_key == AWAY
+
+
+async def test_the_import_cannot_reach_a_pending_project(client, db_session, coordinator) -> None:
+    """The import does not see a pending project either, so it cannot confirm, fill or correct
+    one through a file — that is the Admin's act on the project. Its id reads as a new record,
+    and the create finds the slug taken: the file is refused and nothing of it applied."""
+    await pending(db_session, "vale-pendente")
+
+    response = await upload(
+        client,
+        coordinator,
+        [new_record("vale-de-passagem"), new_record("vale-pendente", statusComments="x")],
+    )
+
+    assert response.status_code == 409, response.text
+    assert await stored(db_session, "vale-de-passagem") is None
+    kept = await stored(db_session, "vale-pendente")
+    assert kept.pending_confirmation is True
+    assert kept.status_comments == ""
+    assert kept.version == 1
 
 
 async def test_an_imported_request_arrives_unauthorized_whatever_the_file_claims(
