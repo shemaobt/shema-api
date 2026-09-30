@@ -17,7 +17,7 @@ from app.models.resource_request import RequestCardOut
 from app.services.shema import set_region_scope
 from tests.baker import make_user
 from tests.test_resource_requests.conftest import auth_header, grant, make_membership
-from tests.test_resource_requests.test_requests import REQUESTS, _decide, draft
+from tests.test_resource_requests.test_requests import REQUESTS, _decide, as_team, draft
 
 PROJECT = "kadiweu"
 CARDS = f"{REQUESTS}/cards"
@@ -225,6 +225,7 @@ def test_the_projection_refuses_a_field_of_the_evaluation() -> None:
                 "open": True,
                 "can_edit": False,
                 "started_by_name": None,
+                "revision_of_id": None,
                 "scores": [5, 5, 5, 5, 5, 5],
             }
         )
@@ -290,3 +291,19 @@ async def test_the_tracking_list_keeps_the_forms_scope(
 
     assert res.status_code == 200, res.text
     assert res.json() == []
+
+
+async def test_a_revision_card_names_what_it_revises(db_session, client, rrf_app) -> None:
+    """The tracking list says a card is a revision (FE-46, OBT-514): ``revision_of_id`` is the
+    spine's, not the evaluation's, and a first request carries ``None``."""
+    headers = await as_team(db_session, rrf_app)
+    sent = (await client.post(REQUESTS, json=draft(), headers=headers)).json()
+    await client.post(f"{REQUESTS}/{sent['id']}/submit", headers=headers)
+    await _decide(db_session, sent["id"], RRDecision.REVISE)
+    revision = (await client.post(f"{REQUESTS}/{sent['id']}/revise", headers=headers)).json()
+
+    cards = {card["id"]: card for card in (await client.get(CARDS, headers=headers)).json()}
+
+    assert cards[sent["id"]]["revision_of_id"] is None
+    assert cards[revision["id"]]["revision_of_id"] == revision["revision_of_id"]
+    assert cards[revision["id"]]["revision_of_id"] is not None
