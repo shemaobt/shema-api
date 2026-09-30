@@ -30,7 +30,6 @@ import itertools
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.book_material import unwalkable
@@ -330,7 +329,7 @@ async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
     team = await a_team(db_session, name="Gravou e depois a sala parou")
     session = await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
 
-    await room.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, session)
 
     assert await active_passage(db_session, project_id=team.id) == SECOND
 

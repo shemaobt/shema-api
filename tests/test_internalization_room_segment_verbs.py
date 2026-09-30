@@ -346,6 +346,7 @@ async def test_a_divided_stretch_cannot_be_replaced_as_a_unit_through_the_route(
     )
 
     assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
     assert len(await _units(client, session_id)) == 2, "e a recusa não mexeu em nada"
 
 
@@ -492,6 +493,7 @@ async def test_a_stretch_that_was_already_divided_cannot_be_divided_again(
     refused = await _divide(client, session_id, whole["segment_id"], 4000)
 
     assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
     assert len(await _units(client, session_id)) == 2
 
 
@@ -598,6 +600,13 @@ async def test_a_stretch_that_no_longer_counts_cannot_be_replaced(
     )
 
     assert again.status_code == 400, again.text
+    assert again.json() == {
+        "detail": (
+            "This stretch no longer counts: it was already replaced, or the part of the "
+            "rehearsal it is a slice of was recorded again"
+        ),
+        "code": "STRETCH_NO_LONGER_COUNTS",
+    }
     units = await _units(client, session_id)
     assert len(units) == 1
     assert [one["segment_id"] for one in units] != [whole["segment_id"]]
@@ -622,6 +631,10 @@ async def test_a_stretch_that_no_longer_counts_cannot_be_divided_through_the_rou
     refused = await _divide(client, session_id, whole["segment_id"], 4000)
 
     assert refused.status_code == 400, refused.text
+    assert refused.json() == {
+        "detail": "A stretch that no longer counts cannot be divided",
+        "code": "STRETCH_NO_LONGER_COUNTS",
+    }
     assert len(await _units(client, session_id)) == 1
 
 
@@ -647,10 +660,10 @@ async def _tellings(db: AsyncSession, session_id: str) -> list[int]:
 
 
 async def _asks_for_a_person(client: httpx.AsyncClient, session_id: str) -> bool:
-    """Whether the room has stopped and put a person in front of the team."""
+    """Whether the room has asked for a person to come to the team."""
     state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
     assert state.status_code == 200, state.text
-    return bool(state.json()["status"] == IRSessionStatus.NEEDS_PERSON.value)
+    return state.json()["halt"] is not None
 
 
 async def _correct(
@@ -942,12 +955,12 @@ async def test_a_divide_for_a_session_the_room_does_not_hold_is_404_the_session_
 
 
 async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.AsyncClient) -> None:
-    """The stopping survives the answer that carried it.
+    """The ask survives the answer that carried it.
 
     The reply to the correction says `needs_person`, and a client that ignores that field would
-    otherwise lose the one moment the room asked for help. It is written into the session's own
-    status too, so the next read of the session finds it — the room stays stopped rather than
-    having mentioned it once.
+    otherwise lose the one moment the room asked for help. It stands on the session too, so the
+    next read of the session finds it as a warning — the room goes on and keeps asking, rather
+    than having mentioned it once (ENG-1163).
     """
     session_id, _, _ = await _one_told_stretch(client)
     for _ in range(RETELLS_BEFORE_A_WARNING):
@@ -956,7 +969,8 @@ async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.Asyn
 
     state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
 
-    assert state.json()["status"] == IRSessionStatus.NEEDS_PERSON.value
+    assert state.json()["status"] == IRSessionStatus.IN_PROGRESS.value
+    assert state.json()["halt"] == "warning"
 
 
 # ---------------------------------------------------------------------------

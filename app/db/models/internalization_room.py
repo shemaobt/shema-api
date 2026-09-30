@@ -98,13 +98,20 @@ class IRSession(Base):
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
     comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
-    #: every halt and cleared by none: it outlives the halt on purpose, so that a warning
-    #: lifted by a landing turn before any facilitator saw it is still readable on the team's
-    #: history afterwards. Whether a halt is *standing* is ``status``; this says what kind it
-    #: was. Null on every row halted before ENG-609, which the read side answers as
-    #: ``blocking`` while the halt stands — the conservative reading, and deliberately not a
-    #: backfill, which would be indistinguishable from a kind somebody actually recorded.
+    #: every halt and cleared by none: it outlives the halt on purpose, so that a halt lifted
+    #: before any facilitator saw it is still readable on the team's history afterwards.
+    #: Whether a halt is *standing* is ``status`` for a blocking one and ``warned_at`` for a
+    #: warning; this says what kind the last one was. Null on every row halted before ENG-609,
+    #: which the read side answers as ``blocking`` while the halt stands — the conservative
+    #: reading, and deliberately not a backfill, which would be indistinguishable from a kind
+    #: somebody actually recorded.
     halt_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: When the last warning was raised (ENG-1163). A warning refuses nothing, so it never
+    #: writes ``status``: the room goes on while it stands. It stands until a facilitator
+    #: attends the session, so it is read together with ``attended_at``: undoing the visit is
+    #: what brings it back, and no landing turn touches either column. It is cleared only when
+    #: a new halt clears the stamps of a visit that had ended it, making that visit final.
+    warned_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     #: When a facilitator said they went to this room, and who said it. Null is the ordinary
     #: answer: most conversations are never marked. The pair moves together — the undo clears
     #: both — because half of it records nothing anybody can act on.

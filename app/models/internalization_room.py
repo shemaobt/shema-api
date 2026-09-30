@@ -229,10 +229,15 @@ class TeamSessionResponse(BaseModel):
     #: A halt is not an end: it travels beside `state`, never inside it (ENG-605).
     needs_person: bool
     #: What kind the last halt on this conversation was, **whether or not it still stands**
-    #: (ENG-609). That is the difference from the tablet's `halt`: a warning lifted by a
-    #: landing turn before any facilitator saw it is gone from the queue as it always was,
-    #: and this is where it is not lost. Null means no halt was ever raised.
+    #: (ENG-609). That is the difference from `halt`: a halt lifted before any facilitator
+    #: saw it is gone from the queue as it always was, and this is where it is not lost. Null
+    #: means no halt was ever raised.
     last_halt: str | None
+    #: Which kind of halt stands right now, the same value the tablet and the Desk's queue
+    #: read (ENG-1163): a warning is the same on the tablet, the server and the Desk. Not
+    #: gated on `state` the way `needs_person` is, because it is the queue's value and not a
+    #: claim that anybody is still waiting.
+    halt: str | None
     #: When a facilitator said they went, and who. Null on every conversation nobody marked,
     #: which is most of them.
     attended_at: datetime | None
@@ -362,10 +367,11 @@ class SessionStateResponse(BaseModel):
     #: Said back so the app can see which language it actually got.
     language: str = "en"
     #: Which kind of halt is standing: `"blocking"`, `"warning"`, or null when none is
-    #: (ENG-609). **Null whenever `status` is not `needs_person`** — the tablet halts on one
-    #: signal and two would be a pair it has to keep in agreement. What kind the *last* halt
-    #: was outlives the halt, and is served to facilitators, who are the ones who read
-    #: backwards; see `TeamSessionResponse.last_halt`.
+    #: (ENG-609). `"blocking"` exactly when `status` is `needs_person`; `"warning"` while a
+    #: warning stands and no blocking halt does, whatever the status (ENG-1163) — a warning
+    #: refuses nothing, so the room goes on under it. What kind the *last* halt was outlives
+    #: the halt, and is served to facilitators, who are the ones who read backwards; see
+    #: `TeamSessionResponse.last_halt`.
     #:
     #: A halt raised before ENG-609 carries no recorded kind and reads as `"blocking"`, which
     #: is the conservative answer: it sends somebody to a room that may not have needed one,

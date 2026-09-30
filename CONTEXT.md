@@ -226,7 +226,7 @@ Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
 
 **Needs a person** (`needs_person`):
-A halt, not an end: it travels beside the status, never inside it, with the kind blocking or warning.
+A blocking halt, not an end: it travels beside the status, never inside it.
 _Avoid_: error, failure, status, Precisa de pessoa
 
 **Halt**:
@@ -236,6 +236,10 @@ _Avoid_: blockage, lockup, Parada
 **Halt kind** (`halt_kind`):
 Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
+
+**Warning**:
+The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
+_Avoid_: needs a person, notice, alert, Aviso
 
 **Station**:
 The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. An abandoned session keeps the station it stopped in.

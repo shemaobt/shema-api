@@ -31,7 +31,6 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.core.room_enums import HaltKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys, elements_for
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
@@ -154,7 +153,7 @@ async def test_a_session_halted_before_any_turn_landed_still_counts_as_activity(
     the queue's own card carries)."""
     _user, team, headers = await a_facilitator(db_session, email="parada-sem-turno@x.com")
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+    await room.mark_needs_person(db_session, session)
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
 

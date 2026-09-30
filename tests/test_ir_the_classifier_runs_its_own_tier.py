@@ -161,6 +161,7 @@ async def test_the_fixed_instructions_ride_cached_and_the_moving_beads_do_not(
         pericope_num=P,
         settings=_settings(),
     )
+    turn_one = len(messages.calls)
     await classify_coverage(
         coverage_state=moved,
         team_utterance="Quem era Noemi?",
@@ -170,7 +171,7 @@ async def test_the_fixed_instructions_ride_cached_and_the_moving_beads_do_not(
         settings=_settings(),
     )
 
-    first, second = (call["system"] for call in messages.calls)
+    first, second = messages.calls[0]["system"], messages.calls[turn_one]["system"]
     assert isinstance(first, list), (
         "o sistema do classificador ia como um texto só, sem fronteira entre o que repete "
         "e o que muda, e o cache não tinha onde ser marcado"

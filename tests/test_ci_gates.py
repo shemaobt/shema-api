@@ -64,10 +64,11 @@ INTEGRATION_GLOB = "integration/**"
 #: so the trigger staying narrow is a property worth holding, not a detail.
 TOO_BROAD = {"**", "*", "main", "master"}
 
-#: ENG-980's own lists: the fourteen files that walk a migration and the three that open a
-#: fresh interpreter, read here rather than derived, so a file the ticket names and the repo
-#: marks wrong is what `test_the_seventeen_files_carry_the_marker_the_ticket_gives_them`
-#: catches instead of something this file assumes into agreement with itself.
+#: ENG-980's own lists, and every migration test added since: the fifteen files that walk a
+#: migration and the three that open a fresh interpreter, read here rather than derived, so a
+#: file the ticket names and the repo marks wrong is what
+#: `test_the_eighteen_files_carry_the_marker_the_ticket_gives_them` catches instead of
+#: something this file assumes into agreement with itself.
 MIGRATION_FILES = {
     "test_ir_spine_migration.py",
     "test_device_migration.py",
@@ -83,6 +84,7 @@ MIGRATION_FILES = {
     "test_ir_session_version_migration.py",
     "test_ir_the_hard_stretch_migration.py",
     "test_ir_turns_migration.py",
+    "test_ir_standing_warning_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {
@@ -244,7 +246,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
 
 def test_the_migrations_job_runs_the_migration_marked_tests_with_the_variable_cleared() -> None:
     """G3 (criterion 4): a step `env` cannot unset a job-level `env` in Actions — only the
-    `run` line can, and without it the fourteen would run serially, against the job's
+    `run` line can, and without it the fifteen would run serially, against the job's
     Postgres, on top of the schema the previous step just migrated."""
     steps = _workflow("migrations.yml")["jobs"]["migrations"]["steps"]
     running = [step for step in steps if "-m migration" in step.get("run", "")]
@@ -276,7 +278,7 @@ def test_the_two_markers_are_registered() -> None:
 def _module_level_marker(path: Path) -> str | None:
     """The name of the mark a file's `pytestmark = pytest.mark.<name>` line carries, by AST.
 
-    Reads the source rather than importing it: importing one of the seventeen files to ask
+    Reads the source rather than importing it: importing one of the eighteen files to ask
     what it is marked with is exactly the cost this ticket moves out of the PR job.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -299,7 +301,7 @@ def _module_level_marker(path: Path) -> str | None:
     return None
 
 
-def test_the_seventeen_files_carry_the_marker_the_ticket_gives_them() -> None:
+def test_the_eighteen_files_carry_the_marker_the_ticket_gives_them() -> None:
     """G6 (criteria 6 and 7): placement. Coverage (G7) does not prove a file sits in the right
     one of the three jobs, only that it sits in one — this is the test that goes red if a
     migration file is marked `fresh_interpreter` or left unmarked but selected by coincidence.
@@ -353,7 +355,7 @@ def test_the_three_selections_partition_the_suite() -> None:
     """G7 (criterion 2): the risk this ticket closes — a file cannot fall outside all three
     jobs without this going red. Falsify by unmarking one migration file: its tests fall into
     the PR selection, so the union still holds and this test stays green — placement going
-    wrong is `test_the_seventeen_files_carry_the_marker_the_ticket_gives_them`'s job, not
+    wrong is `test_the_eighteen_files_carry_the_marker_the_ticket_gives_them`'s job, not
     this one's.
     """
     whole = _collect()
