@@ -703,6 +703,34 @@ async def test_undoing_a_visit_to_a_block_under_a_newer_warning_does_not_stop_th
     assert halt.standing(undone) is HaltKind.WARNING
 
 
+async def test_undoing_a_visit_to_a_block_under_an_older_warning_does_not_stop_the_team_again(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The warning raised before the turn is the last halt, and the visit lifts the block."""
+    await mark_needs_person(db_session, waiting_room)
+    await raise_a_warning(db_session, waiting_room)
+
+    async def a_facilitator_marks_the_visit() -> None:
+        async with rival_factory() as rival:
+            await attend(rival, await get_session(rival, waiting_room.id), by="facilitadora")
+
+    models.while_the_guide_thinks = a_facilitator_marks_the_visit
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+    assert undone.status is IRSessionStatus.IN_PROGRESS, (
+        "o turno teria soltado o bloqueio com ou sem a visita, e desfazê-la parava a conversa"
+    )
+    assert halt.standing(undone) is HaltKind.WARNING
+
+
 async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_puts_it_back(
     client: httpx.AsyncClient,
     db_session: AsyncSession,

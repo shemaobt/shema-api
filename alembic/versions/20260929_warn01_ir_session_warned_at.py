@@ -27,9 +27,17 @@ def upgrade() -> None:
         f"UPDATE {TABLE} SET warned_at = updated_at, status = 'in_progress'"  # noqa: S608 - no interpolated input
         f" WHERE {STANDING_WARNING}"
     )
+    op.execute(
+        f"UPDATE {TABLE} SET warned_at = attended_at, lifted_halt = NULL"  # noqa: S608 - no interpolated input
+        " WHERE lifted_halt = 'warning' AND attended_at IS NOT NULL"
+    )
 
 
 def downgrade() -> None:
+    op.execute(
+        f"UPDATE {TABLE} SET lifted_halt = 'warning'"  # noqa: S608 - no interpolated input
+        " WHERE warned_at IS NOT NULL AND attended_at IS NOT NULL AND lifted_halt IS NULL"
+    )
     op.execute(
         f"UPDATE {TABLE} SET status = 'needs_person'"  # noqa: S608 - no interpolated input
         " WHERE warned_at IS NOT NULL AND attended_at IS NULL"

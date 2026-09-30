@@ -1056,3 +1056,28 @@ async def test_a_new_block_does_not_bring_back_a_warning_somebody_already_attend
         "o bloqueio novo trouxe de volta um aviso que a mesa já tinha atendido"
     )
     assert await queued(client, facilitator_a, waiting_room.id) is None
+
+
+async def test_a_warning_on_a_finished_passage_leaves_it_finished(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    the_telling_is_heard: None,
+) -> None:
+    """The telling-back runs on a passage the floor closed, and a warning refuses nothing."""
+    session = await a_session(db_session, team_id=facilitator_a.team_id, ready_to_close=True)
+    await room.save_comprehension(db_session, session, _ready_comprehension())
+    await room.apply_coverage(db_session, session.id, dict.fromkeys(element_keys(P), ENGAGED))
+    assert (await tablet_state(client, session.id))["status"] == "done"
+
+    await a_warning_is_raised(client, session.id)
+
+    state = await tablet_state(client, session.id)
+    assert state["status"] == "done", "o aviso reabriu uma passagem que já estava fechada"
+    assert state["halt"] == WARNING
+    rows = [
+        row for row in await the_queue(client, facilitator_a) if row["session_id"] == session.id
+    ]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "done"
+    assert rows[0]["halt"] == WARNING

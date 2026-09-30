@@ -15,10 +15,14 @@ import uuid
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
+from app.core.room_enums import HaltKind
+from app.db.models.internalization_room import IRSessionStatus
+from app.services.internalization_room import halt
+from app.services.internalization_room.sessions import get_session, unattend
 from tests.alembic_harness import columns_of, run_alembic, scalar
 
 pytestmark = pytest.mark.migration
@@ -30,9 +34,17 @@ TABLE = "ir_sessions"
 COLUMN = "warned_at"
 OPENED = "2026-09-29 09:00:00"
 CLOSED = "2026-09-29 10:00:00"
+VISITED = "2026-09-29 09:30:00"
 
 
-async def _row(url: str, status: str, halt_kind: str | None, ended_at: str | None) -> str:
+async def _row(
+    url: str,
+    status: str,
+    halt_kind: str | None,
+    ended_at: str | None,
+    *,
+    lifted: str | None = None,
+) -> str:
     session_id = str(uuid.uuid4())
     engine = create_async_engine(url)
     async with engine.begin() as conn:
@@ -40,14 +52,18 @@ async def _row(url: str, status: str, halt_kind: str | None, ended_at: str | Non
             text(
                 "INSERT INTO ir_sessions (id, pericope, status, messages, after_panorama,"
                 " coverage_state, kept_takes, back_translation, halt_kind, ended_at,"
-                " created_at, updated_at) VALUES (:id, 'P01', :status, '[]', 0, '{}', '{}',"
-                " '{}', :halt_kind, :ended_at, :opened, :opened)"
+                " attended_at, attended_by, lifted_halt, created_at, updated_at) VALUES (:id,"
+                " 'P01', :status, '[]', 0, '{}', '{}', '{}', :halt_kind, :ended_at, :visited,"
+                " :visitor, :lifted, :opened, :opened)"
             ),
             {
                 "id": session_id,
                 "status": status,
                 "halt_kind": halt_kind,
                 "ended_at": ended_at,
+                "visited": VISITED if lifted is not None else None,
+                "visitor": "ana" if lifted is not None else None,
+                "lifted": lifted,
                 "opened": OPENED,
             },
         )
@@ -73,6 +89,8 @@ async def before_the_migration(tmp_path) -> dict[str, str]:
         "blocked": await _row(url, "needs_person", "blocking", None),
         "halted_before_the_kind": await _row(url, "needs_person", None, None),
         "lifted": await _row(url, "in_progress", "warning", None),
+        "visited_warning": await _row(url, "in_progress", "warning", None, lifted="warning"),
+        "visited_block": await _row(url, "in_progress", "blocking", None, lifted="blocking"),
     }
 
 
@@ -103,6 +121,35 @@ async def test_a_standing_warning_leaves_the_status_for_its_own_column(before_th
     assert await _read(url, before_the_migration["lifted"]) == ("in_progress", False), (
         "um aviso que já tinha saído voltou a valer"
     )
+    assert await _read(url, before_the_migration["visited_warning"]) == ("in_progress", True)
+    assert await _read(url, before_the_migration["visited_block"]) == ("in_progress", False)
+
+
+async def _undo_the_visit(url: str, session_id: str) -> tuple[IRSessionStatus, HaltKind | None]:
+    engine = create_async_engine(url)
+    try:
+        async with async_sessionmaker(engine, class_=AsyncSession)() as db:
+            undone = await unattend(db, await get_session(db, session_id))
+            return undone.status, halt.standing(undone)
+    finally:
+        await engine.dispose()
+
+
+async def test_undoing_a_visit_made_before_the_migration_brings_back_what_it_lifted(
+    before_the_migration,
+):
+    """A visit to a warning brings back a warning, never a blocking halt nobody raised."""
+    url = before_the_migration["url"]
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
+
+    assert await _undo_the_visit(url, before_the_migration["visited_warning"]) == (
+        IRSessionStatus.IN_PROGRESS,
+        HaltKind.WARNING,
+    ), "desfazer uma visita a um aviso de antes da migração parava a sala com um bloqueio"
+    assert await _undo_the_visit(url, before_the_migration["visited_block"]) == (
+        IRSessionStatus.NEEDS_PERSON,
+        HaltKind.BLOCKING,
+    )
 
 
 async def test_the_downgrade_puts_every_standing_warning_back_in_the_status(before_the_migration):
@@ -120,8 +167,13 @@ async def test_the_downgrade_puts_every_standing_warning_back_in_the_status(befo
         "blocked": "needs_person",
         "halted_before_the_kind": "needs_person",
         "lifted": "in_progress",
+        "visited_warning": "in_progress",
+        "visited_block": "in_progress",
     }.items():
         assert await scalar(url, where, {"id": before_the_migration[name]}) == status, name
+    lifted = "SELECT lifted_halt FROM ir_sessions WHERE id = :id"
+    for name, kind_lifted in {"visited_warning": "warning", "visited_block": "blocking"}.items():
+        assert await scalar(url, lifted, {"id": before_the_migration[name]}) == kind_lifted, name
     kind = "SELECT halt_kind FROM ir_sessions WHERE id = :id"
     for name in ("warned", "warned_after_the_close"):
         assert await scalar(url, kind, {"id": before_the_migration[name]}) == "warning", (
