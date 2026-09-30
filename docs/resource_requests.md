@@ -797,7 +797,8 @@ draws cards should not have to carry documents to do it.
 - **The ceiling is GATE-03 D4's.** The card carries `reg_name`, `request_type`,
   `amount_requested` and `currency` (which request — the team's own document, and what the client
   asked for on 18/set), `stage`, `created_at`, `submitted_at`, `endorsed` and `decision` (the
-  journey), and `open`, `can_edit` and `started_by_name` (the instance, BE-25). **Nothing of the
+  journey), `open`, `can_edit` and `started_by_name` (the instance, BE-25), and `revision_of_id`
+  (the spine: the snapshot a revision reopens — FE-46 says *"revisão de…"* from it). **Nothing of the
   evaluation** — no scores, comments, attendees or evaluator — and **not `team_note`** either,
   because a card is read by the mesa, the Gestor and the PME's coordinators, and that note is
   addressed to the team. No place and no base. `extra="forbid"`, proven on the payload in
