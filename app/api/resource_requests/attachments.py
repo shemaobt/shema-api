@@ -13,15 +13,17 @@ header is checked before a byte of body is read, and a liar (or a chunked sender
 caught by the capped read that follows. The declared type rides where HTTP puts it — the
 ``Content-Type`` header — and the display filename in a query parameter.
 
-The guard is ``CanEditRequests`` on both routes, the same capability the request's own
-lifecycle wears, and the row scope lives in the service (``get_request``): whoever may
-read the request may read its file, out of scope answers 404, and the download is a
-signed URL that expires in minutes — no public URL exists on any path here.
+The guard is ``TeamWriter`` on the upload and ``TeamReader`` on the read — the same doors
+the request's own draft writes and reads take, so the request link that started a request
+attaches and reads its file as an account with ``edit_requests`` does (FE-55, OBT-542) —
+and the row scope lives in the service: whoever may read the request may read its file,
+out of scope answers 404, and the download is a signed URL that expires in minutes — no
+public URL exists on any path here.
 """
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app.api.resource_requests._deps import APP_KEY, CanEditRequests, Db
+from app.api.resource_requests._deps import APP_KEY, Db, TeamReader, TeamWriter
 from app.models.resource_request import AttachmentDownloadOut, AttachmentOut
 from app.services import resource_request as service
 from app.services.resource_request._attachment_rules import MAX_ATTACHMENT_BYTES
@@ -58,7 +60,7 @@ async def _capped_body(request: Request) -> bytes:
 async def put_attachment(
     request_id: str,
     request: Request,
-    user: CanEditRequests,
+    user: TeamWriter,
     db: Db,
     filename: str | None = None,
 ) -> AttachmentOut:
@@ -81,7 +83,7 @@ async def put_attachment(
 
 
 @router.get("/requests/{request_id}/attachment")
-async def read_attachment(request_id: str, user: CanEditRequests, db: Db) -> AttachmentDownloadOut:
+async def read_attachment(request_id: str, user: TeamReader, db: Db) -> AttachmentDownloadOut:
     """The current attachment's metadata plus a short-lived signed download URL."""
     link = await service.attachment_download_url(db, request_id, user, APP_KEY)
     return AttachmentDownloadOut.of(

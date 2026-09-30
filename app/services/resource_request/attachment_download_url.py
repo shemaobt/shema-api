@@ -6,14 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
-from app.db.models.auth import User
 from app.db.models.resource_request import RRAttachment
 from app.services.oral_collector import gcs_utils
 from app.services.resource_request._attachment_storage import (
     DOWNLOAD_URL_EXPIRY_MINUTES,
     GCS_RR_BUCKET,
 )
-from app.services.resource_request.get_request import get_request
+from app.services.resource_request.read_as import Reader, request_for
 
 
 class AttachmentLink(NamedTuple):
@@ -23,17 +22,18 @@ class AttachmentLink(NamedTuple):
 
 
 async def attachment_download_url(
-    db: AsyncSession, request_id: str, user: User, app_key: str
+    db: AsyncSession, request_id: str, reader: Reader, app_key: str
 ) -> AttachmentLink:
     """The current attachment plus a signed URL for it, for a caller who reaches the request.
 
-    The guard is ``get_request``'s and nothing more — whoever may read the request may
-    read its budget file, and whoever may not learns 404, not 403, for the reason that
-    function records. The URL is minted per call and expires in minutes; nothing stores
-    it, so there is no lasting link to leak — the row holds only a key into a private
-    bucket. Storage serves the bytes; the API never proxies them.
+    The guard is the request's read scope and nothing more — whoever may read the request may
+    read its budget file, and whoever may not learns 404, not 403, for the reason
+    ``get_request`` records. The reader may be the request link (FE-55, OBT-542), which
+    reaches its own requests and so its own files. The URL is minted per call and expires in
+    minutes; nothing stores it, so there is no lasting link to leak — the row holds only a
+    key into a private bucket. Storage serves the bytes; the API never proxies them.
     """
-    await get_request(db, request_id, user, app_key)
+    await request_for(db, request_id, reader, app_key)
 
     attachment = (
         await db.execute(

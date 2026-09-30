@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, ValidationError
-from app.db.models.auth import User
 from app.db.models.resource_request import RRAttachment
 from app.services.oral_collector import gcs_utils
 from app.services.resource_request._attachment_rules import (
@@ -16,8 +15,7 @@ from app.services.resource_request._attachment_rules import (
     attachment_type,
 )
 from app.services.resource_request._attachment_storage import GCS_RR_BUCKET, storage_key
-from app.services.resource_request._editing import require_editor
-from app.services.resource_request.get_request import get_request
+from app.services.resource_request._writer import Writer, reach_for_writing, trail_author
 
 
 def _display_name(filename: str | None, extension: str) -> str:
@@ -30,10 +28,18 @@ def _display_name(filename: str | None, extension: str) -> str:
     return candidate[:255] if candidate else f"orcamento{extension}"
 
 
+def _author(writer: Writer) -> dict[str, str | None]:
+    author = trail_author(writer)
+    return {
+        "uploaded_by": author["changed_by"],
+        "uploaded_by_link_id": author["changed_by_link_id"],
+    }
+
+
 async def store_attachment(
     db: AsyncSession,
     request_id: str,
-    user: User,
+    writer: Writer,
     app_key: str,
     *,
     data: bytes,
@@ -42,11 +48,14 @@ async def store_attachment(
 ) -> RRAttachment:
     """Store the budget file for a draft this caller reaches, replacing any current one.
 
-    The scope guard is ``get_request``'s — the same 404-for-out-of-scope the request
-    itself answers — then ``require_editor``'s: a teammate who reads the draft does not swap
-    its file (OBT-520). The draft rule is ``update_draft``'s: a submitted request is
-    frozen under the mesa's eyes, so the file may not move either; the way back in is a
-    revision.
+    The door is ``reach_for_writing``, the one the draft's own writes take: the read scope —
+    the same 404-for-out-of-scope the request itself answers — then the pen, so a teammate
+    who reads the draft does not swap its file (OBT-520). The writer may be the **request
+    link** that started the instance (FE-55, OBT-542): its holder has no account, and the row
+    names the link as its author (``uploaded_by_link_id``), never the Admin who issued it.
+
+    The draft rule is ``update_draft``'s: a submitted request is frozen under the mesa's eyes,
+    so the file may not move either; the way back in is a revision.
 
     **A replacement supersedes the current row and deletes nothing**, neither the row nor
     its object. The row survives because the mesa may have read that file and the record
@@ -64,8 +73,7 @@ async def store_attachment(
     check here is the backstop for a caller that is not the router, and it refuses as a
     validation error because by this point the bytes have already been read.
     """
-    loaded = await get_request(db, request_id, user, app_key)
-    await require_editor(db, loaded.request, user, app_key)
+    loaded = await reach_for_writing(db, request_id, writer, app_key)
 
     if loaded.request.submitted_at is not None:
         raise ConflictError(
@@ -102,7 +110,7 @@ async def store_attachment(
         size_bytes=len(data),
         sha256=sha256,
         storage_key=key,
-        uploaded_by=user.id,
+        **_author(writer),
     )
     db.add(attachment)
     await db.commit()
