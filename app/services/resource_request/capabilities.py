@@ -83,37 +83,20 @@ Gestor**, on the theory that it is the money capability. It is the Painel's entr
 which mesa and Gestor hold alike; taking it from the mesa would remove the Painel from the
 mesa entirely.
 
-**The fourth role arrived with BE-16** (OBT-476, 30/aug/2026): the **Líder de Base** of
-GATE-02 D2 — *"só assina/verifica o projeto — tipo uma caixinha pra ele assinalar e
-confirmar que o projeto realmente pertence à base dele"* — the narrowest of the four,
-``endorse_request`` and nothing else. Two cells were decided here rather than read off a
-client answer, and both are recorded in contract §5.3:
-
-* ``endorse_request`` is **lider-only** — the mesa's ``?`` cell closes as denied. The
-  endorsement attests that the project belongs to the Líder's base, a fact the mesa is in
-  no position to attest, and its value to the mesa is precisely that someone outside it
-  signs before analysis begins: the mesa endorsing to itself would empty the act it
-  reads. Same principle that makes ``submit_request`` refuse everyone but the author
-  (OBT-483) — a signature is not a permission, and no grant transfers it.
-* On the frontend's two lists it is a **control** capability, not a screen one: the
-  caixinha lives in Part B's section 11, a screen the session opens for every role, so it
-  opens no screen of its own — and ``SCREEN_CAPABILITIES`` not moving is what keeps the
-  mesa's fixture account matching, the very trap the ``administer_funds`` paragraph above
-  already names.
-
-**Since BE-23 (OBT-535) nothing on this server reads ``lider`` or ``endorse_request``.** The
-22/set meeting took the base leader's account away (OBT-522): the leader endorses through a
-link with a code mailed at submission (``endorse_by_link``), which no role and no capability
-guards. The row and the column stay here only because this table mirrors the frontend's
-emission (``capabilities.json``) and ``test_capabilities.py`` refuses a mismatch — they leave
-when FE-49 (OBT-517) retires the role on the form and re-emits. Until then they are a mirror
-with no reader: no guard, no scope and no notice asks for either.
+**The fourth role came with BE-16 and left with FE-49** (OBT-476 → OBT-517). The Líder de
+Base held ``endorse_request`` and nothing else; the 22/set meeting took his account away
+(OBT-522), and since BE-23 (OBT-535) he endorses through a link with a code mailed at
+submission (``endorse_by_link``), which no role and no capability guards. The frontend retired
+the role and the capability and re-emitted ``capabilities.json``, vendored here; the map below
+follows it. **The role row stays seeded** (``RETIRED_ROLES``): existing installations have it,
+``20260930_rr12`` revoked every grant on it, and deleting a row other tables point at is not a
+side effect of retiring a capability.
 
 Reading is not a row of this table and must not become one (``_scope.py`` §5.3 reasoning):
 it rides on ``edit_requests``, and which rows it reaches is decided in ``_scope.py``.
 """
 
-#: The ten ids of the frontend's ``CAPABILITIES``, in its order.
+#: The nine ids of the frontend's ``CAPABILITIES``, in its order.
 CAPABILITIES: tuple[str, ...] = (
     "edit_requests",
     "view_evaluation",
@@ -122,13 +105,17 @@ CAPABILITIES: tuple[str, ...] = (
     "move_board",
     "assign_fund",
     "allocate_funds",
-    "endorse_request",
     "administer_funds",
     "grant_access",
 )
 
-#: The four ``role_key`` values ``scripts/seed_apps_roles.py`` writes for this app.
-ROLES: tuple[str, ...] = ("equipe", "mesa", "gestor", "lider")
+#: The roles of the frontend's table — the ones ``scripts/seed_apps_roles.py`` writes for this
+#: app, minus the retired one below.
+ROLES: tuple[str, ...] = ("equipe", "mesa", "gestor")
+
+#: Seeded and holding nothing: the Líder de Base's row, kept because installations have it and
+#: its grants were revoked by ``20260930_rr12`` rather than deleted (FE-49, OBT-517).
+RETIRED_ROLES: tuple[str, ...] = ("lider",)
 
 #: The hand-written half. Field for field, the frontend's ``ROLES[].can``.
 ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -154,7 +141,6 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "grant_access",
         }
     ),
-    "lider": frozenset({"endorse_request"}),
 }
 
 #: The inversion, derived: the roles that hold each capability. Every capability appears,
