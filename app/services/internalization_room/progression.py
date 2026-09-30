@@ -190,12 +190,12 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     o ensaio') é decisão do Guia", Marcia, answer 8.
 
     **The stamp and not the status**, though the two are written together. ``mark_needs_person``
-    overwrites the status with no guard on what it was, and the retell warning it raises only
-    ever reaches a session that has already recorded — the back-translation route refuses one
-    without a take. Read from the status, a team that finished a passage and then struggled to
-    tell a stretch back would have it handed to them again, and a landing turn restores
-    ``IN_PROGRESS`` and never ``DONE``, so it would stay handed back. ``ended_at`` is written
-    at the same instant and no halt writes over it.
+    overwrites the status with no guard on what it was, and the telling-back it is asked for
+    in only ever reaches a session that has already recorded — the back-translation route
+    refuses one without a take. Read from the status, a team that finished a passage and then
+    asked for a person while telling it back would have it handed to them again, and a landing
+    turn restores ``IN_PROGRESS`` and never ``DONE``, so it would stay handed back. ``ended_at``
+    is written at the same instant and no halt writes over it.
 
     A retro take is a stretch told back to the room and is not the rehearsal, so the kind is
     part of the question.

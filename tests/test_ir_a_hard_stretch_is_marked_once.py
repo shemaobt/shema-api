@@ -29,6 +29,7 @@ from app.db.models.internalization_room import (
     IRSegment,
     IRSessionStatus,
 )
+from app.services.internalization_room import halt
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
@@ -201,7 +202,7 @@ async def test_the_third_telling_of_one_stretch_asks_for_a_person_once(
 ) -> None:
     """The defect this ticket is about, end to end.
 
-    The fourth telling used to raise the ask again, and `mark_needs_person` clears the stamps
+    The fourth telling used to raise the ask again, and `raise_a_warning` clears the stamps
     on every call — so the room deleted the record that somebody had already walked over.
     """
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
@@ -216,8 +217,8 @@ async def test_the_third_telling_of_one_stretch_asks_for_a_person_once(
     assert third.status_code == 200, third.text
     assert third.json()["needs_person"] is True
     halted = await _row(db_session, session_id)
-    assert halted.status is IRSessionStatus.NEEDS_PERSON
-    assert halted.halt_kind == WARNING
+    assert halted.status is IRSessionStatus.IN_PROGRESS
+    assert halt.standing(halted) == WARNING
 
     marked = await _attend(client, session_id, facilitator)
     assert marked.status_code == 200, marked.text
@@ -258,7 +259,7 @@ async def test_a_second_hard_stretch_asks_again(
 
     assert crossed.status_code == 200, crossed.text
     assert crossed.json()["needs_person"] is True
-    assert (await _row(db_session, session_id)).status is IRSessionStatus.NEEDS_PERSON
+    assert halt.standing(await _row(db_session, session_id)) == WARNING
 
     marks = await _marks(db_session, session_id)
     assert len(marks) == 2, "um trecho difícil por trecho, e os dois ficam"
@@ -706,7 +707,7 @@ async def test_three_retellings_over_three_stretches_raise_no_warning(
         )
         assert again.status_code == 200, again.text
         assert again.json()["needs_person"] is False
-        assert (await _row(db_session, session_id)).status is not IRSessionStatus.NEEDS_PERSON
+        assert halt.standing(await _row(db_session, session_id)) is None
 
     assert await _marks(db_session, session_id) == []
 

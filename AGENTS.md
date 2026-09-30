@@ -28,7 +28,7 @@ seven commands the old `lint` job ran, in order, then the `fresh_interpreter` se
 three files that each open a clean interpreter to prove something the suite's own process
 cannot. The `migration` selection is the `migrations` job's own step,
 `DATABASE_URL` cleared: that job sets it at job level for its Postgres container, and left in
-place the fourteen migration-walking files would run against that Postgres instead of the
+place the fifteen migration-walking files would run against that Postgres instead of the
 SQLite file each builds for itself. The three selections partition the whole suite, pinned in
 `tests/test_ci_gates.py`.
 

@@ -18,16 +18,18 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import router
 from app.core.config import get_settings
 from app.core.room_enums import HaltKind
-from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
+from app.db.models.internalization_room import IRTakeKind
 from app.services import internalization_room as room
+from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.takes import takes_of
 from tests.hard_stretch_harness import row
+from tests.room_harness import CORRECTION_MARK
 from tests.text_seam_harness import (
     RUNNER_KEY,
     THE_EXTRA_CAUSE,
@@ -37,6 +39,7 @@ from tests.text_seam_harness import (
     the_app,
     the_speaker_says,
 )
+from tests.turn_harness import the_room_agent_is
 
 SEAM = "/api/internalization-room/text-seam/back-translation"
 
@@ -334,18 +337,50 @@ async def test_the_warning_a_round_raises_for_a_hard_stretch_outlives_the_rounds
     await _a_round(client, session_id, CAUSA_A_MAIS)
     await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
     before = await row(db_session, session_id)
-    assert before.status is IRSessionStatus.IN_PROGRESS, (
-        "uma rodada que não cruzou trecho nenhum parava a sala do mesmo jeito"
+    assert halt.standing(before) is None, (
+        "uma rodada que não cruzou trecho nenhum pedia uma pessoa do mesmo jeito"
     )
 
     await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
 
     after = await row(db_session, session_id)
-    assert after.status is IRSessionStatus.NEEDS_PERSON, (
+    assert halt.standing(after) is HaltKind.WARNING, (
         "a terceira contagem do mesmo trecho pedia uma pessoa, e o veredito da mesma rodada"
         " soltava o pedido antes de alguém vê-lo"
     )
     assert after.halt_kind == HaltKind.WARNING.value
+
+
+async def test_a_visit_while_the_crossing_round_is_read_keeps_its_warning_ended(
+    client, analyst, db_session, test_engine, monkeypatch
+) -> None:
+    """One crossing raises one warning, so a visit made before the round answers stands."""
+    visits: list[str] = []
+
+    async def a_facilitator_goes_while_the_analyst_reads(
+        *, system_prompt: str, user_content: str, **rest: Any
+    ) -> str:
+        if visits and CORRECTION_MARK not in system_prompt and visits[-1] == "armed":
+            factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+            async with factory() as rival:
+                await room.attend(rival, await room.get_session(rival, visits[0]), by="ana")
+            visits.append("went")
+        return await analyst(system_prompt=system_prompt, user_content=user_content, **rest)
+
+    the_room_agent_is(monkeypatch, analyst=a_facilitator_goes_while_the_analyst_reads)
+    session_id = await _a_session(client)
+    await _a_round(client, session_id, CAUSA_A_MAIS)
+    await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
+    visits.extend([session_id, "armed"])
+
+    await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
+
+    assert visits[-1] == "went", "a visita não aconteceu durante a leitura da rodada"
+    after = await row(db_session, session_id)
+    assert halt.last(after) is HaltKind.WARNING, "a rodada que cruzou não levantou aviso nenhum"
+    assert halt.standing(after) is None, (
+        "a rodada levantou o aviso uma segunda vez e desfez a visita feita no meio dela"
+    )
 
 
 async def test_two_superseding_frases_in_one_round_both_replace_their_stretches(

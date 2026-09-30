@@ -1,7 +1,8 @@
 """The facilitator's own way out of a halt: they went.
 
 `NEEDS_PERSON` had one exit and it belonged to the team — a turn that lands. **The server
-still lifts on a landing turn and this slice does not touch that**; `test_the_pause_is_not_a_
+still lifts a blocking halt on a landing turn and this slice does not touch that** (a warning
+it never lifts: ENG-1163, and this route is the warning's only exit); `test_the_pause_is_not_a_
 latch` is where it is asserted, and an earlier draft of this file claimed the opposite. What
 is wrong is that the team's turn was the *only* exit, because it makes the queue drain on the
 team's schedule rather than on the facilitator's. A person walks over, helps, and leaves while
