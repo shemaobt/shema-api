@@ -717,32 +717,29 @@ async def test_three_retellings_over_three_stretches_raise_no_warning(
 # ---------------------------------------------------------------------------
 
 
-async def test_an_empty_retelling_counts_in_place(
+async def test_an_empty_retelling_is_refused_and_counts_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Marcia named this case: "either a hard stretch or the recognizer failing".
 
-    Nothing is captured, so there is no new row to carry a count onto — the count goes onto
-    the row that is standing, which is the stretch they were telling.
+    It counted in place until ENG-1164: an empty retelling went toward the warning so that an
+    outage could not block the road to a person. An outage is a 502 now and never reaches the
+    count, so a telling with no words is refused and the stretch they were telling stays as it
+    was.
     """
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 1)
 
-    first = await _tell(client, session_id, take_id, 1, again=True)
-    assert first.status_code == 200, first.text
-    assert first.json()["captured"] is False
-    assert first.json()["needs_person"] is False
-
-    second = await _tell(client, session_id, take_id, 1, again=True)
-    assert second.status_code == 200, second.text
-    assert second.json()["captured"] is False
-    assert second.json()["needs_person"] is True
+    for _ in range(RETELLS_BEFORE_A_WARNING):
+        refused = await _tell(client, session_id, take_id, 1, again=True)
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["code"] == "WORDLESS_TELLING"
 
     standing = await _current(db_session, session_id)
     assert len(standing) == 1, "uma tentativa que não foi entendida não vira trecho"
-    assert standing[0].tellings == RETELLS_BEFORE_A_WARNING
-    assert [mark.segment_id for mark in await _marks(db_session, session_id)] == [standing[0].id]
+    assert standing[0].tellings == 1
+    assert await _marks(db_session, session_id) == []
 
 
 async def test_an_empty_re_recording_counts_in_place(

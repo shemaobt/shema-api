@@ -50,6 +50,10 @@ ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 #: the tablet acts on it: it drops the pending translation and re-reads its stretches, which is
 #: the wrong response to every other BAD_REQUEST, and it must not tell the two apart by the words.
 ERROR_CODE_STRETCH_NO_LONGER_COUNTS: Final = "STRETCH_NO_LONGER_COUNTS"
+#: A telling whose transcription holds no words. Its own code because the tablet says the
+#: inaudible line named in the body instead of showing a refused call, and it must not tell
+#: this from any other 422 by the words.
+ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
 # reshaping the request.
@@ -190,6 +194,18 @@ class StretchNoLongerCounts(ValidationError):
 
     Its own exception for the reason ERROR_CODE_STRETCH_NO_LONGER_COUNTS gives; still a 400.
     """
+
+
+class WordlessTelling(ValidationError):
+    """A telling was transcribed and holds no words, so it is no stretch and counts nothing.
+
+    Carries the name of the inaudible line the room says in its place, chosen by whoever
+    refuses, because the handler has no session to choose it from.
+    """
+
+    def __init__(self, fixed_line: str) -> None:
+        super().__init__("The telling has no words in it")
+        self.fixed_line = fixed_line
 
 
 class UpstreamServiceError(Exception):
@@ -359,6 +375,16 @@ async def handle_stretch_no_longer_counts(
     )
 
 
+async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            **_error_body(str(exc), ERROR_CODE_WORDLESS_TELLING),
+            "fixed_line": exc.fixed_line,
+        },
+    )
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -495,6 +521,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
+    app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]

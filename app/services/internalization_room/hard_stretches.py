@@ -137,7 +137,9 @@ async def capture_and_note_a_hard_stretch(
 
 
 async def count_an_empty_telling(db: AsyncSession, session: IRSession, stretch: IRSegment) -> bool:
-    """Count a telling nobody could make out, and mark the stretch if that crossed it.
+    """Count a re-recording nobody could make out, and mark the stretch if that crossed it.
+
+    Only the replace route counts it; the chunk door refuses a telling with no words instead.
 
     Nothing is captured, so there is no new row to carry the count onto: it goes on the row
     that is standing. Not counting it is what made the room unreachable exactly when it was

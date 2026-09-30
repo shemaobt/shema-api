@@ -442,8 +442,9 @@ class IRSegment(Base):
     #: contract to change in the same diff that redefines the address.
     pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     #: How many times the team has told this stretch, counting every version of it: the row a
-    #: telling supersedes hands its count on, and a telling nobody could make out is counted
-    #: here in place, because it captured no row of its own. At `RETELLS_BEFORE_A_WARNING` the
+    #: telling supersedes hands its count on, and a re-recording nobody could make out is counted
+    #: here in place, because it captured no row of its own. A telling with no words is refused
+    #: at the chunk door and is not counted. At `RETELLS_BEFORE_A_WARNING` the
     #: stretch is a hard stretch and `ir_hard_stretches` keeps the fact.
     tellings: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     bridge_take_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
