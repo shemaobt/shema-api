@@ -117,6 +117,9 @@ class OpenInvite(BaseModel):
     created_at: datetime = Field(alias="createdAt")
     expires_at: datetime = Field(alias="expiresAt")
     created_by: str | None = Field(default=None, alias="createdBy")
+    #: The team an invitation to a project's team puts somebody on (OBT-547), whose
+    #: ``roleKey`` then reads ``equipe``; ``null`` for every invitation to a role.
+    project_id: str | None = Field(default=None, alias="projectId")
 
 
 class SentInvite(OpenInvite):

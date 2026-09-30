@@ -3,7 +3,8 @@
 Pending, expired and revoked alike, newest first, with their regions: a lapsed or recalled
 door stays visible rather than silently gone, and an accepted one is read as the grant it
 became. Both apps' invites are listed, including those the form's own door wrote — the Admin
-recalls in both. Capped, because the table only grows.
+recalls in both — and the invitations to a project's team a confirmation wrote (OBT-547), which
+read ``equipe`` and name their project. Capped, because the table only grows.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ def open_invite(row: InviteRow) -> OpenInvite:
         createdAt=invite.created_at,
         expiresAt=invite.expires_at,
         createdBy=invite.created_by,
+        projectId=invite.project_id,
     )
 
 

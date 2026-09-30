@@ -6,6 +6,7 @@ from app.db.models.auth import AccessInvite, App, Role, User
 from app.models.resource_request_access import InviteDescriptionResponse
 from app.services.auth.hash_refresh_token import hash_refresh_token
 from app.services.resource_request_access._invite_status import invite_status
+from app.services.resource_request_access.invite_store import TEAM_ROLE
 
 
 async def describe_invite(db: AsyncSession, raw_token: str) -> InviteDescriptionResponse:
@@ -16,7 +17,9 @@ async def describe_invite(db: AsyncSession, raw_token: str) -> InviteDescription
     signup, True to login — and to say plainly when a link is expired, used or
     revoked. It never grants anything and never returns the token back. The
     regions a Shemá invite carries are named too (OBT-543), so the page the link
-    opens can say what accepting gives.
+    opens can say what accepting gives. An invitation to a project's team names no
+    role and reads as ``equipe`` (OBT-547) — which project stays off this anonymous
+    answer.
     """
     token_hash = hash_refresh_token(raw_token)
     stmt = select(AccessInvite).where(AccessInvite.token_hash == token_hash)
@@ -25,7 +28,7 @@ async def describe_invite(db: AsyncSession, raw_token: str) -> InviteDescription
         raise NotFoundError("Invitation not found.")
 
     app = await db.get(App, invite.app_id)
-    role = await db.get(Role, invite.role_id)
+    role = await db.get(Role, invite.role_id) if invite.role_id is not None else None
 
     account_stmt = select(User.id).where(User.email == invite.email, User.is_active.is_(True))
     account_exists = (await db.execute(account_stmt)).scalar_one_or_none() is not None
@@ -34,7 +37,7 @@ async def describe_invite(db: AsyncSession, raw_token: str) -> InviteDescription
         status=invite_status(invite),
         email=invite.email,
         app_name=app.name if app else "",
-        role_key=role.role_key if role else "",
+        role_key=role.role_key if role else (TEAM_ROLE if invite.project_id else ""),
         role_label=role.label if role else "",
         account_exists=account_exists,
         region_keys=list(invite.region_keys or []),
