@@ -3,7 +3,7 @@
 **Why the module carries a map at all.** ``require_app_access(app_key)`` and
 ``require_role(app_key, role_key)`` answer exactly one question each — *does this user
 hold any role in this app*, and *does this user hold this one role*. The product's model
-is neither: four of the nine capabilities belong to **more than one role** —
+is neither: four of the eight capabilities belong to **more than one role** —
 ``edit_requests``, ``view_evaluation``, ``manage_funds``, and ``move_board`` since GATE-02
 moved it — and ``require_role`` cannot express an OR. Guarding ``view_evaluation`` as
 ``MesaUser`` would refuse the Gestor, which is the very asymmetry that gives that role its

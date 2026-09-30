@@ -1,16 +1,17 @@
 """The invitation's rows, behind no gate: the one reader and writer of ``access_invites``.
 
-Every door that invites applies its own gate first and then comes here. The form's doors
-(``create_invite``, ``revoke_invite``, ``list_access``) carry the form's asymmetric gate;
-the Shemá Admin's surface (OBT-543, ``docs/shema.md``, *The Admin grants*) carries the
-Admin's. What they share is everything that is not a question of who may: the token and its
-digest, the refusal of a second pending invite, the self-invite, the link, the states. One
-copy of those, so an invite written by either door is the same invite.
+Every door that invites applies its own gate first and then comes here. Since FE-56 (OBT-549,
+30/sep/2026) that is the Shemá Admin's surface alone (OBT-543, ``docs/shema.md``, *The Admin
+grants*): the form's own doors — ``create_invite``, ``revoke_invite``, ``list_access`` and
+their asymmetric gate — left with its access screen. What this file holds is everything that is
+not a question of who may: the token and its digest, the refusal of a second pending invite, the
+self-invite, the link, the states.
 
-**BE-22 composes this module, so OBT-549 moves it rather than deleting it.** When the form's
-``/access`` goes, this file, ``accept_invite`` and ``describe_invite`` move into the Shemá
-module with the routes that call them; deleting it with the form's doors would take the PME's
-invitations with it.
+**It stayed where it is, and so did ``accept_invite`` and ``describe_invite``** (option A,
+decided on 30/sep): the PME's ``/convite`` page still reads and accepts an invite through the
+form's two public routes, and the Shemá module imports this store. Moving the three into that
+module with their routes is a follow-up; deleting them would take the PME's invitations with
+them.
 
 Acceptance is not here: ``accept_invite`` is its own operation, with its own transaction.
 

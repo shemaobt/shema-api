@@ -2,9 +2,9 @@
 
 ``CurrentUser`` gates on holding *any* role in the app — a grant, or since BE-19
 (OBT-520) a live membership of a PME project, which is how the team holds ``equipe`` —
-the two role aliases gate on a specific one, and the nine capability aliases gate on
+the two role aliases gate on a specific one, and the eight capability aliases gate on
 what the product actually models. Capabilities are the ones routes should reach for: four of the
-nine belong to more than one role, and ``require_role`` cannot say OR — guarding
+eight belong to more than one role, and ``require_role`` cannot say OR — guarding
 ``view_evaluation`` as ``MesaUser`` would refuse the Gestor, which is the whole of
 that role's point. The table and the query behind them are
 ``app/services/resource_request/capabilities.py``; what lives here is the wiring.
