@@ -15,19 +15,21 @@ from __future__ import annotations
 
 import asyncio
 import re
-import sys
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
+from app.db.models.internalization_room import IRTurn
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import turn_clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
 VOICED_AS = "tts/voice/abertura.mp3"
@@ -81,9 +83,7 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _GuideStillThinking()
     voice = _CountingVoice()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(voice))
 
@@ -113,6 +113,44 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
     )
 
 
+async def test_a_panoramas_opening_asked_again_in_flight_is_composed_and_voiced_once_not_twice(
+    db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await create_session(db_session, pericope="OV-Ruth", language="pt")
+    guide = _GuideStillThinking()
+    voice = _CountingVoice()
+    the_room_agent_is(monkeypatch, turn=guide)
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
+    monkeypatch.setattr(
+        sessions_api.room, "facilitator_speech_to_come", voiced_through(voice, lambda _: VOICED_AS)
+    )
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        room_client(one, monkeypatch) as first_tablet,
+        room_client(two, monkeypatch) as resending_tablet,
+    ):
+        first = asyncio.create_task(_ask_for_the_opening(first_tablet, session.id))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        second = asyncio.create_task(_ask_for_the_opening(resending_tablet, session.id))
+        await asyncio.wait({second}, timeout=0.2)
+        guide.answer.set()
+        landed, resent = await asyncio.gather(first, second)
+
+    assert landed.status_code == 200, landed.text[:300]
+    assert resent.status_code == 200, resent.text[:300]
+    assert guide.asked == 1, "o toque no círculo repedia o panorama e o Guia pensava de novo"
+    assert voice.calls == 1, "a abertura do panorama era sintetizada duas vezes"
+    assert resent.json() == landed.json(), "o reenvio tem de ouvir a resposta do turno em voo"
+
+    async with rival_factory() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
+        remembered = (await fresh_db.execute(select(IRTurn))).scalars().all()
+    assert [message["text"] for message in reread.messages] == [OPENING]
+    assert [turn.turn_id for turn in remembered] == ["abertura"]
+
+
 async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_resending(
     db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -123,9 +161,7 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
     """
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _GuideStillThinking()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     voice = _CountingVoice()
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     monkeypatch.setattr(
@@ -158,9 +194,7 @@ async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_no
 ) -> None:
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _GuideStillThinking()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(
         sessions_api.room, "facilitator_speech_to_come", voiced_through(_CountingVoice())
     )

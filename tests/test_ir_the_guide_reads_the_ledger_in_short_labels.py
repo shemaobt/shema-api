@@ -10,7 +10,6 @@ finished scenes, and could read `preserved:R6` aloud into a room with no screen.
 
 import json
 import re
-import sys
 from typing import Any
 
 import pytest
@@ -35,6 +34,7 @@ from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 from app.services.internalization_room.sessions import append_exchange, create_session
+from tests.turn_harness import the_room_agent_is
 
 P = "P01"
 
@@ -248,9 +248,7 @@ async def test_nothing_but_the_ledger_reaches_the_guide_from_the_app(
     composes each turn; it is the ledger and nothing after it.
     """
     guide = LedgerReadingGuide()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
-    )
+    the_room_agent_is(monkeypatch, turn=guide)
     session = await create_session(db_session, language="en", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="opening"

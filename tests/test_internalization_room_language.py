@@ -27,6 +27,7 @@ from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, f
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -274,14 +275,13 @@ async def test_the_redraft_note_heading_the_guide_reads_is_english(
     removed those. Never Portuguese, whatever the session speaks (ENG-822, item 3)."""
     from app.services.internalization_room.validated_turn import _draft
 
-    module = sys.modules["app.services.internalization_room.run_turn"]
     captured: dict[str, str] = {}
 
     async def agent(*, user_content: str, **kwargs: Any) -> str:
         captured["user_content"] = user_content
         return "fala"
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, turn=agent)
 
     await _draft(
         guide_prompt="system",
@@ -322,7 +322,7 @@ async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothin
         return json.dumps({"decisions": []})
 
     monkeypatch.setattr(module, "render", capturing_render)
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, classifier=agent)
 
     await classify_coverage(
         coverage_state=fully_engaged,

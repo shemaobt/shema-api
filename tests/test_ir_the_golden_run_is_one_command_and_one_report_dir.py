@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import text_seam
 from app.core.config import get_settings
 from app.services import internalization_room as room
-from app.services.internalization_room import golden_judge, llm
+from app.services.internalization_room import llm
 from scripts import golden_runner
 from tests.text_seam_harness import (
     A_VERDICT,
@@ -34,6 +34,7 @@ from tests.text_seam_harness import (
     the_judge_answers,
     the_models_answer,
 )
+from tests.turn_harness import the_room_agent_is
 
 BASE_URL = "http://test/api/internalization-room/text-seam/"
 STAMP = "2026-09-16T18-00-00"
@@ -441,7 +442,7 @@ class _Wire:
 async def test_the_judges_call_is_priced_into_the_run_beside_the_guide_and_the_validator(
     over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    monkeypatch.setattr(golden_judge, "call_agent", llm.call_agent)
+    the_room_agent_is(monkeypatch, judge=llm.call_agent)
     monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: _Wire(json.dumps(A_VERDICT)))
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")
     out = tmp_path / "reports"

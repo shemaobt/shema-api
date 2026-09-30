@@ -2,9 +2,9 @@
 
 These drive a whole turn with the Anthropic client faked, rather than with the usual
 `call_agent` fake: the model id, the thinking mode, the effort and the cache breakpoint are
-invisible at the `run_turn.call_agent` seam, so a test written there would go on passing if
-the voice fell back to a flash model at low thinking — which is the regression this suite
-exists to catch.
+invisible at the `room_agent().turn.call_agent` seam, so a test written there would go on
+passing if the voice fell back to a flash model at low thinking — which is the regression
+this suite exists to catch.
 """
 
 from __future__ import annotations

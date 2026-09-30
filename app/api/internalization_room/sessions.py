@@ -42,7 +42,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
-from app.services.internalization_room.clip_flight import fly
+from app.services.internalization_room.clip_flight import fly, in_flight
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -134,6 +134,19 @@ async def _kept_or_made_again(text: str, flight: asyncio.Task[bytes], *, languag
         await asyncio.shield(_voice_in_flight(text, language=language)[1])
         return True
     return False
+
+
+async def _joined_or_made_again(text: str, *, language: str, deadline: float) -> str:
+    key, voice = room.facilitator_speech_to_come(text, language=language)
+    joined = in_flight(key)
+    flight = fly(key, voice)
+    try:
+        await _kept_before(deadline, [flight])
+    except UpstreamServiceError:
+        if joined is None or not flight.done():
+            raise
+        await _kept_before(deadline, [fly(key, voice)])
+    return key
 
 
 def _voice_in_flight(text: str, *, language: str) -> tuple[str, asyncio.Task[bytes]]:
@@ -590,8 +603,12 @@ async def _say_it_again(
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
     The answer goes out only once that line is kept in the bucket: a line still being voiced
-    is joined, a missing one is made once, both inside the turn's own bound, and a line that
-    cannot be kept in time is a 502 rather than an address that would only 404.
+    is joined, not paid for a second time, and a missing one is made once, both inside the
+    turn's own bound. The join is shielded, so a team that gives up on "say it again" never
+    cancels a flight another request still wants. A joined flight that failed or was
+    cancelled under it falls back to one synthesis of this request's own; a line this
+    request made itself is not made twice. A line that still cannot be kept in time is a
+    502 rather than an address that would only 404.
     """
     last = next(
         (
@@ -603,8 +620,7 @@ async def _say_it_again(
     )
     key = ""
     if last:
-        key, voice = room.facilitator_speech_to_come(last, language=session.language)
-        await _kept_before(deadline, [fly(key, voice)])
+        key = await _joined_or_made_again(last, language=session.language, deadline=deadline)
     return TurnResponse(
         session_id=session.id,
         audio_url=clip_url(key) if key else "",
@@ -728,9 +744,7 @@ async def _answer_the_turn(
     if ready is not None:
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        session = await room.append_exchange(
-            db, session, team_utterance="", guide_response=speech, commit=False
-        )
+        await room.append_opening(db, session, guide_response=speech, commit=False)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),

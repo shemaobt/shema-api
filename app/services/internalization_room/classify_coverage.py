@@ -11,8 +11,9 @@ from app.services.internalization_room.canon.elements import Element, element_ke
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import CoverageStatus, merge, remaining
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import cache_break_before, call_agent, classifier_ladder
+from app.services.internalization_room.llm import cache_break_before, classifier_ladder
 from app.services.internalization_room.render import render
+from app.services.internalization_room.room_agent import room_agent
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +219,7 @@ async def classify_coverage(
     )
 
     try:
-        raw = await call_agent(
+        raw = await room_agent().classifier.call_agent(
             role="classifier",
             system_prompt=system,
             user_content="Classify this exchange now. Return only the JSON object.",

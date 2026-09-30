@@ -41,6 +41,10 @@ ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
 #: nothing about the passage is wrong and retrying changes nothing — the Desk arms the force
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
+ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
+#: A heard mark on a question nobody has answered. Its own code for the reason above: there is
+#: no version to reload and nothing to force — the tablet reads any non-2xx as not heard.
+ERROR_CODE_NOTHING_TO_HEAR: Final = "NOTHING_TO_HEAR"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
@@ -125,6 +129,24 @@ class NothingToForce(ConflictError):
     """
 
 
+class ReplyMovedOn(ConflictError):
+    """The reply the tablet heard is no longer the question's current one.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
+    promises a version to reload from, and there is none. The tablet reads any non-2xx as
+    not heard and offers the reply again.
+    """
+
+
+class NothingToHear(ConflictError):
+    """A heard mark on a question that carries no reply.
+
+    Its own exception for the reason ReplyMovedOn is: there is no version to reload from.
+    A card the facilitator has not answered can never read as heard, whatever the tablet
+    sends; the tablet reads any non-2xx as not heard, and there was nothing to offer.
+    """
+
+
 class RoleError(Exception):
     pass
 
@@ -165,6 +187,17 @@ class UpstreamServiceError(Exception):
     Kept apart from ValidationError so a provider outage or rate limit does not masquerade
     as a 4xx: a client error page never pages anyone, and the right alert never fires.
     """
+
+
+def upstream_or_validation_error(status_code: int, message: str) -> Exception:
+    """Their outage is not our client's bad request.
+
+    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
+    limit is: both mean ElevenLabs refused the request, not that the room said nothing.
+    """
+    if status_code in (401, 403, 429) or status_code >= 500:
+        return UpstreamServiceError(message)
+    return ValidationError(message)
 
 
 class UnreadableReply(Exception):
@@ -289,6 +322,20 @@ async def handle_nothing_to_force(_request: Request, exc: NothingToForce) -> JSO
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_FORCE),
+    )
+
+
+async def handle_reply_moved_on(_request: Request, exc: ReplyMovedOn) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_REPLY_MOVED_ON),
+    )
+
+
+async def handle_nothing_to_hear(_request: Request, exc: NothingToHear) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_HEAR),
     )
 
 
@@ -421,6 +468,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
     app.add_exception_handler(ReleaseWithoutProject, handle_release_without_project)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
+    app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
+    app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]

@@ -38,7 +38,7 @@ The group of translators that owns the work. In the schema the column is called 
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
 
 **Desk**:
-The facilitator's web app, consumer of the routes for questions, halts and sessions by team.
+The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
 _Avoid_: panel, dashboard, Mesa
 
 **Room**:
@@ -144,7 +144,7 @@ _Avoid_: log, history, audit, Evento de cobertura
 ### Findings
 
 **Finding**:
-The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear.
+The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear. An addition or an unclear always names its **Chunk**; one that names none, or names one outside this reading, is not raised — it is dropped with a log line, the way the retired kind is, and a reply left with no finding at all once every one of them is dropped this way is refused, not read as a clean telling-back.
 _Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
 
 **Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
@@ -194,7 +194,7 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it.
+The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
 **Heard the rehearsal** (`unheard_parts`):
@@ -237,6 +237,10 @@ _Avoid_: blockage, lockup, Parada
 Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
 
+**Station**:
+The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. An abandoned session keeps the station it stopped in.
+_Avoid_: stage, phase, status (the session's own three states), Estação
+
 **Refine**:
 The later product stage that receives the packet. It does not live on this server.
 _Avoid_: review, refinement
@@ -256,11 +260,11 @@ The file a release hands to Refine: the rehearsal, the telling-back with its fin
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Blocker**:
-One of the codes a refused approval names, one string each: the gate's ten plus `no_project`. A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
+One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor and comprehension readiness are facts of the ledger, never blockers). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
 _Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
 
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
-A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: comprehension, coverage, audio, a telling-back, its reading and an untold stretch are material, not a dispute.
+A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: audio, a telling-back, its reading and an untold stretch are material, not a dispute.
 _Avoid_: override, bypass, forced approval, Aprovação forçada
 
 **Check block** (`check`):

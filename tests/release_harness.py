@@ -391,10 +391,10 @@ async def ready_session(
 async def a_p02_telling_with_the_swapped_cause(db: AsyncSession, project: Project) -> IRSession:
     """A P02 session ready in every way but one: frase 1 swapped who caused the return.
 
-    Everything the gate asks for is here — comprehension supported, the floor met, a
-    rehearsal recorded, one stretch told back and read by the analyst, the whole part played
-    through. The only thing between this session and Refine is the finding the team stopped
-    answering.
+    Everything the gate asks for is here — a rehearsal recorded, one stretch told back and
+    read by the analyst, the whole part played through — with comprehension supported and the
+    floor met besides. The only thing between this session and Refine is the finding the team
+    stopped answering.
     """
     session = await create_session(db, pericope=P02, project_id=project.id)
     session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))

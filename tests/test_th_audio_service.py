@@ -321,10 +321,23 @@ async def test_synthesize_speech_raises_when_no_audio() -> None:
         await synthesize_speech("hello world", client=client, settings=_settings())
 
 
-async def test_synthesize_speech_raises_when_api_error() -> None:
+@pytest.mark.parametrize("status", [401, 429])
+async def test_synthesize_speech_raises_when_api_error(status: int) -> None:
     audio_cache.clear()
-    client = _stub_client(_err(429, "rate limit"))
-    with pytest.raises(ValidationError):
+    client = _stub_client(_err(status, "boom"))
+    with pytest.raises(UpstreamServiceError):
+        await synthesize_speech("hello", client=client, settings=_settings())
+
+
+@pytest.mark.parametrize(
+    "failure", [httpx.ConnectError("boom"), httpx.ReadTimeout("boom")], ids=["connect", "timeout"]
+)
+async def test_synthesize_speech_treats_a_dropped_connection_as_upstream_too(
+    failure: Exception,
+) -> None:
+    audio_cache.clear()
+    client = SimpleNamespace(post=AsyncMock(side_effect=failure))
+    with pytest.raises(UpstreamServiceError):
         await synthesize_speech("hello", client=client, settings=_settings())
 
 
@@ -332,7 +345,7 @@ async def test_synthesize_speech_requires_api_key() -> None:
     audio_cache.clear()
     s = Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="")
     client = _stub_client(_tts_response(b"MP3"))
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await synthesize_speech("hello", client=client, settings=s)
 
 

@@ -1,7 +1,6 @@
 # ruff: noqa: RUF001 — the expectations are canon quoted verbatim; the en dash in a
 # verse range is the character the map itself carries.
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -15,6 +14,7 @@ from app.services.internalization_room.run_turn import (
     run_turn,
     run_verdict_turn,
 )
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -103,10 +103,9 @@ class FakeAgent:
 
 @pytest.fixture
 def patch_agent(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.run_turn"]
 
     def _install(agent: FakeAgent) -> FakeAgent:
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, turn=agent)
         return agent
 
     return _install

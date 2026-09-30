@@ -84,7 +84,7 @@ async def test_empty_audio_is_an_error() -> None:
 
 
 async def test_without_an_api_key_it_is_a_configuration_error() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await transcribe_speech(
             WEBM,
             language="pt-BR",
@@ -93,7 +93,7 @@ async def test_without_an_api_key_it_is_a_configuration_error() -> None:
         )
 
 
-@pytest.mark.parametrize("status", [429, 500, 503])
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
 async def test_elevenlabs_unavailability_is_an_upstream_failure_not_a_client_error(
     status: int,
 ) -> None:

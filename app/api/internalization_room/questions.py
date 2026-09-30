@@ -20,6 +20,7 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
+    HeardRequest,
     InboxQuestionView,
     LabelledElement,
     QuestionAudioResponse,
@@ -95,9 +96,11 @@ async def raise_question(
     "/questions/replies", response_model=HandRepliesResponse, dependencies=[room_caller_dep]
 )
 async def replies(
-    device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
+    device_id: str = DeviceId,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> HandRepliesResponse:
-    waiting = await service.replies_for(db, device_id)
+    waiting = await service.replies_for(db, device_id, project_id=project_id)
     return HandRepliesResponse(
         replies=[
             HandReplyView(
@@ -111,25 +114,35 @@ async def replies(
 
 
 @router.get("/questions/audio/{handle}", dependencies=[room_caller_dep])
-async def team_audio(handle: str, db: AsyncSession = Depends(get_db)) -> Response:
+async def team_audio(
+    handle: str, project_id: str | None = device_project_dep, db: AsyncSession = Depends(get_db)
+) -> Response:
     """Serve a facilitator's spoken reply to the app that asked.
 
     The room's voice route cannot carry these bytes: it only answers for keys under the
     room's synthesized speech, so every reply address it was handed came back a 404 and
     the answer never reached the team. This route reads the one folder a question writes.
     """
+    key = from_question_handle(handle)
+    if key is None:
+        raise NotFoundError("No such audio")
+    await service.question_for_room_caller(db, key, project_id)
     await db.commit()
     return await _audio(handle)
 
 
 @router.post("/questions/{question_id}/heard", dependencies=[room_caller_dep])
 async def heard(
-    question_id: str, device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
+    question_id: str,
+    payload: HeardRequest | None = None,
+    device_id: str = DeviceId,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    question = await service.get_question(db, question_id)
-    if question.device_id != device_id:
-        raise NotFoundError(f"Question {question_id} not found")
-    await service.mark_heard(db, question)
+    question = await service.get_question_for_device(
+        db, question_id, device_id=device_id, project_id=project_id
+    )
+    await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
     return {"status": "heard"}
 
 

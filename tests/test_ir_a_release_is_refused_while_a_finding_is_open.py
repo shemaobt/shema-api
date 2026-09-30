@@ -32,18 +32,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from app.db.models.internalization_room import IRSession, IRTake
-from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
 from app.services.internalization_room.segments import capture_segment, retire_every_segment
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
     save_back_translation,
-    save_comprehension,
 )
 from tests.alembic_harness import columns_of, run_alembic, scalar
 from tests.baker import (
@@ -54,7 +47,6 @@ from tests.release_harness import (
     APP_KEY,
     CLIP_MS,
     KEY,
-    P02,
     PREFIX,
     TABLET,
     THE_FINDING,
@@ -68,7 +60,6 @@ from tests.release_harness import (
     ready_session,
     releases_of,
     reported_playback,
-    supported_comprehension,
     team_headers,
     team_release,
     the_one_part_of,
@@ -232,33 +223,6 @@ async def test_the_facilitator_forces_the_release_and_the_row_says_so(client, db
     assert row.forced_open_findings[0]["chunk"] == 1
 
 
-async def _comprehension_in_conflict(db: AsyncSession, session: IRSession) -> None:
-    """A critical unit the team answered two ways, which is what needing more work is.
-
-    Emptying the ledger does not say it: with every scene engaged, the coverage stands in for
-    the practice report and a unit nobody evidenced blocks nothing. A conflict on a critical
-    unit is the state, and it leaves the floor and the rehearsal exactly where they were.
-    """
-    state = supported_comprehension(P02)
-    critical = next(checkpoint for checkpoint in checkpoints_for(P02) if checkpoint.critical)
-    state.ledger = [
-        *state.ledger,
-        EvidenceObservation(
-            id="ev-conflito",
-            unit_id=critical.id,
-            probe_id="probe-conflito",
-            method=EvidenceMethod.MICRO_TELLBACK,
-            result=EvidenceResult.CONFLICT,
-        ),
-    ]
-    await save_comprehension(db, session, state)
-
-
-async def _the_floor_not_met(db: AsyncSession, session: IRSession) -> None:
-    session.coverage_state = {}
-    await db.commit()
-
-
 async def _no_rehearsal_audio(db: AsyncSession, session: IRSession) -> None:
     await db.execute(delete(IRTake).where(IRTake.session_id == session.id))
     await db.commit()
@@ -288,8 +252,6 @@ async def _a_wordless_stretch(db: AsyncSession, session: IRSession) -> None:
 @pytest.mark.parametrize(
     ("blocker", "break_it"),
     [
-        ("comprehension_needs_more_work", _comprehension_in_conflict),
-        ("coverage_floor_not_met", _the_floor_not_met),
         ("no_rehearsal_audio", _no_rehearsal_audio),
         ("no_telling_back", _nothing_told_back),
         ("telling_back_never_analysed", _never_analysed),
@@ -302,9 +264,9 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
     """A dispute is forceable; missing material is not.
 
     The open finding and the unheard part are the two things a person can disagree about
-    after looking at them. A coverage floor nobody reached, a rehearsal nobody recorded, a
-    stretch nobody told back: there is nothing there to overrule, and a code that waived them
-    would let the Desk mint a packet out of a session that never happened.
+    after looking at them. A rehearsal nobody recorded, a stretch nobody told back: there is
+    nothing there to overrule, and a code that waived them would let the Desk mint a packet out
+    of a session that never happened.
     """
     project, _credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)

@@ -43,7 +43,7 @@ async def test_a_clip_written_first_is_kept_and_the_second_writer_gets_its_bytes
     blob = _Blob(data=b"first rendering")
     _the_bucket_holds(monkeypatch, blob)
 
-    kept = await GcsPlatformStore(_settings()).put_once(
+    kept = await GcsPlatformStore(_settings()).put(
         "tts/v/m/f/a.mp3", b"second rendering", "audio/mpeg"
     )
 
@@ -60,7 +60,7 @@ async def test_a_clip_nobody_wrote_yet_is_written_and_comes_back_as_written(
     blob = _Blob()
     _the_bucket_holds(monkeypatch, blob)
 
-    kept = await GcsPlatformStore(_settings()).put_once(
+    kept = await GcsPlatformStore(_settings()).put(
         "tts/v/m/f/a.mp3", b"only rendering", "audio/mpeg"
     )
 

@@ -148,8 +148,8 @@ class _NoCache:
     async def get(self, key: str) -> bytes | None:
         return None
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        return None
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
+        return data
 
 
 def _bundle(out: Path, language_code: str) -> Path:

@@ -38,7 +38,7 @@ from app.services.internalization_room.back_translation import (
     verify_correction,
     with_the_whole_stretch_asked_for,
 )
-from app.services.internalization_room.background import the_reading_ahead
+from app.services.internalization_room.background import the_correction_ahead, the_reading_ahead
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
@@ -113,7 +113,7 @@ async def check_the_telling_back(
     )
     correction = correction_to_verify(state, told, retired)
     if correction is not None:
-        verified = await verify_correction(
+        verified = await the_correction_ahead(session.id, state, told) or await verify_correction(
             findings=correction.findings,
             earlier=correction.earlier,
             corrected=correction.corrected,

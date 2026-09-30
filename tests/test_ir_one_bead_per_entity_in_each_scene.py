@@ -1,5 +1,4 @@
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -16,6 +15,7 @@ from app.services.internalization_room.canon.elements import (
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
 from app.services.internalization_room.coverage import CoverageStatus, initial_state
+from tests.turn_harness import the_room_agent_is
 
 P01 = "P01"
 
@@ -63,7 +63,6 @@ def test_every_bead_that_sits_in_a_scene_can_say_which() -> None:
 async def test_naomi_named_in_scene_one_does_not_answer_for_the_woman_in_scene_four(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
     naomi_in_scene_one = json.dumps(
         {
             "decisions": [
@@ -79,7 +78,7 @@ async def test_naomi_named_in_scene_one_does_not_answer_for_the_woman_in_scene_f
     async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         return naomi_in_scene_one
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, classifier=agent)
 
     settled = await classify_coverage(
         coverage_state=initial_state(P01),

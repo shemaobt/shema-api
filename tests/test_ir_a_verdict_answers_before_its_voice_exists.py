@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
 from typing import Any
 
@@ -21,6 +20,7 @@ from tests.room_harness import (
     rehearsed_in_parts,
     the_analyst_reads,
 )
+from tests.turn_harness import the_room_agent_is
 
 VERDICT = "Vocês contaram bem."
 
@@ -39,11 +39,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, elev
             return json.dumps({"verdict": "pass", "issues": []})
         return VERDICT
 
-    monkeypatch.setattr(
-        importlib.import_module("app.services.internalization_room.run_turn"),
-        "call_agent",
-        _speaker,
-    )
+    the_room_agent_is(monkeypatch, turn=_speaker)
     async with voice_room_client(
         db_session, monkeypatch, elevenlabs=elevenlabs, bucket=WriteOnceBucket()
     ) as c:

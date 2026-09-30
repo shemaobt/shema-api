@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room.voice_handles import team_audio_url
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
@@ -48,8 +49,21 @@ async def test_a_reply_the_team_plays_back_is_fetched_with_the_credential_read_l
 ) -> None:
     from app.services.internalization_room import questions as questions_service
 
-    _, credential = await a_claimed_device(db_session)
+    project, credential = await a_claimed_device(db_session)
     reply = "internalization-room/questions/pergunta-1/resposta-abc123.m4a"
+    db_session.add(
+        IRQuestion(
+            id="pergunta-1",
+            device_id="tablet-1",
+            session_id="sessao-1",
+            pericope="P03",
+            audio_key="internalization-room/questions/pergunta-1/pergunta-xyz.m4a",
+            reply_audio_key=reply,
+            project_id=project.id,
+            status=IRQuestionStatus.ANSWERED,
+        )
+    )
+    await db_session.commit()
     held: dict[str, bool] = {}
 
     class WatchedBucket(MemoryStore):

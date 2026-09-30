@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -60,6 +61,8 @@ from app.services.meaning_map.seed_books import seed_books
 from app.services.project_health.prompts.seed_prompts import seed_default_prompts
 from app.services.translation_helper.seed_agent_prompts import seed_agent_prompts
 
+logger = logging.getLogger(__name__)
+
 
 def _load_bhsa_background() -> None:
 
@@ -104,6 +107,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if not settings.internalization_room_clip_signing_key:
+        logger.warning(
+            "INTERNALIZATION_ROOM_CLIP_SIGNING_KEY is not set: the room's clip addresses are "
+            "served unsigned, and anyone handed one can mint another"
+        )
     app = FastAPI(title="Tripod Backend", version="0.1.0", lifespan=lifespan)
 
     app.state.limiter = limiter
@@ -123,7 +131,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         # Neither is CORS-safelisted: without this a browser client cannot read them at all.
         # The sound-necklace autosave version guard rides on ETag; X-Tts-Cached is what makes
-        # TTS cache warming observable.
+        # TTS cache warming observable. The range headers are left out on purpose; the test
+        # that pins this list says why.
         expose_headers=["ETag", "X-Tts-Cached"],
     )
 

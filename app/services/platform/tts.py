@@ -28,7 +28,7 @@ from typing import Any, Protocol
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 from app.services.platform.voices import language_hint, resolve_voice
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class SynthesizedSpeech:
     audio: bytes
     mime_type: str
     etag: str
-    #: Came from the bucket (ElevenLabs was not called).
+    #: Came from the cache, bucket or memory (ElevenLabs was not called).
     cached: bool
     #: Where the clip lives. Content-addressed, so it is also a stable public handle.
     key: str = ""
@@ -73,9 +73,7 @@ class SpeechStore(Protocol):
 
     async def exists(self, key: str) -> bool: ...
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
-
-    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes: ...
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes: ...
 
 
 def forget_what_is_kept() -> None:
@@ -145,6 +143,12 @@ async def synthesize_speech(
 
     `settings`, `client` and `store` are injectable — that is what makes the service testable
     without network and without GCS.
+
+    A hit is read through `fetch_clip`, which tries the in-process `_FRESH` cache before the
+    bucket, and a miss seeds `_FRESH` with the bytes it just wrote — so a repeat request in the
+    same worker costs no bucket round trip at all. Reading straight from `store.get` on every
+    hit, as this used to, downloaded the whole clip from the bucket every time, even for a clip
+    this same worker had rendered a moment before.
     """
     key, speech_store, voiced = _addressed(
         text,
@@ -157,11 +161,19 @@ async def synthesize_speech(
         client=client,
         store=store,
     )
-    cached = await speech_store.get(key)
+    cached = await fetch_clip(key, store=speech_store)
     if cached is not None:
         return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
-    audio, _ = await _try_to_keep(speech_store, key, await voiced())
+    audio, kept = await _try_to_keep(speech_store, key, await voiced())
+    # The route serves this as immutable for a day under a hash-addressed key, so a
+    # synthesis that lost the write must hand back the rendering the bucket holds, not
+    # its own: the loser's device would otherwise cache bytes no other instance serves.
+    # Memory is seeded only with what the bucket holds: seeded before the write, an
+    # overlapping request in this worker would serve unstored bytes as cached, and a
+    # failed write would leave them there for good instead of being retried.
+    if kept:
+        _remember_fresh(key, audio)
     return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
 
 
@@ -233,7 +245,7 @@ async def _voice_once(
         logger.warning("a clip could not be read back; voicing it: key=%s", key)
         audio = None
     if audio is None:
-        audio = await store.put_once(key, await voiced(), MIME_TYPE)
+        audio = await store.put(key, await voiced(), MIME_TYPE)
         _mark_kept(key)
     _remember_fresh(key, audio)
     return audio
@@ -336,7 +348,7 @@ async def _try_to_keep(store: SpeechStore, key: str, audio: bytes) -> tuple[byte
     reports an outage instead.
     """
     try:
-        kept = await store.put_once(key, audio, MIME_TYPE)
+        kept = await store.put(key, audio, MIME_TYPE)
     except Exception:
         logger.exception("failed to cache TTS clip key=%s", key)
         return audio, False
@@ -380,22 +392,11 @@ async def _synthesize(
             response.status_code,
             response.text[:500],
         )
-        raise _upstream_or_validation_error(response.status_code)
+        raise upstream_or_validation_error(
+            response.status_code, f"TTS request failed with status {response.status_code}"
+        )
 
     return bytes(response.content)
-
-
-def _upstream_or_validation_error(status_code: int) -> Exception:
-    """Their outage is not our client's bad request.
-
-    429 and 5xx mean ElevenLabs is rate limiting or down: that is an upstream failure (502),
-    and dressing it as a 400 means the right alert never fires. Other 4xx really are a
-    malformed request we sent, so they stay a business error.
-    """
-    message = f"TTS request failed with status {status_code}"
-    if status_code == 429 or status_code >= 500:
-        return UpstreamServiceError(message)
-    return ValidationError(message)
 
 
 def etag_of(audio: bytes) -> str:

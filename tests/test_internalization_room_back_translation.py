@@ -2,7 +2,6 @@ import itertools
 import json
 import logging
 import re
-import sys
 from typing import Any
 
 import pytest
@@ -43,6 +42,7 @@ from tests.turn_harness import (
     settings,
     stretch,
     the_loop_answers,
+    the_room_agent_is,
     the_speaker_answers,
     told_stretches,
 )
@@ -127,14 +127,13 @@ def _unclear_on(chunk: int, note: str = "não deu para ouvir") -> Finding:
 
 @pytest.fixture
 def patch_analyst(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.back_translation"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             agent.system = system_prompt
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
         return agent
 
     return _install
@@ -180,7 +179,7 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
             {
                 "findings": [
                     {"kind": "missing", "note": "Orfa não apareceu."},
-                    {"kind": "addition", "note": "Você falou de Belém."},
+                    {"kind": "addition", "chunk": 1, "note": "Você falou de Belém."},
                 ]
             }
         )
@@ -360,7 +359,7 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
         '{"kind":"missing","chunk":4,"where":"after","note":"b"},'
         '{"kind":"missing","chunk":2,"where":"inside","note":"c"},'
         '{"kind":"addition","chunk":1,"note":"d"},'
-        '{"kind":"unclear","chunk":9,"note":"e"}]}'
+        '{"kind":"missing","chunk":9,"note":"e"}]}'
     )
     four = [stretch(number, f"trecho {number}") for number in range(1, 5)]
 
@@ -382,9 +381,15 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
     ]
 
 
-async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
+async def test_a_missing_that_cannot_name_a_piece_falls_back_to_the_whole(
     patch_analyst,
 ) -> None:
+    """A missing element with no readable chunk still lands with no address at all.
+
+    Addition and unclear are different since ENG-1145: naming no chunk the parser can read —
+    `0` is out of the 1-based range and `"tres"` is not a number — drops either of them
+    instead of falling back to a homeless finding.
+    """
     patch_analyst(
         '{"findings":['
         '{"kind":"missing","chunk":null,"note":"a"},'
@@ -401,7 +406,7 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     )
 
     assert analysis is not None
-    assert [f.segment_id for f in analysis.findings] == [None, None, None]
+    assert [(f.kind, f.segment_id) for f in analysis.findings] == [(FindingKind.MISSING, None)]
 
 
 async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) -> None:
@@ -418,9 +423,8 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
     def _explode(**_kwargs):
         raise RuntimeError("gemini fora do ar")
 
-    module = sys.modules["app.services.internalization_room.back_translation"]
     monkey = pytest.MonkeyPatch()
-    monkey.setattr(module, "call_agent", _explode)
+    the_room_agent_is(monkey, analyst=_explode)
     try:
         with pytest.raises(UpstreamServiceError):
             await analyse_telling_back(
@@ -1428,32 +1432,44 @@ async def test_a_missing_element_after_everything_told_sends_them_on_to_record(
 # ---------------------------------------------------------------------------
 
 
-def test_the_closing_to_rehearsal_names_the_microphone_and_the_green_button() -> None:
-    """R9 (teste de 03/09). A team that reached this screen did not know what to do with it.
+def test_the_closing_to_rehearsal_names_the_circle_the_check_and_the_wood_disc() -> None:
+    """R9 (teste de 03/09, atualizado pelo ADR 0040 da sala e pela decisão de Henok de
+    25/09). A team that reached this screen did not know what to do with it.
 
     The block used to say *what* was left — record what is still missing, keep what is
-    already recorded — without ever naming *how*: which microphone, and which button brings
-    them back. Two structural anchors stand in for the two gestures the screen actually
-    offers; the exact sentence around them is the product owner's to shape.
+    already recorded — without ever naming *how*: which control records, which confirms it,
+    and which brings them back. On the Rehearsal a recording stays pending until the green
+    check confirms it, and the wood disc only lights once nothing is pending — told just
+    "circle, then wood disc", the team would tap a dimmed disc. Three structural anchors
+    stand in for the three real steps the screen offers; the exact sentence around them is
+    the product owner's to shape.
     """
-    assert "big microphone" in CLOSING_MISSING_TO_REHEARSAL
-    assert "green button" in CLOSING_MISSING_TO_REHEARSAL
+    assert "with the circle" in CLOSING_MISSING_TO_REHEARSAL
+    assert "green check" in CLOSING_MISSING_TO_REHEARSAL
+    assert "wood disc" in CLOSING_MISSING_TO_REHEARSAL
+    assert "big microphone" not in CLOSING_MISSING_TO_REHEARSAL
+    assert "green button" not in CLOSING_MISSING_TO_REHEARSAL
 
 
-async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_loop) -> None:
+async def test_the_validator_sees_the_circle_the_check_and_the_wood_disc_too(patch_loop) -> None:
     """The Validator judges the Speaker against the same order it was given.
 
     `{{ORDERED_CLOSING}}` is filled from the same `closing_block` call as the Speaker's
-    `{{CLOSING}}` — a narrator naming the big microphone and the green button is obeying an
-    order the Validator can see, not inventing a gesture of its own.
+    `{{CLOSING}}` — a narrator naming the circle, the green check and the wood disc is
+    obeying an order the Validator can see, not inventing a gesture of its own.
+
+    The Validator's own system prompt already says "red circle" for a different screen
+    (the recording button), so a bare `"circle" in agent.briefs[0]` would pass even if the
+    closing never mentioned it — the assertion is anchored on "with the circle", a phrase
+    only the closing carries.
     """
     told = told_stretches()
     finding = _missing(None)
     obedient_draft = (
         "No que você me contou de volta, o fim da história ainda não apareceu. "
-        "Vocês podem seguir e gravar o que ainda falta no microfone grande, e quando "
-        "terminarem, é só tocar no botão verde para voltar e conferir. Nada do que já "
-        "gravaram se perde."
+        "Vocês podem seguir e gravar o que ainda falta no círculo, confirmar no check verde "
+        "e, quando terminarem, tocar no disco de madeira para voltar e conferir. Nada do que "
+        "já gravaram se perde."
     )
     agent = patch_loop(obedient_draft, told)
 
@@ -1473,20 +1489,37 @@ async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_
 
     assert outcome.used_fail_safe is False
     assert outcome.speech == obedient_draft
-    assert "big microphone" in agent.briefs[0]
-    assert "green button" in agent.briefs[0]
+    assert "with the circle" in agent.briefs[0]
+    assert "green check" in agent.briefs[0]
+    assert "wood disc" in agent.briefs[0]
 
 
-@pytest.mark.parametrize("segment_id", ["segmento-2", None], ids=["on a stretch", "homeless"])
-@pytest.mark.parametrize("kind", [kind for kind in FindingKind if kind is not FindingKind.MISSING])
+@pytest.mark.parametrize(
+    ("kind", "segment_id"),
+    [
+        (FindingKind.ADDITION, "segmento-2"),
+        (FindingKind.UNCLEAR, "segmento-2"),
+        (FindingKind.ADDITION, None),
+        (FindingKind.UNCLEAR, None),
+    ],
+    ids=[
+        "addition on a stretch",
+        "unclear on a stretch",
+        "addition homeless (legacy row)",
+        "unclear homeless (legacy row)",
+    ],
+)
 def test_every_other_kind_closes_exactly_as_before(
     kind: FindingKind, segment_id: str | None
 ) -> None:
-    """What the screen offers these without a stretch is a product decision still open.
+    """Henok decided on 2026-09-25: `unclear` keeps `CLOSING_SPOKEN` on a stretch, for good.
 
-    Until it is taken, every kind but `missing` closes word for word as it did: the two voices
-    when a boundary question was asked on a stretch, the spoken answer otherwise — and an
-    evidence limit asks out loud even on a stretch, as before.
+    A fresh reply can no longer produce an addition or an unclear without a stretch (ENG-1145):
+    the parser drops one that names no readable frase before it ever becomes a finding, and
+    refuses a reply that drops every finding it named. The two homeless cases here are legacy
+    only — a row `closing_block` may still be handed from before this rule, per ADR 0038 — and
+    it answers them exactly as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed
+    the two-microphone screen even where it does have a stretch.
     """
     finding = Finding(kind=kind, note="Orfa", segment_id=segment_id)
     asked_on_a_stretch = segment_id is not None and kind is not FindingKind.UNCLEAR

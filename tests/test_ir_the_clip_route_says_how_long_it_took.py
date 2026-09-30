@@ -199,7 +199,7 @@ class _Written:
     async def exists(self, key: str) -> bool:
         return key in self.objects
 
-    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
         self.objects[key] = data
         return data
 

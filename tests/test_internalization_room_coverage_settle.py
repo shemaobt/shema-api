@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import re
-import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -29,12 +28,9 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceResult,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import CoverageStatus, initial_state
+from app.services.internalization_room.coverage import CoverageStatus, floor_met, initial_state
 from app.services.internalization_room.coverage_channel import subscribe
-from app.services.internalization_room.release import (
-    InternalizationReleaseBlocked,
-    build_internalization_release,
-)
+from tests.turn_harness import the_room_agent_is
 
 CLASSIFIER = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
 P = "P03"
@@ -89,14 +85,13 @@ def _whole_passage_partially_engaged(pericope: str) -> str:
 
 @pytest.fixture
 def patch_classifier(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             agent.system = system_prompt
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, classifier=agent)
         return agent
 
     return _install
@@ -189,7 +184,7 @@ async def test_a_passage_settled_from_decisions_closes_the_session(
     )
 
 
-async def test_a_settled_passage_drops_the_coverage_blocker_from_the_release(
+async def test_a_settled_passage_meets_the_floor(
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_engaged(P))
@@ -205,15 +200,8 @@ async def test_a_settled_passage_drops_the_coverage_blocker_from_the_release(
     )
     session = await service.apply_coverage(db_session, session.id, settled)
 
-    blockers: list[str] = []
-    try:
-        await build_internalization_release(db_session, session)
-    except InternalizationReleaseBlocked as blocked:
-        blockers = blocked.blockers
-
-    assert "coverage_floor_not_met" not in blockers, (
-        "o colar ficava vazio por mais que a equipe trabalhasse, "
-        "e a soltura respondia piso não atingido para sempre"
+    assert floor_met(session.coverage_state, P), (
+        "o colar ficava vazio por mais que a equipe trabalhasse, e o piso nunca era atingido"
     )
 
 
@@ -248,7 +236,7 @@ async def test_a_classifier_still_answering_the_retired_status_moves_nothing(
     )
 
 
-async def test_a_passage_the_team_only_echoed_keeps_the_coverage_blocker_on_the_release(
+async def test_a_passage_the_team_only_echoed_stays_below_the_floor(
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_partially_engaged(P))
@@ -264,14 +252,8 @@ async def test_a_passage_the_team_only_echoed_keeps_the_coverage_blocker_on_the_
     )
     session = await service.apply_coverage(db_session, session.id, settled)
 
-    blockers: list[str] = []
-    try:
-        await build_internalization_release(db_session, session)
-    except InternalizationReleaseBlocked as blocked:
-        blockers = blocked.blockers
-
-    assert "coverage_floor_not_met" in blockers, (
-        "a soltura deixava de nomear a cobertura numa passagem que a equipe só ecoou"
+    assert not floor_met(session.coverage_state, P), (
+        "o piso era atingido numa passagem que a equipe só ecoou"
     )
 
 

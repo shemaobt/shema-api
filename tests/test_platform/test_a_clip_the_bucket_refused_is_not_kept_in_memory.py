@@ -30,7 +30,7 @@ class _RefusingBucket:
     async def exists(self, key: str) -> bool:
         return False
 
-    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
         raise OSError("the bucket refused the write")
 
 

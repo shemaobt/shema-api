@@ -134,6 +134,7 @@ class IRSession(Base):
     person_arrived_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(timezone=True), nullable=True
     )
+    halts_raised: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -257,6 +258,11 @@ class IRQuestion(Base):
     reply_audio_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     answered_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    #: When the team first played the reply. It means something only beside a reply: null on
+    #: an open card, refused rather than stamped while `reply_audio_key` is null (ENG-1148),
+    #: and set back to null by a second reply so a card never says "heard" about an answer
+    #: that was replaced. The instant is the first listen's — a repeated mark for the same
+    #: reply keeps it.
     heard_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     #: Whose conversation this was. Null when the room app did not identify itself with a
     #: device credential, which is every session until ENG-454 ships that half — see the

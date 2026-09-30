@@ -1,5 +1,4 @@
 import json
-import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any
 
@@ -26,6 +25,7 @@ from tests.baker import fully_supported_comprehension
 from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
+from tests.turn_harness import the_room_agent_is
 
 P = "P03"
 FIRST_QUESTION = "Quem aparece nesta parte?"
@@ -87,9 +87,7 @@ async def client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     from app.api.internalization_room import sessions as sessions_api
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
-    )
+    the_room_agent_is(monkeypatch, turn=models)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(voice))
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
@@ -155,9 +153,7 @@ def _in_a_transaction_while_thinking(
 
     monkeypatch.setattr(turn_dedup, "AsyncSessionLocal", a_session_of_its_own)
     monkeypatch.setattr(sessions_api, "heard_speech", heard)
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", thinks
-    )
+    the_room_agent_is(monkeypatch, turn=thinks)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", speaks)
     monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(speaks))
     return held
@@ -455,6 +451,65 @@ async def test_a_halt_the_tablet_raises_while_the_guide_answers_a_halted_room_st
         "o turno que começou parado soltava também o pedido que o tablet fez durante o Guia"
     )
     assert after.halt_kind == HaltKind.BLOCKING.value
+
+
+async def test_a_warning_raised_again_after_a_visit_while_the_guide_answers_is_not_lifted(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await mark_needs_person(db_session, waiting_room, kind=HaltKind.WARNING)
+
+    async def a_visit_and_then_the_room_asks_again() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, waiting_room.id)
+            await attend(rival, halted, by="facilitadora")
+            await mark_needs_person(rival, halted, kind=HaltKind.WARNING)
+
+    models.while_the_guide_thinks = a_visit_and_then_the_room_asks_again
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert after.status is IRSessionStatus.NEEDS_PERSON, (
+        "o turno tomava o segundo aviso, levantado depois da visita, pelo aviso em que começou,"
+        " e soltava um pedido que ninguém tinha atendido"
+    )
+    assert after.halt_kind == HaltKind.WARNING.value
+
+
+async def test_undoing_a_visit_to_a_warning_raised_again_while_the_guide_answered_puts_it_back(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await mark_needs_person(db_session, waiting_room, kind=HaltKind.WARNING)
+
+    async def two_visits_to_two_warnings() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, waiting_room.id)
+            await attend(rival, halted, by="facilitadora")
+            await mark_needs_person(rival, halted, kind=HaltKind.WARNING)
+            await attend(rival, halted, by="facilitadora")
+
+    models.while_the_guide_thinks = two_visits_to_two_warnings
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+    assert undone.status is IRSessionStatus.NEEDS_PERSON, (
+        "o turno tomava o segundo aviso pelo aviso em que começou e apagava o lifted_halt da"
+        " segunda visita, e desfazê-la não trazia o pedido de volta"
+    )
+    assert undone.halt_kind == HaltKind.WARNING.value
 
 
 async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room_stays_closed(

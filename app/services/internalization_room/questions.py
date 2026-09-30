@@ -9,12 +9,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import ColumnElement, and_, case, func, or_, select
+from sqlalchemy import ColumnElement, and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     NotFoundError,
+    NothingToHear,
+    ReplyMovedOn,
     TranscriptionDefect,
     UpstreamServiceError,
     ValidationError,
@@ -23,6 +25,10 @@ from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room.coverage_events import last_bead_moved_in_session
 from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.voice_handles import (
+    TEAM_AUDIO_ROUTE,
+    from_question_handle,
+)
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms
 from app.services.platform.storage import GcsPlatformStore
@@ -164,23 +170,41 @@ async def get_question(db: AsyncSession, question_id: str) -> IRQuestion:
 
 
 def _no_such_question(question_id: str) -> str:
-    """The message the facilitator routes refuse with, written once.
+    """The message the room's routes refuse a question with, written once.
 
-    The three refusals it serves must be **identical**, not merely similar: absent,
-    unowned, and belonging to another team. A caller who can tell them apart asks for ids
-    until one answers differently, and a question that exists is a team that exists. Two
-    call sites drifting by a word is all it takes to hand that back.
-
-    **There is a fourth refusal of this exact shape and it does not come through here:**
-    the room's ``POST /questions/{id}/heard`` refuses a question raised by another device
-    with the same sentence, written by hand at ``app/api/internalization_room/questions.py``.
-    It is the same rule applied to a tablet instead of a facilitator, and it belongs to the
-    room's line rather than to this slice, so ENG-534 leaves it where it is and says so
-    here instead of quietly claiming to cover it. Routing it through this helper — better
-    still, giving it a ``get_question_for_device`` of its own, so the rule stops living in
-    a router — is worth an issue of its own.
+    Every refusal it serves must be **identical**, not merely similar: absent, unowned,
+    another team's (the facilitator's three, ENG-534), another device's and another
+    project's (the tablet's two, ``get_question_for_device`` below — ENG-534 left the
+    device one written by hand in the router and said so here; ENG-1147 moved it and added
+    the project). A caller who can tell them apart asks for ids until one answers
+    differently, and a question that exists is a team that exists. Two call sites drifting
+    by a word is all it takes to hand that back.
     """
     return f"Question {question_id} not found"
+
+
+async def get_question_for_device(
+    db: AsyncSession, question_id: str, *, device_id: str, project_id: str | None
+) -> IRQuestion:
+    """The question, if this tablet raised it and, when the tablet names a project, in it.
+
+    The device id is self-declared (``require_device``), so on its own it is a claim, not a
+    proof: any caller that guesses a question's id and its device's id could mark it heard.
+    The project is what the credential proves, and ``question_for_room_caller`` beside this
+    already reads the reply's audio on that rule — the audio and the mark answered
+    different callers until this helper made them agree. Same rule, same shape: a caller
+    that names a project reaches only that project's questions; the shared key names none
+    and keeps the by-id read, as everywhere else in the room. The list the tablet pulls
+    (``replies_for``) reads on the same rule, so the list, the audio and the mark agree on
+    who may touch a question.
+    """
+    question = await get_question(db, question_id)
+    if question.device_id != device_id:
+        raise NotFoundError(_no_such_question(question_id))
+    owned_elsewhere = project_id is not None and question.project_id is not None
+    if owned_elsewhere and question.project_id != project_id:
+        raise NotFoundError(_no_such_question(question_id))
+    return question
 
 
 async def get_question_for_facilitator(
@@ -205,6 +229,26 @@ async def get_question_for_facilitator(
     return question
 
 
+async def _question_by_audio_key(db: AsyncSession, key: str) -> IRQuestion | None:
+    """The question this key addresses — its own recording or the reply to it — or None.
+
+    Shared by every caller that names a question by key rather than by id, so the read
+    itself cannot drift between them; only the ownership rule each one puts on top of it
+    should differ.
+    """
+    return (
+        (
+            await db.execute(
+                select(IRQuestion).where(
+                    or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+
+
 async def audio_of_a_question_this_facilitator_facilitates(
     db: AsyncSession, user: User, key: str
 ) -> IRQuestion:
@@ -225,20 +269,32 @@ async def audio_of_a_question_this_facilitator_facilitates(
     the rest of this file keeps: a caller must not be able to tell "not yours" from "no
     such thing", or the refusal becomes a way to ask which handles are real.
     """
-    found = (
-        (
-            await db.execute(
-                select(IRQuestion).where(
-                    or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
-                )
-            )
-        )
-        .scalars()
-        .first()
-    )
+    found = await _question_by_audio_key(db, key)
     if found is None:
         raise NotFoundError("No such audio")
     if found.project_id is None or not await facilitates_project(db, user, found.project_id):
+        raise NotFoundError("No such audio")
+    return found
+
+
+async def question_for_room_caller(
+    db: AsyncSession, key: str, project_id: str | None
+) -> IRQuestion:
+    """The question an audio key addresses, on the room's own ownership rule.
+
+    Same rule as ``session_for_room_caller``: a device that names a project reads only
+    that project's own questions. A question naming none is reached by whoever asks —
+    unlike ``audio_of_a_question_this_facilitator_facilitates``, which refuses one — because
+    it is the common shape today: the room's app does not send its device credential yet
+    (see ``get_question_for_facilitator``'s own note on this), so refusing an unowned
+    question here would leave most of the table unreachable by the very team that raised
+    the hand. The shared key names no device and so no project, and keeps the by-id read
+    its real facilitator flow has always depended on.
+    """
+    found = await _question_by_audio_key(db, key)
+    if found is None:
+        raise NotFoundError("No such audio")
+    if project_id is not None and found.project_id is not None and found.project_id != project_id:
         raise NotFoundError("No such audio")
     return found
 
@@ -468,24 +524,70 @@ async def resolve_elsewhere(
     return question
 
 
-async def replies_for(db: AsyncSession, device_id: str) -> list[IRQuestion]:
-    """Answers this device has not heard yet, from any session it ever held.
+async def replies_for(
+    db: AsyncSession, device_id: str, *, project_id: str | None
+) -> list[IRQuestion]:
+    """Answers this device has not heard yet, from any session it ever held, in its project.
 
     A facilitator may answer hours later, when that passage is long closed. Scoping the
     reply to its session would drop it silently.
+
+    The project is the third filter, after the device and the unheard answer, and it reads on
+    the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
+    a caller that names one lists that project's questions and the ones that name none.
+    ``project_id=None`` is the shared key, which names no project, and it turns the rule off
+    and keeps the list by device.
     """
-    result = await db.execute(
+    query = (
         select(IRQuestion)
         .where(IRQuestion.device_id == device_id)
         .where(IRQuestion.status == IRQuestionStatus.ANSWERED)
         .where(IRQuestion.heard_at.is_(None))
         .order_by(IRQuestion.answered_at)
     )
+    if project_id is not None:
+        query = query.where(
+            or_(IRQuestion.project_id.is_(None), IRQuestion.project_id == project_id)
+        )
+    result = await db.execute(query)
     return list(result.scalars())
 
 
-async def mark_heard(db: AsyncSession, question: IRQuestion) -> IRQuestion:
-    question.heard_at = datetime.now(UTC)
+async def mark_heard(
+    db: AsyncSession, question: IRQuestion, *, audio_url: str | None = None
+) -> IRQuestion:
+    """The team played the reply; say so once.
+
+    ``heard_at`` means something only beside a reply (the column says so), so a question
+    with no reply is refused rather than stamped — the Desk was showing "ouvida" on cards
+    nobody had answered. And the instant is the first listen's: a second mark for the same
+    reply, which the tablet sends whenever it plays a reply it has not yet been told is
+    heard, keeps the stamp it finds and answers as agreement.
+
+    With the clip named, the stamp is one conditional ``UPDATE`` (ENG-1120): a reply landing
+    between the read and the stamp matches nothing. Zero rows is then read back once to say
+    which it was — the reply moved on, or this one was already heard.
+    """
+    if question.reply_audio_key is None:
+        raise NothingToHear(f"Question {question.id} has no reply to hear")
+    if audio_url is None:
+        if question.heard_at is None:
+            question.heard_at = datetime.now(UTC)
+    else:
+        heard_key = from_question_handle(audio_url.removeprefix(f"{TEAM_AUDIO_ROUTE}/")) or ""
+        stamped = await db.execute(
+            update(IRQuestion)
+            .where(
+                IRQuestion.id == question.id,
+                IRQuestion.reply_audio_key == heard_key,
+                IRQuestion.heard_at.is_(None),
+            )
+            .values(heard_at=datetime.now(UTC))
+        )
+        if stamped.rowcount != 1:
+            await db.refresh(question)
+            if question.reply_audio_key != heard_key:
+                raise ReplyMovedOn(f"Question {question.id} has a newer reply than the one heard")
     await db.commit()
     await db.refresh(question)
     return question

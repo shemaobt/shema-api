@@ -8,7 +8,6 @@ draft, the Validator's verdict and issues, and which family answered.
 """
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -22,6 +21,7 @@ from app.services.platform.tts import SynthesizedSpeech
 from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
 
 TEAM = "a fome chegou"
 DRAFT = "Vamos ficar nesta cena. O que voces contariam?"
@@ -70,8 +70,7 @@ def the_room_hears(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)
 
     def _install(verdicts: list[str]) -> None:
-        turn_module = sys.modules["app.services.internalization_room.run_turn"]
-        monkeypatch.setattr(turn_module, "call_agent", _Model(verdicts))
+        the_room_agent_is(monkeypatch, turn=_Model(verdicts))
 
     return _install
 

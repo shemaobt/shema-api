@@ -101,6 +101,10 @@ def _ladder(configured: str) -> list[str]:
 #: thing. Cleared only by a restart, which is also when a key's entitlements can have changed.
 _SETTLED: dict[str, str] = {}
 
+#: How long a rung waits before it is asked the same question a second time, on a rate limit,
+#: an overload, or a 5xx — the one shot the room gives a transient failure before it rises.
+_RETRY_WAIT_S = 1.5
+
 _CLIENTS: WeakKeyDictionary[
     asyncio.AbstractEventLoop,
     dict[tuple[Callable[..., anthropic.AsyncAnthropic], str, str], anthropic.AsyncAnthropic],
@@ -115,7 +119,6 @@ def _client(settings: Settings) -> anthropic.AsyncAnthropic:
         kept[identity] = build(
             api_key=settings.anthropic_api_key,
             default_headers=_workspace_header(settings),
-            max_retries=0,
         )
     return kept[identity]
 
@@ -163,9 +166,11 @@ async def call_agent(
     the single message it always sent.
 
     The ladder is walked only for the one error that means *this key may not use this model*.
-    Everything else — a rate limit, an overload, a bad gateway — keeps the rung it is on and
-    rises to the caller: those say the model is busy, not that it is unavailable, and stepping
-    down on a busy minute would quietly finish the session on a weaker model than it started.
+    A rate limit, an overload, or a 5xx keeps the rung it is on and gets one bounded retry
+    there before it rises to the caller: those say the model is busy, not that it is
+    unavailable, and stepping down on a busy minute would quietly finish the session on a
+    weaker model than it started. Everything else that is not a retry of its own — a bad
+    request, a rejected key — rises on the first attempt.
     """
     settings = settings or get_settings()
     rungs = ladder or voice_ladder(settings)
@@ -185,36 +190,53 @@ async def call_agent(
     client = _client(settings)
     refused_above = False
     for model in _from_the_settled_rung(rungs):
-        started = time.monotonic()
-        try:
-            async with asyncio.timeout(bound_s):
-                with stage(role.replace(" ", "_")):
-                    response = await client.messages.create(
-                        model=model,
-                        max_tokens=max_output_tokens,
-                        thinking=thinking,
-                        output_config=output_config,
-                        system=_system_blocks(system_prompt, ttl=_prefix_cache_ttl(role, settings)),
-                        messages=messages,
-                        timeout=bound_s,
-                    )
-        except TimeoutError as hang:
-            raise _timed_out(model, role=role, started=started, bound_s=bound_s) from hang
-        except asyncio.CancelledError:
-            _timed_out(model, role=role, started=started, bound_s=bound_s)
-            raise
-        except anthropic.NotFoundError as refusal:
-            if model == rungs[-1]:
-                raise _unavailable(model, refusal, role=role, started=started) from refusal
-            logger.warning(
-                "This key cannot use %s; the room steps down to %s",
-                model,
-                rungs[rungs.index(model) + 1],
-                extra={"rung": model, "next_rung": rungs[rungs.index(model) + 1]},
-            )
+        step_down = False
+        for attempt in (1, 2):
+            started = time.monotonic()
+            try:
+                async with asyncio.timeout(bound_s):
+                    with stage(role.replace(" ", "_")):
+                        response = await client.messages.create(
+                            model=model,
+                            max_tokens=max_output_tokens,
+                            thinking=thinking,
+                            output_config=output_config,
+                            system=_system_blocks(
+                                system_prompt, ttl=_prefix_cache_ttl(role, settings)
+                            ),
+                            messages=messages,
+                            timeout=bound_s,
+                        )
+            except TimeoutError as hang:
+                raise _timed_out(model, role=role, started=started, bound_s=bound_s) from hang
+            except asyncio.CancelledError:
+                _timed_out(model, role=role, started=started, bound_s=bound_s)
+                raise
+            except anthropic.NotFoundError as refusal:
+                if model == rungs[-1]:
+                    raise _unavailable(
+                        model, refusal, role=role, started=started, attempt=attempt
+                    ) from refusal
+                logger.warning(
+                    "This key cannot use %s; the room steps down to %s",
+                    model,
+                    rungs[rungs.index(model) + 1],
+                    extra={"rung": model, "next_rung": rungs[rungs.index(model) + 1]},
+                )
+                step_down = True
+                break
+            except anthropic.APIError as failure:
+                if attempt == 1 and _is_transient(failure):
+                    _log_call_failure(model, failure, role=role, started=started, attempt=attempt)
+                    await asyncio.sleep(_RETRY_WAIT_S)
+                    continue
+                raise _unavailable(
+                    model, failure, role=role, started=started, attempt=attempt
+                ) from failure
+            else:
+                break
+        if step_down:
             continue
-        except anthropic.APIError as failure:
-            raise _unavailable(model, failure, role=role, started=started) from failure
         _report_spend(
             response,
             model,
@@ -240,36 +262,62 @@ async def call_agent(
     raise AssertionError("unreachable: the last rung either answers or raises")
 
 
-def _unavailable(
-    model: str, failure: anthropic.APIError, *, role: str, started: float
-) -> UpstreamServiceError:
-    """The usage line for a call that was refused, and the error the turn rises with.
+def _is_transient(failure: anthropic.APIError) -> bool:
+    """A failure worth one bounded retry of the room's own, on the same rung.
+
+    This reaches `call_agent` only once the SDK's own policy has already given up on the
+    same request: with `max_retries` no longer forced to zero, the SDK retries a 429 or any
+    5xx — this function's own set — up to twice on its own before ever raising, so one of the
+    room's own attempts can already be as many as three requests on the wire. A bad request,
+    a rejected key, 408 or 409 never reach a second attempt here; a dropped connection is the
+    SDK's alone to retry.
+    """
+    if isinstance(failure, anthropic.RateLimitError):
+        return True
+    status = getattr(failure, "status_code", None)
+    return status is not None and status >= 500
+
+
+def _log_call_failure(
+    model: str, failure: anthropic.APIError, *, role: str, started: float, attempt: int
+) -> None:
+    """The usage line for a call that was refused, written on every failed attempt.
 
     The same logger as `_report_spend`, so a session's calls read as one ledger: who asked,
     which rung, how long it waited and how it ended — and for the one that failed, the
     status and the provider's own reason. A credit or quota failure is diagnosed from here,
     not from the team's report of a room that kept saying the same sentence. No token
     counts, because none were spent — which is also what keeps this line out of the text
-    seam's per-call tally.
+    seam's per-call tally. `attempt` counts the room's own tries, not the wire's — the SDK's
+    retries happen inside a single one of them and never reach this line at all.
     """
     status = getattr(failure, "status_code", None)
     latency_ms = round((time.monotonic() - started) * 1000)
     logger.warning(
-        "[llm-usage] %s error on %s after %s ms: status=%s %s",
+        "[llm-usage] %s error on %s (attempt %s) after %s ms: status=%s %s",
         role,
         model,
+        attempt,
         latency_ms,
         status,
         failure,
         extra={
             "role": role,
             "rung": model,
+            "attempt": attempt,
             "latency_ms": latency_ms,
             "outcome": "error",
             "status": status,
             "cause": type(failure).__name__,
         },
     )
+
+
+def _unavailable(
+    model: str, failure: anthropic.APIError, *, role: str, started: float, attempt: int = 1
+) -> UpstreamServiceError:
+    """The error a rung's last attempt rises with, once `_log_call_failure` has told it apart."""
+    _log_call_failure(model, failure, role=role, started=started, attempt=attempt)
     return UpstreamServiceError(f"o modelo não respondeu em {model}: {failure}")
 
 
