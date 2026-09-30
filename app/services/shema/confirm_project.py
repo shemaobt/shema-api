@@ -42,7 +42,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError, RoleError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
-from app.db.models.shema_project_member import MEMBER_ROLE, ShemaProjectMember
 from app.models.shema_pending import (
     ConfirmedProject,
     InvitedMember,
@@ -61,7 +60,7 @@ from app.services.shema import _audit
 from app.services.shema._filing import stamp_link_requests
 from app.services.shema._grant_rules import require_admin_in
 from app.services.shema._redaction import derive_region
-from app.services.shema._roster import live_membership
+from app.services.shema._roster import seat_member
 from app.services.shema._scope import filed_projects
 from app.services.shema.send_invite import INVITE_PAGE
 
@@ -147,12 +146,7 @@ async def confirm_project(
             url = invite_link(landing, issued.raw_token, page=INVITE_PAGE)
             invitations.append(_Invitation(issued, url))
             continue
-        if await live_membership(db, project.id, account.id) is None:
-            db.add(
-                ShemaProjectMember(
-                    project_id=project.id, user_id=account.id, role=MEMBER_ROLE, added_by=actor.id
-                )
-            )
+        await seat_member(db, project.id, account.id, added_by=actor.id)
         joined.append(JoinedMember(email=member.email, userId=account.id))
 
     confirmed_id, language_name = project.id, project.language_name

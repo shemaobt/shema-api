@@ -15,20 +15,12 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.shema_project_member import MEMBER_ROLE, ShemaProjectMember
-from app.services.shema._roster import live_membership
+from app.db.models.shema_project_member import ShemaProjectMember
+from app.services.shema._roster import seat_member
 
 
 async def apply_invited_membership(
     db: AsyncSession, user_id: str, project_id: str, *, invited_by: str | None
 ) -> ShemaProjectMember:
     """Make ``user_id`` a live member of ``project_id``, or answer the live row it already has."""
-    live = await live_membership(db, project_id, user_id)
-    if live is not None:
-        return live
-    member = ShemaProjectMember(
-        project_id=project_id, user_id=user_id, role=MEMBER_ROLE, added_by=invited_by
-    )
-    db.add(member)
-    await db.flush()
-    return member
+    return await seat_member(db, project_id, user_id, added_by=invited_by)

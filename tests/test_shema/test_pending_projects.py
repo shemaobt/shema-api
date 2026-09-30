@@ -15,11 +15,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 from httpx import ASGITransport
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.db.models.auth import AccessInvite
 from app.db.models.resource_request import RREvaluation, RRRequest, RRSnapshot, RRStage
@@ -310,6 +312,49 @@ async def test_no_other_decision_files_a_project(
         await filing.decided(db_session, decision=decision)
 
     assert await filed_projects(db_session) == []
+
+
+async def test_the_database_holds_one_project_per_request_and_one_live_per_link(
+    db_session,
+) -> None:
+    """The two unique indexes, as the rows they must refuse — the race the reads cannot close.
+
+    A second live project for one link is refused, and so is a second project for one request,
+    discarded or not; a discard frees the link; and the records nobody filed, with neither
+    source, never collide on the NULLs.
+    """
+
+    def filed(project_id: str, request_id: str, link_id: str) -> ShemaProject:
+        return ShemaProject(
+            id=project_id,
+            language_name=project_id,
+            pending_confirmation=True,
+            source_request_id=request_id,
+            source_link_id=link_id,
+        )
+
+    db_session.add(filed("a", "r-1", "l-1"))
+    await db_session.commit()
+
+    for duplicate in (filed("b", "r-2", "l-1"), filed("c", "r-1", "l-2")):
+        db_session.add(duplicate)
+        with pytest.raises(IntegrityError):
+            await db_session.commit()
+        await db_session.rollback()
+
+    first = await db_session.get(ShemaProject, "a")
+    first.discarded_at = datetime.now(UTC)
+    await db_session.commit()
+    db_session.add(filed("d", "r-3", "l-1"))
+    db_session.add_all(
+        [ShemaProject(id="seed-1", language_name="x"), ShemaProject(id="seed-2", language_name="y")]
+    )
+    await db_session.commit()
+
+    db_session.add(filed("e", "r-1", "l-3"))
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
 
 
 # --- nobody reads it but the Admin -------------------------------------------------------------

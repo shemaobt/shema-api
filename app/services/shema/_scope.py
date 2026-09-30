@@ -386,7 +386,8 @@ def visible_projects(scope: RegionScope) -> Select[tuple[ShemaProject]]:
 
     An aggregate is the one exception and composes :func:`within_scope` into a ``count()``
     of its own instead; ``app/services/shema/count_projects.py`` carries the reason, which
-    is that a count layered onto *this* statement loses its ``FROM`` for a global caller.
+    is that a count layered onto *this* statement lost its ``FROM`` for a global caller while
+    that caller's predicate named no column.
     """
     return select(ShemaProject).where(within_scope(scope))
 
