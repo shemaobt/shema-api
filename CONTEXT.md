@@ -108,7 +108,7 @@ The canonical content of the pericope that the analyst compares against, includi
 _Avoid_: answer key, base text, Mapa de Sentido
 
 **Necklace** and **bead** (`element`):
-The coverage of the passage seen as a string of beads, each bead an element of the Map that travels through not encountered, surfaced, partially engaged and engaged.
+The coverage of the passage seen as a string of beads, each bead an element of the Map that travels through not encountered, surfaced and engaged.
 _Avoid_: progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
