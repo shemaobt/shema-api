@@ -605,6 +605,44 @@ async def test_confirming_applies_the_adjustments_the_flag_and_the_trail(
     assert {by for _key, by in edits} == {filing.admin.id}
 
 
+async def test_a_field_the_confirmation_leaves_out_keeps_what_was_filed(
+    db_session, shema_app, form_app
+) -> None:
+    """An omitted ``location``, ``languageCode`` or ``team`` is no adjustment, never a blank.
+
+    Blanking the place would derive the region to ``other`` and hide the project from the
+    coordination of the region the team typed; the trail could not give the place back.
+    """
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session)
+        [project] = await filed_projects(db_session)
+        project.team = "Base Arquivada"
+        await db_session.commit()
+        body = confirmation()
+        for key in ("location", "languageCode", "team"):
+            del body[key]
+        res = await client.post(confirm_path(project.id), json=body, headers=filing.admin_headers)
+        coordinator = await make_scoped_user(
+            db_session,
+            shema_app,
+            email="coord-kept@shema.example",
+            role_key="coordinator",
+            regions=[ShemaRegionKey.SOUTH_AMERICA],
+        )
+        listed = await client.get(PROJECTS, headers=await auth_header(db_session, coordinator))
+
+    assert res.status_code == 200, res.text
+    await db_session.refresh(project)
+    assert (project.location, project.language_code, project.team) == (
+        "Peru, Vale Teste",
+        "ltt",
+        "Base Arquivada",
+    )
+    assert project.region_key is ShemaRegionKey.SOUTH_AMERICA
+    assert [item["id"] for item in listed.json()["items"]] == [project.id]
+
+
 async def test_the_flag_is_a_decision_the_body_must_state(db_session, shema_app, form_app) -> None:
     async with pending_client(db_session) as client:
         filing = await open_filing(db_session, client, shema_app, form_app)

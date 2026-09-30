@@ -3,8 +3,9 @@
 OBT-547. Daniel, 25/set: *"sim, o admin confere antes"*. One act, one commit:
 
 1. the Admin's adjustments — the language's name and code, the place, the base — and the
-   sensitive-country flag, which the body must state (``ProjectConfirmation``); the region is
-   derived again from the place by its one owner (``_redaction.derive_region``);
+   sensitive-country flag, which the body must state (``ProjectConfirmation``); a field the body
+   leaves out keeps what was filed (``model_fields_set``, as ``save_project`` reads it), and the
+   region is derived again from the place by its one owner (``_redaction.derive_region``);
 2. the project stops being pending, so every read through the scope sees it from now on;
 3. every request the link sent and no project owns points at it (``_filing.stamp_link_requests``)
    — the one that filed it first among them;
@@ -66,7 +67,7 @@ from app.services.shema.send_invite import INVITE_PAGE
 
 logger = logging.getLogger(__name__)
 
-#: The fields of the body that are columns of the record, written as the Admin sent them.
+#: The fields of the body that are columns of the record, written when the Admin sent them.
 _ADJUSTED = frozenset({"language_name", "language_code", "location", "team", "sensitive_country"})
 
 
@@ -108,8 +109,8 @@ async def confirm_project(
     project = await decidable_project(db, project_id)
 
     before = _audit.snapshot(project)
-    for column, value in payload.model_dump(include=set(_ADJUSTED)).items():
-        setattr(project, column, value)
+    for column in payload.model_fields_set & _ADJUSTED:
+        setattr(project, column, getattr(payload, column))
     project.region_key = derive_region(project)
     project.pending_confirmation = False
     project.updated_by = actor.id

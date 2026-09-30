@@ -1712,7 +1712,9 @@ gains a project **pending confirmation**, and the Admin confirms or discards it.
   act (`_grant_rules.require_admin_in`). The list is built for the Admin's reader
   (`readership`): the place as typed, on `COORDINATION_EVERYWHERE`'s hypothesis (§6.4).
 - **Confirming** applies the Admin's adjustments and the flag — `sensitiveCountry` has no default
-  in the body, so a client that forgets it is refused rather than read as *not sensitive* —
+  in the body, so a client that forgets it is refused rather than read as *not sensitive*; a
+  `languageCode`, `location` or `team` left out keeps what was filed (`model_fields_set`, as the
+  record's save reads it), since a blank place would derive the region to `other` —
   re-derives the region, clears `pending_confirmation`, writes the trail under the Admin's name
   (version one: nobody could have read the record before), and stamps `shema_project_id` on every
   request of the link that has none. Each address on the list: an account (by e-mail, case aside)

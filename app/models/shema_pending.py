@@ -74,7 +74,11 @@ class ConfirmedMemberIn(BaseModel):
 
 
 class ProjectConfirmation(BaseModel):
-    """``POST /projects/{id}/confirm`` — the Admin's adjustments, the flag and the list."""
+    """``POST /projects/{id}/confirm`` — the Admin's adjustments, the flag and the list.
+
+    ``languageCode``, ``location`` and ``team`` left out keep what was filed; sent, even blank,
+    they are the Admin's value.
+    """
 
     model_config = _REQUEST
 
