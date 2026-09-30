@@ -47,10 +47,13 @@ back to `done` when the passage had closed, because `ended_at` is written only w
 and to `in_progress` otherwise. A visit made before the deploy that had lifted a warning
 (`lifted_halt` warning) becomes an attended warning: its warning moment is the visit's and
 `lifted_halt` is cleared, so undoing that visit brings back a warning and never a blocking
-halt. The downgrade puts `needs_person` back on every row where a warning still stands, and
-`lifted_halt` warning on every row where a visit ended one. That is lossy in one direction only: such a row comes back with the
-kind of its last halt, which is a blocking one if a blocking halt was raised and lifted over
-the warning.
+halt. The upgrade drops a blocking halt that stood under a warning, standing or visited: the
+old code had already written the warning's kind over it, so the row no longer said a blocking
+halt was there, and every reader already took it for a warning. The downgrade puts
+`needs_person` back on every row where a warning still stands, and `lifted_halt` warning on
+every row where a visit ended one. A standing-warning row comes back with the kind of its last
+halt, which is a blocking one if a blocking halt was raised and lifted over the warning after
+the upgrade.
 
 Rejected: clearing the warning column when the Desk attends and restoring it on the undo. The
 record of what one visit ended is a single column (`lifted_halt`), and one visit can end two
