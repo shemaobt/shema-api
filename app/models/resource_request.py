@@ -438,6 +438,9 @@ class RequestCardOut(BaseModel):
     open: bool
     can_edit: bool
     started_by_name: str | None
+    #: The evaluated snapshot a revision reopens (BE-04) — the spine, not the evaluation. The
+    #: form's tracking list says *"revisão de uma solicitação anterior"* from it (FE-46, OBT-514).
+    revision_of_id: str | None
 
     @classmethod
     def of(
@@ -468,6 +471,7 @@ class RequestCardOut(BaseModel):
             open=open,
             can_edit=can_edit,
             started_by_name=started_by_name,
+            revision_of_id=request.revision_of_id,
         )
 
 
