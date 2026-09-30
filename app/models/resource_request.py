@@ -1228,7 +1228,10 @@ class AttachmentOut(BaseModel):
     content_type: str
     size_bytes: int
     sha256: str
-    uploaded_by: str
+    #: One of the two, never both (``ck_rr_attachments_one_author``): the account that
+    #: uploaded, or the request link whose holder did (FE-55, OBT-542).
+    uploaded_by: str | None
+    uploaded_by_link_id: str | None
     created_at: datetime
 
     @classmethod
@@ -1243,6 +1246,7 @@ class AttachmentOut(BaseModel):
             size_bytes=attachment.size_bytes,
             sha256=attachment.sha256,
             uploaded_by=attachment.uploaded_by,
+            uploaded_by_link_id=attachment.uploaded_by_link_id,
             created_at=attachment.created_at,
             **extra,
         )
