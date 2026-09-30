@@ -49,7 +49,7 @@ def test_the_seeded_app_carries_the_url_fe25_emails_are_built_from() -> None:
     assert app_url == "https://resourceform.shemaywam.com"
 
 
-def test_the_seeded_roles_are_the_frontends_role_ids() -> None:
+def test_the_seeded_roles_are_the_frontends_role_ids_plus_the_retired() -> None:
     """No longer a literal typed here: ``FRONTEND_ROLE_IDS`` is read from the emission the
     frontend produces from ``src/auth/capabilities.ts``. A role renamed over there fails
     this, which is the check BE-00 left this test waiting for.
