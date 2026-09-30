@@ -210,9 +210,6 @@ def text_of(response: httpx.Response) -> str:
     return response.content.decode("utf-8")
 
 
-# --- one code path, and it is an allowlist ---------------------------------------------------
-
-
 def test_the_export_row_is_the_allowlist_and_a_leaving_shape() -> None:
     row = ExportedProject(id="-").as_row()
 
@@ -294,9 +291,6 @@ def test_the_export_reads_through_the_listing_the_boundary_and_the_consent_gate(
     assert "read_by" not in attributes
 
 
-# --- the bold line: try to get it out, and fail ---------------------------------------------
-
-
 @pytest.mark.parametrize("fmt", FORMATS)
 async def test_an_unauthorized_request_never_reaches_the_file(
     client, strategist, mixed, fmt
@@ -344,12 +338,19 @@ async def test_a_sensitive_place_base_and_contacts_never_reach_the_file(
     assert "serra-funda" in body
 
 
-async def test_a_withheld_row_carries_the_region_and_says_so(
-    client, coordinator, sensitive
+async def test_a_withheld_row_carries_its_own_region_and_says_so(
+    client, db_session, strategist
 ) -> None:
-    (row,) = document(await export(client, coordinator))["projects"]
+    """In a region that is not the fallback, so a file that named ``other`` for every withheld
+    row — the region a shape falls back to when it cannot say — would fail here."""
+    project = await seed(db_session, "longe-sigiloso", region=AWAY, sensitive=True)
+    project.location = PLACE
+    project.team = BASE
+    await db_session.commit()
 
-    assert row["location"] == HOME.value
+    (row,) = document(await export(client, strategist))["projects"]
+
+    assert row["location"] == AWAY.value
     assert row["base"] == ""
     assert row["locationWithheld"] is True
     assert row["sensitiveCountry"] is True
@@ -384,9 +385,6 @@ async def test_notes_people_and_money_never_reach_the_file(
     if fmt == "json":
         (row,) = document(await export(client, strategist))["projects"]
         assert "notes" not in row
-
-
-# --- provenance, confidentiality, and who is told what was withheld --------------------------
 
 
 async def test_every_json_file_opens_with_its_provenance(client, db_session, coordinator) -> None:
@@ -525,9 +523,6 @@ async def test_the_csv_neutralises_formulas_and_keeps_the_separator_inside_quote
     assert '"\'=HIPERLINK(1); e mais"' in row
 
 
-# --- every export is logged -----------------------------------------------------------------
-
-
 async def test_every_export_is_logged_with_who_when_scope_and_what(
     client, db_session, coordinator, mixed, sensitive
 ) -> None:
@@ -560,9 +555,6 @@ async def test_the_export_log_cannot_be_edited(client, db_session, strategist) -
     with pytest.raises(Exception, match="append-only"):
         await db_session.commit()
     await db_session.rollback()
-
-
-# --- a large export does not hold the request -----------------------------------------------
 
 
 async def test_the_export_does_not_grow_its_queries_with_the_collection(
@@ -607,9 +599,6 @@ async def test_the_export_does_not_grow_its_queries_with_the_collection(
 
     assert small == large
     assert all(value <= 10 for value in large.values()), large
-
-
-# --- the import: the file, checked whole ----------------------------------------------------
 
 
 def new_record(project_id: str, **fields: Any) -> dict[str, Any]:
@@ -737,9 +726,6 @@ async def test_the_exported_file_is_recognised_and_refused(
     assert (await stored(db_session, sensitive.id)).location == PLACE
 
 
-# --- the import: applied as one write, through the write -----------------------------------
-
-
 async def test_the_import_creates_and_updates_inside_the_scope(
     client, db_session, coordinator
 ) -> None:
@@ -814,9 +800,6 @@ async def test_a_slug_that_exists_out_of_reach_refuses_the_file(
     assert response.status_code == 409, response.text
     assert await stored(db_session, "vale-de-passagem") is None
     assert (await stored(db_session, "vale-alheio")).region_key == AWAY
-
-
-# --- the import: no authorization from the file ---------------------------------------------
 
 
 async def test_an_imported_request_arrives_unauthorized_whatever_the_file_claims(
