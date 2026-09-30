@@ -19,6 +19,10 @@ MAX_CODE_ATTEMPTS: Final = 5
 class Verified(NamedTuple):
     session: str
     expires_at: datetime
+    #: The link's address, whole — whoever typed the code sent to it has just proved it is theirs
+    #: (FE-55, OBT-542). The form needs it for *"solicitante nunca endossa"*: the masked hint of
+    #: the public read never equals a real address, so a check against it could never fire.
+    email: str
 
 
 class Refused(NamedTuple):
@@ -76,4 +80,4 @@ async def verify_request_link(db: AsyncSession, raw_token: str, code: str) -> Ve
     link.code_attempts = 0
     await db.commit()
     session, expires_at = encode_link_session(link.id, now, not_after=as_utc(link.expires_at))
-    return Verified(session=session, expires_at=expires_at)
+    return Verified(session=session, expires_at=expires_at, email=link.email)

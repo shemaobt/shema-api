@@ -104,6 +104,7 @@ async def test_the_right_code_answers_a_session_and_marks_the_link_verified(
 
     assert res.status_code == 200, res.text
     assert link_session_subject(res.json()["session"]) == body["id"]
+    assert res.json()["email"] == "equipe@fora.org", "whole after the code, never before it"
     link = await db_session.get(RRRequestLink, body["id"])
     await db_session.refresh(link)
     assert link.verified_at is not None

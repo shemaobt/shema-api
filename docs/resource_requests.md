@@ -878,7 +878,7 @@ ones revoke it. Until PR C sends the e-mail, the Admin's screen is what hands bo
 
 ```
 GET  /api/resource-requests/link/{token}           -> {status, email_hint, project_hint, expires_at}
-POST /api/resource-requests/link/{token}/verify     {code} -> {session, expires_at}
+POST /api/resource-requests/link/{token}/verify     {code} -> {session, expires_at, email}
 ```
 
 Both public, limited per address and per token digest. An unknown token is **404**; the state of a
@@ -975,6 +975,11 @@ What PR C built, and where it met the contract:
   `started_by_link_id` from the original — whoever opens it, the board included — so the pen stays
   with the link and the lock is the link's: `refuse_a_second_open` reads the link when there is no
   project, and a second open instance of the link is 409.
+- **`verify` answers the link's address whole** (`email`), beside the session. The public read
+  keeps masking it — before the code nobody has proved anything — but whoever typed the code sent
+  to that address has, and the form needs the real one to refuse a `leader_email` equal to the
+  requester's **before** the click: the masked hint never equals a real address, so a check
+  against it could never fire (PR #78 of the form, review).
 
 ### 5.4.6 The base leader endorses by link, with no account — **Built** (BE-23, OBT-535, 30/sep/2026)
 
