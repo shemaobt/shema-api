@@ -101,6 +101,7 @@ from app.db.models.shema_enums import (
 )
 from app.db.models.shema_eten import ShemaEtenCredit, ShemaEtenReport
 from app.db.models.shema_exit_link import ShemaIntercessorExitLink
+from app.db.models.shema_export import ShemaExport
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
 from app.db.models.shema_grant import ShemaScopeChange
 from app.db.models.shema_health import ShemaHealthAssessment
@@ -215,6 +216,7 @@ __all__ = [
     "ShemaEtenCredit",
     "ShemaEtenCreditSource",
     "ShemaEtenReport",
+    "ShemaExport",
     "ShemaFormDefinition",
     "ShemaHealthAssessment",
     "ShemaHealthLevel",
