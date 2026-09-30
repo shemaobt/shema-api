@@ -35,16 +35,13 @@ from fastapi import APIRouter, Header, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.shema._deps import CurrentUser, Db, Reading, Scope
-from app.api.shema.projects import LOCAL_DAY_HEADER, _local_day
+from app.api.shema.projects import LOCAL_DAY_HEADER, PER_READER_CACHE_CONTROL, _local_day
 from app.core.exceptions import ERROR_CODE_BAD_REQUEST
 from app.models.shema_prayer import PulseLanguage
 from app.models.shema_transfer import ExportFormat, ImportResult
 from app.services.shema import ImportRefused, export_projects, import_projects
 
 router = APIRouter()
-
-#: A file is somebody's scope on one day; nothing between the server and the reader keeps it.
-NO_STORE = "private, no-store"
 
 _EXPORT_RESPONSES: dict[int | str, dict[str, Any]] = {
     status.HTTP_200_OK: {
@@ -74,7 +71,9 @@ async def download_projects_export(
     """The caller's projects as a file — reduced for everybody, headed, and logged.
 
     ``format`` is required: a file in a format nobody chose is a file nobody asked for. ``lang``
-    is the header's and the column names' language; the cells are data in either.
+    is the header's and the column names' language; the cells are data in either. No cache may
+    keep the answer — it is one caller's scope, headed for that caller — so it carries the
+    collection's own :data:`~app.api.shema.projects.PER_READER_CACHE_CONTROL`.
     """
     exported = await export_projects(
         db,
@@ -90,7 +89,7 @@ async def download_projects_export(
         media_type=exported.media_type,
         headers={
             "Content-Disposition": f'attachment; filename="{exported.filename}"',
-            "Cache-Control": NO_STORE,
+            "Cache-Control": PER_READER_CACHE_CONTROL,
         },
     )
 

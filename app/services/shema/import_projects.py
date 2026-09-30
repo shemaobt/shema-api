@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections.abc import Iterable
 from datetime import date
 from typing import Any, NamedTuple
@@ -161,7 +162,6 @@ _TRUTH = ShemaReader.COORDINATION.value
 
 class _Record(NamedTuple):
     position: int
-    kept: dict[str, Any]
     payload: ShemaProjectCreate
 
 
@@ -169,17 +169,26 @@ def _refuse_constant(constant: str) -> Any:
     raise ValueError(f"{constant} is not JSON")
 
 
+def _finite(literal: str) -> float:
+    number = float(literal)
+    if not math.isfinite(number):
+        raise ValueError(f"{literal} is not a finite number")
+    return number
+
+
 def _parse(raw: bytes) -> Any:
     """The file as JSON, or the refusal that says what it is instead.
 
-    ``utf-8-sig``, so a file saved with a BOM is read rather than refused. ``NaN`` and
-    ``Infinity`` are refused with the rest of what RFC 8259 does not allow: Python's reader takes
-    them, and a coordinate of ``NaN`` is a value nobody meant.
+    ``utf-8-sig``, so a file saved with a BOM is read rather than refused. **Every number is
+    finite**, which Python's reader does not promise: it takes ``NaN`` and ``Infinity``, which
+    RFC 8259 does not allow, and reads ``1e400`` as infinity — a coordinate nobody meant, that
+    the write's ``float`` would then accept. A nesting too deep to read is refused the same way
+    instead of escaping as a 500.
     """
     try:
         text = raw.decode("utf-8-sig")
-        return json.loads(text, parse_constant=_refuse_constant)
-    except (UnicodeDecodeError, ValueError):
+        return json.loads(text, parse_constant=_refuse_constant, parse_float=_finite)
+    except (ValueError, RecursionError):
         pass
     opening = raw.decode("utf-8-sig", errors="replace").lstrip().lstrip('"')
     if opening.startswith(OPENING_SENTENCES):
@@ -287,7 +296,7 @@ def read_import(raw: bytes) -> tuple[list[_Record], set[str]]:
             )
         seen.add(payload.id)
         ignored |= dropped
-        records.append(_Record(index, kept, payload))
+        records.append(_Record(index, payload))
     return records, ignored
 
 

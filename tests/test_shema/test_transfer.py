@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import json
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -27,12 +28,13 @@ from sqlalchemy import Enum, String, Text, event, select
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
-from app.db.models.shema_enums import ShemaNeedUrgency, ShemaPrayerVisibility, ShemaRegionKey
+from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
 from app.db.models.shema_export import ShemaExport
 from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
 from app.models.shema_transfer import CSV_BOM, ExportedProject
-from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user, make_shema_project
+from tests.test_shema.conftest import PREFIX, make_shema_project
+from tests.test_shema.test_prayer import need, person
 
 EXPORT = f"{PREFIX}/export/projects"
 IMPORT = f"{PREFIX}/import/projects"
@@ -117,30 +119,6 @@ async def seed(
     project.prayer_visibility = visibility
     await db_session.commit()
     return project
-
-
-async def need(db_session, project: ShemaProject, description: str, *, shared: bool) -> ShemaNeed:
-    row = ShemaNeed(
-        project_id=project.id,
-        category="financial",
-        urgency=ShemaNeedUrgency.LOW,
-        description=description,
-        prayer_shared=shared,
-    )
-    db_session.add(row)
-    await db_session.commit()
-    return row
-
-
-async def person(db_session, shema_app, role_key: str, regions=(HOME,)) -> dict[str, str]:
-    user = await make_scoped_user(
-        db_session,
-        shema_app,
-        email=f"{role_key.lower()}-{'-'.join(regions) or 'global'}@transfer.test",
-        role_key=role_key,
-        regions=list(regions),
-    )
-    return await auth_header(db_session, user)
 
 
 #: The four personas, by the name a parametrised test asks for.
@@ -378,19 +356,31 @@ async def test_a_withheld_row_carries_the_region_and_says_so(
 
 
 @pytest.mark.parametrize("fmt", FORMATS)
-async def test_notes_and_people_never_reach_the_file(client, db_session, strategist, fmt) -> None:
-    project = await seed(db_session, "vale-das-notas")
+async def test_notes_people_and_money_never_reach_the_file(
+    client, db_session, strategist, fmt
+) -> None:
+    """Not in the allowlist at all — and the money is BE-08's case of the same test: an amount
+    against a named project is the combination the sensitive-country rule exists for."""
+    project = await seed(db_session, "vale-das-notas", sensitive=True)
     project.notes = NOTE
     project.team_leader = LEADER
     project.mentor = MENTOR
     project.translators = TRANSLATORS
     project.team_contact = CONTACTS[0]
+    project.financial_notes = "Nota de finanças que não sai"
+    await db_session.commit()
+    row = await need(db_session, project, SHARED_NEED, shared=True)
+    row.estimated_value = "cerca de 98.765, se a segunda aldeia entrar"
+    row.estimated_amount = Decimal("98765.43")
+    row.estimated_currency = "BRL"
     await db_session.commit()
 
     body = text_of(await export(client, strategist, fmt))
 
-    for private in (NOTE, LEADER, MENTOR, TRANSLATORS, CONTACTS[0]):
+    for private in (NOTE, LEADER, MENTOR, TRANSLATORS, CONTACTS[0], "Nota de finanças"):
         assert private not in body
+    assert "98765" not in body and "98.765" not in body and "BRL" not in body
+    assert SHARED_NEED in body
     if fmt == "json":
         (row,) = document(await export(client, strategist))["projects"]
         assert "notes" not in row
@@ -434,6 +424,24 @@ async def test_every_csv_file_opens_with_its_provenance(client, db_session, stra
     assert preamble[4].startswith("Registro deste arquivo: ")
     assert response.headers["content-type"].startswith("text/csv")
     assert response.headers["content-disposition"].endswith('.csv"')
+
+
+async def test_an_empty_scope_exports_a_file_that_still_says_what_it_is(
+    client, db_session, shema_app
+) -> None:
+    """A regional role with no region reaches nothing, and its file says so — headed, logged."""
+    await seed(db_session, "vale-inalcancavel")
+    nobody = await person(db_session, shema_app, "coordinator", regions=())
+
+    exported = document(await export(client, nobody))
+    lines = csv_lines(await export(client, nobody, "csv"))
+
+    assert exported["projects"] == []
+    assert exported["meta"]["projectCount"] == 0
+    assert exported["meta"]["scope"] == []
+    assert "vale-inalcancavel" not in json.dumps(exported) + "".join(lines)
+    assert lines[lines.index("") + 1].startswith("ID;")
+    assert len((await db_session.execute(select(ShemaExport))).scalars().all()) == 2
 
 
 async def test_the_header_speaks_the_language_asked_for(client, db_session, strategist) -> None:
@@ -641,9 +649,21 @@ def refusal(response: httpx.Response, key: str) -> dict[str, Any]:
     return body
 
 
-@pytest.mark.parametrize("raw", [b"{nao e json", b"[NaN]", b"\xff\xfe"])
+@pytest.mark.parametrize(
+    "raw",
+    [b"{nao e json", b"[NaN]", b"[1e400]", b"\xff\xfe", b"[" * 100_000 + b"]" * 100_000],
+    ids=["broken", "NaN", "overflow", "not utf-8", "nested too deep"],
+)
 async def test_a_file_that_is_not_json_is_refused(client, coordinator, raw) -> None:
+    """Including the inputs the reader itself chokes on — a refusal, never a 500."""
     refusal(await upload(client, coordinator, raw), "import_invalid_json")
+
+
+async def test_an_empty_list_applies_nothing(client, db_session, coordinator) -> None:
+    response = await upload(client, coordinator, [])
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"applied": 0, "ignoredFields": []}
 
 
 async def test_a_file_that_is_not_a_list_is_refused(client, coordinator) -> None:

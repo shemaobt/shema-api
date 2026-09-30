@@ -90,9 +90,8 @@ MEDIA_TYPES: dict[ExportFormat, str] = {
 
 
 class ExportFile(NamedTuple):
-    """The file, its name and type, and the log row it was recorded under."""
+    """The file, and the name and type it is served under."""
 
-    export_id: str
     filename: str
     media_type: str
     body: str
@@ -239,7 +238,6 @@ async def export_projects(
         },
     )
     return ExportFile(
-        export_id=export_id,
         filename=export_filename(now.date(), file_format),
         media_type=MEDIA_TYPES[file_format],
         body=written.body,
