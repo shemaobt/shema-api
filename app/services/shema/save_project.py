@@ -296,6 +296,23 @@ async def _bump_version(db: AsyncSession, project: ShemaProject, expected: int) 
     return expected + 1
 
 
+async def _settle(db: AsyncSession, project: ShemaProject, *, commit: bool) -> None:
+    """Commit the write and read the row back — or, inside a caller's transaction, only flush.
+
+    **The import is the caller that needs the second answer** (BE-14). It applies a whole file
+    through these two functions, so that an imported record meets exactly the rules a typed one
+    does; and it must apply the file as one operation, because a refusal on the tenth record that
+    left the first nine written is the half-applied import the issue calls worse than a refused
+    one. So the import passes ``commit=False``, every record is flushed into one transaction, and
+    the import commits once. Every other caller commits here, as before.
+    """
+    if commit:
+        await db.commit()
+        await db.refresh(project)
+    else:
+        await db.flush()
+
+
 async def save_project(
     db: AsyncSession,
     scope: RegionScope,
@@ -307,6 +324,7 @@ async def save_project(
     expected_version: int,
     day: date,
     source: ProgressSource | None = None,
+    commit: bool = True,
 ) -> ShemaProject:
     """Apply a partial write to one record, or refuse it — the module docstring's six steps.
 
@@ -323,7 +341,8 @@ async def save_project(
     answer depends on nothing but the names they sent.
 
     ``day`` is the actor's local day and is the caller's to state; ``source`` is BE-12's, and
-    is here so that an imported update and a typed one are one path.
+    is here so that an imported update and a typed one are one path. ``commit`` is BE-14's, for
+    the same reason: :func:`_settle` carries it.
     """
     project = (
         await db.execute(visible_projects(scope).where(ShemaProject.id == project_id))
@@ -395,8 +414,7 @@ async def save_project(
         user=user,
     )
     await _needs.notify_urgent(db, project, urgent, actor=user)
-    await db.commit()
-    await db.refresh(project)
+    await _settle(db, project, commit=commit)
     return project
 
 
@@ -408,6 +426,7 @@ async def create_project(
     user: User,
     day: date,
     source: ProgressSource | None = None,
+    commit: bool = True,
 ) -> ShemaProject:
     """Mint the record at the slug the client already holds, or refuse the slug.
 
@@ -501,6 +520,5 @@ async def create_project(
         user=user,
     )
     await _needs.notify_urgent(db, project, urgent, actor=user)
-    await db.commit()
-    await db.refresh(project)
+    await _settle(db, project, commit=commit)
     return project

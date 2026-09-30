@@ -65,6 +65,7 @@ from app.api.shema.prayer import router as prayer_router
 from app.api.shema.projects import router as projects_router
 from app.api.shema.regions import router as regions_router
 from app.api.shema.session import router as session_router
+from app.api.shema.transfer import router as transfer_router
 from app.core.access_control import require_app_access
 
 router = APIRouter()
@@ -85,6 +86,7 @@ authenticated.include_router(members_router)  # OBT-524
 authenticated.include_router(access_router)  # BE-22, OBT-543
 authenticated.include_router(eten_router)  # BE-11
 authenticated.include_router(prayer_router)  # BE-09
+authenticated.include_router(transfer_router)  # BE-14
 
 #: **The module's first deliberate hole**, and it is this line rather than a missing dependency.
 #: ``GET`` and ``POST /api/shema/intake/{token}`` carry no ``Authorization`` requirement, by

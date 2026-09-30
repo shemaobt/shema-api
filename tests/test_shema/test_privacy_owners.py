@@ -145,6 +145,14 @@ COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset()
 #: and ``save_project`` asks the writer's reader which fields they may write; their answer names
 #: no place. A route added here is one that reads as the caller — an export, a report or a
 #: download must not be, because what leaves is built for ``outside`` whoever asked for it.
+#:
+#: **BE-14's two, and why neither is that route.** The projects import is the form imports'
+#: case — a person writing records, answered with a count. The export takes the reader to
+#: **address its header** — how many places were withheld is coordination's to be told
+#: (GATE-04, 1.3) — and builds every row for ``outside``: ``export_projects.py`` calls no
+#: ``read_by``, which :func:`test_only_the_console_reads_build_a_shape_for_the_sessions_reader`
+#: holds, and ``tests/test_shema/test_transfer.py`` exports as the region's own coordinator and
+#: finds no place in the file.
 READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("GET", f"{PREFIX}/projects"),
@@ -154,6 +162,8 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
         ("POST", f"{PREFIX}/forms/submissions"),
         ("POST", f"{PREFIX}/forms/submissions/{{submission_id}}/import"),
+        ("GET", f"{PREFIX}/export/projects"),
+        ("POST", f"{PREFIX}/import/projects"),
     }
 )
 

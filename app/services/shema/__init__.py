@@ -142,6 +142,14 @@ row carries a ``shema_request_notices`` detail with the project and the register
 stage, and ``list_notification_panel.py`` answers them as two more kinds, pointing at a project
 only for a reader who reaches it.
 
+**BE-14 landed the export and the import.** ``export_projects.py`` is the file: the caller's scope
+through ``list_projects``, each row through the boundary as ``outside`` whoever exports, the prayer
+requests as ``_consent.authorized_requests_by_project`` answers them, a header addressed to the
+exporter, and a row in ``shema_exports`` for every file that leaves. ``import_projects.py`` is its
+inverse: the file read and recognised, every record checked by the write's own model before
+anything is applied, and all of them applied through ``create_project`` and ``save_project`` under
+one commit — with no authorization taken from the file and the sensitive flag never lowered by it.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -258,6 +266,7 @@ from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
 from app.services.shema.eten_report import eten_report
+from app.services.shema.export_projects import ExportFile, export_projects
 from app.services.shema.find_account import account_grants, find_account
 from app.services.shema.generate_prayer_pulse import PrayerPulse, generate_prayer_pulse
 from app.services.shema.get_notification_prefs import get_notification_prefs
@@ -265,6 +274,7 @@ from app.services.shema.get_project import get_project
 from app.services.shema.get_region_team import get_region_team
 from app.services.shema.get_session import get_session
 from app.services.shema.grant_role import grant_role
+from app.services.shema.import_projects import ImportRefused, import_projects
 from app.services.shema.import_submission import apply_submission, import_submission
 from app.services.shema.leave_intercessor import (
     EXIT_LINK_DAYS,
@@ -342,7 +352,9 @@ __all__ = [
     "Aggregates",
     "AuthorizedRequest",
     "ChangesSince",
+    "ExportFile",
     "GrantApps",
+    "ImportRefused",
     "LeavingPerson",
     "LoggedMeeting",
     "MediaLink",
@@ -381,6 +393,7 @@ __all__ = [
     "eten_report",
     "exit_url",
     "expires_on",
+    "export_projects",
     "field_changes",
     "find_account",
     "form_fields",
@@ -392,6 +405,7 @@ __all__ = [
     "grant_role",
     "held_regions",
     "holders_reaching",
+    "import_projects",
     "import_submission",
     "is_authorized",
     "is_withheld",
