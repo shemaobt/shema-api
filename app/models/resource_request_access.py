@@ -1,26 +1,20 @@
-"""Request/response shapes for the privileged-access surface (OBT-477).
+"""Response shapes for the invite doors the PME's ``/convite`` page still calls (OBT-477).
 
-``InviteStatus`` is one word on purpose: it is what FE-30's screen switches on,
-and what the public lookup answers so the front can route a link-holder to
-signup or login without guessing.
+FE-56 (OBT-549) retired the form's own access screen and, with it, the request shapes of
+naming, revoking and issuing invites here: roles are granted in the PME now, by the Admin
+alone (OBT-522). What stays is what an anonymous link-holder is answered and what accepting
+returns.
+
+``InviteStatus`` is one word on purpose: it is what the public lookup answers so the front can
+route a link-holder to signup or login without guessing.
 """
 
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 InviteStatus = Literal["pending", "expired", "used", "revoked"]
-
-
-class AccessGrantRequest(BaseModel):
-    target_user_id: str
-    role_key: str
-
-
-class AccessRevokeRequest(BaseModel):
-    target_user_id: str
-    role_key: str
 
 
 class AccessGrantResponse(BaseModel):
@@ -30,42 +24,6 @@ class AccessGrantResponse(BaseModel):
     granted_by: str | None
     revoked_at: datetime | None
     revoked_by: str | None
-
-
-class AccessAssignmentResponse(BaseModel):
-    user_id: str
-    email: str | None
-    display_name: str | None
-    role_key: str
-    granted_at: datetime
-    granted_by: str | None
-    revoked_at: datetime | None
-    revoked_by: str | None
-
-
-class InviteCreateRequest(BaseModel):
-    email: EmailStr
-    role_key: str
-
-
-class InviteResponse(BaseModel):
-    id: str
-    email: str
-    role_key: str
-    status: InviteStatus
-    created_at: datetime
-    expires_at: datetime
-    created_by: str | None
-
-
-class InviteCreatedResponse(InviteResponse):
-    """The creator's copy also carries the link, so a lost e-mail is recoverable."""
-
-    invite_url: str
-
-
-class InviteRevokeRequest(BaseModel):
-    invite_id: str
 
 
 class InviteDescriptionResponse(BaseModel):
@@ -79,10 +37,3 @@ class InviteDescriptionResponse(BaseModel):
     account_exists: bool
     #: The region scope a regional Shemá invite applies on acceptance; empty otherwise.
     region_keys: list[str] = []
-
-
-class AccessOverviewResponse(BaseModel):
-    """FE-30's screen in one call: who holds what, and which doors are ajar."""
-
-    grants: list[AccessAssignmentResponse]
-    invites: list[InviteResponse]

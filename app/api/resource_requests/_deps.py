@@ -141,7 +141,6 @@ CanMoveBoard = Annotated[User, require_capability("move_board")]
 CanAssignFund = Annotated[User, require_capability("assign_fund")]
 CanAllocateFunds = Annotated[User, require_capability("allocate_funds")]
 CanAdministerFunds = Annotated[User, require_capability("administer_funds")]
-CanGrantAccess = Annotated[User, require_capability("grant_access")]
 
 ReadsFunds = Annotated[bool, reads_capability("manage_funds")]
 
