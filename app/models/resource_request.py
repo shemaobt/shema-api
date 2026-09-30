@@ -417,6 +417,11 @@ class RequestCardOut(BaseModel):
     PME's coordinators too. ``can_edit``, ``open`` and ``started_by_name`` are the instance
     (BE-25): whether the caller writes it, whether one is being filled in, and by whom — the
     name only while it is open, where *"em preenchimento por X"* is the sentence.
+    ``revision_of_id`` says the request is a revision (BE-04), for the form's tracking list
+    (FE-46, OBT-514). **It is the spine, not the evaluation**, even though it points at
+    ``rr_snapshots.id``, the document the mesa read: the column lives on ``rr_requests``, it
+    names *which* frozen document the revision reopens, and it carries nothing the mesa wrote —
+    no score, no comment, no decision. The decision rides in ``decision``, under the ceiling.
 
     No place and no base: a sensitive project's location is the PME's to read, not a request
     card's. ``extra="forbid"`` is the guard that holds, and ``test_cards.py`` proves it on the
@@ -438,8 +443,6 @@ class RequestCardOut(BaseModel):
     open: bool
     can_edit: bool
     started_by_name: str | None
-    #: The evaluated snapshot a revision reopens (BE-04) — the spine, not the evaluation. The
-    #: form's tracking list says *"revisão de uma solicitação anterior"* from it (FE-46, OBT-514).
     revision_of_id: str | None
 
     @classmethod
