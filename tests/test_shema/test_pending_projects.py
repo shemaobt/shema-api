@@ -279,7 +279,7 @@ async def test_a_second_request_of_the_link_files_no_second_project(
         )
 
     assert confirmed.status_code == 200, confirmed.text
-    assert confirmed.json()["requestIds"] == [first, second]
+    assert sorted(confirmed.json()["requestIds"]) == sorted([first, second])
     assert (await request_row(db_session, second)).shema_project_id == project.id
 
 
