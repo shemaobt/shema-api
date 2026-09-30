@@ -300,6 +300,10 @@ class SegmentView(BaseModel):
     #: the team cut out of another stretch, which is born over its parent's audio with nothing
     #: said on it, and on an older row kept as history from when a version could carry none.
     told: bool = True
+    #: The retro take the stretch's telling was recorded in, which is what the tablet plays when
+    #: it resumes a told stretch. Null while nothing was told on it — a piece cut out of another
+    #: stretch — and on a stretch told through the text seam, which records no take.
+    bridge_take_id: str | None = None
 
 
 class DivideSegmentRequest(BaseModel):

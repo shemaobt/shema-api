@@ -20,9 +20,10 @@ import httpx
 import pytest
 from google_crc32c import Checksum
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
+from app.db.models.internalization_room import IRSessionStatus, IRTake, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
@@ -970,3 +971,61 @@ async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.Asyn
 
     assert state.json()["status"] == IRSessionStatus.IN_PROGRESS.value
     assert state.json()["halt"] == "warning"
+
+
+# ---------------------------------------------------------------------------
+# The take of a stretch's telling is on the wire
+# ---------------------------------------------------------------------------
+
+
+async def _retro_take_ids(db_session: AsyncSession, session_id: str) -> set[str]:
+    rows = await db_session.execute(
+        select(IRTake.id).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO)
+    )
+    return set(rows.scalars())
+
+
+async def test_a_told_stretch_in_the_session_state_names_the_take_of_its_telling(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, _, stretch = await _one_told_stretch(client)
+
+    retro_ids = await _retro_take_ids(db_session, session_id)
+
+    assert len(retro_ids) == 1
+    assert stretch["bridge_take_id"] == retro_ids.pop()
+
+
+async def test_the_pieces_of_a_division_name_no_take_of_a_telling(
+    client: httpx.AsyncClient,
+) -> None:
+    session_id, _, whole = await _one_told_stretch(client)
+
+    cut = await _divide(client, session_id, whole["segment_id"], 8000)
+
+    assert cut.status_code == 200, cut.text
+    assert [one["bridge_take_id"] for one in cut.json()["segments"]] == [None, None]
+    assert [one["bridge_take_id"] for one in await _units(client, session_id)] == [None, None]
+
+
+async def test_the_replace_answer_names_the_take_the_replacement_stored(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id, whole = await _one_told_stretch(client)
+    first = await _retro_take_ids(db_session, session_id)
+
+    client.said.append("a explicação refeita")  # type: ignore[attr-defined]
+    answered = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando de novo",
+    )
+
+    assert answered.status_code == 200, answered.text
+    stored = await _retro_take_ids(db_session, session_id) - first
+    assert len(stored) == 1
+    assert [one["bridge_take_id"] for one in answered.json()["segments"]] == [stored.pop()]
