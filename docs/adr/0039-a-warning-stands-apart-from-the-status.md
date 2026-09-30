@@ -21,6 +21,8 @@ Decided by Henok on 2026-09-29 (ENG-1163):
   session. Only the Desk attending ends it, and undoing the attendance brings it back. Neither
   write touches the warning itself: the rule reads the attendance stamps, which the Desk
   already writes and every new halt already clears.
+- One crossing raises one warning. The text seam no longer raises it a second time after the
+  round's verdict, which it did only because the verdict used to lift it.
 - A landing turn lifts a blocking halt, as before, and never a warning. The count a turn
   compares to tell the halt it began in from a newer one counts blocking halts only, so a
   warning raised while the Guide answers does not keep a blocking halt standing.
@@ -42,8 +44,11 @@ Decided by Henok on 2026-09-29 (ENG-1163):
 The migration carries every standing warning out of the status: a row with `needs_person`
 and halt kind `warning` gets its warning moment set to the row's last update. Its status goes
 back to `done` when the passage had closed, because `ended_at` is written only with `done`,
-and to `in_progress` otherwise. The downgrade puts `needs_person` back on every row where a
-warning still stands. That is lossy in one direction only: such a row comes back with the
+and to `in_progress` otherwise. A visit made before the deploy that had lifted a warning
+(`lifted_halt` warning) becomes an attended warning: its warning moment is the visit's and
+`lifted_halt` is cleared, so undoing that visit brings back a warning and never a blocking
+halt. The downgrade puts `needs_person` back on every row where a warning still stands, and
+`lifted_halt` warning on every row where a visit ended one. That is lossy in one direction only: such a row comes back with the
 kind of its last halt, which is a blocking one if a blocking halt was raised and lifted over
 the warning.
 
