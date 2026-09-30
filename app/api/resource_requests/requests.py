@@ -42,10 +42,8 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.resource_requests._deps import (
     APP_KEY,
-    CanEditRequests,
     Db,
     ReaderReadsFunds,
-    ReadsFunds,
     RequestReader,
     TeamWriter,
     WriterReadsFunds,
@@ -239,9 +237,13 @@ async def resend_endorsement(request_id: str, user: SignedIn, db: Db) -> Endorse
 
 @router.post("/requests/{request_id}/revise", status_code=status.HTTP_201_CREATED)
 async def revise_request(
-    request_id: str, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+    request_id: str, user: TeamWriter, db: Db, reads_funds: WriterReadsFunds
 ) -> RequestOut:
-    """Answers 201 and the **new** request: a revision is a row, never an edit."""
+    """Answers 201 and the **new** request: a revision is a row, never an edit.
+
+    ``TeamWriter`` since FE-55 (OBT-542): the request link that started a request reopens it
+    after *revisar*, as its starter would.
+    """
     revision = await service.open_revision(db, request_id, user, APP_KEY)
-    loaded = await service.get_request(db, revision.id, user, APP_KEY)
-    return _out(loaded, reads_funds, await service.editing(db, user, APP_KEY))
+    loaded = await service.request_for(db, revision.id, user, APP_KEY)
+    return _out(loaded, reads_funds, await service.edits_for(db, user, APP_KEY))
