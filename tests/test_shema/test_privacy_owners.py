@@ -147,7 +147,9 @@ COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset()
 #: download must not be, because what leaves is built for ``outside`` whoever asked for it.
 #:
 #: **BE-14's two, and why neither is that route.** The projects import is the form imports'
-#: case — a person writing records, answered with a count. The export takes the reader to
+#: case — a person writing records, answered with a count — and asks the reader one question
+#: more, whether the importer coordinates anything, because only coordination imports. The
+#: export takes the reader to
 #: **address its header** — how many places were withheld is coordination's to be told
 #: (GATE-04, 1.3) — and builds every row for ``outside``: ``export_projects.py`` calls no
 #: ``read_by``, which :func:`test_only_the_console_reads_build_a_shape_for_the_sessions_reader`

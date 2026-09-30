@@ -2,11 +2,26 @@
 
 ``POST /api/shema/import/projects`` lands here. **Import is the export's inverse risk**: untrusted
 input, which has to meet the same rules as any write, applied atomically, and which must not be a
-way around authorization. Four steps, and the order is the design:
+way around authorization.
+
+**Only coordination imports** — whoever ``_scope.readership`` makes coordination:
+``globalStrategist``, a ``coordinator`` (in the regions of its scope, which are the regions it
+coordinates), the ``admin`` role and an installation admin; the OBT Lab and the Resource Circle
+are refused before anything in the file is looked at. The import is the backup that returns
+(FE-44 §8.4: the export is the report that leaves), and a whole record is only ever read by
+coordination: every other reader reads a sensitive project's place as its region, may not write
+the place, the flag or the reason of any project (OBT-528) and, outside the prayer audience,
+reads a request nobody authorized as ``""`` (BE-09). So no file another reader holds is a backup
+of anything, and applying one is either a refusal the write path would give field by field or a
+reduction written over the truth. FE-44 §9.12 does not say who imports; the console's header
+shows the button to every role today, and that is the console's to align (INT-11).
+
+Four steps, and the order is the design:
 
 1. **the file is read and recognised** — JSON, not the report this module exports (the wrapper,
-   a row of it, a payload that says it was reduced, or the CSV by the sentence it opens with),
-   and a list;
+   a row of it, a payload that says it was read for somebody other than coordination, or the
+   CSV by the sentence it opens with), and a list — on a worker thread, as the export writes its
+   rows, because it grows with the file and touches nothing but the bytes;
 2. **every record is checked before anything is applied** — by the write's own model,
    :class:`~app.models.shema.ShemaProjectCreate`, so vocabulary and shape are the create's
    (FE-44 §8.4: *by vocabulary and shape, not by* ``typeof``); the first broken record refuses the
@@ -44,6 +59,7 @@ own rule — absent means unchanged — and the console's *substituir* is INT-11
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -202,14 +218,17 @@ def _is_the_report(parsed: Any) -> bool:
 
 
 def _is_reduced(entry: Any) -> bool:
-    """Whether ``entry`` is a row of the report, or a payload that says it was reduced.
+    """Whether ``entry`` is a row of the report, or a payload read for somebody else.
 
     **A check, not a naming convention.** The report's rows carry keys no record has
-    (:data:`EXPORT_ONLY_KEYS`), and every leaving shape says whether the payload in hand is the
-    truth: ``readAs`` on the console's reads, ``locationWithheld`` on everything. A payload whose
-    place is withheld and which was not read as coordination holds the region where the place
-    was — importing it would overwrite the truth with the reduction, which is the destructive
-    round trip the refusal exists for.
+    (:data:`EXPORT_ONLY_KEYS`), and every leaving shape says whom the payload in hand was built
+    for: ``readAs`` on the console's reads, ``locationWithheld`` on everything. A read that was
+    not built for coordination may hold a reduction **it does not name**: the region where a
+    sensitive place was, and — for a reader outside the prayer audience — ``""`` where a request
+    nobody authorized is, under the visibility that says it was kept. The payload cannot say
+    which of its fields is which, so it is refused whole; importing it would write the reduction
+    over the truth, which is the destructive round trip the refusal exists for. A payload with
+    no ``readAs`` and a withheld place is the same thing said by a shape that leaves.
     """
     if not isinstance(entry, dict):
         return False
@@ -300,12 +319,35 @@ def read_import(raw: bytes) -> tuple[list[_Record], set[str]]:
     return records, ignored
 
 
-def _at(record: _Record, refused: Exception) -> Exception:
-    """The write path's own refusal, said about the item that met it — same class, same status."""
-    for kind in (AuthorizationError, NotFoundError, ConflictError, ValidationError):
-        if isinstance(refused, kind):
-            return kind(f"item {record.position} ({record.payload.id}): {refused}")
-    return refused
+def _at(record: _Record, refused: Exception) -> None:
+    """Name the item on the write path's own refusal — **the same exception**, reworded.
+
+    The instance itself and not a new one of its class, so a subclass keeps what it carries:
+    a :class:`~app.services.shema.save_project.RecordVersionConflict` still holds ``changes``
+    and ``expected`` for the router to render, and its handler still answers its status.
+    """
+    refused.args = (f"item {record.position} ({record.payload.id}): {refused}",)
+
+
+def _require_coordination(readership: Readership, *, user: User) -> None:
+    """Refuse an importer who coordinates nothing — see the module docstring for why.
+
+    ``coordinates_anything`` is who the export's withheld count is addressed to too: one answer
+    to *who is coordination* for the file that leaves and the file that returns. A caller who
+    coordinates at all coordinates every region it reaches (``_scope.readership``), so the
+    records this import can write are records it reads whole. A 403, as the ETEN ledger answers
+    its own audience: the caller is being told about their own grant.
+    """
+    if readership.coordinates_anything:
+        return
+    logger.warning(
+        "shema authorization refused: an import by an account that coordinates nothing",
+        extra={"shema_operation": "import_projects", "shema_user_id": user.id},
+    )
+    raise AuthorizationError(
+        "Projects are imported by the coordination; this account holds neither "
+        "globalStrategist nor coordinator in Shemá"
+    )
 
 
 def _unlowered(project: ShemaProject, record: _Record) -> tuple[ShemaProjectCreate, bool]:
@@ -331,10 +373,12 @@ async def import_projects(
 
     ``scope`` is positional and has no default, for ``list_projects``' stated reason, and it is
     the same value a typed save takes: an import reaches exactly as far as a write does.
-    ``readership`` is the importer's, because an import is a person writing the record. ``day``
-    is the importer's local day, which the progress entries a record moves are stamped with.
+    ``readership`` is the importer's: it decides whether they may import at all, and the write
+    path asks it again per record, because an import is a person writing the record. ``day`` is
+    the importer's local day, which the progress entries a record moves are stamped with.
     """
-    records, ignored = read_import(raw)
+    _require_coordination(readership, user=user)
+    records, ignored = await asyncio.to_thread(read_import, raw)
     ids = [record.payload.id for record in records]
     existing = {
         project.id: project
@@ -377,9 +421,9 @@ async def import_projects(
         await db.commit()
     except (AuthorizationError, ConflictError, NotFoundError, ValidationError) as refused:
         await db.rollback()
-        if record is None:
-            raise
-        raise _at(record, refused) from refused
+        if record is not None:
+            _at(record, refused)
+        raise
 
     logger.info(
         "shema projects imported",

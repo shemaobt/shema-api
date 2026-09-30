@@ -319,7 +319,7 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/intercessor_exit.py` | **OBT-531, built** | The module's **second** unauthenticated seam: `GET`/`POST /intercessors/leave/{token}`, the intercessor's exit link. §6.4's OBT-531 note. |
 | `app/api/shema/transfer.py` | **BE-14, built** | `GET /export/projects?format=json\|csv&lang=` and `POST /import/projects` — FE-44 §9.12. §6.4's *What BE-14 built*. |
 | `app/models/shema_transfer.py` | **BE-14, built** | `ExportedProject`, the export's allowlist — a `LeavingShape` built for nobody — the header's words in `pt-BR` and `en`, the CSV's hygiene, and the import's answer and refusal keys. |
-| `app/services/shema/export_projects.py`, `import_projects.py` | **BE-14, built** | The file, through the listing's scope, the boundary and the consent gate, and logged; its inverse, checked whole and applied through `create_project`/`save_project` under one commit. |
+| `app/services/shema/export_projects.py`, `import_projects.py` | **BE-14, built** | The file, through the listing's scope, the boundary and the consent gate, and logged; its inverse, coordination's only, checked whole and applied through `create_project`/`save_project` under one commit. |
 | `app/db/models/shema_export.py` | **BE-14, built** | `shema_exports`, append-only: who exported which projects and requests, when, over which scope — ids and counts, never text. |
 | `app/api/shema/notifications.py` | BE-15; OBT-541 | The derived panel, preferences, read state. Since OBT-541 the panel and its read mark sit behind the door (§6.8); the preferences stay behind the app gate. |
 | `app/services/shema/_request_notices.py` | **OBT-541, built** | The resource-request form's arrival and decision, rung in the PME's bell: who is told (the starter; the Admin off the `shema` grant and the Gestor off the form's), with the registered name and the stage and nothing else, and the `shema_request_notices` detail each row carries. |
@@ -1374,15 +1374,29 @@ validated and written per project — runs in a worker thread. Measured on 30/se
 with the machine shared by four other runs: 127 projects in 46–131 ms; 2,000 in 0.33–0.68 s at the
 best of three and up to 1.5 s at the worst, where the Projetos read of the same 2,000 took 0.59 s.
 
+**Only coordination imports, and that is a decision to record.** `globalStrategist`, a
+`coordinator` in its regions, the `admin` role and an installation admin import; the OBT Lab and the Resource Circle
+are answered 403 before the file is looked at (`readership.coordinates_anything`, the same answer
+the export's withheld line is addressed by). The import is the backup that returns, and only
+coordination reads a whole record: any other reader reads a sensitive place as its region, may
+not write any project's place, flag or reason (OBT-528) and, outside the prayer audience, reads an
+unauthorized request as `""` (BE-09) — so a file they hold restores nothing, and applied it would
+be refused field by field or write a reduction over the truth. FE-44 §9.12 does not say who
+imports and the console's header shows the button to every role: the contract and INT-11 are the
+PME's to align.
+
 **The import is the inverse risk, and it gets the write's rules, not a second set.**
 `POST /api/shema/import/projects` reads the raw body, so the console's five refusal keys
 (`import_invalid_json`, `import_is_export`, `import_not_list`, `import_bad_record` with the 1-based
 index, `import_duplicate_id`) are the server's too. The exported file is recognised by what it
-holds — the wrapper, any row of it, any payload that says it was reduced, the CSV by the sentence
-it opens with. Every record is validated by `ShemaProjectCreate` before the database is read, and
-then applied through `create_project` (an id the caller's scope does not hold) or `save_project`
-at the current version (one it does), both with `commit=False`, and committed once: a refusal on
-the tenth record takes the first nine with it. So the region scope, the reader's fields
+holds — the wrapper, any row of it, any payload read for somebody other than coordination (its
+`readAs`, or a withheld place without one), the CSV by the sentence it opens with. Reading and
+validating the file runs in a worker thread, as the export's rows do. Every record is validated
+by `ShemaProjectCreate` before the database is read, and then applied through `create_project`
+(an id the caller's scope does not hold) or `save_project` at the current version (one it does),
+both with `commit=False`, and committed once: a refusal on the tenth record takes the first nine
+with it, and answers as the write path answered it, item named — a record saved by somebody else
+meanwhile is the record screen's own 409, with who changed what. So the region scope, the reader's fields
 (OBT-528), the prayer request's reader (BE-09), the trail and the notices are a typed save's —
 and so is the cost, about six statements a record (763 for 127 records, 3–4 s on SQLite here),
 paid inside one transaction, which is the price of one write path. Nothing is deleted: a

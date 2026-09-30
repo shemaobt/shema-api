@@ -4,7 +4,8 @@ The line the issue puts in bold is here as tests that **try** to get something o
 unauthorized prayer request, a row outside the caller's scope, the place, base and contacts of a
 sensitive project — each through the JSON file and through the CSV, and the place through the
 file its own region's coordinator exports. The import's half tries the other direction: to get a
-broken record, the exported report, or an authorization into the database through a file.
+broken record, the exported report, a reduced read or an authorization into the database through
+a file — or any file at all, from somebody who is not coordination.
 
 **Nothing here is real.** Every place, language, base, person and request is invented; a fictional
 place derives to the region ``other`` (``FALLBACK_REGION``), so the accounts that write are scoped
@@ -17,7 +18,10 @@ a negative test written with one passes for the wrong reason (``conftest.py``).
 from __future__ import annotations
 
 import ast
+import importlib
 import json
+import threading
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -34,6 +38,7 @@ from app.db.models.shema_export import ShemaExport
 from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
 from app.models.shema_transfer import CSV_BOM, ExportedProject
+from app.services.shema.save_project import _bump_version
 from tests.test_shema.conftest import PREFIX, make_shema_project
 from tests.test_shema.test_prayer import need, person
 
@@ -748,6 +753,65 @@ async def test_the_exported_file_is_recognised_and_refused(
     assert (await stored(db_session, sensitive.id)).location == PLACE
 
 
+async def test_a_record_read_outside_the_prayer_audience_cannot_clear_its_request(
+    client, db_session, coordinator, circle, mixed
+) -> None:
+    """Nothing of this record is withheld, and the Resource Circle's read of it is still a
+    reduction: a request nobody authorized reads as ``""``. Imported, it would clear the request;
+    the payload says it was not read for coordination, and that is enough to refuse it."""
+    kept, _shared = mixed
+    read = (await client.get(f"{PROJECTS}/{kept.id}", headers=circle)).json()
+    assert (read["readAs"], read["locationWithheld"], read["prayerRequests"]) == (
+        "other",
+        False,
+        "",
+    )
+
+    refusal(await upload(client, coordinator, [read]), "import_is_export")
+    assert (await stored(db_session, kept.id)).prayer_requests == KEPT
+
+
+@pytest.mark.parametrize("role", ["strategist", "coordinator"])
+async def test_coordination_imports(client, db_session, shema_app, role) -> None:
+    headers = await persona(db_session, shema_app, role)
+
+    response = await upload(client, headers, [new_record("vale-da-porta")])
+
+    assert response.status_code == 200, response.text
+    assert await stored(db_session, "vale-da-porta") is not None
+
+
+@pytest.mark.parametrize("role", ["lab", "circle"])
+async def test_nobody_else_imports(client, db_session, shema_app, role) -> None:
+    """Refused at the door, whatever the file holds — a record coordination could apply, or
+    bytes that are not even JSON: the grant is answered before the file is looked at."""
+    headers = await persona(db_session, shema_app, role)
+
+    response = await upload(client, headers, [new_record("vale-da-porta")])
+
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"].startswith("Projects are imported by the coordination")
+    assert await stored(db_session, "vale-da-porta") is None
+    assert (await upload(client, headers, b"{nao e json")).status_code == 403
+
+
+async def test_the_file_is_read_off_the_event_loop(client, coordinator, monkeypatch) -> None:
+    """Reading and checking the file grows with it, so it runs where the export's rows run."""
+    module = importlib.import_module("app.services.shema.import_projects")
+    read_import = module.read_import
+    readers: list[int] = []
+
+    def watched(raw: bytes) -> Any:
+        readers.append(threading.get_ident())
+        return read_import(raw)
+
+    monkeypatch.setattr(module, "read_import", watched)
+    response = await upload(client, coordinator, [new_record("vale-da-linha")])
+
+    assert response.status_code == 200, response.text
+    assert readers and threading.get_ident() not in readers
+
+
 async def test_the_import_creates_and_updates_inside_the_scope(
     client, db_session, coordinator
 ) -> None:
@@ -793,21 +857,57 @@ async def test_a_record_as_the_console_reads_it_goes_back_with_what_the_server_o
     assert (await stored(db_session, project.id)).status_comments == "voltou pelo arquivo"
 
 
-async def test_a_refusal_while_applying_leaves_nothing_behind(client, db_session, lab) -> None:
-    """The second record is refused by the write path — the OBT Lab may not move a place — and
-    the first, already flushed, goes with it: one commit or none."""
+async def test_a_refusal_while_applying_leaves_nothing_behind(
+    client, db_session, coordinator
+) -> None:
+    """The second record passes the file's check and is refused by the write path — a deadline
+    before the start the row already holds — and the first, already flushed, goes with it: one
+    commit or none."""
     existing = await seed(db_session, "vale-firme")
+    existing.start_date = date(2026, 6, 1)
+    await db_session.commit()
 
     response = await upload(
         client,
-        lab,
-        [new_record("vale-de-passagem"), new_record(existing.id, location="Outro Vale")],
+        coordinator,
+        [new_record("vale-de-passagem"), new_record(existing.id, deadline="2026-01-01")],
     )
 
-    assert response.status_code == 403, response.text
-    assert response.json()["detail"].startswith("item 2 (vale-firme): location")
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"].startswith("item 2 (vale-firme): deadline")
     assert await stored(db_session, "vale-de-passagem") is None
-    assert (await stored(db_session, "vale-firme")).location == "Vale Novo, Serra Clara"
+    assert (await stored(db_session, "vale-firme")).deadline is None
+
+
+async def test_a_record_saved_meanwhile_refuses_the_file_with_who_changed_what(
+    client, db_session, coordinator, monkeypatch
+) -> None:
+    """The version guard through the import: a save lands between the import's read and its
+    write, and the answer is the record screen's own 409 — the version conflict with what it
+    carries, the item named — not a bare conflict the console could only meet with a reload."""
+    module = importlib.import_module("app.services.shema.import_projects")
+    save_project = module.save_project
+    existing = await seed(db_session, "vale-disputado")
+
+    async def saved_meanwhile(db, scope, project_id, payload, **kwargs: Any) -> Any:
+        project = await db.get(ShemaProject, project_id)
+        assert await _bump_version(db, project, kwargs["expected_version"]) is not None
+        return await save_project(db, scope, project_id, payload, **kwargs)
+
+    monkeypatch.setattr(module, "save_project", saved_meanwhile)
+    response = await upload(
+        client,
+        coordinator,
+        [new_record("vale-de-passagem"), new_record(existing.id, statusComments="pelo arquivo")],
+    )
+
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert body["detail"].startswith("item 2 (vale-disputado): ")
+    assert (body["expectedVersion"], body["currentVersion"]) == (1, 2)
+    assert {"changedFields", "changedBy", "changedAt"} <= body.keys()
+    assert await stored(db_session, "vale-de-passagem") is None
+    assert (await stored(db_session, "vale-disputado")).status_comments != "pelo arquivo"
 
 
 async def test_a_slug_that_exists_out_of_reach_refuses_the_file(
@@ -928,19 +1028,3 @@ async def test_the_import_never_lowers_the_sensitive_flag(
     assert kept.sensitive_country is True
     assert kept.status_comments == "x"
     assert (await stored(db_session, clear.id)).sensitive_country is True
-
-
-async def test_the_import_writes_only_what_the_importer_may_write(
-    client, db_session, circle, mixed
-) -> None:
-    """BE-09's rule through the file: the Resource Circle writes no prayer request."""
-    kept, _shared = mixed
-
-    record = new_record(kept.id, prayerRequests="Orem por algo que ninguém viu")
-    del record["location"]
-
-    response = await upload(client, circle, [record])
-
-    assert response.status_code == 403, response.text
-    assert response.json()["detail"].startswith("item 1 (aurora-vale): prayerRequests")
-    assert (await stored(db_session, "aurora-vale")).version == 1

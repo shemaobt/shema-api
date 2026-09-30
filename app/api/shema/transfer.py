@@ -9,13 +9,16 @@ keeps the routes that take it in a list somebody has to argue:
 * the **export** takes it to address the file's header — how many places were withheld is
   coordination's to be told (GATE-04, 1.3) — and for nothing else: every row is built for
   ``outside``, whoever asked, and the service that builds them calls no ``read_by``;
-* the **import** takes it because an import is a person writing the record, and
-  ``save_project`` asks the writer's reader which fields they may write — as the two form
-  imports do.
+* the **import** takes it because it is the import's door — only coordination imports — and
+  because an import is a person writing the record, and ``save_project`` asks the writer's
+  reader which fields they may write, as the two form imports do.
 
-**Who may use them is who may read and write the records**: any Shemá role, inside its scope. A
-file is the scope the caller already reads, reduced for everybody; an import is the writes the
-caller could already type, one record at a time.
+**Who may use them is not the same for the two.** The export is any Shemá role's, inside its
+scope: the file is the scope the caller already reads, reduced for everybody. **The import is
+coordination's** — ``globalStrategist``, a ``coordinator`` in its regions, the ``admin`` role, an
+installation admin — because the file it restores is a whole record, and only coordination reads
+one; ``import_projects.py``'s docstring carries the argument. The refusal is the service's, like
+every other rule here.
 
 **The export is a ``GET`` that writes**, for the ETEN report's reason (``eten.py``): the log row
 is an audit of what the server handed out, not a change the caller asked for, and a file that
@@ -35,11 +38,21 @@ from fastapi import APIRouter, Header, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.shema._deps import CurrentUser, Db, Reading, Scope
-from app.api.shema.projects import LOCAL_DAY_HEADER, PER_READER_CACHE_CONTROL, _local_day
+from app.api.shema.projects import (
+    LOCAL_DAY_HEADER,
+    PER_READER_CACHE_CONTROL,
+    _conflict,
+    _local_day,
+)
 from app.core.exceptions import ERROR_CODE_BAD_REQUEST
 from app.models.shema_prayer import PulseLanguage
 from app.models.shema_transfer import ExportFormat, ImportResult
-from app.services.shema import ImportRefused, export_projects, import_projects
+from app.services.shema import (
+    ImportRefused,
+    RecordVersionConflict,
+    export_projects,
+    import_projects,
+)
 
 router = APIRouter()
 
@@ -127,7 +140,9 @@ async def upload_projects_import(
     """Apply a list of records — all of them, or none — through the record's own write.
 
     The day progress entries are stamped with is the importer's, stated as a typed save states
-    it (``projects.py``'s ``_local_day``).
+    it (``projects.py``'s ``_local_day``). A record somebody saved while the file was being
+    applied answers the record screen's own 409 (``projects.py``'s ``_conflict``) — who changed
+    what, and when — with the item named in ``detail``; nothing of the file was applied.
     """
     today = datetime.now(UTC).date()
     try:
@@ -141,3 +156,5 @@ async def upload_projects_import(
         )
     except ImportRefused as refused:
         return _refused(refused)
+    except RecordVersionConflict as conflict:
+        return _conflict(conflict)

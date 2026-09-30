@@ -9,9 +9,11 @@
 #     that it is confidential; how many places were withheld is told to coordination only;
 #   * every file is recorded in `shema_exports` before it is handed back — `meta.exportId` (and
 #     the CSV's "Registro deste arquivo" line) names the row;
-#   * the import refuses the exported file. It takes a JSON list of `Project` records, checks all
-#     of them before applying any, applies them as one write, and takes no authorization from
-#     the file: `prayerVisibility`, the recording and a need's `prayerShared` are ignored.
+#   * the import is coordination's (globalStrategist or coordinator): the OBT Lab and the
+#     Resource Circle get a 403. It refuses the exported file, and a record read for anybody but
+#     coordination. It takes a JSON list of `Project` records, checks all of them before applying
+#     any, applies them as one write, and takes no authorization from the file:
+#     `prayerVisibility`, the recording and a need's `prayerShared` are ignored.
 #
 # Before running: seed the app and its roles, grant one, and give the account a region.
 #   uv run python scripts/seed_apps_roles.py
