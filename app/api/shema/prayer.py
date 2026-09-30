@@ -20,20 +20,21 @@ from fastapi import APIRouter, Response
 from fastapi.responses import PlainTextResponse
 
 from app.api.shema._deps import Db, ResourceCircleUser, Scope
+from app.api.shema.projects import PER_READER_CACHE_CONTROL
 from app.models.shema_prayer import PrayerRequestEntry, PulseLanguage
 from app.services.shema import generate_prayer_pulse, list_prayer_requests
 
 router = APIRouter()
 
-#: Nothing between the server and the reader keeps either answer: the wall differs per scope, and
-#: a Pulse is a file that is not meant to exist anywhere the network did not receive it.
-NO_STORE = "private, no-store"
-
 
 @router.get("/prayer/requests", response_model=list[PrayerRequestEntry])
 async def read_prayer_wall(db: Db, scope: Scope, response: Response) -> list[PrayerRequestEntry]:
-    """Every authorized request in the caller's reach — the consent gate applied by the query."""
-    response.headers["Cache-Control"] = NO_STORE
+    """Every authorized request in the caller's reach — the gate is the service's, never ours.
+
+    One URL answers each scope differently, so nothing between the server and the reader keeps
+    it: :data:`~app.api.shema.projects.PER_READER_CACHE_CONTROL`, for the collection's reason.
+    """
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return await list_prayer_requests(db, scope)
 
 
@@ -43,7 +44,8 @@ async def download_prayer_pulse(
 ) -> PlainTextResponse:
     """The Prayer Pulse as a text file — the wall inside the caller's scope, rendered.
 
-    A ``GET``: generating changes nothing. The day is the UTC day, as every read here takes it.
+    A ``GET``: generating changes nothing. The day is the UTC day, as every read here takes it,
+    and the file is kept by nothing on its way, like the wall it is rendered from.
     """
     pulse = await generate_prayer_pulse(
         db, scope, user=user, language=lang, day=datetime.now(UTC).date()
@@ -52,6 +54,6 @@ async def download_prayer_pulse(
         pulse.text,
         headers={
             "Content-Disposition": f'attachment; filename="{pulse.filename}"',
-            "Cache-Control": NO_STORE,
+            "Cache-Control": PER_READER_CACHE_CONTROL,
         },
     )

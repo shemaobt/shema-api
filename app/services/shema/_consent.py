@@ -236,8 +236,8 @@ def request_as_read(project: ShemaProject, *, reads_withheld: bool) -> dict[str,
     """What the record's three request fields become for this reader — an update, or nothing.
 
     A reader outside :data:`PRAYER_AUDIENCE` gets ``""`` and no recording for a request that
-    has not been authorized, and the request itself when it has — the same text the wall shows
-    them. The visibility stays: it says the request is kept in coordination, which is the
+    has not been authorized, and the whole request once it has been — it is on their wall
+    already. The visibility stays: it says the request is kept in coordination, which is the
     withholding made visible and names nothing of what was withheld.
     """
     if reads_withheld or reaches_prayer_wall(project):
