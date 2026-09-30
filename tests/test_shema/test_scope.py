@@ -486,9 +486,9 @@ def test_no_router_in_the_module_issues_a_query() -> None:
 def test_the_scoped_select_is_composable_without_branching_on_the_scope() -> None:
     """Every scope produces a statement, including the two that have no regions to name.
 
-    A global caller gets a literal true and an empty one a literal false, so a consumer
-    never branches — and the branch that is never written is the one that is never written
-    wrong.
+    A global caller gets the ``registered`` predicate alone (OBT-547) and an empty one a literal
+    false, so a consumer never branches — and the branch that is never written is the one that
+    is never written wrong.
     """
     for scope in (
         RegionScope(global_=True, regions=frozenset()),

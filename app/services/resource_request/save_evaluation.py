@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
 from app.db.models.resource_request import (
+    RRDecision,
     RREvaluation,
     RREvaluationAttendee,
     RREvaluationScore,
@@ -25,6 +26,9 @@ from app.services.resource_request._transition import (
 )
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.notify_decision import notify_decision
+from app.services.shema.create_pending_project_from_request import (
+    create_pending_project_from_request,
+)
 
 
 async def save_evaluation(
@@ -73,6 +77,12 @@ async def save_evaluation(
     cannot revert what the mesa decided. Re-saving the same decision re-fires nothing, for
     the same reason the transition is a no-op: ``deciding`` is ``None`` unless this save is
     the one that records it.
+
+    **An approved request that came by the Admin's link files its project in the PME**, in
+    this same transaction (OBT-547): ``create_pending_project_from_request`` stages a project
+    pending the Admin's confirmation from the snapshot the mesa evaluated, and is idempotent
+    by request and by link. It is handed values, and the Shemá module imports nothing of this
+    one.
 
     **A recorded decision is not rewritten here.** Scores, comments, the ata and the
     ``team_note`` stay editable afterwards — D7 audits exactly those edits, through BE-15 —
@@ -203,6 +213,15 @@ async def save_evaluation(
             team_note=evaluation.team_note,
             actor_id=user.id,
         )
+
+        if (
+            deciding is RRDecision.APPROVED
+            and request.request_link_id is not None
+            and request.shema_project_id is None
+        ):
+            await create_pending_project_from_request(
+                db, snapshot.document, request_id=request.id, link_id=request.request_link_id
+            )
 
     await db.commit()
 

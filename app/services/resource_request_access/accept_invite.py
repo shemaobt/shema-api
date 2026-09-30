@@ -11,6 +11,8 @@ from app.services.auth.hash_refresh_token import hash_refresh_token
 from app.services.authorization.grant_app_role import grant_app_role
 from app.services.resource_request_access._invite_status import invite_status
 from app.services.resource_request_access._rules import assert_role_compatible
+from app.services.resource_request_access.invite_store import TEAM_ROLE
+from app.services.shema.apply_invited_membership import apply_invited_membership
 from app.services.shema.apply_invited_scope import apply_invited_scope
 
 
@@ -32,6 +34,11 @@ async def accept_invite(db: AsyncSession, actor: User, raw_token: str) -> Access
     imported from its own module and not from ``app.services.shema``: the two
     packages import each other, and only the submodule path binds the function
     in either import order.
+
+    **An invitation to a project's team grants no role** (OBT-547): accepting it
+    makes the holder a member of that project, through ``apply_invited_membership``,
+    and the answer reads the membership as the grant it stands in for — ``equipe``,
+    since when, and by whom.
     """
     token_hash = hash_refresh_token(raw_token)
     stmt = select(AccessInvite).where(AccessInvite.token_hash == token_hash).with_for_update()
@@ -50,8 +57,25 @@ async def accept_invite(db: AsyncSession, actor: User, raw_token: str) -> Access
     if actor.email.lower() != invite.email:
         raise AuthorizationError("This invitation was issued to a different e-mail address.")
 
+    if invite.role_id is None and invite.project_id is not None:
+        member = await apply_invited_membership(
+            db, actor.id, invite.project_id, invited_by=invite.created_by
+        )
+        invite.accepted_at = datetime.now(UTC)
+        invite.accepted_by = actor.id
+        await db.commit()
+        await db.refresh(member)
+        return AccessGrantResponse(
+            user_id=member.user_id,
+            role_key=TEAM_ROLE,
+            granted_at=member.added_at,
+            granted_by=member.added_by,
+            revoked_at=None,
+            revoked_by=None,
+        )
+
     app = await db.get(App, invite.app_id)
-    role = await db.get(Role, invite.role_id)
+    role = await db.get(Role, invite.role_id) if invite.role_id is not None else None
     if not app or not role:
         raise RoleError("The application or role behind this invitation no longer exists.")
 
