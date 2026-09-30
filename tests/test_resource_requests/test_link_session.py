@@ -104,6 +104,7 @@ async def test_the_right_code_answers_a_session_and_marks_the_link_verified(
 
     assert res.status_code == 200, res.text
     assert link_session_subject(res.json()["session"]) == body["id"]
+    assert res.json()["email"] == "equipe@fora.org", "whole after the code, never before it"
     link = await db_session.get(RRRequestLink, body["id"])
     await db_session.refresh(link)
     assert link.verified_at is not None
@@ -206,12 +207,14 @@ async def test_a_revoked_link_ends_every_session_it_opened(db_session, client, r
 
 async def test_a_session_opens_only_the_teams_routes(db_session, client, rrf_app) -> None:
     """The reads and the writes of a team (PR C) take a link session; the rest keep their
-    user-only guard — the revision, the Admin's links, the account's own ``/me``."""
+    user-only guard — the Admin's links, the account's own ``/me``. The revision joined the
+    team's writes with FE-55 (OBT-542): here it is refused for its own reason — nothing was
+    submitted to revise — and no longer at the door."""
     admin, body = await issued_link(db_session, client)
     own = await request_of_link(db_session, admin, body["id"])
     headers = await session_for(client, body)
 
-    assert (await client.post(f"{REQUESTS}/{own}/revise", headers=headers)).status_code == 401
+    assert (await client.post(f"{REQUESTS}/{own}/revise", headers=headers)).status_code == 409
     assert (await client.get(LINKS, headers=headers)).status_code == 401
     assert (await client.get("/api/auth/me", headers=headers)).status_code == 401
 

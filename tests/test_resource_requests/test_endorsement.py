@@ -195,7 +195,7 @@ async def test_with_no_app_url_the_link_exists_and_no_letter_leaves(
 async def test_before_the_code_the_page_shows_the_state_and_not_the_request(
     db_session, client, rrf_app, posted
 ) -> None:
-    await submitted(db_session, client, rrf_app)
+    request_id = await submitted(db_session, client, rrf_app)
     token, _ = secrets_in(to_leader(posted)[0])
 
     res = await client.get(f"{PUBLIC}/{token}")
@@ -204,6 +204,11 @@ async def test_before_the_code_the_page_shows_the_state_and_not_the_request(
     assert res.json()["status"] == "pending"
     assert res.json()["email_hint"] == "l***@base.org"
     assert res.json()["document"] is None
+    sent_on = datetime.fromisoformat(res.json()["submitted_at"])
+    assert sent_on.tzinfo is not None, "the page stamps this date, so it travels with its offset"
+    row = await db_session.get(RRRequest, request_id)
+    await db_session.refresh(row)
+    assert sent_on == as_utc(row.submitted_at), "it is the request's own submission moment"
 
 
 async def test_an_unknown_token_is_404(client, rrf_app) -> None:

@@ -797,7 +797,8 @@ draws cards should not have to carry documents to do it.
 - **The ceiling is GATE-03 D4's.** The card carries `reg_name`, `request_type`,
   `amount_requested` and `currency` (which request — the team's own document, and what the client
   asked for on 18/set), `stage`, `created_at`, `submitted_at`, `endorsed` and `decision` (the
-  journey), and `open`, `can_edit` and `started_by_name` (the instance, BE-25). **Nothing of the
+  journey), `open`, `can_edit` and `started_by_name` (the instance, BE-25), and `revision_of_id`
+  (the spine: the snapshot a revision reopens — FE-46 says *"revisão de…"* from it). **Nothing of the
   evaluation** — no scores, comments, attendees or evaluator — and **not `team_note`** either,
   because a card is read by the mesa, the Gestor and the PME's coordinators, and that note is
   addressed to the team. No place and no base. `extra="forbid"`, proven on the payload in
@@ -878,7 +879,7 @@ ones revoke it. Until PR C sends the e-mail, the Admin's screen is what hands bo
 
 ```
 GET  /api/resource-requests/link/{token}           -> {status, email_hint, project_hint, expires_at}
-POST /api/resource-requests/link/{token}/verify     {code} -> {session, expires_at}
+POST /api/resource-requests/link/{token}/verify     {code} -> {session, expires_at, email}
 ```
 
 Both public, limited per address and per token digest. An unknown token is **404**; the state of a
@@ -937,7 +938,8 @@ What PR C built, and where it met the contract:
 - **One writing door for both subjects**, `_writer.reach_for_writing`: the read scope, then the pen
   — a person's is BE-25's (`require_editor`), a link's is *the link that started the instance*.
   Start, `POST /requests`, `PATCH`, `submit` and `cancel` take `TeamWriter` (`edit_requests` for an
-  account, unchanged); every other write keeps its user-only guard, the revision included.
+  account, unchanged); every other write keeps its user-only guard — the revision and the
+  attachment included, until FE-55 (below) opened both to the link.
 - **The trail names the link, never the Admin** (`20260929_rr11`): `rr_request_field_history.changed_by`
   became nullable, `changed_by_link_id` joined it, and `ck_rr_request_field_history_one_author`
   holds exactly one. Writing the issuing Admin's id there would have made D7's trail say the Admin
@@ -955,10 +957,30 @@ What PR C built, and where it met the contract:
   - ~~**the leader's e-mail differing from the link's is not checked**~~ — **closed by BE-23**
     (§5.4.6): `submit_request` refuses a `leader_email` equal to the link's address, as it does
     the starter's account;
-  - **the budget attachment by link** — `store_attachment` still takes a user — which FE-55
-    (OBT-542) needs if a link holder is to attach a file;
-  - **the revision by link**, after a *revisar* decision: the holder reads the decision and cannot
-    reopen yet.
+  - ~~**the budget attachment by link**~~ — **closed by FE-55** (OBT-542, 30/sep/2026, below);
+  - ~~**the revision by link**, after a *revisar* decision~~ — **closed by FE-55**, below.
+
+**FE-55 (OBT-542, 30/sep/2026) closed the two doors BE-26 left user-only**, for the form's page
+`/solicitar/{token}` to be complete:
+
+- **The attachment** takes `TeamWriter` on `PUT /requests/{id}/attachment` and `TeamReader` on
+  `GET`: `store_attachment` goes through `reach_for_writing` — the read scope, then the pen, the
+  draft's own door — and `attachment_download_url` through `request_for`. Another link gets 404
+  on both; a submitted request still refuses a new file with 409. The row names its author as the
+  trail does (`20260930_rr13`): `uploaded_by` became nullable, `uploaded_by_link_id` joined it,
+  and `ck_rr_attachments_one_author` holds exactly one — never the issuing Admin. The downgrade
+  refuses to run over a row a link uploaded. `AttachmentOut` carries both columns.
+- **The revision** takes `TeamWriter` on `POST /requests/{id}/revise`. A link reopens only the
+  request it started (`started_by_link_id`), after a *revisar* decision and nothing else; another
+  link does not reach it (404). The revision **inherits** `request_link_id` and
+  `started_by_link_id` from the original — whoever opens it, the board included — so the pen stays
+  with the link and the lock is the link's: `refuse_a_second_open` reads the link when there is no
+  project, and a second open instance of the link is 409.
+- **`verify` answers the link's address whole** (`email`), beside the session. The public read
+  keeps masking it — before the code nobody has proved anything — but whoever typed the code sent
+  to that address has, and the form needs the real one to refuse a `leader_email` equal to the
+  requester's **before** the click: the masked hint never equals a real address, so a check
+  against it could never fire (PR #78 of the form, review).
 
 ### 5.4.6 The base leader endorses by link, with no account — **Built** (BE-23, OBT-535, 30/sep/2026)
 
@@ -987,6 +1009,7 @@ Daniel, 23/set: *solicitante nunca endossa*.
 
   ```
   GET  /api/resource-requests/endorse/{token}          → status, email_hint, request_name, expires_at,
+                                                          submitted_at (FE-54: the page stamps it),
                                                           document (the frozen snapshot; only once verified)
   POST /api/resource-requests/endorse/{token}/verify   {code}        → 200 · 401 ENDORSEMENT_CODE_WRONG
                                                                         (attempts_left) · 410 ENDORSEMENT_LINK_GONE

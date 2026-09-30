@@ -48,6 +48,7 @@ class PublicEndorsementOut(BaseModel):
     email_hint: str
     request_name: str
     expires_at: datetime
+    submitted_at: datetime
     document: dict[str, Any] | None
 
 

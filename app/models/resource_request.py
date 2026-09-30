@@ -417,6 +417,11 @@ class RequestCardOut(BaseModel):
     PME's coordinators too. ``can_edit``, ``open`` and ``started_by_name`` are the instance
     (BE-25): whether the caller writes it, whether one is being filled in, and by whom — the
     name only while it is open, where *"em preenchimento por X"* is the sentence.
+    ``revision_of_id`` says the request is a revision (BE-04), for the form's tracking list
+    (FE-46, OBT-514). **It is the spine, not the evaluation**, even though it points at
+    ``rr_snapshots.id``, the document the mesa read: the column lives on ``rr_requests``, it
+    names *which* frozen document the revision reopens, and it carries nothing the mesa wrote —
+    no score, no comment, no decision. The decision rides in ``decision``, under the ceiling.
 
     No place and no base: a sensitive project's location is the PME's to read, not a request
     card's. ``extra="forbid"`` is the guard that holds, and ``test_cards.py`` proves it on the
@@ -438,6 +443,7 @@ class RequestCardOut(BaseModel):
     open: bool
     can_edit: bool
     started_by_name: str | None
+    revision_of_id: str | None
 
     @classmethod
     def of(
@@ -468,6 +474,7 @@ class RequestCardOut(BaseModel):
             open=open,
             can_edit=can_edit,
             started_by_name=started_by_name,
+            revision_of_id=request.revision_of_id,
         )
 
 
@@ -1228,7 +1235,10 @@ class AttachmentOut(BaseModel):
     content_type: str
     size_bytes: int
     sha256: str
-    uploaded_by: str
+    #: One of the two, never both (``ck_rr_attachments_one_author``): the account that
+    #: uploaded, or the request link whose holder did (FE-55, OBT-542).
+    uploaded_by: str | None
+    uploaded_by_link_id: str | None
     created_at: datetime
 
     @classmethod
@@ -1243,6 +1253,7 @@ class AttachmentOut(BaseModel):
             size_bytes=attachment.size_bytes,
             sha256=attachment.sha256,
             uploaded_by=attachment.uploaded_by,
+            uploaded_by_link_id=attachment.uploaded_by_link_id,
             created_at=attachment.created_at,
             **extra,
         )

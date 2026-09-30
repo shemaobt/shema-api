@@ -8,6 +8,7 @@ from app.db.models.resource_request import RREndorsementLink, RRRequest, RRSnaps
 from app.services.resource_request._endorsement import endorsement_status, find_endorsement
 from app.services.resource_request._notices import request_name
 from app.services.resource_request.read_request_link import mask_email
+from app.utils.stored_time import as_utc
 
 EndorsementState = Literal["pending", "verified", "endorsed", "expired", "revoked"]
 
@@ -17,6 +18,11 @@ class PublicEndorsement(NamedTuple):
     email_hint: str
     request_name: str
     expires_at: datetime
+    #: When the team submitted — the acceptance date section 11 stamps on the page the leader
+    #: reads (FE-54, OBT-540). Never null: ``submit_request`` stamps it in the same
+    #: transaction that issues the link, and a second submission is a conflict, so a request
+    #: reachable through an endorsement token has always been submitted (PR #592, review).
+    submitted_at: datetime
     #: The request as it was submitted — only once the code was confirmed, and never after
     #: the link expired or was revoked, endorsed or not.
     document: dict[str, Any] | None
@@ -37,13 +43,15 @@ async def read_endorsement(db: AsyncSession, raw_token: str) -> PublicEndorsemen
     link = await find_endorsement(db, raw_token)
     request = await db.get(RRRequest, link.request_id)
     assert request is not None
+    assert request.submitted_at is not None, "an endorsement link is issued at submission"
     alive = endorsement_status(link, datetime.now(UTC)) in ("pending", "used")
     state = _state(link, alive)
     return PublicEndorsement(
         status=state,
         email_hint=mask_email(link.email),
         request_name=request_name(request),
-        expires_at=link.expires_at,
+        expires_at=as_utc(link.expires_at),
+        submitted_at=as_utc(request.submitted_at),
         document=await _frozen(db, request.id) if alive and link.verified_at else None,
     )
 
