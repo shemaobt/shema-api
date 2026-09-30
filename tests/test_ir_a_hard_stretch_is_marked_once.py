@@ -623,6 +623,7 @@ async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_coun
     )
 
     assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "STRETCH_NO_LONGER_COUNTS"
     assert [one.tellings for one in await _current(db_session, session_id)] == [2], (
         "a tentativa recusada não pode contar na linha que está de pé"
     )

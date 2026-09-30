@@ -345,6 +345,7 @@ async def test_a_divided_stretch_cannot_be_replaced_as_a_unit_through_the_route(
     )
 
     assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
     assert len(await _units(client, session_id)) == 2, "e a recusa não mexeu em nada"
 
 
@@ -491,6 +492,7 @@ async def test_a_stretch_that_was_already_divided_cannot_be_divided_again(
     refused = await _divide(client, session_id, whole["segment_id"], 4000)
 
     assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
     assert len(await _units(client, session_id)) == 2
 
 
@@ -597,6 +599,13 @@ async def test_a_stretch_that_no_longer_counts_cannot_be_replaced(
     )
 
     assert again.status_code == 400, again.text
+    assert again.json() == {
+        "detail": (
+            "This stretch no longer counts: it was already replaced, or the part of the "
+            "rehearsal it is a slice of was recorded again"
+        ),
+        "code": "STRETCH_NO_LONGER_COUNTS",
+    }
     units = await _units(client, session_id)
     assert len(units) == 1
     assert [one["segment_id"] for one in units] != [whole["segment_id"]]
@@ -621,6 +630,10 @@ async def test_a_stretch_that_no_longer_counts_cannot_be_divided_through_the_rou
     refused = await _divide(client, session_id, whole["segment_id"], 4000)
 
     assert refused.status_code == 400, refused.text
+    assert refused.json() == {
+        "detail": "A stretch that no longer counts cannot be divided",
+        "code": "STRETCH_NO_LONGER_COUNTS",
+    }
     assert len(await _units(client, session_id)) == 1
 
 

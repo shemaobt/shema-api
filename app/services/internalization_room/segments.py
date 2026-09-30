@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, StretchNoLongerCounts, ValidationError
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 
 
@@ -238,7 +238,7 @@ async def divide_segment(
     Refine looking like a first telling.
     """
     if segment.superseded_at is not None:
-        raise ValidationError("A stretch that no longer counts cannot be divided")
+        raise StretchNoLongerCounts("A stretch that no longer counts cannot be divided")
     if any(row.parent_id == segment.id for row in await current_segments(db, session.id)):
         raise ValidationError(
             "This stretch was already divided: divide one of the stretches it was divided into"
@@ -590,7 +590,7 @@ async def refuse_a_stretch_that_is_not_a_unit(
     and could mark a divided parent nothing can ever replace.
     """
     if segment.superseded_at is not None:
-        raise ValidationError(
+        raise StretchNoLongerCounts(
             "This stretch no longer counts: it was already replaced, or the part of the "
             "rehearsal it is a slice of was recorded again"
         )
