@@ -238,7 +238,7 @@ Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
 
 **Warning**:
-The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does.
+The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
 _Avoid_: needs a person, notice, alert, Aviso
 
 **Station**:
