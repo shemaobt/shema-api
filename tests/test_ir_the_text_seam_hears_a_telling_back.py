@@ -376,7 +376,9 @@ async def test_a_visit_while_the_crossing_round_is_read_keeps_its_warning_ended(
     await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
 
     assert visits[-1] == "went", "a visita não aconteceu durante a leitura da rodada"
-    assert halt.standing(await row(db_session, session_id)) is None, (
+    after = await row(db_session, session_id)
+    assert halt.last(after) is HaltKind.WARNING, "a rodada que cruzou não levantou aviso nenhum"
+    assert halt.standing(after) is None, (
         "a rodada levantou o aviso uma segunda vez e desfez a visita feita no meio dela"
     )
 
