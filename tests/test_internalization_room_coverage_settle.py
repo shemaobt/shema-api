@@ -261,7 +261,7 @@ def test_a_reply_with_no_decisions_says_so_instead_of_reading_as_no_change(caplo
     with caplog.at_level(logging.WARNING):
         verdict = _parse(json.dumps({"retelling": {"scope": "S1", "approved": True}}))
 
-    assert verdict == {"surfaced": [], "engaged": []}
+    assert verdict is None
     assert "no decisions list" in caplog.text, (
         "uma resposta sem o array voltava vazia calada, igualzinho a um turno "
         "em que nada mudou — foi esse silêncio que escondeu o bug por dois releases"
@@ -281,11 +281,14 @@ def test_a_decision_carrying_an_unknown_status_is_named_in_the_log(caplog) -> No
     )
 
 
-def test_a_reply_the_parser_cannot_read_buckets_nothing_instead_of_failing() -> None:
+def test_a_reply_the_parser_cannot_read_is_told_apart_from_one_that_moved_nothing() -> None:
     unreadable = _parse("desculpa, não consegui classificar")
     not_an_object = _parse(json.dumps(["surfaced", "engaged"]))
 
-    assert unreadable == not_an_object == {"surfaced": [], "engaged": []}
+    assert unreadable is None and not_an_object is None, (
+        "uma resposta ilegível lida como baldes vazios era um turno em que nada mudou, "
+        "e uma leitura cortada no meio apagava as contas dela sem ser lida de novo"
+    )
 
 
 async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) -> None:
