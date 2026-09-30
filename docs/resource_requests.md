@@ -987,6 +987,7 @@ Daniel, 23/set: *solicitante nunca endossa*.
 
   ```
   GET  /api/resource-requests/endorse/{token}          → status, email_hint, request_name, expires_at,
+                                                          submitted_at (FE-54: the page stamps it),
                                                           document (the frozen snapshot; only once verified)
   POST /api/resource-requests/endorse/{token}/verify   {code}        → 200 · 401 ENDORSEMENT_CODE_WRONG
                                                                         (attempts_left) · 410 ENDORSEMENT_LINK_GONE
