@@ -12,7 +12,7 @@ resume, a resume that failed, a wheel with no passage that opens, a back-transla
 parts, an approval the tablet cannot place), and the ask carried no reason: the Desk could say
 only "the room stopped" and since when.
 
-Decided by Henok on 2026-09-30 (the Attention page): the ask carries a **Halt reason** in one of
+Decided by Henok on 2026-09-30 (the Attention band on the team's Desk): the ask carries a **Halt reason** in one of
 five families, `DEVICE_REFUSED`, `ROOM_FAILED`, `SOUND_FAILED`, `SESSION_LOST` and
 `INCONSISTENT`, minted by the tablet at the place that raises the halt; the server stores it
 beside the halt kind, answers it on every row that says a halt stands, and answers

@@ -46,7 +46,7 @@ A message on a team's stream from the server to the Desk saying that something t
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 
 **Attention** (*Atendimento*):
-The Desk's page of everything that waits for an action of the facilitator across every team: the halted rooms, the rooms under a warning, the open raised hands and the halted tablets, each with its reason and since when. A finished passage waits for nobody there.
+What waits for an action of the facilitator in one team, shown at the top of that team's Desk: the halted rooms, the rooms under a warning, the open raised hands and the halted tablets, each with its reason and since when; the team's card on the list carries the count. A finished passage waits for nobody there.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
 
 **Room**:
