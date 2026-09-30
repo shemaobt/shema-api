@@ -53,7 +53,7 @@ async def list_prayer_requests(db: AsyncSession, scope: RegionScope) -> list[Pra
                     "id": request.id,
                     "project_id": request.project_id,
                     "text": request.text,
-                    "source": request.source,
+                    "prayer_source": request.source,
                     "answered": request.answered,
                     "date": request.day,
                 }

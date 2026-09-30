@@ -80,7 +80,10 @@ class PrayerRequestEntry(LeavingShape):
     base: str = Field(default="", validation_alias="team")
 
     text: str = ""
-    source: PrayerSource = PrayerSource.FORM
+    #: ``source`` on the wire, and never under that name here: the row has a ``source`` column —
+    #: the export row kept verbatim, whose ``prayerRequests`` is a fourth copy of the guarded
+    #: text (``docs/shema.md`` §6.4) — and validating off the row would read it into the entry.
+    prayer_source: PrayerSource = Field(default=PrayerSource.FORM, serialization_alias="source")
     answered: bool = False
     date: Day | None = None
 
