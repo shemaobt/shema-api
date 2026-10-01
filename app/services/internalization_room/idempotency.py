@@ -129,7 +129,7 @@ async def _take_over(db: AsyncSession, row: IRIdempotencyKey, now: datetime) -> 
     token = str(uuid.uuid4())
     taken = await db.execute(
         update(IRIdempotencyKey)
-        .where(*_the_row_of(_held_by(row)))
+        .where(*_still_unanswered(_held_by(row)))
         .values(claim=token, claimed_at=now)
     )
     await db.commit()
