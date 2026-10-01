@@ -201,6 +201,10 @@ _Avoid_: mend (the app's word for the same gesture), fix, retell (the count of t
 Each new telling of the same stretch after a finding; in the room's Portuguese, *traduzir de novo*. The third telling of a stretch makes it a hard stretch: a warning, never a cap.
 _Avoid_: attempt, retry, Reconto, Recontar
 
+**Idempotency key** (`Idempotency-Key`):
+The tablet's one name for one telling sent to the chunk door, or for one **Correction**, carried unchanged on every resend of it. A resend under the same key is answered with the answer the first one settled and is never counted again; a key is forgotten after a day.
+_Avoid_: request id, retry token, turn id (a turn's own name, not this)
+
 **Hard stretch**:
 A stretch the team told three times. The room asks for a person once when it happens, and the fact is kept for the consultant, cleared by nothing that follows.
 _Avoid_: warning (the halt it raises), retell budget, notice, Frase difícil
