@@ -46,8 +46,16 @@ A message on a team's stream from the server to the Desk saying that something t
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 
 **Attention** (*Atendimento*):
-What waits for an action of the facilitator in one team, shown at the top of that team's Desk: the halted rooms, the rooms under a warning, the open raised hands and the halted tablets, each with its reason and since when; the team's card on the list carries the count. A finished passage waits for nobody there.
+What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
+
+**Phase** (*fase*):
+One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
+_Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
+
+**Visit** (*visita*):
+One session of the team on a pericope as the Desk shows it: the pericope is the unit of the Desk and the visit is one attempt at it. The pericope's line shows the current visit; the earlier ones, with how each ended, are listed in the Retroverification phase.
+_Avoid_: session (in the Desk's prose; it is the server's word for the same row), attempt, round, Sessão
 
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
