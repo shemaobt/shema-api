@@ -9,8 +9,8 @@ JSON, the findings, is read from the session's own `back_translation`.
 
 `latest_visits` answers the rail and the team card: the latest entered session of a team on a
 pericope, picked in SQL, with the moment it last moved. That moment is the team's own: its
-turns, takes, stretches and halts. `updated_at` is a facilitator's click as much as a team's
-act, so it counts only while a blocking halt stands, which is when the row is stamped for it.
+turns, takes, stretches and warnings. `updated_at` is a facilitator's click as much as a team's
+act, and a blocking halt has no moment of its own, so neither counts.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from app.db.models.internalization_room import (
     IRRelease,
     IRSegment,
     IRSession,
-    IRSessionStatus,
     IRTake,
     IRTakeKind,
     IRTurn,
@@ -139,9 +138,7 @@ async def latest_visits(
             IRSession.id,
             IRSession.project_id,
             IRSession.pericope,
-            IRSession.status,
             IRSession.created_at,
-            IRSession.updated_at,
             IRSession.warned_at,
             IRSession.back_translation,
             *held_columns(),
@@ -157,9 +154,7 @@ async def latest_visits(
         session_id,
         project_id,
         pericope,
-        status,
         created_at,
-        updated_at,
         warned_at,
         back_translation,
         rehearsed,
@@ -169,8 +164,7 @@ async def latest_visits(
         take_at,
         stretch_at,
     ) in rows.all():
-        halted_at = updated_at if status is IRSessionStatus.NEEDS_PERSON else None
-        moments = [created_at, warned_at, halted_at, turn_at, take_at, stretch_at]
+        moments = [created_at, warned_at, turn_at, take_at, stretch_at]
         visits[(project_id, pericope)] = Visit(
             session_id=session_id,
             station=station_of(back_translation, Held(rehearsed, told, released)),

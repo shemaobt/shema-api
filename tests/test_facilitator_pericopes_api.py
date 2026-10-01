@@ -388,14 +388,16 @@ async def test_a_warning_moves_the_visit(client, db_session) -> None:
     assert await moved_at_of(client, team, headers) == T + timedelta(minutes=5)
 
 
-async def test_a_blocking_halt_moves_the_visit(client, db_session) -> None:
-    _user, team, headers = await a_facilitator(db_session, email="parada@x.com")
+async def test_a_halted_visit_the_facilitator_attends_and_undoes_keeps_its_moment(
+    client, db_session
+) -> None:
+    user, team, headers = await a_facilitator(db_session, email="parada@x.com")
     visit = await an_idle_visit(db_session, team)
     await room.mark_needs_person(db_session, visit)
-    visit.updated_at = T + timedelta(minutes=7)
-    await db_session.commit()
+    await room.attend(db_session, visit, by=user.id)
+    await room.unattend(db_session, visit)
 
-    assert await moved_at_of(client, team, headers) == T + timedelta(minutes=7)
+    assert await moved_at_of(client, team, headers) == T
 
 
 async def test_a_turn_moves_the_visit(client, db_session) -> None:
