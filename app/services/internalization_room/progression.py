@@ -160,6 +160,8 @@ def _standing(
     released: Mapping[str, int],
     visits: Mapping[str, Visit],
 ) -> PericopeStanding:
+    """`closed` here is a release, not `position`: a passage finished but not yet released reads
+    `position: closed` beside `state: in_progress`."""
     pericope = meaning_map.pericope_num
     visit = visits.get(pericope)
     closed = visit.released if visit is not None else pericope in released

@@ -94,10 +94,7 @@ async def _history_of(
     if pericope is not None:
         query = query.where(IRSession.pericope == pericope)
     result = await db.execute(query)
-    return [
-        (session, Held(rehearsed, told, released))
-        for session, rehearsed, told, released in result.all()
-    ]
+    return [(row.IRSession, Held.of(row)) for row in result]
 
 
 def _card(

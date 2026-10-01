@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, Row, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import (
@@ -42,6 +42,10 @@ class Held:
     rehearsed: bool
     told: bool
     released: bool
+
+    @classmethod
+    def of(cls, row: Row[Any]) -> Held:
+        return cls(rehearsed=row.rehearsed, told=row.told, released=row.released)
 
 
 def held_columns() -> tuple[ColumnElement[bool], ColumnElement[bool], ColumnElement[bool]]:
@@ -76,10 +80,7 @@ async def stations_of(db: AsyncSession, session_ids: Iterable[str]) -> dict[str,
             IRSession.id.in_(ids)
         )
     )
-    return {
-        session_id: station_of(back_translation, Held(rehearsed, told, released))
-        for session_id, back_translation, rehearsed, told, released in rows.all()
-    }
+    return {row.id: station_of(row.back_translation, Held.of(row)) for row in rows}
 
 
 @dataclass(frozen=True)
@@ -122,16 +123,19 @@ async def latest_visits(
         select(func.max(IRTurn.created_at))
         .where(IRTurn.session_id == IRSession.id)
         .scalar_subquery()
+        .label("turn_at")
     )
     last_take = (
         select(func.max(IRTake.created_at))
         .where(IRTake.session_id == IRSession.id)
         .scalar_subquery()
+        .label("take_at")
     )
     last_stretch = (
         select(func.max(IRSegment.created_at))
         .where(IRSegment.session_id == IRSession.id)
         .scalar_subquery()
+        .label("stretch_at")
     )
     rows = await db.execute(
         select(
@@ -150,26 +154,13 @@ async def latest_visits(
         .where(latest.c.rank == 1)
     )
     visits: dict[tuple[str, str], Visit] = {}
-    for (
-        session_id,
-        project_id,
-        pericope,
-        created_at,
-        warned_at,
-        back_translation,
-        rehearsed,
-        told,
-        released,
-        turn_at,
-        take_at,
-        stretch_at,
-    ) in rows.all():
-        moments = [created_at, warned_at, turn_at, take_at, stretch_at]
-        visits[(project_id, pericope)] = Visit(
-            session_id=session_id,
-            station=station_of(back_translation, Held(rehearsed, told, released)),
-            released=released,
-            started_at=as_utc(created_at),
+    for row in rows:
+        moments = [row.created_at, row.warned_at, row.turn_at, row.take_at, row.stretch_at]
+        visits[(row.project_id, row.pericope)] = Visit(
+            session_id=row.id,
+            station=station_of(row.back_translation, Held.of(row)),
+            released=row.released,
+            started_at=as_utc(row.created_at),
             moved_at=max(as_utc(moment) for moment in moments if moment is not None),
         )
     return visits
