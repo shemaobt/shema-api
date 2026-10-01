@@ -274,7 +274,7 @@ The stop of the room a session is in, derived at read time for the Desk from wha
 _Avoid_: stage, phase, status (the session's own three states), Estação
 
 **Conversation**:
-The Internalization's lines between the team and the Guide, as the Desk reads them: ordered turns of the team, the Guide and the room's own notes, each with its moment and, when the Guide gave way to a fixed line, the fail-safe's category. The lines the Guide says in the telling-back round are not part of it. Each line is stamped with the station it was written in, which is a fact about the line and not the session's derived Station; lines written before the stamps read as conversation with no moment.
+The Internalization's lines between the team and the Guide, as the Desk reads them: ordered turns of the team, the Guide and the room's own notes, each with its moment and, when the Guide gave way to a fixed line, the fail-safe's category.
 _Avoid_: transcript, chat, history
 
 **Refine**:

@@ -4,7 +4,9 @@ The Conversation is the Internalization stage where the team and the Guide talk;
 telling-back round that follows has its own Station and is not part of it. The route answers
 the turns in the order they were said, with the fail-safe lines marked and named.
 
-Every case writes through the room's own turn route and reads through the Desk's route.
+The cases write through the room's own turn route, except the ones about lines stored before
+the stamps, which seed the stored lines directly because no route writes that shape any more.
+Every case reads through the Desk's route.
 """
 
 from __future__ import annotations
@@ -174,7 +176,7 @@ async def test_a_facilitator_reads_the_conversation_as_turns_in_order(
         ("team", SECOND_ANSWER),
     ]
     assert [t["role"] for t in turns[4:]] == ["guide", "room", "guide"]
-    assert turns[5]["text"]
+    assert turns[5]["text"] == "[A equipe falou na língua materna; sem transcrição]"
     assert all(t["at"] for t in turns)
     assert [t["at"] for t in turns] == sorted(t["at"] for t in turns)
 
@@ -248,7 +250,6 @@ async def test_an_entry_stored_before_the_stamps_reads_as_conversation_with_no_m
     session.messages = [
         {"role": "guide", "text": GUIDE_OPENING},
         {"role": "team", "text": FIRST_ANSWER},
-        {"role": "guide", "text": "linha fixa", "category": "D"},
     ]
     await db_session.commit()
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
@@ -258,10 +259,37 @@ async def test_an_entry_stored_before_the_stamps_reads_as_conversation_with_no_m
     assert [(t["role"], t["text"], t["at"]) for t in turns] == [
         ("guide", GUIDE_OPENING, None),
         ("team", FIRST_ANSWER, None),
-        ("guide", "linha fixa", None),
     ]
-    assert turns[2]["fail_safe"] is True
-    assert turns[2]["fail_safe_category"] == "inaudible"
+
+
+async def test_an_older_line_with_only_a_category_is_a_fail_safe_with_its_category_named(
+    client, db_session, room_app, script
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    session.messages = [{"role": "guide", "text": "linha fixa", "category": "D"}]
+    await db_session.commit()
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    (turn,) = await _turns(client, session.id, desk)
+
+    assert turn["fail_safe"] is True
+    assert turn["fail_safe_category"] == "inaudible"
+
+
+async def test_a_line_that_is_not_the_guides_is_never_marked_fail_safe(
+    client, db_session, room_app, script
+) -> None:
+    project, _credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    session.messages = [{"role": "team", "text": FIRST_ANSWER, "category": "D"}]
+    await db_session.commit()
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+
+    (turn,) = await _turns(client, session.id, desk)
+
+    assert turn["fail_safe"] is False
+    assert turn["fail_safe_category"] is None
 
 
 async def test_a_facilitator_of_another_team_gets_the_session_reads_404(
@@ -277,12 +305,13 @@ async def test_a_facilitator_of_another_team_gets_the_session_reads_404(
     unknown = await client.get(_conversation_of("nao-existe"), headers=owner)
 
     assert refused.status_code == 404, refused.text
-    assert "turns" not in refused.json()
+    assert refused.json()["detail"] == f"Internalization room session {session.id} not found"
     assert unknown.status_code == 404
+    assert unknown.json()["detail"] == "Internalization room session nao-existe not found"
     assert (await client.get(_conversation_of(session.id), headers=owner)).status_code == 200
 
 
-async def test_a_fail_safe_line_with_a_letter_no_category_has_is_still_marked(
+async def test_a_fail_safe_line_whose_letter_names_no_category_is_marked_with_no_category(
     client, db_session, room_app, script
 ) -> None:
     project, _credential = await a_claimed_device(db_session)

@@ -3,8 +3,8 @@ from __future__ import annotations
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import ConversationResponse, ConversationTurn
 from app.services.internalization_room.fail_safe import FailSafe
+from app.services.internalization_room.sessions import TELLING_BACK
 
-TELLING_BACK = "telling_back"
 _CATEGORY_NAMES = {each.value: each.name.lower() for each in FailSafe}
 
 
@@ -21,7 +21,9 @@ def conversation_of(session: IRSession) -> ConversationResponse:
 
 def _turn_of(message: dict) -> ConversationTurn:
     letter = message.get("category") or ""
-    fail_safe = message.get("outcome") == "fail_safe" or bool(letter)
+    fail_safe = message["role"] == "guide" and (
+        message.get("outcome") == "fail_safe" or bool(letter)
+    )
     return ConversationTurn(
         role=message["role"],
         text=message.get("text", ""),
