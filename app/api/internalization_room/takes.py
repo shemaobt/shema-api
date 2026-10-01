@@ -17,6 +17,7 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.models.internalization_room import TakeResponse, TakesResponse
 from app.services import internalization_room as room
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.takes import (
     listen_url,
     store_take,
@@ -103,6 +104,7 @@ async def keep_take(
         content_type=file.content_type or "audio/mp4",
     )
     await room.retire_the_part_recorded_again(db, session, take)
+    nudge(session.project_id, "takes")
     return _view(take)
 
 

@@ -31,6 +31,7 @@ from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.background import transcribe_question
 from app.services.internalization_room.canon.labels import label_index
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.voice_handles import (
     facilitator_audio_url,
     from_question_handle,
@@ -88,6 +89,7 @@ async def raise_question(
         element_key=element_key,
         audio=audio,
     )
+    nudge(question.project_id, "hands")
     background.add_task(transcribe_question, question_id=question.id, audio=audio)
     return QuestionRaisedResponse(question_id=question.id, status=str(question.status))
 
@@ -143,6 +145,7 @@ async def heard(
         db, question_id, device_id=device_id, project_id=project_id
     )
     await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
+    nudge(question.project_id, "hands")
     return {"status": "heard"}
 
 
@@ -256,6 +259,7 @@ async def reply(
         raise ValidationError("Audio payload exceeds 25 MB limit")
     question = await service.get_question_for_facilitator(db, user, question_id)
     await service.answer_with_voice(db, question, audio=audio, answered_by=user.id)
+    nudge(question.project_id, "hands")
     return {"status": "answered"}
 
 
@@ -265,6 +269,7 @@ async def resolve(
 ) -> dict[str, str]:
     question = await service.get_question_for_facilitator(db, user, question_id)
     await service.resolve_elsewhere(db, question, answered_by=user.id)
+    nudge(question.project_id, "hands")
     return {"status": "resolved"}
 
 

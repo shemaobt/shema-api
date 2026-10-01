@@ -18,6 +18,7 @@ from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.room_enums import HaltKind
 from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
@@ -43,6 +44,7 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.live_turn import current_scene_id
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
@@ -429,8 +431,10 @@ async def create_session(
         language=payload.language,
         chosen=payload.chosen,
     )
+    nudge(session.project_id, "sessions")
     if caller is not None:
         await clear_needs_person(db, caller.id)
+        nudge(session.project_id, "halts")
     if previous is not None:
         if hand_over(previous, session):
             await db.commit()
@@ -584,6 +588,7 @@ async def ask_for_a_person(
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     await room.mark_needs_person(db, session)
+    nudge(session.project_id, "halts")
     return NeedsPersonResponse(
         session_id=session.id,
         needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
@@ -612,6 +617,7 @@ async def a_person_arrived(
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     arrived = await room.person_arrived(db, session)
+    nudge(session.project_id, "halts")
     return PersonArrivedResponse(
         session_id=session.id, person_arrived_at=as_utc(arrived).isoformat()
     )
@@ -717,8 +723,19 @@ async def take_turn(
             reply = await answer_once(session_id, turn_id, project_id, answer)
         else:
             reply = await answer(db)
+        with stage("db_read"):
+            await _nudge_after_the_turn(db, session_id)
     response.headers["Server-Timing"] = clock.server_timing()
     return reply
+
+
+async def _nudge_after_the_turn(db: AsyncSession, session_id: str) -> None:
+    session = await db.get(IRSession, session_id, populate_existing=True)
+    if session is None:
+        return
+    nudge(session.project_id, "sessions")
+    if halt.last(session) is HaltKind.BLOCKING and halt.standing(session) is None:
+        nudge(session.project_id, "halts")
 
 
 async def _answer_the_turn(

@@ -38,6 +38,7 @@ from app.services.device.claim_device import ClaimRefusal, InvalidClaimCodeError
 from app.services.device.claim_device_as_facilitator import claim_device_as_facilitator
 from app.services.device.set_team_device_label import set_team_device_label
 from app.services.device.unlink_device import unlink_device
+from app.services.internalization_room.nudge_channel import nudge
 
 facilitator_devices_router = APIRouter()
 
@@ -173,7 +174,9 @@ async def mark_device_attended_route(
     Idempotent, and a tablet that never halted can be marked all the same; ``attend_device``
     is where both of those are argued, along with the two refusals.
     """
-    return DeviceAttendedResponse.of(await attend_device(db, user=user, device_id=device_id))
+    device = await attend_device(db, user=user, device_id=device_id)
+    nudge(device.project_id, "halts")
+    return DeviceAttendedResponse.of(device)
 
 
 @facilitator_devices_router.delete("/{device_id}/attended", response_model=DeviceAttendedResponse)
@@ -188,4 +191,6 @@ async def undo_device_attended_route(
     and treating the absence as an error would make an idempotent undo impossible to write on
     the Desk.
     """
-    return DeviceAttendedResponse.of(await unattend_device(db, user=user, device_id=device_id))
+    device = await unattend_device(db, user=user, device_id=device_id)
+    nudge(device.project_id, "halts")
+    return DeviceAttendedResponse.of(device)

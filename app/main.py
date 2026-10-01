@@ -18,6 +18,7 @@ from app.api.books import router as books_router
 from app.api.devices import devices_router
 from app.api.facilitator.devices import facilitator_devices_router
 from app.api.facilitator.legend import facilitator_legend_router
+from app.api.facilitator.nudges import facilitator_nudges_router
 from app.api.facilitator.teams import facilitator_teams_router
 from app.api.health import router as health_router
 from app.api.internalization_room import router as internalization_room_router
@@ -161,6 +162,11 @@ def create_app() -> FastAPI:
         facilitator_teams_router,
         prefix="/api/facilitator/teams",
         tags=["facilitator-teams"],
+    )
+    app.include_router(
+        facilitator_nudges_router,
+        prefix="/api/facilitator/teams",
+        tags=["facilitator-nudges"],
     )
     app.include_router(
         facilitator_legend_router,
