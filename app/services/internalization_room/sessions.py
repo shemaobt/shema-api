@@ -610,14 +610,21 @@ async def mark_needs_person(
 ) -> IRSession:
     """Halt the room with a blocking halt: it cannot go on until a person comes.
 
+    A closed passage refuses the ask and writes nothing (ADR 0044), even one closed after
+    ``session`` was read.
+
     ``halts_raised`` counts blocking halts only: it is how a landing turn tells the halt it
     began in from one raised while the Guide was answering, and a warning is neither.
     """
-    if session.ended_at is not None:
+    halted = await db.execute(
+        update(IRSession)
+        .where(IRSession.id == session.id, IRSession.ended_at.is_(None))
+        .values(status=IRSessionStatus.NEEDS_PERSON, halts_raised=IRSession.halts_raised + 1)
+        .execution_options(synchronize_session=False)
+    )
+    if halted.rowcount == 0:
         raise PassageClosed("The passage is closed and no longer asks for a person.")
     _a_new_ask(session, kind=HaltKind.BLOCKING)
-    session.status = IRSessionStatus.NEEDS_PERSON
-    session.halts_raised = IRSession.halts_raised + 1
     return await _written(db, session, commit=commit)
 
 

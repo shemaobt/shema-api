@@ -26,11 +26,13 @@ import httpx
 import pytest
 from google_crc32c import Checksum
 from httpx import ASGITransport
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.core.exceptions import PassageClosed
 from app.core.room_enums import HaltKind
-from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -54,6 +56,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.hard_stretch_harness import row as the_row
 from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
@@ -1302,3 +1305,26 @@ async def test_a_closed_passage_never_reads_needs_person_nor_in_progress_after_a
         assert status == "done", f"depois de {name} a passagem fechada leu {status}"
         ended = (await history_row(client, facilitator_a, waiting_room.id))["ended_at"]
         assert ended == closed, f"depois de {name} a passagem foi reaberta e fechada de novo"
+
+
+async def test_a_passage_closed_while_the_ask_was_on_its_way_refuses_it_too(
+    db_session: AsyncSession, waiting_room
+) -> None:
+    read_before_the_close = await room.get_session(db_session, waiting_room.id)
+    await db_session.execute(
+        update(IRSession)
+        .where(IRSession.id == waiting_room.id)
+        .values(status=IRSessionStatus.DONE, ended_at=datetime.now(UTC))
+        .execution_options(synchronize_session=False)
+    )
+    await db_session.commit()
+
+    halts_before = read_before_the_close.halts_raised
+
+    with pytest.raises(PassageClosed):
+        await room.mark_needs_person(db_session, read_before_the_close)
+
+    stored = await the_row(db_session, waiting_room.id)
+    assert stored.status is IRSessionStatus.DONE, "o pedido atrasado parou uma passagem fechada"
+    assert stored.halt_kind is None
+    assert stored.halts_raised == halts_before
