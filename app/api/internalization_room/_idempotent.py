@@ -14,7 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.api.internalization_room._deps import device_dep, device_project_dep
 from app.core.database import get_db
 from app.core.exceptions import StoredAnswer, ValidationError
-from app.services import internalization_room as room
+from app.core.stage_clock import stage
 from app.services.internalization_room import idempotency
 
 CLAIM = "idempotency_claim"
@@ -39,9 +39,16 @@ async def claim_the_key(
         return
     if len(key) > LONGEST_KEY:
         raise ValidationError(f"Idempotency-Key must be at most {LONGEST_KEY} characters")
-    await room.session_for_room_caller(db, session_id, project_id)
+    with stage("db_let_go"):
+        await db.commit()
     route = f"{request.method} {request.scope['route'].path}"
-    held = await idempotency.claim(key, route, await _request_hash(request))
+    held = await idempotency.claim(
+        key,
+        route,
+        await _request_hash(request),
+        session_id=session_id,
+        project_id=project_id,
+    )
     if isinstance(held, idempotency.Replay):
         raise StoredAnswer(held.status_code, held.body)
     request.scope.setdefault("state", {})[CLAIM] = held
@@ -72,7 +79,7 @@ def _settling(app: ASGIApp) -> ASGIApp:
             await app(scope, receive, answer.send)
         finally:
             held = answer.claim()
-            if held is not None and not answer.kept():
+            if held is not None and answer.storing is None:
                 await asyncio.shield(idempotency.release(held))
 
     return handle
@@ -91,13 +98,6 @@ class _Answer:
         held: idempotency.Claim | None = self.scope.get("state", {}).get(CLAIM)
         return held
 
-    def kept(self) -> bool:
-        if self.storing is None:
-            return False
-        if not self.storing.done():
-            return True
-        return not self.storing.cancelled() and self.storing.exception() is None
-
     async def send(self, message: Message) -> None:
         held = self.claim()
         if held is None or self.storing is not None:
@@ -110,7 +110,21 @@ class _Answer:
         self.body += message.get("body", b"")
         if message.get("more_body", False):
             return
-        self.storing = asyncio.ensure_future(idempotency.settle(held, self.status_code, self.body))
+        self.storing = asyncio.ensure_future(_store(held, self.status_code, self.body))
+        self.storing.add_done_callback(_retrieved)
         await asyncio.shield(self.storing)
         for kept in self.messages:
             await self.downstream(kept)
+
+
+async def _store(held: idempotency.Claim, status_code: int, body: bytes) -> None:
+    try:
+        await idempotency.settle(held, status_code, body)
+    except Exception:
+        await idempotency.release(held)
+        raise
+
+
+def _retrieved(storing: asyncio.Future[None]) -> None:
+    if not storing.cancelled():
+        storing.exception()

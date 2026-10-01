@@ -519,3 +519,40 @@ async def test_a_request_cancelled_while_its_answer_is_stored_keeps_the_answer(
 
     assert resent.status_code == 200, resent.text
     assert len(await _current(db_session, session_id)) == 1
+
+
+async def test_a_store_that_fails_after_a_cancellation_frees_the_key(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id, take_id = await _a_rehearsed_session(db_session, client)
+    let_go = asyncio.Event()
+    storing = asyncio.Event()
+    freed = asyncio.Event()
+    store = idempotency.settle
+    free = idempotency.release
+
+    async def fails_while_storing(*_: Any, **__: Any) -> None:
+        storing.set()
+        await let_go.wait()
+        raise ConnectionError("the database went away")
+
+    async def freeing(*args: Any, **kwargs: Any) -> None:
+        await free(*args, **kwargs)
+        freed.set()
+
+    monkeypatch.setattr(idempotency, "settle", fails_while_storing)
+    monkeypatch.setattr(idempotency, "release", freeing)
+    cancelled = asyncio.create_task(_chunk(client, session_id, take_id, 1, key="um-trecho"))
+    await asyncio.wait_for(storing.wait(), timeout=WAIT_S)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    let_go.set()
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(freed.wait(), timeout=2)
+    monkeypatch.setattr(idempotency, "settle", store)
+
+    resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
+
+    assert resent.status_code == 200, resent.text
+    assert len(await _current(db_session, session_id)) == 2

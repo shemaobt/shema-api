@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import IdempotencyKeyInFlight, IdempotencyKeyReused
 from app.db.models.internalization_room import IRIdempotencyKey
+from app.services.internalization_room.sessions import session_for_room_caller
 
 IDEMPOTENCY_KEY_TTL: Final = timedelta(hours=24)
 ABANDONED_AFTER: Final = timedelta(seconds=300)
@@ -39,8 +40,11 @@ def settles(status_code: int) -> bool:
     return 200 <= status_code < 300 or (400 <= status_code < 500 and status_code not in (409, 429))
 
 
-async def claim(key: str, route: str, request_hash: str) -> Claim | Replay:
+async def claim(
+    key: str, route: str, request_hash: str, *, session_id: str, project_id: str | None
+) -> Claim | Replay:
     async with AsyncSessionLocal() as db:
+        await session_for_room_caller(db, session_id, project_id)
         while True:
             now = utcnow()
             row = await db.get(IRIdempotencyKey, (key, route), populate_existing=True)
