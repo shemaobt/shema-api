@@ -55,8 +55,6 @@ from app.services.project.facilitates_project import facilitates_project
 
 logger = logging.getLogger(__name__)
 
-CONVERSATION = "conversation"
-TELLING_BACK = "telling_back"
 PANORAMA_ALIAS = "OV"
 #: How many tellings of one stretch make it a hard stretch. Three is ours — measured in the
 #: field at six against three with the passage checked — and the signal is Marcia's ruling of
@@ -361,10 +359,9 @@ async def append_exchange(
     and a landing turn is no evidence they did not go.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
-    stamp = {
-        "at": datetime.now(UTC).isoformat(),
-        "station": TELLING_BACK if told_back else CONVERSATION,
-    }
+    stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
+    if told_back:
+        stamp["told_back"] = True
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance, **stamp})
     if outcome is not None and outcome.room_note:
