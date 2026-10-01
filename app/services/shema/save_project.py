@@ -61,6 +61,7 @@ audience — on a create too, where only the authorization is refused — and
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import date
 from typing import Any
 
@@ -436,6 +437,18 @@ async def save_project(
     return project
 
 
+#: The one sentence a refused id earns — fixed, so it says nothing about which ids exist.
+MINTED_ID_REQUIRED = "a new project's id is a minted UUID, not a chosen slug"
+
+
+def is_minted_id(project_id: str) -> bool:
+    """Whether ``project_id`` is a canonical UUID — the only id a new record may take (OBT-551)."""
+    try:
+        return str(uuid.UUID(project_id)) == project_id
+    except ValueError:
+        return False
+
+
 async def create_project(
     db: AsyncSession,
     scope: RegionScope,
@@ -447,13 +460,20 @@ async def create_project(
     source: ProgressSource | None = None,
     commit: bool = True,
 ) -> ShemaProject:
-    """Mint the record at the slug the client already holds, or refuse the slug.
+    """Mint the record at the id the client already holds, or refuse the id.
 
-    **The id is the client's**, which is FE-44 §5.1's frozen decision: the export's slug is the
-    address every screen, URL and saved view carries, and BE-16 does not mint new ones. So a
-    create is an upsert's other half and the one thing it owns is the collision — a slug that
-    exists is a :class:`~app.core.exceptions.ConflictError` naming it, never a silent overwrite
-    of somebody else's record.
+    **A new record's id is a UUID the client minted, never a slug it chose** (OBT-551,
+    1/out/2026, Daniel). FE-44 §5.1 froze *the id is the client's*, and the 127 imported records
+    keep their export slugs — ``<language>-<place>``, an address every screen and saved view
+    carries. But a create that looked the slug up answered **409 for a slug that exists anywhere**
+    and something else for one that does not, which is exactly the existence oracle ``_scope.py``
+    exists to prevent: any account could ask whether a project lives at ``<language>-<place>`` in
+    a region it does not reach, and no ordering of the checks fixes it, because a colliding id
+    has to fail and only an existing one collides. So a slug is refused **before anything is
+    read**, with one fixed sentence whatever the database holds. The console was already minting
+    ``crypto.randomUUID()`` for every new record, so nothing it sends changes; what closes is the
+    door a hand-written request or import file had. The 409 that remains is for a UUID that
+    exists, which only someone who already held that id can ask about.
 
     **The scope is checked against the region the new record derives**, not against the caller's
     ability to create in general. A coordinator scoped to Africa may not file a project in Asia,
@@ -477,11 +497,14 @@ async def create_project(
     The trail's first rows are written here too: a create is a record arriving from nothing,
     and a trail that started only at the first edit could not say who filed it.
     """
+    if not is_minted_id(payload.id):
+        raise ValidationError(MINTED_ID_REQUIRED)
+
     existing = (
         await db.execute(select(ShemaProject.id).where(ShemaProject.id == payload.id))
     ).scalar_one_or_none()
     if existing is not None:
-        raise ConflictError(f"{payload.id}: a project already exists at this slug")
+        raise ConflictError(f"{payload.id}: a project already exists at this id")
 
     project = ShemaProject(id=payload.id, version=1)
     db.add(project)
