@@ -54,6 +54,8 @@ ERROR_CODE_STRETCH_NO_LONGER_COUNTS: Final = "STRETCH_NO_LONGER_COUNTS"
 #: inaudible line named in the body instead of showing a refused call, and it must not tell
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
+ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
+ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
 # reshaping the request.
@@ -155,6 +157,10 @@ class NothingToHear(ConflictError):
     """
 
 
+class IdempotencyKeyInFlight(ConflictError):
+    pass
+
+
 class RoleError(Exception):
     pass
 
@@ -206,6 +212,10 @@ class WordlessTelling(ValidationError):
     def __init__(self, fixed_line: str) -> None:
         super().__init__("The telling has no words in it")
         self.fixed_line = fixed_line
+
+
+class IdempotencyKeyReused(ValidationError):
+    pass
 
 
 class UpstreamServiceError(Exception):
@@ -385,6 +395,24 @@ async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JS
     )
 
 
+async def handle_idempotency_key_in_flight(
+    _request: Request, exc: IdempotencyKeyInFlight
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT),
+    )
+
+
+async def handle_idempotency_key_reused(
+    _request: Request, exc: IdempotencyKeyReused
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_IDEMPOTENCY_KEY_REUSED),
+    )
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -522,6 +550,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
+    app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
+    app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]

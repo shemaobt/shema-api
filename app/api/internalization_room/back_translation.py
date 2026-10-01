@@ -2,6 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._idempotent import IdempotentRoute
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError, WordlessTelling
@@ -30,11 +31,6 @@ router = APIRouter()
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-@router.post(
-    "/sessions/{session_id}/back-translation/chunks",
-    response_model=BackTranslationChunkResponse,
-    dependencies=[room_caller_dep],
-)
 async def add_chunk(
     session_id: str,
     background: BackgroundTasks,
@@ -142,6 +138,16 @@ async def add_chunk(
         pass_number=pass_number,
         needs_person=warned,
     )
+
+
+router.add_api_route(
+    "/sessions/{session_id}/back-translation/chunks",
+    add_chunk,
+    methods=["POST"],
+    response_model=BackTranslationChunkResponse,
+    dependencies=[room_caller_dep],
+    route_class_override=IdempotentRoute,
+)
 
 
 async def _the_untold_errand(

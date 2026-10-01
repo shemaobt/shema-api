@@ -589,6 +589,7 @@ async def refuse_a_stretch_that_is_not_a_unit(
     where an unguarded retry used to spend a telling on a stretch the room had already retired
     and could mark a divided parent nothing can ever replace.
     """
+    await db.refresh(segment, with_for_update=True)
     if segment.superseded_at is not None:
         raise StretchNoLongerCounts(
             "This stretch no longer counts: it was already replaced, or the part of the "
