@@ -85,6 +85,7 @@ MIGRATION_FILES = {
     "test_ir_the_hard_stretch_migration.py",
     "test_ir_turns_migration.py",
     "test_ir_standing_warning_migration.py",
+    "test_ir_idempotency_key_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

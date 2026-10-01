@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRSegment, IRTakeKind
@@ -78,11 +79,6 @@ async def divide(
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
 
 
-@router.post(
-    "/sessions/{session_id}/segments/{segment_id}/replace",
-    response_model=SegmentsResponse,
-    dependencies=[room_caller_dep],
-)
 async def replace(
     session_id: str,
     segment_id: str,
@@ -175,3 +171,13 @@ async def replace(
         segments=await _units(db, session.id),
         needs_person=crossed,
     )
+
+
+router.add_api_route(
+    "/sessions/{session_id}/segments/{segment_id}/replace",
+    replace,
+    methods=["POST"],
+    response_model=SegmentsResponse,
+    dependencies=[room_caller_dep, idempotency_dep],
+    route_class_override=IdempotentRoute,
+)

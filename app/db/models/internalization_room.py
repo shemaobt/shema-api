@@ -3,7 +3,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Enum, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Enum,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -552,3 +563,15 @@ class IRHardStretch(Base):
     crossed_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+
+
+class IRIdempotencyKey(Base):
+    __tablename__ = "ir_idempotency_keys"
+
+    key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    route: Mapped[str] = mapped_column(String(255), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    claim: Mapped[str] = mapped_column(String(36))
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    body: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    claimed_at: Mapped[datetime] = mapped_column(UtcDateTime(timezone=True))
