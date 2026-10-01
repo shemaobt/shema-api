@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from sqlalchemy import delete, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -36,20 +36,22 @@ def utcnow() -> datetime:
 
 
 def settles(status_code: int) -> bool:
-    return 200 <= status_code < 300 or (400 <= status_code < 500 and status_code != 429)
+    return 200 <= status_code < 300 or (400 <= status_code < 500 and status_code not in (409, 429))
 
 
 async def claim(key: str, route: str, request_hash: str) -> Claim | Replay:
     async with AsyncSessionLocal() as db:
-        now = utcnow()
-        row = await db.get(IRIdempotencyKey, (key, route))
-        if row is not None and now - row.claimed_at >= IDEMPOTENCY_KEY_TTL:
-            await _forget(db, row)
-            row = None
-        found = row or await _first(db, key, route, request_hash, now)
-        if isinstance(found, Claim):
-            return found
-        return await _the_answer_to(db, found, request_hash, now)
+        while True:
+            now = utcnow()
+            row = await db.get(IRIdempotencyKey, (key, route), populate_existing=True)
+            if row is not None and now - row.claimed_at >= IDEMPOTENCY_KEY_TTL:
+                await _forget(db, row)
+            elif row is not None:
+                return await _the_answer_to(db, row, request_hash, now)
+            else:
+                held = Claim(key=key, route=route, token=str(uuid.uuid4()))
+                if await _first(db, held, request_hash, now):
+                    return held
 
 
 async def settle(held: Claim, status_code: int, body: bytes) -> None:
@@ -93,24 +95,21 @@ async def _forget(db: AsyncSession, row: IRIdempotencyKey) -> None:
     db.expunge(row)
 
 
-async def _first(
-    db: AsyncSession, key: str, route: str, request_hash: str, now: datetime
-) -> Claim | IRIdempotencyKey:
-    token = str(uuid.uuid4())
-    db.add(
-        IRIdempotencyKey(
-            key=key, route=route, request_hash=request_hash, claim=token, claimed_at=now
+async def _first(db: AsyncSession, held: Claim, request_hash: str, now: datetime) -> bool:
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    inserted = await db.execute(
+        insert(IRIdempotencyKey)
+        .values(
+            key=held.key,
+            route=held.route,
+            request_hash=request_hash,
+            claim=held.token,
+            claimed_at=now,
         )
+        .on_conflict_do_nothing(index_elements=["key", "route"])
     )
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        winner = await db.get(IRIdempotencyKey, (key, route))
-        if winner is None:
-            raise IdempotencyKeyInFlight(IN_FLIGHT) from None
-        return winner
-    return Claim(key=key, route=route, token=token)
+    await db.commit()
+    return bool(inserted.rowcount)  # type: ignore[attr-defined]
 
 
 async def _the_answer_to(

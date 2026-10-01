@@ -568,7 +568,7 @@ class IRHardStretch(Base):
 class IRIdempotencyKey(Base):
     __tablename__ = "ir_idempotency_keys"
 
-    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), primary_key=True)
     route: Mapped[str] = mapped_column(String(255), primary_key=True)
     request_hash: Mapped[str] = mapped_column(String(64))
     claim: Mapped[str] = mapped_column(String(36))

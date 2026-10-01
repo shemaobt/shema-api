@@ -7,13 +7,18 @@ from typing import Any
 
 from fastapi import Depends, Request
 from fastapi.routing import APIRoute
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.core.exceptions import StoredAnswer
+from app.api.internalization_room._deps import device_dep, device_project_dep
+from app.core.database import get_db
+from app.core.exceptions import StoredAnswer, ValidationError
+from app.services import internalization_room as room
 from app.services.internalization_room import idempotency
 
 CLAIM = "idempotency_claim"
+LONGEST_KEY = 255
 
 
 class IdempotentRoute(APIRoute):
@@ -22,15 +27,24 @@ class IdempotentRoute(APIRoute):
         self.app = _settling(self.app)
 
 
-async def claim_the_key(request: Request) -> None:
+async def claim_the_key(
+    request: Request,
+    session_id: str,
+    _device_id: str = device_dep,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> None:
     key = request.headers.get("idempotency-key")
     if not key:
         return
+    if len(key) > LONGEST_KEY:
+        raise ValidationError(f"Idempotency-Key must be at most {LONGEST_KEY} characters")
+    await room.session_for_room_caller(db, session_id, project_id)
     route = f"{request.method} {request.scope['route'].path}"
     held = await idempotency.claim(key, route, await _request_hash(request))
     if isinstance(held, idempotency.Replay):
         raise StoredAnswer(held.status_code, held.body)
-    request.state.idempotency_claim = held
+    request.scope.setdefault("state", {})[CLAIM] = held
 
 
 idempotency_dep = Depends(claim_the_key)
@@ -58,7 +72,7 @@ def _settling(app: ASGIApp) -> ASGIApp:
             await app(scope, receive, answer.send)
         finally:
             held = answer.claim()
-            if held is not None and not answer.settled:
+            if held is not None and not answer.kept():
                 await asyncio.shield(idempotency.release(held))
 
     return handle
@@ -68,7 +82,7 @@ class _Answer:
     def __init__(self, scope: Scope, send: Send) -> None:
         self.scope = scope
         self.downstream = send
-        self.settled = False
+        self.storing: asyncio.Future[None] | None = None
         self.messages: list[Message] = []
         self.status_code = 500
         self.body = b""
@@ -77,9 +91,16 @@ class _Answer:
         held: idempotency.Claim | None = self.scope.get("state", {}).get(CLAIM)
         return held
 
+    def kept(self) -> bool:
+        if self.storing is None:
+            return False
+        if not self.storing.done():
+            return True
+        return not self.storing.cancelled() and self.storing.exception() is None
+
     async def send(self, message: Message) -> None:
         held = self.claim()
-        if held is None or self.settled:
+        if held is None or self.storing is not None:
             await self.downstream(message)
             return
         self.messages.append(message)
@@ -89,7 +110,7 @@ class _Answer:
         self.body += message.get("body", b"")
         if message.get("more_body", False):
             return
-        await idempotency.settle(held, self.status_code, self.body)
-        self.settled = True
+        self.storing = asyncio.ensure_future(idempotency.settle(held, self.status_code, self.body))
+        await asyncio.shield(self.storing)
         for kept in self.messages:
             await self.downstream(kept)

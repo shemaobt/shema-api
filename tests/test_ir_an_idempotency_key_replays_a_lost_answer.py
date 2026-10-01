@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -10,7 +11,9 @@ from fastapi import HTTPException
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.exceptions import UpstreamServiceError
+from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
+from app.core.exceptions import ConflictError, UpstreamServiceError
+from app.services.internalization_room import idempotency
 from tests.hard_stretch_harness import (
     AUDIO,
     DEVICE,
@@ -33,6 +36,7 @@ from tests.hard_stretch_harness import (
 from tests.hard_stretch_harness import (
     rehearse as _rehearse,
 )
+from tests.release_harness import a_claimed_device
 
 OTHER_AUDIO = b"a equipe contou este trecho de outro jeito"
 CLOCK = "app.services.internalization_room.idempotency.utcnow"
@@ -109,8 +113,18 @@ def _answers(client: httpx.AsyncClient) -> list[Any]:
     return client.transcriber.answers  # type: ignore[attr-defined]
 
 
-def _headers(key: str | None, room_key: str = ROOM_KEY) -> dict[str, str]:
-    headers = {"X-Room-Key": room_key, "X-Room-Device": DEVICE}
+def _headers(
+    key: str | None,
+    room_key: str = ROOM_KEY,
+    *,
+    device: str | None = DEVICE,
+    credential: str | None = None,
+) -> dict[str, str]:
+    headers = {"X-Room-Key": room_key}
+    if device is not None:
+        headers["X-Room-Device"] = device
+    if credential is not None:
+        headers[DEVICE_CREDENTIAL_HEADER] = credential
     if key is not None:
         headers["Idempotency-Key"] = key
     return headers
@@ -126,6 +140,8 @@ async def _chunk(
     again: bool = False,
     audio: bytes = AUDIO,
     room_key: str = ROOM_KEY,
+    device: str | None = DEVICE,
+    credential: str | None = None,
 ) -> httpx.Response:
     starts, ends = SLICES[stretch - 1]
     data = {"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)}
@@ -133,7 +149,7 @@ async def _chunk(
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers=_headers(key, room_key),
+        headers=_headers(key, room_key, device=device, credential=credential),
         data=data,
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
@@ -270,6 +286,7 @@ async def test_a_key_older_than_a_day_is_a_new_request(
     [
         pytest.param(lambda: UpstreamServiceError("transcriber down"), 502, id="502"),
         pytest.param(lambda: HTTPException(status_code=429, detail="slow down"), 429, id="429"),
+        pytest.param(lambda: ConflictError("written by another turn"), 409, id="409"),
     ],
 )
 async def test_an_unsettled_answer_leaves_no_row(
@@ -428,3 +445,77 @@ async def test_a_claim_left_unanswered_past_the_request_timeout_is_taken_over(
     assert taken_over.status_code == 200, taken_over.text
     assert replayed.status_code == 200, replayed.text
     assert replayed.json() == taken_over.json()
+
+
+async def test_a_request_missing_its_device_does_not_spend_the_key(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id = await _a_rehearsed_session(db_session, client)
+
+    refused = await _chunk(client, session_id, take_id, 1, key="um-trecho", device=None)
+    resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
+
+    assert refused.status_code == 400, refused.text
+    assert resent.status_code == 200, resent.text
+    assert len(await _current(db_session, session_id)) == 1
+
+
+async def test_another_projects_device_is_refused_as_without_a_key_never_replayed(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    team, own = await a_claimed_device(db_session, email="ana@example.com")
+    _, stranger = await a_claimed_device(db_session, email="bia@example.com")
+    session_id = await _a_session(db_session, team_id=team.id)
+    take_id = await _rehearse(client, session_id)
+    first = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential=own)
+    assert first.status_code == 200, first.text
+
+    keyless = await _chunk(client, session_id, take_id, 1, credential=stranger)
+    keyed = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential=stranger)
+
+    assert keyless.status_code == 404, keyless.text
+    assert keyed.status_code == keyless.status_code, keyed.text
+    assert keyed.json()["code"] == keyless.json()["code"]
+
+
+async def test_a_key_longer_than_255_characters_is_refused(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id = await _a_rehearsed_session(db_session, client)
+
+    refused = await _chunk(client, session_id, take_id, 1, key="k" * 256)
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "BAD_REQUEST"
+    assert await _current(db_session, session_id) == []
+
+
+async def test_a_request_cancelled_while_its_answer_is_stored_keeps_the_answer(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id, take_id = await _a_rehearsed_session(db_session, client)
+    store = idempotency.settle
+    storing = asyncio.Event()
+    let_go = asyncio.Event()
+    stored = asyncio.Event()
+
+    async def held_while_storing(*args: Any, **kwargs: Any) -> None:
+        storing.set()
+        await let_go.wait()
+        await store(*args, **kwargs)
+        stored.set()
+
+    monkeypatch.setattr(idempotency, "settle", held_while_storing)
+    cancelled = asyncio.create_task(_chunk(client, session_id, take_id, 1, key="um-trecho"))
+    await asyncio.wait_for(storing.wait(), timeout=WAIT_S)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    let_go.set()
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(stored.wait(), timeout=2)
+
+    resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
+
+    assert resent.status_code == 200, resent.text
+    assert len(await _current(db_session, session_id)) == 1

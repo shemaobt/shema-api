@@ -17,7 +17,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "ir_idempotency_keys",
-        sa.Column("key", sa.Text(), primary_key=True),
+        sa.Column("key", sa.String(length=255), primary_key=True),
         sa.Column("route", sa.String(length=255), primary_key=True),
         sa.Column("request_hash", sa.String(length=64), nullable=False),
         sa.Column("claim", sa.String(length=36), nullable=False),
