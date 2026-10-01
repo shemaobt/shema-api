@@ -45,6 +45,18 @@ _Avoid_: panel, dashboard, Mesa
 A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 
+**Attention** (*Atendimento*):
+What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
+_Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
+
+**Phase** (*fase*):
+One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
+_Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
+
+**Visit** (*visita*):
+One session of the team on a pericope as the Desk shows it: the pericope is the unit of the Desk and the visit is one attempt at it. The pericope's line shows the current visit; the earlier ones, with how each ended, are listed in the Retroverification phase.
+_Avoid_: session (in the Desk's prose; it is the server's word for the same row), attempt, round, Sessão
+
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
 _Avoid_: bot, assistant, Sala
@@ -240,6 +252,10 @@ _Avoid_: blockage, lockup, Parada
 **Halt kind** (`halt_kind`):
 Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
+
+**Halt reason** (`halt_reason`):
+Why the room asked for a person, in one of five families the tablet names when it asks: the device was refused, the server kept failing, the sound or the recorder failed, the session was lost, or the room and the server disagree. A warning's reason is the hard stretch. A halt that names none reads as "the room stopped".
+_Avoid_: cause, error, message, detail, Motivo da parada
 
 **Warning**:
 The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
