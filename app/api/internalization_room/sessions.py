@@ -525,6 +525,11 @@ async def facilitator_sessions(
                 project_id=team,
                 team_name=named.get(team, ""),
                 halt=halt.standing(session),
+                warned_at=(
+                    as_utc(warned).isoformat()
+                    if (warned := halt.warned_at(session)) is not None
+                    else None
+                ),
                 attended_at=(
                     as_utc(session.attended_at).isoformat()
                     if session.attended_at is not None

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -1081,3 +1081,121 @@ async def test_a_warning_on_a_finished_passage_leaves_it_finished(
     assert len(rows) == 1
     assert rows[0]["status"] == "done"
     assert rows[0]["halt"] == WARNING
+
+
+# --- Case 8 — the queue row says when the warning was raised (ENG-1180) -------------------
+
+
+async def a_closed_passage(db: AsyncSession, session) -> None:
+    await room.save_comprehension(db, session, _ready_comprehension())
+    await room.apply_coverage(db, session.id, dict.fromkeys(element_keys(P), ENGAGED))
+
+
+async def test_the_queue_row_says_when_the_warning_was_raised(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+    the_models_agree: None,
+) -> None:
+    before = datetime.now(UTC)
+    await a_warning_is_raised(client, waiting_room.id)
+    after = datetime.now(UTC)
+    assert (await the_team_answers(client, waiting_room.id)).status_code == 200
+
+    row = await queued(client, facilitator_a, waiting_room.id)
+
+    assert row is not None
+    assert row["warned_at"] is not None, "a fila não diz desde quando o aviso está de pé"
+    assert before <= _instant(row["warned_at"]) <= after, (
+        "o momento do aviso andou com o turno seguinte"
+    )
+
+
+async def test_the_team_cards_session_row_says_when_the_warning_was_raised(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+    the_models_agree: None,
+) -> None:
+    before = datetime.now(UTC)
+    await a_warning_is_raised(client, waiting_room.id)
+    after = datetime.now(UTC)
+    assert (await the_team_answers(client, waiting_room.id)).status_code == 200
+
+    card = await history_row(client, facilitator_a, waiting_room.id)
+
+    assert card["warned_at"] is not None, "o cartão não diz desde quando o aviso está de pé"
+    assert before <= _instant(card["warned_at"]) <= after, (
+        "o momento do aviso andou com o turno seguinte"
+    )
+
+
+async def test_once_attended_no_warning_moment_and_after_the_undo_it_is_back(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await a_warning_is_raised(client, waiting_room.id)
+    assert (await tablet_state(client, waiting_room.id))["status"] == "done"
+    raised = await queued(client, facilitator_a, waiting_room.id)
+    assert raised is not None and raised["warned_at"] is not None
+    moment = _instant(raised["warned_at"])
+
+    assert (await attend(client, waiting_room.id, facilitator_a)).status_code == 200
+
+    attended = await queued(client, facilitator_a, waiting_room.id)
+    assert attended is not None
+    assert attended["warned_at"] is None, "a fila manteve o aviso que a mesa atendeu"
+    assert (await history_row(client, facilitator_a, waiting_room.id))["warned_at"] is None, (
+        "o cartão manteve o aviso que a mesa atendeu"
+    )
+
+    assert (await unattend(client, waiting_room.id, facilitator_a)).status_code == 200
+
+    undone = await queued(client, facilitator_a, waiting_room.id)
+    assert undone is not None and undone["warned_at"] is not None
+    assert _instant(undone["warned_at"]) == moment, "desfazer a visita não trouxe o momento"
+    card = await history_row(client, facilitator_a, waiting_room.id)
+    assert card["warned_at"] is not None
+    assert _instant(card["warned_at"]) == moment
+
+
+async def test_a_blocking_halt_over_a_warning_keeps_its_moment(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+) -> None:
+    before = datetime.now(UTC)
+    await a_warning_is_raised(client, waiting_room.id)
+    after = datetime.now(UTC)
+    await the_tablet_halts(client, waiting_room.id)
+
+    row = await queued(client, facilitator_a, waiting_room.id)
+
+    assert row is not None
+    assert row["halt"] == BLOCKING
+    assert row["warned_at"] is not None, "o bloqueio por cima escondeu o momento do aviso"
+    assert before <= _instant(row["warned_at"]) <= after
+    card = await history_row(client, facilitator_a, waiting_room.id)
+    assert card["halt"] == BLOCKING
+    assert card["warned_at"] is not None
+    assert before <= _instant(card["warned_at"]) <= after
+
+
+async def test_no_warning_raised_no_warning_moment(
+    client: httpx.AsyncClient, db_session: AsyncSession, facilitator_a: Facilitator
+) -> None:
+    session = await a_session(db_session, team_id=facilitator_a.team_id)
+    await the_tablet_halts(client, session.id)
+
+    row = await queued(client, facilitator_a, session.id)
+
+    assert row is not None
+    assert row["warned_at"] is None
+    assert (await history_row(client, facilitator_a, session.id))["warned_at"] is None

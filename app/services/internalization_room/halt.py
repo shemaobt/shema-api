@@ -27,6 +27,8 @@ a team that did not need them, and the other way round leaves a stopped room wai
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import ColumnElement, and_
 
 from app.core.room_enums import HaltKind
@@ -54,9 +56,15 @@ def standing(session: IRSession) -> HaltKind | None:
     """The kind of the halt in force right now, null when none is."""
     if session.status is IRSessionStatus.NEEDS_PERSON:
         return HaltKind.BLOCKING
-    if session.warned_at is not None and session.attended_at is None:
+    if warned_at(session) is not None:
         return HaltKind.WARNING
     return None
+
+
+def warned_at(session: IRSession) -> datetime | None:
+    if session.attended_at is not None:
+        return None
+    return session.warned_at
 
 
 def a_warning_stands() -> ColumnElement[bool]:
