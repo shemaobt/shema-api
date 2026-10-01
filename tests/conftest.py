@@ -44,6 +44,7 @@ from app.core.database import Base
 #: The one the app is already pointed at, so the fixtures and the routes share a database.
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
+#: One round trip naming the tables that hold a row, so a sweep empties only those.
 _TABLES_WITH_ROWS = " UNION ALL ".join(
     f"SELECT '{table.name}' WHERE EXISTS (SELECT 1 FROM \"{table.name}\")"
     for table in Base.metadata.sorted_tables
@@ -90,7 +91,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     # PostgreSQL — writes the FK inline here instead.
     #
     # Latent until BE-04 (OBT-453), which is the first issue to write `revision_of_id`.
-    # Enforcing referential integrity while emptying every table protects nothing.
+    # Enforcing referential integrity while emptying tables protects nothing.
     #
     # The PRAGMA takes effect because pysqlite opens the transaction at the first DML and
     # not before, so this statement runs outside it; the same reason is why turning them

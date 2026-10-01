@@ -6,20 +6,22 @@ per worker process, and each test is given a clean database by a sweep instead
 
 That trades one guarantee for another, so the guarantees are held here from outside the
 fixture: what a test sees at its start, that a row committed on the production path does not
-reach the next test, that a process running this module alone still has every table, and
-that each worker owns its own file.
+reach the next test, nor one committed to a table that refuses a `DELETE`, which keeps its
+guard, that a process running this module alone still has every table, and that each worker
+owns its own file.
 
-No model is imported at the top of this file, and that is the point of the third case: what
-the schema has must come from the conftest importing `app.db.models`, never from what this
-module happened to reach for. A module-level `from app.db.models.auth import App` runs the
-package's `__init__` and registers all 104 tables, which would make that case unable to fail.
+No model is imported at the top of this file, and that is the point of the case that counts
+the tables: what the schema has must come from the conftest importing `app.db.models`, never
+from what this module happened to reach for. A module-level `from app.db.models.auth import
+App` runs the package's `__init__` and registers all 104 tables, which would make that case
+unable to fail.
 """
 
 import os
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import DatabaseError
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import AsyncSessionLocal, Base
 from tests.database_naming import the_generated_database_file
@@ -99,12 +101,13 @@ async def test_the_sweep_takes_back_a_row_the_schema_refuses_to_delete(db_sessio
 
 
 async def test_the_sweep_leaves_the_append_only_guard_in_place(db_session) -> None:
+    """The sweep before the case above lifted this guard to empty the table it holds."""
     from app.db.models.shema_org_chart import ShemaRoleChange
 
     db_session.add(ShemaRoleChange(region_key="africa", role="coordinator", to_name="Joana"))
     await db_session.commit()
 
-    with pytest.raises(DatabaseError):
+    with pytest.raises(IntegrityError):
         await db_session.execute(text("DELETE FROM shema_role_changes"))
         await db_session.commit()
 
