@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import and_, case, literal, or_, select, update
+from sqlalchemy import and_, case, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
-from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
@@ -395,7 +395,7 @@ async def append_exchange(
                     IRSession.status == IRSessionStatus.NEEDS_PERSON,
                     IRSession.halts_raised == session.halts_raised,
                 ),
-                literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),
+                halt.a_lift_restores(),
             ),
             else_=IRSession.status,
         )
@@ -605,18 +605,25 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     return list(result.scalars())
 
 
-async def mark_needs_person(
-    db: AsyncSession, session: IRSession, *, commit: bool = True
-) -> IRSession:
+async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     """Halt the room with a blocking halt: it cannot go on until a person comes.
+
+    A closed passage refuses the ask and writes nothing (ADR 0044), even one closed after
+    ``session`` was read.
 
     ``halts_raised`` counts blocking halts only: it is how a landing turn tells the halt it
     began in from one raised while the Guide was answering, and a warning is neither.
     """
+    halted = await db.execute(
+        update(IRSession)
+        .where(IRSession.id == session.id, IRSession.ended_at.is_(None))
+        .values(status=IRSessionStatus.NEEDS_PERSON, halts_raised=IRSession.halts_raised + 1)
+        .execution_options(synchronize_session=False)
+    )
+    if halted.rowcount == 0:
+        raise PassageClosed("The passage is closed and no longer asks for a person.")
     _a_new_ask(session, kind=HaltKind.BLOCKING)
-    session.status = IRSessionStatus.NEEDS_PERSON
-    session.halts_raised = IRSession.halts_raised + 1
-    return await _written(db, session, commit=commit)
+    return await _written(db, session, commit=True)
 
 
 async def raise_a_warning(
@@ -732,7 +739,7 @@ async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
         session.attended_by = by
     if session.status is IRSessionStatus.NEEDS_PERSON:
         session.lifted_halt = HaltKind.BLOCKING.value
-        session.status = IRSessionStatus.IN_PROGRESS
+        session.status = halt.a_lift_restores()
     await db.commit()
     await db.refresh(session)
     return session

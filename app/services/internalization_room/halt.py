@@ -1,7 +1,9 @@
-"""What kind of halt a session is in, and what kind its last one was.
+"""What kind of halt a session is in, what kind its last one was, and what a lift restores.
 
 Two readings of the halt columns, in one place because four readers need them and the day
-they drift is the day the tablet and the Desk disagree about whether a room is stopped.
+they drift is the day the tablet and the Desk disagree about whether a room is stopped. The
+status a lift restores sits beside them because both doors that lift a halt must agree on it:
+a closed passage goes back to done (ADR 0044).
 
 **They are different questions.** ``standing`` is what the tablet and the Desk ask: it must be
 null the moment no halt stands — one signal, not two. ``last`` is what a facilitator asks
@@ -27,7 +29,9 @@ a team that did not need them, and the other way round leaves a stopped room wai
 
 from __future__ import annotations
 
-from sqlalchemy import ColumnElement, and_
+from datetime import datetime
+
+from sqlalchemy import ColumnElement, and_, case, literal
 
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSession, IRSessionStatus
@@ -54,9 +58,22 @@ def standing(session: IRSession) -> HaltKind | None:
     """The kind of the halt in force right now, null when none is."""
     if session.status is IRSessionStatus.NEEDS_PERSON:
         return HaltKind.BLOCKING
-    if session.warned_at is not None and session.attended_at is None:
+    if standing_warning_since(session) is not None:
         return HaltKind.WARNING
     return None
+
+
+def standing_warning_since(session: IRSession) -> datetime | None:
+    if session.attended_at is not None:
+        return None
+    return session.warned_at
+
+
+def a_lift_restores() -> ColumnElement[IRSessionStatus]:
+    return case(
+        (IRSession.ended_at.is_not(None), literal(IRSessionStatus.DONE, IRSession.status.type)),
+        else_=literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),
+    )
 
 
 def a_warning_stands() -> ColumnElement[bool]:

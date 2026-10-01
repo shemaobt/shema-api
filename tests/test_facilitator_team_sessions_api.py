@@ -666,6 +666,7 @@ async def test_the_cards_shape_names_every_field_the_desk_reads(client, db_sessi
         "needs_person",
         "last_halt",
         "halt",
+        "warned_at",
         "attended_at",
         "attended_by",
         "person_arrived_at",

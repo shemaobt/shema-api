@@ -54,6 +54,7 @@ ERROR_CODE_STRETCH_NO_LONGER_COUNTS: Final = "STRETCH_NO_LONGER_COUNTS"
 #: inaudible line named in the body instead of showing a refused call, and it must not tell
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
+ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
 ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -158,6 +159,10 @@ class NothingToHear(ConflictError):
 
 
 class IdempotencyKeyInFlight(ConflictError):
+    pass
+
+
+class PassageClosed(ConflictError):
     pass
 
 
@@ -383,6 +388,13 @@ async def handle_nothing_to_hear(_request: Request, exc: NothingToHear) -> JSONR
     )
 
 
+async def handle_passage_closed(_request: Request, exc: PassageClosed) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_PASSAGE_CLOSED),
+    )
+
+
 async def handle_stretch_no_longer_counts(
     _request: Request, exc: StretchNoLongerCounts
 ) -> JSONResponse:
@@ -555,6 +567,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
+    app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]

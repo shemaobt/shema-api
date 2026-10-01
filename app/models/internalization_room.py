@@ -238,6 +238,7 @@ class TeamSessionResponse(BaseModel):
     #: gated on `state` the way `needs_person` is, because it is the queue's value and not a
     #: claim that anybody is still waiting.
     halt: str | None
+    warned_at: datetime | None
     #: When a facilitator said they went, and who. Null on every conversation nobody marked,
     #: which is most of them.
     attended_at: datetime | None
@@ -715,6 +716,7 @@ class FacilitatorSessionView(BaseModel):
     project_id: str
     team_name: str
     halt: str | None = None
+    warned_at: str | None = None
     #: ISO-8601 with an offset, like every other instant this module serves.
     attended_at: str | None = None
     #: A user id. The Desk resolves names itself, as the questions inbox does with

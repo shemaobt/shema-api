@@ -19,17 +19,20 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import pytest
 from google_crc32c import Checksum
 from httpx import ASGITransport
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.db.models.internalization_room import IRTakeKind
+from app.core.exceptions import PassageClosed
+from app.core.room_enums import HaltKind
+from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -53,6 +56,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.hard_stretch_harness import row as the_row
 from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
@@ -1081,3 +1085,246 @@ async def test_a_warning_on_a_finished_passage_leaves_it_finished(
     assert len(rows) == 1
     assert rows[0]["status"] == "done"
     assert rows[0]["halt"] == WARNING
+
+
+# --- Case 8 — the queue row says when the warning was raised (ENG-1180) -------------------
+
+
+async def a_closed_passage(db: AsyncSession, session) -> None:
+    await room.save_comprehension(db, session, _ready_comprehension())
+    await room.apply_coverage(db, session.id, dict.fromkeys(element_keys(P), ENGAGED))
+
+
+async def an_old_row(db: AsyncSession, session_id: str) -> None:
+    session = await room.get_session(db, session_id)
+    session.status = IRSessionStatus.NEEDS_PERSON
+    session.halt_kind = HaltKind.BLOCKING.value
+    session.halts_raised = session.halts_raised + 1
+    await db.commit()
+
+
+async def test_the_queue_row_says_when_the_warning_was_raised(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+    the_models_agree: None,
+) -> None:
+    before = datetime.now(UTC)
+    await a_warning_is_raised(client, waiting_room.id)
+    after = datetime.now(UTC)
+    assert (await the_team_answers(client, waiting_room.id)).status_code == 200
+
+    row = await queued(client, facilitator_a, waiting_room.id)
+
+    assert row is not None
+    assert row["warned_at"] is not None, "a fila não diz desde quando o aviso está de pé"
+    assert before <= _instant(row["warned_at"]) <= after, (
+        "o momento do aviso andou com o turno seguinte"
+    )
+
+
+async def test_the_team_cards_session_row_says_when_the_warning_was_raised(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+    the_models_agree: None,
+) -> None:
+    before = datetime.now(UTC)
+    await a_warning_is_raised(client, waiting_room.id)
+    after = datetime.now(UTC)
+    assert (await the_team_answers(client, waiting_room.id)).status_code == 200
+
+    card = await history_row(client, facilitator_a, waiting_room.id)
+
+    assert card["warned_at"] is not None, "o cartão não diz desde quando o aviso está de pé"
+    assert before <= _instant(card["warned_at"]) <= after, (
+        "o momento do aviso andou com o turno seguinte"
+    )
+
+
+async def test_once_attended_no_warning_moment_and_after_the_undo_it_is_back(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await a_warning_is_raised(client, waiting_room.id)
+    assert (await tablet_state(client, waiting_room.id))["status"] == "done"
+    raised = await queued(client, facilitator_a, waiting_room.id)
+    assert raised is not None and raised["warned_at"] is not None
+    moment = _instant(raised["warned_at"])
+
+    assert (await attend(client, waiting_room.id, facilitator_a)).status_code == 200
+
+    attended = await queued(client, facilitator_a, waiting_room.id)
+    assert attended is not None
+    assert attended["warned_at"] is None, "a fila manteve o aviso que a mesa atendeu"
+    assert (await history_row(client, facilitator_a, waiting_room.id))["warned_at"] is None, (
+        "o cartão manteve o aviso que a mesa atendeu"
+    )
+
+    assert (await unattend(client, waiting_room.id, facilitator_a)).status_code == 200
+
+    undone = await queued(client, facilitator_a, waiting_room.id)
+    assert undone is not None and undone["warned_at"] is not None
+    assert _instant(undone["warned_at"]) == moment, "desfazer a visita não trouxe o momento"
+    card = await history_row(client, facilitator_a, waiting_room.id)
+    assert card["warned_at"] is not None
+    assert _instant(card["warned_at"]) == moment
+
+
+async def test_a_blocking_halt_over_a_warning_keeps_its_moment(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_telling_is_heard: None,
+) -> None:
+    before = datetime.now(UTC)
+    await a_warning_is_raised(client, waiting_room.id)
+    after = datetime.now(UTC)
+    await the_tablet_halts(client, waiting_room.id)
+
+    row = await queued(client, facilitator_a, waiting_room.id)
+
+    assert row is not None
+    assert row["halt"] == BLOCKING
+    assert row["warned_at"] is not None, "o bloqueio por cima escondeu o momento do aviso"
+    assert before <= _instant(row["warned_at"]) <= after
+    card = await history_row(client, facilitator_a, waiting_room.id)
+    assert card["halt"] == BLOCKING
+    assert card["warned_at"] is not None
+    assert before <= _instant(card["warned_at"]) <= after
+
+
+async def test_no_warning_raised_no_warning_moment(
+    client: httpx.AsyncClient, db_session: AsyncSession, facilitator_a: Facilitator
+) -> None:
+    session = await a_session(db_session, team_id=facilitator_a.team_id)
+    await the_tablet_halts(client, session.id)
+
+    row = await queued(client, facilitator_a, session.id)
+
+    assert row is not None
+    assert row["warned_at"] is None
+    assert (await history_row(client, facilitator_a, session.id))["warned_at"] is None
+
+
+# --- Case 9 — a closed passage never blocks again (ENG-1180) ------------------------------
+
+
+async def test_a_closed_passage_refuses_a_needs_person_ask(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    assert (await attend(client, waiting_room.id, facilitator_a)).status_code == 200
+    went = (await history_row(client, facilitator_a, waiting_room.id))["attended_at"]
+
+    asked = await client.post(
+        f"{IR}/sessions/{waiting_room.id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
+    )
+
+    assert 400 <= asked.status_code < 500, asked.text[:300]
+    assert asked.json()["code"] == "PASSAGE_CLOSED"
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "done", "o pedido numa passagem fechada a parou de novo"
+    assert state["halt"] is None
+    card = await history_row(client, facilitator_a, waiting_room.id)
+    assert card["last_halt"] is None, "o pedido recusado escreveu o tipo da parada"
+    assert card["attended_at"] == went, "o pedido recusado apagou a visita"
+
+
+async def test_an_attend_on_a_closed_passage_that_carries_needs_person_leaves_it_done(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await an_old_row(db_session, waiting_room.id)
+
+    marked = await attend(client, waiting_room.id, facilitator_a)
+
+    assert marked.status_code == 200, marked.text[:300]
+    assert marked.json()["status"] == "done", "a visita reabriu uma passagem fechada"
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "done"
+    assert state["halt"] is None
+
+
+async def test_a_landing_turns_lift_on_a_closed_passage_leaves_it_done(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_models_agree: None,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await an_old_row(db_session, waiting_room.id)
+    closed = (await history_row(client, facilitator_a, waiting_room.id))["ended_at"]
+
+    answered = await the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "done", "o turno reabriu uma passagem fechada"
+    assert state["halt"] is None
+    assert (await history_row(client, facilitator_a, waiting_room.id))["ended_at"] == closed, (
+        "a passagem foi reaberta e fechada de novo"
+    )
+
+
+async def test_a_closed_passage_never_reads_needs_person_nor_in_progress_after_any_write(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_models_agree: None,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await an_old_row(db_session, waiting_room.id)
+    closed = (await history_row(client, facilitator_a, waiting_room.id))["ended_at"]
+    writes = {
+        "attend": lambda: attend(client, waiting_room.id, facilitator_a),
+        "undo": lambda: unattend(client, waiting_room.id, facilitator_a),
+        "turn": lambda: the_team_answers(client, waiting_room.id),
+        "ask": lambda: client.post(
+            f"{IR}/sessions/{waiting_room.id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
+        ),
+    }
+
+    for name, write in writes.items():
+        await write()
+        status = (await tablet_state(client, waiting_room.id))["status"]
+        assert status == "done", f"depois de {name} a passagem fechada leu {status}"
+        ended = (await history_row(client, facilitator_a, waiting_room.id))["ended_at"]
+        assert ended == closed, f"depois de {name} a passagem foi reaberta e fechada de novo"
+
+
+async def test_a_passage_closed_while_the_ask_was_on_its_way_refuses_it_too(
+    db_session: AsyncSession, waiting_room
+) -> None:
+    read_before_the_close = await room.get_session(db_session, waiting_room.id)
+    await db_session.execute(
+        update(IRSession)
+        .where(IRSession.id == waiting_room.id)
+        .values(status=IRSessionStatus.DONE, ended_at=datetime.now(UTC))
+        .execution_options(synchronize_session=False)
+    )
+    await db_session.commit()
+
+    halts_before = read_before_the_close.halts_raised
+
+    with pytest.raises(PassageClosed):
+        await room.mark_needs_person(db_session, read_before_the_close)
+
+    stored = await the_row(db_session, waiting_room.id)
+    assert stored.status is IRSessionStatus.DONE, "o pedido atrasado parou uma passagem fechada"
+    assert stored.halt_kind is None
+    assert stored.halts_raised == halts_before

@@ -101,6 +101,9 @@ def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> Team
         needs_person=_needs_person(session, state=end.state),
         last_halt=halt.last(session),
         halt=halt.standing(session),
+        warned_at=as_utc(warned)
+        if (warned := halt.standing_warning_since(session)) is not None
+        else None,
         attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
         attended_by=session.attended_by,
         person_arrived_at=(

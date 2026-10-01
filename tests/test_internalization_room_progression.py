@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import itertools
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import PassageClosed
 from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.book_material import unwalkable
@@ -316,8 +318,7 @@ async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
 ) -> None:
     """A passage the team finished cannot be re-opened by the room stopping.
 
-    `mark_needs_person` writes the status with no guard on what it was, and a landing turn
-    puts a halted session back to `in_progress` and never to `done`. The halt is reachable
+    The ask for a person on a closed passage is refused (ADR 0044). The halt is reachable
     from here: the back-translation route refuses a session with no rehearsal take, so every
     retell warning it raises lands on a session that has already recorded. A team that
     finished Ruth 1:1-5 and then struggled to tell one stretch back would be handed the
@@ -329,7 +330,8 @@ async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
     team = await a_team(db_session, name="Gravou e depois a sala parou")
     session = await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
 
-    await room.mark_needs_person(db_session, session)
+    with pytest.raises(PassageClosed):
+        await room.mark_needs_person(db_session, session)
 
     assert await active_passage(db_session, project_id=team.id) == SECOND
 
