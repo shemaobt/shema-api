@@ -39,7 +39,6 @@ from app.models.device import (
 )
 from app.services.device.code_for_room_device import code_for_room_device
 from app.services.device.collect_device_credential import collect_device_credential
-from app.services.device.get_device import get_device
 from app.services.device.link_for_room_device import link_for_room_device
 from app.services.device.needs_person import record_needs_person
 from app.services.internalization_room.nudge_channel import nudge
@@ -163,7 +162,6 @@ async def ask_for_a_person_without_a_session(
     if caller is not None and caller.id != device_id:
         raise AuthorizationError("A device may only ask for a person for itself.")
 
-    since = await record_needs_person(db, device_id)
-    device = await get_device(db, device_id)
-    nudge(device.project_id if device else None, "halts")
+    since, team_id = await record_needs_person(db, device_id)
+    nudge(team_id, "halts")
     return DeviceNeedsPersonResponse(device_id=device_id, needs_person_since=since)

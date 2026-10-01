@@ -154,7 +154,8 @@ async def unlink_device_route(
     **Moving a device to another team is deliberately absent.** No requirement asks for it
     in v1 — see the PR for the mismatch with the control the Desk already ships.
     """
-    await unlink_device(db, user=user, device_id=device_id)
+    device = await unlink_device(db, user=user, device_id=device_id)
+    nudge(device.project_id, "halts")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

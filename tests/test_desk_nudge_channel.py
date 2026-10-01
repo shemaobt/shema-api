@@ -621,8 +621,6 @@ async def test_a_turn_that_lifts_a_halt_nudges_sessions_and_halts(
 async def test_a_write_on_a_session_with_no_team_nudges_nobody_and_does_not_fail(
     desk_app: FastAPI, client: httpx.AsyncClient, team: Team
 ) -> None:
-    from app.services.internalization_room.nudge_channel import _subscribers
-
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
         assert desk.status == 200
         opened = await client.post(
@@ -635,5 +633,54 @@ async def test_a_write_on_a_session_with_no_team_nudges_nobody_and_does_not_fail
         )
         assert halted.status_code == 200, halted.text
 
-        assert await nudges_heard(desk) == []
-        assert None not in _subscribers, "uma escrita sem equipe abriu lugar no registro"
+        assert await nudges_heard(desk) == [], "uma escrita sem equipe chegou à Mesa de outra"
+
+
+async def test_a_turn_after_the_halt_was_lifted_nudges_only_sessions(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    session_id = await a_session(db_session, team)
+    await the_tablet_halts(client, team, session_id)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        await the_team_speaks(client, team, session_id)
+        assert await nudges_heard(desk) == ["halts", "sessions"]
+
+        await the_team_speaks(client, team, session_id)
+
+        assert await nudges_heard(desk) == ["sessions"], (
+            "cada turno depois de uma parada levantada fazia a Mesa reler a faixa de Atendimento"
+        )
+
+
+async def test_a_turn_that_lifts_a_blocking_halt_over_a_warning_nudges_sessions_and_halts(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    session_id = await a_session(db_session, team)
+    await room.raise_a_warning(db_session, await room.get_session(db_session, session_id))
+    await the_tablet_halts(client, team, session_id)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        await the_team_speaks(client, team, session_id)
+
+        assert await nudges_heard(desk) == ["halts", "sessions"], (
+            "o turno tirou a parada que bloqueava, sobrou o aviso, e a Mesa seguiu mostrando "
+            "a sala parada"
+        )
+
+
+async def test_unlinking_a_halted_tablet_nudges_halts(
+    desk_app: FastAPI, client: httpx.AsyncClient, team: Team
+) -> None:
+    asked = await client.post(
+        f"{IR}/devices/{team.device_id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
+    )
+    assert asked.status_code == 200, asked.text
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        unlinked = await client.delete(f"{DESK}/devices/{team.device_id}", headers=team.desk)
+        assert unlinked.status_code == 204, unlinked.text
+
+        assert await nudges_heard(desk) == ["halts"], (
+            "o tablet parado saiu de serviço e a faixa de Atendimento continuou mostrando-o"
+        )
