@@ -251,8 +251,9 @@ and neither reads a grant.
 
 > **Two readings of this rule since OBT-543, both named rather than absorbed.**
 > `access_invites` is reached through the invite module that owns it —
-> `app/services/resource_request_access/invite_store.py`, gate-free, which OBT-549 moves into
-> this module — and not through `authorization/`. And `users` is read by id where a name or a
+> `app/services/resource_request_access/invite_store.py`, gate-free — OBT-549 retired the form's
+> access doors and left this store in place (30/sep, option A); moving it into this module is a
+> follow-up — and not through `authorization/`. And `users` is read by id where a name or a
 > lock is the point: the Admin's history resolves names in one query, and a grant locks the
 > account it writes to, as `save_region_team` already reads one by id.
 
@@ -1645,12 +1646,13 @@ the mesa was refused at the door of a console it now belongs to. Six rules.
 - **`admin` is one role for two apps, and it is not the installation's admin.** Seeded in both
   by `20260927_shema08` and by `scripts/seed_apps_roles.py` under *"Admin da plataforma"*;
   OBT-543 grants it, in both apps (§6.10). `AdminUser` guards on it for OBT-524 and OBT-543.
-- **Seeding it in the form closed a door there.** The form's two access doors
-  (`app/services/resource_request_access/`) grant any role the app has, and the Gestor may use
-  them: a Gestor could have named an Admin, who then passes `assert_can_manage_roles` and
-  revokes through `/api/roles`. Only an installation admin names `admin` through those doors;
-  the concession moved to the PME with OBT-543 (§6.10), which also closed `/api/roles` to the
-  two apps for everyone else.
+- **Seeding it in the form closed a door there, and the door has since left.** The form's two
+  access doors (`app/services/resource_request_access/`) granted any role the app had, and a
+  Gestor could have named an Admin, who then passes `assert_can_manage_roles` and revokes
+  through `/api/roles`; only an installation admin could name `admin` through them. OBT-549
+  (FE-56, 30/sep/2026) retired both doors with the form's access screen. The concession lives
+  in the PME since OBT-543 (§6.10), which also closed `/api/roles` to the two apps for everyone
+  else.
 - **`admin`, `gestor` and `mesa` reach no region** — §6.1's last paragraph.
 
 **Left to others, and named so nobody assumes them done.** ~~OBT-543: granting `admin` should

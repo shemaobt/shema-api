@@ -538,6 +538,14 @@ separate work — granting access to the three privileged roles — is **BE-17**
 is not a prerequisite: `scripts/grant_app_role.py` covers the interval, as the first accounts
 were always going to be born.
 
+**BE-17's doors in this module were retired by FE-56 (OBT-549, 30/sep/2026).** The overview,
+naming, revoking, issuing and withdrawing an invite under `/api/resource-requests/access` left
+with the form's access screen: roles of both apps are granted in the PME now, by the Admin
+alone (OBT-522, OBT-543). `grant_access` left the capability table (eight capabilities). Two
+doors stay — `GET /access/invites/{token}` and `POST /access/invites/{token}/accept`, which
+the PME's `/convite` page calls — with `invite_store`, `_invite_status`, `_rules` and
+`accept_invite`, which the Shemá module imports. Moving them there is a follow-up.
+
 **BE-03 (OBT-452) built what §5.4 designed**, and the parts of it that moved say so in place.
 
 ### 5.1 Variant 1 — shared `shema-api` principals · **Decided**, and already built

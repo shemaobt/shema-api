@@ -1,50 +1,23 @@
-"""Concession of the privileged roles — the client's answer of 28/08, as code.
+"""What is left of the form's access package after FE-56 (OBT-549, 30/sep/2026).
 
-Two ways in ("os dois"): naming a user that exists, and a link for an e-mail
-that may not have an account yet. One asymmetric rule for both: **Admin and
-Gestor concede, only Admin revokes** — and the asymmetry is the answer, not an
-oversight.
+The form granted and revoked its own roles from FE-30 (OBT-482) until the 22/sep meeting moved
+every role of both apps to one screen in the PME, granted by the Admin alone (OBT-522). The
+form's doors — naming, revoking, issuing and withdrawing an invite, and the overview — left
+with its screen, and so did their gate (``_gate.py``, *"Admin and Gestor concede"*).
 
-This package is a gate built *beside* ``assert_can_manage_roles``, not a change
-to it. That predicate is shared by eight applications and admits exactly
-"platform admin or the app's ``admin`` role": it is symmetric (one yes/no for
-grant and revoke alike), and this app seeded no ``admin`` role when the gate
-was written. Expressing "Gestor grants but cannot revoke" there would either
-complicate every other app's path or invent a role. Since OBT-523 the app does
-seed one — OBT-522's Admin, one role for both apps — which OBT-543 grants from the
-PME (``/api/shema/access``); whoever holds it passes that shared predicate for
-this app, which is why these two doors refuse to name an ``admin`` for anyone but
-the installation admin (``_rules.assert_role_grantable``). Domain policy for the
-resource-request-form lives with its domain instead; the shared file stays
-untouched and the other eight apps keep the behaviour they were tested with.
-
-"Admin" throughout means the platform admin (``User.is_platform_admin``) — the
-only Admin this gate knows, and the account that already bypasses its guards.
-OBT-522's Admin concedes through the PME's surface, which composes
-``invite_store`` and ``accept_invite`` here behind its own gate: OBT-549, which
-retires these doors, moves those two and ``_rules.assert_role_compatible`` into
-the Shemá module rather than deleting them.
-
-The grant rules shared by both doors: ``mesa`` and ``gestor`` are mutually
-exclusive (holding one blocks receiving the other until it is revoked);
-``equipe`` is the floor and accumulates freely; and granting or revoking your
-own access is refused on both verbs.
+**What stays is what the PME still reads here**: the two invite doors its ``/convite`` page
+calls (``describe_invite``, ``accept_invite``), and the pieces the Shemá module composes —
+``invite_store``, ``_invite_status`` and ``_rules.assert_role_compatible``. The note this
+package carried said OBT-549 would move them into the Shemá module; it did not, by the owner's
+decision of 30/sep (option A): moving them rewrites imports across Levi's module and the PME's
+``endpoints.ts``, which is his surface under the 25/sep split. It is a follow-up, named on the
+PR.
 """
 
 from app.services.resource_request_access.accept_invite import accept_invite
-from app.services.resource_request_access.create_invite import create_invite
 from app.services.resource_request_access.describe_invite import describe_invite
-from app.services.resource_request_access.grant_access import grant_access
-from app.services.resource_request_access.list_access import list_access
-from app.services.resource_request_access.revoke_access import revoke_access
-from app.services.resource_request_access.revoke_invite import revoke_invite
 
 __all__ = [
     "accept_invite",
-    "create_invite",
     "describe_invite",
-    "grant_access",
-    "list_access",
-    "revoke_access",
-    "revoke_invite",
 ]
