@@ -273,6 +273,10 @@ _Avoid_: needs a person, notice, alert, Aviso
 The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. An abandoned session keeps the station it stopped in.
 _Avoid_: stage, phase, status (the session's own three states), Estação
 
+**Conversation**:
+The Internalization's lines between the team and the Guide, as the Desk reads them: ordered turns of the team, the Guide and the room's own notes, each with its moment and, when the Guide gave way to a fixed line, the fail-safe's category. The lines the Guide says in the telling-back round are not part of it. Each line is stamped with the station it was written in, which is a fact about the line and not the session's derived Station; lines written before the stamps read as conversation with no moment.
+_Avoid_: transcript, chat, history
+
 **Refine**:
 The later product stage that receives the packet. It does not live on this server.
 _Avoid_: review, refinement

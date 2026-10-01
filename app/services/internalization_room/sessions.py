@@ -359,11 +359,15 @@ async def append_exchange(
     and a landing turn is no evidence they did not go.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
+    stamp = {
+        "at": datetime.now(UTC).isoformat(),
+        "station": "telling_back" if told_back else "conversation",
+    }
     if team_utterance:
-        messages.append({"role": "team", "text": team_utterance})
+        messages.append({"role": "team", "text": team_utterance, **stamp})
     if outcome is not None and outcome.room_note:
-        messages.append({"role": "room", "text": outcome.room_note})
-    guide: dict[str, Any] = {"role": "guide", "text": guide_response}
+        messages.append({"role": "room", "text": outcome.room_note, **stamp})
+    guide: dict[str, Any] = {"role": "guide", "text": guide_response, **stamp}
     if outcome is not None:
         guide["outcome"] = _containment_of(outcome)
         guide["redrafts"] = outcome.redrafts

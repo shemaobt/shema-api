@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from unittest.mock import ANY
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,8 +61,8 @@ async def test_the_exchange_is_appended_in_order(db_session: AsyncSession) -> No
     )
 
     assert session.messages == [
-        {"role": "team", "text": "a fome chegou"},
-        {"role": "guide", "text": "isso mesmo"},
+        {"role": "team", "text": "a fome chegou", "at": ANY, "station": "conversation"},
+        {"role": "guide", "text": "isso mesmo", "at": ANY, "station": "conversation"},
     ]
 
 
@@ -72,7 +73,9 @@ async def test_the_opening_turn_records_only_the_guide(db_session: AsyncSession)
         db_session, session, team_utterance="", guide_response="que bom ter vocês aqui"
     )
 
-    assert session.messages == [{"role": "guide", "text": "que bom ter vocês aqui"}]
+    assert session.messages == [
+        {"role": "guide", "text": "que bom ter vocês aqui", "at": ANY, "station": "conversation"}
+    ]
 
 
 async def test_coverage_settles_without_closing_a_partial_session(
