@@ -246,7 +246,7 @@ Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
 
 **Closed passage**:
-A session whose passage was closed, status done with its end stamped. It never blocks again: a needs-person ask on it is refused as `PASSAGE_CLOSED`, a warning may still stand on it, and lifting a halt left on it from before leaves it done.
+A session whose passage was closed: done, with its end stamped. It never blocks again, though a warning may still stand on it.
 _Avoid_: finished session, ended room, Passagem fechada
 
 **Needs a person** (`needs_person`):

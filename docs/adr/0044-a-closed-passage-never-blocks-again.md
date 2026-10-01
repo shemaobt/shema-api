@@ -13,9 +13,10 @@ keep it.
 
 Decided by Henok on 2026-09-30 (ENG-1180):
 
-- The needs-person ask on a closed passage is refused with 409 `PASSAGE_CLOSED` and writes
-  nothing. It is a 409 because the request is well formed and the session's state refuses it,
-  the way `NOTHING_TO_HEAR` is; the tablet reads refusals by code.
+- The needs-person ask on a closed passage is refused with `PASSAGE_CLOSED` and writes
+  nothing, also when the passage closes while the ask is on its way. The tablet reads refusals
+  by code. The status, 409, was the implementer's call: the request is well formed and the
+  session's state refuses it, the way `NOTHING_TO_HEAR` is.
 - Every lift of a blocking halt restores `done` when the passage is closed, and `in_progress`
   otherwise. Attending and a landing turn read the same rule.
 - A warning may still stand on a closed passage (ADR 0039): it refuses nothing.
