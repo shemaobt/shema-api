@@ -86,6 +86,7 @@ MIGRATION_FILES = {
     "test_ir_turns_migration.py",
     "test_ir_standing_warning_migration.py",
     "test_ir_idempotency_key_migration.py",
+    "test_ir_closed_passage_repair_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {
