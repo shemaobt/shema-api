@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_
+from sqlalchemy import ColumnElement, and_, case, literal
 
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSession, IRSessionStatus
@@ -65,6 +65,13 @@ def warned_at(session: IRSession) -> datetime | None:
     if session.attended_at is not None:
         return None
     return session.warned_at
+
+
+def a_lift_restores() -> ColumnElement[IRSessionStatus]:
+    return case(
+        (IRSession.ended_at.is_not(None), literal(IRSessionStatus.DONE, IRSession.status.type)),
+        else_=literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),
+    )
 
 
 def a_warning_stands() -> ColumnElement[bool]:

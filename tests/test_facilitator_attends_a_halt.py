@@ -29,7 +29,8 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.db.models.internalization_room import IRTakeKind
+from app.core.room_enums import HaltKind
+from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -1091,6 +1092,14 @@ async def a_closed_passage(db: AsyncSession, session) -> None:
     await room.apply_coverage(db, session.id, dict.fromkeys(element_keys(P), ENGAGED))
 
 
+async def an_old_row(db: AsyncSession, session_id: str) -> None:
+    session = await room.get_session(db, session_id)
+    session.status = IRSessionStatus.NEEDS_PERSON
+    session.halt_kind = HaltKind.BLOCKING.value
+    session.halts_raised = session.halts_raised + 1
+    await db.commit()
+
+
 async def test_the_queue_row_says_when_the_warning_was_raised(
     client: httpx.AsyncClient,
     facilitator_a: Facilitator,
@@ -1199,3 +1208,97 @@ async def test_no_warning_raised_no_warning_moment(
     assert row is not None
     assert row["warned_at"] is None
     assert (await history_row(client, facilitator_a, session.id))["warned_at"] is None
+
+
+# --- Case 9 — a closed passage never blocks again (ENG-1180) ------------------------------
+
+
+async def test_a_closed_passage_refuses_a_needs_person_ask(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    assert (await attend(client, waiting_room.id, facilitator_a)).status_code == 200
+    went = (await history_row(client, facilitator_a, waiting_room.id))["attended_at"]
+
+    asked = await client.post(
+        f"{IR}/sessions/{waiting_room.id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
+    )
+
+    assert 400 <= asked.status_code < 500, asked.text[:300]
+    assert asked.json()["code"] == "PASSAGE_CLOSED"
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "done", "o pedido numa passagem fechada a parou de novo"
+    assert state["halt"] is None
+    card = await history_row(client, facilitator_a, waiting_room.id)
+    assert card["last_halt"] is None, "o pedido recusado escreveu o tipo da parada"
+    assert card["attended_at"] == went, "o pedido recusado apagou a visita"
+
+
+async def test_an_attend_on_a_closed_passage_that_carries_needs_person_leaves_it_done(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await an_old_row(db_session, waiting_room.id)
+
+    marked = await attend(client, waiting_room.id, facilitator_a)
+
+    assert marked.status_code == 200, marked.text[:300]
+    assert marked.json()["status"] == "done", "a visita reabriu uma passagem fechada"
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "done"
+    assert state["halt"] is None
+
+
+async def test_a_landing_turns_lift_on_a_closed_passage_leaves_it_done(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_models_agree: None,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await an_old_row(db_session, waiting_room.id)
+    closed = (await history_row(client, facilitator_a, waiting_room.id))["ended_at"]
+
+    answered = await the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "done", "o turno reabriu uma passagem fechada"
+    assert state["halt"] is None
+    assert (await history_row(client, facilitator_a, waiting_room.id))["ended_at"] == closed, (
+        "a passagem foi reaberta e fechada de novo"
+    )
+
+
+async def test_a_closed_passage_never_reads_needs_person_nor_in_progress_after_any_write(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_models_agree: None,
+) -> None:
+    await a_closed_passage(db_session, waiting_room)
+    await an_old_row(db_session, waiting_room.id)
+    closed = (await history_row(client, facilitator_a, waiting_room.id))["ended_at"]
+    writes = {
+        "attend": lambda: attend(client, waiting_room.id, facilitator_a),
+        "undo": lambda: unattend(client, waiting_room.id, facilitator_a),
+        "turn": lambda: the_team_answers(client, waiting_room.id),
+        "ask": lambda: client.post(
+            f"{IR}/sessions/{waiting_room.id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
+        ),
+    }
+
+    for name, write in writes.items():
+        await write()
+        status = (await tablet_state(client, waiting_room.id))["status"]
+        assert status == "done", f"depois de {name} a passagem fechada leu {status}"
+        ended = (await history_row(client, facilitator_a, waiting_room.id))["ended_at"]
+        assert ended == closed, f"depois de {name} a passagem foi reaberta e fechada de novo"
