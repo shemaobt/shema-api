@@ -245,6 +245,10 @@ session nobody entered — no turn, no take and no halt — is not yet a room of
 Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
 
+**Closed passage**:
+A session whose passage was closed, status done with its end stamped. It never blocks again: a needs-person ask on it is refused as `PASSAGE_CLOSED`, a warning may still stand on it, and lifting a halt left on it from before leaves it done.
+_Avoid_: finished session, ended room, Passagem fechada
+
 **Needs a person** (`needs_person`):
 A blocking halt, not an end: it travels beside the status, never inside it.
 _Avoid_: error, failure, status, Precisa de pessoa
