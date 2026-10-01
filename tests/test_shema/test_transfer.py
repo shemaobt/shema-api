@@ -966,7 +966,7 @@ async def test_a_record_saved_meanwhile_refuses_the_file_with_who_changed_what(
     assert (await stored(db_session, "vale-disputado")).status_comments != "pelo arquivo"
 
 
-async def test_a_slug_that_exists_out_of_reach_refuses_the_file(
+async def test_an_id_that_exists_out_of_reach_refuses_the_file(
     client, db_session, coordinator
 ) -> None:
     await seed(db_session, "d23e9eca-0785-5afc-8d28-d4e99261de3d", region=AWAY)
@@ -988,7 +988,7 @@ async def test_a_slug_that_exists_out_of_reach_refuses_the_file(
 async def test_the_import_cannot_reach_a_pending_project(client, db_session, coordinator) -> None:
     """The import does not see a pending project either, so it cannot confirm, fill or correct
     one through a file — that is the Admin's act on the project. Its id reads as a new record,
-    and the create finds the slug taken: the file is refused and nothing of it applied."""
+    and the create finds the id taken: the file is refused and nothing of it applied."""
     await pending(db_session, "1e19f041-2c6a-5a50-a0eb-62ad40ea87b7")
 
     response = await upload(

@@ -438,7 +438,9 @@ async def save_project(
 
 
 #: The one sentence a refused id earns — fixed, so it says nothing about which ids exist.
-MINTED_ID_REQUIRED = "a new project's id is a minted UUID, not a chosen slug"
+MINTED_ID_REQUIRED = (
+    "a new project's id is a minted UUID in its canonical lowercase spelling, not a chosen slug"
+)
 
 
 def is_minted_id(project_id: str) -> bool:

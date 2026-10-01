@@ -74,7 +74,7 @@ SECRETS = (PLACE, "Terra Sigilosa", PLACE2, BASE, CONTACT, REASON)
 
 #: The two rows' ids, as values: a test that expires the session to re-read a row must not then
 #: ask an expired fixture object for its id.
-WITHHELD_ID = "d21bd1d5-006b-5d50-b58f-836354c1f548"
+WITHHELD_ID = "lingua-um"
 CLEARED_ID = "lingua-dois"
 
 OPEN_PLACE = "Campo Aberto"
@@ -233,7 +233,7 @@ def test_a_readership_that_coordinates_nothing_reads_everything_as_other() -> No
 def _row(**overrides: Any) -> SimpleNamespace:
     """A stand-in for a ``ShemaProject`` row, read by attribute exactly as one is."""
     columns = {
-        "id": "d21bd1d5-006b-5d50-b58f-836354c1f548",
+        "id": "lingua-um",
         "language_name": "Lingua Um",
         "location": PLACE,
         "location2": PLACE2,
