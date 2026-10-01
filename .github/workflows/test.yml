@@ -20,13 +20,11 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Seven, the ceiling #475 sets on `main` over a `Run tests` step measured there at
-    # 2m04-2m31 once ENG-980 moved the process-spawning tests to the jobs already beside this
-    # one. Taken from `main` for parity; this branch's one measured run: the job 4m13, the
-    # step 3m47.
+    # Twelve, the ceiling `main` moved to with ENG-1092: at 4768 tests this branch's job passed
+    # seven minutes and cancelled green runs (shema-api#592). ADR 0031 has the measurements.
     # The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
     # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
-    timeout-minutes: 7
+    timeout-minutes: 12
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

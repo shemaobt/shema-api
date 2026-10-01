@@ -15,9 +15,9 @@ def _reset_rate_limiter():
     limiter.reset()
 
 
-@pytest.fixture()
-async def client(db_session):
-    """ASGI client mounting ONLY the platform router.
+@pytest.fixture(scope="session")
+def platform_test_app():
+    """An app mounting ONLY the platform router, built once per process.
 
     Runs the REAL auth chain (`get_current_user`) — that is what needs proving: the platform
     has no app key, so the endpoint serves any authenticated user from any app, and an
@@ -28,7 +28,6 @@ async def client(db_session):
     from slowapi.errors import RateLimitExceeded
 
     from app.api.platform import router as platform_router
-    from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
@@ -37,13 +36,21 @@ async def client(db_session):
     register_exception_handlers(test_app)
     test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    return test_app
+
+
+@pytest.fixture()
+async def client(platform_test_app, db_session):
+    from app.core.database import get_db
+
     async def _get_db():
         yield db_session
 
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
+    platform_test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=platform_test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+    platform_test_app.dependency_overrides.pop(get_db, None)
 
 
 async def auth_header(db_session, user) -> dict[str, str]:

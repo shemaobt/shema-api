@@ -43,9 +43,9 @@ async def sound_necklace_app(db_session):
     return app
 
 
-@pytest.fixture()
-async def client(db_session):
-    """An ASGI client whose handlers run against the test session.
+@pytest.fixture(scope="session")
+def sound_necklace_test_app():
+    """The sound-necklace router under test, built once per process.
 
     Mounts only the sound-necklace router (with the real exception handlers, so
     AuthorizationError → 403) to avoid the full app's lifespan/inngest startup.
@@ -55,20 +55,27 @@ async def client(db_session):
     from fastapi import FastAPI
 
     from app.api.sound_necklace import router as sound_necklace_router
-    from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
     test_app.include_router(sound_necklace_router, prefix="/api/sound-necklace")
     register_exception_handlers(test_app)
 
+    return test_app
+
+
+@pytest.fixture()
+async def client(sound_necklace_test_app, db_session):
+    from app.core.database import get_db
+
     async def _get_db():
         yield db_session
 
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
+    sound_necklace_test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=sound_necklace_test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+    sound_necklace_test_app.dependency_overrides.pop(get_db, None)
 
 
 async def auth_header(db_session, user) -> dict[str, str]:

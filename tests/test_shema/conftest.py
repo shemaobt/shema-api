@@ -124,9 +124,9 @@ async def form_app(db_session):
     return app
 
 
-@pytest.fixture()
-async def client(db_session):
-    """An ASGI client running the module's real router plus the probes.
+@pytest.fixture(scope="session")
+def shema_test_app():
+    """The module's real router plus the probes, built once per process.
 
     ``authenticated`` is mounted at the prefix the application mounts the module at, so
     ``/api/shema/session`` is exercised through the real dependency chain, and the probes
@@ -160,7 +160,6 @@ async def client(db_session):
     from app.api.auth import router as auth_router
     from app.api.shema import authenticated, door
     from app.api.shema import router as module_router
-    from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     probe = APIRouter()
@@ -220,17 +219,24 @@ async def client(db_session):
         test_app.include_router(door, prefix=PREFIX)
         test_app.include_router(auth_router, prefix="/api/auth")
         register_exception_handlers(test_app)
-
-        async def _get_db():
-            yield db_session
-
-        test_app.dependency_overrides[get_db] = _get_db
-        transport = ASGITransport(app=test_app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
     finally:
         del authenticated.routes[mark:]
         del door.routes[door_mark:]
+    return test_app
+
+
+@pytest.fixture()
+async def client(shema_test_app, db_session):
+    from app.core.database import get_db
+
+    async def _get_db():
+        yield db_session
+
+    shema_test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=shema_test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    shema_test_app.dependency_overrides.pop(get_db, None)
 
 
 async def auth_header(db_session, user) -> dict[str, str]:
