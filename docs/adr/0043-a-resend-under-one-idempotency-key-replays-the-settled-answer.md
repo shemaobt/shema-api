@@ -9,7 +9,8 @@ A telling sent to the chunk door, or a **Correction**, whose answer is lost on a
 
 Decided: the two doors read an optional `Idempotency-Key` header, and one generic table keyed by (key, route) holds the request's hash, the answer's status and body, and the moment the key was claimed. No foreign keys, like the room's other tables.
 
-- No header: the door behaves exactly as before.
+- No header, or an empty one: the door behaves exactly as before.
+- The key is read only after the door has let the caller in. A refused credential claims nothing, and a stored answer is never replayed to a caller the door would refuse.
 - The first request under a key writes a claim row and commits it **before** any work, on a session of its own, so a second Cloud Run instance sees it. The claim is never part of the door's own transaction.
 - Same key, same hash, answer settled: the stored status and body are answered again and nothing is written.
 - Same key, another hash: 422 `IDEMPOTENCY_KEY_REUSED`, checked before anything else.
@@ -19,6 +20,6 @@ Decided: the two doors read an optional `Idempotency-Key` header, and one generi
 - A key older than 24 h is forgotten on the next read and the request is new. Nothing sweeps the table.
 - The hash covers the path parameters, the form fields and the bytes of the audio, never the multipart boundary, so the same key on another session or stretch is a 422, never a replay.
 
-The rule lives in one service; the doors reach it through a route class that wraps them, because a refusal becomes a status and a body only in the exception handlers, which run inside the route's ASGI app and never in the route function. The answer is stored before it is sent, so a tablet that saw it can always have it again.
+The rule lives in one service. Each door claims the key in a dependency declared after its credential check, and stores the answer through a route class that wraps it, because a refusal becomes a status and a body only in the exception handlers, which run inside the route's ASGI app and never in the route function. The answer is stored before it is sent, so a tablet that saw it can always have it again.
 
 Rejected: an in-process registry like the turn's, because it does not hold across instances; storing every first answer, because a 502 would be replayed for 24 h; a per-route field, because the same rule will reach other doors.

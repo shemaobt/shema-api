@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Final
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.enums import USER_SETTABLE_CLEANING_STATUSES
@@ -218,6 +218,13 @@ class IdempotencyKeyReused(ValidationError):
     pass
 
 
+class StoredAnswer(Exception):
+    def __init__(self, status_code: int, body: bytes) -> None:
+        super().__init__("The answer stored under this Idempotency-Key")
+        self.status_code = status_code
+        self.body = body
+
+
 class UpstreamServiceError(Exception):
     """A third-party provider failed on us — not a bad request from our client.
 
@@ -413,6 +420,10 @@ async def handle_idempotency_key_reused(
     )
 
 
+async def handle_stored_answer(_request: Request, exc: StoredAnswer) -> Response:
+    return Response(exc.body, exc.status_code, media_type="application/json")
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -552,6 +563,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
+    app.add_exception_handler(StoredAnswer, handle_stored_answer)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]

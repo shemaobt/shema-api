@@ -42,11 +42,11 @@ def settles(status_code: int) -> bool:
 async def claim(key: str, route: str, request_hash: str) -> Claim | Replay:
     async with AsyncSessionLocal() as db:
         now = utcnow()
-        held = await db.get(IRIdempotencyKey, (key, route))
-        if held is not None and now - held.claimed_at >= IDEMPOTENCY_KEY_TTL:
-            await _drop(db, held)
-            held = None
-        found = held or await _first(db, key, route, request_hash, now)
+        row = await db.get(IRIdempotencyKey, (key, route))
+        if row is not None and now - row.claimed_at >= IDEMPOTENCY_KEY_TTL:
+            await _forget(db, row)
+            row = None
+        found = row or await _first(db, key, route, request_hash, now)
         if isinstance(found, Claim):
             return found
         return await _the_answer_to(db, found, request_hash, now)
@@ -59,7 +59,7 @@ async def settle(held: Claim, status_code: int, body: bytes) -> None:
     async with AsyncSessionLocal() as db:
         await db.execute(
             update(IRIdempotencyKey)
-            .where(*_still_mine(held))
+            .where(*_still_unanswered(held))
             .values(status_code=status_code, body=body)
         )
         await db.commit()
@@ -67,29 +67,30 @@ async def settle(held: Claim, status_code: int, body: bytes) -> None:
 
 async def release(held: Claim) -> None:
     async with AsyncSessionLocal() as db:
-        await db.execute(delete(IRIdempotencyKey).where(*_still_mine(held)))
+        await db.execute(delete(IRIdempotencyKey).where(*_still_unanswered(held)))
         await db.commit()
 
 
-def _still_mine(held: Claim) -> tuple:
+def _the_row_of(held: Claim) -> tuple:
     return (
         IRIdempotencyKey.key == held.key,
         IRIdempotencyKey.route == held.route,
         IRIdempotencyKey.claim == held.token,
-        IRIdempotencyKey.status_code.is_(None),
     )
 
 
-async def _drop(db: AsyncSession, held: IRIdempotencyKey) -> None:
-    await db.execute(
-        delete(IRIdempotencyKey).where(
-            IRIdempotencyKey.key == held.key,
-            IRIdempotencyKey.route == held.route,
-            IRIdempotencyKey.claim == held.claim,
-        )
-    )
+def _still_unanswered(held: Claim) -> tuple:
+    return (*_the_row_of(held), IRIdempotencyKey.status_code.is_(None))
+
+
+def _held_by(row: IRIdempotencyKey) -> Claim:
+    return Claim(key=row.key, route=row.route, token=row.claim)
+
+
+async def _forget(db: AsyncSession, row: IRIdempotencyKey) -> None:
+    await db.execute(delete(IRIdempotencyKey).where(*_the_row_of(_held_by(row))))
     await db.commit()
-    db.expunge(held)
+    db.expunge(row)
 
 
 async def _first(
@@ -113,29 +114,25 @@ async def _first(
 
 
 async def _the_answer_to(
-    db: AsyncSession, held: IRIdempotencyKey, request_hash: str, now: datetime
+    db: AsyncSession, row: IRIdempotencyKey, request_hash: str, now: datetime
 ) -> Claim | Replay:
-    if held.request_hash != request_hash:
+    if row.request_hash != request_hash:
         raise IdempotencyKeyReused("This Idempotency-Key was already sent with another request")
-    if held.status_code is not None:
-        return Replay(status_code=held.status_code, body=held.body or b"")
-    if now - held.claimed_at < ABANDONED_AFTER:
+    if row.status_code is not None:
+        return Replay(status_code=row.status_code, body=row.body or b"")
+    if now - row.claimed_at < ABANDONED_AFTER:
         raise IdempotencyKeyInFlight(IN_FLIGHT)
-    return await _take_over(db, held, now)
+    return await _take_over(db, row, now)
 
 
-async def _take_over(db: AsyncSession, held: IRIdempotencyKey, now: datetime) -> Claim:
+async def _take_over(db: AsyncSession, row: IRIdempotencyKey, now: datetime) -> Claim:
     token = str(uuid.uuid4())
     taken = await db.execute(
         update(IRIdempotencyKey)
-        .where(
-            IRIdempotencyKey.key == held.key,
-            IRIdempotencyKey.route == held.route,
-            IRIdempotencyKey.claim == held.claim,
-        )
+        .where(*_the_row_of(_held_by(row)))
         .values(claim=token, claimed_at=now)
     )
     await db.commit()
     if taken.rowcount != 1:  # type: ignore[attr-defined]
         raise IdempotencyKeyInFlight(IN_FLIGHT)
-    return Claim(key=held.key, route=held.route, token=token)
+    return Claim(key=row.key, route=row.route, token=token)

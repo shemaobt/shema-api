@@ -109,8 +109,8 @@ def _answers(client: httpx.AsyncClient) -> list[Any]:
     return client.transcriber.answers  # type: ignore[attr-defined]
 
 
-def _headers(key: str | None) -> dict[str, str]:
-    headers = {"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE}
+def _headers(key: str | None, room_key: str = ROOM_KEY) -> dict[str, str]:
+    headers = {"X-Room-Key": room_key, "X-Room-Device": DEVICE}
     if key is not None:
         headers["Idempotency-Key"] = key
     return headers
@@ -125,6 +125,7 @@ async def _chunk(
     key: str | None = None,
     again: bool = False,
     audio: bytes = AUDIO,
+    room_key: str = ROOM_KEY,
 ) -> httpx.Response:
     starts, ends = SLICES[stretch - 1]
     data = {"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)}
@@ -132,7 +133,7 @@ async def _chunk(
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers=_headers(key),
+        headers=_headers(key, room_key),
         data=data,
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
@@ -302,6 +303,42 @@ async def test_a_settled_refusal_is_replayed(
     assert replayed.status_code == refused.status_code
     assert replayed.json() == refused.json()
     assert await _current(db_session, session_id) == []
+
+
+async def test_a_refused_credential_does_not_spend_the_key(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id = await _a_rehearsed_session(db_session, client)
+
+    refused = await _chunk(client, session_id, take_id, 1, key="um-trecho", room_key="errada")
+    resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
+
+    assert refused.status_code == 401, refused.text
+    assert resent.status_code == 200, resent.text
+    assert len(await _current(db_session, session_id)) == 1
+
+
+async def test_a_replay_is_answered_only_to_a_caller_the_door_lets_in(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id = await _a_rehearsed_session(db_session, client)
+    first = await _chunk(client, session_id, take_id, 1, key="um-trecho")
+    assert first.status_code == 200, first.text
+
+    stranger = await _chunk(client, session_id, take_id, 1, key="um-trecho", room_key="errada")
+
+    assert stranger.status_code == 401, stranger.text
+
+
+async def test_an_empty_key_is_no_key(client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    session_id, take_id = await _a_rehearsed_session(db_session, client)
+
+    first = await _chunk(client, session_id, take_id, 1, key="")
+    other = await _chunk(client, session_id, take_id, 2, key="", audio=OTHER_AUDIO)
+
+    assert first.status_code == 200, first.text
+    assert other.status_code == 200, other.text
+    assert len(await _current(db_session, session_id)) == 2
 
 
 async def test_a_retold_chunk_sent_twice_under_one_key_counts_one_telling(

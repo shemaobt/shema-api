@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
-from app.api.internalization_room._idempotent import IdempotentRoute
+from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError, WordlessTelling
@@ -145,7 +145,7 @@ router.add_api_route(
     add_chunk,
     methods=["POST"],
     response_model=BackTranslationChunkResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[room_caller_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )
 
