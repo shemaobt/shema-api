@@ -44,7 +44,7 @@ SHARED_NEED = "Orem pela viagem de barco até a aldeia de Pedra Clara"
 
 #: A create the console would send: the four required fields and a place that derives to ``HOME``.
 CREATE = {
-    "id": "junco-vale",
+    "id": "8d67234d-5f89-50b1-b7fe-7db602f743ba",
     "languageName": "Língua Junco",
     "bridgeLanguage": "Português",
     "team": "Base Junco",

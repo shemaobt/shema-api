@@ -38,7 +38,7 @@ from app.db.models.shema_export import ShemaExport
 from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
 from app.models.shema_transfer import CSV_BOM, ExportedProject
-from app.services.shema.save_project import _bump_version
+from app.services.shema.save_project import MINTED_ID_REQUIRED, _bump_version
 from tests.test_shema.conftest import PREFIX, make_shema_project
 from tests.test_shema.test_prayer import need, person
 
@@ -354,12 +354,12 @@ async def test_a_pending_project_never_reaches_the_file(
     there — nor its request, nor in the log of what left."""
     headers = await persona(db_session, shema_app, role)
     await seed(db_session, "vale-registrado")
-    await pending(db_session, "vale-pendente")
+    await pending(db_session, "1e19f041-2c6a-5a50-a0eb-62ad40ea87b7")
 
     body = text_of(await export(client, headers, fmt))
 
     assert "vale-registrado" in body
-    assert "vale-pendente" not in body
+    assert "1e19f041-2c6a-5a50-a0eb-62ad40ea87b7" not in body
     assert "Língua Ainda Não Confirmada" not in body
     assert SHARED not in body
     (entry,) = (await db_session.execute(select(ShemaExport))).scalars().all()
@@ -731,14 +731,17 @@ async def test_a_broken_record_refuses_the_whole_file_with_its_index(
     response = await upload(
         client,
         coordinator,
-        [new_record("chegada-boa"), new_record("chegada-ruim", status="banana")],
+        [
+            new_record("9d7f6424-9e4d-5c07-a972-e25bfb8590b8"),
+            new_record("39c2ab35-4905-56a7-b825-17d2d783a09d", status="banana"),
+        ],
     )
 
     body = refusal(response, "import_bad_record")
     assert body["index"] == 2
     assert ["status"] in [error["loc"] for error in body["errors"]]
     assert "banana" not in response.text
-    assert await stored(db_session, "chegada-boa") is None
+    assert await stored(db_session, "9d7f6424-9e4d-5c07-a972-e25bfb8590b8") is None
 
 
 @pytest.mark.parametrize(
@@ -746,28 +749,35 @@ async def test_a_broken_record_refuses_the_whole_file_with_its_index(
     [
         7,
         {"id": "sem-nome", "bridgeLanguage": "Português"},
-        {**new_record("campo-inventado"), "campoQueNaoExiste": 1},
-        {**new_record("data-errada"), "startDate": "31/12/2026"},
-        {**new_record("coordenada-ruim"), "coords": [1, "norte"]},
+        {**new_record("3eea1493-f769-57a2-97bd-19980473d7ea"), "campoQueNaoExiste": 1},
+        {**new_record("06b7ee36-cbe4-54d0-ad75-88ffd1ef9e08"), "startDate": "31/12/2026"},
+        {**new_record("f2ad579e-752f-540a-a337-f64fa3d3c524"), "coords": [1, "norte"]},
     ],
     ids=["not an object", "the four missing", "outside the contract", "a date", "coordinates"],
 )
 async def test_a_record_the_write_would_refuse_refuses_the_file(
     client, db_session, coordinator, broken
 ) -> None:
-    response = await upload(client, coordinator, [new_record("chegada-boa"), broken])
+    response = await upload(
+        client, coordinator, [new_record("9d7f6424-9e4d-5c07-a972-e25bfb8590b8"), broken]
+    )
 
     assert refusal(response, "import_bad_record")["index"] == 2
-    assert await stored(db_session, "chegada-boa") is None
+    assert await stored(db_session, "9d7f6424-9e4d-5c07-a972-e25bfb8590b8") is None
 
 
 async def test_a_duplicate_id_refuses_the_file(client, db_session, coordinator) -> None:
     response = await upload(
-        client, coordinator, [new_record("repetido"), new_record("repetido", notes="outra")]
+        client,
+        coordinator,
+        [
+            new_record("d96e07b4-ea06-5d79-982b-5cc175bf900a"),
+            new_record("d96e07b4-ea06-5d79-982b-5cc175bf900a", notes="outra"),
+        ],
     )
 
-    assert refusal(response, "import_duplicate_id")["id"] == "repetido"
-    assert await stored(db_session, "repetido") is None
+    assert refusal(response, "import_duplicate_id")["id"] == "d96e07b4-ea06-5d79-982b-5cc175bf900a"
+    assert await stored(db_session, "d96e07b4-ea06-5d79-982b-5cc175bf900a") is None
 
 
 @pytest.mark.parametrize("kind", ["json", "csv", "rows", "a reduced record"])
@@ -813,10 +823,10 @@ async def test_a_record_read_outside_the_prayer_audience_cannot_clear_its_reques
 async def test_coordination_imports(client, db_session, shema_app, role) -> None:
     headers = await persona(db_session, shema_app, role)
 
-    response = await upload(client, headers, [new_record("vale-da-porta")])
+    response = await upload(client, headers, [new_record("248d6309-da1a-515f-90e4-8a02b6cfc6ad")])
 
     assert response.status_code == 200, response.text
-    assert await stored(db_session, "vale-da-porta") is not None
+    assert await stored(db_session, "248d6309-da1a-515f-90e4-8a02b6cfc6ad") is not None
 
 
 @pytest.mark.parametrize("role", ["lab", "circle"])
@@ -825,11 +835,11 @@ async def test_nobody_else_imports(client, db_session, shema_app, role) -> None:
     bytes that are not even JSON: the grant is answered before the file is looked at."""
     headers = await persona(db_session, shema_app, role)
 
-    response = await upload(client, headers, [new_record("vale-da-porta")])
+    response = await upload(client, headers, [new_record("248d6309-da1a-515f-90e4-8a02b6cfc6ad")])
 
     assert response.status_code == 403, response.text
     assert response.json()["detail"].startswith("Projects are imported by the coordination")
-    assert await stored(db_session, "vale-da-porta") is None
+    assert await stored(db_session, "248d6309-da1a-515f-90e4-8a02b6cfc6ad") is None
     assert (await upload(client, headers, b"{nao e json")).status_code == 403
 
 
@@ -844,7 +854,9 @@ async def test_the_file_is_read_off_the_event_loop(client, coordinator, monkeypa
         return read_import(raw)
 
     monkeypatch.setattr(module, "read_import", watched)
-    response = await upload(client, coordinator, [new_record("vale-da-linha")])
+    response = await upload(
+        client, coordinator, [new_record("7a467698-47bb-54a5-b03d-1aa2040ff99c")]
+    )
 
     assert response.status_code == 200, response.text
     assert readers and threading.get_ident() not in readers
@@ -860,7 +872,7 @@ async def test_the_import_creates_and_updates_inside_the_scope(
         coordinator,
         [
             new_record(existing.id, languageName="Língua Antiga", statusComments="revisto"),
-            new_record("vale-chegado"),
+            new_record("73513053-a3df-525b-9c9f-dc33980799fe"),
         ],
     )
 
@@ -869,7 +881,7 @@ async def test_the_import_creates_and_updates_inside_the_scope(
     updated = await stored(db_session, existing.id)
     assert updated.status_comments == "revisto"
     assert updated.version == 2
-    created = await stored(db_session, "vale-chegado")
+    created = await stored(db_session, "73513053-a3df-525b-9c9f-dc33980799fe")
     assert created is not None and created.region_key == HOME
     authors = (
         await db_session.execute(
@@ -908,12 +920,15 @@ async def test_a_refusal_while_applying_leaves_nothing_behind(
     response = await upload(
         client,
         coordinator,
-        [new_record("vale-de-passagem"), new_record(existing.id, deadline="2026-01-01")],
+        [
+            new_record("e47d7b9f-1944-509c-a7be-f96419afcc1c"),
+            new_record(existing.id, deadline="2026-01-01"),
+        ],
     )
 
     assert response.status_code == 400, response.text
     assert response.json()["detail"].startswith("item 2 (vale-firme): deadline")
-    assert await stored(db_session, "vale-de-passagem") is None
+    assert await stored(db_session, "e47d7b9f-1944-509c-a7be-f96419afcc1c") is None
     assert (await stored(db_session, "vale-firme")).deadline is None
 
 
@@ -936,7 +951,10 @@ async def test_a_record_saved_meanwhile_refuses_the_file_with_who_changed_what(
     response = await upload(
         client,
         coordinator,
-        [new_record("vale-de-passagem"), new_record(existing.id, statusComments="pelo arquivo")],
+        [
+            new_record("e47d7b9f-1944-509c-a7be-f96419afcc1c"),
+            new_record(existing.id, statusComments="pelo arquivo"),
+        ],
     )
 
     assert response.status_code == 409, response.text
@@ -944,39 +962,47 @@ async def test_a_record_saved_meanwhile_refuses_the_file_with_who_changed_what(
     assert body["detail"].startswith("item 2 (vale-disputado): ")
     assert (body["expectedVersion"], body["currentVersion"]) == (1, 2)
     assert {"changedFields", "changedBy", "changedAt"} <= body.keys()
-    assert await stored(db_session, "vale-de-passagem") is None
+    assert await stored(db_session, "e47d7b9f-1944-509c-a7be-f96419afcc1c") is None
     assert (await stored(db_session, "vale-disputado")).status_comments != "pelo arquivo"
 
 
 async def test_a_slug_that_exists_out_of_reach_refuses_the_file(
     client, db_session, coordinator
 ) -> None:
-    await seed(db_session, "vale-alheio", region=AWAY)
+    await seed(db_session, "d23e9eca-0785-5afc-8d28-d4e99261de3d", region=AWAY)
 
     response = await upload(
-        client, coordinator, [new_record("vale-de-passagem"), new_record("vale-alheio")]
+        client,
+        coordinator,
+        [
+            new_record("e47d7b9f-1944-509c-a7be-f96419afcc1c"),
+            new_record("d23e9eca-0785-5afc-8d28-d4e99261de3d"),
+        ],
     )
 
     assert response.status_code == 409, response.text
-    assert await stored(db_session, "vale-de-passagem") is None
-    assert (await stored(db_session, "vale-alheio")).region_key == AWAY
+    assert await stored(db_session, "e47d7b9f-1944-509c-a7be-f96419afcc1c") is None
+    assert (await stored(db_session, "d23e9eca-0785-5afc-8d28-d4e99261de3d")).region_key == AWAY
 
 
 async def test_the_import_cannot_reach_a_pending_project(client, db_session, coordinator) -> None:
     """The import does not see a pending project either, so it cannot confirm, fill or correct
     one through a file — that is the Admin's act on the project. Its id reads as a new record,
     and the create finds the slug taken: the file is refused and nothing of it applied."""
-    await pending(db_session, "vale-pendente")
+    await pending(db_session, "1e19f041-2c6a-5a50-a0eb-62ad40ea87b7")
 
     response = await upload(
         client,
         coordinator,
-        [new_record("vale-de-passagem"), new_record("vale-pendente", statusComments="x")],
+        [
+            new_record("e47d7b9f-1944-509c-a7be-f96419afcc1c"),
+            new_record("1e19f041-2c6a-5a50-a0eb-62ad40ea87b7", statusComments="x"),
+        ],
     )
 
     assert response.status_code == 409, response.text
-    assert await stored(db_session, "vale-de-passagem") is None
-    kept = await stored(db_session, "vale-pendente")
+    assert await stored(db_session, "e47d7b9f-1944-509c-a7be-f96419afcc1c") is None
+    kept = await stored(db_session, "1e19f041-2c6a-5a50-a0eb-62ad40ea87b7")
     assert kept.pending_confirmation is True
     assert kept.status_comments == ""
     assert kept.version == 1
@@ -990,12 +1016,20 @@ async def test_an_imported_request_arrives_unauthorized_whatever_the_file_claims
     response = await upload(
         client,
         coordinator,
-        [new_record("vale-do-pedido", prayerRequests=claimed, prayerVisibility="rede")],
+        [
+            new_record(
+                "651694b6-9108-5448-96b3-1ef87eebdf36",
+                prayerRequests=claimed,
+                prayerVisibility="rede",
+            )
+        ],
     )
 
     assert response.status_code == 200, response.text
     assert "prayerVisibility" in response.json()["ignoredFields"]
-    assert (await stored(db_session, "vale-do-pedido")).prayer_visibility is None
+    assert (
+        await stored(db_session, "651694b6-9108-5448-96b3-1ef87eebdf36")
+    ).prayer_visibility is None
     wall = await client.get(WALL, headers=circle)
     assert claimed not in wall.text
     for fmt in FORMATS:
@@ -1012,7 +1046,7 @@ async def test_an_imported_need_arrives_unshared_and_unseen(
         coordinator,
         [
             new_record(
-                "vale-da-necessidade",
+                "c9f52ae0-4849-5db6-a6f1-7e7526deab92",
                 needsItems=[
                     {
                         "category": "financial",
@@ -1030,7 +1064,7 @@ async def test_an_imported_need_arrives_unshared_and_unseen(
     assert {"needsItems[].prayerShared", "needsItems[].acknowledged"} <= ignored
     (row,) = (
         await db_session.execute(
-            select(ShemaNeed).where(ShemaNeed.project_id == "vale-da-necessidade")
+            select(ShemaNeed).where(ShemaNeed.project_id == "c9f52ae0-4849-5db6-a6f1-7e7526deab92")
         )
     ).scalars()
     assert row.prayer_shared is False
@@ -1086,3 +1120,22 @@ async def test_the_import_never_lowers_the_sensitive_flag(
     assert kept.sensitive_country is True
     assert kept.status_comments == "x"
     assert (await stored(db_session, clear.id)).sensitive_country is True
+
+
+@pytest.mark.parametrize("exists", [True, False])
+async def test_a_slug_the_importer_does_not_reach_is_refused_the_same_whether_it_exists(
+    client, db_session, coordinator, exists
+) -> None:
+    """OBT-551: an import file is not a way to ask whether a project exists outside the scope.
+
+    An id the importer reaches is saved; any other id would be created, and a new record takes
+    a minted UUID — so a slug in another region and a slug that never existed meet the same
+    sentence, naming only the item and the id the file itself carried.
+    """
+    if exists:
+        await seed(db_session, "vale-alheio", region=AWAY)
+
+    response = await upload(client, coordinator, [new_record("vale-alheio")])
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == f"item 1 (vale-alheio): {MINTED_ID_REQUIRED}"
