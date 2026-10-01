@@ -24,7 +24,7 @@ narrows with the restriction.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, func, select, union_all
+from sqlalchemy import Select, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Subquery
 
@@ -34,6 +34,7 @@ from app.db.models.internalization_room import (
     IRQuestion,
     IRQuestionStatus,
     IRSession,
+    IRSessionStatus,
     IRTake,
 )
 from app.db.models.language import Language
@@ -44,9 +45,11 @@ from app.models.team import (
     TeamFilter,
     TeamListingResponse,
 )
+from app.services.internalization_room import halt
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.progression import active_passages
+from app.services.internalization_room.station import Visit, latest_visits, visit_in
 from app.services.project.facilitated_scope import facilitated_projects as _facilitated_projects
 from app.services.project.facilitated_scope import within as _within
 from app.services.project.team_restriction import as_work_queue, matching
@@ -97,6 +100,33 @@ def _open_hands_subquery(scope: Select | None) -> Subquery:
     )
 
 
+def _halts_subquery(scope: Select | None) -> Subquery:
+    blocking = IRSession.status == IRSessionStatus.NEEDS_PERSON
+    return (
+        select(
+            IRSession.project_id.label("project_id"),
+            func.count().filter(blocking).label("blocking_halts"),
+            func.count().filter(~blocking, halt.a_warning_stands()).label("warnings"),
+        )
+        .where(or_(blocking, halt.a_warning_stands()), _within(IRSession.project_id, scope))
+        .group_by(IRSession.project_id)
+        .subquery()
+    )
+
+
+def _halted_devices_subquery(scope: Select | None) -> Subquery:
+    return (
+        select(Device.project_id.label("project_id"), func.count().label("halted_devices"))
+        .where(
+            Device.needs_person_since.is_not(None),
+            Device.unlinked_at.is_(None),
+            _within(Device.project_id, scope),
+        )
+        .group_by(Device.project_id)
+        .subquery()
+    )
+
+
 def _device_count_subquery(scope: Select | None) -> Subquery:
     """Linked devices, counted the same way ``list_team_devices`` lists them.
 
@@ -130,6 +160,8 @@ def team_cards(scope: Select | None) -> Select:
     activity = _last_activity_subquery(scope)
     hands = _open_hands_subquery(scope)
     devices = _device_count_subquery(scope)
+    halts = _halts_subquery(scope)
+    halted = _halted_devices_subquery(scope)
 
     query = (
         select(
@@ -137,6 +169,9 @@ def team_cards(scope: Select | None) -> Select:
             Project.name,
             Language.name.label("mother_tongue"),
             func.coalesce(hands.c.open_hands, 0).label("open_hands"),
+            func.coalesce(halts.c.blocking_halts, 0).label("blocking_halts"),
+            func.coalesce(halts.c.warnings, 0).label("warnings"),
+            func.coalesce(halted.c.halted_devices, 0).label("halted_devices"),
             func.coalesce(devices.c.device_count, 0).label("device_count"),
             activity.c.last_activity_at,
         )
@@ -144,6 +179,8 @@ def team_cards(scope: Select | None) -> Select:
         .outerjoin(activity, activity.c.project_id == Project.id)
         .outerjoin(hands, hands.c.project_id == Project.id)
         .outerjoin(devices, devices.c.project_id == Project.id)
+        .outerjoin(halts, halts.c.project_id == Project.id)
+        .outerjoin(halted, halted.c.project_id == Project.id)
     )
     if scope is not None:
         query = query.where(Project.id.in_(scope))
@@ -178,19 +215,25 @@ async def list_facilitator_teams(
     scope = _facilitated_projects(user)
     rows = (await db.execute(team_cards(scope))).all()
     here = await active_passages(db, project_ids=[row.id for row in rows])
+    visits = await latest_visits(db, [row.id for row in rows], {p for p in here.values() if p})
 
     every_team = [
         FacilitatorTeamView(
             team_id=row.id,
             name=row.name,
             mother_tongue=row.mother_tongue,
-            active_passage=_passage(here[row.id]),
+            active_passage=_passage(here[row.id], visit_in(visits, row.id, here[row.id])),
             state=team_state(
                 book_closed=here[row.id] is None,
                 last_activity_at=row.last_activity_at,
                 now=moment,
             ),
             open_raised_hands=row.open_hands,
+            blocking_halts=row.blocking_halts,
+            warnings=row.warnings,
+            halted_devices=row.halted_devices,
+            waiting_total=row.open_hands + row.blocking_halts + row.warnings + row.halted_devices,
+            blocking=row.blocking_halts + row.halted_devices > 0,
             device_count=row.device_count,
             last_activity_at=row.last_activity_at,
         )
@@ -204,7 +247,7 @@ async def list_facilitator_teams(
     )
 
 
-def _passage(pericope: str | None) -> ActivePassageView | None:
+def _passage(pericope: str | None, visit: Visit | None = None) -> ActivePassageView | None:
     """The passage by both its names, or nothing at all at the end of the book.
 
     `None` is the answer for a team that has closed every passage, and it is a position rather
@@ -222,4 +265,8 @@ def _passage(pericope: str | None) -> ActivePassageView | None:
     """
     if pericope is None:
         return None
-    return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)
+    return ActivePassageView(
+        pericope=pericope,
+        reference=load_map(pericope).reference,
+        station=visit.station if visit else None,
+    )

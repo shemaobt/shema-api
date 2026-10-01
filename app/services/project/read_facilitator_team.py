@@ -19,12 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.project import Project
 from app.models.internalization_room import PericopePosition
-from app.models.team import ActivePassageView, FacilitatorTeamDetail
+from app.models.team import FacilitatorTeamDetail
 from app.services.internalization_room.canon.elements import scene_key, scene_of
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK
 from app.services.internalization_room.coverage_events import necklace_with_touches
-from app.services.internalization_room.progression import finished_passages, resolve, standing
-from app.services.project.list_facilitator_teams import _facilitated_projects, team_cards
+from app.services.internalization_room.progression import finished_passages, positions, resolve
+from app.services.internalization_room.station import latest_visits, visit_in
+from app.services.project.list_facilitator_teams import _facilitated_projects, _passage, team_cards
 from app.services.project.team_state import team_state
 
 
@@ -55,23 +56,27 @@ async def read_facilitator_team(
 
     finished = (await finished_passages(db, project_ids=[team_id])).get(team_id, set())
     here = resolve(finished)
-    closed = sum(1 for entry in standing(finished) if entry.position is PericopePosition.CLOSED)
+    visits = await latest_visits(db, [team_id], {here} if here else set())
+    closed = sum(
+        1 for position in positions(finished).values() if position is PericopePosition.CLOSED
+    )
 
     return FacilitatorTeamDetail(
         team_id=row.id,
         name=row.name,
         mother_tongue=row.mother_tongue,
-        active_passage=(
-            None
-            if here is None
-            else ActivePassageView(pericope=here, reference=load_map(here).reference)
-        ),
+        active_passage=_passage(here, visit_in(visits, team_id, here)),
         state=team_state(
             book_closed=here is None,
             last_activity_at=row.last_activity_at,
             now=moment,
         ),
         open_raised_hands=row.open_hands,
+        blocking_halts=row.blocking_halts,
+        warnings=row.warnings,
+        halted_devices=row.halted_devices,
+        waiting_total=row.open_hands + row.blocking_halts + row.warnings + row.halted_devices,
+        blocking=row.blocking_halts + row.halted_devices > 0,
         device_count=row.device_count,
         last_activity_at=row.last_activity_at,
         closed_total=closed,

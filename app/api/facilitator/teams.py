@@ -175,6 +175,7 @@ async def list_team_pericopes_route(
 async def list_team_sessions_route(
     team_id: str,
     user: FacilitatorUser,
+    pericope: str | None = Query(default=None, min_length=1, max_length=120),
     db: AsyncSession = Depends(get_db),
 ) -> list[TeamSessionResponse]:
     """The passage's history (RF-06). A team that has never met answers with an empty list.
@@ -186,4 +187,4 @@ async def list_team_sessions_route(
     if not await facilitates_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
-    return await list_team_sessions(db, team_id)
+    return await list_team_sessions(db, team_id, pericope=pericope)

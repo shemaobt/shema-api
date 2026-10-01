@@ -48,6 +48,20 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.station_harness import (
+    APPROVED,
+    CONVERSATION,
+    FINDINGS,
+    REHEARSAL,
+    TELLING_BACK,
+    a_conversation,
+    a_rehearsal,
+    a_telling_back,
+    a_telling_back_with_an_open_finding,
+    a_telling_back_with_every_finding_cleared,
+    an_approved_session,
+    having_been_released,
+)
 
 P = "P03"
 SURFACED = CoverageStatus.SURFACED.value
@@ -663,6 +677,7 @@ async def test_the_cards_shape_names_every_field_the_desk_reads(client, db_sessi
         "ended_at",
         "duration_minutes",
         "state",
+        "station",
         "needs_person",
         "last_halt",
         "halt",
@@ -672,3 +687,156 @@ async def test_the_cards_shape_names_every_field_the_desk_reads(client, db_sessi
         "person_arrived_at",
         "coverage",
     }
+
+
+# Behaviour 9 — a session says which station of the room it stands at.
+
+
+def stations_of(history: list[dict], *sessions) -> list[str]:
+    by_id = {card["session_id"]: card["station"] for card in history}
+    return [by_id[session.id] for session in sessions]
+
+
+async def test_a_session_answers_the_station_of_what_it_holds(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    conversation = await a_conversation(db_session, project)
+    rehearsal = await a_rehearsal(db_session, project)
+    telling_back = await a_telling_back(db_session, project)
+    findings = await a_telling_back_with_an_open_finding(db_session, project)
+    approved = await an_approved_session(db_session, project)
+
+    history = await read_history(client, project.id, headers)
+
+    assert stations_of(history, conversation, rehearsal, telling_back, findings, approved) == [
+        CONVERSATION,
+        REHEARSAL,
+        TELLING_BACK,
+        FINDINGS,
+        APPROVED,
+    ]
+
+
+async def test_the_higher_fact_wins_when_a_session_holds_two(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    turns_and_a_take = await a_rehearsal(db_session, project)
+    a_take_and_a_stretch = await a_telling_back(db_session, project)
+    a_stretch_and_a_finding = await a_telling_back_with_an_open_finding(db_session, project)
+    a_finding_and_a_release = await a_telling_back_with_an_open_finding(db_session, project)
+    await having_been_released(db_session, a_finding_and_a_release)
+
+    history = await read_history(client, project.id, headers)
+
+    assert stations_of(
+        history,
+        turns_and_a_take,
+        a_take_and_a_stretch,
+        a_stretch_and_a_finding,
+        a_finding_and_a_release,
+    ) == [REHEARSAL, TELLING_BACK, FINDINGS, APPROVED]
+
+
+async def test_a_verdict_whose_findings_were_all_cleared_is_telling_back(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    cleared = await a_telling_back_with_every_finding_cleared(db_session, project)
+
+    history = await read_history(client, project.id, headers)
+
+    assert stations_of(history, cleared) == [TELLING_BACK]
+
+
+async def test_a_session_abandoned_after_a_rehearsal_take_keeps_the_rehearsal(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    session = await a_rehearsal(db_session, project)
+    session.updated_at = datetime(2026, 8, 12, 9, 47, tzinfo=UTC)
+    await db_session.commit()
+
+    history = await read_history(client, project.id, headers)
+
+    assert [(card["state"], card["station"]) for card in history] == [("abandoned", REHEARSAL)]
+
+
+async def test_a_session_nobody_entered_answers_no_station(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    await a_session(db_session, project_id=project.id, entered=False)
+    entered = await a_conversation(db_session, project)
+
+    history = await read_history(client, project.id, headers)
+
+    assert [(card["session_id"], card["station"]) for card in history] == [
+        (entered.id, CONVERSATION)
+    ]
+
+
+async def test_the_number_of_statements_does_not_grow_with_the_sessions(
+    client, db_session, test_engine
+):
+    from sqlalchemy import event
+
+    statements: list[str] = []
+
+    @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
+    def _count(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    try:
+        _user, project, headers = await a_facilitator(db_session)
+        await a_conversation(db_session, project)
+        await read_history(client, project.id, headers)
+        statements.clear()
+        await read_history(client, project.id, headers)
+        for_one = len(statements)
+
+        await a_rehearsal(db_session, project)
+        await a_telling_back(db_session, project)
+        await a_telling_back_with_an_open_finding(db_session, project)
+        await an_approved_session(db_session, project)
+        statements.clear()
+        await read_history(client, project.id, headers)
+        for_five = len(statements)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _count)
+
+    assert for_one == for_five
+
+
+# Behaviour 10 — the history of one pericope.
+
+
+async def test_the_history_narrows_to_the_pericope_asked_newest_first(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    day = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+    await a_session(db_session, project_id=project.id, pericope="P01", opened_at=day)
+    older = await a_session(
+        db_session, project_id=project.id, pericope="P02", opened_at=day + timedelta(days=1)
+    )
+    newer = await a_session(
+        db_session, project_id=project.id, pericope="P02", opened_at=day + timedelta(days=2)
+    )
+
+    narrowed = await client.get(
+        sessions_url(project.id), params={"pericope": "P02"}, headers=headers
+    )
+
+    assert [card["session_id"] for card in narrowed.json()] == [newer.id, older.id]
+
+
+async def test_without_the_pericope_the_history_answers_every_one(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    first = await a_session(db_session, project_id=project.id, pericope="P01")
+    second = await a_session(db_session, project_id=project.id, pericope="P02")
+
+    history = await read_history(client, project.id, headers)
+
+    assert {card["session_id"] for card in history} == {first.id, second.id}
+
+
+async def test_an_unknown_pericope_answers_an_empty_history(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    await a_session(db_session, project_id=project.id, pericope="P01")
+
+    narrowed = await client.get(
+        sessions_url(project.id), params={"pericope": "P99"}, headers=headers
+    )
+
+    assert narrowed.status_code == 200
+    assert narrowed.json() == []

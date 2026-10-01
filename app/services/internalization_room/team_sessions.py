@@ -30,9 +30,12 @@ from app.services.internalization_room.coverage import CoverageStatus, is_panora
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.session_end import SessionState, as_utc, end_of
+from app.services.internalization_room.station import Held, held_columns, station_of
 
 
-async def list_team_sessions(db: AsyncSession, project_id: str) -> list[TeamSessionResponse]:
+async def list_team_sessions(
+    db: AsyncSession, project_id: str, *, pericope: str | None = None
+) -> list[TeamSessionResponse]:
     """A team's history: the conversation still going first, then newest to oldest.
 
     Ordering is the server's: RF-06 reads a history from the most recent conversation
@@ -49,10 +52,10 @@ async def list_team_sessions(db: AsyncSession, project_id: str) -> list[TeamSess
     One statement for the rows and one for every portrait on them. A query per card is what
     this service has already had to take back out once.
     """
-    sessions = await _history_of(db, project_id)
-    portraits = await necklaces_of(db, sessions)
+    history = await _history_of(db, project_id, pericope)
+    portraits = await necklaces_of(db, [session for session, _ in history])
     now = datetime.now(UTC)
-    cards = [_card(session, portraits[session.id], at=now) for session in sessions]
+    cards = [_card(session, portraits[session.id], held, at=now) for session, held in history]
     return _still_going_first(cards)
 
 
@@ -77,19 +80,29 @@ def _still_going_first(cards: list[TeamSessionResponse]) -> list[TeamSessionResp
     return sorted(cards, key=lambda card: card.state is not SessionState.IN_PROGRESS)
 
 
-async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
+async def _history_of(
+    db: AsyncSession, project_id: str, pericope: str | None
+) -> Sequence[tuple[IRSession, Held]]:
     """A session nobody entered (ENG-964) is not a room of the team and is not drawn:
     `entered()` excludes it, the one predicate the team's last activity also reads.
     """
-    result = await db.execute(
-        select(IRSession)
+    query = (
+        select(IRSession, *held_columns())
         .where(IRSession.project_id == project_id, entered())
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
-    return result.scalars().all()
+    if pericope is not None:
+        query = query.where(IRSession.pericope == pericope)
+    result = await db.execute(query)
+    return [
+        (session, Held(rehearsed, told, released))
+        for session, rehearsed, told, released in result.all()
+    ]
 
 
-def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> TeamSessionResponse:
+def _card(
+    session: IRSession, portrait: dict[str, str], held: Held, *, at: datetime
+) -> TeamSessionResponse:
     end = end_of(session, at=at)
     return TeamSessionResponse(
         session_id=session.id,
@@ -98,6 +111,7 @@ def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> Team
         ended_at=end.ended_at,
         duration_minutes=end.duration_minutes,
         state=end.state,
+        station=station_of(session, held),
         needs_person=_needs_person(session, state=end.state),
         last_halt=halt.last(session),
         halt=halt.standing(session),

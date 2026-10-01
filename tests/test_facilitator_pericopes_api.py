@@ -20,13 +20,16 @@ is the reason `resolve` answers `None` rather than holding the last passage.
 from __future__ import annotations
 
 import itertools
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.db.models.internalization_room import IRSegment, IRTake
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
@@ -40,6 +43,7 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.station_harness import a_conversation, a_rehearsal, a_telling_back, an_approved_session
 
 TEAM_NOT_FOUND = "Team not found"
 PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
@@ -186,7 +190,22 @@ async def test_the_count_the_desk_draws_is_a_position_and_not_a_measure(client, 
     body = (await client.get(pericopes_url(team.id), headers=headers)).json()
 
     assert sum(1 for entry in body if entry["position"] == "closed") == 2
-    assert all(set(entry) == {"pericope", "reference", "title", "position"} for entry in body)
+    assert all(
+        set(entry)
+        == {
+            "pericope",
+            "reference",
+            "title",
+            "position",
+            "state",
+            "release_version",
+            "station",
+            "session_id",
+            "started_at",
+            "moved_at",
+        }
+        for entry in body
+    )
 
 
 # ------------------------------------------------ who may read it, and the fact that nobody writes
@@ -286,3 +305,71 @@ async def test_a_team_at_the_end_of_the_book_says_so_at_every_door(client, db_se
     assert necklace.status_code == 409
     with pytest.raises(ConflictError):
         await room.create_session(db_session, project_id=team.id)
+
+
+# --------------------------------------------------------------- the rail's state per passage
+
+
+def at(moment: str) -> datetime:
+    return datetime.fromisoformat(moment).astimezone(UTC)
+
+
+def rail(body: list[dict]) -> dict[str, dict]:
+    return {entry["pericope"]: entry for entry in body}
+
+
+async def test_the_rail_is_drawn_closed_in_progress_and_not_started(client, db_session) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="trilho@x.com")
+    await an_approved_session(db_session, team, pericope=FIRST, version=1)
+    visit = await a_telling_back(db_session, team, pericope=SECOND)
+    visit.created_at = datetime(2026, 9, 29, 8, 0, tzinfo=UTC)
+    await db_session.commit()
+
+    body = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+
+    assert (body[FIRST]["state"], body[FIRST]["release_version"]) == ("closed", 1)
+    assert body[SECOND]["state"] == "in_progress"
+    assert body[SECOND]["station"] == "telling_back"
+    assert body[SECOND]["session_id"] == visit.id
+    assert at(body[SECOND]["started_at"]) == visit.created_at.replace(tzinfo=UTC)
+    assert body[THIRD]["state"] == "not_started"
+
+
+async def test_the_current_visit_is_the_latest_session_on_the_passage(client, db_session) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="visita@x.com")
+    earlier = await a_rehearsal(db_session, team, pericope=SECOND)
+    earlier.created_at = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
+    await db_session.commit()
+    later = await a_conversation(db_session, team, pericope=SECOND)
+
+    body = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+
+    assert (body[SECOND]["session_id"], body[SECOND]["station"]) == (later.id, "conversation")
+
+
+async def test_the_visit_says_when_it_last_moved(client, db_session) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="movida@x.com")
+    visit = await a_telling_back(db_session, team, pericope=SECOND)
+    told_at = datetime(2026, 9, 30, 10, 0, tzinfo=UTC)
+    halted_at = datetime(2026, 9, 30, 10, 5, tzinfo=UTC)
+    visit.updated_at = told_at - timedelta(hours=1)
+    for take in (
+        await db_session.execute(select(IRTake).where(IRTake.session_id == visit.id))
+    ).scalars():
+        take.created_at = told_at - timedelta(hours=2)
+    for stretch in (
+        await db_session.execute(select(IRSegment).where(IRSegment.session_id == visit.id))
+    ).scalars():
+        stretch.created_at = told_at
+    await db_session.commit()
+
+    stretch_moved = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+
+    visit.warned_at = halted_at
+    visit.updated_at = told_at - timedelta(hours=3)
+    await db_session.commit()
+    halt_moved = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+
+    assert at(stretch_moved[SECOND]["moved_at"]) == told_at
+    assert at(halt_moved[SECOND]["moved_at"]) == halted_at
+    assert stretch_moved[FIRST]["moved_at"] is None

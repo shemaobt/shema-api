@@ -37,7 +37,12 @@ from app.db.models.internalization_room import (
 from app.services.device.create_device import create_device
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.sessions import apply_coverage, create_session
+from app.services.internalization_room.sessions import (
+    apply_coverage,
+    create_session,
+    mark_needs_person,
+    raise_a_warning,
+)
 from tests.baker import (
     grant_facilitator_app_role,
     having_finished_the_passage,
@@ -47,6 +52,7 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.station_harness import a_conversation, a_rehearsal
 
 TEAMS_URL = "/api/facilitator/teams"
 
@@ -764,3 +770,191 @@ async def test_a_platform_admin_sees_every_team(client, db_session):
 
     assert sorted(named(payload)) == ["Primeira", "Segunda"]
     assert payload["serves_any_team"] is True
+
+
+# Behaviour 9 — the card says which station the team is at on its passage.
+
+
+async def test_the_active_passage_carries_the_station_of_the_latest_session_on_it(
+    client, db_session
+):
+    team = await a_team(db_session, name="Equipe Terena")
+    earlier = await a_conversation(db_session, team, pericope="P01")
+    earlier.created_at = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
+    await db_session.commit()
+    await a_rehearsal(db_session, team, pericope="P01")
+    _user, headers = await a_facilitator(db_session, team)
+
+    answer = (await client.get(TEAMS_URL, headers=headers)).json()
+
+    assert answer["teams"][0]["active_passage"]["station"] == "rehearsal"
+
+
+async def test_the_active_passage_has_no_station_when_the_team_has_no_session_on_it(
+    client, db_session
+):
+    team = await a_team(db_session, name="Equipe Terena")
+    await a_conversation(db_session, team, pericope="P02")
+    _user, headers = await a_facilitator(db_session, team)
+
+    answer = (await client.get(TEAMS_URL, headers=headers)).json()
+
+    assert answer["teams"][0]["active_passage"]["pericope"] == "P01"
+    assert answer["teams"][0]["active_passage"]["station"] is None
+
+
+# Behaviour 10 — the card counts what waits for the facilitator.
+
+
+async def waiting_of(client, headers) -> dict[str, int]:
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+    return {key: card[key] for key in ("blocking_halts", "warnings", "halted_devices")}
+
+
+async def a_halted_tablet(db: AsyncSession, team, *, attended: bool = False):
+    device = await a_device(db, team)
+    device.needs_person_since = datetime.now(UTC)
+    if attended:
+        device.attended_at = datetime.now(UTC)
+        device.needs_person_since = None
+    await db.commit()
+    return device
+
+
+async def test_the_card_counts_the_halted_room_the_warning_and_the_halted_tablet(
+    client, db_session
+):
+    team = await a_team(db_session, name="Equipe Terena")
+    halted = await a_conversation(db_session, team, pericope="P01")
+    await mark_needs_person(db_session, halted)
+    warned = await a_conversation(db_session, team, pericope="P01")
+    await raise_a_warning(db_session, warned)
+    await a_halted_tablet(db_session, team)
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert await waiting_of(client, headers) == {
+        "blocking_halts": 1,
+        "warnings": 1,
+        "halted_devices": 1,
+    }
+
+
+async def test_what_a_facilitator_already_attended_counts_zero(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    warned = await a_conversation(db_session, team, pericope="P01")
+    await raise_a_warning(db_session, warned)
+    warned.attended_at = datetime.now(UTC)
+    await db_session.commit()
+    await a_halted_tablet(db_session, team, attended=True)
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert await waiting_of(client, headers) == {
+        "blocking_halts": 0,
+        "warnings": 0,
+        "halted_devices": 0,
+    }
+
+
+async def test_a_blocking_halt_over_a_warning_counts_as_one_blocking_halt(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    session = await a_conversation(db_session, team, pericope="P01")
+    await raise_a_warning(db_session, session)
+    await mark_needs_person(db_session, session)
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert await waiting_of(client, headers) == {
+        "blocking_halts": 1,
+        "warnings": 0,
+        "halted_devices": 0,
+    }
+
+
+async def test_the_team_at_its_own_address_counts_what_waits_too(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    session = await a_conversation(db_session, team, pericope="P01")
+    await mark_needs_person(db_session, session)
+    await a_halted_tablet(db_session, team)
+    _user, headers = await a_facilitator(db_session, team)
+
+    detail = (await client.get(f"{TEAMS_URL}/{team.id}", headers=headers)).json()
+
+    assert (detail["blocking_halts"], detail["warnings"], detail["halted_devices"]) == (1, 0, 1)
+    assert detail["active_passage"]["station"] == "conversation"
+
+
+async def test_the_statements_do_not_grow_with_the_teams_that_wait_and_stand_at_stations(
+    client, db_session, test_engine
+):
+    statements: list[str] = []
+
+    @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
+    def _count(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    try:
+        small = [await a_team(db_session, name=f"Equipe {n}") for n in range(2)]
+        user, headers = await a_facilitator(db_session, *small)
+        await client.get(TEAMS_URL, headers=headers)
+        statements.clear()
+        assert (await client.get(TEAMS_URL, headers=headers)).status_code == 200
+        for_two = len(statements)
+
+        large = [await a_team(db_session, name=f"Equipe grande {n}") for n in range(12)]
+        for team in large:
+            await make_project_user_access(db_session, team.id, user.id, role="facilitator")
+            halted = await a_rehearsal(db_session, team, pericope="P01")
+            await mark_needs_person(db_session, halted)
+            await raise_a_warning(db_session, await a_conversation(db_session, team))
+            await a_halted_tablet(db_session, team)
+        statements.clear()
+        assert (await client.get(TEAMS_URL, headers=headers)).status_code == 200
+        for_fourteen = len(statements)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _count)
+
+    assert for_two == for_fourteen
+
+
+# Behaviour 11 — the card serves the total and whether a room is stopped.
+
+
+async def total_of(client, headers) -> tuple[int, bool]:
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+    return card["waiting_total"], card["blocking"]
+
+
+async def test_the_card_answers_what_waits_as_one_total_and_whether_a_room_is_stopped(
+    client, db_session
+):
+    team = await a_team(db_session, name="Equipe Terena")
+    await mark_needs_person(db_session, await a_conversation(db_session, team, pericope="P01"))
+    await raise_a_warning(db_session, await a_conversation(db_session, team, pericope="P01"))
+    await a_halted_tablet(db_session, team)
+    await a_raised_hand(db_session, team)
+    await a_raised_hand(db_session, team)
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert await total_of(client, headers) == (5, True)
+
+
+async def test_a_team_with_only_a_warning_is_not_blocking(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    await raise_a_warning(db_session, await a_conversation(db_session, team, pericope="P01"))
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert await total_of(client, headers) == (1, False)
+
+
+async def test_a_halted_tablet_alone_is_blocking(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    await a_halted_tablet(db_session, team)
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert await total_of(client, headers) == (1, True)
+
+
+async def test_a_team_with_nothing_waiting_answers_zero_and_not_blocking(client, db_session):
+    team = await a_team(db_session, name="Equipe Terena")
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert await total_of(client, headers) == (0, False)

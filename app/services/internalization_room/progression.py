@@ -71,15 +71,16 @@ still below the floor. Turning that into someone being *told* is ENG-482 (CS-06)
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
-from app.models.internalization_room import PericopePosition, PericopeStanding
+from app.db.models.internalization_room import IRRelease, IRSession, IRTake, IRTakeKind
+from app.models.internalization_room import PericopePosition, PericopeStanding, PericopeState
 from app.services.internalization_room.canon.book_material import unwalkable
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, MeaningMap, load_book
+from app.services.internalization_room.station import Visit, latest_visits
 
 #: The passages a team has a finished session on. A passage they never opened, and one they
 #: worked without finishing, are both simply absent — there is no third answer to give.
@@ -111,7 +112,7 @@ def resolve(finished: Collection[str], *, book: str = ROOM_BOOK) -> str | None:
     return None
 
 
-def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[PericopeStanding]:
+def positions(finished: Collection[str], *, book: str = ROOM_BOOK) -> dict[str, PericopePosition]:
     """All fourteen with their position already resolved — closed, current, or future.
 
     Resolved here rather than left to be derived from the active passage, because a screen
@@ -127,15 +128,53 @@ def standing(finished: Collection[str], *, book: str = ROOM_BOOK) -> list[Perico
     past work the room is about to hand them again.
     """
     here = resolve(finished, book=book)
+    return {
+        meaning_map.pericope_num: _position(meaning_map.pericope_num, finished, here)
+        for meaning_map in load_book(book)
+    }
+
+
+def standing(
+    finished: Collection[str],
+    released: Mapping[str, int],
+    visits: Mapping[str, Visit],
+    *,
+    book: str = ROOM_BOOK,
+) -> list[PericopeStanding]:
+    placed = positions(finished, book=book)
     return [
-        PericopeStanding(
-            pericope=meaning_map.pericope_num,
-            reference=meaning_map.reference,
-            title=meaning_map.title,
-            position=_position(meaning_map.pericope_num, finished, here),
-        )
+        _standing(meaning_map, placed[meaning_map.pericope_num], released, visits)
         for meaning_map in load_book(book)
     ]
+
+
+def _standing(
+    meaning_map: MeaningMap,
+    position: PericopePosition,
+    released: Mapping[str, int],
+    visits: Mapping[str, Visit],
+) -> PericopeStanding:
+    pericope = meaning_map.pericope_num
+    release_version = released.get(pericope)
+    visit = None if release_version is not None else visits.get(pericope)
+    if release_version is not None:
+        state = PericopeState.CLOSED
+    elif visit is not None:
+        state = PericopeState.IN_PROGRESS
+    else:
+        state = PericopeState.NOT_STARTED
+    return PericopeStanding(
+        pericope=pericope,
+        reference=meaning_map.reference,
+        title=meaning_map.title,
+        position=position,
+        state=state,
+        release_version=release_version,
+        station=visit.station if visit else None,
+        session_id=visit.session_id if visit else None,
+        started_at=visit.started_at if visit else None,
+        moved_at=visit.moved_at if visit else None,
+    )
 
 
 def _position(pericope: str, finished: Collection[str], here: str | None) -> PericopePosition:
@@ -231,4 +270,17 @@ async def team_standing(
 ) -> list[PericopeStanding]:
     """The fourteen as this team stands on them."""
     finished = await finished_passages(db, project_ids=[project_id])
-    return standing(finished.get(project_id, set()), book=book)
+    released = await released_versions(db, project_id)
+    visits = {
+        pericope: visit for (_, pericope), visit in (await latest_visits(db, [project_id])).items()
+    }
+    return standing(finished.get(project_id, set()), released, visits, book=book)
+
+
+async def released_versions(db: AsyncSession, project_id: str) -> dict[str, int]:
+    result = await db.execute(
+        select(IRRelease.pericope, func.max(IRRelease.version))
+        .where(IRRelease.project_id == project_id)
+        .group_by(IRRelease.pericope)
+    )
+    return dict(result.tuples().all())

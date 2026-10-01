@@ -160,6 +160,20 @@ class PericopePosition(StrEnum):
     FUTURE = "future"
 
 
+class Station(StrEnum):
+    CONVERSATION = "conversation"
+    REHEARSAL = "rehearsal"
+    TELLING_BACK = "telling_back"
+    FINDINGS = "findings"
+    APPROVED = "approved"
+
+
+class PericopeState(StrEnum):
+    CLOSED = "closed"
+    IN_PROGRESS = "in_progress"
+    NOT_STARTED = "not_started"
+
+
 class PericopeStanding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -167,6 +181,12 @@ class PericopeStanding(BaseModel):
     reference: str
     title: str
     position: PericopePosition
+    state: PericopeState
+    release_version: int | None = None
+    station: Station | None = None
+    session_id: str | None = None
+    started_at: datetime | None = None
+    moved_at: datetime | None = None
 
 
 class SessionBead(BaseModel):
@@ -226,6 +246,7 @@ class TeamSessionResponse(BaseModel):
     ended_at: datetime | None
     duration_minutes: int | None
     state: SessionState
+    station: Station
     #: A halt is not an end: it travels beside `state`, never inside it (ENG-605).
     needs_person: bool
     #: What kind the last halt on this conversation was, **whether or not it still stands**
@@ -701,9 +722,10 @@ class FacilitatorSessionView(BaseModel):
     travels beside it so the Desk can link the row to that team's screens.
 
     `halt` says whether the room is stopped or is asking for a witness — different walks,
-    written as one word until ENG-609. It is null for the `DONE` half of this queue, which
-    waits on a person for a different reason: a finished passage waiting to be carried into
-    Refine is not a halt.
+    written as one word until ENG-609. It is `blocking` or `warning` while one stands, and
+    null otherwise: the `DONE` half of this queue waits on a person for a different reason,
+    a finished passage waiting to be carried into Refine is not a halt, but a warning that
+    stands on a closed passage still reads `warning` (ENG-1163).
 
     The stamps are here so a facilitator can see a room somebody has already been to. They
     stay null for almost every row, which is the ordinary case.
@@ -715,6 +737,7 @@ class FacilitatorSessionView(BaseModel):
     updated_at: str
     project_id: str
     team_name: str
+    station: Station
     halt: str | None = None
     warned_at: str | None = None
     #: ISO-8601 with an offset, like every other instant this module serves.

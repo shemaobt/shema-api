@@ -52,6 +52,7 @@ from app.services.internalization_room.prepare_opening import (
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sessions import book_of, is_panorama
+from app.services.internalization_room.station import stations_of
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
@@ -515,6 +516,7 @@ async def facilitator_sessions(
     waiting = await room.sessions_waiting_on_a_person(db, user)
     named = await team_names(db, (s.project_id for s in waiting if s.project_id is not None))
     marks = await room.hard_stretches_of(db, [session.id for session in waiting])
+    stations = await stations_of(db, (session.id for session in waiting))
     return FacilitatorSessionsResponse(
         sessions=[
             FacilitatorSessionView(
@@ -524,6 +526,7 @@ async def facilitator_sessions(
                 updated_at=session.updated_at.isoformat() if session.updated_at else "",
                 project_id=team,
                 team_name=named.get(team, ""),
+                station=stations[session.id],
                 halt=halt.standing(session),
                 warned_at=(
                     as_utc(warned).isoformat()

@@ -16,6 +16,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
+from app.models.internalization_room import Station
+
 
 class TeamState(StrEnum):
     """Where a team stands on the passage it is working on.
@@ -55,6 +57,7 @@ class ActivePassageView(BaseModel):
 
     pericope: str
     reference: str
+    station: Station | None = None
 
 
 class FacilitatorTeamView(BaseModel):
@@ -74,6 +77,11 @@ class FacilitatorTeamView(BaseModel):
     active_passage: ActivePassageView | None
     state: TeamState
     open_raised_hands: int
+    blocking_halts: int
+    warnings: int
+    halted_devices: int
+    waiting_total: int
+    blocking: bool
     device_count: int
     last_activity_at: datetime | None
 

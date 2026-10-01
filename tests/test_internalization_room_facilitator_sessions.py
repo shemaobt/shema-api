@@ -25,6 +25,7 @@ from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room import takes as take_service
 from app.services.platform.storage import StoredObject
 from tests.baker import make_app, make_role, make_user, make_user_app_role
+from tests.station_harness import a_conversation, a_rehearsal
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
@@ -320,3 +321,38 @@ async def test_the_facilitator_of_the_team_still_sees_it(
     assert session.id in seen, (
         "quem facilita a equipe deixou de ver a propria sala parada — o filtro aperta demais"
     )
+
+
+async def test_the_queue_answers_the_station_of_each_room(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    team = await _team(db_session)
+    conversation = await a_conversation(db_session, team)
+    rehearsal = await a_rehearsal(db_session, team)
+    for session in (conversation, rehearsal):
+        await session_service.mark_needs_person(db_session, session)
+
+    listed = await client.get(
+        f"{IR}/facilitator/sessions", headers=await _facilitator(db_session, room_app, team=team)
+    )
+
+    stations = {row["session_id"]: row["station"] for row in listed.json()["sessions"]}
+    assert stations == {conversation.id: "conversation", rehearsal.id: "rehearsal"}
+
+
+async def test_a_warning_standing_on_a_closed_passage_reads_warning(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    team = await _team(db_session)
+    closed = await a_rehearsal(db_session, team)
+    closed.status = IRSessionStatus.DONE
+    closed.ended_at = datetime.now(UTC)
+    await db_session.commit()
+    await session_service.raise_a_warning(db_session, closed)
+
+    listed = await client.get(
+        f"{IR}/facilitator/sessions", headers=await _facilitator(db_session, room_app, team=team)
+    )
+
+    row = next(row for row in listed.json()["sessions"] if row["session_id"] == closed.id)
+    assert (row["status"], row["halt"]) == ("done", "warning")
