@@ -19,6 +19,7 @@ import os
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DatabaseError
 
 from app.core.database import AsyncSessionLocal, Base
 from tests.database_naming import the_generated_database_file
@@ -34,6 +35,9 @@ A_THIRD_APP = "a-third-app-committed-outside-the-test-session"
 #: the sweep took it back. Without it the second of the two passes on a clean database when
 #: the order it depends on is gone, which is a gate that fails open.
 _COMMITTED_OUTSIDE: list[str] = []
+
+#: The same hand-off for a table whose trigger refuses a `DELETE`.
+_APPEND_ONLY_COMMITTED: list[str] = []
 
 
 async def _app_keys(session) -> list[str]:
@@ -68,6 +72,41 @@ async def test_the_sweep_takes_back_what_the_production_path_committed(db_sessio
     )
 
     assert await _app_keys(db_session) == SEEDED_KEYS
+
+
+async def test_the_production_path_commits_to_a_table_that_refuses_a_delete(db_session) -> None:
+    """First of two, like the pair above: the next case says the row did not survive."""
+    from app.db.models.shema_org_chart import ShemaRoleChange
+
+    async with AsyncSessionLocal() as session:
+        session.add(ShemaRoleChange(region_key="africa", role="coordinator", to_name="Joana"))
+        await session.commit()
+    _APPEND_ONLY_COMMITTED.append("shema_role_changes")
+
+    rows = await db_session.execute(text("SELECT COUNT(*) FROM shema_role_changes"))
+
+    assert rows.scalar_one() == 1
+
+
+async def test_the_sweep_takes_back_a_row_the_schema_refuses_to_delete(db_session) -> None:
+    assert _APPEND_ONLY_COMMITTED == ["shema_role_changes"], (
+        "the case that commits to the append-only table did not run before this one"
+    )
+
+    rows = await db_session.execute(text("SELECT COUNT(*) FROM shema_role_changes"))
+
+    assert rows.scalar_one() == 0
+
+
+async def test_the_sweep_leaves_the_append_only_guard_in_place(db_session) -> None:
+    from app.db.models.shema_org_chart import ShemaRoleChange
+
+    db_session.add(ShemaRoleChange(region_key="africa", role="coordinator", to_name="Joana"))
+    await db_session.commit()
+
+    with pytest.raises(DatabaseError):
+        await db_session.execute(text("DELETE FROM shema_role_changes"))
+        await db_session.commit()
 
 
 async def test_a_module_running_alone_still_has_every_table(db_session) -> None:

@@ -6,15 +6,16 @@ meant two runs in one checkout shared a database; one name for the whole of an x
 would mean four workers sharing one.
 
 **The schema is created once per process**, not once per test, and what gives a test a clean
-database instead is a sweep: every row of every table deleted in one transaction, then the
-two seeded `App` rows written again. Why it is not a rollback, and what it was measured
-against, is [ADR 0031](../docs/adr/0031-one-lint-check-and-a-schema-once-per-worker.md).
+database instead is a sweep: one query names the tables that hold a row, those are emptied in
+one transaction, then the two seeded `App` rows are written again. Why it is not a rollback,
+and what it was measured against, is
+[ADR 0031](../docs/adr/0031-one-lint-check-and-a-schema-once-per-worker.md).
 
 Seven tables here are append-only, guarded by a SQLite trigger that aborts any `DELETE` on
-them, and cases hold that guard by asserting it raises. Dropping the whole schema stepped
-over them; a sweep cannot, so it takes the guards off and puts them back inside its own
-transaction, reading their definitions from `sqlite_master` rather than from a list here
-that would go stale the first time an eighth table joins them.
+them, and cases hold that guard by asserting it raises. Dropping the whole schema stepped over
+them; a sweep cannot, so it takes the guards of the tables it empties off and puts them back
+inside its own transaction, reading their definitions from `sqlite_master` rather than from a
+list here that would go stale the first time an eighth table joins them.
 
 `app.db.models` is imported here on purpose. `Base.metadata` is populated by importing the
 models, and a schema created once, at the start of a process, must not depend on which of
@@ -42,6 +43,11 @@ from app.core.database import Base
 
 #: The one the app is already pointed at, so the fixtures and the routes share a database.
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
+
+_TABLES_WITH_ROWS = " UNION ALL ".join(
+    f"SELECT '{table.name}' WHERE EXISTS (SELECT 1 FROM \"{table.name}\")"
+    for table in Base.metadata.sorted_tables
+)
 
 
 @pytest.fixture(scope="session")
@@ -95,20 +101,22 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     async with test_engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
 
+        written = set((await conn.exec_driver_sql(_TABLES_WITH_ROWS)).scalars())
         guards = [
             (name, sql)
-            for name, sql in (
+            for name, table, sql in (
                 await conn.exec_driver_sql(
-                    "SELECT name, sql FROM sqlite_master WHERE type = 'trigger'"
+                    "SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'trigger'"
                 )
             ).all()
-            if " DELETE ON " in sql
+            if " DELETE ON " in sql and table in written
         ]
         for name, _ in guards:
             await conn.exec_driver_sql(f'DROP TRIGGER "{name}"')
 
         for table in reversed(Base.metadata.sorted_tables):
-            await conn.execute(delete(table))
+            if table.name in written:
+                await conn.execute(delete(table))
 
         for _, sql in guards:
             await conn.exec_driver_sql(sql)

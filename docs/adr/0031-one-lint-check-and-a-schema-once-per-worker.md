@@ -83,3 +83,9 @@ app's `get_db` override at its own session. The Shemá probes are still mounted 
 routers for the build and taken off again before the first test runs, so the application a
 case builds with `create_app()` never carries them. Measured locally with the CI command:
 setup from 400 s to 250 s across 4768 tests, the run from 153 s to 113 s.
+
+**The sweep empties only what was written.** At 114 tables the sweep cost 31 ms a test, one
+round trip per `DELETE` plus the guards' drop and rewrite, though a test writes to a handful
+of tables. One query now names the tables that hold a row, in 2 ms on an empty database, and
+the sweep deletes from those alone, taking off only their guards. Measured locally with the
+CI command: setup from 241 s to 104 s across 4760 tests, the run from 122 s to 77 s.
