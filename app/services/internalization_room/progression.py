@@ -113,20 +113,6 @@ def resolve(finished: Collection[str], *, book: str = ROOM_BOOK) -> str | None:
 
 
 def positions(finished: Collection[str], *, book: str = ROOM_BOOK) -> dict[str, PericopePosition]:
-    """All fourteen with their position already resolved — closed, current, or future.
-
-    Resolved here rather than left to be derived from the active passage, because a screen
-    working it out from `active_passage` and a state would be a second place deciding where a
-    team stands, and the two would disagree on exactly the cases that matter.
-
-    `closed` and `current` are different facts and are not collapsed: `closed` is a session
-    the team finished on the passage, `current` is where the team is. A team on P02 with P03
-    already finished has both, and there is still exactly one `current`.
-
-    Closed reads the same fact the resolution reads, and it has to: a passage the resolution
-    still offers and this panel calls closed is one screen telling a facilitator the team is
-    past work the room is about to hand them again.
-    """
     here = resolve(finished, book=book)
     return {
         meaning_map.pericope_num: _position(meaning_map.pericope_num, finished, here)
@@ -141,6 +127,26 @@ def standing(
     *,
     book: str = ROOM_BOOK,
 ) -> list[PericopeStanding]:
+    """All fourteen with their position and their state on the rail already resolved.
+
+    Resolved here rather than left to be derived from the active passage, because a screen
+    working it out from `active_passage` and a state would be a second place deciding where a
+    team stands, and the two would disagree on exactly the cases that matter.
+
+    `closed` and `current` are different facts and are not collapsed: `closed` is a session
+    the team finished on the passage, `current` is where the team is. A team on P02 with P03
+    already finished has both, and there is still exactly one `current`.
+
+    Closed reads the same fact the resolution reads, and it has to: a passage the resolution
+    still offers and this panel calls closed is one screen telling a facilitator the team is
+    past work the room is about to hand them again.
+
+    **The state is the rail's own word and is read from the latest visit**: a pericope whose
+    latest visit holds a release is `closed`, carrying the highest version the team released
+    on it; one whose latest visit does not is `in_progress` at that visit's station, even if an
+    earlier visit was released, because the team named the passage again; one with no visit
+    and no release is `not_started`. `position` is untouched and keeps its own meaning.
+    """
     placed = positions(finished, book=book)
     return [
         _standing(meaning_map, placed[meaning_map.pericope_num], released, visits)
@@ -155,14 +161,16 @@ def _standing(
     visits: Mapping[str, Visit],
 ) -> PericopeStanding:
     pericope = meaning_map.pericope_num
-    release_version = released.get(pericope)
-    visit = None if release_version is not None else visits.get(pericope)
-    if release_version is not None:
+    visit = visits.get(pericope)
+    closed = visit.released if visit is not None else pericope in released
+    release_version = released.get(pericope) if closed else None
+    if closed:
         state = PericopeState.CLOSED
     elif visit is not None:
         state = PericopeState.IN_PROGRESS
     else:
         state = PericopeState.NOT_STARTED
+    visit = None if closed else visit
     return PericopeStanding(
         pericope=pericope,
         reference=meaning_map.reference,

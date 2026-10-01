@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.db.models.internalization_room import IRSegment, IRTake
+from app.db.models.internalization_room import IRSegment, IRTake, IRTurn
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
@@ -333,6 +333,8 @@ async def test_the_rail_is_drawn_closed_in_progress_and_not_started(client, db_s
     assert body[SECOND]["session_id"] == visit.id
     assert at(body[SECOND]["started_at"]) == visit.created_at.replace(tzinfo=UTC)
     assert body[THIRD]["state"] == "not_started"
+    assert body[THIRD]["moved_at"] is None
+    assert body[FIRST]["moved_at"] is None
 
 
 async def test_the_current_visit_is_the_latest_session_on_the_passage(client, db_session) -> None:
@@ -347,29 +349,106 @@ async def test_the_current_visit_is_the_latest_session_on_the_passage(client, db
     assert (body[SECOND]["session_id"], body[SECOND]["station"]) == (later.id, "conversation")
 
 
-async def test_the_visit_says_when_it_last_moved(client, db_session) -> None:
-    _user, team, headers = await a_facilitator(db_session, email="movida@x.com")
-    visit = await a_telling_back(db_session, team, pericope=SECOND)
-    told_at = datetime(2026, 9, 30, 10, 0, tzinfo=UTC)
-    halted_at = datetime(2026, 9, 30, 10, 5, tzinfo=UTC)
-    visit.updated_at = told_at - timedelta(hours=1)
-    for take in (
-        await db_session.execute(select(IRTake).where(IRTake.session_id == visit.id))
-    ).scalars():
-        take.created_at = told_at - timedelta(hours=2)
+T = datetime(2026, 9, 30, 10, 0, tzinfo=UTC)
+
+
+async def an_idle_visit(db: AsyncSession, team):
+    visit = await a_telling_back(db, team, pericope=SECOND)
+    visit.created_at = T - timedelta(days=1)
+    visit.updated_at = T - timedelta(hours=3)
+    for take in (await db.execute(select(IRTake).where(IRTake.session_id == visit.id))).scalars():
+        take.created_at = T - timedelta(hours=2)
     for stretch in (
-        await db_session.execute(select(IRSegment).where(IRSegment.session_id == visit.id))
+        await db.execute(select(IRSegment).where(IRSegment.session_id == visit.id))
     ).scalars():
-        stretch.created_at = told_at
+        stretch.created_at = T
+    await db.commit()
+    return visit
+
+
+async def moved_at_of(client, team, headers) -> datetime:
+    body = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+    return at(body[SECOND]["moved_at"])
+
+
+async def test_the_visit_moved_when_its_latest_stretch_was_told(client, db_session) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="trecho@x.com")
+    await an_idle_visit(db_session, team)
+
+    assert await moved_at_of(client, team, headers) == T
+
+
+async def test_a_warning_moves_the_visit(client, db_session) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="aviso@x.com")
+    visit = await an_idle_visit(db_session, team)
+    visit.warned_at = T + timedelta(minutes=5)
+    visit.updated_at = T - timedelta(hours=4)
     await db_session.commit()
 
-    stretch_moved = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+    assert await moved_at_of(client, team, headers) == T + timedelta(minutes=5)
 
-    visit.warned_at = halted_at
-    visit.updated_at = told_at - timedelta(hours=3)
+
+async def test_a_blocking_halt_moves_the_visit(client, db_session) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="parada@x.com")
+    visit = await an_idle_visit(db_session, team)
+    await room.mark_needs_person(db_session, visit)
+    visit.updated_at = T + timedelta(minutes=7)
     await db_session.commit()
-    halt_moved = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
 
-    assert at(stretch_moved[SECOND]["moved_at"]) == told_at
-    assert at(halt_moved[SECOND]["moved_at"]) == halted_at
-    assert stretch_moved[FIRST]["moved_at"] is None
+    assert await moved_at_of(client, team, headers) == T + timedelta(minutes=7)
+
+
+async def test_a_turn_moves_the_visit(client, db_session) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="turno@x.com")
+    visit = await an_idle_visit(db_session, team)
+    db_session.add(
+        IRTurn(
+            session_id=visit.id,
+            turn_id="t1",
+            response={},
+            created_at=T + timedelta(minutes=9),
+        )
+    )
+    await db_session.commit()
+
+    assert await moved_at_of(client, team, headers) == T + timedelta(minutes=9)
+
+
+async def test_a_visit_the_facilitator_attends_and_unattends_does_not_move(
+    client, db_session
+) -> None:
+    user, team, headers = await a_facilitator(db_session, email="visita-fac@x.com")
+    visit = await an_idle_visit(db_session, team)
+    await room.attend(db_session, visit, by=user.id)
+    await room.unattend(db_session, visit)
+
+    assert await moved_at_of(client, team, headers) == T
+
+
+async def test_the_latest_visit_decides_when_a_released_passage_is_named_again(
+    client, db_session
+) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="nomeada@x.com")
+    released = await an_approved_session(db_session, team, pericope=SECOND, version=1)
+    released.created_at = T - timedelta(days=2)
+    await db_session.commit()
+    again = await a_telling_back(db_session, team, pericope=SECOND)
+
+    body = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+
+    assert (body[SECOND]["state"], body[SECOND]["session_id"]) == ("in_progress", again.id)
+    assert body[SECOND]["release_version"] is None
+
+
+async def test_a_released_latest_visit_closes_the_passage_at_the_highest_version(
+    client, db_session
+) -> None:
+    _user, team, headers = await a_facilitator(db_session, email="versao@x.com")
+    first = await an_approved_session(db_session, team, pericope=FIRST, version=1)
+    first.created_at = T - timedelta(days=2)
+    await db_session.commit()
+    await an_approved_session(db_session, team, pericope=FIRST, version=2)
+
+    body = rail((await client.get(pericopes_url(team.id), headers=headers)).json())
+
+    assert (body[FIRST]["state"], body[FIRST]["release_version"]) == ("closed", 2)

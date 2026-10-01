@@ -45,6 +45,7 @@ from app.models.team import (
     TeamFilter,
     TeamListingResponse,
 )
+from app.services.device.needs_person import a_tablet_waits
 from app.services.internalization_room import halt
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
@@ -117,11 +118,7 @@ def _halts_subquery(scope: Select | None) -> Subquery:
 def _halted_devices_subquery(scope: Select | None) -> Subquery:
     return (
         select(Device.project_id.label("project_id"), func.count().label("halted_devices"))
-        .where(
-            Device.needs_person_since.is_not(None),
-            Device.unlinked_at.is_(None),
-            _within(Device.project_id, scope),
-        )
+        .where(a_tablet_waits(), _within(Device.project_id, scope))
         .group_by(Device.project_id)
         .subquery()
     )
@@ -162,16 +159,22 @@ def team_cards(scope: Select | None) -> Select:
     devices = _device_count_subquery(scope)
     halts = _halts_subquery(scope)
     halted = _halted_devices_subquery(scope)
+    open_hands = func.coalesce(hands.c.open_hands, 0)
+    blocking_halts = func.coalesce(halts.c.blocking_halts, 0)
+    warnings = func.coalesce(halts.c.warnings, 0)
+    halted_devices = func.coalesce(halted.c.halted_devices, 0)
 
     query = (
         select(
             Project.id,
             Project.name,
             Language.name.label("mother_tongue"),
-            func.coalesce(hands.c.open_hands, 0).label("open_hands"),
-            func.coalesce(halts.c.blocking_halts, 0).label("blocking_halts"),
-            func.coalesce(halts.c.warnings, 0).label("warnings"),
-            func.coalesce(halted.c.halted_devices, 0).label("halted_devices"),
+            open_hands.label("open_hands"),
+            blocking_halts.label("blocking_halts"),
+            warnings.label("warnings"),
+            halted_devices.label("halted_devices"),
+            (open_hands + blocking_halts + warnings + halted_devices).label("waiting_total"),
+            (blocking_halts + halted_devices > 0).label("blocking"),
             func.coalesce(devices.c.device_count, 0).label("device_count"),
             activity.c.last_activity_at,
         )
@@ -222,7 +225,7 @@ async def list_facilitator_teams(
             team_id=row.id,
             name=row.name,
             mother_tongue=row.mother_tongue,
-            active_passage=_passage(here[row.id], visit_in(visits, row.id, here[row.id])),
+            active_passage=passage_view(here[row.id], visit_in(visits, row.id, here[row.id])),
             state=team_state(
                 book_closed=here[row.id] is None,
                 last_activity_at=row.last_activity_at,
@@ -232,8 +235,8 @@ async def list_facilitator_teams(
             blocking_halts=row.blocking_halts,
             warnings=row.warnings,
             halted_devices=row.halted_devices,
-            waiting_total=row.open_hands + row.blocking_halts + row.warnings + row.halted_devices,
-            blocking=row.blocking_halts + row.halted_devices > 0,
+            waiting_total=row.waiting_total,
+            blocking=bool(row.blocking),
             device_count=row.device_count,
             last_activity_at=row.last_activity_at,
         )
@@ -247,7 +250,7 @@ async def list_facilitator_teams(
     )
 
 
-def _passage(pericope: str | None, visit: Visit | None = None) -> ActivePassageView | None:
+def passage_view(pericope: str | None, visit: Visit | None) -> ActivePassageView | None:
     """The passage by both its names, or nothing at all at the end of the book.
 
     `None` is the answer for a team that has closed every passage, and it is a position rather

@@ -25,7 +25,11 @@ from app.services.internalization_room.canon.parse_map import ROOM_BOOK
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.progression import finished_passages, positions, resolve
 from app.services.internalization_room.station import latest_visits, visit_in
-from app.services.project.list_facilitator_teams import _facilitated_projects, _passage, team_cards
+from app.services.project.list_facilitator_teams import (
+    _facilitated_projects,
+    passage_view,
+    team_cards,
+)
 from app.services.project.team_state import team_state
 
 
@@ -65,7 +69,7 @@ async def read_facilitator_team(
         team_id=row.id,
         name=row.name,
         mother_tongue=row.mother_tongue,
-        active_passage=_passage(here, visit_in(visits, team_id, here)),
+        active_passage=passage_view(here, visit_in(visits, team_id, here)),
         state=team_state(
             book_closed=here is None,
             last_activity_at=row.last_activity_at,
@@ -75,8 +79,8 @@ async def read_facilitator_team(
         blocking_halts=row.blocking_halts,
         warnings=row.warnings,
         halted_devices=row.halted_devices,
-        waiting_total=row.open_hands + row.blocking_halts + row.warnings + row.halted_devices,
-        blocking=row.blocking_halts + row.halted_devices > 0,
+        waiting_total=row.waiting_total,
+        blocking=bool(row.blocking),
         device_count=row.device_count,
         last_activity_at=row.last_activity_at,
         closed_total=closed,

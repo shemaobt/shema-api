@@ -111,7 +111,7 @@ def _card(
         ended_at=end.ended_at,
         duration_minutes=end.duration_minutes,
         state=end.state,
-        station=station_of(session, held),
+        station=station_of(session.back_translation, held),
         needs_person=_needs_person(session, state=end.state),
         last_halt=halt.last(session),
         halt=halt.standing(session),

@@ -33,6 +33,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
@@ -770,8 +771,6 @@ async def test_a_session_nobody_entered_answers_no_station(client, db_session):
 async def test_the_number_of_statements_does_not_grow_with_the_sessions(
     client, db_session, test_engine
 ):
-    from sqlalchemy import event
-
     statements: list[str] = []
 
     @event.listens_for(test_engine.sync_engine, "before_cursor_execute")

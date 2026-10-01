@@ -34,11 +34,13 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
+from app.services.device.attended import attend_device
 from app.services.device.create_device import create_device
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import (
     apply_coverage,
+    attend,
     create_session,
     mark_needs_person,
     raise_a_warning,
@@ -743,6 +745,9 @@ async def test_the_number_of_statements_does_not_grow_with_the_teams(
             await a_session(db_session, team)
             await a_raised_hand(db_session, team)
             await a_device(db_session, team)
+            await mark_needs_person(db_session, await a_rehearsal(db_session, team))
+            await raise_a_warning(db_session, await a_conversation(db_session, team))
+            await a_halted_tablet(db_session, team)
         statements.clear()
         assert (await client.get(TEAMS_URL, headers=headers)).status_code == 200
         for_fourteen = len(statements)
@@ -811,12 +816,9 @@ async def waiting_of(client, headers) -> dict[str, int]:
     return {key: card[key] for key in ("blocking_halts", "warnings", "halted_devices")}
 
 
-async def a_halted_tablet(db: AsyncSession, team, *, attended: bool = False):
+async def a_halted_tablet(db: AsyncSession, team):
     device = await a_device(db, team)
     device.needs_person_since = datetime.now(UTC)
-    if attended:
-        device.attended_at = datetime.now(UTC)
-        device.needs_person_since = None
     await db.commit()
     return device
 
@@ -841,12 +843,12 @@ async def test_the_card_counts_the_halted_room_the_warning_and_the_halted_tablet
 
 async def test_what_a_facilitator_already_attended_counts_zero(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
+    user, headers = await a_facilitator(db_session, team)
     warned = await a_conversation(db_session, team, pericope="P01")
     await raise_a_warning(db_session, warned)
-    warned.attended_at = datetime.now(UTC)
-    await db_session.commit()
-    await a_halted_tablet(db_session, team, attended=True)
-    _user, headers = await a_facilitator(db_session, team)
+    await attend(db_session, warned, by=user.id)
+    tablet = await a_halted_tablet(db_session, team)
+    await attend_device(db_session, user=user, device_id=tablet.id)
 
     assert await waiting_of(client, headers) == {
         "blocking_halts": 0,
@@ -874,45 +876,25 @@ async def test_the_team_at_its_own_address_counts_what_waits_too(client, db_sess
     session = await a_conversation(db_session, team, pericope="P01")
     await mark_needs_person(db_session, session)
     await a_halted_tablet(db_session, team)
+    await a_raised_hand(db_session, team)
     _user, headers = await a_facilitator(db_session, team)
 
     detail = (await client.get(f"{TEAMS_URL}/{team.id}", headers=headers)).json()
 
     assert (detail["blocking_halts"], detail["warnings"], detail["halted_devices"]) == (1, 0, 1)
-    assert detail["active_passage"]["station"] == "conversation"
+    assert (detail["waiting_total"], detail["blocking"]) == (3, True)
 
 
-async def test_the_statements_do_not_grow_with_the_teams_that_wait_and_stand_at_stations(
-    client, db_session, test_engine
+async def test_the_team_at_its_own_address_carries_the_station_of_its_active_passage(
+    client, db_session
 ):
-    statements: list[str] = []
+    team = await a_team(db_session, name="Equipe Terena")
+    await a_rehearsal(db_session, team, pericope="P01")
+    _user, headers = await a_facilitator(db_session, team)
 
-    @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
-    def _count(conn, cursor, statement, parameters, context, executemany):
-        statements.append(statement)
+    detail = (await client.get(f"{TEAMS_URL}/{team.id}", headers=headers)).json()
 
-    try:
-        small = [await a_team(db_session, name=f"Equipe {n}") for n in range(2)]
-        user, headers = await a_facilitator(db_session, *small)
-        await client.get(TEAMS_URL, headers=headers)
-        statements.clear()
-        assert (await client.get(TEAMS_URL, headers=headers)).status_code == 200
-        for_two = len(statements)
-
-        large = [await a_team(db_session, name=f"Equipe grande {n}") for n in range(12)]
-        for team in large:
-            await make_project_user_access(db_session, team.id, user.id, role="facilitator")
-            halted = await a_rehearsal(db_session, team, pericope="P01")
-            await mark_needs_person(db_session, halted)
-            await raise_a_warning(db_session, await a_conversation(db_session, team))
-            await a_halted_tablet(db_session, team)
-        statements.clear()
-        assert (await client.get(TEAMS_URL, headers=headers)).status_code == 200
-        for_fourteen = len(statements)
-    finally:
-        event.remove(test_engine.sync_engine, "before_cursor_execute", _count)
-
-    assert for_two == for_fourteen
+    assert detail["active_passage"]["station"] == "rehearsal"
 
 
 # Behaviour 11 — the card serves the total and whether a room is stopped.
