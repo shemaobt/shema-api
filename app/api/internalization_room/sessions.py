@@ -527,7 +527,7 @@ async def facilitator_sessions(
                 halt=halt.standing(session),
                 warned_at=(
                     as_utc(warned).isoformat()
-                    if (warned := halt.warned_at(session)) is not None
+                    if (warned := halt.standing_warning_since(session)) is not None
                     else None
                 ),
                 attended_at=(
