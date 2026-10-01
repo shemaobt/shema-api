@@ -116,6 +116,28 @@ async def test_update_project_location_partial(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_project_location_writes_none_as_a_clear(db_session) -> None:
+    """``None`` handed to the service is a value to store, not a field to skip."""
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(
+        db_session,
+        language_id=lang.id,
+        name="Cleared",
+        latitude=-23.0,
+        longitude=-46.0,
+        location_display_name="Somewhere",
+    )
+    updated = await project_service.update_project_location(
+        db_session, project.id, latitude=None, longitude=None, location_display_name=None
+    )
+    assert (updated.latitude, updated.longitude, updated.location_display_name) == (
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_project_location_raises_when_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Project .* not found"):
         await project_service.update_project_location(

@@ -89,10 +89,6 @@ async def update_project_location(
 ) -> ProjectResponse:
     await assert_project_access(db, user, project_id)
     project = await project_service.update_project_location(
-        db,
-        project_id,
-        latitude=payload.latitude,
-        longitude=payload.longitude,
-        location_display_name=payload.location_display_name,
+        db, project_id, **payload.model_dump(exclude_unset=True)
     )
     return await project_service.serialize_project(db, project)

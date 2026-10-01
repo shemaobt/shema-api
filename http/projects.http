@@ -61,6 +61,17 @@ Authorization: Bearer {{accessToken}}
   "location_display_name": "São Paulo, Brazil"
 }
 
+### Clear project location (a field sent as null is cleared; a field left out is kept)
+PATCH {{baseUrl}}/api/projects/PROJECT_ID/location
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "latitude": null,
+  "longitude": null,
+  "location_display_name": null
+}
+
 ### Grant user access to project
 POST {{baseUrl}}/api/projects/PROJECT_ID/access/users
 Content-Type: application/json
