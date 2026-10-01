@@ -17,7 +17,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
-from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.takes import (
     current_parts,
@@ -131,9 +131,7 @@ async def add_chunk(
         replaces=retold,
         state=state,
     )
-    nudge(session.project_id, "stretches")
-    if warned:
-        nudge(session.project_id, "halts")
+    nudge_stretches(session.project_id, warned=warned)
     background.add_task(read_ahead, session_id=session.id)
     return BackTranslationChunkResponse(
         session_id=session.id,

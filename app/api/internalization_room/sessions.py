@@ -18,7 +18,6 @@ from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
-from app.core.room_enums import HaltKind
 from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
@@ -44,7 +43,7 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.live_turn import current_scene_id
-from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.nudge_channel import nudge, nudge_after_a_turn
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
@@ -431,7 +430,6 @@ async def create_session(
         language=payload.language,
         chosen=payload.chosen,
     )
-    nudge(session.project_id, "sessions")
     if caller is not None:
         await clear_needs_person(db, caller.id)
         nudge(session.project_id, "halts")
@@ -442,6 +440,7 @@ async def create_session(
         db, project_id=project_id, book=book_of(session.pericope)
     ):
         background.add_task(prepare_opening, session.id)
+    nudge(session.project_id, "sessions")
     return await _state(db, session)
 
 
@@ -723,19 +722,9 @@ async def take_turn(
             reply = await answer_once(session_id, turn_id, project_id, answer)
         else:
             reply = await answer(db)
-        with stage("db_read"):
-            await _nudge_after_the_turn(db, session_id)
+    background.add_task(nudge_after_a_turn, session_id=session_id)
     response.headers["Server-Timing"] = clock.server_timing()
     return reply
-
-
-async def _nudge_after_the_turn(db: AsyncSession, session_id: str) -> None:
-    session = await db.get(IRSession, session_id, populate_existing=True)
-    if session is None:
-        return
-    nudge(session.project_id, "sessions")
-    if halt.last(session) is HaltKind.BLOCKING and halt.standing(session) is None:
-        nudge(session.project_id, "halts")
 
 
 async def _answer_the_turn(

@@ -189,10 +189,13 @@ async def raise_a_hand(client: httpx.AsyncClient, team: Team, session_id: str) -
     return str(raised.json()["question_id"])
 
 
-async def the_team_speaks(client: httpx.AsyncClient, team: Team, session_id: str) -> None:
+async def the_team_speaks(
+    client: httpx.AsyncClient, team: Team, session_id: str, *, turn_id: str | None = None
+) -> None:
     answered = await client.post(
         f"{IR}/sessions/{session_id}/turns",
         headers=team.tablet,
+        data={"turn_id": turn_id} if turn_id else None,
         files={"file": ("resposta.m4a", b"a equipe respondeu", "audio/mp4")},
     )
     assert answered.status_code == 200, answered.text
@@ -353,13 +356,18 @@ async def test_a_nudge_reaches_only_its_own_team(
         assert await nudges_heard(theirs) == [], "a Mesa de outra equipe ouviu esta sala"
 
 
+@pytest.mark.parametrize("turn_id", [None, "turno-1"], ids=["without-turn-id", "with-turn-id"])
 async def test_a_turn_nudges_sessions(
-    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+    desk_app: FastAPI,
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    team: Team,
+    turn_id: str | None,
 ) -> None:
     session_id = await a_session(db_session, team)
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
-        await the_team_speaks(client, team, session_id)
+        await the_team_speaks(client, team, session_id, turn_id=turn_id)
 
         assert await nudges_heard(desk) == ["sessions"]
 
