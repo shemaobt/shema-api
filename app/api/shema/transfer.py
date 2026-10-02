@@ -37,13 +37,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
-from app.api.shema._deps import CurrentUser, Db, Reading, Scope
-from app.api.shema.projects import (
-    LOCAL_DAY_HEADER,
-    PER_READER_CACHE_CONTROL,
-    _conflict,
-    _local_day,
-)
+from app.api.shema._deps import PER_READER_CACHE_CONTROL, CurrentUser, Db, Reading, Scope
+from app.api.shema.projects import LOCAL_DAY_HEADER, _conflict, _local_day
 from app.core.exceptions import ERROR_CODE_BAD_REQUEST
 from app.models.shema_prayer import PulseLanguage
 from app.models.shema_transfer import ExportFormat, ImportResult
@@ -86,7 +81,7 @@ async def download_projects_export(
     ``format`` is required: a file in a format nobody chose is a file nobody asked for. ``lang``
     is the header's and the column names' language; the cells are data in either. No cache may
     keep the answer — it is one caller's scope, headed for that caller — so it carries the
-    collection's own :data:`~app.api.shema.projects.PER_READER_CACHE_CONTROL`.
+    module's :data:`~app.api.shema._deps.PER_READER_CACHE_CONTROL`.
     """
     exported = await export_projects(
         db,
