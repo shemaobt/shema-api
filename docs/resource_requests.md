@@ -985,8 +985,8 @@ What PR C built, and where it met the contract:
   with the link and the lock is the link's: `refuse_a_second_open` reads the link when there is no
   project, and a second open instance of the link is 409.
 - **The board reopens what it sent back to *Revisar*** (FE-47, OBT-515, 1/out/2026). Karina, via
-  Daniel: when the Gestor needs to change a request the mesa already evaluated, *"o Gestor abre
-  uma revisão em nome da equipe"*. `open_revision` therefore opens for a **board member** whenever
+  Daniel: when the Gestor needs to change a request the mesa already evaluated, *"Gestor abre
+  revisão em nome da equipe"*. `open_revision` therefore opens for a **board member** whenever
   the card **is** in *Revisar*, whatever the evaluation said — the Gestor moves the card there
   first, which gives an approval's money back by the board's golden rule — and only on that path
   the pen goes to whoever opened it (`started_by` = the opener, `started_by_link_id` cleared), so
