@@ -406,11 +406,7 @@ async def test_the_health_audience_writes_the_pastoral_follow_up(
 def test_every_health_field_on_a_console_shape_is_withheld(shape) -> None:
     """A health field added to one of the shapes that carry a project is red here until the
     reduction names it — the list and the shapes cannot drift apart."""
-    named = {
-        name
-        for name in shape.model_fields
-        if ("health" in name or "pastoral" in name) and name != "derived"
-    }
+    named = {name for name in shape.model_fields if "health" in name or "pastoral" in name}
 
     assert named
     assert named <= set(UNREAD_HEALTH), sorted(named - set(UNREAD_HEALTH))
