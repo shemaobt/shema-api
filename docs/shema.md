@@ -297,8 +297,8 @@ bucket, which is the precedent, not a trespass).
 
 | Path | Owner | Holds |
 |---|---|---|
-| `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4). The app key is named here and nowhere else in the module. |
+| `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. Since OBT-555 the outer `router` carries `NO_STORE`, so every route the module mounts answers `Cache-Control: private, no-store` (§3.3's *Caching* row). |
+| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4), and — OBT-555 — the cache rule (`PER_READER_CACHE_CONTROL` and the `NO_STORE` dependency that writes it). The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
@@ -413,6 +413,7 @@ nothing in column 3 imports `fastapi`.
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
 | **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the first deliberate hole, and it is a router-level fact. The intercessor's exit link (OBT-531) is the second, of the same shape. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
+| **Caching** | Declared once: the outer `router` in `__init__.py` carries `NO_STORE` (`_deps.py`), so every answer the module builds says `Cache-Control: private, no-store` — every read is built for its reader, and the link routes answer whoever holds the link (OBT-555). A `GET` whose handler returns a `Response` of its own (the export, the Pulse, the exit link's 204) writes `PER_READER_CACHE_CONTROL` itself, because FastAPI does not merge the injected response's headers into it; `tests/test_shema/test_cache_control.py` calls every `GET` and reads the header off the wire. Not reached: the error envelopes of `app/core/exceptions.py`, shared by every app and not a reader's record, and the four answers a write builds itself — the record's 409 (on the `PATCH` and on the import), the import's 400, and the `POST`s of the intake (202) and of the exit link (204), the last two with no `Authorization` — which no cache stores, since none carries explicit freshness. | Nothing. |
 
 ---
 
@@ -1167,7 +1168,9 @@ reach the caller's reader — the only ones that may build a payload carrying th
 new route that took `Reading` (an export, say) is red there until somebody lists it and argues
 it. The collection's and the record's answers carry `Cache-Control: private, no-store`
 (`PER_READER_CACHE_CONTROL`): one URL — and one version of one record — now reads two ways, and
-no cache may hand one reader's body to another.
+no cache may hand one reader's body to another. Since OBT-555 that is every answer the module
+builds, not these two: the outer router carries the rule (§3.3's *Caching* row), and
+`tests/test_shema/test_cache_control.py` calls every `GET` to see it on the wire.
 
 **Two coordinations, deliberately.** `ShemaReader.COORDINATION` is GATE-04's membership — who
 reads a sensitive place. `ShemaAudience.COORDENACAO` is FE-44's destination — every role that
