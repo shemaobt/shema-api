@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from types import SimpleNamespace
 from typing import Any
 
@@ -818,3 +819,41 @@ async def test_an_installation_admin_reads_as_coordination(
         await client.get(f"{PROJECTS}/{WITHHELD_ID}", headers=await _headers(db_session, admin))
     ).json()
     _assert_truth(body)
+
+
+async def test_no_answer_to_a_reader_outside_coordination_names_the_place_through_an_id(
+    client, db_session, shema_app
+) -> None:
+    """OBT-552: the id is not a second channel for the place the reader was given as a region.
+
+    Every record created since OBT-551 takes a minted UUID, and revision ``20261001_shema552``
+    moved the imported slugs to one too — so a sensitive project read by the OBT Lab, on the list,
+    the record and the export, carries no id that spells where it is.
+    """
+    strategist = await _user(db_session, shema_app, "globalStrategist")
+    created = await client.post(
+        PROJECTS,
+        json={
+            "id": str(uuid.uuid4()),
+            "languageName": "Lingua Sigilosa",
+            "bridgeLanguage": "Portugues",
+            "team": BASE,
+            "objective": ["NT"],
+            "location": PLACE,
+            "sensitiveCountry": True,
+        },
+        headers=await _headers(db_session, strategist),
+    )
+    assert created.status_code == 201, created.text
+    project_id = created.json()["id"]
+
+    lab = await _headers(db_session, await _user(db_session, shema_app, "obtLab"))
+    listed = await client.get(PROJECTS, headers=lab)
+    read = await client.get(f"{PROJECTS}/{project_id}", headers=lab)
+    exported = await client.get(f"{PREFIX}/export/projects", params={"format": "json"}, headers=lab)
+
+    for answer in (listed, read, exported):
+        assert answer.status_code == 200, answer.text
+        assert _leaks(answer.json()) == [], answer.request.url
+    assert project_id in {item["id"] for item in listed.json()["items"]}
+    assert str(uuid.UUID(project_id)) == project_id
