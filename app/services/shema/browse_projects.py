@@ -29,6 +29,13 @@ a search match this project on*, it asks ``_redaction.py``, which is the owner.
 :class:`~app.services.shema._scope.Readership` answers per project: a coordination reader's card
 carries the truth, everybody else's the region, and the search and the facets read the card the
 reader was given — so a count cannot name a place the card beside it withholds, from anybody.
+
+**And how many are withheld is coordination's, by the count as by the notice (OBT-556).**
+``locationsWithheld`` was already ``null`` for a caller who coordinates nothing, and the
+``sensitive`` facet gave them the same number. :func:`_facets_as_read` leaves that group out of
+their counts, and :func:`_query_as_read` ignores their ``?sensitive=``, whose ``matched`` would
+be the number again. The card's own free text is the shape's to withhold, so the card needs
+nothing here for it.
 """
 
 from __future__ import annotations
@@ -56,7 +63,7 @@ from app.models.shema_projects import (
 from app.services.shema._redaction import searchable_text, withheld_note
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.list_projects import list_projects
-from app.utils.shema_facets import FacetCounts, filter_projects, sort_records
+from app.utils.shema_facets import filter_projects, sort_records
 
 
 async def _needs_by_project(db: AsyncSession, ids: list[str]) -> dict[str, list[ShemaNeedCard]]:
@@ -123,6 +130,49 @@ async def _last_progress_dates(db: AsyncSession, ids: list[str]) -> dict[str, da
     return dict((await db.execute(stmt)).all())  # type: ignore[arg-type]
 
 
+#: The facet group that counts the withheld projects — ``locationWithheld`` per card.
+SENSITIVE_GROUP = "sensitive"
+
+
+def _query_as_read(query: ShemaProjectQuery, readership: Readership) -> ShemaProjectQuery:
+    """What this reader may ask the collection: ``sensitive`` is coordination's (OBT-556).
+
+    How many projects are withheld is told to coordination and to nobody else (GATE-04, 1.3:
+    ``withheld_note``, addressed by ``coordinates_anything``), and a filter on the bit would hand
+    everybody else the same number as ``matched``. So for them the filter is **ignored** — the
+    list and every other count are what the same request without it answers — rather than
+    refused like a value that is no option: an empty list would say *none of these is withheld*,
+    which is false, and a link a coordinator saved still opens with its other filters applied.
+    """
+    if readership.coordinates_anything:
+        return query
+    return query.model_copy(update={SENSITIVE_GROUP: None})
+
+
+def _facets_as_read(counts: ShemaFacetCounts, readership: Readership) -> ShemaFacetCounts:
+    """The counts this reader may read — without the withheld projects' count for the others.
+
+    The group is left out of ``groups`` and of ``groupAll`` rather than answered with zeros,
+    which would be a number that lies; the console reads a missing group as one it has nothing
+    to show for. The bit itself stays on every card — GATE-04 decided the notice, not the bit —
+    so what the others lose is the announcement ``locationsWithheld`` already withholds.
+    """
+    if readership.coordinates_anything:
+        return counts
+    return counts.model_copy(
+        update={
+            "groups": {
+                group: options
+                for group, options in counts.groups.items()
+                if group != SENSITIVE_GROUP
+            },
+            "group_all": {
+                group: n for group, n in counts.group_all.items() if group != SENSITIVE_GROUP
+            },
+        }
+    )
+
+
 async def _cards(
     db: AsyncSession, projects: list[ShemaProject], readership: Readership
 ) -> list[ShemaProjectCard]:
@@ -183,9 +233,9 @@ async def browse_projects(
     region, and then only (GATE-04) — and so are the count and the filter of the withheld
     projects (OBT-556): one addressee for the three, so they cannot disagree.
     """
-    addressee = ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER
     cards = await _cards(db, await list_projects(db, scope), readership)
-    result = filter_projects(cards, _query_as_read(query, addressee), today)
+    query = _query_as_read(query, readership)
+    result = filter_projects(cards, query, today)
 
     window = sort_records(result.visible, query.sort)
     start = query.offset
@@ -197,47 +247,21 @@ async def browse_projects(
 
     return ShemaProjectPage(
         items=items,
-        counts=_facets_as_read(result.counts, addressee),
+        counts=_facets_as_read(
+            ShemaFacetCounts(
+                groups={group: dict(options) for group, options in result.counts.groups.items()},
+                presets=dict(result.counts.presets),
+                group_all=dict(result.counts.group_all),
+            ),
+            readership,
+        ),
         matched=result.matched,
         total=result.total,
         limit=query.limit,
         offset=query.offset,
         sort=query.sort,
-        locations_withheld=withheld_note(items, addressee),
+        locations_withheld=withheld_note(
+            items,
+            ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER,
+        ),
     )
-
-
-#: The facet group that counts the withheld projects — ``locationWithheld`` per card.
-SENSITIVE_GROUP = "sensitive"
-
-
-def _query_as_read(query: ShemaProjectQuery, addressee: ShemaReader) -> ShemaProjectQuery:
-    """The filters as this caller may apply them: ``sensitive`` is coordination's (OBT-556).
-
-    How many projects are withheld is told to coordination and to nobody else (GATE-04, 1.3:
-    ``withheld_note``), and a filter on the bit would hand everybody else the same number as
-    ``matched``. So for them the filter is **ignored** — the list and every other count are what
-    the same request without it answers — rather than refused like a value that is no option:
-    an empty list would say *none of these is withheld*, which is false, and a link a coordinator
-    saved still opens with its other filters applied.
-    """
-    if addressee is ShemaReader.COORDINATION:
-        return query
-    return query.model_copy(update={SENSITIVE_GROUP: None})
-
-
-def _facets_as_read(counts: FacetCounts, addressee: ShemaReader) -> ShemaFacetCounts:
-    """The sidebar's numbers, without the count of withheld projects for anybody but coordination.
-
-    The group is left out of ``groups`` and of ``groupAll`` rather than answered with zeros, which
-    would be a number that lies; the console reads a missing group as one it has nothing to show
-    for. The bit itself stays on every card — GATE-04 decided the notice, not the bit — so what
-    the others lose is the announcement, which is exactly what ``locationsWithheld`` already
-    withholds from them.
-    """
-    groups = {group: dict(options) for group, options in counts.groups.items()}
-    group_all = dict(counts.group_all)
-    if addressee is not ShemaReader.COORDINATION:
-        groups.pop(SENSITIVE_GROUP, None)
-        group_all.pop(SENSITIVE_GROUP, None)
-    return ShemaFacetCounts(groups=groups, presets=dict(counts.presets), group_all=group_all)

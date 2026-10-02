@@ -32,6 +32,7 @@ one function, and a field that appears on the read cannot be missing from the sa
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,6 +162,22 @@ async def _health_history(db: AsyncSession, project_id: str) -> list[ShemaHealth
     ]
 
 
+def _record_as_read(
+    project: ShemaProject, record: ShemaProjectRecord, readership: Readership
+) -> dict[str, Any]:
+    """What this reader may not read on the record, beyond the place — one update, or nothing.
+
+    The place and the record's own free text are the shape's (``LeavingShape.read_by``). What
+    else depends on who reads is asked here and nowhere else in this file, each of its own
+    owner: the prayer request of ``_consent.py``, and the text the needs and the assessments
+    carry into a withheld record of ``_redaction.py`` (OBT-556).
+    """
+    return {
+        **request_as_read(project, reads_withheld=readership.withheld_prayer),
+        **free_text_as_read(project, readership.reader_of(project.region_key), record),
+    }
+
+
 async def build_record(
     db: AsyncSession, project: ShemaProject, *, readership: Readership, today: date
 ) -> ShemaProjectRecord:
@@ -181,9 +198,8 @@ async def build_record(
     assessments = await _health_history(db, project.id)
 
     reader = readership.reader_of(project.region_key)
-    record = ShemaProjectRecord.read_by(project, reader).model_copy(
+    joined = ShemaProjectRecord.read_by(project, reader).model_copy(
         update={
-            **request_as_read(project, reads_withheld=readership.withheld_prayer),
             "needs_items": needs,
             "materials": materials,
             "media_photos": photos or None,
@@ -193,7 +209,8 @@ async def build_record(
             "last_progress_date": history[-1].date if history else None,
         }
     )
-    record = record.model_copy(update=free_text_as_read(project, reader, record))
+    # Reduced after the join, so what the join brought in is reduced too.
+    record = joined.model_copy(update=_record_as_read(project, joined, readership))
     derived = derive(record, today, region=project.region_key)
     return record.model_copy(update={"derived": ShemaProjectDerived.of(derived)})
 
