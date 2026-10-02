@@ -10,9 +10,12 @@ and this is it.
 
 **Why the language name is the one thing.** *If it must show context, show the minimum that
 makes the form answerable* — and a leader who holds links for two projects has to be able to
-tell which form they are filling before they fill it. It is not a guarded field:
-``app/models/shema_privacy.py``'s list is places, bases and contacts, and
-``shema_submissions`` already snapshots this same value for the same reason.
+tell which form they are filling before they fill it. Since OBT-560 the name **is** guarded
+everywhere else — a sensitive project's name can name the place — and it stays real here on
+purpose: the link's holder is the team, the reason ``ProjectRef`` keeps it too, and two links of
+two unnamed sensitive projects in one region would otherwise both read *africa*.
+``IntakeForm`` declares that exception in its own class, so this file still reads one column and
+``shema_submissions`` still snapshots the same value for the same reason.
 
 **There is no scope here and that is not an omission.** The token is the authorization, and it
 is project-scoped in the column: the statement can only return the project the link names. That
@@ -23,6 +26,7 @@ it.
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -30,7 +34,6 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition
 from app.models.shema_forms import IntakeField, IntakeForm
 from app.services.shema._intake_tokens import expires_on, verify_intake_token
-from app.services.shema._redaction import leaving_inputs
 from app.utils.shema_forms import spec_fields
 
 
@@ -70,18 +73,18 @@ async def read_intake_form(db: AsyncSession, raw_token: str) -> IntakeForm:
     if definition is None:
         raise NotFoundError("The form this link was issued for is no longer published.")
 
-    project = await db.get(ShemaProject, link.project_id)
-    if project is None:
+    language_name = (
+        await db.execute(
+            select(ShemaProject.language_name).where(ShemaProject.id == link.project_id)
+        )
+    ).scalar_one_or_none()
+    if language_name is None:
         raise NotFoundError("The project this link was issued for no longer exists.")
 
-    # The flag, the region and the public name ride along so the boundary decides the name
-    # the link's holder reads (OBT-560): a sensitive project's own name can name the place,
-    # and a shape built without the flag would withhold every project's name, fail closed.
     return IntakeForm(
         kind=definition.kind,
         definition_version=definition.version,
-        language_name=project.language_name,
-        **leaving_inputs(project),
+        language_name=language_name,
         expires_at=expires_on(link),
         fields=form_fields(definition),
     )

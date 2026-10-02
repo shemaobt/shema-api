@@ -28,9 +28,8 @@ a validator, so the three things a query-side caller needs are:
   one that reader may type over;
 * :func:`never_lowered` — the import's one-way rule on the flag (BE-14): a file may raise it and
   may not clear it;
-* :func:`language_name_for` and :func:`leaving_inputs` — the language's name where it can name
-  the place (OBT-560): the name a path that is not a shape may print, and what a shape built by
-  hand needs from the row to reduce it itself.
+* :func:`language_name_for` — the language's name where it can name the place (OBT-560): the
+  name a path that is not a shape may print.
 
 **This is the only file in** ``app/services/shema/`` **and** ``app/api/shema/`` **allowed to
 read the guarded columns.** ``tests/test_shema/test_privacy_owners.py`` globs both packages
@@ -145,21 +144,6 @@ def language_name_for(
     if public:
         return public
     return project.region_key.value if fallback is None else fallback
-
-
-def leaving_inputs(project: ShemaProject) -> dict[str, Any]:
-    """What a leaving shape built by hand needs from the row to decide for itself.
-
-    A shape validated off a ``ShemaProject`` reads these on its own; one assembled from other
-    values — the intake form, which carries the project's name and nothing else of it — would
-    otherwise withhold every name, fail closed, or need its service to read the guarded
-    columns, which is this file's job alone (OBT-560).
-    """
-    return {
-        "sensitive_country": project.sensitive_country,
-        "region_key": project.region_key,
-        "public_language_name": project.public_language_name,
-    }
 
 
 def searchable_text(project: ShemaProject, reader: ShemaReader) -> str:

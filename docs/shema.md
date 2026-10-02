@@ -1447,7 +1447,8 @@ and the Pulse inbox and the two notices — paths that are not shapes — take t
 `language_name_for`. `tests/test_shema/test_language_name.py` sweeps every leaving shape that
 declares a name, found by walking the subclasses. **Left named:** the collection and the ETEN
 report still **order** by the real name, so a reader could infer a little from a card's position;
-`ProjectRef` (a member's own projects) prints the real name, because the member is the team. The header's language reuses BE-09's
+`ProjectRef` (a member's own projects) and the intake form behind a leader's link print the real
+name, because their reader is the team — the form declares it in `IntakeForm._withhold_name`. The header's language reuses BE-09's
 `PulseLanguage`, which is the console's two locales under a name that says *Pulse*.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**

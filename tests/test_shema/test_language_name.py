@@ -50,6 +50,11 @@ FILLERS: dict[str, Any] = {
 }
 
 
+#: The shapes that keep the real name, each with its reason in its own ``_withhold_name``:
+#: the intake form is read by the link's holder, who is the project's team.
+KEEPS_THE_NAME = frozenset({"IntakeForm"})
+
+
 def _shapes() -> list[type[LeavingShape]]:
     found: set[type[LeavingShape]] = set()
     pending = list(LeavingShape.__subclasses__())
@@ -57,7 +62,11 @@ def _shapes() -> list[type[LeavingShape]]:
         shape = pending.pop()
         found.add(shape)
         pending.extend(shape.__subclasses__())
-    named = [s for s in found if any(name in s.model_fields for name in NAME_FIELDS)]
+    named = [
+        s
+        for s in found
+        if any(name in s.model_fields for name in NAME_FIELDS) and s.__name__ not in KEEPS_THE_NAME
+    ]
     return sorted(named, key=lambda s: s.__name__)
 
 
@@ -88,8 +97,21 @@ def test_the_sweep_finds_the_shapes_the_issue_names() -> None:
         "ExportedProject",
         "EtenYearSnapshot",
         "ShemaNeedLine",
-        "IntakeForm",
     } <= names
+
+
+def test_the_intake_form_keeps_the_real_name_for_the_team() -> None:
+    """The link's holder is the team: two unnamed sensitive projects would otherwise read alike."""
+    from app.models.shema_forms import IntakeForm
+
+    form = IntakeForm(
+        kind="pulso",
+        definition_version=1,
+        language_name=REAL,
+        expires_at=date(2026, 10, 30),
+        fields=[],
+    )
+    assert form.language_name == REAL and form.language_name_withheld is False
 
 
 @pytest.mark.parametrize("shape", _shapes(), ids=lambda shape: shape.__name__)
