@@ -194,7 +194,12 @@ async def received(
 
 @router.get("/forms/submissions/{submission_id}", response_model=ReceivedSubmissionDetail)
 async def received_detail(
-    submission_id: str, db: Db, scope: Scope, user: CurrentUser, may_apply: MayApply
+    submission_id: str,
+    db: Db,
+    scope: Scope,
+    user: CurrentUser,
+    may_apply: MayApply,
+    reading: Reading,
 ) -> ReceivedSubmissionDetail:
     """One submission opened — the answers as they arrived, beside the form they answered.
 
@@ -210,7 +215,9 @@ async def received_detail(
     coordinator who is about to apply a leader's consent level must be shown it, and the
     ``resourceCircle`` account that cannot apply anything must not be.
     """
-    return await read_submission(db, scope, submission_id, user=user, may_apply=may_apply)
+    return await read_submission(
+        db, scope, submission_id, user=user, may_apply=may_apply, readership=reading
+    )
 
 
 @router.post(

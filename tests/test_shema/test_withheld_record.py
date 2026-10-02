@@ -34,6 +34,8 @@ from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 
 PROJECTS = f"{PREFIX}/projects"
 EXPORT = f"{PREFIX}/export/projects"
+LINKS = f"{PREFIX}/intake-links"
+SUBMISSIONS = f"{PREFIX}/forms/submissions"
 
 #: The region both records live in. ``other`` because the invented places below name no
 #: country the region map knows, so a save that rewrites the place keeps the record here.
@@ -50,7 +52,8 @@ SCOPE = "ESCOPO-SIGILOSO o dialeto do vale escondido"
 NEED = "NECESSIDADE-SIGILOSA um gerador para a casa do vale"
 READING_NOTES = "AVALIACAO-SIGILOSA medo de visitas"
 DIMENSION = "DIMENSAO-SIGILOSA isolamento"
-SECRETS = (NOTES, HEALTH_NOTES, STATUS, SCOPE, NEED, READING_NOTES, DIMENSION)
+VOICE = "VOZ-SIGILOSA a estrada do vale fechou"
+SECRETS = (NOTES, HEALTH_NOTES, STATUS, SCOPE, NEED, READING_NOTES, DIMENSION, VOICE)
 
 #: The four the record and the card hold back, in the wire's spelling.
 FREE_TEXT_KEYS = ("notes", "healthNotes", "statusComments", "scopeDetails")
@@ -255,6 +258,62 @@ async def test_a_withheld_projects_free_text_never_reaches_the_export_file(
     (row,) = res.json()["projects"]
     assert row["sharedPrayerRequests"] == [NEED]
     assert "notes" not in row
+
+
+async def _pulse(client, db_session, shema_app, project_id: str) -> str:
+    """A Pulse the team sent through its link — the voice of the field, mapped to no column."""
+    email = f"links-{project_id[-2:]}@recolhido.test"
+    headers = await _headers(db_session, shema_app, "coordinator", email=email)
+    link = await client.post(LINKS, json={"projectId": project_id}, headers=headers)
+    assert link.status_code == 201, link.text
+    sent = await client.post(
+        f"{PREFIX}/intake/{link.json()['token']}",
+        json={
+            "definitionVersion": link.json()["definitionVersion"],
+            "answers": {"submittedBy": "Kuaray", "period": "2026-09", "voice": VOICE},
+        },
+    )
+    assert sent.status_code == 202, sent.text
+    rows = (await client.get(SUBMISSIONS, headers=headers)).json()
+    return next(row["id"] for row in rows if row["projectId"] == project_id)
+
+
+@pytest.mark.parametrize("role", NOT_COORDINATION)
+async def test_a_received_pulse_of_a_withheld_record_is_empty_for_a_reader_who_is_not_coordination(
+    client, db_session, shema_app, withheld, role
+) -> None:
+    """The inbox serves what maps to no column to every member, and on a withheld record that is
+    the team's free text: this reader gets no answer at all, and the bit that says why."""
+    submission = await _pulse(client, db_session, shema_app, WITHHELD_ID)
+
+    res = await client.get(
+        f"{SUBMISSIONS}/{submission}", headers=await _headers(db_session, shema_app, role)
+    )
+
+    assert res.status_code == 200, res.text
+    assert _leaks(res.text) == []
+    assert (res.json()["answers"], res.json()["answersWithheld"]) == ({}, True)
+
+
+async def test_a_received_pulse_is_read_by_coordination_and_on_a_cleared_record(
+    client, db_session, shema_app, withheld, cleared
+) -> None:
+    """The positive halves: the coordinator reads the withheld record's Pulse, and the OBT Lab
+    reads a cleared record's voice as it always did."""
+    withheld_pulse = await _pulse(client, db_session, shema_app, WITHHELD_ID)
+    cleared_pulse = await _pulse(client, db_session, shema_app, CLEARED_ID)
+
+    coordination = await client.get(
+        f"{SUBMISSIONS}/{withheld_pulse}",
+        headers=await _headers(db_session, shema_app, "coordinator"),
+    )
+    lab = await client.get(
+        f"{SUBMISSIONS}/{cleared_pulse}", headers=await _headers(db_session, shema_app, "obtLab")
+    )
+
+    assert coordination.json()["answers"]["voice"] == VOICE
+    assert coordination.json()["answersWithheld"] is False
+    assert (lab.json()["answers"]["voice"], lab.json()["answersWithheld"]) == (VOICE, False)
 
 
 # --------------------------------------------------------------------------------------

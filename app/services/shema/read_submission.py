@@ -71,7 +71,14 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, ReceivedSubmissionDetail
-from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
+from app.services.shema._redaction import reads_the_truth
+from app.services.shema._scope import (
+    NO_COORDINATION,
+    Readership,
+    RegionScope,
+    refuse_out_of_scope,
+    visible_projects,
+)
 from app.services.shema._submission_archive import archived_answers
 from app.services.shema.read_intake_form import form_fields
 from app.utils.shema_forms import PULSE_KIND, spec_fields
@@ -106,12 +113,18 @@ def readable_answers(
     *,
     may_apply: bool,
     pending: bool,
+    reads_text: bool,
 ) -> dict[str, Any]:
     """The answers this caller may read — the whole submission only while it is theirs to apply.
 
     See the module docstring for the argument. In one line: what maps to nothing is for
-    everybody, and what maps to a column is for the person about to write it there, for as long
-    as the record cannot answer for it.
+    everybody who reads the project's text, and what maps to a column is for the person about to
+    write it there, for as long as the record cannot answer for it.
+
+    **On a withheld project nothing is for a reader who is not coordination** (OBT-556):
+    ``reads_text`` is ``_redaction.reads_the_truth``'s answer for them, and the voice of the
+    field and what is blocking the team are a withheld record's free text like its notes. It is
+    asked first, beside the unresolvable definition, so no role reaches past it.
 
     **Both conditions, and neither alone.** ``may_apply`` without ``pending`` is an archive
     answering what the record already answers, which is how a withdrawn prayer request stays
@@ -123,7 +136,7 @@ def readable_answers(
     checked first, so an unreadable spec is not a reason to serve the archive whole to the one
     caller who happens to hold the role.
     """
-    if definition is None:
+    if definition is None or not reads_text:
         return {}
     if may_apply and pending:
         return answers
@@ -131,10 +144,10 @@ def readable_answers(
     return {key: value for key, value in answers.items() if key in unmapped}
 
 
-def _scoped(scope: RegionScope) -> Select[tuple[ShemaSubmission, int]]:
+def _scoped(scope: RegionScope) -> Select[tuple[ShemaSubmission, int, ShemaProject]]:
     """Submissions joined to their project and their definition, inside the caller's reach."""
     return (
-        select(ShemaSubmission, ShemaFormDefinition.version)
+        select(ShemaSubmission, ShemaFormDefinition.version, ShemaProject)
         .join(ShemaFormDefinition, ShemaFormDefinition.id == ShemaSubmission.definition_id)
         .join(ShemaProject, ShemaProject.id == ShemaSubmission.project_id)
         .where(ShemaProject.id.in_(select(visible_projects(scope).subquery().c.id)))
@@ -154,7 +167,8 @@ async def list_submissions(
     if project_id is not None:
         stmt = stmt.where(ShemaSubmission.project_id == project_id)
     return [
-        as_received(submission, version) for submission, version in (await db.execute(stmt)).all()
+        as_received(submission, version)
+        for submission, version, _project in (await db.execute(stmt)).all()
     ]
 
 
@@ -165,6 +179,7 @@ async def read_submission(
     *,
     user: User,
     may_apply: bool = False,
+    readership: Readership = NO_COORDINATION,
 ) -> ReceivedSubmissionDetail:
     """One submission, with the answers as they arrived and the form they answered.
 
@@ -176,7 +191,9 @@ async def read_submission(
     pass it shows less than it could rather than more than it should, and the one caller that
     passes it is the router, from the role dependency beside the guard on the write. *Pending*
     is not a parameter for the same reason in reverse: it is a fact about the row this function
-    has just read, so there is nothing for a caller to get wrong about it.
+    has just read, so there is nothing for a caller to get wrong about it. ``readership``
+    defaults to nobody coordinating for the same reason as ``may_apply``: a caller that forgets it
+    is handed a withheld project's answers as nothing at all, never as more (OBT-556).
     """
     row = (await db.execute(_scoped(scope).where(ShemaSubmission.id == submission_id))).first()
     if row is None:
@@ -184,9 +201,10 @@ async def read_submission(
             scope, user=user, operation="read_submission", project_id=submission_id
         )
 
-    submission, version = row
+    submission, version, project = row
     definition = await db.get(ShemaFormDefinition, submission.definition_id)
     received = as_received(submission, version)
+    reads_text = reads_the_truth(project, readership.reader_of(project.region_key))
     return ReceivedSubmissionDetail(
         **received.model_dump(),
         fields=[] if definition is None else form_fields(definition),
@@ -195,5 +213,7 @@ async def read_submission(
             archived_answers(submission),
             may_apply=may_apply,
             pending=submission.applied_at is None,
+            reads_text=reads_text,
         ),
+        answers_withheld=not reads_text,
     )
