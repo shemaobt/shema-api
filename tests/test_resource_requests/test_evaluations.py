@@ -33,6 +33,7 @@ from app.db.models.resource_request import (
     RRSnapshot,
 )
 from app.utils import resource_request_vocabularies as v
+from app.utils.jwt import decode_token
 from tests.baker import make_user
 from tests.test_resource_requests.conftest import auth_header, grant
 from tests.test_resource_requests.test_requests import as_mesa, as_team, create
@@ -108,6 +109,12 @@ async def decidable(db_session, client, headers) -> dict:
 
 
 async def put_evaluation(client, headers, request_id: str, **over: object):
+    """A save as the mesa sends it. A decision travels with who was present (FE-50,
+    OBT-518), so a save carrying one and naming nobody marks the caller — the member
+    pressing the button was in the room. A test about the ata names its own attendees."""
+    if over.get("decision") is not None and "attendees" not in over:
+        token = headers["Authorization"].removeprefix("Bearer ")
+        over["attendees"] = [decode_token(token)["sub"]]
     return await client.put(
         f"{REQUESTS}/{request_id}/evaluation", json=evaluation(**over), headers=headers
     )
@@ -305,6 +312,64 @@ async def test_the_ata_is_corrected_not_compensated(db_session, client, rrf_app)
     assert res.json()["attendees"] == [b.id]
     rows = (await db_session.execute(select(RREvaluationAttendee))).scalars().all()
     assert [row.user_id for row in rows] == [b.id]
+
+
+async def test_the_ata_names_who_was_present(db_session, client, rrf_app) -> None:
+    """The sheet prints names, not ids (FE-50, OBT-518) — read off ``users``, so a member
+    with no mesa role today still reads in the minutes they were recorded in."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    presente = await make_user(db_session, email="ana@rr.test", display_name="Ana Souza")
+    created = await submitted_request(client, team)
+
+    res = await put_evaluation(client, mesa, created["id"], attendees=[presente.id])
+
+    assert res.json()["attendees_named"] == [
+        {"id": presente.id, "display_name": "Ana Souza", "email": "ana@rr.test"}
+    ]
+
+
+async def test_a_decision_with_nobody_present_is_refused(db_session, client, rrf_app) -> None:
+    """Karina, via Daniel, 1/out/2026: presence is *"Sim, obrigatório"* (FE-50, OBT-518)."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await decidable(db_session, client, team)
+
+    res = await put_evaluation(client, mesa, created["id"], decision="declined", attendees=[])
+
+    assert res.status_code == 422, res.text
+    assert (await db_session.execute(select(RREvaluation))).scalars().all() == []
+
+
+async def test_scoring_before_the_decision_needs_nobody_marked(db_session, client, rrf_app) -> None:
+    """Ours: the rule bites the decision, not the mesa still reading."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await submitted_request(client, team)
+
+    res = await put_evaluation(client, mesa, created["id"], attendees=[])
+
+    assert res.status_code == 200, res.text
+
+
+async def test_the_board_members_are_the_mesa_s_accounts(db_session, client, rrf_app) -> None:
+    """Each member *"com conta própria"* (Karina, via Daniel, 1/out/2026): the list is the
+    mesa's role holders, the Gestor reads it and is not on it, and a team reads none."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    await as_mesa(db_session, rrf_app, email="bruno@rr.test")
+    gestor = await as_gestor(db_session, rrf_app)
+
+    res = await client.get("/api/resource-requests/board-members", headers=gestor)
+
+    assert res.status_code == 200, res.text
+    assert [member["email"] for member in res.json()] == ["bruno@rr.test", "mesa@rr.test"]
+    assert (
+        await client.get("/api/resource-requests/board-members", headers=mesa)
+    ).status_code == 200
+    assert (
+        await client.get("/api/resource-requests/board-members", headers=team)
+    ).status_code == 403
 
 
 # ——— the decision ————————————————————————————————————————————————————————————————
