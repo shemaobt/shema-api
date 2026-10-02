@@ -9,6 +9,7 @@ from app.db.models.resource_request import (
     RRRequest,
     RRRequestSections,
     RRSnapshot,
+    RRStage,
 )
 from app.services.resource_request._editing import require_reviser
 from app.services.resource_request._instance import flush_the_instance, refuse_a_second_open
@@ -95,6 +96,20 @@ async def open_revision(
     draft is still that link's one open instance: ``refuse_a_second_open`` reads the link when
     there is no project. Copied for whoever opens it — the board reopening a link's request
     leaves it the link's, as its reopening a project's leaves it the project's.
+
+    **The board also reopens a request it sent back to *Revisar* itself** (FE-47, OBT-515).
+    Karina, via Daniel, 1/out/2026: when the Gestor needs to change a request the mesa already
+    evaluated, *"o Gestor abre uma revisão em nome da equipe"*. The Gestor cannot decide — he
+    *"só não aprova"* (GATE-02 D3) — but he moves the board, so the path is two acts he already
+    has: move the card to *Revisar*, which takes an approval's money back by the board's own
+    golden rule (BE-08), then open the revision here. So a board member — never the team, which
+    still needs the mesa's *revisar* — opens one whenever the card **is** in *Revisar*, whatever
+    the evaluation said or whether there is one. Only on that path does the pen go to whoever
+    opened it: the revision is still the team's (``created_by`` and the project carry over, so
+    it stays in the team's list and the instance lock still holds), but the Gestor is the one
+    who changes it and sends it back to the mesa. After a *revisar* decision nothing moves:
+    the team rewrites, as before. Reading the card's column rather than a decision, and handing
+    the pen to the board, are ours and not the client's.
     """
     loaded = await request_for(db, request_id, writer, app_key)
     await _require_reviser(db, loaded.request, writer, app_key)
@@ -115,13 +130,20 @@ async def open_revision(
             select(RREvaluation.decision).where(RREvaluation.snapshot_id == snapshot.id)
         )
     ).scalar_one_or_none()
-    if decision is not RRDecision.REVISE:
+    original = loaded.request
+    by_the_board = (
+        decision is not RRDecision.REVISE
+        and not isinstance(writer, LinkActor)
+        and original.started_by != writer.id
+        and original.stage is RRStage.REVISAR
+    )
+    if decision is not RRDecision.REVISE and not by_the_board:
         raise ConflictError(
-            "A revision opens only after the mesa asks for one. "
+            "A revision opens only after the mesa asks for one, or once the board has moved the "
+            "card to Revisar. "
             f"This request's decision is {decision.value if decision else 'not recorded yet'}."
         )
 
-    original = loaded.request
     revision = RRRequest(
         request_type=original.request_type,
         reg_name=original.reg_name,
@@ -132,10 +154,10 @@ async def open_revision(
         tpp_date=original.tpp_date,
         leader_email=original.leader_email,
         created_by=original.created_by,
-        started_by=original.started_by,
+        started_by=writer.id if by_the_board else original.started_by,
         shema_project_id=original.shema_project_id,
         request_link_id=original.request_link_id,
-        started_by_link_id=original.started_by_link_id,
+        started_by_link_id=None if by_the_board else original.started_by_link_id,
         revision_of_id=snapshot.id,
     )
     await refuse_a_second_open(db, original.shema_project_id, link_id=original.request_link_id)
