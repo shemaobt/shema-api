@@ -511,9 +511,11 @@ Four measurements decide it:
    The other 69 have nowhere to go, and the four would have to stay in sync between two
    products forever.
 4. **The primary keys are different kinds of thing.** `projects.id` is a uuid4 minted by the
-   default. The Shemá record's id is **the export's slug** (`afrikaans-kaaps`,
+   default. The Shemá record's id ~~is **the export's slug** (`afrikaans-kaaps`,
    `purepecha-de-capacuaro`), frozen by FE-44 §5.1 as the address every screen, URL and saved
-   view already carries, and BE-16 must not mint new ones.
+   view already carries, and BE-16 must not mint new ones~~ **is an opaque UUID since OBT-552
+   (1/out/2026, Daniel)** — the slug named the place on every shape that left the server, so
+   revision `20261001_shema552` moved all 127 and OBT-551 has every new record born with one.
 
 **Verdict: `shema_projects` is its own table, with no FK to `projects` and no `language_id`.**
 `language_name` and `language_code` are text on the row, checked and never refused (FE-44
@@ -1174,7 +1176,7 @@ follows up and supports — and it still decides notes and media (`can_export_no
 or media, so those keep their own owners and are not reduced by this rule.
 
 **Residuals named and not closed** — each can name a place and none is reduced for `other`:
-the slug `<language>-<place>`, which is the record's address on every shape; the free text of
+~~the slug `<language>-<place>`, which is the record's address on every shape~~ (closed by OBT-552: every id is an opaque UUID); the free text of
 the ficha (`partnerOrg`, `scopeDetails`, `statusComments` / `statusGoal`, `phases`, `notes`,
 `needsNotes`, `objectiveNotes`, a need's `description`, a material's file name or link, media
 captions and URLs, health notes); `storyProgress[].recordLocation` and its copy in
