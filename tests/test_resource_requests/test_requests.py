@@ -19,6 +19,7 @@ from app.db.models.resource_request import (
     RREvaluation,
     RRRequest,
     RRSnapshot,
+    RRStage,
 )
 from app.utils import resource_request_vocabularies as v
 from app.utils.resource_request_typed_fields import PROMOTED_TO_SPINE
@@ -846,6 +847,119 @@ async def test_a_revision_opened_by_the_mesa_still_belongs_to_the_team(
 
     assert revision["created_by"] == created["created_by"]
     assert (await client.get(f"{REQUESTS}/{revision['id']}", headers=headers)).status_code == 200
+
+
+# ——— the Gestor reopens what the board sent back (FE-47, OBT-515) —————————————————————
+
+
+async def _gestor(db_session, rrf_app):
+    user = await make_user(db_session, email="gestor@rr.test")
+    await grant(db_session, user, rrf_app, "gestor")
+    return user, await auth_header(db_session, user)
+
+
+async def _to_column(db_session, request_id: str, stage: RRStage) -> None:
+    """The board's move, as its result: the money half is BE-08's and tested there."""
+    request = (
+        await db_session.execute(select(RRRequest).where(RRRequest.id == request_id))
+    ).scalar_one()
+    request.stage = stage
+    await db_session.commit()
+
+
+async def test_the_gestor_reopens_an_approved_request_moved_to_revisar_and_holds_the_pen(
+    db_session, client, rrf_app
+) -> None:
+    """Karina, via Daniel, 1/out/2026: *"Gestor abre revisão em nome da equipe"*.
+
+    The request stays the team's — it opens in their list, and the instance lock is theirs —
+    but the Gestor is who writes it, because changing it is what he reopened it for.
+    """
+    team = await as_team(db_session, rrf_app)
+    created = await create(client, team)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
+    await _decide(db_session, created["id"], RRDecision.APPROVED)
+    await _to_column(db_session, created["id"], RRStage.REVISAR)
+    gestor_user, gestor = await _gestor(db_session, rrf_app)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)
+
+    assert res.status_code == 201, res.text
+    revision = res.json()
+    assert revision["created_by"] == created["created_by"]
+    assert revision["started_by"] == gestor_user.id
+    assert revision["can_edit"] is True
+    assert (await client.get(f"{REQUESTS}/{revision['id']}", headers=team)).status_code == 200
+    changed = draft()
+    changed["fields"]["reg_name"] = "corrigido pelo Gestor"
+    edited = await client.patch(f"{REQUESTS}/{revision['id']}", json=changed, headers=gestor)
+    assert edited.status_code == 200, edited.text
+
+
+async def test_the_gestor_does_not_reopen_a_card_still_in_aprovado(
+    db_session, client, rrf_app
+) -> None:
+    """The money moves on the board first; a revision over a live approval would count it twice."""
+    team = await as_team(db_session, rrf_app)
+    created = await create(client, team)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
+    await _decide(db_session, created["id"], RRDecision.APPROVED)
+    await _to_column(db_session, created["id"], RRStage.APROVADO)
+    _user, gestor = await _gestor(db_session, rrf_app)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)
+
+    assert res.status_code == 409, res.text
+
+
+async def test_the_team_still_needs_the_mesas_revisar_even_with_the_card_in_revisar(
+    db_session, client, rrf_app
+) -> None:
+    """The board's path is the board's: a team that finds its card in *Revisar* without the
+    mesa's decision does not reopen it."""
+    team = await as_team(db_session, rrf_app)
+    created = await create(client, team)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
+    await _decide(db_session, created["id"], RRDecision.APPROVED)
+    await _to_column(db_session, created["id"], RRStage.REVISAR)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=team)
+
+    assert res.status_code == 409, res.text
+    assert "Revisar" not in res.json()["detail"], "the team is told the column is enough"
+
+
+async def test_a_gestor_who_started_the_request_reopens_it_from_revisar(
+    db_session, client, rrf_app
+) -> None:
+    """The board is read off its reach, not off who started the request (PR #608 review)."""
+    gestor_user, gestor = await _gestor(db_session, rrf_app)
+    created = await create(client, gestor)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=gestor)
+    await _decide(db_session, created["id"], RRDecision.APPROVED)
+    await _to_column(db_session, created["id"], RRStage.REVISAR)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)
+
+    assert res.status_code == 201, res.text
+    assert res.json()["started_by"] == gestor_user.id
+
+
+async def test_after_the_mesas_revisar_the_pen_stays_with_the_team_whoever_opens_it(
+    db_session, client, rrf_app
+) -> None:
+    """Nothing moves on the old path: the mesa asked the team to rewrite."""
+    team = await as_team(db_session, rrf_app)
+    created = await create(client, team)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
+    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await _to_column(db_session, created["id"], RRStage.REVISAR)
+    _user, gestor = await _gestor(db_session, rrf_app)
+
+    revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)).json()
+
+    original = (await client.get(f"{REQUESTS}/{created['id']}", headers=team)).json()
+    assert revision["started_by"] == original["started_by"]
 
 
 async def test_the_original_keeps_its_own_rows(db_session, client, rrf_app) -> None:
