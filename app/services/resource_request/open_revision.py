@@ -99,7 +99,7 @@ async def open_revision(
 
     **The board also reopens a request it sent back to *Revisar* itself** (FE-47, OBT-515).
     Karina, via Daniel, 1/out/2026: when the Gestor needs to change a request the mesa already
-    evaluated, *"o Gestor abre uma revisão em nome da equipe"*. The Gestor cannot decide — he
+    evaluated, *"Gestor abre revisão em nome da equipe"*. The Gestor cannot decide — he
     *"só não aprova"* (GATE-02 D3) — but he moves the board, so the path is two acts he already
     has: move the card to *Revisar*, which takes an approval's money back by the board's own
     golden rule (BE-08), then open the revision here. So a board member — never the team, which
@@ -131,10 +131,11 @@ async def open_revision(
         )
     ).scalar_one_or_none()
     original = loaded.request
+    board_opener = None if isinstance(writer, LinkActor) else writer.id
     by_the_board = (
         decision is not RRDecision.REVISE
-        and not isinstance(writer, LinkActor)
-        and original.started_by != writer.id
+        and board_opener is not None
+        and original.started_by != board_opener
         and original.stage is RRStage.REVISAR
     )
     if decision is not RRDecision.REVISE and not by_the_board:
@@ -154,7 +155,7 @@ async def open_revision(
         tpp_date=original.tpp_date,
         leader_email=original.leader_email,
         created_by=original.created_by,
-        started_by=writer.id if by_the_board else original.started_by,
+        started_by=board_opener if by_the_board else original.started_by,
         shema_project_id=original.shema_project_id,
         request_link_id=original.request_link_id,
         started_by_link_id=None if by_the_board else original.started_by_link_id,
