@@ -14,6 +14,7 @@ from app.db.models.resource_request import (
 from app.services.resource_request._editing import require_reviser
 from app.services.resource_request._instance import flush_the_instance, refuse_a_second_open
 from app.services.resource_request._link_actor import LinkActor
+from app.services.resource_request._scope import reach
 from app.services.resource_request._writer import Writer
 from app.services.resource_request.read_as import request_for
 
@@ -95,7 +96,8 @@ async def open_revision(
     ``request_link_id`` and ``started_by_link_id``, so the pen stays with the link and the new
     draft is still that link's one open instance: ``refuse_a_second_open`` reads the link when
     there is no project. Copied for whoever opens it — the board reopening a link's request
-    leaves it the link's, as its reopening a project's leaves it the project's.
+    leaves it the link's, as its reopening a project's leaves it the project's — after a
+    *revisar* decision. On the board's own path below, the pen leaves the link too.
 
     **The board also reopens a request it sent back to *Revisar* itself** (FE-47, OBT-515).
     Karina, via Daniel, 1/out/2026: when the Gestor needs to change a request the mesa already
@@ -108,8 +110,14 @@ async def open_revision(
     opened it: the revision is still the team's (``created_by`` and the project carry over, so
     it stays in the team's list and the instance lock still holds), but the Gestor is the one
     who changes it and sends it back to the mesa. After a *revisar* decision nothing moves:
-    the team rewrites, as before. Reading the card's column rather than a decision, and handing
-    the pen to the board, are ours and not the client's.
+    the team rewrites, as before. The board is read off its reach, never inferred from who
+    started the request, so a Gestor who started one himself reopens it like any other. A link's
+    request takes this path as well: the pen goes to the board member and leaves the link
+    (``started_by_link_id`` cleared), because the change being made is the Gestor's and a pen
+    left with the link would hand him a draft he cannot type into. The team that reads the 409
+    is told what it needs — the mesa's *revisar* — and never that the column is enough. Reading
+    the card's column rather than a decision, handing the pen to the board, and letting it leave
+    a link are ours and not the client's.
     """
     loaded = await request_for(db, request_id, writer, app_key)
     await _require_reviser(db, loaded.request, writer, app_key)
@@ -131,18 +139,25 @@ async def open_revision(
         )
     ).scalar_one_or_none()
     original = loaded.request
-    board_opener = None if isinstance(writer, LinkActor) else writer.id
+    board_opener = None
+    if not isinstance(writer, LinkActor) and (await reach(db, writer, app_key)).every:
+        board_opener = writer.id
     by_the_board = (
         decision is not RRDecision.REVISE
         and board_opener is not None
-        and original.started_by != board_opener
         and original.stage is RRStage.REVISAR
     )
     if decision is not RRDecision.REVISE and not by_the_board:
+        recorded = decision.value if decision else "not recorded yet"
+        if board_opener is None:
+            raise ConflictError(
+                "A revision opens only after the mesa asks for one. "
+                f"This request's decision is {recorded}."
+            )
         raise ConflictError(
-            "A revision opens only after the mesa asks for one, or once the board has moved the "
-            "card to Revisar. "
-            f"This request's decision is {decision.value if decision else 'not recorded yet'}."
+            "The board reopens a request once its card is in Revisar, or after the mesa asks "
+            f"for a revision. This card is in {original.stage.value} and its decision is "
+            f"{recorded}."
         )
 
     revision = RRRequest(
