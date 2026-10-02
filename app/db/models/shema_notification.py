@@ -188,8 +188,10 @@ class ShemaProjectNotice(Base):
     )
     assessed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     need_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    need_categories: Mapped[list[Any] | None] = mapped_column(
+    need_categories: Mapped[list[str] | None] = mapped_column(
         JSON(none_as_null=True), nullable=True
     )
-    need_totals: Mapped[list[Any] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    need_totals: Mapped[list[dict[str, str]] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
     submitted_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
