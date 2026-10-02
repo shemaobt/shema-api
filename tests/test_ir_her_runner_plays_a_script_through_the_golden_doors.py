@@ -191,6 +191,18 @@ async def test_an_interruption_with_no_words_hands_the_guide_her_note_alone(
     assert answered.json()["transcript"] == INTERRUPTED_NOTE
 
 
+async def test_an_interrupted_flag_alone_reaches_the_guide_as_its_note(client, monkeypatch) -> None:
+    session_id = await _an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "interrupted": True}
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert agent.guide_inputs == [INTERRUPTED_NOTE]
+
+
 async def test_a_cut_in_in_the_mother_tongue_tells_the_guide_both_facts(
     client, monkeypatch
 ) -> None:

@@ -79,7 +79,7 @@ def _heard(payload: GoldenTurnRequest, *, language: str) -> HeardSpeech:
             take_ms=take_ms,
             interrupted=cut,
         )
-    if payload.teamText is None and payload.roomNote is None:
+    if payload.teamText is None and payload.roomNote is None and not cut:
         raise ValidationError("no teamText or roomNote")
     return HeardSpeech(text=payload.teamText or "", bridge_language=language, interrupted=cut)
 

@@ -17,7 +17,7 @@ from fastapi import Depends, Header
 
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError, NotFoundError, ValidationError
-from app.models.internalization_room_text_seam import ModelCall
+from app.models.internalization_room_text_seam import ModelCall, Outcome
 from app.services import internalization_room as room
 from app.services.internalization_room.languages import LANGUAGE_NAMES, normalize
 
@@ -97,7 +97,7 @@ def _collecting_model_calls() -> Iterator[list[ModelCall]]:
         _COLLECTING.reset(token)
 
 
-def _outcome_tag(outcome: room.TurnOutcome) -> str:
+def _outcome_tag(outcome: room.TurnOutcome) -> Outcome:
     """The tag the judge is defined against, read off what the turn already records.
 
     A turn that fell to a pre-approved line says so. A voiced turn carrying the Validator's

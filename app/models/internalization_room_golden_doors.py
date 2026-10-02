@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.internalization_room_text_seam import ModelCall
+from app.models.internalization_room_text_seam import ModelCall, Outcome
 
 EarlierPassageStatus = Literal["approved", "started", "not_worked"]
 RoomNote = Literal["session_start", "mother_tongue", "interrupted"]
@@ -52,8 +52,7 @@ class GoldenTurnResponse(BaseModel):
     """Her `HttpTurnResponse`, and the turn's model calls beside it, which she ignores."""
 
     guideText: str
-    #: `pass`, `corrected` or `fail_safe`, the tags her judge is defined against.
-    outcome: str
+    outcome: Outcome
     #: What reached the Guide as the team's side of the turn.
     transcript: str
     #: The session is stored as done once this turn has settled its beads.
