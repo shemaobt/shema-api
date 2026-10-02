@@ -365,6 +365,7 @@ class ShemaNeedLine(LeavingShape):
                 "acknowledged_at": need.acknowledged_at,
                 "sensitive_country": project.sensitive_country,
                 "region_key": project.region_key,
+                "public_language_name": project.public_language_name,
             }
         )
 

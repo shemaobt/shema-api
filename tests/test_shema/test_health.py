@@ -716,8 +716,10 @@ async def test_the_notice_of_a_sensitive_project_names_no_place_either(
     )
 
     notice = (await _notices(db_session))[0]
-    assert notice.body.startswith("Uma língua was assessed as critical")
-    for leaked in ("Brazil", "Egypt", "JOCUM", "south-america"):
+    # The name can name the place too (OBT-560): with no public name registered, the notice says
+    # *a project* — never the language, never the region key.
+    assert notice.body.startswith("A project was assessed as critical")
+    for leaked in ("Brazil", "Egypt", "JOCUM", "south-america", "Uma língua"):
         assert leaked not in notice.body
 
 

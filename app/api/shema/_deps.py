@@ -69,13 +69,20 @@ scope it already read. Both shape a payload rather than admit a request. The gra
 per request by :func:`_granted` and every consumer shares it, so asking a second question costs
 no second query: a scope and a role resolved from two separate reads of one fact is the defect
 ``scope_from_roles`` was written to close, and it would come straight back through this file.
+
+**No answer of this module may be kept by a cache** (OBT-555). Every read here is built for its
+reader — the scope, the reader of OBT-528, the role — and the two unauthenticated routes answer
+whoever holds a link, so a body stored between the server and the reader is somebody else's
+body, or a link's answer after the link is spent. :data:`PER_READER_CACHE_CONTROL` is the value
+and :data:`NO_STORE` the one dependency that writes it; ``__init__.py`` hangs it on the outer
+router, so every route the module mounts inherits it as it inherits the door or the app gate.
 """
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import require_app_access, require_role
@@ -104,6 +111,26 @@ APP_KEY = "shema"
 
 #: The resource-request form's app key, whose ``gestor`` and ``mesa`` open the PME's door.
 FORM_APP_KEY = "resource-request-form"
+
+#: One URL, many readers, many bodies: nothing between the server and the reader may keep one.
+PER_READER_CACHE_CONTROL = "private, no-store"
+
+
+async def _no_store(response: Response) -> None:
+    """Write :data:`PER_READER_CACHE_CONTROL` on the response FastAPI builds for the handler.
+
+    **Only on that one.** FastAPI copies the headers of the injected ``Response`` onto the body
+    it serialises from a returned model; a handler that returns a ``Response`` of its own is
+    answered with that object as it is, so a ``GET`` that does (the export's file, the Pulse, the
+    exit link's 204) writes the header itself — and ``tests/test_shema/test_cache_control.py``
+    calls every ``GET`` to see that it did. An answer built by an exception handler is not reached
+    either: it is ``app/core/exceptions.py``'s error envelope, not a reader's record.
+    """
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
+
+
+#: The module's cache rule as the one ``Depends`` the outer router in ``__init__.py`` carries.
+NO_STORE = Depends(_no_store)
 
 Db = Annotated[AsyncSession, Depends(get_db)]
 

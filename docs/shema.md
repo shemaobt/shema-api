@@ -297,8 +297,8 @@ bucket, which is the precedent, not a trespass).
 
 | Path | Owner | Holds |
 |---|---|---|
-| `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4). The app key is named here and nowhere else in the module. |
+| `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. Since OBT-555 the outer `router` carries `NO_STORE`, so every route the module mounts answers `Cache-Control: private, no-store` (§3.3's *Caching* row). |
+| `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4), and — OBT-555 — the cache rule (`PER_READER_CACHE_CONTROL` and the `NO_STORE` dependency that writes it). The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
@@ -333,7 +333,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9) — whose one statement, `live_membership_ids`, is public since BE-19 (OBT-520), because the resource-request form reads the same fact. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. **BE-09:** `Readership.withheld_prayer`, whether the caller reads a request nobody authorized — `_consent.py`'s rule, set by `_deps._reading`. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
 | `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question; since BE-14, `never_lowered`, the import's one-way rule on the flag. The only reader of the guarded columns in the two `shema` packages. §6.4. |
-| `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to. |
+| `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to. OBT-554: `submission_reaches_prayer_wall`, the prayer notice's gate — what a submission authorized, and the record. |
 | `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
 | `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
@@ -413,6 +413,7 @@ nothing in column 3 imports `fastapi`.
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
 | **The intake link (unauthenticated)** | The two `/intake/{token}` routes carry no auth dependency — the first deliberate hole, and it is a router-level fact. The intercessor's exit link (OBT-531) is the second, of the same shape. | `verify_intake_token` is the guard: a service function, so the rule holds for any future caller of it. §6.6. |
+| **Caching** | Declared once: the outer `router` in `__init__.py` carries `NO_STORE` (`_deps.py`), so every answer the module builds says `Cache-Control: private, no-store` — every read is built for its reader, and the link routes answer whoever holds the link (OBT-555). A `GET` whose handler returns a `Response` of its own (the export, the Pulse, the exit link's 204) writes `PER_READER_CACHE_CONTROL` itself, because FastAPI does not merge the injected response's headers into it; `tests/test_shema/test_cache_control.py` calls every `GET` and reads the header off the wire. Not reached: the error envelopes of `app/core/exceptions.py`, shared by every app and not a reader's record, and the four answers a write builds itself — the record's 409 (on the `PATCH` and on the import), the import's 400, and the `POST`s of the intake (202) and of the exit link (204), the last two with no `Authorization` — which no cache stores, since none carries explicit freshness. | Nothing. |
 
 ---
 
@@ -879,7 +880,12 @@ behaviour on it.
 >   `save_project` — the import included — and in `append_assessment`), and a shared need whose
 >   description is rewritten without `prayerShared` is unshared (`need_written`). Stating it keeps
 >   it: the health wizard sends both, and the console's consent control sits beside the text. The
->   media rule, *replacing the artifact resets the decision*, applied to the request.
+>   media rule, *replacing the artifact resets the decision*, applied to the request. **The prayer
+>   notice asks it of the submission** (OBT-554): it is staged before anybody applies the Pulse,
+>   while the record still holds the last request's answer, so `submission_reaches_prayer_wall`
+>   lets it through only when the Pulse itself answered `rede` and the record already says so. A
+>   Pulse that wrote a request without that answer — a new text, `coordenacao`, the same text
+>   again — announces nothing, whatever the project said before.
 > - **Who reads a request nobody authorized is the health assessment's audience**
 >   (`PRAYER_AUDIENCE = HEALTH_AUDIENCE`): `globalStrategist`, `coordinator` and `obtLab` in their
 >   scope, and an installation admin. The request is raised in the assessment and kept on the
@@ -1167,7 +1173,9 @@ reach the caller's reader — the only ones that may build a payload carrying th
 new route that took `Reading` (an export, say) is red there until somebody lists it and argues
 it. The collection's and the record's answers carry `Cache-Control: private, no-store`
 (`PER_READER_CACHE_CONTROL`): one URL — and one version of one record — now reads two ways, and
-no cache may hand one reader's body to another.
+no cache may hand one reader's body to another. Since OBT-555 that is every answer the module
+builds, not these two: the outer router carries the rule (§3.3's *Caching* row), and
+`tests/test_shema/test_cache_control.py` calls every `GET` to see it on the wire.
 
 **Two coordinations, deliberately.** `ShemaReader.COORDINATION` is GATE-04's membership — who
 reads a sensitive place. `ShemaAudience.COORDENACAO` is FE-44's destination — every role that
@@ -1470,8 +1478,22 @@ file never carries it, its request or its id in `shema_exports`; an import namin
 `create_project`, the existence oracle `POST /projects` already has; the import inherits it by
 being the same path.~~ **Closed by OBT-551 (1/out/2026, Daniel), and the id stopped naming a place altogether with OBT-552:** a new record's id is a minted
 UUID, and a slug is refused before anything is read with one fixed sentence, so neither the create
-nor the import can tell a slug that exists elsewhere from one that never did (§5.1). The free text of an authorized request, the language name and the vitality
-can still name a place — this section's residuals. The header's language reuses BE-09's
+nor the import can tell a slug that exists elsewhere from one that never did (§5.1). The free text of an authorized request and the vitality
+can still name a place — this section's residuals. ~~The language name~~ **closed by OBT-560 (2/out/2026):**
+a sensitive project's language name can name the place (*Sa'di of High Egypt*), and Karina, via
+Daniel, 1/out/2026, chose *"um nome alternativo, cadastrado pela coordenação"*. That much is hers.
+`shema_projects.public_language_name` holds it, written by coordination alone
+(`COORDINATION_WRITES`) and read by `_redaction.py` alone (`REDACTION_COLUMNS`); `LeavingShape`
+replaces `language_name`/`language` with it for every reader but coordination, beside the place,
+and says so in `languageNameWithheld`. **Ours, not hers:** while none is registered the **region
+key** stands in, as it does for `location` — fail closed; a notice says *a project* and the Pulse
+*Projeto sensível* instead of the key; the search finds the card by the name the reader reads;
+and the Pulse inbox and the two notices — paths that are not shapes — take the same rule through
+`language_name_for`. `tests/test_shema/test_language_name.py` sweeps every leaving shape that
+declares a name, found by walking the subclasses. **Left named:** the collection and the ETEN
+report still **order** by the real name, so a reader could infer a little from a card's position;
+`ProjectRef` (a member's own projects) and the intake form behind a leader's link print the real
+name, because their reader is the team — the form declares it in `IntakeForm._withhold_name`. The header's language reuses BE-09's
 `PulseLanguage`, which is the console's two locales under a name that says *Pulse*.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
@@ -2200,6 +2222,8 @@ which is the property that made deciding now cheap enough to do.
 > report that keeps the region and never the country. **To confirm, and not decided here:** the
 > answer was about the id, and for a flagged project the id — like the language name GATE-04
 > (1.5) already lets through — can itself name the place, which the recorded report then keeps.
+> **Both closed:** the id by OBT-552 (1/out/2026), the language name by OBT-560 (2/out/2026) — a
+> flagged project's line carries the name coordination registered, or the region key (§6.4).
 
 ### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — open, and BE-16 is running fail-closed against it
 

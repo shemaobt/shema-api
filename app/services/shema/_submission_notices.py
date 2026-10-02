@@ -17,17 +17,18 @@ the collection read leaking one row at a time through a channel nobody audits.
 
 **Two notices, not one, and the second one has two gates.** The arrival reaches
 coordination. A prayer request inside it reaches the Resource Circle only if the submission
-**wrote one** and the project's own consent lets it leave coordination — the second is
-``app/services/shema/_consent.py``'s question about the project and never this file's, and *an
-unauthorized prayer request is absent from all four output paths* with notifications as the
-fourth.
+**wrote one** and consent lets it leave coordination — the second is
+``app/services/shema/_consent.py``'s question and never this file's, and *an unauthorized
+prayer request is absent from all four output paths* with notifications as the fourth.
 
-**The consent read is of the record and not of the answer, and the order that falls out is
-deliberate.** A submission that arrives through the link is not applied to the record until a
-coordinator applies it, so at arrival the project's visibility is still whatever the project
-said before — which means a leader claiming ``rede`` through an unauthenticated link cannot,
-by itself, publish anything. The Resource Circle hears about it on the import, once a person
-who can be asked has written that consent onto the record.
+**The consent read is of the answer and of the record, both** (OBT-554). The notice is staged
+before anybody applies the submission, on either door, so at arrival the project's visibility
+is still the answer the *last* request was given — read alone, a project that said ``rede``
+last month would lend it to a request the team never shared. So the submission has to say
+``rede`` itself, and the record has to agree: a leader claiming it through an unauthenticated
+link cannot, by itself, make the network hear of anything. A request shared for the first time
+is therefore **never announced**: nothing fires on arrival, nothing fires when a coordinator
+applies it, and the Resource Circle finds it on the wall without being told.
 
 **No body names a place, and none names the request.** The notice is a pointer: the language,
 and that something arrived. The record read is where the truth lives, behind the scope that
@@ -50,9 +51,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaSubmission
+from app.models.shema import ShemaProjectUpdate
+from app.models.shema_privacy import ShemaReader
 from app.services import authorization_service
 from app.services.notifications import create_notification, get_shema_app_id
-from app.services.shema._consent import reaches_prayer_wall
+from app.services.shema._consent import submission_reaches_prayer_wall
+from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import (
     COORDINATOR_ROLE,
     OBT_LAB_ROLE,
@@ -107,6 +111,7 @@ async def notify_submission(
     *,
     app_key: str,
     carries_prayer: bool,
+    written: ShemaProjectUpdate,
 ) -> int:
     """Tell the people whose job this is, and answer how many were told.
 
@@ -114,9 +119,14 @@ async def notify_submission(
     notices and the archive land together. Returned as a count rather than as rows because the
     number is what a test can assert and what a log line can carry, and the rows belong to the
     people they were addressed to.
+
+    ``written`` is the record write the submission carries, handed to the consent gate unread:
+    what the team answered this time is the consent the prayer notice announces.
     """
     app_id = await get_shema_app_id(db)
-    language = submission.language_name or project.language_name or project.id
+    # The project's name as the recipients may read it, not the archived copy: OBT Lab is told
+    # here and is not coordination, and a sensitive project's name can name the place (OBT-560).
+    language = language_name_for(project, ShemaReader.OTHER, fallback="") or "a project"
 
     told = 0
     arrival_recipients = await _recipients(db, app_key, ARRIVAL_ROLES, project)
@@ -144,7 +154,7 @@ async def notify_submission(
         )
         told += 1
 
-    if carries_prayer and reaches_prayer_wall(project):
+    if carries_prayer and submission_reaches_prayer_wall(project, written):
         prayer_recipients = await _recipients(db, app_key, PRAYER_ROLES, project)
         if not prayer_recipients:
             logger.warning(

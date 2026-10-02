@@ -52,7 +52,7 @@ from app.services.shema._scope import (
     visible_projects,
 )
 from app.services.shema._submission_archive import archive_submission, archived_answers
-from app.services.shema.read_submission import as_received
+from app.services.shema.read_submission import as_received, inbox_name
 from app.services.shema.save_project import save_project
 from app.utils.shema_forms import PULSE_FORM_TYPE, PULSE_KIND
 
@@ -195,7 +195,7 @@ async def import_submission(
             expected_version=expected_version,
             day=day,
         )
-    return as_received(submission, answered.version)
+    return as_received(submission, answered.version, inbox_name(project, readership))
 
 
 async def apply_submission(
@@ -243,4 +243,4 @@ async def apply_submission(
             expected_version=expected_version,
             day=day,
         )
-    return as_received(submission, definition.version)
+    return as_received(submission, definition.version, inbox_name(project, readership))

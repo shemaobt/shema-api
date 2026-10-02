@@ -57,6 +57,7 @@ ALLOWLIST = frozenset(
     {
         "id",
         "languageName",
+        "languageNameWithheld",
         "languageCode",
         "bridgeLanguage",
         "vitalityStatus",
