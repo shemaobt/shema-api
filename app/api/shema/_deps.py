@@ -119,11 +119,11 @@ async def _no_store(response: Response) -> None:
     """Write :data:`PER_READER_CACHE_CONTROL` on the response FastAPI builds for the handler.
 
     **Only on that one.** FastAPI copies the headers of the injected ``Response`` onto the body
-    it serialises from a returned model; a handler that returns a ``Response`` of its own (the
-    export's file, the Pulse, the exit link's 204) is answered with that object as it is, so it
-    writes the header itself — and ``tests/test_shema/test_cache_control.py`` calls every ``GET``
-    to see that it did. An answer built by an exception handler is not reached either, and
-    carries no reader's body: ``app/core/exceptions.py`` serves the same envelope to everybody.
+    it serialises from a returned model; a handler that returns a ``Response`` of its own is
+    answered with that object as it is, so a ``GET`` that does (the export's file, the Pulse, the
+    exit link's 204) writes the header itself — and ``tests/test_shema/test_cache_control.py``
+    calls every ``GET`` to see that it did. An answer built by an exception handler is not reached
+    either: it is ``app/core/exceptions.py``'s error envelope, not a reader's record.
     """
     response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
 

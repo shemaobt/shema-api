@@ -41,8 +41,8 @@ every account at the door may call it and the service decides what it answers;
 two holes are all included into it, so every route the module mounts — today's and the next
 issue's — answers ``Cache-Control: private, no-store``: every read here is built for its reader, and
 the link routes answer whoever holds the link. The dependency writes the header on the response
-FastAPI builds from a returned model; a handler that returns a ``Response`` of its own writes
-``PER_READER_CACHE_CONTROL`` itself, as the export, the Pulse and the exit link do.
+FastAPI builds from a returned model; a ``GET`` whose handler returns a ``Response`` of its own
+writes ``PER_READER_CACHE_CONTROL`` itself, as the export, the Pulse and the exit link do.
 ``tests/test_shema/test_cache_control.py`` checks the wiring on every route and calls every
 ``GET`` to read the header off the wire.
 
