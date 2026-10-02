@@ -134,6 +134,7 @@ def _write(
     header: _Header,
     file_format: ExportFormat,
     language: PulseLanguage,
+    *,
     reads_health: bool,
 ) -> _Written:
     """The rows through the boundary, the header addressed, the file rendered — no I/O at all.
@@ -218,7 +219,7 @@ async def export_projects(
         header,
         file_format,
         language,
-        readership.reads_health,
+        reads_health=readership.reads_health,
     )
 
     request_ids = [request.id for project in projects for request in authorized[project.id]]

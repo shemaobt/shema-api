@@ -176,8 +176,6 @@ async def list_notification_panel(
     """
     app_id = await get_shema_app_id(db)
     reads_health = await reads_assessments(db, user, app_key)
-    # Routed by who the account is now, in the query and so before the cap: a health notice
-    # addressed while it was in the audience is not read once it has left it (OBT-553).
     rows = await list_notifications(
         db,
         user.id,
