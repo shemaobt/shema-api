@@ -407,7 +407,7 @@ async def create_session(
     per request and FastAPI's dependency cache is what makes this and `device_project_dep`
     one query — so a caller on the shared room key names no device and lifts nothing.
 
-    After the session exists, so a `create_session` that refuses leaves the halt standing:
+    After the session exists, so an `open_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
 
     The session is the team's for this pericope and language, returned whatever its state
