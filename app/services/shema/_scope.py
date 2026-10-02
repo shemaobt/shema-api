@@ -432,6 +432,8 @@ class Readership(NamedTuple):
     **It also carries the prayer request's reader (BE-09)**, because the record read and its write
     are the two places that ask and both already take this value. Who reads a request nobody
     authorized is ``_consent.py``'s rule; ``app/api/shema/_deps.py`` asks it and sets the bit here.
+    **And the health reader (OBT-553)**, for the same two places and the collection: who reads a
+    team's health is ``_health_audience.py``'s rule, set here the same way.
     """
 
     #: The regions this caller coordinates: all of them, their own, or none.
@@ -439,6 +441,10 @@ class Readership(NamedTuple):
     #: Whether this caller reads a prayer request that has not been authorized to leave
     #: coordination — ``_consent.reads_withheld_requests``. ``False`` unless somebody said so.
     withheld_prayer: bool = False
+    #: Whether this caller reads a team's health — ``_health_audience.in_health_audience``.
+    #: ``False`` unless somebody said so, which is the fail-closed floor: a readership built
+    #: anywhere else (the notification panel's ``NO_COORDINATION``) reads no health.
+    reads_health: bool = False
 
     def reader_of(self, region_key: ShemaRegionKey | str) -> ShemaReader:
         """``coordination`` for a project in a region this caller coordinates, ``other`` else."""

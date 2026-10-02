@@ -548,6 +548,40 @@ async def test_a_conflict_names_a_prayer_request_only_to_its_audience(
     assert ("prayerRequests" in res.json()["changedFields"]) is told
 
 
+@pytest.mark.parametrize(("role", "told"), [("resourceCircle", False), ("obtLab", True)])
+async def test_a_conflict_names_the_pastoral_follow_up_only_to_the_health_audience(
+    client, db_session, shema_app, cleared, role, told
+) -> None:
+    """The pastoral follow-up is empty to the Resource Circle (OBT-553), so the fact that it
+    moved, and who moved it, is not theirs either; the OBT Lab reads a team's health and is
+    told."""
+    who = await _coordinator_saves(
+        client, db_session, shema_app, CLEARED_ID, {"pastoralInterventionName": "Pr. Joao"}
+    )
+
+    res = await _stale_save(client, await _headers(db_session, shema_app, role), CLEARED_ID)
+
+    assert res.status_code == 409
+    body = res.json()
+    assert ("pastoralInterventionName" in body["changedFields"]) is told
+    assert (body["changedBy"] == who) is told
+
+
+async def test_the_resource_circle_reads_no_health_history_on_a_withheld_record(
+    client, db_session, shema_app, withheld
+) -> None:
+    """Both reductions answer the history on this record: the withheld record's, without its
+    notes, and the health audience's, none at all. The stricter one stays — the ratings and
+    the day of a reading are not the Resource Circle's on any record (OBT-553)."""
+    res = await client.get(
+        f"{PROJECTS}/{WITHHELD_ID}",
+        headers=await _headers(db_session, shema_app, "resourceCircle"),
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["healthHistory"] is None
+
+
 # --------------------------------------------------------------------------------------
 # Item 4 — the count of withheld projects is coordination's
 # --------------------------------------------------------------------------------------

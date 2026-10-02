@@ -82,6 +82,7 @@ from app.services.shema._consent import (
     undecidable_shares,
     unreadable_request_writes,
 )
+from app.services.shema._health_audience import refuse_unread_health_writes
 from app.services.shema._progress import (
     Aggregates,
     ProgressSource,
@@ -378,7 +379,8 @@ async def save_project(
     withheld one (OBT-528) — a 403, because the record is already theirs to reach and the
     answer depends on nothing but the names they sent. Since OBT-556 the free text of a withheld
     record is refused the same way, and a need's description by its value
-    (:func:`_as_the_reader_may_write`).
+    (:func:`_as_the_reader_may_write`). A reader outside the health audience is refused the
+    pastoral follow-up the same way (OBT-553): it reads those fields empty.
 
     ``day`` is the actor's local day and is the caller's to state; ``source`` is BE-12's, and
     is here so that an imported update and a typed one are one path. ``commit`` is BE-14's, for
@@ -396,6 +398,13 @@ async def save_project(
         unreadable_request_writes(
             payload.model_fields_set, reads_withheld=readership.withheld_prayer
         ),
+        user=user,
+        operation="save_project",
+    )
+    refuse_unread_health_writes(
+        project,
+        payload.model_fields_set,
+        reads_health=readership.reads_health,
         user=user,
         operation="save_project",
     )

@@ -50,6 +50,7 @@ from app.db.models.shema_audit import ShemaRecordEdit
 from app.models.shema import ShemaProjectUpdate
 from app.models.shema_privacy import CONTACT_FIELDS, PLACE_FIELDS
 from app.services.shema._consent import request_as_read
+from app.services.shema._health_audience import UNREAD_HEALTH
 from app.services.shema._redaction import withheld_from
 from app.services.shema._scope import Readership
 
@@ -236,15 +237,20 @@ def record_edits(
 def _unreadable_keys(project: ShemaProject, readership: Readership) -> frozenset[str]:
     """The trail keys this reader may not be told moved — what their read of the record reduces.
 
-    Two owners, asked and not restated: the boundary's list for a withheld record read by
-    anybody but coordination (``_redaction.withheld_from``), and the prayer request a reader
+    Three owners, asked and not restated: the boundary's list for a withheld record read by
+    anybody but coordination (``_redaction.withheld_from``), the prayer request a reader
     outside its audience is handed empty (``_consent.request_as_read`` — the keys of the update
-    are the fields it blanks). Spelled as the trail spells them, which is the wire's spelling.
+    are the fields it blanks), and a team's health for a reader outside the health audience
+    (``_health_audience.UNREAD_HEALTH``, OBT-553 — the pastoral follow-up and the history move on
+    the trail, and the record hands this reader both empty). Spelled as the trail spells them,
+    which is the wire's spelling.
     """
     reader = readership.reader_of(project.region_key)
     columns = withheld_from(project, reader) | set(
         request_as_read(project, reads_withheld=readership.withheld_prayer)
     )
+    if not readership.reads_health:
+        columns |= set(UNREAD_HEALTH)
     return frozenset(FIELD_KEYS.get(column) or _wire(column) for column in columns)
 
 

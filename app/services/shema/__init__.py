@@ -81,9 +81,11 @@ for a new one. ``append_assessment.py`` is the **only** writer of
 fields, so *the projection is the newest entry* cannot be made false by a second writer;
 ``_health_audience.py`` is the sole owner of *who may read a reading of a team*, which is a
 narrower question than who may open the record, and it answers it once for the read gate and
-for the recipient list so the two cannot drift; ``_health_notice.py`` owns what a notice about a
-struggling team may say, which is the part of that feature that actually needed deciding; and
-``list_assessments.py`` is the history behind the narrower gate.
+for the recipient list so the two cannot drift — and, since OBT-553, for every other door a
+reading leaves by: the ficha, the card, the search, the export, the panel and the pastoral
+write; ``_health_notice.py`` owns what a notice about a struggling team may say, which is the
+part of that feature that actually needed deciding; and ``list_assessments.py`` is the history
+behind the narrower gate.
 
 **BE-15 landed the panel, the preferences and the read state** — the three things
 ``docs/shema.md`` §5.10 gives it, and none of them is a second delivery path. The panel is
@@ -200,6 +202,7 @@ from app.services.shema._form_validation import (
 from app.services.shema._grant_rules import GrantApps
 from app.services.shema._health_audience import (
     HEALTH_AUDIENCE,
+    in_health_audience,
     reads_assessments,
     recipients,
     require_reads_assessments,
@@ -428,6 +431,7 @@ __all__ = [
     "holders_reaching",
     "import_projects",
     "import_submission",
+    "in_health_audience",
     "is_authorized",
     "is_withheld",
     "issue_exit_link",

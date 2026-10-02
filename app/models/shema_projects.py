@@ -293,7 +293,9 @@ class ShemaFacetCounts(BaseModel):
 
     model_config = _OUTWARD
 
-    #: ``{group: {option: count}}`` over :data:`~app.utils.shema_facets.FACET_GROUPS`.
+    #: ``{group: {option: count}}`` over :data:`~app.utils.shema_facets.FACET_GROUPS` — all of
+    #: them but ``health`` for a reader who reads no health (OBT-553), here and in
+    #: :attr:`group_all`; ``app/services/shema/browse_projects.py`` says why.
     groups: dict[str, dict[str, int]] = Field(default_factory=dict)
     #: One number per preset — each is a single toggle, not a group of options.
     presets: dict[str, int] = Field(default_factory=dict)
