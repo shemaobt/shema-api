@@ -431,6 +431,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (session_id, absent),
         },
         {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/conversation", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/conversation", {}),
+            "ids": (session_id, absent),
+        },
+        {
             "method": "POST",
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
@@ -463,6 +469,7 @@ REFUSING_TEMPLATES = {
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/conversation"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),
