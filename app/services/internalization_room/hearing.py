@@ -67,6 +67,8 @@ class HeardSpeech(BaseModel):
     language_probability: float | None = None
     transcript_confidence: float | None = None
     take_ms: int | None = None
+    #: The team cut the Guide's previous reply short to say this.
+    interrupted: bool = False
 
     @property
     def mother_tongue(self) -> bool:

@@ -1,6 +1,6 @@
-"""The second door of the text seam: her frases enter as text and the room judges them.
+"""The text seam's door: her frases enter as text and the room judges them.
 
-The first door (`/text-seam/turn`) opens the Guide's conversation. This one opens the
+The Golden doors (`/golden/turn`) open the Guide's conversation. This one opens the
 back-translation check: a runner declares a session over her clips, then plays a round of
 frases as text through the real path — the Correction check when a frase supersedes, the
 Analyst's reading, the Speaker's verdict, the Validator — and reads back the findings with
@@ -246,6 +246,24 @@ async def test_the_door_refuses_a_wrong_key(client) -> None:
     )
 
     assert (declared.status_code, played.status_code) == (401, 401), declared.text
+
+
+async def test_the_back_translation_seam_still_takes_the_runner_key_in_x_access_code(
+    client,
+) -> None:
+    declared = {"pericopeId": PASSAGE, "language": LANGUAGE, "clips": CLIPS}
+
+    in_its_header = await client.post(f"{SEAM}/session", json=declared)
+    as_a_bearer = await client.post(
+        f"{SEAM}/session",
+        json=declared,
+        headers={"X-Access-Code": "", "Authorization": f"Bearer {RUNNER_KEY}"},
+    )
+
+    assert (in_its_header.status_code, as_a_bearer.status_code) == (200, 401), (
+        "a porta da retrotradução lê a chave do runner em X-Access-Code; só as portas "
+        "douradas a leem como Bearer"
+    )
 
 
 async def test_the_door_is_not_published_in_the_openapi_schema(db_session) -> None:

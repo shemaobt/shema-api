@@ -17,6 +17,8 @@ from app.api.internalization_room import text_seam
 from app.core.config import get_settings
 from app.services.internalization_room.room_agent import CallAgent, room_agent
 from tests.text_seam_harness import (
+    BEARER,
+    GOLDEN,
     RUNNER_KEY,
     TEAM_LINE,
     the_analyst_reads,
@@ -26,7 +28,7 @@ from tests.text_seam_harness import (
 )
 from tests.turn_harness import the_room_agent_is
 
-SEAM = "/api/internalization-room/text-seam"
+BACK_TRANSLATION = "/api/internalization-room/text-seam/back-translation"
 
 
 async def _settled_later(**_: Any) -> None:
@@ -42,7 +44,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     async with httpx.AsyncClient(
         transport=ASGITransport(app=the_app(db_session)),
         base_url="http://test",
-        headers={"X-Access-Code": RUNNER_KEY},
+        headers={**BEARER, "X-Access-Code": RUNNER_KEY},
     ) as c:
         yield c
 
@@ -63,14 +65,16 @@ async def test_a_text_turn_is_thought_with_the_database_let_go_not_held_open(
 ) -> None:
     the_models_answer(monkeypatch)
     created = await client.post(
-        f"{SEAM}/session", json={"pericopeId": "P01", "language": "Brazilian Portuguese"}
+        f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "Brazilian Portuguese"}
     )
     session_id = created.json()["sessionId"]
-    await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+    await client.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"})
     held: dict[str, bool] = {}
     the_room_agent_is(monkeypatch, turn=_watching(room_agent().turn.call_agent, db_session, held))
 
-    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+    answered = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": TEAM_LINE}
+    )
 
     assert answered.status_code == 200, answered.text
     assert held == {"guide": False, "validator": False}, (
@@ -84,7 +88,7 @@ async def test_a_retro_round_is_read_with_the_database_let_go_not_held_open(
     the_analyst_reads(monkeypatch)
     the_speaker_says(monkeypatch)
     declared = await client.post(
-        f"{SEAM}/back-translation/session",
+        f"{BACK_TRANSLATION}/session",
         json={
             "pericopeId": "P02",
             "language": "Brazilian Portuguese",
@@ -100,7 +104,7 @@ async def test_a_retro_round_is_read_with_the_database_let_go_not_held_open(
     the_room_agent_is(monkeypatch, turn=_watching(room_agent().turn.call_agent, db_session, held))
 
     played = await client.post(
-        f"{SEAM}/back-translation/round",
+        f"{BACK_TRANSLATION}/round",
         json={
             "sessionId": declared.json()["sessionId"],
             "frases": [

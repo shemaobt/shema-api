@@ -3,12 +3,12 @@
 The scripts are hers, vendored byte for byte at `golden/sessions/` under the pin in
 `docs/doctrine/DOCTRINE_PIN`: the exact words the team says, turn by turn, with the room-notes
 her app hands the Guide — a kickoff, the team speaking their own language for N seconds, an
-interruption. The base URL is the only thing that says which room is being judged: her app
-takes `https://<her-app>/api`, this room takes `http://<host>/api/internalization-room/text-seam`,
-and the requests are the same.
+interruption. They are played through the room's **Golden doors**, `golden/session` and
+`golden/turn` under the base URL, with the requests her own runner sends
+(`src/golden/httpDriver.ts`) and the key as a bearer credential.
 
     ACCESS_CODE=<key> uv run python scripts/golden_runner.py \\
-        --base-url http://127.0.0.1:8044/api/internalization-room/text-seam \\
+        --base-url http://127.0.0.1:8044/api/internalization-room \\
         [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>]
 
 One command is the five, as `npm run golden` is on her side; `--only` names one of them and
@@ -229,23 +229,42 @@ def mother_tongue_note(language: str, seconds: int) -> str:
     )
 
 
-def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, Any]:
+def interrupted_note(language: str) -> str:
+    if _portuguese(language):
+        return "[A equipe interrompeu a sua fala anterior neste ponto.]"
+    return "[The team interrupted your previous turn at this point.]"
+
+
+def request_for(turn: ScriptTurn, script: Script, session_id: str) -> tuple[dict[str, Any], str]:
+    """The request her `turnRequest` builds for one scripted turn, and the team side she expects.
+
+    The team side is what her runner hands the judge when the room sends no transcript: the
+    words or the note, behind her interrupted note when the team cut in.
+    """
     body: dict[str, Any] = {"sessionId": session_id}
+    said = ""
     if turn.kickoff:
-        body["kickoff"] = True
+        said = opening_note(script.pericopeId, script.language)
+        body.update(roomNote="session_start", noteText=said)
     elif turn.motherTongue:
-        body["text"] = mother_tongue_note(script.language, turn.motherTongue)
-        body["motherTongue"] = turn.motherTongue
+        said = mother_tongue_note(script.language, turn.motherTongue)
+        body.update(roomNote="mother_tongue", seconds=turn.motherTongue, noteText=said)
+    elif turn.team:
+        said = turn.team
+        body["teamText"] = said
+    elif turn.interrupted:
+        body.update(roomNote="interrupted", noteText=interrupted_note(script.language))
     else:
-        body["text"] = turn.team or ""
+        body["teamText"] = ""
     if turn.interrupted:
         body["interrupted"] = True
-    return body
+    cut = interrupted_note(script.language) if turn.interrupted else ""
+    return body, " ".join(part for part in (cut, said) if part)
 
 
 async def open_session(script: Script, client: httpx.AsyncClient) -> str:
     opened = await client.post(
-        "session", json={"pericopeId": script.pericopeId, "language": script.language}
+        "golden/session", json={"pericopeId": script.pericopeId, "language": script.language}
     )
     opened.raise_for_status()
     return str(opened.json()["sessionId"])
@@ -267,20 +286,18 @@ async def play(
     """
     previous_guide = played[-1].guide if played else ""
     for idx, turn in enumerate(script.turns[:turns]):
-        body = request_for(turn, script, session_id)
+        body, expected = request_for(turn, script, session_id)
         started = time.monotonic()
-        answered = await client.post("turn", json=body)
+        answered = await client.post("golden/turn", json=body)
         answered.raise_for_status()
         reply = answered.json()
         line = Played(
             idx=idx,
-            team=reply.get("transcript")
-            or body.get("text")
-            or opening_note(script.pericopeId, script.language),
+            team=reply.get("transcript") or expected,
             guide=reply["guideText"],
             outcome=reply["outcome"],
             interrupted=turn.interrupted,
-            turnMs=int(reply.get("turnMs") or round((time.monotonic() - started) * 1000)),
+            turnMs=int(reply.get("latencyMs") or round((time.monotonic() - started) * 1000)),
             usage=[Usage.from_wire(call) for call in reply.get("usage") or []],
         )
         line.mechanical = mechanical_checks(
@@ -556,7 +573,7 @@ async def run(args: argparse.Namespace) -> int:
         print(f"golden: no session named {args.only}", file=sys.stderr)
         return 2
     base_url = args.base_url.rstrip("/") + "/"
-    headers = {"X-Access-Code": args.access_code} if args.access_code else {}
+    headers = {"Authorization": f"Bearer {args.access_code}"} if args.access_code else {}
     out = Path(args.out)
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
     results: list[SessionResult] = []

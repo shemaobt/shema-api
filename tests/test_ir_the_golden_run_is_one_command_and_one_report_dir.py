@@ -36,7 +36,7 @@ from tests.text_seam_harness import (
 )
 from tests.turn_harness import the_room_agent_is
 
-BASE_URL = "http://test/api/internalization-room/text-seam/"
+BASE_URL = "http://test/api/internalization-room/"
 STAMP = "2026-09-16T18-00-00"
 
 

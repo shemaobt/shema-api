@@ -24,6 +24,8 @@ from tests.room_harness import CORRECTION_MARK
 from tests.turn_harness import the_room_agent_is
 
 RUNNER_KEY = "runner-de-teste"
+GOLDEN = "/api/internalization-room/golden"
+BEARER = {"Authorization": f"Bearer {RUNNER_KEY}"}
 
 GUIDE_LINE = "Olá, eu sou o Facilitador Digital. Vamos começar pelo todo."
 TEAM_LINE = "Bom dia. Somos a equipe Terena. Pode continuar."
@@ -44,11 +46,13 @@ class ScriptedAgent:
     def __init__(self, script: list[Any]) -> None:
         self._script = list(script)
         self.guide_inputs: list[str] = []
+        self.guide_systems: list[str] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         validating = "corrected_response" in system_prompt
         if not validating:
             self.guide_inputs.append(user_content)
+            self.guide_systems.append(system_prompt)
         planned = self._script.pop(0) if self._script else None
         if planned is not None:
             return planned

@@ -22,6 +22,7 @@ from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
 from scripts.golden_runner import Played, export, load_script, open_session, play
 from tests.text_seam_harness import (
+    BEARER,
     GUIDE_LINE,
     RUNNER_KEY,
     TEAM_LINE,
@@ -61,8 +62,8 @@ async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     test_app.dependency_overrides[get_db] = _get_db
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app),
-        base_url="http://test/api/internalization-room/text-seam/",
-        headers={"X-Access-Code": RUNNER_KEY},
+        base_url="http://test/api/internalization-room/",
+        headers=BEARER,
     ) as c:
         yield c
 

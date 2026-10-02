@@ -255,8 +255,8 @@ async def room_client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The room's routes on an app of their own, over the session the case writes through.
 
-    `runner_key` opens the text seam as well, which exists only where the key is set, and
-    sends it on every request the way her runner does.
+    `runner_key` opens the text seam and the Golden doors as well, which exist only where the
+    key is set, and sends it on every request in the header each door reads.
 
     `per_request` gives every request a session of its own from that factory, closed when the
     request unwinds, which is what `get_db` does in the deployed app and what one shared
@@ -292,7 +292,9 @@ async def room_client(
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"X-Access-Code": runner_key} if runner_key else {},
+        headers={"X-Access-Code": runner_key, "Authorization": f"Bearer {runner_key}"}
+        if runner_key
+        else {},
     ) as client:
         yield client
 
