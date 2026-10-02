@@ -36,6 +36,16 @@ every account at the door may call it and the service decides what it answers;
 ``tests/test_shema/test_access.py`` pins the door's routes, by method and path, in
 ``DOOR_ROUTES``, so adding one is an edit somebody has to justify.
 
+**No answer of this module is kept by a cache, and that is a property of this file too**
+(OBT-555). ``router`` carries ``NO_STORE`` (``_deps.py``), and ``authenticated``, ``door`` and the
+two holes are all included into it, so every route the module mounts — today's and the next
+issue's — answers ``Cache-Control: private, no-store``: every read here is built for its reader, and
+the link routes answer whoever holds the link. The dependency writes the header on the response
+FastAPI builds from a returned model; a handler that returns a ``Response`` of its own writes
+``PER_READER_CACHE_CONTROL`` itself, as the export, the Pulse and the exit link do.
+``tests/test_shema/test_cache_control.py`` checks the wiring on every route and calls every
+``GET`` to read the header off the wire.
+
 ``tests/test_shema/test_mount.py`` proves the wiring by hanging its own route off this
 object, which is the check that survives a module with no routes — and the one that
 keeps working the day this file's own routes are the thing being moved.
@@ -48,7 +58,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.shema._deps import APP_KEY, DOOR
+from app.api.shema._deps import APP_KEY, DOOR, NO_STORE
 from app.api.shema.access import router as access_router
 from app.api.shema.eten import router as eten_router
 from app.api.shema.forms import intake as intake_router
@@ -69,7 +79,9 @@ from app.api.shema.session import router as session_router
 from app.api.shema.transfer import router as transfer_router
 from app.core.access_control import require_app_access
 
-router = APIRouter()
+#: The module's outer router. Its one dependency is the cache rule, not a guard: the two holes
+#: below are included straight into it and answer anybody holding a link.
+router = APIRouter(dependencies=[NO_STORE])
 
 #: Everything in this module that needs a signed-in Shemá account. The guard is declared
 #: once here and inherited by every route included below, which is what makes the module
