@@ -428,7 +428,7 @@ def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
     if len(lines) == 1:
         return Notice(*lines[0].as_notice())
 
-    who = lines[0].language_name or lines[0].project_id
+    who = lines[0].spoken_name("A project")
     where = f" ({lines[0].location})" if lines[0].location else ""
     categories = ", ".join(sorted({line.category for line in lines}))
     totals: dict[str, Decimal] = defaultdict(Decimal)

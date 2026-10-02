@@ -177,3 +177,15 @@ def test_the_inbox_prints_the_name_its_reader_may_read() -> None:
     assert inbox_name(_project(PUBLIC), NO_COORDINATION) == PUBLIC
     everywhere = Readership(coordination=RegionScope(global_=True, regions=frozenset()))
     assert inbox_name(_project(PUBLIC), everywhere) == REAL
+
+
+@pytest.mark.parametrize("shape", _shapes(), ids=lambda shape: shape.__name__)
+def test_a_sentence_never_speaks_the_region_key_as_a_name(shape) -> None:
+    """OBT-562: a notice body is prose, and *africa raised an urgent need* reads as a defect."""
+    unnamed = shape.read_by(_source(shape, None, sensitive=True), ShemaReader.OTHER)
+    named = shape.read_by(_source(shape, PUBLIC, sensitive=True), ShemaReader.OTHER)
+    truth = shape.read_by(_source(shape, PUBLIC, sensitive=True), ShemaReader.COORDINATION)
+
+    assert unnamed.spoken_name("A project") == "A project"
+    assert named.spoken_name("A project") == PUBLIC
+    assert truth.spoken_name("A project") == REAL
