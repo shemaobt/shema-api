@@ -35,6 +35,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     is_panorama,
 )
+from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     having_finished_the_passage,
@@ -478,3 +479,48 @@ async def test_a_visit_that_lands_while_the_tablet_reopens_the_room_leaves_nothi
 
     assert undone.status_code == 200, undone.text[:300]
     assert await waiting_at_the_desk(client, desk) == {}
+
+
+PREPARED_OPENING = "Esta e a primeira linha da passagem, preparada durante o Panorama."
+PREPARED_CLIP = "tts/prepared.mp3"
+
+
+async def test_a_prepared_opening_is_never_handed_to_a_session_the_team_already_spoke_in(
+    client, db_session, per_request, script, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def a_line_is_ready(session_id: str, *_: Any, **__: Any) -> None:
+        async with per_request() as fresh:
+            panorama = await get_session(fresh, session_id)
+            panorama.prepared_speech = PREPARED_OPENING
+            panorama.prepared_audio_key = PREPARED_CLIP
+            panorama.prepared_pericope = FIRST
+            await fresh.commit()
+
+    monkeypatch.setattr(sessions_api, "prepare_opening", a_line_is_ready)
+    _team, tablet = await a_claimed_device(db_session)
+    worked = await the_tablet_opens(client, tablet, {"pericope": FIRST})
+    await three_turns_on(client, script, tablet, worked["session_id"])
+    panorama = await the_tablet_opens(client, tablet, {"pericope": "OV"})
+    assert is_panorama(panorama["pericope"])
+    entered = await the_tablet_opens(
+        client, tablet, {"pericope": FIRST, "after_session": panorama["session_id"]}
+    )
+    assert entered["session_id"] == worked["session_id"]
+
+    asked_again = await client.post(
+        f"{PREFIX}/sessions/{entered['session_id']}/turns", headers=team_headers(tablet)
+    )
+    script.said = "E depois?"
+    answered = await client.post(
+        f"{PREFIX}/sessions/{entered['session_id']}/turns",
+        headers=team_headers(tablet),
+        data={"turn_id": str(uuid.uuid4())},
+        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert asked_again.status_code == answered.status_code == 200
+    heard = [asked_again.json()["audio_url"], answered.json()["audio_url"]]
+    assert clip_url(PREPARED_CLIP) not in heard
+    async with per_request() as fresh:
+        said = (await get_session(fresh, entered["session_id"])).messages
+    assert PREPARED_OPENING not in [line["text"] for line in said if line["role"] == "guide"]
