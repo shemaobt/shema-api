@@ -41,8 +41,8 @@ to the record by :func:`request_as_read` and to every write of a request or a sh
 request it was given for, so a new text arriving without one is unauthorized again
 (:func:`request_written`, :func:`need_written`) — and a submission, announced before anybody
 applies it, is authorized by its own answer (:func:`submission_reaches_prayer_wall`, OBT-554).
-Taking an authorization back is named here too (:func:`withdrawn_request`, OBT-561), because
-*which text was withdrawn* is a question about the gate; the archive owns the erasure.
+Taking an authorization back is named here too (:func:`withdraws_authorization`, OBT-561),
+because *did the team stop sharing* is a question about the gate; the archive owns the erasure.
 """
 
 from __future__ import annotations
@@ -378,26 +378,22 @@ def request_written(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str,
     return written
 
 
-def withdrawn_request(project: ShemaProject, sent: Mapping[str, Any]) -> str | None:
-    """The request text whose authorization ``sent`` withdraws, or ``None`` (OBT-561).
+def withdraws_authorization(project: ShemaProject, sent: Mapping[str, Any]) -> bool:
+    """Whether ``sent`` takes back the authorization of the request on the wall (OBT-561).
 
     Read **before** the write lands, off the record as it stands: a request that reaches the
-    wall, and a write that **states** a visibility other than ``rede`` — the team taking the
-    authorization back. What leaves with it is the text that was authorized, so the archived
-    Pulses that carry it can be cleaned (``_submission_archive.erase_withdrawn_request``).
+    wall, and a write that **states** a visibility other than ``rede`` — the team stopping the
+    sharing. Then every archived Pulse that shared a request is cleaned
+    (``_submission_archive.erase_shared_requests``).
 
     **A new text arriving without a visibility is not a withdrawal**, although
-    :func:`request_written` clears the authorization for it. The old text was replaced, not
-    taken back: it was authorized when the team sent it, and the Pulse that carried it is
-    coordination's record of what the team said. Karina's decision (1/out/2026) is about
-    withdrawing; reading a rewrite as one would erase what nobody asked to erase. ``None`` for
-    an empty request too — there is nothing to remove.
+    :func:`request_written` clears the authorization for it: the team did not stop sharing, it
+    wrote something new, and nothing it shared before is taken back. Compared with ``==``, not
+    ``is``: ``sent`` is a mapping, and a raw ``"rede"`` read as a withdrawal would erase.
     """
     if REQUEST_VISIBILITY not in sent or not reaches_prayer_wall(project):
-        return None
-    if sent[REQUEST_VISIBILITY] is ShemaPrayerVisibility.REDE:
-        return None
-    return project.prayer_requests.strip() or None
+        return False
+    return bool(sent[REQUEST_VISIBILITY] != ShemaPrayerVisibility.REDE)
 
 
 def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:

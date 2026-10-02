@@ -8,7 +8,8 @@ log keeps ids); the archive was the one that kept the text as it arrived.
 The lines this file holds, one test each:
 
 * withdrawing — the team stating ``coordenacao`` over a request that was in ``rede`` — removes
-  that text from every archived Pulse of the project that carries it, and from no other;
+  the request from every archived Pulse of the project that shared one (answered ``rede``),
+  whatever its words, and from no Pulse that kept its request in coordination;
 * the removal leaves who and when on the row and never the text;
 * after it, no read of a submission — the inbox, the opened Pulse, the export — returns the
   text, and the same file sent again does not bring it back;
@@ -22,6 +23,7 @@ from sqlalchemy import select
 
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
 from app.db.models.shema_form import ShemaSubmission
+from app.services.shema._consent import withdraws_authorization
 from app.services.shema._submission_archive import archived_answers
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user, make_shema_project
 
@@ -33,8 +35,10 @@ EXPORT = f"{PREFIX}/export/projects"
 
 #: The request the team shared and then took back — a canary no surface may return afterwards.
 WITHDRAWN = "PEDIDO-RETIRADO orem pela familia do tradutor"
-#: Another request, in another Pulse, that nobody withdrew.
-OTHER = "PEDIDO-ANTIGO orem pela colheita"
+#: A request a Pulse kept in coordination — never shared, so nothing to take back.
+KEPT = "PEDIDO-DA-COORDENACAO orem pela colheita"
+#: The words the Pulse arrived with, before the record spelled them otherwise.
+EARLIER = "PEDIDO-RETIRADO orem pela familia do tradutr"
 
 
 @pytest.fixture()
@@ -102,30 +106,30 @@ async def _withdraw(client, headers, version: int = 1):
     return response
 
 
-async def test_withdrawing_removes_the_request_from_the_pulses_that_carry_it_and_no_other(
+async def test_withdrawing_removes_the_request_from_every_pulse_that_shared_it_and_no_other(
     client, db_session, shema_app, headers, coordinator, project
 ) -> None:
-    """The Pulse that carried the withdrawn text loses it — and the authorization it gave with
-    it; the Pulse that carried another request is left as it arrived."""
+    """Two Pulses shared a request — one in the words on the record, one in words the record has
+    rewritten since — and both lose it, with the authorization it gave; the Pulse that kept its
+    request in coordination never shared anything and is left as it arrived."""
     await _pulse(client, headers, prayerRequest=WITHDRAWN, prayerVisibility="rede")
-    await _pulse(client, headers, prayerRequest=OTHER, prayerVisibility="rede")
+    await _pulse(client, headers, prayerRequest=EARLIER, prayerVisibility="rede")
+    await _pulse(client, headers, prayerRequest=KEPT, prayerVisibility="coordenacao")
 
     await _withdraw(client, headers)
 
-    rows = {
-        archived_answers(row).get("prayerRequest", "(removido)"): row
-        for row in await _by_request(db_session)
-    }
-    assert set(rows) == {"(removido)", OTHER}
+    rows = await _by_request(db_session)
+    erased = [row for row in rows if row.prayer_request_erased_at is not None]
+    (kept,) = [row for row in rows if row.prayer_request_erased_at is None]
+    assert len(erased) == 2
+    for row in erased:
+        assert WITHDRAWN not in row.archived_payload and EARLIER not in row.archived_payload
+        assert "prayerVisibility" not in archived_answers(row)
+        assert archived_answers(row)["submittedBy"] == "Kuaray"
 
-    erased = rows["(removido)"]
-    assert WITHDRAWN not in erased.archived_payload
-    assert "prayerVisibility" not in archived_answers(erased)
-    assert archived_answers(erased)["submittedBy"] == "Kuaray"
-
-    kept = rows[OTHER]
-    assert archived_answers(kept)["prayerVisibility"] == "rede"
-    assert kept.prayer_request_erased_at is None and kept.prayer_request_erased_by is None
+    assert archived_answers(kept)["prayerRequest"] == KEPT
+    assert archived_answers(kept)["prayerVisibility"] == "coordenacao"
+    assert kept.prayer_request_erased_by is None
 
 
 async def test_the_removal_records_who_and_when_and_never_the_text(
@@ -269,3 +273,19 @@ async def test_a_health_reading_that_takes_the_authorization_back_removes_it_too
     (row,) = await _by_request(db_session)
     assert WITHDRAWN not in row.archived_payload
     assert row.prayer_request_erased_by == mentor.id
+
+
+@pytest.mark.parametrize(
+    ("sent", "withdraws"),
+    [
+        ({"prayer_visibility": ShemaPrayerVisibility.COORDENACAO}, True),
+        ({"prayer_visibility": None}, True),
+        ({"prayer_visibility": ShemaPrayerVisibility.REDE}, False),
+        ({"prayer_visibility": "rede"}, False),
+        ({"prayer_requests": "um pedido novo"}, False),
+    ],
+)
+async def test_only_a_stated_visibility_other_than_rede_withdraws(project, sent, withdraws) -> None:
+    """The gate reads the value, not its type: a raw ``"rede"`` is a restatement, and reading it
+    as a withdrawal would erase every Pulse that shared."""
+    assert withdraws_authorization(project, sent) is withdraws

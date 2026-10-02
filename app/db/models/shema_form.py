@@ -150,7 +150,7 @@ class ShemaSubmission(Base):
     #: of unvalidated payloads to clean later is a store nobody ever cleans.
     #:
     #: **One exception, and it is the client's** (OBT-561): when the team withdraws the
-    #: authorization of a prayer request, the request leaves every archived Pulse that carries
+    #: authorization of a prayer request, the request leaves every archived Pulse that shared
     #: it — Karina, via Daniel, 1/out/2026: *"o pedido é apagado também do Pulso guardado"*.
     #: The answer is removed and the envelope rewritten; :attr:`content_hash` keeps the hash of
     #: the bytes as they arrived, so the same file sent again is still the same submission and

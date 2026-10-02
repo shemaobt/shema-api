@@ -56,8 +56,8 @@ raises it. The prayer request has the same two answers from its own owner (BE-09
 ``_consent.refuse_prayer_decisions`` refuses a request or a need's share to a reader outside its
 audience — on a create too, where only the authorization is refused — and
 ``_consent.request_written`` withdraws an authorization the new request did not restate.
-A save that takes the authorization back (``_consent.withdrawn_request``) erases the request from
-the archived Pulses that carry it too, in the same transaction (OBT-561).
+A save that takes the authorization back (``_consent.withdraws_authorization``) erases the request
+from the archived Pulses that shared it too, in the same transaction (OBT-561).
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ from app.services.shema._consent import (
     request_written,
     undecidable_shares,
     unreadable_request_writes,
-    withdrawn_request,
+    withdraws_authorization,
 )
 from app.services.shema._health_audience import refuse_unread_health_writes
 from app.services.shema._progress import (
@@ -106,7 +106,7 @@ from app.services.shema._scope import (
     refuse_out_of_scope,
     visible_projects,
 )
-from app.services.shema._submission_archive import erase_withdrawn_request
+from app.services.shema._submission_archive import erase_shared_requests
 from app.utils.shema_derivations import completion_date_after
 
 logger = logging.getLogger(__name__)
@@ -442,7 +442,7 @@ async def save_project(
         raise await _conflict(db, project, expected_version, readership)
 
     previous = _aggregates(before)
-    withdrawn = withdrawn_request(
+    withdrawn = withdraws_authorization(
         project, {name: getattr(payload, name) for name in payload.model_fields_set}
     )
     for column in changed:
@@ -477,8 +477,8 @@ async def save_project(
         user=user,
     )
     await _needs.notify_urgent(db, project, urgent, actor=user)
-    if withdrawn is not None:
-        await erase_withdrawn_request(db, project, withdrawn, user=user)
+    if withdrawn:
+        await erase_shared_requests(db, project, user=user)
     await _settle(db, project, commit=commit)
     return project
 

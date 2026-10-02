@@ -41,11 +41,11 @@ re-checking the same bytes against today's definition would refuse a submission 
 archived, which is the opposite of idempotent. It was validated when it arrived; it is not
 asked again.
 
-**Verbatim, with one exception the client made** (OBT-561): a prayer request whose
-authorization the team withdraws leaves every archived Pulse of the project that carries it
-(:func:`erase_withdrawn_request`). The rest of the envelope stays; the content hash stays the
-hash of the bytes as they arrived, which is what keeps the same file, sent again, a no-op instead
-of the way the text would return.
+**Verbatim, with one exception the client made** (OBT-561): when the team withdraws the
+authorization of its prayer request, the request leaves every archived Pulse of the project that
+shared one (:func:`erase_shared_requests`). The rest of the envelope stays; the content hash
+stays the hash of the bytes as they arrived, which is what keeps the same file, sent again, a
+no-op instead of the way the text would return.
 """
 
 from __future__ import annotations
@@ -173,16 +173,18 @@ async def archive_submission(
     return submission, True
 
 
-async def erase_withdrawn_request(
-    db: AsyncSession, project: ShemaProject, text: str, *, user: User
-) -> None:
-    """Remove ``text`` from every archived Pulse of ``project`` that carries it.
+async def erase_shared_requests(db: AsyncSession, project: ShemaProject, *, user: User) -> None:
+    """Remove the prayer request from every archived Pulse of ``project`` that shared it.
 
     Karina, via Daniel, 1/out/2026: when the team withdraws the authorization of a prayer
     request, *"o pedido é apagado também do Pulso guardado"* — the other options were keeping
-    the Pulse whole for coordination only, or keeping it as it was. ``text`` is the one the
-    authorization was given for (``_consent.withdrawn_request``), so a Pulse that carried another
-    request — an older one, or one never shared — is left as it arrived.
+    the Pulse whole for coordination only, or keeping it as it was. **A Pulse that shared is one
+    that answered** ``rede``: the team said *share this with the network* in it, and that is
+    what the withdrawal takes back. Matching by the text instead would miss a request the
+    record spells differently since — the health wizard writes an edited text and restates
+    ``rede`` in one save, so the authorization carries over while the words drift — and a
+    Pulse that kept its request in coordination never shared anything and is left as it
+    arrived.
 
     **The answer is removed, not blanked, and its visibility with it.** An archived Pulse still
     waiting in the inbox is applied from these answers: an empty request would be applied over
@@ -193,19 +195,15 @@ async def erase_withdrawn_request(
     what was erased would be the copy the erasure exists to remove. Staged, like everything in
     this file; the caller's transaction takes it with the write that withdrew the authorization.
     """
-    wanted = text.strip()
     rows = await db.execute(select(ShemaSubmission).where(ShemaSubmission.project_id == project.id))
     at = datetime.now(UTC)
     for submission in rows.scalars():
         body = json.loads(submission.archived_payload)
         answers = body.get(ANSWERS_KEY)
-        if not isinstance(answers, dict):
+        if not isinstance(answers, dict) or answers.get(PRAYER_VISIBILITY_FIELD) != "rede":
             continue
-        carried = answers.get(PRAYER_FIELD)
-        if not isinstance(carried, str) or carried.strip() != wanted:
-            continue
-        del answers[PRAYER_FIELD]
-        answers.pop(PRAYER_VISIBILITY_FIELD, None)
+        answers.pop(PRAYER_FIELD, None)
+        del answers[PRAYER_VISIBILITY_FIELD]
         submission.archived_payload = json.dumps(body, ensure_ascii=False)
         submission.prayer_request_erased_at = at
         submission.prayer_request_erased_by = user.id
