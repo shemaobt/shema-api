@@ -67,6 +67,8 @@ ENTRY_KEYS = {
     "isRead",
     "requestName",
     "requestStage",
+    # OBT-559: what a project notice says, for the console to word; ``None`` on a request notice.
+    "facts",
 }
 
 
@@ -369,6 +371,7 @@ async def test_nenhum_campo_da_avaliacao_chega_ao_sino_do_pme(
 
     [entry] = await panel_of(db_session, starter)
     assert set(entry) == ENTRY_KEYS
+    assert entry["facts"] is None
     assert not EVALUATION_KEYS & set(entry)
 
     stored = " ".join([row.title, row.body, detail.request_name, detail.stage])

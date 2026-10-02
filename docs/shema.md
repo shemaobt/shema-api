@@ -568,7 +568,11 @@ can stage a notice **inside** it.
   one product's, and a Shemá one would have had no reader. **OBT-541 is that reader**: the
   resource-request form's notices, rung in the PME's bell, lead to the project's record, so each
   of those rows carries `shema_request_notices` — the project, and the registered name and stage
-  the console renders in its own language. The other kinds still carry none.
+  the console renders in its own language. **OBT-559 added the second**,
+  `shema_project_notices`: the four project writers' rows carry what happened — the day, the
+  needs and their totals per currency, who signed the Pulse — and never who or where, which the
+  panel reads off the project when it is read (§6.4). The bell words both in its reader's
+  language; the rows' English `title` and `body` stay for the readers that are not the bell.
 - **There is no channel delivery of any kind** — no e-mail, no push, no WhatsApp, anywhere in
   `app/services/notifications/`. FE-44 §5.8's `NotificationPrefs` records the choice of three
   channels; BE-15 inherits a preference with nothing behind it, and that is the honest state
@@ -724,7 +728,7 @@ behaviour on it.
 | 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. **OBT-531:** a contact untouched for more than a year — the latest of entry, review and send — is **flagged for review**, served as `reviewDue` and never derived by the client; and a person with no account **leaves through an exit link**, which is the same erasure. |
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
 | 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. ~~**Whether the definitions are a table at all is Open · GATE-02** (§9.2).~~ **Answered by GATE-02 on 22/set: the set is global, so there is no definitions table** — §9.2. |
-| 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads`, `shema_request_notices` (OBT-541) | BE-02, BE-15, OBT-541 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
+| 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads`, `shema_request_notices` (OBT-541), `shema_project_notices` (OBT-559) | BE-02, BE-15, OBT-541, OBT-559 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
 | 5.11 | **ETEN ledger** | `shema_eten_credits`, `shema_eten_reports` (BE-11) | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule was **Open · GATE-01** (§9.1) and closed on 25/sep/2026 — BE-11's note below. |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
 | 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. One of the two things this module owns about identity (5.14 is the other). Empty means global. |
@@ -1441,6 +1445,19 @@ region. `list_notification_panel.py` answers a request notice's `projectId` only
 project is inside the scope of, or who is one of its live members, through `within_scope` and
 `live_membership_ids`; everybody else gets `null`, which is §6.1's answer for a project out of
 scope. The notification row itself carries no slug and no place in its title or body.
+
+**A notice is read later than it is written, so who and where are read when it is read**
+(OBT-559, closing OBT-556's first item). An urgent need's body used to name the place — the truth,
+for a cleared project — and the panel answered the row as it was written: to a coordinator who
+had since left the region, and about a project flagged since. Now the four project writers stage
+facts beside the row, in `shema_project_notices`, and none of them is a name or a place; the panel
+answers the five project kinds (stale included) with an empty `title` and `body` and reads off the
+project, at read time: the language's name as every recipient may read it (`""` for a withheld
+project — `language_name_for(project, ShemaReader.OTHER, fallback="")` once OBT-560 lands), the
+region key, and — on an urgent need, and only for a reader who reaches the project now, by the
+rule above — its place, as `ShemaNoticePlace`, a leaving shape built with no reader: `outside`,
+so a withheld project's place is its region even for the coordination. A row written before
+OBT-559 has no facts and answers its kind and nothing it said.
 
 #### What BE-14 built — the export and the import
 
