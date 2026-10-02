@@ -268,3 +268,29 @@ async def test_a_withheld_person_past_a_year_is_counted_and_never_named(
     assert body["people"][0]["reviewDue"] is True
     assert "Carla" not in res.text
     assert hidden_fresh["id"] not in res.text
+
+
+async def test_the_review_due_count_reads_the_same_people_as_the_withheld_count(
+    db_session, client, shema_app
+) -> None:
+    """The second number is a part of the first, so both are drawn from the network (OBT-556).
+
+    Two people past their year and withheld from the list: a member who did not agree to be
+    listed, and a row imported in bulk with no consent at all — the shape
+    ``scripts/shema_backfill_network_consent.py`` is waiting for. Only the member is withheld *by
+    choice*; the other was never in the network, so neither count announces them. Counted by row,
+    this test read ``withheldCount == 2`` and ``withheldReviewDueCount == 2``.
+    """
+    _user, headers = await _circle(db_session, shema_app)
+    member = await make_intercessor(client, headers, name="Fabi Reservada", contact="fabi@ex.org")
+    imported = ShemaIntercessor(name="Gil Importado", country="BR", contact="gil@example.org")
+    db_session.add(imported)
+    await db_session.commit()
+    await _age(db_session, member["id"], added_at=_ago(500))
+    await _age(db_session, imported.id, added_at=_ago(500))
+
+    body = (await client.get(PEOPLE, headers=headers)).json()
+
+    assert body["people"] == []
+    assert body["withheldCount"] == 1
+    assert body["withheldReviewDueCount"] == 1

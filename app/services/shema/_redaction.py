@@ -28,6 +28,12 @@ a validator, so the three things a query-side caller needs are:
   one that reader may type over;
 * :func:`never_lowered` — the import's one-way rule on the flag (BE-14): a file may raise it and
   may not clear it;
+* :func:`reads_the_truth` — the one spelling of *this reader reads this project as it is*
+  (OBT-556), which every path that is not a shape asks instead of writing the condition out;
+* :func:`withheld_from`, :func:`free_text_as_read`, :func:`assessments_as_read` and
+  :func:`need_text_as_written` — the four paths OBT-556 found a withheld record's text leaving
+  by: the conflict a save meets, the needs and the assessments nested in the record, the
+  assessment history, and the needs a save sends back.
 * :func:`language_name_for` — the language's name where it can name the place (OBT-560): the
   name a path that is not a shape may print.
 
@@ -41,18 +47,21 @@ applied per endpoint is a rule the next endpoint forgets; a glob is not.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from typing import Any
+from typing import Any, Final
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
+from app.models.shema_need import ShemaNeedWrite
 from app.models.shema_privacy import (
     COORDINATION_WRITES,
+    WITHHELD_FIELDS,
     WITHHELD_WRITES,
     LeavingShape,
     ShemaReader,
 )
+from app.models.shema_record import ShemaHealthAssessmentEntry, ShemaProjectRecord
 from app.utils.shema_derivations import get_region
 
 
@@ -138,7 +147,7 @@ def language_name_for(
     coordination registered, or the region key while none is. ``fallback`` replaces the region
     key for a sentence a person reads — a notice says *a project*, not *africa*.
     """
-    if reader is ShemaReader.COORDINATION or not is_withheld(project):
+    if reads_the_truth(project, reader):
         return project.language_name
     public = (project.public_language_name or "").strip()
     if public:
@@ -163,13 +172,112 @@ def searchable_text(project: ShemaProject, reader: ShemaReader) -> str:
     inventing rules surface by surface. ``docs/shema.md`` §9.4's gate is where that question
     belongs.
     """
-    reads_the_truth = reader is ShemaReader.COORDINATION or not is_withheld(project)
     # The name a reader is given is the name a reader may find the card by: typing *Egypt*
     # must not answer for a sensitive project whose name says it (OBT-560).
     fields = [language_name_for(project, reader), project.bridge_language, project.region_key.value]
-    if reads_the_truth:
+    if reads_the_truth(project, reader):
         fields.extend([project.location, project.location2 or "", project.team])
     return " ".join(part for part in fields if part)
+
+
+def reads_the_truth(project: ShemaProject, reader: ShemaReader) -> bool:
+    """Whether ``reader`` reads ``project`` as it is: coordination does, and so does everybody on
+    a project whose place is not withheld.
+
+    :class:`~app.models.shema_privacy.LeavingShape` answers the same question for the fields a
+    shape declares. Everything that is not a shape — the search's haystack, the text nested in a
+    record, the assessment history, a received Pulse, the conflict a save meets — asks this one
+    function instead of writing the condition out (OBT-556), so the paths cannot disagree about
+    when a reader is handed the reduction.
+    """
+    return reader is ShemaReader.COORDINATION or not is_withheld(project)
+
+
+def withheld_from(project: ShemaProject, reader: ShemaReader) -> frozenset[str]:
+    """The fields a read of ``project`` hands ``reader`` reduced — empty when it reads the truth.
+
+    What the conflict a save meets may not name (OBT-556). A 409 that tells a reader the place or
+    the notes moved, and who moved them, says what the record they read does not; so the list is
+    the boundary's own, and the conflict and the record cannot disagree about it.
+    """
+    return frozenset() if reads_the_truth(project, reader) else frozenset(WITHHELD_FIELDS)
+
+
+def assessments_as_read(
+    project: ShemaProject,
+    reader: ShemaReader,
+    entries: Sequence[ShemaHealthAssessmentEntry],
+) -> list[ShemaHealthAssessmentEntry]:
+    """The assessment history as ``reader`` reads it: on a withheld project, with no notes.
+
+    The health notes are :data:`~app.models.shema_privacy.FREE_TEXT_FIELDS`' — and the flat
+    ``health_notes`` on the record is only the projection of the newest entry, so emptying it and
+    serving the entries whole would be a redaction a scroll undoes. The note per dimension goes
+    with the blob it is compiled into; the ratings, the day and who assessed stay, because they
+    name no place.
+    """
+    if reads_the_truth(project, reader):
+        return list(entries)
+    return [entry.model_copy(update={"notes": "", "dimension_notes": None}) for entry in entries]
+
+
+def free_text_as_read(
+    project: ShemaProject, reader: ShemaReader, record: ShemaProjectRecord
+) -> dict[str, Any]:
+    """What a record's nested free text becomes for ``reader`` — an update, or nothing.
+
+    The record's own four are reduced by the shape it is built as. Its needs and its assessments
+    arrive on it afterwards, by ``model_copy`` and not through the boundary, so their text is
+    held back here, in ``_consent.request_as_read``'s mould: a reader who reads the truth gets
+    ``{}``, and anybody else every need's description as ``""`` and the history without notes.
+    """
+    if reads_the_truth(project, reader):
+        return {}
+    needs = [need.model_copy(update={"description": ""}) for need in record.needs_items]
+    history = record.health_history
+    if history is not None:
+        history = assessments_as_read(project, reader, history)
+    return {"needs_items": needs, "health_history": history}
+
+
+#: The one name a refused need text is given, in the client's spelling.
+NEED_TEXT: Final = "needsItems.description"
+
+
+def need_text_as_written(
+    project: ShemaProject, rows: Sequence[ShemaNeedWrite], reader: ShemaReader
+) -> tuple[list[ShemaNeedWrite], bool]:
+    """``rows`` as ``reader`` may write them on ``project``, and whether one types over unseen text.
+
+    The nested half of :func:`unwritable_fields` (OBT-556), **read off the values where that one
+    reads the names**, for the reason ``_consent.undecidable_shares`` gives: the console sends
+    every need back whole, description included, on every save of the needs. A reader who is not
+    coordination was handed a withheld record's descriptions as ``""``, so a row that sends ``""``
+    back is that reading returned, and it is dropped from what the row writes — the description
+    stays, and the share does not fall with it. A row that sends anything else is a text typed
+    over one the reader cannot see, which the caller refuses. Comparing with the ``""`` they were
+    given, and never with the stored text, is what keeps the answer from being an oracle.
+
+    A row with no id is a new need, and its author sees what they type: there is nothing to
+    overwrite, which is OBT-528's own exception for a create.
+    """
+    if reads_the_truth(project, reader):
+        return list(rows), False
+    kept: list[ShemaNeedWrite] = []
+    typed = False
+    for row in rows:
+        if row.id is None or "description" not in row.model_fields_set:
+            kept.append(row)
+        elif row.description:
+            typed = True
+            kept.append(row)
+        else:
+            kept.append(
+                ShemaNeedWrite.model_construct(
+                    _fields_set=row.model_fields_set - {"description"}, **row.model_dump()
+                )
+            )
+    return kept, typed
 
 
 def derive_region(project: ShemaProject) -> ShemaRegionKey:

@@ -36,6 +36,13 @@ every account at the door may call it and the service decides what it answers;
 ``tests/test_shema/test_access.py`` pins the door's routes, by method and path, in
 ``DOOR_ROUTES``, so adding one is an edit somebody has to justify.
 
+**A validation error says nothing about the value it refused, and that is this file's too**
+(OBT-556). The three routers are ``ShemaRouter``, so every route included into them — a later
+issue's included — is a ``ShemaRoute``: a 422 drops each field error's ``input``, and an
+unexpected Pydantic error reaches the log named by its location and never by its value.
+``app/api/shema/_routing.py`` carries the argument, and ``tests/test_shema/test_quiet_errors.py``
+reads the built application's route table for a route that is not one.
+
 **No answer of this module is kept by a cache, and that is a property of this file too**
 (OBT-555). ``router`` carries ``NO_STORE`` (``_deps.py``), and ``authenticated``, ``door`` and the
 two holes are all included into it, so every route the module mounts — today's and the next
@@ -56,9 +63,8 @@ audit they rest on, is ``docs/shema.md``.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-
 from app.api.shema._deps import APP_KEY, DOOR, NO_STORE
+from app.api.shema._routing import ShemaRouter
 from app.api.shema.access import router as access_router
 from app.api.shema.eten import router as eten_router
 from app.api.shema.forms import intake as intake_router
@@ -81,12 +87,12 @@ from app.core.access_control import require_app_access
 
 #: The module's outer router. Its one dependency is the cache rule, not a guard: the two holes
 #: below are included straight into it and answer anybody holding a link.
-router = APIRouter(dependencies=[NO_STORE])
+router = ShemaRouter(dependencies=[NO_STORE])
 
 #: Everything in this module that needs a signed-in Shemá account. The guard is declared
 #: once here and inherited by every route included below, which is what makes the module
 #: deny-by-default; see the note above for the exceptions this shape leaves room for.
-authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
+authenticated = ShemaRouter(dependencies=[require_app_access(APP_KEY)])
 
 authenticated.include_router(regions_router)  # BE-13
 authenticated.include_router(intercessors_router)  # BE-13
@@ -122,7 +128,7 @@ router.include_router(exit_router)
 #: The PME's door: the session read, for any account holding a role of the session's
 #: vocabulary in either app (OBT-523), the member's two reads (OBT-524), and the notification
 #: panel and its read mark (OBT-541). Everything else stays under ``authenticated``.
-door = APIRouter(dependencies=[DOOR])
+door = ShemaRouter(dependencies=[DOOR])
 
 door.include_router(session_router)  # BE-03, OBT-523
 door.include_router(members_door_router)  # OBT-524

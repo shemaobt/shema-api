@@ -33,13 +33,12 @@ no existence to protect, so the honest answer is *not yours* rather than *no suc
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, UnknownReferenceError, ValidationError
+from app.core.exceptions import UnknownReferenceError, ValidationError
 from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
@@ -49,11 +48,9 @@ from app.models.shema_org_chart import (
     RoleChange,
     SaveOutcome,
 )
-from app.services.shema._scope import RegionScope, reaches
+from app.services.shema._scope import RegionScope, reaches, refuse_region_out_of_scope
 from app.services.shema.list_regions import FIELD_FOR_SEAT, SEAT_ORDER
 from app.utils.stored_time import as_utc
-
-logger = logging.getLogger(__name__)
 
 
 async def _account_or_refuse(db: AsyncSession, user_id: str) -> str:
@@ -96,17 +93,9 @@ async def save_region_team(
     leave a link waiting to attach itself to whoever is typed into the seat next.
     """
     if not reaches(scope, region_key):
-        logger.warning(
-            "shema authorization refused: org chart write outside region scope",
-            extra={
-                "shema_operation": "save_region_team",
-                "shema_user_id": actor.id,
-                "shema_region_key": region_key.value,
-                "shema_scope_global": scope.global_,
-                "shema_scope_regions": sorted(scope.regions),
-            },
+        raise refuse_region_out_of_scope(
+            scope, region_key, user=actor, operation="save_region_team"
         )
-        raise AuthorizationError(f"Your scope does not include the '{region_key.value}' region.")
 
     accounts = payload.accounts
     for seat in SEAT_ORDER:

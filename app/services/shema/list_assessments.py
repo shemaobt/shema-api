@@ -24,7 +24,8 @@ from app.db.models.auth import User
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.models.shema_record import ShemaHealthAssessmentEntry
 from app.services.shema._health_audience import require_reads_assessments
-from app.services.shema._scope import RegionScope
+from app.services.shema._redaction import assessments_as_read
+from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
 
 
@@ -33,13 +34,16 @@ async def list_assessments(
     scope: RegionScope,
     project_id: str,
     *,
+    readership: Readership,
     user: User,
     app_key: str,
 ) -> list[ShemaHealthAssessmentEntry]:
     """Every reading of one project's health, oldest first, or a refusal.
 
     ``scope`` is positional and has no default: a keyword with a permissive default is how a
-    scope stops being applied, and there is no unscoped spelling of this call.
+    scope stops being applied, and there is no unscoped spelling of this call. ``readership``
+    has none either: on a withheld project the notes are coordination's (OBT-556), and
+    ``_redaction.assessments_as_read`` is what holds them back from everybody else.
     """
     project = await get_project(db, scope, project_id, user=user, operation="list_assessments")
     await require_reads_assessments(db, user, app_key)
@@ -49,6 +53,7 @@ async def list_assessments(
         .where(ShemaHealthAssessment.project_id == project.id)
         .order_by(ShemaHealthAssessment.assessment_date, ShemaHealthAssessment.created_at)
     )
-    return [
+    entries = [
         ShemaHealthAssessmentEntry.model_validate(row) for row in (await db.execute(stmt)).scalars()
     ]
+    return assessments_as_read(project, readership.reader_of(project.region_key), entries)

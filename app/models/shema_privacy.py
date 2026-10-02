@@ -40,6 +40,14 @@ context of :meth:`LeavingShape.read_by`, the service's own decision, and a shape
 other way is ``outside`` — so an endpoint written by somebody who never read this file still
 emits the form that leaves.
 
+**A withheld record holds back its text as well as its place (OBT-556).** The notes a team
+writes, its health notes, its status comments and its scope are sentences, and a sentence can
+say where the team is. So :data:`FREE_TEXT_FIELDS` are reduced like the base — to ``""``,
+beside the same marker, for every reader who is not coordination — and are in
+:data:`WITHHELD_WRITES` for the base's reason: a reader handed ``""`` may not type over the
+truth unseen. Which fields is the client's decision of 2/out/2026 (*recolher tudo* over the
+issue's list); the free text the list leaves out is named in ``docs/shema.md`` §6.4.
+
 **Fail closed, and the closed state is the default.** :attr:`LeavingShape.sensitive_country`
 is ``None`` when a shape was built from something that could not answer — a dict assembled by
 hand, a partial row, a join that did not select the column. ``None`` withholds. The cost is
@@ -204,6 +212,19 @@ CONTACT_FIELDS: Final[tuple[str, ...]] = (
 #: leaving shape, so it goes empty for every reader who is not coordination.
 REASON_FIELDS: Final[tuple[str, ...]] = ("sensitivity",)
 
+#: The free text a team writes about itself — the record's notes, the health notes, the status
+#: comments and the scope — any of which can say where it is (*a equipe se mudou para …*). Since
+#: OBT-556 a withheld shape empties them for every reader who is not coordination, as it empties
+#: the base: there is no reduced form of a sentence. The nested free text of a withheld record —
+#: a need's description, an assessment's notes — is ``_redaction.py``'s, because a nested list
+#: arrives on the shape after it was built.
+FREE_TEXT_FIELDS: Final[tuple[str, ...]] = (
+    "notes",
+    "health_notes",
+    "status_comments",
+    "scope_details",
+)
+
 #: The language's name, under the two spellings the leaving shapes use (the prayer entry calls
 #: it ``language``). A sensitive project's name can name the place — *Sa'di of High Egypt* —
 #: so a withheld shape replaces it too (OBT-560): with the name coordination registered for
@@ -213,7 +234,7 @@ NAME_FIELDS: Final[tuple[str, ...]] = ("language_name", "language")
 #: Every field a withheld shape replaces. A subclass that declares none of them is still a
 #: leaving shape and still carries ``locationWithheld``; there is nothing on it to reduce.
 WITHHELD_FIELDS: Final[tuple[str, ...]] = (
-    PLACE_FIELDS + BASE_FIELDS + CONTACT_FIELDS + REASON_FIELDS
+    PLACE_FIELDS + BASE_FIELDS + CONTACT_FIELDS + REASON_FIELDS + FREE_TEXT_FIELDS
 )
 
 #: What only coordination writes, on **every** record (OBT-528): the place, the flag and the
@@ -225,10 +246,12 @@ COORDINATION_WRITES: Final[frozenset[str]] = frozenset(
 
 #: What only coordination writes on a record whose place is **withheld**: the rest of what the
 #: read withholds from everybody else. *Não dá para editar o que não se vê* — a base read as
-#: ``""`` is not a base a reader may type over.
+#: ``""`` is not a base a reader may type over, and neither are the notes (OBT-556).
 #: ``language_name`` joined them with OBT-560: a withheld record hands everyone else the public
 #: name in its place, and a value typed over it would overwrite the real one unseen.
-WITHHELD_WRITES: Final[frozenset[str]] = frozenset((*BASE_FIELDS, *CONTACT_FIELDS, "language_name"))
+WITHHELD_WRITES: Final[frozenset[str]] = frozenset(
+    (*BASE_FIELDS, *CONTACT_FIELDS, *FREE_TEXT_FIELDS, "language_name")
+)
 
 
 def withheld_value(field_name: str, region: ShemaRegionKey) -> Any:

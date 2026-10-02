@@ -14,18 +14,19 @@ as *there is no unscoped query to call* holds here by there being no id to query
 coordination reader gets the true place and everybody else the region, and the reduction is
 applied by the act of validating the row into
 :class:`~app.models.shema_record.ShemaProjectRecord` for that reader — this file only says who
-reads. The prayer request is the same shape of answer from its own owner (BE-09): a reader
-outside ``_consent.PRAYER_AUDIENCE`` gets a request nobody authorized as ``""``, and
-``_consent.request_as_read`` is what decides it. A team's health is the third (OBT-553): a reader
-outside ``_health_audience.HEALTH_AUDIENCE`` gets every health field as a project nobody has
-assessed holds it — the projection, the history and the pastoral follow-up — and
-``_health_audience.health_as_read`` decides it. Both are asked in :func:`_record_as_read`, the
-one place this record is reduced for who reads it beyond the place, and applied **before**
+reads. The needs and the assessments join the record after it is built, so the text they
+carry is held back by ``_redaction.free_text_as_read`` instead, on the same withheld record for
+the same readers (OBT-556). The prayer request is the same shape of answer from its own owner
+(BE-09): a reader outside ``_consent.PRAYER_AUDIENCE`` gets a request nobody authorized as
+``""``, and ``_consent.request_as_read`` is what decides it. A team's health is the third
+(OBT-553): a reader outside ``_health_audience.HEALTH_AUDIENCE`` gets every health field as a
+project nobody has assessed holds it — the projection, the history and the pastoral follow-up —
+and ``_health_audience.health_as_read`` decides it. All are asked in :func:`_record_as_read`,
+the one place this record is reduced for who reads it beyond the place, and applied **before**
 ``derive``, so the record's tone and health score cannot say what its fields no longer do. The
-three authorization columns behind every
-``authorization`` key are still read by their one owner: ``_media_sharing.recorded_decision``
-builds the shape and hands it over, and ``tests/test_shema/test_privacy_owners.py`` is what keeps
-that true of the next file too.
+three authorization columns behind every ``authorization`` key are still read by their one
+owner: ``_media_sharing.recorded_decision`` builds the shape and hands it over, and
+``tests/test_shema/test_privacy_owners.py`` is what keeps that true of the next file too.
 
 **The write path re-reads through here.** FE-44 §9.3 requires the response to carry *the
 recomputed record, including the new progressHistory entry*, because the record screen renders
@@ -62,6 +63,7 @@ from app.services.shema._audit import ChangesSince, changes_since
 from app.services.shema._consent import request_as_read
 from app.services.shema._health_audience import health_as_read
 from app.services.shema._media_sharing import recorded_decision
+from app.services.shema._redaction import free_text_as_read
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
 from app.utils.shema_derivations import derive
@@ -171,12 +173,20 @@ def _record_as_read(
 ) -> dict[str, Any]:
     """What this reader may not read on the record, beyond the place — one update, or nothing.
 
-    The place is the shape's own (``LeavingShape.read_by``). What else depends on who reads is
-    asked here and nowhere else in this file, each of its own owner: the prayer request of
-    ``_consent.py`` and a team's health of ``_health_audience.py``.
+    The place and the record's own free text are the shape's (``LeavingShape.read_by``). What
+    else depends on who reads is asked here and nowhere else in this file, each of its own
+    owner: the prayer request of ``_consent.py``, the text the needs and the assessments carry
+    into a withheld record of ``_redaction.py`` (OBT-556), and a team's health of
+    ``_health_audience.py`` (OBT-553).
+
+    **The health answer is spread last, and that order is the rule.** Both of the last two
+    answer ``health_history``: the withheld record's history without its notes, and ``None`` for
+    a reader outside the health audience. A Resource Circle reading a withheld record is both,
+    and the stricter answer has to be the one that stays.
     """
     return {
         **request_as_read(project, reads_withheld=readership.withheld_prayer),
+        **free_text_as_read(project, readership.reader_of(project.region_key), record),
         **health_as_read(record, reads_health=readership.reads_health),
     }
 
@@ -236,13 +246,20 @@ async def read_record(
 
 
 async def read_changes_since(
-    db: AsyncSession, scope: RegionScope, project_id: str, version: int, *, user: User
+    db: AsyncSession,
+    scope: RegionScope,
+    project_id: str,
+    version: int,
+    *,
+    readership: Readership,
+    user: User,
 ) -> ChangesSince:
     """What moved on a record after ``version`` — the trail, for a caller holding an id.
 
     Scoped exactly as the record read is: the trail says who edited what, which is a fact about
-    the record and travels no further than the record does. It is here rather than in
+    the record and travels no further than the record does — nor further than its reader's read
+    of it (OBT-556), which is why ``readership`` is asked for. It is here rather than in
     ``_audit.py`` because that file takes a row it trusts, and this one is the door.
     """
     project = await get_project(db, scope, project_id, user=user, operation="read_changes_since")
-    return await changes_since(db, project, version)
+    return await changes_since(db, project, version, readership=readership)

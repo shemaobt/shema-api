@@ -107,16 +107,19 @@ async def read_question_sets() -> ShemaHealthQuestionCatalogue:
     response_model=list[ShemaHealthAssessmentEntry],
 )
 async def read_assessments(
-    project_id: str, db: Db, scope: Scope, user: CurrentUser
+    project_id: str, db: Db, scope: Scope, reading: Reading, user: CurrentUser
 ) -> list[ShemaHealthAssessmentEntry]:
     """One project's readings, oldest first — the history the trend is drawn from.
 
     The record already carries this list inline, and this route is the same history **behind the
     narrower gate**, for the screen whose subject is the readings. Out of region is a 404
     indistinguishable from *no such project*; outside the audience is a 403, because by then the
-    only fact in the answer is the caller's own grant.
+    only fact in the answer is the caller's own grant. The caller's reader decides only the
+    notes: on a withheld project they are coordination's, as they are on the record (OBT-556).
     """
-    return await list_assessments(db, scope, project_id, user=user, app_key=APP_KEY)
+    return await list_assessments(
+        db, scope, project_id, readership=reading, user=user, app_key=APP_KEY
+    )
 
 
 @router.post(

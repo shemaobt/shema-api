@@ -178,7 +178,7 @@ class ShemaHealthAssessmentSubmission(BaseModel):
 
         ``extra="forbid"`` cannot reach inside a ``dict`` field, and this one is stored as JSON —
         so a typo would be persisted silently and read back as a note belonging to no dimension.
-        Named rather than dropped: a mentor whose paragraph vanished because a key was
+        Refused rather than dropped: a mentor whose paragraph vanished because a key was
         misspelled has lost the part of the assessment that carries the meaning.
         """
         if value is None:
@@ -186,7 +186,8 @@ class ShemaHealthAssessmentSubmission(BaseModel):
         known = {dimension.value for dimension in ShemaHealthDimension}
         unknown = sorted(set(value) - known)
         if unknown:
-            raise ValueError(f"{', '.join(unknown)}: not a health dimension")
+            expected = ", ".join(sorted(known))
+            raise ValueError(f"a key that is not a health dimension; expected {expected}")
         return value
 
     @field_validator("question_set_version")
@@ -200,7 +201,7 @@ class ShemaHealthAssessmentSubmission(BaseModel):
         """
         if value is not None and value not in known_versions():
             raise ValueError(
-                f"{value}: not a published question set — this server knows "
+                "not a published question set — this server knows "
                 f"{', '.join(str(v) for v in known_versions())}"
             )
         return value

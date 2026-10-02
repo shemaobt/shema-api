@@ -10,7 +10,11 @@ announce how many projects it is withholding, *because a silently incomplete map
 hazard*. A directory filtered by consent has exactly that hazard: a Resource Circle member who
 cannot tell a short network from a filtered one concludes the wrong thing about both. The
 number is a number and never a name, and it is counted rather than read — nothing that
-identifies a withheld person is loaded into the process at all.
+identifies a withheld person is loaded into the process at all. **It counts the members of the
+network** (OBT-556): the people holding the ``network`` consent who did not give ``directory``.
+A row with no consent at all — a network imported in bulk, before anybody stated a basis — is
+not a member, and announcing it would tell the Resource Circle about somebody who never agreed
+even to be reached; ``_directory.count_withheld`` is where that set is drawn.
 
 **Neither is the count of who among them is past their year** (OBT-531). The one-year review
 flags an entry the list carries, and a person with no ``directory`` consent is on no list, so
@@ -32,8 +36,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.shema_intercessor import IntercessorDirectory
 from app.services.shema._directory import (
-    count_people,
     count_review_due,
+    count_withheld,
     entries_of,
     listable_ids,
 )
@@ -51,9 +55,8 @@ async def list_intercessors(
     """
     moment = now or datetime.now(UTC)
     visible = await listable_ids(db)
-    total = await count_people(db)
     return IntercessorDirectory(
         people=await entries_of(db, visible, now=moment),
-        withheldCount=total - len(visible),
+        withheldCount=await count_withheld(db, excluding=visible),
         withheldReviewDueCount=await count_review_due(db, excluding=visible, now=moment),
     )

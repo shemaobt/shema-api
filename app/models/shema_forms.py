@@ -222,6 +222,10 @@ class ReceivedSubmissionDetail(ReceivedSubmission):
 
     fields: list[IntakeField]
     answers: dict[str, Any]
+    #: ``true`` when this reader was given none of the answers because the project's place is
+    #: withheld and the reader is not coordination (OBT-556) — the voice of the field is a
+    #: withheld record's free text. Additive: a client that ignores it reads an empty Pulse.
+    answers_withheld: bool = False
 
 
 class SubmissionImport(BaseModel):

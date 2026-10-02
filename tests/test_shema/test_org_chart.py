@@ -373,6 +373,56 @@ async def test_a_regional_coordinator_cannot_write_another_region(
     assert "asia" in res.json()["detail"]
 
 
+async def test_a_regional_coordinator_reads_only_the_teams_of_their_own_regions(
+    db_session, client, shema_app
+) -> None:
+    """The editor's read hands out account ids, so it is scoped like the write (OBT-556).
+
+    The account linked to Asia's seat is a real one, so a read that leaked would carry its id —
+    the assertion is on the body as well as on the status, because the defect was the ids and
+    not the status code. The same caller reads their own region whole, so the refusal is about
+    the region and nothing else.
+    """
+    _writer, writer_headers = await _coordinator(
+        db_session, shema_app, email="asia-writer@shema.test", regions=[ShemaRegionKey.ASIA]
+    )
+    holder = await make_user(db_session, email="asia-holder@shema.test")
+    await client.put(
+        ASIA_TEAM,
+        headers=writer_headers,
+        json={
+            "team": {"coordinator": "Ana Lima", "obtLab": "", "resourceCircle": ""},
+            "accounts": {"coordinator": holder.id},
+        },
+    )
+    _reader, headers = await _coordinator(
+        db_session, shema_app, email="africa-reader@shema.test", regions=[ShemaRegionKey.AFRICA]
+    )
+
+    refused = await client.get(ASIA_TEAM, headers=headers)
+    own = await client.get(f"{REGIONS}/africa/team", headers=headers)
+
+    assert refused.status_code == 403
+    assert holder.id not in refused.text
+    assert "asia" in refused.json()["detail"]
+    assert own.status_code == 200
+    assert own.json()["key"] == "africa"
+
+
+async def test_a_coordinator_who_reaches_every_region_reads_every_regions_team(
+    db_session, client, shema_app
+) -> None:
+    """The positive half: ``globalStrategist`` beside ``coordinator`` reaches all seven, so the
+    scope added to the read narrows the regional holder and nobody else."""
+    _user, headers = await _coordinator(
+        db_session, shema_app, email="everywhere-reader@shema.test", everywhere=True
+    )
+
+    for region in ShemaRegionKey:
+        res = await client.get(f"{REGIONS}/{region.value}/team", headers=headers)
+        assert res.status_code == 200, region
+
+
 async def test_the_trail_carries_only_the_regions_the_caller_reaches(
     db_session, client, shema_app
 ) -> None:

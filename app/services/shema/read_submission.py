@@ -39,12 +39,15 @@ deliberately holds no value for the columns the consent gate owns
 second store the module spends four files refusing, and *consent withdrawn means the text is
 erased, not hidden* would be false one route over.
 
-**Every other member reads what maps to nothing, applied or not.** The route is open to **any**
-member in the caller's region, because an OBT Lab mentor reads a Pulse as legitimately as a
-coordinator does and ``require_role`` cannot say *or* (``app/api/shema/_deps.py`` records why
-this module has no capability map). That is also the hole: a ``resourceCircle`` account — the
-prayer wall's own audience — must not read an archived prayer request out of this payload for a
-team that consented to ``coordenacao`` and nothing more.
+**Every other member reads what maps to nothing, applied or not — on a cleared record.** On a
+withheld one what maps to nothing is the team's free text, coordination's like its notes, and a
+reader who is not coordination is answered no answer at all and ``answersWithheld`` (OBT-556).
+The route is open to **any** member in the caller's region, because an OBT Lab mentor reads a
+Pulse as legitimately as a coordinator does and ``require_role`` cannot say *or*
+(``app/api/shema/_deps.py`` records why this module has no capability map). That is also the
+hole: a ``resourceCircle`` account — the prayer wall's own audience — must not read an archived
+prayer request out of this payload for a team that consented to ``coordenacao`` and nothing
+more.
 ``app/services/shema/_consent.py`` guards the **columns**; the archive is a second store and the
 gate does not reach into it, so the answer is not to reimplement the gate here but to keep the
 archive from answering what the record answers. *An unauthorized prayer request is absent from
@@ -71,7 +74,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, ReceivedSubmissionDetail
-from app.services.shema._redaction import language_name_for
+from app.services.shema._redaction import language_name_for, reads_the_truth
 from app.services.shema._scope import (
     NO_COORDINATION,
     Readership,
@@ -115,12 +118,18 @@ def readable_answers(
     *,
     may_apply: bool,
     pending: bool,
+    reads_text: bool,
 ) -> dict[str, Any]:
     """The answers this caller may read — the whole submission only while it is theirs to apply.
 
     See the module docstring for the argument. In one line: what maps to nothing is for
-    everybody, and what maps to a column is for the person about to write it there, for as long
-    as the record cannot answer for it.
+    everybody who reads the project's text, and what maps to a column is for the person about to
+    write it there, for as long as the record cannot answer for it.
+
+    **On a withheld project nothing is for a reader who is not coordination** (OBT-556):
+    ``reads_text`` is ``_redaction.reads_the_truth``'s answer for them, and the voice of the
+    field and what is blocking the team are a withheld record's free text like its notes. It is
+    asked first, beside the unresolvable definition, so no role reaches past it.
 
     **Both conditions, and neither alone.** ``may_apply`` without ``pending`` is an archive
     answering what the record already answers, which is how a withdrawn prayer request stays
@@ -132,7 +141,7 @@ def readable_answers(
     checked first, so an unreadable spec is not a reason to serve the archive whole to the one
     caller who happens to hold the role.
     """
-    if definition is None:
+    if definition is None or not reads_text:
         return {}
     if may_apply and pending:
         return answers
@@ -201,7 +210,9 @@ async def read_submission(
     pass it shows less than it could rather than more than it should, and the one caller that
     passes it is the router, from the role dependency beside the guard on the write. *Pending*
     is not a parameter for the same reason in reverse: it is a fact about the row this function
-    has just read, so there is nothing for a caller to get wrong about it.
+    has just read, so there is nothing for a caller to get wrong about it. ``readership``
+    defaults to nobody coordinating for the same reason as ``may_apply``: a caller that forgets it
+    is handed a withheld project's answers as nothing at all, never as more (OBT-556).
     """
     row = (await db.execute(_scoped(scope).where(ShemaSubmission.id == submission_id))).first()
     if row is None:
@@ -212,6 +223,7 @@ async def read_submission(
     submission, version, project = row
     definition = await db.get(ShemaFormDefinition, submission.definition_id)
     received = as_received(submission, version, inbox_name(project, readership))
+    reads_text = reads_the_truth(project, readership.reader_of(project.region_key))
     return ReceivedSubmissionDetail(
         **received.model_dump(),
         fields=[] if definition is None else form_fields(definition),
@@ -220,5 +232,7 @@ async def read_submission(
             archived_answers(submission),
             may_apply=may_apply,
             pending=submission.applied_at is None,
+            reads_text=reads_text,
         ),
+        answers_withheld=not reads_text,
     )

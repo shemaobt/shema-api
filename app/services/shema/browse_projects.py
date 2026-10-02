@@ -30,6 +30,13 @@ a search match this project on*, it asks ``_redaction.py``, which is the owner.
 carries the truth, everybody else's the region, and the search and the facets read the card the
 reader was given — so a count cannot name a place the card beside it withholds, from anybody.
 
+**And how many are withheld is coordination's, by the count as by the notice (OBT-556).**
+``locationsWithheld`` was already ``null`` for a caller who coordinates nothing, and the
+``sensitive`` facet gave them the same number. :func:`_facets_as_read` leaves that group out of
+their counts, and :func:`_query_as_read` ignores their ``?sensitive=``, whose ``matched`` would
+be the number again. The card's own free text is the shape's to withhold, so the card needs
+nothing here for it.
+
 **And a team's health is reduced the same way, before anything is counted (OBT-553).** A reader
 outside ``_health_audience.HEALTH_AUDIENCE`` gets every health field empty on the card
 (:func:`_card_as_read`), so the tone, the health score and the *atenção* preset the pass computes
@@ -135,6 +142,9 @@ async def _last_progress_dates(db: AsyncSession, ids: list[str]) -> dict[str, da
     return dict((await db.execute(stmt)).all())  # type: ignore[arg-type]
 
 
+#: The facet group that counts the withheld projects — ``locationWithheld`` per card.
+SENSITIVE_GROUP = "sensitive"
+
 #: The name the health dimension goes by in the query, the order and the facet counts.
 _HEALTH = "health"
 
@@ -142,42 +152,60 @@ _HEALTH = "health"
 def _card_as_read(card: ShemaProjectCard, readership: Readership) -> dict[str, Any]:
     """What this reader may not read on a card, beyond the place — one update, or nothing.
 
-    The place is the shape's own (``LeavingShape.read_by``); a team's health is
-    ``_health_audience.py``'s, applied before the pass that filters, counts and derives.
+    The place and the card's own free text are the shape's (``LeavingShape.read_by``); a team's
+    health is ``_health_audience.py``'s, applied before the pass that filters, counts and derives.
     """
     return health_as_read(card, reads_health=readership.reads_health)
 
 
 def _query_as_read(query: ShemaProjectQuery, readership: Readership) -> ShemaProjectQuery:
-    """What this reader may ask the collection — the query, without the health it cannot read.
+    """What this reader may ask the collection — without what the cards and counts withhold.
 
-    The health filter is **ignored**, which is what this endpoint already does with a preset it
-    does not know, and the health order falls back to the default, as an unknown sort does: the
-    answer is the same whatever the teams' health, so neither is an oracle. *Refused as
-    invalid* is not the alternative it sounds like here — an invalid value answers an empty
-    list, which would say *no project matches* and zero every count beside it.
+    **``sensitive`` is coordination's (OBT-556).** How many projects are withheld is told to
+    coordination and to nobody else (GATE-04, 1.3: ``withheld_note``, addressed by
+    ``coordinates_anything``), and a filter on the bit would hand everybody else the same number
+    as ``matched``. So for them the filter is **ignored** — the list and every other count are
+    what the same request without it answers — rather than refused like a value that is no
+    option: an empty list would say *none of these is withheld*, which is false, and a link a
+    coordinator saved still opens with its other filters applied.
+
+    **The health filter and order are the health audience's (OBT-553)**, ignored the same way,
+    which is what this endpoint already does with a preset it does not know, and the health
+    order falls back to the default, as an unknown sort does: the answer is the same whatever
+    the teams' health, so neither is an oracle.
     """
-    if readership.reads_health:
-        return query
-    return query.model_copy(
-        update={"health": None, "sort": DEFAULT_SORT if query.sort == _HEALTH else query.sort}
-    )
+    update: dict[str, Any] = {}
+    if not readership.coordinates_anything:
+        update[SENSITIVE_GROUP] = None
+    if not readership.reads_health:
+        update["health"] = None
+        if query.sort == _HEALTH:
+            update["sort"] = DEFAULT_SORT
+    return query.model_copy(update=update) if update else query
 
 
 def _facets_as_read(counts: ShemaFacetCounts, readership: Readership) -> ShemaFacetCounts:
-    """The counts this reader may read — without the health group when it reads no health.
+    """The counts this reader may read — without the groups it may not be told.
 
-    Absent and not ``{"na": total}``: every card this reader holds is unassessed by
-    construction, and a count saying so would be a number about nothing that reads as a fact.
+    The withheld projects' count is coordination's (OBT-556), and the health group is the health
+    audience's (OBT-553). A group left out is absent from ``groups`` and from ``groupAll`` rather
+    than answered with zeros or ``{"na": total}``, which would be a number that lies; the console
+    reads a missing group as one it has nothing to show for. The ``locationWithheld`` bit itself
+    stays on every card — GATE-04 decided the notice, not the bit.
     """
-    if readership.reads_health:
+    hidden: set[str] = set()
+    if not readership.coordinates_anything:
+        hidden.add(SENSITIVE_GROUP)
+    if not readership.reads_health:
+        hidden.add(_HEALTH)
+    if not hidden:
         return counts
     return counts.model_copy(
         update={
             "groups": {
-                group: options for group, options in counts.groups.items() if group != _HEALTH
+                group: options for group, options in counts.groups.items() if group not in hidden
             },
-            "group_all": {group: n for group, n in counts.group_all.items() if group != _HEALTH},
+            "group_all": {group: n for group, n in counts.group_all.items() if group not in hidden},
         }
     )
 
@@ -241,7 +269,8 @@ async def browse_projects(
     ``readership`` has no default either: it decides which cards carry the truth, and the one
     caller that shows no place at all (the notification panel) says so with ``NO_COORDINATION``.
     The withheld notice is addressed to the caller — coordination when they coordinate any
-    region, and then only (GATE-04).
+    region, and then only (GATE-04) — and so are the count and the filter of the withheld
+    projects (OBT-556): one addressee for the three, so they cannot disagree.
     """
     cards = await _cards(db, await list_projects(db, scope), readership)
     query = _query_as_read(query, readership)
