@@ -40,23 +40,36 @@ no-op cannot be a 400: if the spec has moved since — a field dropped, a vocabu
 re-checking the same bytes against today's definition would refuse a submission that is already
 archived, which is the opposite of idempotent. It was validated when it arrived; it is not
 asked again.
+
+**Verbatim, with one exception the client made** (OBT-561): a prayer request whose
+authorization the team withdraws leaves every archived Pulse of the project that carries it
+(:func:`erase_withdrawn_request`). The rest of the envelope stays; the content hash stays the
+hash of the bytes as they arrived, which is what keeps the same file, sent again, a no-op instead
+of the way the text would return.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationError
+from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
 from app.services.shema._form_validation import record_update, validate_submission
 from app.services.shema._submission_notices import notify_submission
-from app.utils.shema_forms import SUBMITTED_BY_FIELD, carries_prayer_request
+from app.utils.shema_forms import (
+    PRAYER_FIELD,
+    PRAYER_VISIBILITY_FIELD,
+    SUBMITTED_BY_FIELD,
+    carries_prayer_request,
+)
 
 #: The largest submission this server will archive.
 #:
@@ -158,3 +171,41 @@ async def archive_submission(
         written=record_update(definition, answers),
     )
     return submission, True
+
+
+async def erase_withdrawn_request(
+    db: AsyncSession, project: ShemaProject, text: str, *, user: User
+) -> None:
+    """Remove ``text`` from every archived Pulse of ``project`` that carries it.
+
+    Karina, via Daniel, 1/out/2026: when the team withdraws the authorization of a prayer
+    request, *"o pedido é apagado também do Pulso guardado"* — the other options were keeping
+    the Pulse whole for coordination only, or keeping it as it was. ``text`` is the one the
+    authorization was given for (``_consent.withdrawn_request``), so a Pulse that carried another
+    request — an older one, or one never shared — is left as it arrived.
+
+    **The answer is removed, not blanked, and its visibility with it.** An archived Pulse still
+    waiting in the inbox is applied from these answers: an empty request would be applied over
+    the record's, and a ``rede`` left behind would authorize again, on apply, the very text the
+    team just took back. Absent answers write nothing, as for a leader who left both blank.
+
+    The trace is the two columns on the row — when and by whom — and never the text: a log of
+    what was erased would be the copy the erasure exists to remove. Staged, like everything in
+    this file; the caller's transaction takes it with the write that withdrew the authorization.
+    """
+    wanted = text.strip()
+    rows = await db.execute(select(ShemaSubmission).where(ShemaSubmission.project_id == project.id))
+    at = datetime.now(UTC)
+    for submission in rows.scalars():
+        body = json.loads(submission.archived_payload)
+        answers = body.get(ANSWERS_KEY)
+        if not isinstance(answers, dict):
+            continue
+        carried = answers.get(PRAYER_FIELD)
+        if not isinstance(carried, str) or carried.strip() != wanted:
+            continue
+        del answers[PRAYER_FIELD]
+        answers.pop(PRAYER_VISIBILITY_FIELD, None)
+        submission.archived_payload = json.dumps(body, ensure_ascii=False)
+        submission.prayer_request_erased_at = at
+        submission.prayer_request_erased_by = user.id
