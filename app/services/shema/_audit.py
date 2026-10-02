@@ -17,7 +17,8 @@ contacts, the sensitive flag, the free-text ``sensitivity`` and the three prayer
 does not say from where to where. ``log_reference``'s argument one layer along — a trail is
 read by more people and kept longer than a response body, and a country copied into it has
 left the boundary this module holds. What is lost is small and stated: a reader learns that
-the place moved and goes to the record, where being allowed is checked.
+the place moved and goes to the record, where being allowed is checked — and since OBT-556 only
+a reader who reads the place there is told it moved (:func:`changes_since`).
 
 **This file names no guarded column, and it does read every column's value.** The snapshot
 below is taken over *every* writable column by name-from-a-list and the guarded ones are
@@ -265,10 +266,9 @@ async def changes_since(
     **Only what the reader reads** (OBT-556). A reader handed a withheld record's place, base,
     contacts and notes reduced, or a prayer request kept in coordination as ``""``, would learn
     from a 409 that they moved and who moved them; so those rows are left out, and ``by`` and
-    ``at`` come from the newest row that is left. When every row was left out the answer is the
-    empty one with no name and no day, which is *it moved and I cannot say how* — the same
-    answer a save through a path with no trail gets. ``readership`` has no default: a keyword
-    with a permissive default is how a filter stops being applied.
+    ``at`` come from the newest row that is left. When every row was left out the answer names
+    no field, no person and no day — *it moved, and I cannot say how*. ``readership`` has no
+    default: a keyword with a permissive default is how a filter stops being applied.
     """
     stmt = (
         select(ShemaRecordEdit)

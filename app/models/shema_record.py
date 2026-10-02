@@ -390,7 +390,9 @@ class ShemaNeedItem(BaseModel):
     the read's half of the same decision.
 
     This is the need **on the record**, read by whoever opens it: the place rule does not reach
-    a need. :class:`~app.models.shema_need.ShemaNeedLine` is the same need on its way out.
+    a need. Its description does, on a withheld record, for every reader who is not
+    coordination — ``_redaction.free_text_as_read`` empties it after the need is joined in
+    (OBT-556). :class:`~app.models.shema_need.ShemaNeedLine` is the same need on its way out.
     """
 
     model_config = _OUTWARD

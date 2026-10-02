@@ -376,7 +376,9 @@ async def save_project(
     second question, and ``readership`` answers it: a reader who is not coordination is
     refused the place and the flag on every record, and the base and the contacts on a
     withheld one (OBT-528) — a 403, because the record is already theirs to reach and the
-    answer depends on nothing but the names they sent.
+    answer depends on nothing but the names they sent. Since OBT-556 the free text of a withheld
+    record is refused the same way, and a need's description by its value
+    (:func:`_as_the_reader_may_write`).
 
     ``day`` is the actor's local day and is the caller's to state; ``source`` is BE-12's, and
     is here so that an imported update and a typed one are one path. ``commit`` is BE-14's, for

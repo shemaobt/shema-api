@@ -1092,6 +1092,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 | **Who** | `globalStrategist`; a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
 | `location`, `country` | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | `""` | `""` |
+| `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | `""` | `""` |
 | `coords` | the truth | the region centroid | the region centroid |
 | `sensitiveCountry` (the ficha) | the flag | the flag | — |
 | `locationWithheld` | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed |
@@ -1155,6 +1156,8 @@ is compared, logged with `log_reference`:
 |---|---|---|
 | `location`, `location2`, `coords`, `sensitiveCountry`, `sensitivity` | writes | refused on **every** record |
 | the base (`team` / `ywamBase`), `teamContact`, `teamLeaderContact`, `mentorContact` | writes | refused on a **withheld** record; writes on a cleared one |
+| `notes`, `statusComments`, `scopeDetails` (OBT-556) | writes | refused on a **withheld** record; writes on a cleared one |
+| a need's `description` (OBT-556) | writes | on a **withheld** record, the `""` it was handed is read as unchanged and any other text is refused; a new need is its author's to describe |
 
 There is no `country` to write: it is the first segment of `location`, so refusing the location
 is refusing the country. The answer depends on the **names** the payload set and never on their

@@ -290,8 +290,9 @@ async def patch_record(
     Absent means unchanged, all the way down.
 
     **And whatever the tab owns, the reader may not own all of it** (OBT-528): a reader who is
-    not coordination is refused the place and the flag — and, on a withheld record, the base and
-    the contacts it was handed empty — with a 403 naming the fields, before the version is read.
+    not coordination is refused the place and the flag — and, on a withheld record, the base,
+    the contacts and the free text it was handed empty (OBT-556) — with a 403 naming the fields,
+    before the version is read.
 
     The response is the **recomputed** record, including any progress history entry the save
     produced, because FE-44 §9.3 asks for exactly that: the record screen renders what the save

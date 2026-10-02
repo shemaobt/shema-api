@@ -39,12 +39,15 @@ deliberately holds no value for the columns the consent gate owns
 second store the module spends four files refusing, and *consent withdrawn means the text is
 erased, not hidden* would be false one route over.
 
-**Every other member reads what maps to nothing, applied or not.** The route is open to **any**
-member in the caller's region, because an OBT Lab mentor reads a Pulse as legitimately as a
-coordinator does and ``require_role`` cannot say *or* (``app/api/shema/_deps.py`` records why
-this module has no capability map). That is also the hole: a ``resourceCircle`` account — the
-prayer wall's own audience — must not read an archived prayer request out of this payload for a
-team that consented to ``coordenacao`` and nothing more.
+**Every other member reads what maps to nothing, applied or not — on a cleared record.** On a
+withheld one what maps to nothing is the team's free text, coordination's like its notes, and a
+reader who is not coordination is answered no answer at all and ``answersWithheld`` (OBT-556).
+The route is open to **any** member in the caller's region, because an OBT Lab mentor reads a
+Pulse as legitimately as a coordinator does and ``require_role`` cannot say *or*
+(``app/api/shema/_deps.py`` records why this module has no capability map). That is also the
+hole: a ``resourceCircle`` account — the prayer wall's own audience — must not read an archived
+prayer request out of this payload for a team that consented to ``coordenacao`` and nothing
+more.
 ``app/services/shema/_consent.py`` guards the **columns**; the archive is a second store and the
 gate does not reach into it, so the answer is not to reimplement the gate here but to keep the
 archive from answering what the record answers. *An unauthorized prayer request is absent from

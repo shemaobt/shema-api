@@ -234,7 +234,8 @@ class ShemaProjectCard(SessionShape):
     needs_notes: str = ""
     #: Internal by default and travelling here because the collection read is a *coordenação*
     #: destination; ``can_export_notes`` refuses them for ``publico`` (FE-44 §8.4), which is
-    #: BE-14's path and not this one.
+    #: BE-14's path and not this one. On a withheld record they are coordination's alone, like the
+    #: health notes, the status comments and the scope above (``FREE_TEXT_FIELDS``, OBT-556).
     notes: str = ""
 
     #: The newest ``shema_progress_history`` entry's date — not a column on the project, and
