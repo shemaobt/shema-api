@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from app.api.build import router as build_router
 from app.core.config import Settings, get_settings
+from app.main import create_app
 
 ROOT = Path(__file__).resolve().parent.parent
 SENTINEL = "sentinel-must-never-be-served"
@@ -54,6 +55,19 @@ async def test_anyone_can_ask_which_build_store_and_models_are_live(
         "model": ["voice-a", "voice-b", "voice-c"],
         "classifier_model": ["class-a", "class-b"],
     }
+
+
+async def test_the_version_address_answers_on_the_real_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(get_settings(), "build_id", "abc123")
+    transport = httpx.ASGITransport(app=create_app())
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/version")
+
+    assert response.status_code == 200
+    assert response.json()["build"] == "abc123"
 
 
 async def test_the_answer_is_never_cached(ask) -> None:
