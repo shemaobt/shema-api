@@ -88,7 +88,13 @@ from app.services.shema._progress import (
     record_progress,
     with_rolled_aggregates,
 )
-from app.services.shema._redaction import derive_region, log_reference, unwritable_fields
+from app.services.shema._redaction import (
+    NEED_TEXT,
+    derive_region,
+    log_reference,
+    need_text_as_written,
+    unwritable_fields,
+)
 from app.services.shema._scope import (
     Readership,
     RegionScope,
@@ -123,6 +129,19 @@ class RecordVersionConflict(ConflictError):
         super().__init__("This record was saved by somebody else. Reload it before saving again.")
         self.changes = changes
         self.expected = expected
+
+
+async def _conflict(
+    db: AsyncSession, project: ShemaProject, expected: int, readership: Readership
+) -> RecordVersionConflict:
+    """The refusal of a save standing on old ground, told as the saver may hear it (OBT-556).
+
+    Both of the write's conflicts — the version the client quoted, and the race the conditional
+    ``UPDATE`` lost — answer through here, so neither can name to a reader a field their read of
+    the record reduces.
+    """
+    changes = await _audit.changes_since(db, project, expected, readership=readership)
+    return RecordVersionConflict(changes, expected=expected)
 
 
 def _aggregates(source: dict[str, Any]) -> Aggregates:
@@ -251,21 +270,32 @@ def _stamp_completion(project: ShemaProject, completed: date | None) -> list[Fie
     return [change]
 
 
-def _refuse_what_the_reader_may_not_write(
+def _as_the_reader_may_write(
     project: ShemaProject, payload: ShemaProjectUpdate, readership: Readership, *, user: User
-) -> None:
-    """Refuse a save that writes a field this reader may not write — before anything else.
+) -> ShemaProjectUpdate:
+    """The payload as this reader may write it, or a refusal — before anything else.
 
     Before the version check, because a write the reader could never make is not made
     possible by quoting the right version, and a 409 would send them to reload for nothing.
     The message names the fields in the client's own spelling and nothing about the record,
     and the line logs the event with ``log_reference`` — the id and the region, never the
     place.
+
+    **The needs are asked by value** (OBT-556): a reader handed a withheld record's
+    descriptions as ``""`` sends them back that way on every save of the needs, and
+    ``_redaction.need_text_as_written`` drops that echo from the payload — the answer is the
+    payload this function returns — and names a description typed over one the reader cannot
+    see, which is refused with the rest.
     """
     reader = readership.reader_of(project.region_key)
     refused = unwritable_fields(project, payload.model_fields_set, reader)
+    rows = _needs.needs_payload(payload)
+    if rows is not None:
+        written, typed = need_text_as_written(project, rows, reader)
+        refused = [*refused, NEED_TEXT] if typed else refused
+        payload = payload.model_copy(update={"needs_items": written})
     if not refused:
-        return
+        return payload
     logger.warning(
         "shema authorization refused: a field this reader may not write",
         extra={
@@ -277,7 +307,7 @@ def _refuse_what_the_reader_may_not_write(
         },
     )
     raise AuthorizationError(
-        f"{', '.join(to_camel(name) for name in refused)}: "
+        f"{', '.join(name if '.' in name else to_camel(name) for name in refused)}: "
         "only coordination writes the place, the sensitive flag and what they withhold"
     )
 
@@ -358,7 +388,7 @@ async def save_project(
     if project is None:
         raise refuse_out_of_scope(scope, user=user, operation="save_project", project_id=project_id)
 
-    _refuse_what_the_reader_may_not_write(project, payload, readership, user=user)
+    payload = _as_the_reader_may_write(project, payload, readership, user=user)
     refuse_prayer_decisions(
         project,
         unreadable_request_writes(
@@ -369,9 +399,7 @@ async def save_project(
     )
 
     if project.version != expected_version:
-        raise RecordVersionConflict(
-            await _audit.changes_since(db, project, expected_version), expected=expected_version
-        )
+        raise await _conflict(db, project, expected_version, readership)
 
     before = _audit.snapshot(project)
     merged = _merged(project, payload)
@@ -396,9 +424,7 @@ async def save_project(
     version = await _bump_version(db, project, expected_version)
     if version is None:
         await db.refresh(project)
-        raise RecordVersionConflict(
-            await _audit.changes_since(db, project, expected_version), expected=expected_version
-        )
+        raise await _conflict(db, project, expected_version, readership)
 
     previous = _aggregates(before)
     for column in changed:

@@ -164,6 +164,8 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{PREFIX}/projects"),
         ("PATCH", f"{PREFIX}/projects/{{project_id}}"),
         ("POST", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
+        # OBT-556: the history's notes are coordination's on a withheld project; no place.
+        ("GET", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
         ("POST", f"{PREFIX}/forms/submissions"),
         ("POST", f"{PREFIX}/forms/submissions/{{submission_id}}/import"),
         ("GET", f"{PREFIX}/pending-projects"),

@@ -516,13 +516,14 @@ async def test_the_record_a_write_answers_is_built_for_the_writers_reader(
     client, db_session, shema_app, withheld
 ) -> None:
     """A save answers with the recomputed record (FE-44 §9.3), and it is the writer's reader's
-    record: an OBT Lab mentor who saves a note or files a reading gets the region back."""
+    record: an OBT Lab mentor who saves the team's translators or files a reading gets the region
+    back. Not a note: on a withheld record the notes are coordination's to write (OBT-556)."""
     mentor = await _user(db_session, shema_app, "obtLab")
     headers = await _headers(db_session, mentor)
 
     patched = await client.patch(
         f"{PROJECTS}/{WITHHELD_ID}",
-        json={"notes": "visita feita"},
+        json={"translators": "Equipe de revisao"},
         headers={**headers, "If-Match": '"1"'},
     )
     assert patched.status_code == 200, patched.text
@@ -543,13 +544,14 @@ async def test_the_withheld_notice_is_coordinations_and_null_for_everybody_else(
     client, db_session, shema_app, withheld, cleared, role, notice
 ) -> None:
     """**The DoD's second line.** ``locationsWithheld`` — the overlay's *N retidos* — is
-    announced to coordination only (GATE-04 1.3). It hides nothing from the others: every card
-    still carries its own marker and the ``sensitive`` facet still counts it."""
+    announced to coordination only (GATE-04 1.3), and since OBT-556 so is the ``sensitive``
+    facet, which is the same number. Every card still carries its own marker, for everybody."""
     user = await _user(db_session, shema_app, role)
     page = (await client.get(PROJECTS, headers=await _headers(db_session, user))).json()
 
     assert page["locationsWithheld"] == notice
-    assert page["counts"]["groups"]["sensitive"] == {"yes": 1, "no": 1}
+    facet = page["counts"]["groups"].get("sensitive")
+    assert facet == (None if notice is None else {"yes": 1, "no": 1})
     marker = {item["id"]: item["locationWithheld"] for item in page["items"]}
     assert marker == {WITHHELD_ID: True, CLEARED_ID: False}
 

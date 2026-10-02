@@ -48,6 +48,9 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
 from app.models.shema import ShemaProjectUpdate
 from app.models.shema_privacy import CONTACT_FIELDS, PLACE_FIELDS
+from app.services.shema._consent import request_as_read
+from app.services.shema._redaction import withheld_from
+from app.services.shema._scope import Readership
 
 #: Column name → the key the trail is written in, which is the key the console reads.
 #:
@@ -119,11 +122,16 @@ class ChangesSince:
     record moved through a path that writes no trail — a seed, or a future service that stamps
     the row without going through this one — and saying *it moved and I cannot say how* is
     better than implying nothing did.
+
+    **It is told to a reader** (OBT-556): :func:`changes_since` leaves out what that reader is
+    handed reduced, and :attr:`by` and :attr:`at` are ``None`` when every change since was one of
+    those — *somebody saved it* is the whole of what a reader may learn about an edit to a field
+    they cannot see.
     """
 
     version: int
     fields: tuple[str, ...]
-    by: str
+    by: str | None
     at: datetime | None
 
 
@@ -224,8 +232,25 @@ def record_edits(
     return rows
 
 
-async def changes_since(db: AsyncSession, project: ShemaProject, version: int) -> ChangesSince:
-    """What the record's trail says happened after ``version`` — the 409's body.
+def _unreadable_keys(project: ShemaProject, readership: Readership) -> frozenset[str]:
+    """The trail keys this reader may not be told moved — what their read of the record reduces.
+
+    Two owners, asked and not restated: the boundary's list for a withheld record read by
+    anybody but coordination (``_redaction.withheld_from``), and the prayer request a reader
+    outside its audience is handed empty (``_consent.request_as_read`` — the keys of the update
+    are the fields it blanks). Spelled as the trail spells them, which is the wire's spelling.
+    """
+    reader = readership.reader_of(project.region_key)
+    columns = withheld_from(project, reader) | set(
+        request_as_read(project, reads_withheld=readership.withheld_prayer)
+    )
+    return frozenset(FIELD_KEYS.get(column) or _wire(column) for column in columns)
+
+
+async def changes_since(
+    db: AsyncSession, project: ShemaProject, version: int, *, readership: Readership
+) -> ChangesSince:
+    """What the record's trail says happened after ``version``, as ``readership`` may hear it.
 
     Reads the trail rather than diffing two rows, because there is no second row to diff: the
     version the client was holding is gone, and reconstructing it would mean the trail being a
@@ -236,6 +261,14 @@ async def changes_since(db: AsyncSession, project: ShemaProject, version: int) -
     like a sentence. ``by`` is the **newest** name: a screen that lists every editor of the
     last four versions is a screen nobody reads, and *saved by Maria* is the fact a
     coordinator acts on.
+
+    **Only what the reader reads** (OBT-556). A reader handed a withheld record's place, base,
+    contacts and notes reduced, or a prayer request kept in coordination as ``""``, would learn
+    from a 409 that they moved and who moved them; so those rows are left out, and ``by`` and
+    ``at`` come from the newest row that is left. When every row was left out the answer is the
+    empty one with no name and no day, which is *it moved and I cannot say how* — the same
+    answer a save through a path with no trail gets. ``readership`` has no default: a keyword
+    with a permissive default is how a filter stops being applied.
     """
     stmt = (
         select(ShemaRecordEdit)
@@ -243,11 +276,13 @@ async def changes_since(db: AsyncSession, project: ShemaProject, version: int) -
         .order_by(ShemaRecordEdit.version, ShemaRecordEdit.changed_at)
     )
     rows = list((await db.execute(stmt)).scalars())
-    fields = list(dict.fromkeys(row.field_key for row in rows))
-    newest = rows[-1] if rows else None
-    return ChangesSince(
-        version=project.version,
-        fields=tuple(fields),
-        by=newest.changed_by_name if newest else project.updated_by_name,
-        at=newest.changed_at if newest else project.updated_at,
-    )
+    unreadable = _unreadable_keys(project, readership)
+    told = [row for row in rows if row.field_key not in unreadable]
+    fields = list(dict.fromkeys(row.field_key for row in told))
+    if told:
+        by, at = told[-1].changed_by_name, told[-1].changed_at
+    elif rows:
+        by, at = None, None
+    else:
+        by, at = project.updated_by_name, project.updated_at
+    return ChangesSince(version=project.version, fields=tuple(fields), by=by, at=at)
