@@ -5,14 +5,21 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import and_, case, or_, select, update
+from sqlalchemy import ColumnElement, and_, case, or_, select, update
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
+from app.db.models.internalization_room import (
+    IRSession,
+    IRSessionStatus,
+    IRTake,
+    IRTakeKind,
+    IRTeamSession,
+)
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import (
@@ -155,6 +162,160 @@ async def create_session(
     a passage is the way back in. The end it names is the end of the walkable book, which is
     the only end a team can reach — a passage `require_walkable` refuses can never be closed.
     """
+    pericope, after_panorama, spoken = await _resolved(
+        db,
+        pericope=pericope,
+        after_panorama=after_panorama,
+        project_id=project_id,
+        language=language,
+        chosen=chosen,
+    )
+    session = await _minted(
+        db,
+        pericope=pericope,
+        after_panorama=after_panorama,
+        project_id=project_id,
+        language=spoken,
+    )
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+async def open_session(
+    db: AsyncSession,
+    *,
+    pericope: str | None = None,
+    after_panorama: bool = False,
+    project_id: str | None = None,
+    language: str | None = None,
+    chosen: bool = False,
+) -> tuple[IRSession, bool]:
+    """The session the room's open door returns, and whether this open created it.
+
+    Every open asks the server, and the server answers with the session it holds for this
+    team, pericope and language, whatever its state: a second tablet, a reinstall and a
+    relaunch all land on the conversation the team was having. One is minted only when none
+    exists, and then exactly once: the key is claimed in the same transaction that mints, and
+    an open that loses the claim to another deletes its own row before anything is committed
+    and returns the winner's, so no orphan is left. Deleted rather than rolled back, because a
+    rollback would expire every row the caller already read on this session.
+
+    A key nobody has claimed yet may still name stored sessions — written before the claim
+    existed, or by a server still running the old door while the new one rolls out — and the
+    latest of them by ``updated_at``, then ``created_at``, then ``id`` is the one claimed.
+
+    The Panorama is opened by the same rule, so a team choosing to hear it again is returned
+    the Panorama session it already has; replaying it is not this door's to decide.
+
+    A resumed session keeps what it is, except the panorama mark: an open that says it came
+    from the Panorama sets ``after_panorama`` on the session it lands on, or a pericope opened
+    before the Panorama would leave `heard_panorama` false and the Panorama would play at
+    every launch.
+
+    A caller with no team has nothing to resume, so it is minted a session as before.
+    """
+    if project_id is None:
+        minted = await create_session(
+            db,
+            pericope=pericope,
+            after_panorama=after_panorama,
+            language=language,
+            chosen=chosen,
+        )
+        return minted, True
+    pericope, after_panorama, spoken = await _resolved(
+        db,
+        pericope=pericope,
+        after_panorama=after_panorama,
+        project_id=project_id,
+        language=language,
+        chosen=chosen,
+    )
+    claimed = await db.scalar(
+        select(IRTeamSession.session_id).where(*_team_key(project_id, pericope, spoken))
+    )
+    created = False
+    if claimed is not None:
+        session = await get_session(db, claimed)
+    else:
+        stored = await _latest_stored(db, project_id, pericope, spoken)
+        created = stored is None
+        session = stored or await _minted(
+            db,
+            pericope=pericope,
+            after_panorama=after_panorama,
+            project_id=project_id,
+            language=spoken,
+        )
+        winner = await _claim(db, session, project_id=project_id)
+        if winner != session.id:
+            if created:
+                await db.delete(session)
+                await db.flush()
+            session, created = await get_session(db, winner), False
+    if after_panorama and not session.after_panorama:
+        session.after_panorama = True
+    await db.commit()
+    await db.refresh(session)
+    return session, created
+
+
+def _team_key(project_id: str, pericope: str, language: str) -> tuple[ColumnElement[bool], ...]:
+    return (
+        IRTeamSession.project_id == project_id,
+        IRTeamSession.pericope == pericope,
+        IRTeamSession.language == language,
+    )
+
+
+async def _latest_stored(
+    db: AsyncSession, project_id: str, pericope: str, language: str
+) -> IRSession | None:
+    stored = await db.execute(
+        select(IRSession)
+        .where(
+            IRSession.project_id == project_id,
+            IRSession.pericope == pericope,
+            IRSession.language == language,
+        )
+        .order_by(IRSession.updated_at.desc(), IRSession.created_at.desc(), IRSession.id.desc())
+        .limit(1)
+    )
+    return stored.scalar_one_or_none()
+
+
+async def _claim(db: AsyncSession, session: IRSession, *, project_id: str) -> str:
+    """Point the key at this session unless another open already did, and say who holds it."""
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    await db.execute(
+        insert(IRTeamSession)
+        .values(
+            project_id=project_id,
+            pericope=session.pericope,
+            language=session.language,
+            session_id=session.id,
+        )
+        .on_conflict_do_nothing(index_elements=["project_id", "pericope", "language"])
+    )
+    held = await db.execute(
+        select(IRTeamSession.session_id).where(
+            *_team_key(project_id, session.pericope, session.language)
+        )
+    )
+    return held.scalar_one()
+
+
+async def _resolved(
+    db: AsyncSession,
+    *,
+    pericope: str | None,
+    after_panorama: bool,
+    project_id: str | None,
+    language: str | None,
+    chosen: bool,
+) -> tuple[str, bool, str]:
+    """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
         pericope = await active_passage(db, project_id=project_id)
         if pericope is None:
@@ -174,6 +335,19 @@ async def create_session(
     spoken = normalize(language)
     if language is not None and spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
+    return pericope, after_panorama, spoken or floor()
+
+
+async def _minted(
+    db: AsyncSession,
+    *,
+    pericope: str,
+    after_panorama: bool,
+    project_id: str | None,
+    language: str,
+) -> IRSession:
+    """A new session on a resolved pericope, flushed and not yet committed."""
+    panorama = is_panorama(pericope)
     carried = (
         {}
         if panorama or project_id is None
@@ -195,12 +369,11 @@ async def create_session(
         },
         kept_takes={},
         back_translation={},
-        language=spoken or floor(),
+        language=language,
         comprehension={},
     )
     db.add(session)
-    await db.commit()
-    await db.refresh(session)
+    await db.flush()
     return session
 
 
