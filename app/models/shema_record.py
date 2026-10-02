@@ -156,7 +156,7 @@ class ShemaCountedProgressRow(BaseModel):
     @model_validator(mode="after")
     def _no_count_exceeds_the_scope(self) -> Self:
         over = [
-            f"{label} {value} of {self.chapters}"
+            label
             for label, value in (
                 ("translated", self.translated),
                 ("communityChecked", self.community_checked),
@@ -165,7 +165,7 @@ class ShemaCountedProgressRow(BaseModel):
             if value > self.chapters
         ]
         if over:
-            raise ValueError(f"more than the row's own scope: {', '.join(over)}")
+            raise ValueError(f"more than the row's own scope of chapters: {', '.join(over)}")
         return self
 
 
@@ -191,9 +191,9 @@ class ShemaBookProgressRow(ShemaCountedProgressRow):
     def _the_book_and_its_real_length(self) -> Self:
         real = chapters_in(self.id)
         if real is None:
-            raise ValueError(f"{self.id}: not one of the 66 books")
+            raise ValueError("not one of the 66 books")
         if self.chapters > real:
-            raise ValueError(f"{self.id}: {self.chapters} chapters, and the book has {real}")
+            raise ValueError(f"more chapters than the book has ({real})")
         return self
 
 

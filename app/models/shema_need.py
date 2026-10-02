@@ -91,7 +91,7 @@ def normalised_currency(value: str) -> str:
     """
     code = value.strip().upper()
     if not _ISO_4217.match(code):
-        raise ValueError(f"{value!r} is not an ISO-4217 currency code, which is three letters")
+        raise ValueError("not an ISO-4217 currency code, which is three letters")
     return code
 
 
@@ -183,9 +183,9 @@ class ShemaNeedWrite(BaseModel):
             raise ValueError("an amount asked for is not negative")
         exponent = value.as_tuple().exponent
         if isinstance(exponent, int) and exponent < -2:
-            raise ValueError(f"{value} has more than two decimals; send the amount as money")
+            raise ValueError("more than two decimals; send the amount as money")
         if value > MAX_AMOUNT:
-            raise ValueError(f"{value} is larger than this column holds ({MAX_AMOUNT})")
+            raise ValueError(f"larger than this column holds ({MAX_AMOUNT})")
         return value
 
     @model_validator(mode="after")

@@ -1233,7 +1233,10 @@ place or a contact as easily as anything else. Every route under `/api/shema` is
 `ShemaRoute` (`app/api/shema/_routing.py`), because the module's three routers are
 `ShemaRouter`s and hand the class to whatever is included into them: a 422 keeps `type`, `loc`
 and `msg` in FastAPI's own envelope, and an unexpected error leaves the route as
-`UnexpectedShapeError`, named by model, location and kind. **Only here**: the handlers in
+`UnexpectedShapeError`, named by model, location and kind. `msg` travels as the validator wrote
+it, so a validator of this module says what it expected and never the value it refused — the
+need's currency and amount, a book's id and chapters, a row's counts, a health note's key and a
+question set's version used to, and `tests/test_shema/test_quiet_errors.py` holds them to it. **Only here**: the handlers in
 `app/core/exceptions.py` are eight applications', and their 422 is a contract other clients
 read. It is a route class and not a handler because Starlette's `ServerErrorMiddleware`
 re-raises after the handler answers, so a handler alone would leave the server's log as it was.

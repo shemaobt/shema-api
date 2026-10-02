@@ -23,7 +23,11 @@ What changes, and what does not:
 * a 422's field errors keep ``type``, ``loc`` and ``msg`` — what the console reads to place a
   refusal on a field — and lose ``input`` and ``ctx``, which is how ``IncompleteSubmission``
   already renders the same list. The envelope is FastAPI's own, drawn by FastAPI's own handler:
-  the error is raised again without the values, not answered here.
+  the error is raised again without the values, not answered here. **``msg`` is the
+  validator's own sentence and travels as written**, so a validator of this module may not put
+  the value it refused into it: it says what was expected and ``loc`` says where.
+  ``tests/test_shema/test_quiet_errors.py::test_a_validator_of_the_module_does_not_put_the_value_in_its_message``
+  holds that for the ones that used to.
 * an unexpected Pydantic error leaves as :class:`UnexpectedShapeError`, whose message names the
   model and each failing location and kind and never a value. It keeps the original traceback,
   whose frames say *where* without saying *what*, and it is raised outside the ``except`` so

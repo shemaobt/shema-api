@@ -67,6 +67,98 @@ async def test_a_shema_422_does_not_echo_what_was_sent(db_session, client, shema
     assert ["query", "limit"] in [error["loc"] for error in query.json()["detail"]]
 
 
+#: A need's money and a book on the progress table, each refused by a validator of this module,
+#: and a health note filed under a dimension that does not exist. Every value is the canary or
+#: carries it, so a message that names the value it refused puts the canary in the body.
+REFUSED_BY_THE_MODULE = {
+    "currency": {
+        "needsItems": [{"category": "training", "estimatedAmount": 10, "estimatedCurrency": CANARY}]
+    },
+    "decimals": {
+        "needsItems": [
+            {"category": "training", "estimatedAmount": "7.77701", "estimatedCurrency": "BRL"}
+        ]
+    },
+    "too large": {
+        "needsItems": [
+            {
+                "category": "training",
+                "estimatedAmount": "7770177701777.01",
+                "estimatedCurrency": "BRL",
+            }
+        ]
+    },
+    "book": {"bookProgress": [{"id": CANARY, "name": "Marcos", "chapters": 1}]},
+    "chapters": {"bookProgress": [{"id": "mrk", "name": "Marcos", "chapters": 77701}]},
+    "scope": {
+        "bookProgress": [{"id": "mrk", "name": "Marcos", "chapters": 2, "translated": 77701}]
+    },
+}
+
+#: What each case would print if the message carried the value: the canary itself, or the number
+#: it was given as.
+ECHOED = {
+    "currency": CANARY,
+    "decimals": "7.77701",
+    "too large": "7770177701777.01",
+    "book": CANARY,
+    "chapters": "77701",
+    "scope": "77701",
+}
+
+
+@pytest.mark.parametrize("case", list(REFUSED_BY_THE_MODULE))
+async def test_a_validator_of_the_module_does_not_put_the_value_in_its_message(
+    db_session, client, shema_app, case: str
+) -> None:
+    """The route drops ``input`` and ``ctx``; ``msg`` is the validator's own sentence, so the
+    promise holds only while no validator of the module writes the value into it. These are the
+    ones that did — a currency, an amount, a book and a count — each answered with what is
+    expected and where, never with what came."""
+    res = await client.patch(
+        f"{PROJECTS}/{uuid.uuid4()}",
+        json=REFUSED_BY_THE_MODULE[case],
+        headers={**(await _headers(db_session, shema_app)), "If-Match": '"1"'},
+    )
+
+    assert res.status_code == 422, res.text
+    assert ECHOED[case] not in res.text
+    _assert_quiet(res.json())
+
+
+#: The two refusals of the health assessment's own validators: a note under a key that is no
+#: dimension, and a question set this server never published.
+REFUSED_ASSESSMENTS = {
+    "dimension key": (
+        {"date": "2026-09-10", "emotional": "boa", "dimensionNotes": {CANARY: "nota"}},
+        CANARY,
+        "not a health dimension",
+    ),
+    "question set": (
+        {"date": "2026-09-10", "emotional": "boa", "questionSetVersion": 77701},
+        "77701",
+        "not a published question set",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(REFUSED_ASSESSMENTS))
+async def test_an_assessment_is_refused_without_naming_what_it_sent(
+    db_session, client, shema_app, case: str
+) -> None:
+    """The key a client sent is input as much as the value under it, and so is the version."""
+    body, echoed, sentence = REFUSED_ASSESSMENTS[case]
+    res = await client.post(
+        f"{PROJECTS}/{uuid.uuid4()}/health-assessments",
+        json=body,
+        headers=await _headers(db_session, shema_app),
+    )
+
+    assert res.status_code == 422, res.text
+    assert echoed not in res.text
+    assert sentence in res.text
+
+
 async def test_another_applications_422_is_untouched(client) -> None:
     """The rule is the module's: the 422 the other applications' clients read is FastAPI's own.
 
