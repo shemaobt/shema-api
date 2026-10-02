@@ -992,8 +992,10 @@ What PR C built, and where it met the contract:
   the pen goes to whoever opened it (`started_by` = the opener, `started_by_link_id` cleared), so
   the Gestor writes and sends the revision while it stays the team's (`created_by`, project and
   lock carry over). The team still needs the mesa's *revisar*, and after a *revisar* decision the
-  pen stays with the team whoever opens it. Reading the column and handing the pen to the board
-  are ours, not the client's.
+  pen stays with the team whoever opens it. The board is read off its reach, never off who
+  started the request, so a Gestor who started one himself reopens it too; a link's request takes
+  the same path and its pen leaves the link. Reading the column, handing the pen to the board and
+  letting it leave a link are ours, not the client's.
 - **`verify` answers the link's address whole** (`email`), beside the session. The public read
   keeps masking it — before the code nobody has proved anything — but whoever typed the code sent
   to that address has, and the form needs the real one to refuse a `leader_email` equal to the
