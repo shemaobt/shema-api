@@ -11,6 +11,13 @@ project merely stayed quiet; it is filtered by the same audience health and need
 Circle) and by the caller's own ``RegionScope``, through ``browse_projects``'s stale preset,
 which is already scoped and already redacted.
 
+**A health notice is read by who the account is now, not by who it was when it was addressed**
+(OBT-553). ``_health_notice.py`` addresses the audience at the moment a reading turns critical, and
+a grant can be taken back afterwards; an account that left the audience — moved to the Resource
+Circle, say — would otherwise keep reading *which team went critical* in its panel. So the same
+``reads_assessments`` answer that gates the stale reading leaves the health kind out of the
+delivered rows, in the query and therefore before the cap, as §5.10 routes everything else.
+
 **A request notice points at its project only for a reader who reaches it** (OBT-541). The
 form's arrival and decision carry their project in ``shema_request_notices`` so the console can
 open its record; but a project's id is its slug, which names a place, and the Admin and the
@@ -168,7 +175,16 @@ async def list_notification_panel(
     a scope applied by a permissive keyword is a scope the next caller forgets.
     """
     app_id = await get_shema_app_id(db)
-    rows = await list_notifications(db, user.id, app_id, limit=PANEL_CAP)
+    reads_health = await reads_assessments(db, user, app_key)
+    # Routed by who the account is now, in the query and so before the cap: a health notice
+    # addressed while it was in the audience is not read once it has left it (OBT-553).
+    rows = await list_notifications(
+        db,
+        user.id,
+        app_id,
+        limit=PANEL_CAP,
+        exclude_event_types=() if reads_health else (HEALTH_EVENT_TYPE,),
+    )
     details, reached = await _request_notices(db, scope, user.id, [row.id for row in rows])
     delivered = []
     for row in rows:
@@ -191,7 +207,7 @@ async def list_notification_panel(
         )
 
     stale: list[ShemaNotificationEntry] = []
-    if await reads_assessments(db, user, app_key):
+    if reads_health:
         stale = await _stale_entries(db, scope, today=today)
         seen = await _read_stale_ids(db, user.id, [entry.id for entry in stale])
         stale = [entry.model_copy(update={"is_read": entry.id in seen}) for entry in stale]
