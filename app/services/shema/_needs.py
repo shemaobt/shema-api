@@ -458,7 +458,7 @@ def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
         return Notice(*lines[0].as_notice())
 
     urgent = urgent_needs_facts(lines)
-    who = lines[0].language_name or lines[0].project_id
+    who = lines[0].spoken_name("A project")
     money = (
         ""
         if not urgent.totals

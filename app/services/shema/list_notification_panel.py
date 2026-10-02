@@ -19,8 +19,8 @@ reader's language. What happened comes off the row's
 off the project, here, through each one's owner, so a notice reads the way its project reads
 today and not the way it read when it was written:
 
-* the language's name as every recipient may read it — ``""`` for a withheld project
-  (:func:`_language_name`);
+* the language's name as every recipient may read it — the public name of a withheld project,
+  ``""`` while none is registered (:func:`_language_name`);
 * the region key, to every recipient;
 * the project's id and, on an urgent need, its place — **only to a reader who reaches the
   project now**, inside the caller's scope or one of its live members, the collection's own rule
@@ -76,12 +76,13 @@ from app.models.shema_notification import (
     ShemaNotificationEntry,
     ShemaProjectNoticeFacts,
 )
+from app.models.shema_privacy import ShemaReader
 from app.models.shema_projects import ShemaProjectCard, ShemaProjectQuery
 from app.services.notifications import get_shema_app_id, list_notifications
 from app.services.shema._health_audience import reads_assessments
 from app.services.shema._health_notice import EVENT_TYPE as HEALTH_EVENT_TYPE
 from app.services.shema._needs import URGENT_NEED_EVENT
-from app.services.shema._redaction import is_withheld
+from app.services.shema._redaction import language_name_for
 from app.services.shema._request_notices import REQUEST_ARRIVAL_EVENT, REQUEST_DECISION_EVENT
 from app.services.shema._scope import (
     NO_COORDINATION,
@@ -127,15 +128,14 @@ def _is_urgent(kind: NotificationKind) -> bool:
 
 
 def _language_name(project: ShemaProject) -> str:
-    """The language's name as every recipient of a notice may read it — ``""`` when withheld.
+    """The language's name as every recipient of a notice may read it.
 
     A notice is not a shape, and every recipient reads it as somebody outside coordination: a
-    project whose place is withheld may carry it in its name too (OBT-560), so its name is not
-    answered and the console says *a project*. OBT-560 (shema-api#610) adds the name
-    coordination registers for those projects and ``_redaction.language_name_for``, its owner;
-    once it lands this is ``language_name_for(project, ShemaReader.OTHER, fallback="")``.
+    project whose place is withheld may carry it in its name too (OBT-560), so it answers the
+    name coordination registered for the other readers, and ``""`` while none is — the console
+    then says *a project*. ``_redaction.language_name_for`` is the rule's owner.
     """
-    return "" if is_withheld(project) else project.language_name
+    return language_name_for(project, ShemaReader.OTHER, fallback="")
 
 
 def _stale_id(card: ShemaProjectCard) -> str:
@@ -161,10 +161,11 @@ def _stale_language_name(card: ShemaProjectCard) -> str:
     """:func:`_language_name`'s answer, read off the card instead of a second read of the row.
 
     The card is a leaving shape ``browse_projects`` built for a reader outside coordination, so
-    its ``location_withheld`` is the flag, fail-closed, and its ``language_name`` the one the
-    record holds — the two :func:`_language_name` reads.
+    its name is already the one that reader may read (OBT-560) — the public name of a withheld
+    project, or its region key while none is registered — and ``spoken_name`` turns the region
+    key into ``""`` (OBT-562), as :func:`_language_name`'s fallback does.
     """
-    return "" if card.location_withheld else card.language_name
+    return card.spoken_name("")
 
 
 def _stale_entry(card: ShemaProjectCard, *, today: date) -> ShemaNotificationEntry:

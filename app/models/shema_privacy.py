@@ -368,6 +368,20 @@ class LeavingShape(BaseModel):
             setattr(self, field_name, public or region.value)
         self.language_name_withheld = True
 
+    def spoken_name(self, fallback: str) -> str:
+        """The name for a sentence a person reads — a notice body, never a field (OBT-562).
+
+        A withheld name with no public one registered is the region key, which is a value for a
+        screen to translate and not a word for a sentence: *africa raised an urgent need* reads
+        as a defect. So prose says ``fallback`` instead. An empty name says it too.
+        """
+        name = next((getattr(self, f) for f in NAME_FIELDS if f in self.model_fields), "")
+        if not isinstance(name, str) or not name.strip():
+            return fallback
+        if self.language_name_withheld and name in _REGION_VALUES:
+            return fallback
+        return name
+
     @model_validator(mode="after")
     def _withhold_the_place(self, info: ValidationInfo) -> Self:
         """Replace every guarded field this shape declares, unless coordination is reading.
