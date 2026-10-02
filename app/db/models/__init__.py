@@ -119,6 +119,7 @@ from app.db.models.shema_pending_member import ShemaProjectPendingMember
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.db.models.shema_project_member import ShemaProjectMember
 from app.db.models.shema_region import ShemaUserRegion
+from app.db.models.shema_rekey import ShemaProjectRekey
 from app.db.models.sound_necklace import (
     GranularityLevel,
     SessionStatus,
@@ -240,6 +241,7 @@ __all__ = [
     "ShemaProject",
     "ShemaProjectMember",
     "ShemaProjectPendingMember",
+    "ShemaProjectRekey",
     "ShemaProjectStatus",
     "ShemaRecordEdit",
     "ShemaRegionKey",

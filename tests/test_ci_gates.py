@@ -81,6 +81,7 @@ MIGRATION_FILES = {
     "test_ir_prepared_pericope_migration.py",
     "test_ir_segments_migration.py",
     "test_ir_session_language_migration.py",
+    "test_shema552_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

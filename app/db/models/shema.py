@@ -11,8 +11,10 @@ data cannot fill. Eleven foreign keys across six model files already point at
 different kinds of thing. The nullable ``tripod_project_id`` that would let the two products
 point at each other is **not here**: §4.3 asks the issue that needs it to add it then.
 
-**The primary key is the export's slug**, frozen by FE-44 §5.1 as the address every screen,
-URL and saved view already carries. BE-16 does not mint new ids.
+**The primary key is an opaque UUID** (OBT-552, 1/out/2026). It was the export's slug, frozen
+by FE-44 §5.1 as the address every screen and URL carried, until the INT-12 privacy pass found
+that ``<language>-<place>`` named the place on every shape that leaves the server — revision
+``20261001_shema552`` moved the 127, and OBT-551 has every new record born with one.
 
 Three rules decide every column's nullability, and together they are the DoD's *optionality
 reflecting the real export*.
@@ -191,7 +193,7 @@ from app.db.types import UtcDateTime
 
 
 class ShemaProject(Base):
-    """One language project, addressed by the slug the export minted for it.
+    """One language project, addressed by an opaque UUID — no longer the export's slug (OBT-552).
 
     The indexes are the module docstring's last subject and the DoD's fifth line, and what
     they serve is deliberately narrower than the screen's filter list. FE-44 §9.1 froze
@@ -238,7 +240,10 @@ class ShemaProject(Base):
         ),
     )
 
-    #: The export's slug (``afrikaans-kaaps``), never a minted uuid — FE-44 §5.1.
+    #: An opaque UUID. It was the export's slug (``afrikaans-kaaps``) under FE-44 §5.1 until
+    #: OBT-552: the slug named the place on every shape that left the server, so revision
+    #: ``20261001_shema552`` moved all 127 (``shema_project_rekeys`` keeps them for the
+    #: downgrade) and OBT-551 has every new record born with a minted one.
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
 
     #: Never normalised: not trimmed, not title-cased, not transliterated. ``Embera Dobida``

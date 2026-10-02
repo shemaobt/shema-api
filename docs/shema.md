@@ -511,9 +511,11 @@ Four measurements decide it:
    The other 69 have nowhere to go, and the four would have to stay in sync between two
    products forever.
 4. **The primary keys are different kinds of thing.** `projects.id` is a uuid4 minted by the
-   default. The Shemá record's id is **the export's slug** (`afrikaans-kaaps`,
+   default. The Shemá record's id ~~is **the export's slug** (`afrikaans-kaaps`,
    `purepecha-de-capacuaro`), frozen by FE-44 §5.1 as the address every screen, URL and saved
-   view already carries, and BE-16 must not mint new ones.
+   view already carries, and BE-16 must not mint new ones~~ **is an opaque UUID since OBT-552
+   (1/out/2026, Daniel)** — the slug named the place on every shape that left the server, so
+   revision `20261001_shema552` moved all 127 and OBT-551 has every new record born with one.
 
 **Verdict: `shema_projects` is its own table, with no FK to `projects` and no `language_id`.**
 `language_name` and `language_code` are text on the row, checked and never refused (FE-44
@@ -711,7 +713,7 @@ behaviour on it.
 
 | # | Aggregate | Tables (working names) | Owner | The invariant |
 |---|---|---|---|---|
-| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | **The concurrency token is a `version` column and a save must quote it** (BE-06 — `If-Match` required, `ETag` on every read; a stale save is a 409 naming the version, the fields and the person). A save that changed nothing moves nothing. The primary key is the **export slug**, not a minted uuid — **for the 127 imported records; every record created since OBT-551 (1/out/2026, Daniel) takes a minted UUID**, because a create that looked a chosen slug up answered 409 for a slug that exists anywhere, an existence oracle no ordering of the checks could close. The console was already minting `crypto.randomUUID()`. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
+| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | **The concurrency token is a `version` column and a save must quote it** (BE-06 — `If-Match` required, `ETag` on every read; a stale save is a 409 naming the version, the fields and the person). A save that changed nothing moves nothing. ~~The primary key is the **export slug**, not a minted uuid~~ — **every project id is an opaque UUID since OBT-552 (1/out/2026, Daniel)**: revision `20261001_shema552` moved the 127 imported slugs, because the id travels unredacted on every shape and `sa-di-of-high-egypt` handed back the country the redaction had withheld; `shema_project_rekeys` keeps the old slugs for the downgrade and is read by nothing else. Records created since OBT-551 were already born with one, because a create that looked a chosen slug up answered 409 for a slug that exists anywhere, an existence oracle no ordering of the checks could close. The console was already minting `crypto.randomUUID()`. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
 | 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day — which the server cannot know, so BE-06 has the client state it in `X-Shema-Local-Date` and bounds it to ±1 day of the server's own, the window every real offset fits in and a backdated ETEN credit does not. **A row is checked against the book that exists** (`app/utils/shema_books.py`): not a book, a scope longer than the book, a count above its own row. The ceiling is **per row and never over the aggregates** — three export records carry `156/25`. |
 | 5.3 | **Health assessment** | `shema_health_assessments` | BE-02, BE-07 | **Its own aggregate.** The flat fields on the record are a *projection of the newest entry*, never a second truth; append and re-project in one step, and carry a pre-history record into the history before appending. The **per-dimension note is the data**; the running note is derived from it at write time. `""` is not `boa`. |
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
@@ -978,7 +980,7 @@ is absent from the collection, absent from every count, and refused on a direct 
 `NotFoundError` — **never** `AuthorizationError`. The status code is the sharp end of the
 choice: a 403 on a direct id **is** the existence-without-detail answer delivered by status
 code, and a caller who can tell *this slug is real but not yours* from *no such slug* holds
-an oracle over the whole collection. A Shemá slug is `<language>-<place>`, and for the two
+an oracle over the whole collection. A Shemá slug was `<language>-<place>` (every id is an opaque UUID since OBT-552), and for the two
 records FE-44 §8.1 flags, existence in a region is precisely the fact being protected. The
 two refusals therefore carry the same exception and the same message.
 
@@ -1174,7 +1176,7 @@ follows up and supports — and it still decides notes and media (`can_export_no
 or media, so those keep their own owners and are not reduced by this rule.
 
 **Residuals named and not closed** — each can name a place and none is reduced for `other`:
-the slug `<language>-<place>`, which is the record's address on every shape; the free text of
+~~the slug `<language>-<place>`, which is the record's address on every shape~~ (closed by OBT-552: every id is an opaque UUID); the free text of
 the ficha (`partnerOrg`, `scopeDetails`, `statusComments` / `statusGoal`, `phases`, `notes`,
 `needsNotes`, `objectiveNotes`, a need's `description`, a material's file name or link, media
 captions and URLs, health notes); `storyProgress[].recordLocation` and its copy in
@@ -1329,7 +1331,7 @@ the record read a coordination surface, because the issue names *list* among the
 and FE-44 §8.7 says display is never enforcement. OBT-528 closed the second: the record is a
 leaving shape too, built for its reader.
 
-**A notification that points at a project leaks its slug** (OBT-541). A project's id is the
+**A notification that points at a project leaks its slug** (OBT-541) — *true until OBT-552, which made every id an opaque UUID; the rule below still holds and now costs nothing.* A project's id was the
 export slug, `<language>-<place>`, so a notice that carries it tells its reader where a project
 is — and the resource-request form's arrival reaches the Admin and the Gestor, who reach no
 region. `list_notification_panel.py` answers a request notice's `projectId` only to a reader the
@@ -1429,7 +1431,7 @@ file never carries it, its request or its id in `shema_exports`; an import namin
 
 **Residuals, named.** ~~A slug that exists outside the caller's reach is answered 409 by
 `create_project`, the existence oracle `POST /projects` already has; the import inherits it by
-being the same path.~~ **Closed by OBT-551 (1/out/2026, Daniel):** a new record's id is a minted
+being the same path.~~ **Closed by OBT-551 (1/out/2026, Daniel), and the id stopped naming a place altogether with OBT-552:** a new record's id is a minted
 UUID, and a slug is refused before anything is read with one fixed sentence, so neither the create
 nor the import can tell a slug that exists elsewhere from one that never did (§5.1). The free text of an authorized request, the language name and the vitality
 can still name a place — this section's residuals. The header's language reuses BE-09's
