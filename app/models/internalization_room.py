@@ -1127,3 +1127,16 @@ class RetroverificationFile(BaseModel):
     listening: list[RetroverificationListening] = Field(default_factory=list)
     hard_stretches: list[RetroverificationHardStretch] = Field(default_factory=list)
     takes: list[RetroverificationTake] = Field(default_factory=list)
+
+
+class ConversationTurn(BaseModel):
+    role: Literal["team", "guide", "room"]
+    text: str
+    at: str | None
+    fail_safe: bool
+    fail_safe_category: str | None
+
+
+class ConversationResponse(BaseModel):
+    session_id: str
+    turns: list[ConversationTurn]

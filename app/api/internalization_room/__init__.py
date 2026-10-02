@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.internalization_room import (
     attended,
     back_translation,
+    conversation,
     coverage_channel,
     devices,
     passages,
@@ -30,6 +31,7 @@ for _sub in (
     takes,
     release,
     retroverification,
+    conversation,
     devices,
     attended,
     text_seam,
