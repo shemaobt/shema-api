@@ -751,9 +751,11 @@ async def look_at_turn(
 
     Posting the same `turn_id` again runs the turn when a file is attached and falls into
     the "say it again" line when none is, so nothing could ask whether a turn landed
-    without doing it (ENG-1369). This answers 200 with what the turn door answered, 202
-    with no body while the turn is still in flight in this process, and 404 for an id
-    nothing answered — and for another team's session, the way the session read refuses it.
+    without doing it. This door exists for the "one look" the tablet takes after giving up
+    on a turn, which ENG-1369 builds on top of it; this route is ENG-1445's. It answers 200
+    with what the turn door answered, 202 with no body while the turn is still in flight in
+    this process, and 404 for an id nothing answered — and for another team's session, the
+    way the session read refuses it.
     Reading writes nothing and calls no model.
 
     The stored answer is read again when the turn is neither stored nor in flight: a turn
