@@ -616,8 +616,9 @@ async def test_the_sensitive_country_rule_reaches_the_counts_and_not_only_the_re
     withholds, because it is reading that payload.
 
     The notice of how many were withheld is coordination's (GATE-04, OBT-528): this reader gets
-    ``null`` and the ``globalStrategist`` over the same collection gets the count — while the
-    card's own marker and the ``sensitive`` facet say the same to both.
+    ``null`` and the ``globalStrategist`` over the same collection gets the count. Since OBT-556
+    the ``sensitive`` facet is the same notice and is coordination's too — absent from this
+    reader's counts — while the card's own marker still says the same to both.
     """
     page = await fetch(client, db_session, lab_reader)
     card = next(item for item in page["items"] if item["id"] == "coptic-delta")
@@ -636,7 +637,7 @@ async def test_the_sensitive_country_rule_reaches_the_counts_and_not_only_the_re
 
     assert (await fetch(client, db_session, lab_reader, country="Egypt"))["matched"] == 0
     assert ids(await fetch(client, db_session, lab_reader, country="africa")) == ["coptic-delta"]
-    assert page["counts"]["groups"]["sensitive"] == {"yes": 1, "no": 8}
+    assert "sensitive" not in page["counts"]["groups"]
     assert page["locationsWithheld"] is None
 
     coordination = await fetch(client, db_session, reader)

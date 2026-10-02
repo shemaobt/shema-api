@@ -56,7 +56,7 @@ from app.models.shema_projects import (
 from app.services.shema._redaction import searchable_text, withheld_note
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.list_projects import list_projects
-from app.utils.shema_facets import filter_projects, sort_records
+from app.utils.shema_facets import FacetCounts, filter_projects, sort_records
 
 
 async def _needs_by_project(db: AsyncSession, ids: list[str]) -> dict[str, list[ShemaNeedCard]]:
@@ -180,10 +180,12 @@ async def browse_projects(
     ``readership`` has no default either: it decides which cards carry the truth, and the one
     caller that shows no place at all (the notification panel) says so with ``NO_COORDINATION``.
     The withheld notice is addressed to the caller — coordination when they coordinate any
-    region, and then only (GATE-04).
+    region, and then only (GATE-04) — and so are the count and the filter of the withheld
+    projects (OBT-556): one addressee for the three, so they cannot disagree.
     """
+    addressee = ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER
     cards = await _cards(db, await list_projects(db, scope), readership)
-    result = filter_projects(cards, query, today)
+    result = filter_projects(cards, _query_as_read(query, addressee), today)
 
     window = sort_records(result.visible, query.sort)
     start = query.offset
@@ -195,18 +197,47 @@ async def browse_projects(
 
     return ShemaProjectPage(
         items=items,
-        counts=ShemaFacetCounts(
-            groups={group: dict(options) for group, options in result.counts.groups.items()},
-            presets=dict(result.counts.presets),
-            group_all=dict(result.counts.group_all),
-        ),
+        counts=_facets_as_read(result.counts, addressee),
         matched=result.matched,
         total=result.total,
         limit=query.limit,
         offset=query.offset,
         sort=query.sort,
-        locations_withheld=withheld_note(
-            items,
-            ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER,
-        ),
+        locations_withheld=withheld_note(items, addressee),
     )
+
+
+#: The facet group that counts the withheld projects — ``locationWithheld`` per card.
+SENSITIVE_GROUP = "sensitive"
+
+
+def _query_as_read(query: ShemaProjectQuery, addressee: ShemaReader) -> ShemaProjectQuery:
+    """The filters as this caller may apply them: ``sensitive`` is coordination's (OBT-556).
+
+    How many projects are withheld is told to coordination and to nobody else (GATE-04, 1.3:
+    ``withheld_note``), and a filter on the bit would hand everybody else the same number as
+    ``matched``. So for them the filter is **ignored** — the list and every other count are what
+    the same request without it answers — rather than refused like a value that is no option:
+    an empty list would say *none of these is withheld*, which is false, and a link a coordinator
+    saved still opens with its other filters applied.
+    """
+    if addressee is ShemaReader.COORDINATION:
+        return query
+    return query.model_copy(update={SENSITIVE_GROUP: None})
+
+
+def _facets_as_read(counts: FacetCounts, addressee: ShemaReader) -> ShemaFacetCounts:
+    """The sidebar's numbers, without the count of withheld projects for anybody but coordination.
+
+    The group is left out of ``groups`` and of ``groupAll`` rather than answered with zeros, which
+    would be a number that lies; the console reads a missing group as one it has nothing to show
+    for. The bit itself stays on every card — GATE-04 decided the notice, not the bit — so what
+    the others lose is the announcement, which is exactly what ``locationsWithheld`` already
+    withholds from them.
+    """
+    groups = {group: dict(options) for group, options in counts.groups.items()}
+    group_all = dict(counts.group_all)
+    if addressee is not ShemaReader.COORDINATION:
+        groups.pop(SENSITIVE_GROUP, None)
+        group_all.pop(SENSITIVE_GROUP, None)
+    return ShemaFacetCounts(groups=groups, presets=dict(counts.presets), group_all=group_all)
