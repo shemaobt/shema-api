@@ -29,8 +29,9 @@ Decided by the Definer under Henok's standing rule on 2026-10-02 (Q21–Q28 on E
   was handed in the team's place — on the opening, the room's own opening instruction — so her
   judge reads what our Guide read (Q31).
 - A `teamText` that is present, even empty, is a team turn, and one with no words goes the way
-  the tablet's does, to the inaudible ladder. Only a turn with neither words nor a room note
-  is refused.
+  the tablet's does, to the inaudible ladder. An interrupted turn with no words is the
+  exception: the interruption is the room's note, and it wins, so the Guide is handed that
+  note alone. Only a turn with neither words nor a room note is refused.
 - The interruption is a room note, like the mother-tongue one: the Guide is handed the note
   in front of the words, the conversation keeps the note as the room's and the words as the
   team's, and only the team's words are ever settled.
