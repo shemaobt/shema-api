@@ -35,6 +35,7 @@ from app.db.models.shema_enums import (
 from app.db.models.shema_form import ShemaSubmission
 from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_notification import ShemaProjectNotice
+from app.models.shema import ShemaProjectUpdate
 from app.models.shema_need import ShemaNeedLine
 from app.services.notifications import create_notification, get_shema_app_id
 from app.services.shema import list_notification_panel, region_scope, set_region_scope
@@ -121,7 +122,16 @@ async def _critical(db_session, project, day: date) -> None:
 
 async def _pulse(db_session, project, *, prayer: bool) -> None:
     submission = ShemaSubmission(language_name=project.language_name, submitted_by="Kuaray")
-    await notify_submission(db_session, project, submission, app_key=APP_KEY, carries_prayer=prayer)
+    # The Pulse states its own consent (OBT-554): a prayer Pulse here is one the team shared.
+    written = ShemaProjectUpdate(prayer_visibility=ShemaPrayerVisibility.REDE if prayer else None)
+    await notify_submission(
+        db_session,
+        project,
+        submission,
+        app_key=APP_KEY,
+        carries_prayer=prayer,
+        written=written,
+    )
     await db_session.commit()
 
 
@@ -338,7 +348,12 @@ async def test_the_place_goes_only_to_a_reader_who_reaches_the_project(
 
     [still] = await _panel(db_session, lab)
     assert still["projectId"] == project.id
-    assert still["facts"]["place"] == {"location": SECRET_PLACE, "locationWithheld": False}
+    # ``languageNameWithheld`` rides on every leaving shape since OBT-560; a place has no name.
+    assert still["facts"]["place"] == {
+        "location": SECRET_PLACE,
+        "locationWithheld": False,
+        "languageNameWithheld": False,
+    }
 
     [gone] = await _panel(db_session, moved)
     assert gone["kind"] == "need"
@@ -363,7 +378,11 @@ async def test_a_sensitive_project_s_notice_reads_the_region_even_for_coordinati
     [entry] = res.json()
 
     assert entry["projectId"] == project.id
-    assert entry["facts"]["place"] == {"location": "africa", "locationWithheld": True}
+    assert entry["facts"]["place"] == {
+        "location": "africa",
+        "locationWithheld": True,
+        "languageNameWithheld": False,
+    }
     assert "Norlandia" not in res.text and "Sigilosa" not in res.text
 
 
