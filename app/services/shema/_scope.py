@@ -70,7 +70,7 @@ from typing import NamedTuple
 from sqlalchemy import ColumnElement, Select, and_, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
@@ -532,6 +532,38 @@ def refuse_out_of_scope(
         },
     )
     return NotFoundError("Project not found")
+
+
+def refuse_region_out_of_scope(
+    scope: RegionScope,
+    region_key: ShemaRegionKey,
+    *,
+    user: User,
+    operation: str,
+) -> AuthorizationError:
+    """Log a request for a region outside ``scope``, and return the 403 to raise.
+
+    **A 403 and not** :func:`refuse_out_of_scope`'s **404**, because the two refuse different
+    things. A project id is an address whose existence is the protected fact; the seven region
+    keys are a public vocabulary the console already holds, so there is no existence to protect
+    and the honest answer is *not yours* rather than *no such thing*. The org chart's read and
+    its write both ask it (OBT-556 gave the read the scope the write already had), so the
+    sentence and the log line are one.
+
+    The line carries the region asked for — the caller named it, and it names no project — and
+    the regions the caller does hold, which is what tells a misconfigured scope from a probe.
+    """
+    logger.warning(
+        "shema authorization refused: org chart outside region scope",
+        extra={
+            "shema_operation": operation,
+            "shema_user_id": user.id,
+            "shema_region_key": region_key.value,
+            "shema_scope_global": scope.global_,
+            "shema_scope_regions": sorted(scope.regions),
+        },
+    )
+    return AuthorizationError(f"Your scope does not include the '{region_key.value}' region.")
 
 
 async def session_roles(

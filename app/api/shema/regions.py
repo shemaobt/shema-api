@@ -71,7 +71,7 @@ async def read_role_changes(user: CoordinatorUser, db: Db, scope: Scope) -> list
 
 @router.get("/regions/{region_key}/team", response_model=RegionWithAccounts)
 async def read_region_team(
-    region_key: ShemaRegionKey, user: CoordinatorUser, db: Db
+    region_key: ShemaRegionKey, user: CoordinatorUser, db: Db, scope: Scope
 ) -> RegionWithAccounts:
     """One region's seats, with the account behind each — what the editing screen loads.
 
@@ -80,9 +80,11 @@ async def read_region_team(
     name, and this serves an editor the account behind that name. The two widths are two
     shapes — ``Region`` has no field for an account, so the collection cannot carry one — and
     a user id is an internal identifier: the fewer surfaces hand one out, the fewer there are
-    to think about.
+    to think about. **And it is the caller's region only**, as the write beside it is
+    (OBT-556): a regional coordinator reads the seats they may edit, and another region is the
+    write's own 403.
     """
-    return await get_region_team(db, region_key)
+    return await get_region_team(db, scope, region_key, user=user)
 
 
 @router.put("/regions/{region_key}/team", response_model=RegionTeamSaved)
