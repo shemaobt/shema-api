@@ -39,7 +39,8 @@ answered beside it: **who reads a request nobody authorized** (:data:`PRAYER_AUD
 to the record by :func:`request_as_read` and to every write of a request or a share by
 :func:`refuse_prayer_decisions`), and **what an authorization is attached to** — the
 request it was given for, so a new text arriving without one is unauthorized again
-(:func:`request_written`, :func:`need_written`).
+(:func:`request_written`, :func:`need_written`) — and a submission, announced before anybody
+applies it, is authorized by its own answer (:func:`submission_reaches_prayer_wall`, OBT-554).
 """
 
 from __future__ import annotations
@@ -387,3 +388,22 @@ def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:
     if "description" in written and written["description"] != need.description:
         written["prayer_shared"] = False
     return written
+
+
+def submission_reaches_prayer_wall(project: ShemaProject, written: ShemaProjectUpdate) -> bool:
+    """Whether the request a submission carries may leave coordination — the prayer notice's gate.
+
+    **The submission authorizes its own request or nothing does.** An authorization belongs to
+    the request it was given for (:func:`request_written`), and a Pulse is announced before
+    anybody applies it, on both doors — so the record still holds the answer the *last* request
+    was given, and read alone it would lend last month's ``rede`` to a text nobody shared. The
+    visibility has to be stated in ``written``, the record write the submission carries:
+    unanswered, ``coordenacao``, or the text already on the record sent again without it, the
+    request is not shared, whatever the project said before.
+
+    **And the record has to agree.** The link is the weakest credential in the system and its
+    answer is not applied until a coordinator applies it, so a leader claiming ``rede`` through
+    it cannot, by itself, make the network hear of a request. Both, because each alone answers
+    *yes* for somebody who never said it.
+    """
+    return written.prayer_visibility is ShemaPrayerVisibility.REDE and reaches_prayer_wall(project)
