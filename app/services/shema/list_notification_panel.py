@@ -124,7 +124,7 @@ async def _stale_entries(
                 id=_stale_id(card),
                 kind="stale",
                 title=STALE_TITLE,
-                body=_stale_body(card.language_name, days),
+                body=_stale_body(card.spoken_name(""), days),
                 urgent=_is_urgent("stale"),
                 project_id=card.id,
                 region=card.region_key.value if card.region_key else None,
