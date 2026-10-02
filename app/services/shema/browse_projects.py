@@ -75,7 +75,7 @@ from app.services.shema._health_audience import health_as_read
 from app.services.shema._redaction import searchable_text, withheld_note
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.list_projects import list_projects
-from app.utils.shema_facets import filter_projects, sort_records
+from app.utils.shema_facets import collation_key, filter_projects, sort_records
 
 
 async def _needs_by_project(db: AsyncSession, ids: list[str]) -> dict[str, list[ShemaNeedCard]]:
@@ -213,7 +213,14 @@ def _facets_as_read(counts: ShemaFacetCounts, readership: Readership) -> ShemaFa
 async def _cards(
     db: AsyncSession, projects: list[ShemaProject], readership: Readership
 ) -> list[ShemaProjectCard]:
-    """One card per project, built for its reader, with what a row cannot answer joined in.
+    """One card per project, built for its reader, with what a row cannot answer joined in —
+    in the order of the name each card carries.
+
+    **That order is the tiebreak of every sort the screen has** (OBT-563). ``sort_records`` is
+    stable, so two cards with the same deadline, the same team or no deadline at all keep the
+    order they arrived in; had that been the real name, a reader who is not coordination could
+    place a sensitive project by its real name from where it sits among its ties. Ordered by the
+    name the card carries, a card sits where the name the reader reads puts it.
 
     The card is validated **off the row**, which is what applies the sensitive-country rule
     without this file naming the flag: a shape that inherits ``LeavingShape`` is redacted by
@@ -241,7 +248,7 @@ async def _cards(
                 }
             )
         )
-    return cards
+    return sorted(cards, key=lambda card: (collation_key(card.language_name or ""), card.id))
 
 
 async def browse_projects(
