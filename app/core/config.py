@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -144,6 +144,11 @@ class Settings(BaseSettings):
     @property
     def qdrant_collection(self) -> str:
         return "meaning_map_prod" if self.env == "production" else "meaning_map_test"
+
+    @field_validator("build_id", mode="before")
+    @classmethod
+    def _an_empty_build_id_is_unset(cls, value: object) -> object:
+        return value or "unknown"
 
 
 @lru_cache

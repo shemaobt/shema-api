@@ -20,7 +20,7 @@ from app.core.config import Settings, get_settings
 
 ROOT = Path(__file__).resolve().parent.parent
 SENTINEL = "sentinel-must-never-be-served"
-SECRET_WORDS = ("key", "secret", "token", "password", "url", "bucket_name")
+ANSWERED = {"build_id", "gcs_platform_bucket", "tripod_voice_model", "tripod_classifier_model"}
 
 
 @pytest.fixture
@@ -74,6 +74,18 @@ async def test_a_server_built_without_a_build_id_says_its_build_is_unknown(
     assert response.json()["build"] == "unknown"
 
 
+async def test_a_server_built_with_an_empty_build_id_says_its_build_is_unknown(
+    ask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GIT_SHA", "")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./unused.db")
+    monkeypatch.setattr(get_settings(), "build_id", Settings(_env_file=None).build_id)
+
+    response = await ask()
+
+    assert response.json()["build"] == "unknown"
+
+
 async def test_the_answer_names_the_build_the_image_was_built_from(
     ask, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -90,19 +102,18 @@ async def test_no_secret_is_ever_part_of_the_answer(ask, monkeypatch: pytest.Mon
     settings = get_settings()
     sentinels = []
     for name, field in Settings.model_fields.items():
-        if field.annotation in (str, str | None) and any(w in name for w in SECRET_WORDS):
+        if field.annotation in (str, str | None) and name not in ANSWERED:
             value = f"{SENTINEL}-{name}"
             monkeypatch.setattr(settings, name, value)
             sentinels.append(value)
-    assert sentinels
 
     response = await ask()
 
     assert response.status_code == 200
-    assert SENTINEL not in response.text
+    assert [value for value in sentinels if value in response.text] == []
 
 
-def _build_args_of_docker_build(workflow: str) -> str:
+def _docker_build_line(workflow: str) -> str:
     path = ROOT / ".github" / "workflows" / workflow
     steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
     step = next(step for step in steps if step["name"] == "Build and Push Backend")
@@ -111,7 +122,7 @@ def _build_args_of_docker_build(workflow: str) -> str:
 
 @pytest.mark.parametrize("workflow", ["deploy.yml", "deploy-staging.yml"])
 def test_every_deploy_bakes_the_commit_into_the_image_it_builds(workflow: str) -> None:
-    build_line = _build_args_of_docker_build(workflow)
+    build_line = _docker_build_line(workflow)
 
     assert "--build-arg GIT_SHA=${{ github.sha }}" in build_line
 
