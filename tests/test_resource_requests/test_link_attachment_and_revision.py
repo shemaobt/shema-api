@@ -226,4 +226,4 @@ async def test_the_board_s_own_path_takes_the_pen_from_the_link(
     assert revision.started_by == gestor_user.id
     assert revision.started_by_link_id is None
     edited = await client.patch(f"{REQUESTS}/{revision.id}", json=draft(), headers=headers)
-    assert edited.status_code != 200, edited.text
+    assert edited.status_code == 403, edited.text
