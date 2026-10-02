@@ -38,8 +38,11 @@ The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordin
 
 Marcia's golden scripts are played against a running server through the **Text seam**, which
 exists only where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and the seam
-answers 404. Two runners, one convention: reports land under `golden/reports/<date>/`, committed,
-and the key travels as `ACCESS_CODE`. Her five session scripts are vendored at `golden/sessions/`
+answers 404. The Guide's conversation is played through the **Golden doors**,
+`/api/internalization-room/golden/session` and `/golden/turn`, in her runner's wire, with the key
+as `Authorization: Bearer <key>`; the back-translation seam still reads it in `X-Access-Code`.
+Two runners, one convention: reports land under `golden/reports/<date>/`, committed, and the key
+travels as `ACCESS_CODE`. Her five session scripts are vendored at `golden/sessions/`
 under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
 
 ```sh
@@ -48,9 +51,9 @@ under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
 # otherwise. --only <name> plays one of them. The judge runs in this process on the voice
 # ladder, so it needs ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID for an identity-bound
 # key) and a DATABASE_URL for the settings to load, in the environment or in .env.
-ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/internalization-room/text-seam
-# the same run against her app: only the base URL changes
-ACCESS_CODE=<her code> uv run python scripts/golden_runner.py --base-url https://<her-app>/api --out golden/reports/<date>-hers
+ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/internalization-room
+# her own runner against this room, from her repository: the same doors and the same key
+GOLDEN_HTTP_TOKEN=<key> node src/golden/run.ts --http <host>/api/internalization-room [P01-opening-and-mother-tongue]
 # the judge again over a run already committed, without playing the room
 uv run python scripts/golden_runner.py --rejudge golden/reports/<date> --out golden/reports/<date>-rejulgado
 # the back-translation check, judged by her own checks; exit 1 on a failed check
