@@ -1183,6 +1183,43 @@ follows up and supports — and it still decides notes and media (`can_export_no
 `can_share_media`). GATE-04 decided the place per role and said nothing about notes, prayer text
 or media, so those keep their own owners and are not reduced by this rule.
 
+**Who reads a team's health — OBT-553.** The assessment's own route refused the Resource
+Circle (`require_reads_assessments`), while the ficha, the card and the search handed it the
+projection, the history and the pastoral follow-up. `_health_audience.py` now answers the
+question for every door, once: `in_health_audience` reads it off the grant the request already
+holds, `app/api/shema/_deps.py` sets `Readership.reads_health` with it (`False` by default, so
+`NO_COORDINATION` reads no health), and `health_as_read` is what a shape becomes for a reader
+outside `HEALTH_AUDIENCE` — every health field as a project nobody has assessed holds it
+(`null`, `""`, `needsPastoralIntervention: "nao"`, `healthHistory: null`), the keys kept because
+the contract is frozen. It is `_consent.request_as_read`'s mould, a service-side update, and it is
+applied **before** anything derives, filters, counts or sorts from the shape, because the card's
+tone (`priority`), `derived.health`, `healthScore`, the *atenção* preset, the health facet and the
+health order are all computed from those fields. One named place per surface, where a later rule
+about the same reader sits beside this one:
+
+| Surface | Where | For a reader outside the audience |
+|---|---|---|
+| The ficha | `read_record._record_as_read` (with the prayer request's `request_as_read`) | health fields empty, history `null` |
+| The card | `browse_projects._card_as_read` | health fields empty |
+| The search's question | `browse_projects._query_as_read` | `?health=` **ignored** — as an unknown preset is; an invalid value here answers an empty list, which would say *no project matches* and zero every count — and `sort=health` falls back to `deadline`, echoed in `sort` |
+| The search's counts | `browse_projects._facets_as_read` | no `health` key in `groups` or `groupAll` — not `{"na": total}`, a number about nothing |
+| The file | `export_projects._write` | `overallHealth: "na"` in every row; the place is `outside` for everybody, as before |
+| The panel | `list_notification_panel` | delivered health notices left out in the query, before the cap — a notice is read by who the account is now |
+| The write | `save_project` → `refuse_unread_health_writes` | the three pastoral fields refused 403 by name (*não dá para editar o que não se vê*); a create stays free, OBT-528's exception |
+
+The Shemá `admin` role is outside the audience, as `require_reads_assessments` already had it; an
+installation admin reads. `tests/test_shema/test_health_reader.py` holds every row per role, a
+net that fails when a shape gains a health field the reduction does not name, and a net that
+fails when a service builds a record, a card or an exported row without asking `health_as_read`.
+**Residuals, named:** the prayer wall dates an authorized request by
+`healthAssessmentDate || lastUpdated` (FE-44's rule, `_consent._request_day`), so the circle can
+infer the day of a reading — never its level, notes, assessor or follow-up; the 409's
+`changedFields` names `healthHistory` and the pastoral keys that moved, without values (OBT-556
+item 2 filters it by what the reader sees); the trail stores the pastoral values and no route
+reads them; and a hand-made file built from the Shemá `admin`'s record, which reads as
+`coordination` and now carries empty health, would write the empty follow-up over the truth if a
+coordinator imported it — the same gap the import has for the prayer request.
+
 **Residuals named and not closed** — each can name a place and none is reduced for `other`:
 ~~the slug `<language>-<place>`, which is the record's address on every shape~~ (closed by OBT-552: every id is an opaque UUID); the free text of
 the ficha (`partnerOrg`, `scopeDetails`, `statusComments` / `statusGoal`, `phases`, `notes`,
