@@ -76,7 +76,15 @@ GUARDED_PACKAGES = (REPO_ROOT / "app" / "services" / "shema", REPO_ROOT / "app" 
 #: four fields required to save — so every write path legitimately reads it, and a glob that
 #: refused them would be a glob somebody switches off. The boundary is what guards it.
 REDACTION_COLUMNS = frozenset(
-    {"location", "location2", "latitude", "longitude", "sensitive_country", "sensitivity"}
+    {
+        "location",
+        "location2",
+        "latitude",
+        "longitude",
+        "sensitive_country",
+        "sensitivity",
+        "public_language_name",
+    }
     | set(CONTACT_FIELDS)
 )
 
@@ -167,6 +175,8 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         # OBT-556: the history's notes are coordination's on a withheld project; no place.
         ("GET", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
         ("POST", f"{PREFIX}/forms/submissions"),
+        # OBT-560: the inbox prints the language's name, which can name the place.
+        ("GET", f"{PREFIX}/forms/submissions"),
         # OBT-556: a received Pulse's free text is coordination's on a withheld project.
         ("GET", f"{PREFIX}/forms/submissions/{{submission_id}}"),
         ("POST", f"{PREFIX}/forms/submissions/{{submission_id}}/import"),

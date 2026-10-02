@@ -29,7 +29,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 
-from app.api.shema._deps import CurrentUser, Db, Reading, Scope
+from app.api.shema._deps import PER_READER_CACHE_CONTROL, CurrentUser, Db, Reading, Scope
 from app.core.exceptions import ERROR_CODE_CONFLICT, ValidationError
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
 from app.models.shema_projects import ShemaProjectPage, ShemaProjectQuery
@@ -56,11 +56,6 @@ router = APIRouter()
 #: The alias is **here and not beside the model**, so that ``app/models/`` stays free of
 #: ``fastapi``: the shape is a shape and where it is read from is an HTTP fact.
 ProjectQuery = Annotated[ShemaProjectQuery, Query()]
-
-
-#: One URL, two readers, two bodies — the collection and the record alike, since OBT-528 builds
-#: both for the caller's reader: nothing between the server and the reader may keep one.
-PER_READER_CACHE_CONTROL = "private, no-store"
 
 
 @router.get("/projects", response_model=ShemaProjectPage)

@@ -591,10 +591,12 @@ PLACE_WRITES = {
     "coords": {"coords": [1.0, 2.0]},
     "sensitiveCountry": {"sensitiveCountry": True},
     "sensitivity": {"sensitivity": "outro motivo"},
+    "publicLanguageName": {"publicLanguageName": "Outro Nome"},
 }
 
 #: What a withheld record hands the others empty, and so refuses them on write.
 UNSEEN_WRITES = {
+    "languageName": {"languageName": "Outra Lingua"},
     "team": {"team": "JOCUM Outra"},
     "ywamBase": {"ywamBase": "JOCUM Outra"},
     "teamContact": {"teamContact": "+00 000 000 0009"},
@@ -653,6 +655,7 @@ async def test_on_a_withheld_record_the_base_and_the_contacts_are_refused_too(
     assert refused.status_code == 403, refused.text
     stored = await _stored(db_session, WITHHELD_ID)
     assert (stored.team, stored.team_contact, stored.version) == (BASE, CONTACT, 1)
+    assert stored.language_name == "Lingua Um"
 
     allowed = await _patch(client, db_session, mentor, CLEARED_ID, UNSEEN_WRITES[field])
     assert allowed.status_code == 200, allowed.text
@@ -701,6 +704,31 @@ async def test_coordination_writes_the_place_and_the_flag(
         headers={**(await _headers(db_session, strategist)), "If-Match": '"2"'},
     )
     assert moved.status_code == 200, moved.text
+
+
+async def test_coordination_names_the_language_the_others_read(
+    client, db_session, shema_app, withheld
+) -> None:
+    """OBT-560. Karina, via Daniel, 1/out/2026: a name coordination registers for a sensitive
+    project. The others read it on the ficha and find the card by it, and the real name — which
+    can name the place — answers them neither on the ficha nor in the search."""
+    coordinator = await _user(db_session, shema_app, "coordinator")
+    written = await _patch(
+        client, db_session, coordinator, WITHHELD_ID, {"publicLanguageName": "Lingua Velada"}
+    )
+    assert written.status_code == 200, written.text
+    assert written.json()["languageName"] == "Lingua Um"
+    assert written.json()["publicLanguageName"] == "Lingua Velada"
+
+    lab = await _headers(db_session, await _user(db_session, shema_app, "obtLab"))
+    ficha = (await client.get(f"{PROJECTS}/{WITHHELD_ID}", headers=lab)).json()
+    assert ficha["languageName"] == "Lingua Velada" and ficha["languageNameWithheld"] is True
+    assert "Lingua Um" not in str(ficha)
+
+    found = (await client.get(PROJECTS, params={"q": "Velada"}, headers=lab)).json()
+    assert [item["id"] for item in found["items"]] == [WITHHELD_ID]
+    hidden = (await client.get(PROJECTS, params={"q": "Lingua Um"}, headers=lab)).json()
+    assert hidden["items"] == []
 
 
 async def test_a_refused_write_applies_nothing_of_its_payload(

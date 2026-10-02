@@ -37,6 +37,7 @@ from typing import Any
 from pydantic import AliasGenerator, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema_privacy import LeavingShape
 from app.utils.shema_forms import MAX_FREE_TEXT
 
@@ -94,13 +95,23 @@ class IntakeForm(LeavingShape):
     kind: str
     definition_version: int
     #: The one thing of the project the form carries, and it is what makes the form
-    #: answerable: a leader holding two links has to be able to tell them apart. It is not a
-    #: guarded field — ``app/models/shema_privacy.py``'s list is places, bases and contacts —
+    #: answerable: a leader holding two links has to be able to tell them apart. It is guarded
+    #: on every other shape since OBT-560 and stays real here — see :meth:`_withhold_name` —
     #: and it is already what ``shema_submissions`` snapshots for the same reason.
     language_name: str
     #: A calendar day, like every date on this product's wire (FE-44 §9.0).
     expires_at: date
     fields: list[IntakeField]
+
+    def _withhold_name(self, region: ShemaRegionKey) -> None:
+        """The one shape that keeps the real name, and says why (OBT-560).
+
+        The link's holder is the project's own team, as a member is for ``ProjectRef``; and the
+        name is what lets a leader holding two links tell the forms apart — two sensitive
+        projects in one region with no public name would both read the region key. The
+        reduction of the place is untouched: this form carries no place to reduce. **Ours, not
+        the client's.**
+        """
 
 
 class IntakeSubmission(BaseModel):

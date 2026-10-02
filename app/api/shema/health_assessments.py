@@ -34,8 +34,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, Response, status
 
-from app.api.shema._deps import APP_KEY, CurrentUser, Db, Reading, Scope
-from app.api.shema.projects import PER_READER_CACHE_CONTROL
+from app.api.shema._deps import (
+    APP_KEY,
+    PER_READER_CACHE_CONTROL,
+    CurrentUser,
+    Db,
+    Reading,
+    Scope,
+)
 from app.core.exceptions import ValidationError
 from app.models.shema_health import (
     ShemaHealthAssessmentSubmission,

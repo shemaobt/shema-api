@@ -186,10 +186,10 @@ async def revoke_link(link_id: str, db: Db, scope: Scope, user: CoordinatorUser)
 
 @router.get("/forms/submissions", response_model=list[ReceivedSubmission])
 async def received(
-    db: Db, scope: Scope, user: CurrentUser, project_id: str | None = None
+    db: Db, scope: Scope, user: CurrentUser, reading: Reading, project_id: str | None = None
 ) -> list[ReceivedSubmission]:
     """FE-44 §9.9's inbox: everything received for the projects the caller reaches."""
-    return await list_submissions(db, scope, project_id=project_id)
+    return await list_submissions(db, scope, project_id=project_id, readership=reading)
 
 
 @router.get("/forms/submissions/{submission_id}", response_model=ReceivedSubmissionDetail)

@@ -668,7 +668,9 @@ async def test_the_search_cannot_be_used_to_confirm_a_withheld_country(
     coordination is given the region (OBT-528; coordination finds it by the place it reads).
     """
     assert (await fetch(client, db_session, lab_reader, q="Egypt"))["matched"] == 0
-    assert ids(await fetch(client, db_session, lab_reader, q="coptic")) == ["coptic-delta"]
+    # The language's own name is not this reader's either (OBT-560): it can name the place,
+    # so the card is found by the name it carries — here none was registered.
+    assert (await fetch(client, db_session, lab_reader, q="coptic"))["matched"] == 0
     assert ids(await fetch(client, db_session, lab_reader, q="Sudan")) == ["hausa-north"]
 
 

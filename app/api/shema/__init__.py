@@ -43,6 +43,16 @@ unexpected Pydantic error reaches the log named by its location and never by its
 ``app/api/shema/_routing.py`` carries the argument, and ``tests/test_shema/test_quiet_errors.py``
 reads the built application's route table for a route that is not one.
 
+**No answer of this module is kept by a cache, and that is a property of this file too**
+(OBT-555). ``router`` carries ``NO_STORE`` (``_deps.py``), and ``authenticated``, ``door`` and the
+two holes are all included into it, so every route the module mounts — today's and the next
+issue's — answers ``Cache-Control: private, no-store``: every read here is built for its reader, and
+the link routes answer whoever holds the link. The dependency writes the header on the response
+FastAPI builds from a returned model; a ``GET`` whose handler returns a ``Response`` of its own
+writes ``PER_READER_CACHE_CONTROL`` itself, as the export, the Pulse and the exit link do.
+``tests/test_shema/test_cache_control.py`` checks the wiring on every route and calls every
+``GET`` to read the header off the wire.
+
 ``tests/test_shema/test_mount.py`` proves the wiring by hanging its own route off this
 object, which is the check that survives a module with no routes — and the one that
 keeps working the day this file's own routes are the thing being moved.
@@ -53,7 +63,7 @@ audit they rest on, is ``docs/shema.md``.
 
 from __future__ import annotations
 
-from app.api.shema._deps import APP_KEY, DOOR
+from app.api.shema._deps import APP_KEY, DOOR, NO_STORE
 from app.api.shema._routing import ShemaRouter
 from app.api.shema.access import router as access_router
 from app.api.shema.eten import router as eten_router
@@ -75,7 +85,9 @@ from app.api.shema.session import router as session_router
 from app.api.shema.transfer import router as transfer_router
 from app.core.access_control import require_app_access
 
-router = ShemaRouter()
+#: The module's outer router. Its one dependency is the cache rule, not a guard: the two holes
+#: below are included straight into it and answer anybody holding a link.
+router = ShemaRouter(dependencies=[NO_STORE])
 
 #: Everything in this module that needs a signed-in Shemá account. The guard is declared
 #: once here and inherited by every route included below, which is what makes the module

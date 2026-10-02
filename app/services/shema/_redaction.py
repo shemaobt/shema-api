@@ -34,6 +34,8 @@ a validator, so the three things a query-side caller needs are:
   :func:`need_text_as_written` — the four paths OBT-556 found a withheld record's text leaving
   by: the conflict a save meets, the needs and the assessments nested in the record, the
   assessment history, and the needs a save sends back.
+* :func:`language_name_for` — the language's name where it can name the place (OBT-560): the
+  name a path that is not a shape may print.
 
 **This is the only file in** ``app/services/shema/`` **and** ``app/api/shema/`` **allowed to
 read the guarded columns.** ``tests/test_shema/test_privacy_owners.py`` globs both packages
@@ -134,6 +136,25 @@ def log_reference(project: ShemaProject) -> dict[str, object]:
     }
 
 
+def language_name_for(
+    project: ShemaProject, reader: ShemaReader, *, fallback: str | None = None
+) -> str:
+    """The language's name as ``reader`` may read it — for the paths that are not a shape.
+
+    A notice body and the submissions inbox carry the name and nothing else of the project, so
+    they never meet ``LeavingShape``. The rule is the boundary's, word for word (OBT-560):
+    coordination and an open project read the real name; everybody else reads the name
+    coordination registered, or the region key while none is. ``fallback`` replaces the region
+    key for a sentence a person reads — a notice says *a project*, not *africa*.
+    """
+    if reads_the_truth(project, reader):
+        return project.language_name
+    public = (project.public_language_name or "").strip()
+    if public:
+        return public
+    return project.region_key.value if fallback is None else fallback
+
+
 def searchable_text(project: ShemaProject, reader: ShemaReader) -> str:
     """The text a search may match this project on, for ``reader``.
 
@@ -151,7 +172,9 @@ def searchable_text(project: ShemaProject, reader: ShemaReader) -> str:
     inventing rules surface by surface. ``docs/shema.md`` §9.4's gate is where that question
     belongs.
     """
-    fields = [project.language_name, project.bridge_language, project.region_key.value]
+    # The name a reader is given is the name a reader may find the card by: typing *Egypt*
+    # must not answer for a sensitive project whose name says it (OBT-560).
+    fields = [language_name_for(project, reader), project.bridge_language, project.region_key.value]
     if reads_the_truth(project, reader):
         fields.extend([project.location, project.location2 or "", project.team])
     return " ".join(part for part in fields if part)

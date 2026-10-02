@@ -125,6 +125,10 @@ class _PulseCopy(NamedTuple):
     empty: str
     answered: str
     filename: str
+    #: What a request of a sensitive project is headed by while coordination has registered
+    #: no public name for its language (OBT-560): the boundary hands the region key in its
+    #: place, and a file a person reads says it in words instead.
+    sensitive_project: str
     regions: dict[ShemaRegionKey, str]
 
 
@@ -141,6 +145,7 @@ _COPY: Final[dict[PulseLanguage, _PulseCopy]] = {
         empty="Nenhum pedido autorizado para compartilhar agora.",
         answered="respondido",
         filename="pulso-de-oracao",
+        sensitive_project="Projeto sensível",
         regions={
             ShemaRegionKey.SOUTH_AMERICA: "América do Sul",
             ShemaRegionKey.NORTH_AMERICA: "América do Norte",
@@ -161,6 +166,7 @@ _COPY: Final[dict[PulseLanguage, _PulseCopy]] = {
         empty="No authorized requests to share right now.",
         answered="answered",
         filename="prayer-pulse",
+        sensitive_project="Sensitive project",
         regions={
             ShemaRegionKey.SOUTH_AMERICA: "South America",
             ShemaRegionKey.NORTH_AMERICA: "North America",
@@ -206,7 +212,9 @@ def render_prayer_pulse(
     ]
     for entry in entries:
         place = entry.country or copy.regions.get(entry.region, "")
-        heading = f"• {entry.language} — {place}" if place else f"• {entry.language}"
+        unnamed = entry.language_name_withheld and entry.language == entry.region.value
+        name = copy.sensitive_project if unnamed else entry.language
+        heading = f"• {name} — {place}" if place else f"• {name}"
         if entry.answered:
             heading = f"{heading} ({copy.answered})"
         lines.extend(["", heading])

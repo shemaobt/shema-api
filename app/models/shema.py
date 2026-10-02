@@ -147,6 +147,9 @@ class ShemaProjectUpdate(BaseModel):
     coords: tuple[float, float] | None = None
     sensitive_country: bool | None = None
     sensitivity: str | None = None
+    #: The name every reader but coordination reads for a sensitive project (OBT-560) —
+    #: coordination's to write, like the place beside it.
+    public_language_name: str | None = None
 
     team: str | None = None
     team_leader: str | None = None

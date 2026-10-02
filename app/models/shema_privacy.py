@@ -225,6 +225,12 @@ FREE_TEXT_FIELDS: Final[tuple[str, ...]] = (
     "scope_details",
 )
 
+#: The language's name, under the two spellings the leaving shapes use (the prayer entry calls
+#: it ``language``). A sensitive project's name can name the place — *Sa'di of High Egypt* —
+#: so a withheld shape replaces it too (OBT-560): with the name coordination registered for
+#: the other readers, or with the region key when none was registered.
+NAME_FIELDS: Final[tuple[str, ...]] = ("language_name", "language")
+
 #: Every field a withheld shape replaces. A subclass that declares none of them is still a
 #: leaving shape and still carries ``locationWithheld``; there is nothing on it to reduce.
 WITHHELD_FIELDS: Final[tuple[str, ...]] = (
@@ -235,14 +241,16 @@ WITHHELD_FIELDS: Final[tuple[str, ...]] = (
 #: reason beside it. The write shape has no ``country``: the country is the first segment of
 #: ``location``, so refusing the location is refusing the country.
 COORDINATION_WRITES: Final[frozenset[str]] = frozenset(
-    (*PLACE_FIELDS, "sensitive_country", *REASON_FIELDS)
+    (*PLACE_FIELDS, "sensitive_country", *REASON_FIELDS, "public_language_name")
 )
 
 #: What only coordination writes on a record whose place is **withheld**: the rest of what the
 #: read withholds from everybody else. *Não dá para editar o que não se vê* — a base read as
 #: ``""`` is not a base a reader may type over, and neither are the notes (OBT-556).
+#: ``language_name`` joined them with OBT-560: a withheld record hands everyone else the public
+#: name in its place, and a value typed over it would overwrite the real one unseen.
 WITHHELD_WRITES: Final[frozenset[str]] = frozenset(
-    (*BASE_FIELDS, *CONTACT_FIELDS, *FREE_TEXT_FIELDS)
+    (*BASE_FIELDS, *CONTACT_FIELDS, *FREE_TEXT_FIELDS, "language_name")
 )
 
 
@@ -325,6 +333,17 @@ class LeavingShape(BaseModel):
     #: spelling of the same rule the validator applies.
     location_withheld: bool = Field(default=True, alias="locationWithheld")
 
+    #: Read off the row like :attr:`sensitive_country`, and excluded likewise: the name
+    #: coordination registered for every other reader of a sensitive project (OBT-560).
+    public_language_name: str | None = Field(default=None, exclude=True, repr=False)
+
+    #: **The name is not the language's own.** ``True`` on a withheld shape that declares a
+    #: name field and was read by anybody but coordination — whether the name it carries is
+    #: the one coordination registered or, when none was, the region key. ``False`` for
+    #: coordination, who reads the real name — unlike ``locationWithheld`` — and the marker that
+    #: keeps a payload rebuilt from a dump (the seam) from being reduced twice.
+    language_name_withheld: bool = Field(default=False, alias="languageNameWithheld")
+
     #: Who this payload was built for. Private, so no input can set it; kept on the instance,
     #: so the validator's second pass (FastAPI's response validation, a page taking its cards)
     #: does not reset it.
@@ -353,6 +372,24 @@ class LeavingShape(BaseModel):
         for field_name in WITHHELD_FIELDS:
             if field_name in self.model_fields:
                 setattr(self, field_name, withheld_value(field_name, region))
+        self._withhold_name(region)
+
+    def _withhold_name(self, region: ShemaRegionKey) -> None:
+        """Give the other readers the name coordination registered, or the region key.
+
+        Karina, via Daniel, 1/out/2026, chose *"um nome alternativo, cadastrado pela
+        coordenação"* for the language of a sensitive project (OBT-560). That much is hers.
+        **Ours:** while none is registered the name is the region key, the convention
+        ``location`` already follows here (*the region shown in place of*) — fail closed,
+        because the alternative is the name that named the place.
+        """
+        declared = [name for name in NAME_FIELDS if name in self.model_fields]
+        if not declared or self.language_name_withheld:
+            return
+        public = (self.public_language_name or "").strip()
+        for field_name in declared:
+            setattr(self, field_name, public or region.value)
+        self.language_name_withheld = True
 
     @model_validator(mode="after")
     def _withhold_the_place(self, info: ValidationInfo) -> Self:
