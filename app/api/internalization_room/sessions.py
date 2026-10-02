@@ -755,13 +755,19 @@ async def look_at_turn(
     with no body while the turn is still in flight in this process, and 404 for an id
     nothing answered — and for another team's session, the way the session read refuses it.
     Reading writes nothing and calls no model.
+
+    The stored answer is read again when the turn is neither stored nor in flight: a turn
+    commits its row and only then leaves the in-flight registry, so it can land between the
+    two reads and would otherwise be reported lost the moment it arrived.
     """
     await room.session_for_room_caller(db, session_id, project_id)
     stored = await answered_turn(db, session_id, turn_id, project_id)
+    if stored is None and in_flight(session_id, turn_id, project_id):
+        return Response(status_code=202)
+    if stored is None:
+        stored = await answered_turn(db, session_id, turn_id, project_id)
     if stored is not None:
         return TurnResponse(**stored)
-    if in_flight(session_id, turn_id, project_id):
-        return Response(status_code=202)
     raise NotFoundError(f"Turn {turn_id} of session {session_id} not found")
 
 

@@ -206,3 +206,32 @@ async def test_reading_a_turn_changes_nothing_in_the_room(
     assert [r.status_code for r in seen] == [200, 202, 404]
     assert after_room == before_room
     assert after_calls == before_calls
+
+
+async def test_a_turn_that_lands_while_the_tablet_looks_is_read_back_not_lost(
+    client, db_session: AsyncSession, fakes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    team, credential = await a_claimed_device(db_session, email="lands@example.com")
+    session = await create_session(db_session, language="pt", pericope=P, project_id=team.id)
+    headers = team_headers(credential)
+    fakes["model"].held.clear()
+    posting = asyncio.create_task(_post_a_turn(client, session.id, headers, "turno-1"))
+    await asyncio.wait_for(fakes["model"].thinking.wait(), timeout=5)
+    real = sessions_api.answered_turn
+    reads = 0
+
+    async def _the_turn_lands_after_the_first_read(*args: Any, **kwargs: Any):
+        nonlocal reads
+        reads += 1
+        found = await real(*args, **kwargs)
+        if reads == 1:
+            fakes["model"].held.set()
+            await posting
+        return found
+
+    monkeypatch.setattr(sessions_api, "answered_turn", _the_turn_lands_after_the_first_read)
+
+    looked = await _look_at(client, session.id, headers, "turno-1")
+
+    assert looked.status_code == 200, looked.text[:300]
+    assert looked.json() == posting.result().json()
