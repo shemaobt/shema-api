@@ -209,7 +209,6 @@ async def build_record(
             "last_progress_date": history[-1].date if history else None,
         }
     )
-    # Reduced after the join, so what the join brought in is reduced too.
     record = joined.model_copy(update=_record_as_read(project, joined, readership))
     derived = derive(record, today, region=project.region_key)
     return record.model_copy(update={"derived": ShemaProjectDerived.of(derived)})
