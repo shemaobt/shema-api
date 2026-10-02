@@ -43,6 +43,7 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.live_turn import current_scene_id
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
@@ -431,6 +432,7 @@ async def create_session(
     )
     if caller is not None:
         await clear_needs_person(db, caller.id)
+        nudge(session.project_id, "halts")
     if previous is not None:
         if hand_over(previous, session):
             await db.commit()
@@ -438,6 +440,7 @@ async def create_session(
         db, project_id=project_id, book=book_of(session.pericope)
     ):
         background.add_task(prepare_opening, session.id)
+    nudge(session.project_id, "sessions")
     return await _state(db, session)
 
 
@@ -584,6 +587,7 @@ async def ask_for_a_person(
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     await room.mark_needs_person(db, session)
+    nudge(session.project_id, "halts")
     return NeedsPersonResponse(
         session_id=session.id,
         needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
@@ -612,6 +616,7 @@ async def a_person_arrived(
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
     arrived = await room.person_arrived(db, session)
+    nudge(session.project_id, "halts")
     return PersonArrivedResponse(
         session_id=session.id, person_arrived_at=as_utc(arrived).isoformat()
     )
@@ -756,6 +761,7 @@ async def _answer_the_turn(
     try:
         with stage("db_read"):
             session = await room.session_for_room_caller(db, session_id, project_id)
+        team_id, halted = session.project_id, session.status is IRSessionStatus.NEEDS_PERSON
         opening = file is None and not (session.messages or [])
         if not opening:
             with stage("db_let_go"):
@@ -801,6 +807,7 @@ async def _answer_the_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
         await db.commit()
+        nudge(team_id, "sessions")
         return reply
 
     if opening:
@@ -879,10 +886,14 @@ async def _answer_the_turn(
         turn_id=response_turn_id,
         classification_pending=pending,
     )
+    lifted = halted and session.status is not IRSessionStatus.NEEDS_PERSON
     with stage("db_write"):
         if turn_id:
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
         await db.commit()
+    nudge(team_id, "sessions")
+    if lifted:
+        nudge(team_id, "halts")
     return reply

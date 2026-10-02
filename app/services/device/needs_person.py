@@ -43,8 +43,9 @@ from app.services.project.facilitated_scope import confined_to
 NOT_LINKED = "This device is not linked to a team."
 
 
-async def record_needs_person(db: AsyncSession, device_id: str) -> datetime:
-    """Record that ``device_id`` needs a person, and return the moment it first said so.
+async def record_needs_person(db: AsyncSession, device_id: str) -> tuple[datetime, str | None]:
+    """Record that ``device_id`` needs a person, and return the moment it first said so and its
+    team.
 
     Raises ``NotFoundError`` for an id this server never minted and ``ConflictError`` while
     the device belongs to no team — never claimed, or taken out of service — because a halt
@@ -90,7 +91,7 @@ async def record_needs_person(db: AsyncSession, device_id: str) -> datetime:
     if device.needs_person_since is None:
         raise ConflictError(NOT_LINKED)
 
-    return device.needs_person_since
+    return device.needs_person_since, device.project_id
 
 
 async def clear_needs_person(db: AsyncSession, device_id: str) -> None:

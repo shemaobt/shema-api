@@ -262,6 +262,13 @@ class CoverageFrame(BaseModel):
     coverage: CoverageView | None
 
 
+NudgeWhat = Literal["sessions", "hands", "halts", "takes", "stretches", "verdict", "release"]
+
+
+class Nudge(BaseModel):
+    what: NudgeWhat
+
+
 class CreateSessionRequest(BaseModel):
     pericope: str | None = Field(default=None, max_length=120)
     after_panorama: bool = False

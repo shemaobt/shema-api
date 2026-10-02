@@ -18,6 +18,7 @@ from app.models.internalization_room import DivideSegmentRequest, SegmentsRespon
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
     divide_segment,
     refuse_a_slice_the_stretch_does_not_sit_on,
@@ -76,6 +77,7 @@ async def divide(
     session = await room.session_for_room_caller(db, session_id, project_id)
     segment = await segment_for_session(db, session.id, segment_id)
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
+    nudge(session.project_id, "stretches")
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
 
 
@@ -147,6 +149,7 @@ async def replace(
 
     if not text.strip():
         crossed = await room.count_an_empty_telling(db, session, segment)
+        nudge_stretches(session.project_id, warned=crossed)
         return SegmentsResponse(
             session_id=session.id,
             segments=await _units(db, session.id),
@@ -165,6 +168,7 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
+    nudge_stretches(session.project_id, warned=crossed)
     background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(
         session_id=session.id,

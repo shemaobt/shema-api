@@ -33,6 +33,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.stream_harness import opening_status
 
 APP_KEY = "internalization-room"
 FACILITATOR_ROLE = "facilitator"
@@ -55,6 +56,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/facilitator/teams/{team_id}/coverage"): {"params": {"pericope": "P01"}},
     ("GET", "/api/facilitator/teams/{team_id}/pericopes"): {},
     ("GET", "/api/facilitator/teams/{team_id}/sessions"): {},
+    ("GET", "/api/facilitator/teams/{team_id}/nudges"): {},
     ("GET", "/api/internalization-room/facilitator/questions"): {},
     ("GET", "/api/internalization-room/facilitator/questions/{question_id}/audio"): {},
     ("GET", "/api/internalization-room/facilitator/questions/audio/{handle}"): {},
@@ -81,6 +83,8 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("POST", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
     ("DELETE", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
 }
+
+_STREAMS = {("GET", "/api/facilitator/teams/{team_id}/nudges")}
 
 _PLACEHOLDER = "algum-id"
 
@@ -161,6 +165,11 @@ async def knock(client, headers) -> dict[tuple[str, str], int]:
             head, _, rest = url.partition("{")
             _, _, tail = rest.partition("}")
             url = f"{head}{_PLACEHOLDER}{tail}"
+        if (method, path) in _STREAMS:
+            from app.main import app
+
+            statuses[(method, path)] = await opening_status(app, url, headers)
+            continue
         response = await client.request(method, url, headers=headers, **_REQUESTS[(method, path)])
         statuses[(method, path)] = response.status_code
     return statuses

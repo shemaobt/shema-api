@@ -69,6 +69,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator"
@@ -283,6 +284,13 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (owner.project.id, absent),
         },
         {
+            "method": "GET",
+            "owned": (f"{DESK}/teams/{owner.project.id}/nudges", {}),
+            "absent": (f"{DESK}/teams/{absent}/nudges", {}),
+            "ids": (owner.project.id, absent),
+            "owner_expects": "stream",
+        },
+        {
             "method": "PATCH",
             "owned": (f"{DESK}/devices/{patch_device}", {"json": {"label": "x"}}),
             "absent": (f"{DESK}/devices/{absent}", {"json": {"label": "x"}}),
@@ -480,6 +488,7 @@ REFUSING_TEMPLATES = {
     ("GET", f"{DESK}/teams/{{team_id}}/coverage"),
     ("GET", f"{DESK}/teams/{{team_id}}/pericopes"),
     ("GET", f"{DESK}/teams/{{team_id}}/sessions"),
+    ("GET", f"{DESK}/teams/{{team_id}}/nudges"),
     ("GET", f"{IR}/facilitator/questions"),
     ("GET", f"{IR}/facilitator/questions/{{question_id}}/audio"),
     ("GET", f"{IR}/facilitator/questions/audio/{{handle}}"),
@@ -581,14 +590,21 @@ async def test_the_same_resources_are_reachable_by_the_team_that_owns_them(clien
     made-up ids — true of any API, scoped or not, and exactly how this audit would rot
     into decoration.
     """
+    from app.main import app
+
     b = await a_facilitator(db_session, email="b@example.com")
 
     refused = []
     for case in await refusing_routes(db_session, b, "own"):
         method = case["method"]
         owned_url, owned_kw = case["owned"]
-        answer = await client.request(method, owned_url, headers=b.headers, **owned_kw)
         expected = case.get("owner_expects")
+        if expected == "stream":
+            status = await opening_status(app, owned_url, b.headers)
+            if status != 200:
+                refused.append(f"{method} {owned_url} -> {status}")
+            continue
+        answer = await client.request(method, owned_url, headers=b.headers, **owned_kw)
         if expected is not None:
             if answer.status_code != expected:
                 refused.append(f"{method} {owned_url} -> {answer.status_code}, esperado {expected}")

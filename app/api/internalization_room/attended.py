@@ -26,6 +26,7 @@ from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import AttendedResponse
 from app.services import internalization_room as room
 from app.services.internalization_room import halt
+from app.services.internalization_room.nudge_channel import nudge
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
@@ -57,7 +58,9 @@ async def mark_attended(
     both of those are argued.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    return _answer(await room.attend(db, session, by=user.id))
+    attended = await room.attend(db, session, by=user.id)
+    nudge(attended.project_id, "halts")
+    return _answer(attended)
 
 
 @router.delete("/facilitator/sessions/{session_id}/attended", response_model=AttendedResponse)
@@ -71,4 +74,6 @@ async def undo_attended(
     the Desk.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    return _answer(await room.unattend(db, session))
+    unattended = await room.unattend(db, session)
+    nudge(unattended.project_id, "halts")
+    return _answer(unattended)

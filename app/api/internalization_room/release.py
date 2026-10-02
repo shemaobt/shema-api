@@ -14,6 +14,7 @@ from app.models.internalization_room import (
     TeamReleaseResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.release import (
     GROUNDED_BLOCKERS,
     InternalizationReleaseBlocked,
@@ -109,6 +110,7 @@ async def force_internalization_release(
         )
     session = await room.get_session_for_facilitator(db, user, session_id)
     release = await approve_release(db, session, forced_by=user.id)
+    nudge(session.project_id, "release")
     return ForcedReleaseResponse(
         release_id=release.id,
         session_id=release.session_id,
@@ -208,6 +210,7 @@ async def approve_internalization_release(
         return TeamReleaseResponse(session_id=session_id, blockers=["no_project"])
     except InternalizationReleaseBlocked as exc:
         return await _team_release_blocked(db, session, exc.blockers)
+    nudge(session.project_id, "release")
     return TeamReleaseResponse(
         session_id=session_id,
         release_id=release.id,
