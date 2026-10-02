@@ -406,7 +406,7 @@ nothing in column 3 imports `fastapi`.
 | **Authentication** | Nothing of its own. `CurrentUser = Annotated[User, require_app_access(APP_KEY)]` in `_deps.py`, over the platform's JWT middleware. | Nothing. |
 | **Role** | The four aliases, `require_role(APP_KEY, key)`. | Nothing. |
 | **Region scope** | Declares the dependency; receives a `RegionScope` value. | `_scope.py` computes it from `shema_user_regions` and the granted roles, and **every list query takes it as a parameter**. §6.1. |
-| **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a duplicate slug is a `ConflictError`). |
+| **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a new record's id must be a minted UUID — a slug is a `ValidationError` before anything is read, OBT-551 — and a duplicate UUID is a `ConflictError`). |
 | **Redaction (sensitive country)** | Nothing but hand down the caller's reader (`Reading`, OBT-528), as it hands down the scope. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service — which says only **who reads** (`read_by`). `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
 | **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; the wall's query (BE-09) is the only one that applies the gate. §6.4. |
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
@@ -711,7 +711,7 @@ behaviour on it.
 
 | # | Aggregate | Tables (working names) | Owner | The invariant |
 |---|---|---|---|---|
-| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | **The concurrency token is a `version` column and a save must quote it** (BE-06 — `If-Match` required, `ETag` on every read; a stale save is a 409 naming the version, the fields and the person). A save that changed nothing moves nothing. The primary key is the **export slug**, not a minted uuid. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
+| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | **The concurrency token is a `version` column and a save must quote it** (BE-06 — `If-Match` required, `ETag` on every read; a stale save is a 409 naming the version, the fields and the person). A save that changed nothing moves nothing. The primary key is the **export slug**, not a minted uuid — **for the 127 imported records; every record created since OBT-551 (1/out/2026, Daniel) takes a minted UUID**, because a create that looked a chosen slug up answered 409 for a slug that exists anywhere, an existence oracle no ordering of the checks could close. The console was already minting `crypto.randomUUID()`. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
 | 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day — which the server cannot know, so BE-06 has the client state it in `X-Shema-Local-Date` and bounds it to ±1 day of the server's own, the window every real offset fits in and a backdated ETEN credit does not. **A row is checked against the book that exists** (`app/utils/shema_books.py`): not a book, a scope longer than the book, a count above its own row. The ceiling is **per row and never over the aggregates** — three export records carry `156/25`. |
 | 5.3 | **Health assessment** | `shema_health_assessments` | BE-02, BE-07 | **Its own aggregate.** The flat fields on the record are a *projection of the newest entry*, never a second truth; append and re-project in one step, and carry a pre-history record into the history before appending. The **per-dimension note is the data**; the running note is derived from it at write time. `""` is not `boa`. |
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
@@ -1427,9 +1427,11 @@ file never carries it, its request or its id in `shema_exports`; an import namin
 409 by the create, nothing applied — confirming or correcting it is the Admin's act on the project
 (`test_a_pending_project_never_reaches_the_file`, `test_the_import_cannot_reach_a_pending_project`).
 
-**Residuals, named.** A slug that exists outside the caller's reach is answered 409 by
+**Residuals, named.** ~~A slug that exists outside the caller's reach is answered 409 by
 `create_project`, the existence oracle `POST /projects` already has; the import inherits it by
-being the same path. The free text of an authorized request, the language name and the vitality
+being the same path.~~ **Closed by OBT-551 (1/out/2026, Daniel):** a new record's id is a minted
+UUID, and a slug is refused before anything is read with one fixed sentence, so neither the create
+nor the import can tell a slug that exists elsewhere from one that never did (§5.1). The free text of an authorized request, the language name and the vitality
 can still name a place — this section's residuals. The header's language reuses BE-09's
 `PulseLanguage`, which is the console's two locales under a name that says *Pulse*.
 

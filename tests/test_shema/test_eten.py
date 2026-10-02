@@ -499,7 +499,7 @@ async def test_a_record_born_concluded_is_not_dated(client, db_session, strategi
     response = await client.post(
         PROJECTS,
         json={
-            "id": "nasceu-concluido",
+            "id": "794f9ed5-72ad-5655-8d3e-885c71945f8a",
             "languageName": "Lingua nascida",
             "bridgeLanguage": "Portugues",
             "team": OPEN_BASE,
@@ -509,7 +509,7 @@ async def test_a_record_born_concluded_is_not_dated(client, db_session, strategi
         headers=strategist_headers,
     )
     assert response.status_code == 201, response.text
-    assert await _completed(db_session, "nasceu-concluido") is None
+    assert await _completed(db_session, "794f9ed5-72ad-5655-8d3e-885c71945f8a") is None
 
 
 async def test_the_client_cannot_write_the_completion_date(
@@ -534,7 +534,7 @@ async def test_a_create_cannot_carry_the_completion_date_either(
     response = await client.post(
         PROJECTS,
         json={
-            "id": "criado-com-data",
+            "id": "12170ce8-031d-5694-970b-d2bd18286761",
             "languageName": "Lingua datada",
             "bridgeLanguage": "Portugues",
             "team": OPEN_BASE,
@@ -547,7 +547,7 @@ async def test_a_create_cannot_carry_the_completion_date_either(
 
     assert response.status_code == 422
     assert "completedDate" in response.text
-    assert await db_session.get(ShemaProject, "criado-com-data") is None
+    assert await db_session.get(ShemaProject, "12170ce8-031d-5694-970b-d2bd18286761") is None
 
 
 # --- the recorded report ---------------------------------------------------------------------

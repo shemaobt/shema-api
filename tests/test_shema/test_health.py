@@ -45,7 +45,7 @@ QUESTIONS = f"{PREFIX}/health-questions"
 
 #: The four required fields and a location that lands in South America.
 NEW = {
-    "id": "guarani-mbya",
+    "id": "0d88536b-826f-5e75-8f8c-c3569eef1a17",
     "languageName": "Guarani Mbyá",
     "bridgeLanguage": "Português",
     "team": "JOCUM Porto Velho",
@@ -583,11 +583,15 @@ async def test_a_project_in_another_region_is_refused_as_absent(
 ) -> None:
     """The 404 ``_scope.py`` argues for: a Shemá slug names a place, so existence is the secret."""
     await make_shema_project(
-        db_session, project_id="amharic-addis", region_key=ShemaRegionKey.AFRICA
+        db_session,
+        project_id="d366187b-1aab-5320-821a-45e5193c9a18",
+        region_key=ShemaRegionKey.AFRICA,
     )
 
-    assert (await client.get(assessments("amharic-addis"), headers=headers)).status_code == 404
-    assert (await _file(client, headers, "amharic-addis")).status_code == 404
+    assert (
+        await client.get(assessments("d366187b-1aab-5320-821a-45e5193c9a18"), headers=headers)
+    ).status_code == 404
+    assert (await _file(client, headers, "d366187b-1aab-5320-821a-45e5193c9a18")).status_code == 404
 
 
 async def test_the_scope_is_checked_before_the_audience(
@@ -599,10 +603,14 @@ async def test_the_scope_is_checked_before_the_audience(
     403 first would tell a caller outside the region that there is something there to be refused.
     """
     await make_shema_project(
-        db_session, project_id="amharic-addis", region_key=ShemaRegionKey.AFRICA
+        db_session,
+        project_id="d366187b-1aab-5320-821a-45e5193c9a18",
+        region_key=ShemaRegionKey.AFRICA,
     )
     theirs = await auth_header(db_session, resource_circle)
-    assert (await client.get(assessments("amharic-addis"), headers=theirs)).status_code == 404
+    assert (
+        await client.get(assessments("d366187b-1aab-5320-821a-45e5193c9a18"), headers=theirs)
+    ).status_code == 404
 
 
 async def test_a_write_reaches_exactly_as_far_as_a_read(
@@ -690,7 +698,7 @@ async def test_the_notice_of_a_sensitive_project_names_no_place_either(
         PROJECTS,
         json={
             **NEW,
-            "id": "sensitive-one",
+            "id": "a2708a49-1536-51c2-8698-2c9c27e672c6",
             "languageName": "Uma língua",
             "team": "JOCUM Egypt",
             "location": "Brazil",
@@ -699,7 +707,13 @@ async def test_the_notice_of_a_sensitive_project_names_no_place_either(
         headers=headers,
     )
     assert response.status_code == 201, response.text
-    await _file(client, headers, "sensitive-one", date="2026-09-11", emotional="critica")
+    await _file(
+        client,
+        headers,
+        "a2708a49-1536-51c2-8698-2c9c27e672c6",
+        date="2026-09-11",
+        emotional="critica",
+    )
 
     notice = (await _notices(db_session))[0]
     assert notice.body.startswith("Uma língua was assessed as critical")
@@ -821,7 +835,7 @@ async def test_addressing_the_notice_does_not_cost_a_round_trip_per_recipient(
         assert filed.status_code == 201, filed.text
         return [s for s in statements if "shema_user_regions" in s or "user_app_roles" in s]
 
-    with_one = await _reads("guarani-um")
+    with_one = await _reads("c6140d8b-c1ca-5888-9c50-ef74b956a2e7")
     for index in range(3):
         await make_scoped_user(
             db_session,
@@ -830,7 +844,7 @@ async def test_addressing_the_notice_does_not_cost_a_round_trip_per_recipient(
             role_key="coordinator",
             regions=[ShemaRegionKey.SOUTH_AMERICA],
         )
-    with_four = await _reads("guarani-quatro")
+    with_four = await _reads("924308be-bc38-5a36-989e-0eeed48a76ea")
 
     assert len(await _notices(db_session)) == 1 + 4, "the four recipients were all addressed"
     assert len(with_four) == len(with_one), (

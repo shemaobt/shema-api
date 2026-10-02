@@ -29,13 +29,14 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
 from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_progress import ShemaProgressEntry
+from app.services.shema.save_project import is_minted_id
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user, make_shema_project
 
 PROJECTS = f"{PREFIX}/projects"
 
 #: A create the console would accept: the four required fields and nothing more.
 NEW = {
-    "id": "guarani-mbya",
+    "id": "0d88536b-826f-5e75-8f8c-c3569eef1a17",
     "languageName": "Guarani Mbyá",
     "bridgeLanguage": "Português",
     "team": "YWAM Porto Velho",
@@ -92,13 +93,15 @@ async def test_the_record_read_answers_the_whole_shape_with_its_version(
     client, db_session, shema_app, headers
 ) -> None:
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
-    response = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    response = await client.get(f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17", headers=headers)
 
     assert response.status_code == 200
     body = response.json()
-    assert body["id"] == "guarani-mbya"
+    assert body["id"] == "0d88536b-826f-5e75-8f8c-c3569eef1a17"
     assert body["ywamBase"] == body["team"]
     assert body["progressHistory"] == []
     assert body["derived"]["status"] == "nao-iniciado"
@@ -146,7 +149,7 @@ async def test_a_create_mints_nothing_and_answers_the_record(client, db_session,
     response = await _create(client, headers)
     assert response.status_code == 201
     body = response.json()
-    assert body["id"] == "guarani-mbya"
+    assert body["id"] == "0d88536b-826f-5e75-8f8c-c3569eef1a17"
     assert body["languageName"] == "Guarani Mbyá"
     assert response.headers["ETag"] == '"1"'
 
@@ -177,7 +180,7 @@ async def test_a_create_that_fills_a_role_holder_is_refused(client, headers) -> 
     assert "org chart" in response.text
 
 
-async def test_the_same_slug_twice_is_a_conflict_and_not_an_overwrite(
+async def test_the_same_id_twice_is_a_conflict_and_not_an_overwrite(
     client, db_session, headers
 ) -> None:
     assert (await _create(client, headers)).status_code == 201
@@ -185,7 +188,9 @@ async def test_the_same_slug_twice_is_a_conflict_and_not_an_overwrite(
     assert second.status_code == 409
 
     stored = (
-        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+        await db_session.execute(
+            select(ShemaProject).where(ShemaProject.id == "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+        )
     ).scalar_one()
     assert stored.language_name == "Guarani Mbyá"
 
@@ -196,7 +201,9 @@ async def test_a_record_filed_outside_the_callers_regions_is_refused(client, hea
     A coordinator scoped to South America may not file a project in Asia, and the check has to
     wait for the payload — the region is a consequence of the ``location`` it carries.
     """
-    response = await _create(client, headers, id="kurukh-jharkhand", location="India")
+    response = await _create(
+        client, headers, id="56c03ea1-e536-548b-b949-f4c166b66ed6", location="India"
+    )
     assert response.status_code == 403
 
 
@@ -205,7 +212,9 @@ async def test_the_region_is_derived_from_the_location_and_never_typed(
 ) -> None:
     await _create(client, headers, location="Colombia, Peru")
     stored = (
-        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+        await db_session.execute(
+            select(ShemaProject).where(ShemaProject.id == "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+        )
     ).scalar_one()
     assert stored.region_key == ShemaRegionKey.SOUTH_AMERICA
 
@@ -219,7 +228,7 @@ async def test_a_tab_writes_its_own_fields_and_leaves_the_others_alone(
     """Absent is unchanged, all the way down — the whole reason every field is ``| None``."""
     created = await _create(client, headers, mentor="Rodolfo / Debora", notes="não normalizar  ")
     patched = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "visitou a aldeia em maio"},
         headers={**headers, "If-Match": _etag(created)},
     )
@@ -236,13 +245,15 @@ async def test_not_sending_a_prayer_request_is_not_erasing_one(client, db_sessio
     """FE-44 §8.2: an unconditional write of ``""`` deletes a request as a side effect."""
     created = await _create(client, headers)
     stored = (
-        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+        await db_session.execute(
+            select(ShemaProject).where(ShemaProject.id == "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+        )
     ).scalar_one()
     stored.prayer_requests = "a equipe pede oração pela viagem"
     await db_session.commit()
 
     await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "nada de novo"},
         headers={**headers, "If-Match": _etag(created)},
     )
@@ -256,7 +267,7 @@ async def test_a_save_that_changed_nothing_moves_no_version_and_writes_no_trail(
     """A guard that refuses everybody else on an untouched save is a reason not to press save."""
     created = await _create(client, headers)
     again = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"languageName": "Guarani Mbyá"},
         headers={**headers, "If-Match": _etag(created)},
     )
@@ -276,7 +287,9 @@ async def test_a_patch_without_if_match_is_refused(client, headers) -> None:
     """A client that cannot say which version it read has no basis for overwriting one."""
     await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya", json={"statusComments": "x"}, headers=headers
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        json={"statusComments": "x"},
+        headers=headers,
     )
     assert response.status_code == 422
     assert "if-match" in response.text.lower()
@@ -287,7 +300,7 @@ async def test_a_patch_whose_if_match_is_not_a_version_is_refused(client, header
     """``*`` is the spelling of *I do not know what I am overwriting*."""
     await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "x"},
         headers={**headers, "If-Match": tag},
     )
@@ -320,14 +333,14 @@ async def test_a_stale_save_is_refused_with_what_moved_and_who_moved_it(
     stale = _etag(created)
 
     first = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "gravação começou", "statusGoal": "NT até 2028"},
         headers={**headers, "If-Match": stale},
     )
     assert first.status_code == 200
 
     second = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "a equipe parou"},
         headers={**headers, "If-Match": stale},
     )
@@ -347,18 +360,20 @@ async def test_the_refused_write_applied_nothing(client, db_session, headers) ->
     created = await _create(client, headers)
     stale = _etag(created)
     await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "gravação começou"},
         headers={**headers, "If-Match": stale},
     )
     await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "a equipe parou"},
         headers={**headers, "If-Match": stale},
     )
 
     stored = (
-        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+        await db_session.execute(
+            select(ShemaProject).where(ShemaProject.id == "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+        )
     ).scalar_one()
     await db_session.refresh(stored)
     assert stored.status_comments == "gravação começou"
@@ -377,7 +392,7 @@ async def test_a_progress_batch_rolls_the_aggregates_and_appends_one_entry(
     today = date.today().isoformat()
     created = await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("mat", 28, 28, 10, 4), book("mrk", 16, 8)]},
         headers={**headers, "If-Match": _etag(created), "X-Shema-Local-Date": today},
     )
@@ -409,14 +424,16 @@ async def test_one_impossible_row_refuses_the_whole_batch(client, db_session, he
     """**The DoD's third and fourth lines.** A partial failure applies nothing."""
     created = await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("luk", 24, 24), bad, book("jhn", 21, 21)]},
         headers={**headers, "If-Match": _etag(created)},
     )
 
     assert response.status_code == 422
     stored = (
-        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+        await db_session.execute(
+            select(ShemaProject).where(ShemaProject.id == "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+        )
     ).scalar_one()
     await db_session.refresh(stored)
     assert stored.book_progress == []
@@ -429,7 +446,7 @@ async def test_every_bad_row_in_a_batch_is_named_at_once(client, headers) -> Non
     """A batch refused one row per round trip is a batch nobody can fix."""
     created = await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("nope", 1), book("mat", 60), book("mrk", 16, 20)]},
         headers={**headers, "If-Match": _etag(created)},
     )
@@ -441,12 +458,12 @@ async def test_a_story_only_table_does_not_zero_the_counts(client, db_session, h
     """FE-44 §7.2's divergence from the prototype, over the wire."""
     created = await _create(client, headers)
     rolled = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("mat", 28, 28, 10, 4)]},
         headers={**headers, "If-Match": _etag(created)},
     )
     after = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"storyProgress": [{"name": "A criação", "audioHours": "2 a 3"}]},
         headers={**headers, "If-Match": _etag(rolled)},
     )
@@ -467,12 +484,12 @@ async def test_a_save_that_touches_no_table_writes_no_second_entry(
     """
     created = await _create(client, headers)
     rolled = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("mat", 28, 28, 10, 4)]},
         headers={**headers, "If-Match": _etag(created)},
     )
     after = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "gravação começou"},
         headers={**headers, "If-Match": _etag(rolled)},
     )
@@ -499,12 +516,12 @@ async def test_the_tables_win_over_a_typed_aggregate_on_a_record_that_has_one(
     """
     created = await _create(client, headers)
     rolled = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("mat", 28, 28, 10, 4)]},
         headers={**headers, "If-Match": _etag(created)},
     )
     after = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"translatedUnits": 999},
         headers={**headers, "If-Match": _etag(rolled)},
     )
@@ -512,7 +529,9 @@ async def test_the_tables_win_over_a_typed_aggregate_on_a_record_that_has_one(
     assert after.status_code == 200
     assert after.json()["translatedUnits"] == 28
     stored = (
-        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+        await db_session.execute(
+            select(ShemaProject).where(ShemaProject.id == "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+        )
     ).scalar_one()
     await db_session.refresh(stored)
     assert stored.translated_units == 28
@@ -525,7 +544,7 @@ async def test_a_record_may_still_carry_more_translated_than_its_scope(
     """``156/25`` is a real export record: the scope is what is wrong in it, not the count."""
     created = await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"totalUnits": 25, "translatedUnits": 156},
         headers={**headers, "If-Match": _etag(created)},
     )
@@ -536,7 +555,7 @@ async def test_a_record_may_still_carry_more_translated_than_its_scope(
 async def test_a_deadline_before_the_start_is_refused(client, db_session, headers) -> None:
     created = await _create(client, headers, startDate="2026-01-10")
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"deadline": "2025-12-01"},
         headers={**headers, "If-Match": _etag(created)},
     )
@@ -549,7 +568,7 @@ async def test_a_local_day_no_timezone_is_on_is_refused(client, headers, day) ->
     """A client-stated day is bounded, or it is a way to backdate an ETEN credit."""
     created = await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("mat", 28, 5)]},
         headers={**headers, "If-Match": _etag(created), "X-Shema-Local-Date": day},
     )
@@ -563,7 +582,7 @@ async def test_the_actors_own_day_is_what_the_entry_is_stamped_with(
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
     created = await _create(client, headers)
     response = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"bookProgress": [book("mat", 28, 5)]},
         headers={**headers, "If-Match": _etag(created), "X-Shema-Local-Date": tomorrow},
     )
@@ -588,12 +607,12 @@ async def test_every_write_is_recorded_with_its_author_and_its_moment(
     """**The DoD's fifth line.** Who, when, which field, and from what to what."""
     created = await _create(client, headers)
     await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "gravação começou"},
         headers={**headers, "If-Match": _etag(created)},
     )
 
-    rows = await _edits(db_session, "guarani-mbya")
+    rows = await _edits(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17")
     latest = [row for row in rows if row.version == 2]
     assert [row.field_key for row in latest] == ["statusComments"]
     assert latest[0].old_value == ""
@@ -607,7 +626,9 @@ async def test_the_create_is_in_the_trail_as_the_fields_the_author_typed(
     client, db_session, headers
 ) -> None:
     await _create(client, headers)
-    keys = {row.field_key for row in await _edits(db_session, "guarani-mbya")}
+    keys = {
+        row.field_key for row in await _edits(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+    }
     assert {"languageName", "bridgeLanguage", "team", "objective", "location"} <= keys
     assert "statusComments" not in keys
 
@@ -618,14 +639,14 @@ async def test_a_guarded_field_records_that_it_moved_and_not_where_to(
     """A country copied into a second table with different readers has left the boundary."""
     created = await _create(client, headers)
     await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"location": "Colombia", "teamContact": "+55 69 99999-0000"},
         headers={**headers, "If-Match": _etag(created)},
     )
 
     guarded = {
         row.field_key: (row.old_value, row.new_value)
-        for row in await _edits(db_session, "guarani-mbya")
+        for row in await _edits(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17")
         if row.version == 2
     }
     assert guarded["location"] == (None, None)
@@ -639,7 +660,7 @@ async def test_the_trail_cannot_be_edited(client, db_session, headers) -> None:
     service that writes today is a rule the second writer will not have.
     """
     await _create(client, headers)
-    row = (await _edits(db_session, "guarani-mbya"))[0]
+    row = (await _edits(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17"))[0]
     row.new_value = "algo que ninguém escreveu"
     with pytest.raises(Exception, match="append-only"):
         await db_session.commit()
@@ -650,12 +671,14 @@ async def test_the_record_names_who_saved_it_last(client, db_session, headers, c
     """The name is a snapshot, so the record can say *saved by Maria* without a join."""
     created = await _create(client, headers)
     await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"statusComments": "x"},
         headers={**headers, "If-Match": _etag(created)},
     )
     stored = (
-        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+        await db_session.execute(
+            select(ShemaProject).where(ShemaProject.id == "0d88536b-826f-5e75-8f8c-c3569eef1a17")
+        )
     ).scalar_one()
     await db_session.refresh(stored)
     assert stored.updated_by_name == coordinator.display_name
@@ -697,3 +720,37 @@ async def test_a_write_reaches_exactly_as_far_as_a_read(
         headers={**headers, "If-Match": '"1"'},
     )
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("role_key", ["coordinator", "globalStrategist"])
+async def test_a_slug_is_refused_the_same_whether_it_exists_elsewhere_or_not(
+    client, db_session, shema_app, role_key
+) -> None:
+    """OBT-551: creating a project is not a way to ask whether ``<language>-<place>`` exists.
+
+    The slug that exists sits in a region a South American coordinator does not reach; the
+    other never existed. Both are refused before anything is read, with the same body — a 409
+    for the first was the oracle.
+    """
+    await make_shema_project(db_session, project_id="lao-theung", region_key=ShemaRegionKey.ASIA)
+    user = await make_scoped_user(
+        db_session,
+        shema_app,
+        email=f"sonda-{role_key}@shema.test",
+        role_key=role_key,
+        regions=[ShemaRegionKey.SOUTH_AMERICA] if role_key == "coordinator" else [],
+    )
+    asking = await auth_header(db_session, user)
+
+    taken = await _create(client, asking, id="lao-theung")
+    free = await _create(client, asking, id="nunca-existiu")
+
+    assert taken.status_code == free.status_code == 400
+    assert taken.json() == free.json()
+
+
+def test_only_a_canonical_uuid_is_a_minted_id() -> None:
+    assert is_minted_id("0d88536b-826f-5e75-8f8c-c3569eef1a17")
+    assert not is_minted_id("guarani-mbya")
+    assert not is_minted_id("0D88536B-826F-5E75-8F8C-C3569EEF1A17")
+    assert not is_minted_id("0d88536b826f5e758f8cc3569eef1a17")

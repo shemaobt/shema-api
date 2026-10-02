@@ -494,7 +494,7 @@ async def test_coordination_reads_the_truth_on_all_five_console_routes(
     created = await client.post(
         PROJECTS,
         json={
-            "id": "lingua-tres",
+            "id": "af125ed7-856f-54e3-be4b-a7c873041c1b",
             "languageName": "Lingua Tres",
             "bridgeLanguage": "Portugues",
             "team": BASE,

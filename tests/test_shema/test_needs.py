@@ -47,7 +47,7 @@ PROJECTS = f"{PREFIX}/projects"
 
 #: The record a coordinator files, with the four fields the console requires.
 NEW = {
-    "id": "guarani-mbya",
+    "id": "0d88536b-826f-5e75-8f8c-c3569eef1a17",
     "languageName": "Guarani Mbyá",
     "bridgeLanguage": "Português",
     "team": "YWAM Porto Velho",
@@ -166,7 +166,7 @@ async def test_the_lifecycle_has_four_states_and_dropped_is_not_deleted(
     item_id = created.json()["needsItems"][0]["id"]
 
     dropped = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, status="dropped", droppedDate="2026-09-11")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -190,7 +190,7 @@ async def test_a_need_absent_from_the_batch_is_untouched_and_never_deleted(
     etag = created.headers["ETag"]
 
     kept = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(category="security")]},
         headers={**headers, "If-Match": etag},
     )
@@ -210,14 +210,14 @@ async def test_an_id_that_is_not_this_projects_is_refused_and_nothing_is_written
     etag = created.headers["ETag"]
 
     refused = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id="not-a-need-of-this-project"), need(category="training")]},
         headers={**headers, "If-Match": etag},
     )
     assert refused.status_code == 400, "a service ValidationError, not Pydantic's own"
     assert "not-a-need-of-this-project" in refused.text
 
-    after = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    after = await client.get(f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17", headers=headers)
     assert len(after.json()["needsItems"]) == 1
     assert after.headers["ETag"] == etag, "a refused batch moved the version"
 
@@ -253,7 +253,7 @@ async def test_a_field_absent_from_a_row_is_untouched_too(
     item = created.json()["needsItems"][0]
 
     moved = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [{"id": item["id"], "category": "equipment"}]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -282,7 +282,7 @@ async def test_a_new_need_is_refused_without_a_category_and_the_field_is_named(
     assert refused.status_code == 422
     assert "category" in refused.text
 
-    kept = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    kept = await client.get(f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17", headers=headers)
     assert kept.status_code == 404, "and nothing at all was written"
 
 
@@ -303,7 +303,7 @@ async def test_dropping_a_need_does_not_make_it_repeat_its_own_name(
     item = created.json()["needsItems"][0]
 
     dropped = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [{"id": item["id"], "status": "dropped"}]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -327,14 +327,14 @@ async def test_a_need_can_be_dropped_and_cannot_be_left_anonymous(
     item = created.json()["needsItems"][0]
 
     refused = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [{"id": item["id"], "category": None}]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
     assert refused.status_code == 422
     assert "category" in refused.text
 
-    kept = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    kept = await client.get(f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17", headers=headers)
     assert kept.json()["needsItems"][0]["category"] == "financial"
 
 
@@ -352,7 +352,7 @@ async def test_a_row_that_repeats_what_it_carries_moves_nothing(
     item = created.json()["needsItems"][0]
 
     again = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [{"id": item["id"], "category": "financial"}]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -378,7 +378,7 @@ async def test_an_amount_cleared_on_a_partial_row_takes_its_currency_with_it(
     item = created.json()["needsItems"][0]
 
     cleared = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [{"id": item["id"], "category": "financial", "estimatedAmount": None}]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -404,7 +404,7 @@ async def test_one_need_addressed_twice_in_a_batch_is_refused(
     item_id = created.json()["needsItems"][0]["id"]
 
     refused = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={
             "needsItems": [
                 need(id=item_id, status="in-progress"),
@@ -416,7 +416,7 @@ async def test_one_need_addressed_twice_in_a_batch_is_refused(
     assert refused.status_code == 400
     assert "twice" in refused.text
 
-    after = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    after = await client.get(f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17", headers=headers)
     assert after.json()["needsItems"][0]["status"] == "open"
 
 
@@ -434,7 +434,7 @@ async def test_acknowledging_stamps_the_day_and_the_person_and_the_client_states
     #: server's, and a literal leaves that window the day after it is typed.
     local_day = UTC_TODAY - timedelta(days=1)
     seen = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, acknowledged=True)]},
         headers={
             **headers,
@@ -459,7 +459,7 @@ async def test_acknowledgement_does_not_come_back_off(
     assert stamped is not None
 
     back = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, acknowledged=False)]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -485,16 +485,30 @@ async def test_the_sweep_finds_what_is_open_and_unseen_past_the_threshold(
 ) -> None:
     """**The DoD's second line.** One query, and each of the three predicates earns its place."""
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
     old = TODAY - timedelta(days=UNACKNOWLEDGED_AFTER_DAYS + 1)
     recent = TODAY - timedelta(days=1)
 
-    wanted = await _add_need(db_session, "guarani-mbya", submitted_at=old)
-    await _add_need(db_session, "guarani-mbya", submitted_at=recent)
-    await _add_need(db_session, "guarani-mbya", submitted_at=old, acknowledged_at=old)
-    await _add_need(db_session, "guarani-mbya", submitted_at=old, status=ShemaNeedStatus.FULFILLED)
-    await _add_need(db_session, "guarani-mbya", submitted_at=old, status=ShemaNeedStatus.DROPPED)
+    wanted = await _add_need(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17", submitted_at=old)
+    await _add_need(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17", submitted_at=recent)
+    await _add_need(
+        db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17", submitted_at=old, acknowledged_at=old
+    )
+    await _add_need(
+        db_session,
+        "0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        submitted_at=old,
+        status=ShemaNeedStatus.FULFILLED,
+    )
+    await _add_need(
+        db_session,
+        "0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        submitted_at=old,
+        status=ShemaNeedStatus.DROPPED,
+    )
 
     found = await list_unacknowledged_needs(db_session, GLOBAL, today=TODAY)
     assert [line.id for line in found] == [wanted.id]
@@ -508,11 +522,16 @@ async def test_an_in_progress_need_nobody_stamped_is_still_swept(db_session, she
     somebody said work had started and nobody is on record as having looked.
     """
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
     old = TODAY - timedelta(days=UNACKNOWLEDGED_AFTER_DAYS + 1)
     row = await _add_need(
-        db_session, "guarani-mbya", submitted_at=old, status=ShemaNeedStatus.IN_PROGRESS
+        db_session,
+        "0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        submitted_at=old,
+        status=ShemaNeedStatus.IN_PROGRESS,
     )
 
     found = await list_unacknowledged_needs(db_session, GLOBAL, today=TODAY)
@@ -527,9 +546,11 @@ async def test_an_undated_need_ages_from_the_day_the_row_arrived(db_session, she
     has an age; falling back to *now* would have hidden exactly the rows worth finding.
     """
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
-    row = await _add_need(db_session, "guarani-mbya", submitted_at=None)
+    row = await _add_need(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17", submitted_at=None)
 
     #: ``created_at`` is stamped by the database, so this is the one sweep whose calendar is
     #: the machine's — :data:`UTC_TODAY` and not :data:`TODAY`. The band is zero days wide, so
@@ -543,9 +564,13 @@ async def test_a_need_raised_a_year_ago_and_never_seen_is_what_the_sweep_is_for(
 ) -> None:
     """The sentence the issue opens with, as a test."""
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
-    row = await _add_need(db_session, "guarani-mbya", submitted_at=TODAY - timedelta(days=365))
+    row = await _add_need(
+        db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17", submitted_at=TODAY - timedelta(days=365)
+    )
 
     found = await list_unacknowledged_needs(db_session, GLOBAL, today=TODAY, after_days=365)
     assert [line.id for line in found] == [row.id]
@@ -558,11 +583,13 @@ async def test_the_sweep_reaches_nothing_outside_the_callers_regions(db_session,
     builds on ``visible_projects`` rather than filtering afterwards.
     """
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
     await make_shema_project(db_session, project_id="nuer", region_key=ShemaRegionKey.AFRICA)
     old = TODAY - timedelta(days=90)
-    mine = await _add_need(db_session, "guarani-mbya", submitted_at=old)
+    mine = await _add_need(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17", submitted_at=old)
     await _add_need(db_session, "nuer", submitted_at=old)
 
     found = await list_unacknowledged_needs(db_session, SOUTH_AMERICA, today=TODAY)
@@ -609,10 +636,14 @@ async def test_the_database_refuses_an_amount_without_a_currency(db_session, she
     from sqlalchemy.exc import IntegrityError
 
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
     with pytest.raises(IntegrityError):
-        await _add_need(db_session, "guarani-mbya", estimated_amount=Decimal("10.00"))
+        await _add_need(
+            db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17", estimated_amount=Decimal("10.00")
+        )
     await db_session.rollback()
 
 
@@ -621,11 +652,16 @@ async def test_the_database_refuses_a_currency_that_is_not_a_code(db_session, sh
     from sqlalchemy.exc import IntegrityError
 
     await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
     with pytest.raises(IntegrityError):
         await _add_need(
-            db_session, "guarani-mbya", estimated_amount=Decimal("10.00"), estimated_currency="br"
+            db_session,
+            "0d88536b-826f-5e75-8f8c-c3569eef1a17",
+            estimated_amount=Decimal("10.00"),
+            estimated_currency="br",
         )
     await db_session.rollback()
 
@@ -695,7 +731,9 @@ async def test_a_financial_line_of_a_sensitive_project_names_the_money_and_not_t
     not being helped.
     """
     project = await make_shema_project(
-        db_session, project_id="sensivel-um", region_key=ShemaRegionKey.AFRICA
+        db_session,
+        project_id="1bfe51f0-420d-58d0-a608-487de1a0baec",
+        region_key=ShemaRegionKey.AFRICA,
     )
     project.sensitive_country = True
     project.location = "Egypt"
@@ -703,7 +741,7 @@ async def test_a_financial_line_of_a_sensitive_project_names_the_money_and_not_t
     await db_session.commit()
     row = await _add_need(
         db_session,
-        "sensivel-um",
+        "1bfe51f0-420d-58d0-a608-487de1a0baec",
         estimated_amount=Decimal("5000.00"),
         estimated_currency="USD",
     )
@@ -721,11 +759,13 @@ async def test_a_financial_line_of_a_sensitive_project_names_the_money_and_not_t
 async def test_a_cleared_projects_line_still_names_its_place(db_session, shema_app) -> None:
     """The other half, so the shape above cannot pass by withholding everything always."""
     project = await make_shema_project(
-        db_session, project_id="guarani-mbya", region_key=ShemaRegionKey.SOUTH_AMERICA
+        db_session,
+        project_id="0d88536b-826f-5e75-8f8c-c3569eef1a17",
+        region_key=ShemaRegionKey.SOUTH_AMERICA,
     )
     project.location = "Brazil"
     await db_session.commit()
-    row = await _add_need(db_session, "guarani-mbya")
+    row = await _add_need(db_session, "0d88536b-826f-5e75-8f8c-c3569eef1a17")
 
     line = ShemaNeedLine.of(row, project)
     assert line.location_withheld is False
@@ -737,12 +777,16 @@ async def test_the_sweep_hands_out_lines_the_boundary_has_already_reduced(
 ) -> None:
     """A list is an output path, and FE-44 §8.7's rule is that display is never enforcement."""
     project = await make_shema_project(
-        db_session, project_id="sensivel-um", region_key=ShemaRegionKey.AFRICA
+        db_session,
+        project_id="1bfe51f0-420d-58d0-a608-487de1a0baec",
+        region_key=ShemaRegionKey.AFRICA,
     )
     project.sensitive_country = True
     project.location = "Egypt"
     await db_session.commit()
-    await _add_need(db_session, "sensivel-um", submitted_at=TODAY - timedelta(days=90))
+    await _add_need(
+        db_session, "1bfe51f0-420d-58d0-a608-487de1a0baec", submitted_at=TODAY - timedelta(days=90)
+    )
 
     found = await list_unacknowledged_needs(db_session, GLOBAL, today=TODAY)
     assert [line.location_withheld for line in found] == [True]
@@ -812,7 +856,7 @@ async def test_a_notice_carries_the_amount_and_never_the_place(
     created = await _create(
         client,
         headers,
-        id="sensivel-um",
+        id="1bfe51f0-420d-58d0-a608-487de1a0baec",
         location="Brazil",
         sensitiveCountry=True,
         needsItems=[need(urgency="high", estimatedAmount="5000.00", estimatedCurrency="BRL")],
@@ -838,7 +882,7 @@ async def test_a_need_that_was_already_urgent_does_not_send_a_second_notice(
     item_id = created.json()["needsItems"][0]["id"]
 
     again = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, urgency="high", description="and a helmet")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -854,7 +898,7 @@ async def test_raising_a_need_to_urgent_does_send_one(
     assert await _notices(db_session) == []
 
     raised = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, urgency="high")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -881,7 +925,7 @@ async def test_a_refused_save_leaves_no_notice_behind(
     """
     created = await _create(client, headers, needsItems=[need()])
     refused = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(urgency="high"), need(id="no-such-need")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -920,7 +964,7 @@ async def test_a_need_that_moves_is_recorded_in_the_records_own_trail(
     item_id = created.json()["needsItems"][0]["id"]
 
     await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, status="in-progress")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -965,14 +1009,14 @@ async def test_a_save_that_moves_only_a_need_still_moves_the_version(
     item_id = created.json()["needsItems"][0]["id"]
 
     moved = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, status="in-progress")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
     assert moved.headers["ETag"] != created.headers["ETag"]
 
     stale = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item_id, status="fulfilled")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -994,7 +1038,7 @@ async def test_the_day_a_need_was_raised_is_not_cleared_by_a_payload_that_omits_
     assert item["submittedAt"] is not None
 
     again = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item["id"], status="in-progress")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -1009,7 +1053,7 @@ async def test_a_correction_to_the_raise_day_still_lands(
     item = created.json()["needsItems"][0]
 
     fixed = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item["id"], submittedAt="2026-03-02")]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
@@ -1024,7 +1068,7 @@ async def test_a_batch_that_changes_nothing_moves_nothing(
     item = created.json()["needsItems"][0]
 
     again = await client.patch(
-        f"{PROJECTS}/guarani-mbya",
+        f"{PROJECTS}/0d88536b-826f-5e75-8f8c-c3569eef1a17",
         json={"needsItems": [need(id=item["id"])]},
         headers={**headers, "If-Match": created.headers["ETag"]},
     )
