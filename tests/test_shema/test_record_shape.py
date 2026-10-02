@@ -34,7 +34,9 @@ CONTRACT = json.loads((Path(__file__).parent / "projectContract.json").read_text
 #: ``derived`` (BE-05's, the nine derivations the console stopped computing) entered ``Project``
 #: with OBT-407 and ``readAs`` (OBT-528's *truth or region*) with FE-48, OBT-532 — both are the
 #: contract's own keys in the emission vendored since OBT-413.
-ADDED_BY_THE_SERVER = {"locationWithheld"}
+#: ``languageNameWithheld`` and ``publicLanguageName`` are OBT-560's: the bit that the name is
+#: not the language's own, and the name coordination registers for the other readers.
+ADDED_BY_THE_SERVER = {"locationWithheld", "languageNameWithheld", "publicLanguageName"}
 
 
 def _wire_keys() -> set[str]:

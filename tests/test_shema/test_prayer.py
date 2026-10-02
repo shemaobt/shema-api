@@ -454,12 +454,15 @@ async def test_a_sensitive_country_is_transformed_before_the_pulse_is_written(
 
     assert "Lugar Secreto" not in file and "Vila Escondida" not in file
     assert "nevoa-lugar-secreto" not in file
-    assert "• Língua Névoa — África" in file
+    # The language's own name can name the place, so a sensitive project with no public name
+    # registered is headed by words, not by the name (OBT-560).
+    assert "Língua Névoa" not in file
+    assert "• Projeto sensível — África" in file
     assert "• Língua Orvalho — Terra Aberta" in file
     assert "Base Terra Aberta" not in file
 
     english = await pulse(client, circle, lang="en")
-    assert "• Língua Névoa — Africa" in english
+    assert "• Sensitive project — Africa" in english
 
 
 @pytest.mark.parametrize("lang", ["pt-BR", "en"])
@@ -487,7 +490,8 @@ async def test_the_pulse_names_no_place_it_cannot_tell(client, db_session, circl
 
     lines = (await pulse(client, circle, lang=lang)).splitlines()
 
-    assert "• Língua Sereno" in lines and "• Língua Tordo" in lines
+    unnamed = "• Projeto sensível" if lang == "pt-BR" else "• Sensitive project"
+    assert unnamed in lines and "• Língua Tordo" in lines
     assert not any("Central" in line or "Lugar Secreto" in line for line in lines)
 
 
@@ -520,6 +524,7 @@ async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_ba
     withheld = body["pico-lugar-secreto"]
     assert withheld["country"] == "" and withheld["base"] == ""
     assert withheld["locationWithheld"] is True and withheld["region"] == AWAY.value
+    assert withheld["languageNameWithheld"] is True and withheld["language"] == AWAY.value
     assert "Lugar Secreto" not in str(withheld)
     open_entry = body["quinta-vale"]
     assert open_entry["country"] == "Terra Aberta" and open_entry["base"] == "Base Terra Aberta"
@@ -532,6 +537,7 @@ async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_ba
         "country",
         "region",
         "locationWithheld",
+        "languageNameWithheld",
         "text",
         "source",
         "answered",
