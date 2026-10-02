@@ -119,6 +119,26 @@ def test_urgent_needs_notice_never_carries_a_place_or_a_description() -> None:
         assert word not in notice.body.lower()
 
 
+def test_a_cleared_project_s_place_stays_out_of_the_notice_too() -> None:
+    """A cleared project's place is the truth for every reader of the record, and was written into
+    every urgent notice as such — to be read later by whoever then held the row (OBT-556, item 1).
+    One need or a batch, the notice says who raised what and never where (OBT-559)."""
+    cleared = ShemaNeedLine(
+        id="1",
+        project_id="p",
+        language_name="Team X",
+        location=SENSITIVE_COUNTRY,
+        category="medical",
+        sensitive_country=False,
+    )
+    assert cleared.location == SENSITIVE_COUNTRY
+    second = cleared.model_copy(update={"id": "2", "category": "transport"})
+
+    for notice in (urgent_needs_notice([cleared]), urgent_needs_notice([cleared, second])):
+        assert SENSITIVE_COUNTRY not in notice.title + notice.body
+        assert notice.body.startswith("Team X raised")
+
+
 def test_health_notice_never_carries_a_place_dimension_or_note() -> None:
     body = notice_body("Team Y", day=date(2026, 1, 1))
 
