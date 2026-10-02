@@ -28,7 +28,7 @@ from app.db.models.project import Project
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.sessions import get_session, is_panorama
+from app.services.internalization_room.sessions import append_exchange, get_session, is_panorama
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     having_finished_the_passage,
@@ -291,6 +291,31 @@ async def test_a_teams_latest_session_wins_when_the_team_already_holds_several_f
     opened = await the_tablet_opens(client, tablet, {"pericope": P})
 
     assert opened["session_id"] == touched_last.id
+
+
+async def test_the_teams_entered_conversation_wins_over_a_newer_empty_launch(
+    client, db_session
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    conversation = await open_ir_session(db_session, pericope=P, project_id=team.id)
+    await append_exchange(
+        db_session, conversation, team_utterance=ANSWERS[0], guide_response=GUIDE_LINE
+    )
+    launch = await open_ir_session(db_session, pericope=P, project_id=team.id)
+    for session, touched in (
+        (conversation, datetime(2026, 9, 29, 10, 0, tzinfo=UTC)),
+        (launch, datetime(2026, 9, 30, 10, 0, tzinfo=UTC)),
+    ):
+        await db_session.execute(
+            update(IRSession)
+            .where(IRSession.id == session.id)
+            .values(created_at=touched, updated_at=touched)
+        )
+    await db_session.commit()
+
+    opened = await the_tablet_opens(client, tablet, {"pericope": P})
+
+    assert opened["session_id"] == conversation.id
 
 
 async def test_another_team_opening_the_same_pericope_gets_its_own_session(

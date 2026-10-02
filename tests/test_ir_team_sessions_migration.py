@@ -81,6 +81,22 @@ SESSIONS = (
         "2026-09-27 08:00:00",
     ),
     (
+        "f0000000-0000-0000-0000-000000000001",
+        TEAM,
+        "P05",
+        "pt",
+        "2026-09-29 08:00:00",
+        "2026-09-29 08:00:00",
+    ),
+    (
+        "f0000000-0000-0000-0000-000000000002",
+        TEAM,
+        "P05",
+        "pt",
+        "2026-09-30 08:00:00",
+        "2026-09-30 08:00:00",
+    ),
+    (
         "e0000000-0000-0000-0000-000000000001",
         None,
         "P03",
@@ -91,6 +107,11 @@ SESSIONS = (
 )
 
 POINTERS = "SELECT project_id, pericope, language, session_id FROM ir_team_sessions"
+#: The key whose cases are about which session counts as the team's conversation; kept out of
+#: the ordering case, which reads only sessions nobody entered.
+ENTERED_KEY = "P05"
+ENTERED = {"f0000000-0000-0000-0000-000000000001"}
+A_TURN = '[{"role": "team", "text": "Noemi voltou com Rute", "at": "2026-09-29T08:00:00+00:00"}]'
 
 
 async def _rows(url: str, sql: str) -> list[tuple]:
@@ -110,13 +131,14 @@ async def _stored(url: str) -> None:
                     "INSERT INTO ir_sessions (id, project_id, pericope, language, status,"
                     " messages, after_panorama, coverage_state, kept_takes, back_translation,"
                     " created_at, updated_at) VALUES (:id, :team, :pericope, :language,"
-                    " 'in_progress', '[]', 0, '{}', '{}', '{}', :created, :updated)"
+                    " 'in_progress', :messages, 0, '{}', '{}', '{}', :created, :updated)"
                 ),
                 {
                     "id": session_id,
                     "team": team,
                     "pericope": pericope,
                     "language": language,
+                    "messages": A_TURN if session_id in ENTERED else "[]",
                     "created": created,
                     "updated": updated,
                 },
@@ -147,7 +169,7 @@ async def test_the_backfill_points_each_teams_pericope_and_language_at_its_lates
     up = run_alembic(url, "upgrade", REVISION)
 
     assert up.returncode == 0, up.stderr
-    assert await _rows(url, POINTERS) == [
+    assert await _rows(url, f"{POINTERS} WHERE pericope != '{ENTERED_KEY}'") == [
         (TEAM, "P03", "en", "c0000000-0000-0000-0000-000000000001"),
         (TEAM, "P03", "pt", "a0000000-0000-0000-0000-000000000001"),
         (TEAM, "P04", "pt", "b0000000-0000-0000-0000-000000000002"),
@@ -160,3 +182,16 @@ async def test_the_backfill_points_each_teams_pericope_and_language_at_its_lates
     assert down.returncode == 0, down.stderr
     assert "ir_team_sessions" not in await tables_of(url)
     assert await scalar(url, "SELECT count(*) FROM ir_sessions", {}) == len(SESSIONS)
+
+
+async def test_the_backfill_points_a_key_at_the_teams_entered_conversation_over_a_newer_empty_launch(  # noqa: E501
+    before_the_migration,
+) -> None:
+    url = before_the_migration
+
+    up = run_alembic(url, "upgrade", REVISION)
+
+    assert up.returncode == 0, up.stderr
+    assert await _rows(url, f"{POINTERS} WHERE pericope = '{ENTERED_KEY}'") == [
+        (TEAM, ENTERED_KEY, "pt", "f0000000-0000-0000-0000-000000000001"),
+    ]

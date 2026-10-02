@@ -47,6 +47,7 @@ from app.services.internalization_room.coverage_events import (
     necklace_with_touches,
     record_transitions,
 )
+from app.services.internalization_room.entered import entered
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.passage_lines import PANORAMA
@@ -203,7 +204,8 @@ async def open_session(
 
     A key nobody has claimed yet may still name stored sessions — written before the claim
     existed, or by a server still running the old door while the new one rolls out — and the
-    latest of them by ``updated_at``, then ``created_at``, then ``id`` is the one claimed.
+    one claimed is the latest the team entered, by ``updated_at``, then ``created_at``, then
+    ``id`` (`_latest_stored`).
 
     The Panorama is opened by the same rule, so a team choosing to hear it again is returned
     the Panorama session it already has; replaying it is not this door's to decide.
@@ -248,7 +250,7 @@ async def open_session(
             project_id=project_id,
             language=spoken,
         )
-        winner = await _claim(db, session, project_id=project_id)
+        winner = await _claim(db, session)
         if winner != session.id:
             if created:
                 await db.delete(session)
@@ -261,7 +263,9 @@ async def open_session(
     return session, created
 
 
-def _team_key(project_id: str, pericope: str, language: str) -> tuple[ColumnElement[bool], ...]:
+def _team_key(
+    project_id: str | None, pericope: str, language: str
+) -> tuple[ColumnElement[bool], ...]:
     return (
         IRTeamSession.project_id == project_id,
         IRTeamSession.pericope == pericope,
@@ -272,6 +276,11 @@ def _team_key(project_id: str, pericope: str, language: str) -> tuple[ColumnElem
 async def _latest_stored(
     db: AsyncSession, project_id: str, pericope: str, language: str
 ) -> IRSession | None:
+    """The team's stored session of this key: the latest one it entered, by `entered`'s rule,
+    and the latest of any kind only when it entered none. The old door minted a session on
+    every relaunch that the tablet then left empty, so the newest row is often a launch
+    nobody entered, and resuming it would hand the team an empty conversation for good.
+    """
     stored = await db.execute(
         select(IRSession)
         .where(
@@ -279,19 +288,24 @@ async def _latest_stored(
             IRSession.pericope == pericope,
             IRSession.language == language,
         )
-        .order_by(IRSession.updated_at.desc(), IRSession.created_at.desc(), IRSession.id.desc())
+        .order_by(
+            case((entered(), 1), else_=0).desc(),
+            IRSession.updated_at.desc(),
+            IRSession.created_at.desc(),
+            IRSession.id.desc(),
+        )
         .limit(1)
     )
     return stored.scalar_one_or_none()
 
 
-async def _claim(db: AsyncSession, session: IRSession, *, project_id: str) -> str:
+async def _claim(db: AsyncSession, session: IRSession) -> str:
     """Point the key at this session unless another open already did, and say who holds it."""
     insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
     await db.execute(
         insert(IRTeamSession)
         .values(
-            project_id=project_id,
+            project_id=session.project_id,
             pericope=session.pericope,
             language=session.language,
             session_id=session.id,
@@ -300,7 +314,7 @@ async def _claim(db: AsyncSession, session: IRSession, *, project_id: str) -> st
     )
     held = await db.execute(
         select(IRTeamSession.session_id).where(
-            *_team_key(project_id, session.pericope, session.language)
+            *_team_key(session.project_id, session.pericope, session.language)
         )
     )
     return held.scalar_one()

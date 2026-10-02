@@ -23,11 +23,16 @@ Decided with the Orchestrator under Henok's standing rule on 2026-10-02:
   rollback expires every row the request already read.
 - The pointer is its own table, not a unique index on `ir_sessions`. Teams already hold several
   sessions of one pericope from before this rule, and those stay in history: an index would
-  have to delete or rewrite them first. The migration backfills each key with its latest
-  session by `updated_at`, then `created_at`, then `id`.
-- A key with no pointer but with stored sessions claims the latest of them, by the same order,
-  instead of minting. That covers the sessions a server still running the old door writes
-  during the rollout, after the backfill has run.
+  have to delete or rewrite them first. The migration backfills each key with the latest
+  session the team entered (the **Entered** rule: a turn, a take or a halt), by `updated_at`,
+  then `created_at`, then `id`, and with the latest of any kind only when it entered none. The
+  old door minted a session on every relaunch that the tablet then left empty, so the newest
+  row of a key is often a launch nobody entered; pointing at it would hand the team an empty
+  conversation for good.
+- A key with no pointer but with stored sessions claims the latest of them, by the same rule,
+  instead of minting. That covers a key the backfill left without a pointer, when a server
+  still running the old door writes its first session during the rollout. A key the backfill
+  already pointed keeps its pointer.
 - No foreign key from the pointer to the session, as on every room table (ADR 0006).
 - A caller with no team, on the shared room key, is minted a session on every open as before:
   without a team there is nothing to resume. The text seam and the test builders keep minting.
