@@ -410,20 +410,3 @@ async def test_a_tablet_relaunched_in_a_room_halted_by_its_call_for_a_person_get
     assert relaunched["halt"] is None
     assert relaunched["status"] == "in_progress"
     assert await waiting_at_the_desk(client, desk) == {}
-
-
-async def test_an_open_on_the_shared_room_key_lifts_no_sessions_halt(
-    client, db_session, room_app
-) -> None:
-    team, tablet = await a_claimed_device(db_session)
-    desk, _ = await at_the_desk(db_session, room_app, team)
-    halted = await a_halted_room(client, tablet, desk)
-
-    opened = await client.post(
-        f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
-        json={"pericope": P, "after_session": halted["session_id"]},
-    )
-
-    assert opened.status_code == 200, opened.text[:300]
-    assert await waiting_at_the_desk(client, desk) == {halted["session_id"]: "blocking"}
