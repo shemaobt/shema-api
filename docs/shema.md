@@ -299,6 +299,7 @@ bucket, which is the precedent, not a trespass).
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
 | `app/api/shema/_deps.py` | BE-03 **· built**; OBT-523 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases and `AdminUser`, §6.1's region-scope dependency, and the PME's door (`DOOR`, `SessionRoles`, §6.8), and — OBT-528 — the caller's reader (`Reading`, §6.4). The app key is named here and nowhere else in the module. |
+| `app/api/shema/_routing.py` | **OBT-556, built** | `ShemaRoute` and `ShemaRouter`: every route included into the module's three routers answers a 422 without the `input` it refused, and lets an unexpected Pydantic error reach the log by its location and never by its value (§6.4). |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
@@ -315,7 +316,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/eten_report.py` | **BE-11, built** | The report: listed projects in scope, their history, the year's manual rows, `account_for` per project, and the report **recorded** in `shema_eten_reports` as it was answered. |
 | `app/services/shema/record_eten_credit.py`, `list_eten_credits.py` | **BE-11, built** | The manual ledger: the only writer, with who may set a figure (`ETEN_LEDGER_AUDIENCE`), and its scoped read. |
 | `app/api/shema/forms.py` | BE-12 | Submissions, the Pulse artifact, intake links, and the two **unauthenticated** intake routes. |
-| `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
+| `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. The editor's read of one region (`GET /regions/{key}/team`, the account behind each seat) is scoped like the write since OBT-556. |
 | `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. OBT-531 added `POST …/{id}/review`. |
 | `app/api/shema/intercessor_exit.py` | **OBT-531, built** | The module's **second** unauthenticated seam: `GET`/`POST /intercessors/leave/{token}`, the intercessor's exit link. §6.4's OBT-531 note. |
 | `app/api/shema/transfer.py` | **BE-14, built** | `GET /export/projects?format=json\|csv&lang=` and `POST /import/projects` — FE-44 §9.12. §6.4's *What BE-14 built*. |
@@ -1135,8 +1136,10 @@ console reads that answer instead of keeping a second copy of the rule (OBT-532)
 announces them to `coordination` only; the caller says who the announcement is for, which is not
 always who the rows were built for — the Projetos screen addresses it to its caller, and a file a
 coordinator exports would carry rows built for `outside` under a header addressed to the
-coordinator (BE-14's). The `null` the others receive hides nothing: every card still carries its
-marker and the `sensitive` facet still counts it — GATE-04 decided the notice, not the bit.
+coordinator (BE-14's). Every card still carries its marker — GATE-04 decided the notice, not the
+bit. **The `sensitive` facet is the same notice counted again, so since OBT-556 it is
+coordination's too**: for a caller who coordinates nothing it is absent from `groups` and
+`groupAll`, and their `?sensitive=` is ignored, because its `matched` would be the number again.
 
 **The search and the facets read the card the reader was given.** Coordination finds a withheld
 project by the place it reads and counts it under its country; everybody else can do neither,
@@ -1173,17 +1176,64 @@ no cache may hand one reader's body to another.
 reads a sensitive place. `ShemaAudience.COORDENACAO` is FE-44's destination — every role that
 follows up and supports — and it still decides notes and media (`can_export_notes`,
 `can_share_media`). GATE-04 decided the place per role and said nothing about notes, prayer text
-or media, so those keep their own owners and are not reduced by this rule.
+or media, so those keep their own owners. **Except a withheld record's free text, since
+OBT-556** (the paragraph below): the client decided on 2/out/2026 that it goes with the place.
 
 **Residuals named and not closed** — each can name a place and none is reduced for `other`:
 ~~the slug `<language>-<place>`, which is the record's address on every shape~~ (closed by OBT-552: every id is an opaque UUID); the free text of
-the ficha (`partnerOrg`, `scopeDetails`, `statusComments` / `statusGoal`, `phases`, `notes`,
-`needsNotes`, `objectiveNotes`, a need's `description`, a material's file name or link, media
-captions and URLs, health notes); `storyProgress[].recordLocation` and its copy in
+the ficha that OBT-556's list left out (`partnerOrg`, `statusGoal`, `phases`, `needsNotes`,
+`objectiveNotes`, `financialNotes`, a need's `estimatedValue`, a material's file name or link,
+media captions and URLs); `storyProgress[].recordLocation` and its copy in
 `progressHistory` — reducing a field inside a table the progress tab saves whole would make the
-next save of that table erase the truth; and the submissions inbox, which serves a leader's free
-text to every role. They belong to GATE-04's *Notes & media* column, which the grid has not
-answered per role.
+next save of that table erase the truth; and the text a team authorized for prayer, which
+reaches the wall, the Pulse and the export by its consent (`_consent.py`) whether or not the
+place is withheld. They belong to GATE-04's *Notes & media* column, which the grid has not
+answered per role. ~~`notes`, `healthNotes`, `statusComments`, `scopeDetails`, a need's
+`description`, the assessments' notes and the submissions inbox's free text~~ — closed by
+OBT-556 on a withheld record, below.
+
+**What a withheld record holds back beyond its place — OBT-556.** The INT-12 pass found the
+record's text leaving by five doors, and the client decided on 2/out/2026 to close them all
+(*recolher tudo*) for every reader who is not coordination:
+
+- **The record's own four** — `notes`, `healthNotes`, `statusComments`, `scopeDetails` — are
+  `FREE_TEXT_FIELDS` in `app/models/shema_privacy.py`, so `LeavingShape` empties them as it
+  empties the base, on the ficha, the card and any shape that declares one later. The export
+  carries none of them (`can_export_notes` refuses notes for `publico`, and the 24 keys hold no
+  other), which a test now holds on the bytes.
+- **What the record joins after it is built** — each need's `description`, and the assessments'
+  `notes` and `dimensionNotes` — is reduced by `_redaction.free_text_as_read` in
+  `read_record._record_as_read`, the record's one reduction point; the assessments' own route
+  (`GET /projects/{id}/health-assessments`) by `_redaction.assessments_as_read`, which is why
+  it is in `READER_ROUTES`.
+- **A received Pulse** answers the free text that maps to no column as `{}` with
+  `answersWithheld: true`.
+- **The write**: the four are in `WITHHELD_WRITES`, refused by name like the base. A need's
+  description is read by value instead (`_redaction.need_text_as_written`), because the console
+  sends every need back whole: the `""` the reader was handed comes back and is read as
+  *unchanged* — the text stays and its share for prayer does not fall — while anything else is
+  a text typed over one the reader cannot see, refused as `needsItems.description`.
+- **The conflict a save meets** (`_audit.changes_since`, told to a `Readership`): the 409 names
+  only the fields the reader reads on that record, with who and when from the newest change
+  they can see — `null` for both when there is none. A prayer request kept in coordination is
+  left out for a reader outside its audience the same way.
+
+One predicate decides when, `_redaction.reads_the_truth(project, reader)`: coordination, or a
+record whose place is not withheld. The console's `mayWrite` does not know the four yet; until
+it does, a value typed into one of them on a withheld record is the 403 that names it.
+
+**A validation error says nothing about the value it refused — OBT-556.** FastAPI's 422 hands
+each field error's `input` back to whoever sent it, and an unexpected Pydantic error — a row
+that will not validate into its shape, a response that does not fit its model — reached
+`handle_unexpected` and then the server's own traceback with `input_value=` in its message, a
+place or a contact as easily as anything else. Every route under `/api/shema` is a
+`ShemaRoute` (`app/api/shema/_routing.py`), because the module's three routers are
+`ShemaRouter`s and hand the class to whatever is included into them: a 422 keeps `type`, `loc`
+and `msg` in FastAPI's own envelope, and an unexpected error leaves the route as
+`UnexpectedShapeError`, named by model, location and kind. **Only here**: the handlers in
+`app/core/exceptions.py` are eight applications', and their 422 is a contract other clients
+read. It is a route class and not a handler because Starlette's `ServerErrorMiddleware`
+re-raises after the handler answers, so a handler alone would leave the server's log as it was.
 
 **The check that makes it a rule rather than an intention.** FE-44's frontend has a scan test
 that fails the build if any shipped file outside the record's own editing surfaces reads the
@@ -1233,7 +1283,9 @@ absent from **all four** output paths — the wall, exports, the ETEN report and
 > - **The people no list may show are counted, not reviewed.** Somebody with no `directory`
 >   consent is on no screen, so nobody can review them there; `withheldReviewDueCount` is a
 >   number beside `withheldCount`, read from three dates and nothing else. What to do with them
->   is a question for the client, raised in the pull request.
+>   is a question for the client, raised in the pull request. **Both count the members of the
+>   network** since OBT-556 — holders of `network` — so a row imported with no consent at all
+>   is announced by neither (`_directory.count_withheld`).
 > - **A person with no account leaves through an exit link** (4.2, *"ainda não existe
 >   caminho"*). `shema_intercessor_exit_links` keeps one row per link minted — the digest only,
 >   §6.7's module, `ON DELETE CASCADE` from the person — and `leave_intercessor.issue_exit_link`
