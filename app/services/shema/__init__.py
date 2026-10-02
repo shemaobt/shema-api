@@ -84,7 +84,8 @@ narrower question than who may open the record, and it answers it once for the r
 for the recipient list so the two cannot drift — and, since OBT-553, for every other door a
 reading leaves by: the ficha, the card, the search, the export, the panel and the pastoral
 write; ``_health_notice.py`` owns what a notice about a struggling team may say, which is the
-part of that feature that actually needed deciding; and ``list_assessments.py`` is the history behind the narrower gate.
+part of that feature that actually needed deciding; and ``list_assessments.py`` is the history
+behind the narrower gate.
 
 **BE-15 landed the panel, the preferences and the read state** — the three things
 ``docs/shema.md`` §5.10 gives it, and none of them is a second delivery path. The panel is
