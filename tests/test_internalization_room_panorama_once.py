@@ -349,12 +349,13 @@ async def test_over_http_the_relaunch_lands_on_the_passage_the_bead_opened(
     assert relaunched["pericope"] == FIRST
 
 
-async def test_over_http_a_chosen_panorama_opens_and_the_room_speaks_it(
+async def test_over_http_a_chosen_panorama_returns_the_teams_panorama_and_the_room_speaks_it(
     client, db_session: AsyncSession
 ) -> None:
     """ENG-769's own test, as the tablet lives it: the launch after the book was heard
-    lands on the passage; the same tablet asking with `chosen` is handed a panorama session
-    and the opening turn comes back with a clip to play."""
+    lands on the passage; the same tablet asking with `chosen` is handed the team's own
+    Panorama session (ENG-1236: one session per team and pericope) and the opening turn
+    comes back with a clip to play."""
     team = await a_team(db_session, name="Pelo aparelho, de novo")
     tablet = await a_tablet_of(db_session, team)
     launched = await the_app_posts(client, tablet, {"pericope": "OV"})
@@ -365,7 +366,7 @@ async def test_over_http_a_chosen_panorama_opens_and_the_room_speaks_it(
 
     assert not room.is_panorama(relaunched["pericope"])
     assert room.is_panorama(asked["pericope"])
-    assert asked["session_id"] != launched["session_id"]
+    assert asked["session_id"] == launched["session_id"]
     opening = await the_room_opens(client, tablet, asked["session_id"])
     assert opening["audio_url"].startswith(f"{PREFIX}/voice/")
 

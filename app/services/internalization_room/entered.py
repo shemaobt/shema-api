@@ -1,10 +1,12 @@
 """Whether a session is a room the team entered.
 
-The invitation door and the panorama spoke mint a session before any stored row is read,
-and the stored row wins once it is (ADR 0033 of the internalization-room repository: the
-minted session is left referenced by nothing). What is left behind is one row of
+The invitation door and the panorama spoke minted a session before any stored row was read,
+and the stored row won once it was (ADR 0033 of the internalization-room repository: the
+minted session is left referenced by nothing). What that left behind is one row of
 `ir_sessions` with empty `messages` and no take — a launch nobody entered, not a room of
-the team.
+the team. Since ADR 0045 the open door returns a team's session and mints only when none
+exists, so it leaves no such row for a team; the rows written before stay, and a caller with
+no team still mints one on every open.
 
 **Entered** is `messages` holding at least one turn, a row of `ir_takes` carrying this
 session's id, or a halt this session ever asked for. A turn is a non-empty `messages`,

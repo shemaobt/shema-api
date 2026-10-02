@@ -5,14 +5,21 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import and_, case, or_, select, update
+from sqlalchemy import ColumnElement, and_, case, or_, select, update
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
+from app.db.models.internalization_room import (
+    IRSession,
+    IRSessionStatus,
+    IRTake,
+    IRTakeKind,
+    IRTeamSession,
+)
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import (
@@ -40,6 +47,7 @@ from app.services.internalization_room.coverage_events import (
     necklace_with_touches,
     record_transitions,
 )
+from app.services.internalization_room.entered import entered
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.passage_lines import PANORAMA
@@ -155,6 +163,188 @@ async def create_session(
     a passage is the way back in. The end it names is the end of the walkable book, which is
     the only end a team can reach — a passage `require_walkable` refuses can never be closed.
     """
+    pericope, after_panorama, spoken = await _resolved(
+        db,
+        pericope=pericope,
+        after_panorama=after_panorama,
+        project_id=project_id,
+        language=language,
+        chosen=chosen,
+    )
+    session = await _minted(
+        db,
+        pericope=pericope,
+        after_panorama=after_panorama,
+        project_id=project_id,
+        language=spoken,
+    )
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+async def open_session(
+    db: AsyncSession,
+    *,
+    pericope: str | None = None,
+    after_panorama: bool = False,
+    project_id: str | None = None,
+    language: str | None = None,
+    chosen: bool = False,
+    lifts: bool = False,
+) -> tuple[IRSession, bool]:
+    """The session the room's open door returns, and whether this open created it.
+
+    Every open asks the server, and the server answers with the session it holds for this
+    team, pericope and language, whatever its state: a second tablet, a reinstall and a
+    relaunch all land on the conversation the team was having. One is minted only when none
+    exists, and then exactly once: the key is claimed in the same transaction that mints, and
+    an open that loses the claim to another deletes its own row before anything is committed
+    and returns the winner's, so no orphan is left. Deleted rather than rolled back, because a
+    rollback would expire every row the caller already read on this session.
+
+    A key nobody has claimed yet may still name stored sessions — written before the claim
+    existed, or by a server still running the old door while the new one rolls out — and the
+    one claimed is the latest the team entered, by ``updated_at``, then ``created_at``, then
+    ``id`` (`_latest_stored`).
+
+    The Panorama is opened by the same rule, so a team choosing to hear it again is returned
+    the Panorama session it already has; replaying it is not this door's to decide.
+
+    A resumed session keeps what it is, except the panorama mark: an open that says it came
+    from the Panorama sets ``after_panorama`` on the session it lands on, or a pericope opened
+    before the Panorama would leave `heard_panorama` false and the Panorama would play at
+    every launch.
+
+    A tablet that opens a session halted by its call for a person is back in the room, so
+    ``lifts`` writes what a landed turn writes for it (`_a_teams_return`): the halt lifts, and
+    a visit that lifted it becomes final. A warning stands, because a facilitator's visit is
+    its only exit (ADR 0039). Only a credentialed tablet lifts.
+
+    A caller with no team has nothing to resume, so it is minted a session as before.
+    """
+    if project_id is None:
+        minted = await create_session(
+            db,
+            pericope=pericope,
+            after_panorama=after_panorama,
+            language=language,
+            chosen=chosen,
+        )
+        return minted, True
+    pericope, after_panorama, spoken = await _resolved(
+        db,
+        pericope=pericope,
+        after_panorama=after_panorama,
+        project_id=project_id,
+        language=language,
+        chosen=chosen,
+    )
+    claimed = await db.scalar(
+        select(IRTeamSession.session_id).where(*_team_key(project_id, pericope, spoken))
+    )
+    created = False
+    if claimed is not None:
+        session = await get_session(db, claimed)
+    else:
+        stored = await _latest_stored(db, project_id, pericope, spoken)
+        created = stored is None
+        session = stored or await _minted(
+            db,
+            pericope=pericope,
+            after_panorama=after_panorama,
+            project_id=project_id,
+            language=spoken,
+        )
+        winner = await _claim(db, session)
+        if winner != session.id:
+            if created:
+                await db.delete(session)
+                await db.flush()
+            session, created = await get_session(db, winner), False
+    if after_panorama and not session.after_panorama:
+        session.after_panorama = True
+    if lifts and (
+        session.status is IRSessionStatus.NEEDS_PERSON or session.lifted_halt is not None
+    ):
+        await db.execute(
+            update(IRSession)
+            .where(IRSession.id == session.id)
+            .values(**_a_teams_return(session))
+            .execution_options(synchronize_session=False)
+        )
+    await db.commit()
+    await db.refresh(session)
+    return session, created
+
+
+def _team_key(
+    project_id: str | None, pericope: str, language: str
+) -> tuple[ColumnElement[bool], ...]:
+    return (
+        IRTeamSession.project_id == project_id,
+        IRTeamSession.pericope == pericope,
+        IRTeamSession.language == language,
+    )
+
+
+async def _latest_stored(
+    db: AsyncSession, project_id: str, pericope: str, language: str
+) -> IRSession | None:
+    """The team's stored session of this key: the latest one it entered, by `entered`'s rule,
+    and the latest of any kind only when it entered none. The old door minted a session on
+    every relaunch that the tablet then left empty, so the newest row is often a launch
+    nobody entered, and resuming it would hand the team an empty conversation for good.
+    """
+    stored = await db.execute(
+        select(IRSession)
+        .where(
+            IRSession.project_id == project_id,
+            IRSession.pericope == pericope,
+            IRSession.language == language,
+        )
+        .order_by(
+            case((entered(), 1), else_=0).desc(),
+            IRSession.updated_at.desc(),
+            IRSession.created_at.desc(),
+            IRSession.id.desc(),
+        )
+        .limit(1)
+    )
+    return stored.scalar_one_or_none()
+
+
+async def _claim(db: AsyncSession, session: IRSession) -> str:
+    """Point the key at this session unless another open already did, and say who holds it."""
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    await db.execute(
+        insert(IRTeamSession)
+        .values(
+            project_id=session.project_id,
+            pericope=session.pericope,
+            language=session.language,
+            session_id=session.id,
+        )
+        .on_conflict_do_nothing(index_elements=["project_id", "pericope", "language"])
+    )
+    held = await db.execute(
+        select(IRTeamSession.session_id).where(
+            *_team_key(session.project_id, session.pericope, session.language)
+        )
+    )
+    return held.scalar_one()
+
+
+async def _resolved(
+    db: AsyncSession,
+    *,
+    pericope: str | None,
+    after_panorama: bool,
+    project_id: str | None,
+    language: str | None,
+    chosen: bool,
+) -> tuple[str, bool, str]:
+    """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
         pericope = await active_passage(db, project_id=project_id)
         if pericope is None:
@@ -174,6 +364,19 @@ async def create_session(
     spoken = normalize(language)
     if language is not None and spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
+    return pericope, after_panorama, spoken or floor()
+
+
+async def _minted(
+    db: AsyncSession,
+    *,
+    pericope: str,
+    after_panorama: bool,
+    project_id: str | None,
+    language: str,
+) -> IRSession:
+    """A new session on a resolved pericope, flushed and not yet committed."""
+    panorama = is_panorama(pericope)
     carried = (
         {}
         if panorama or project_id is None
@@ -195,12 +398,11 @@ async def create_session(
         },
         kept_takes={},
         back_translation={},
-        language=spoken or floor(),
+        language=language,
         comprehension={},
     )
     db.add(session)
-    await db.commit()
-    await db.refresh(session)
+    await db.flush()
     return session
 
 
@@ -382,17 +584,37 @@ async def append_exchange(
                 issues=outcome.issues,
             )
     messages.append(guide)
-    values: dict[str, Any] = {"messages": messages}
+    values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
+    if state is not None:
+        values["comprehension"] = state.model_dump(mode="json")
+    return await _land(db, session, values, commit=commit)
+
+
+def _a_teams_return(session: IRSession) -> dict[str, Any]:
+    """What the team coming back to a room writes, as of the row ``session`` was read at.
+
+    One rule for every return the team makes, a landed turn or a tablet opening the session
+    again (ADR 0045). A blocking halt that was read lifts, guarded by ``halts_raised`` so a
+    halt raised between the read and the write is a new ask and stands, and by the status so
+    a lift that lost the race restores nothing.
+
+    And a visit that lifted the halt becomes final: the team's own return is the evidence the
+    room is going, so undoing the visit afterwards has nothing to put back. That holds for a
+    visit read before the write, and for one that landed in between, while it answers the
+    halt that was read.
+    """
     nothing_to_put_back = IRSession.attended_at.is_not_distinct_from(session.attended_at)
-    if session.status is IRSessionStatus.NEEDS_PERSON:
-        nothing_to_put_back = or_(
-            nothing_to_put_back,
-            and_(
-                IRSession.halts_raised == session.halts_raised,
-                IRSession.lifted_halt == HaltKind.BLOCKING.value,
-            ),
-        )
-        values["status"] = case(
+    if session.status is not IRSessionStatus.NEEDS_PERSON:
+        return {"lifted_halt": case((nothing_to_put_back, None), else_=IRSession.lifted_halt)}
+    nothing_to_put_back = or_(
+        nothing_to_put_back,
+        and_(
+            IRSession.halts_raised == session.halts_raised,
+            IRSession.lifted_halt == HaltKind.BLOCKING.value,
+        ),
+    )
+    return {
+        "status": case(
             (
                 and_(
                     IRSession.status == IRSessionStatus.NEEDS_PERSON,
@@ -401,11 +623,9 @@ async def append_exchange(
                 halt.a_lift_restores(),
             ),
             else_=IRSession.status,
-        )
-    values["lifted_halt"] = case((nothing_to_put_back, None), else_=IRSession.lifted_halt)
-    if state is not None:
-        values["comprehension"] = state.model_dump(mode="json")
-    return await _land(db, session, values, commit=commit)
+        ),
+        "lifted_halt": case((nothing_to_put_back, None), else_=IRSession.lifted_halt),
+    }
 
 
 def _containment_of(outcome: TurnOutcome) -> str:

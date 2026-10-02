@@ -165,6 +165,28 @@ class IRSession(Base):
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
+class IRTeamSession(Base):
+    """Which session a team's open door returns for one pericope and language.
+
+    The open door answers every open with the session it holds for the team, pericope and
+    language, and mints one only when none exists. That "only when none" is the database's
+    promise, not a read before the write: two tablets opening together both read nothing and
+    both minted, which is exactly the split this table exists to prevent. The first open to
+    claim the key wins, and the loser returns the winner's session (ADR 0045).
+
+    Its own table rather than a unique index on ``ir_sessions``, because a team already holds
+    several sessions of one pericope from before the rule, and those stay in history. No
+    foreign key, as on every room table (ADR 0006).
+    """
+
+    __tablename__ = "ir_team_sessions"
+
+    project_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    pericope: Mapped[str] = mapped_column(String(120), primary_key=True)
+    language: Mapped[str] = mapped_column(String(8), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+
+
 class IRCoverageEvent(Base):
     """One step a session moved one bead forward.
 

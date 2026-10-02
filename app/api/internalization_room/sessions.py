@@ -400,35 +400,41 @@ async def create_session(
 ) -> SessionStateResponse:
     """Open a session, and end this tablet's halt if it was standing in one.
 
-    The lift is here rather than in `create_session` because it is about the *caller* and
-    not about the session: a room going again is evidence only for the tablet that went,
-    and a lift keyed on the team would clear a halt because somebody else in the room
-    started something. `caller` is the gate's own result — the credential is resolved once
-    per request and FastAPI's dependency cache is what makes this and `device_project_dep`
-    one query — so a caller on the shared room key names no device and lifts nothing.
+    Two halts end here, and they are keyed differently. The device's halt is the caller's:
+    a tablet opening a session is evidence only for that tablet, so it is lifted per caller,
+    here. The session's halt is the team's: any credentialed tablet of the team that reopens a
+    session a call for a person stopped is the room going again, and the room never waits on
+    the Desk (ENG-1354), so `open_session` lifts it in the open's own transaction (ADR 0045).
+    Both are gated on `caller`, the gate's own result — the credential is resolved once per
+    request and FastAPI's dependency cache is what makes this and `device_project_dep` one
+    query — so a caller on the shared room key names no device and lifts nothing.
 
-    After the session exists, so a `create_session` that refuses leaves the halt standing:
+    After the session exists, so an `open_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
 
-    The opening is written ahead only for a panorama the team has not yet gone on from:
-    that is the team about to enter the book, and the line is the passage's first. A team
-    already inside the book that chose to hear the panorama again is there for the book's
+    The session is the team's for this pericope and language, returned whatever its state
+    and created only when none exists (`open_session`, ADR 0045). A team choosing to hear the
+    Panorama again is therefore returned the Panorama session it already has, not a fresh one.
+
+    The opening is written ahead only by the open that created a panorama the team has not
+    yet gone on from: that is the team about to enter the book, and the line is the passage's
+    first. A resumed session already had its chance, and a second preparation would be a
+    second opening for one session. A team already inside the book is there for the book's
     shape, not for the door into a passage, so nothing is written for it. What that costs
-    is stated rather than waved away: `hand_over` would move the line to a bead opened after
-    the second panorama too, and a team that does leave it into a passage hears an opening
-    written live, with the wait the prepared one spares. A model call and a clip on every
-    second hearing, most of which end on the wheel, is the dearer side of that trade.
+    is stated rather than waved away: a team that does leave it into a passage hears an
+    opening written live, with the wait the prepared one spares.
     """
     previous = None
     if payload.after_session:
         previous = await room.session_for_room_caller(db, payload.after_session, project_id)
-    session = await room.create_session(
+    session, created = await room.open_session(
         db,
         pericope=payload.pericope,
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
         chosen=payload.chosen,
+        lifts=caller is not None,
     )
     if caller is not None:
         await clear_needs_person(db, caller.id)
@@ -436,8 +442,10 @@ async def create_session(
     if previous is not None:
         if hand_over(previous, session):
             await db.commit()
-    elif is_panorama(session.pericope) and not await heard_panorama(
-        db, project_id=project_id, book=book_of(session.pericope)
+    elif (
+        created
+        and is_panorama(session.pericope)
+        and not await heard_panorama(db, project_id=project_id, book=book_of(session.pericope))
     ):
         background.add_task(prepare_opening, session.id)
     nudge(session.project_id, "sessions")

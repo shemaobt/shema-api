@@ -31,11 +31,13 @@ replaying to a team that heard it beats skipping it for a team that did not.
 fourteen times through Ruth: a tablet with no mark asked at every launch, and a team that
 had gone on into the first passage and finished it sat through the whole book again on the
 way to the second. The rule is `_heard_key` below, and nothing else keys on the passage.
-What stops a team from hearing it *again on purpose* is not this module: `create_session`
-asks it only for the app's automatic launch request, never for a request the team chose.
+What stops a team from hearing it *again on purpose* is not this module: the open door,
+`open_session`, asks it only for the app's automatic launch request, never for a request the
+team chose, which is answered with the team's own Panorama session (ADR 0045).
 
-**Two tablets of one team** asking in the same moment both find nothing and both play it.
-There is no lock, and the second hearing is the outcome a lock would only make rarer.
+**Two tablets of one team** asking in the same moment are returned one Panorama session,
+because the open door creates a team's session of a pericope once (ADR 0045), and only the
+open that created it prepares its opening. Whether the Panorama was heard stays derived.
 """
 
 from __future__ import annotations
