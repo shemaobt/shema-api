@@ -384,6 +384,25 @@ async def test_a_sensitive_project_s_notice_never_names_its_language(db_session,
     assert "Norlandia" not in json.dumps(after)
 
 
+async def test_a_quiet_sensitive_project_is_not_named_either(db_session, shema_app) -> None:
+    """The stale reading has no row: its name comes off the card ``browse_projects`` built for a
+    reader outside coordination, and a withheld project's is not answered there either."""
+    project = await _project(
+        db_session, "a1b2c3d4-0000-4000-8000-000000000007", sensitive=True, name=SECRET_NAME
+    )
+    project.start_date = TODAY - timedelta(days=400)
+    project.status = None
+    await db_session.commit()
+    coordinator = await _coordinator(db_session, shema_app)
+
+    [stale] = await _panel(db_session, coordinator)
+
+    assert stale["kind"] == "stale"
+    assert stale["facts"]["languageName"] == ""
+    assert stale["facts"]["daysSinceUpdate"] >= 365
+    assert "Norlandia" not in json.dumps(stale)
+
+
 async def test_an_old_notice_answers_its_kind_and_none_of_its_prose(db_session, shema_app) -> None:
     """**OBT-556, item 1, for what is already stored.** Rows written before OBT-559 carry their
     sentence and no facts — the urgent one with the place in it. The panel answers each one's kind

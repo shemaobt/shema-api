@@ -150,9 +150,17 @@ async def _stale_cards(
     return list(page.items)
 
 
-def _stale_entry(
-    card: ShemaProjectCard, project: ShemaProject, *, today: date
-) -> ShemaNotificationEntry:
+def _stale_language_name(card: ShemaProjectCard) -> str:
+    """:func:`_language_name`'s answer, read off the card instead of a second read of the row.
+
+    The card is a leaving shape ``browse_projects`` built for a reader outside coordination, so
+    its ``location_withheld`` is the flag, fail-closed, and its ``language_name`` the one the
+    record holds — the two :func:`_language_name` reads.
+    """
+    return "" if card.location_withheld else card.language_name
+
+
+def _stale_entry(card: ShemaProjectCard, *, today: date) -> ShemaNotificationEntry:
     """A quiet project, worded by the console: its name and how long it has been quiet."""
     return ShemaNotificationEntry(
         id=_stale_id(card),
@@ -165,7 +173,7 @@ def _stale_entry(
         created_at=datetime.combine(today, time.min, tzinfo=UTC),
         is_read=False,
         facts=ShemaProjectNoticeFacts(
-            language_name=_language_name(project),
+            language_name=_stale_language_name(card),
             days_since_update=card.derived.days_since_update if card.derived else None,
         ),
     )
@@ -307,9 +315,7 @@ async def list_notification_panel(
     notices = await _project_notices(db, row_ids)
     cards = await _stale_cards(db, scope, today=today) if reads_health else []
 
-    projects = await _projects(
-        db, {detail.project_id for detail in notices.values()} | {card.id for card in cards}
-    )
+    projects = await _projects(db, {detail.project_id for detail in notices.values()})
     reached = await _reached(
         db,
         scope,
@@ -328,9 +334,7 @@ async def list_notification_panel(
         else:
             delivered.append(_request_entry(row, kind, requests.get(row.id), reached=reached))
 
-    stale = [
-        _stale_entry(card, projects[card.id], today=today) for card in cards if card.id in projects
-    ]
+    stale = [_stale_entry(card, today=today) for card in cards]
     seen = await _read_stale_ids(db, user.id, [entry.id for entry in stale])
     stale = [entry.model_copy(update={"is_read": entry.id in seen}) for entry in stale]
 
