@@ -28,11 +28,11 @@ async def nudge_channel(
         async with subscribe(team_id) as queue:
             while True:
                 try:
-                    what = await asyncio.wait_for(queue.get(), timeout=KEEP_ALIVE_SECONDS)
+                    frame = await asyncio.wait_for(queue.get(), timeout=KEEP_ALIVE_SECONDS)
                 except TimeoutError:
                     yield b": keep-alive\n\n"
                     continue
-                yield f'event: nudge\ndata: {{"what":"{what}"}}\n\n'.encode()
+                yield f"event: nudge\ndata: {frame.model_dump_json()}\n\n".encode()
 
     return StreamingResponse(
         _nudges(),
