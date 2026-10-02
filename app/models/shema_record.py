@@ -490,6 +490,10 @@ class ShemaProjectRecord(SessionShape):
 
     id: str
     language_name: str = ""
+    #: Overrides the base's excluded field so the ficha **shows** it: the name the other
+    #: readers get for a sensitive project, which coordination types here (OBT-560). Not
+    #: secret — it is exactly what everyone else already reads.
+    public_language_name: str | None = None
     language_code: str = ""
     bridge_language: str = ""
     vitality_status: str = ""
