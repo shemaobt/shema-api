@@ -320,8 +320,12 @@ _Avoid_: fail-safe (A to I), prompt, canned line, Linha de processo
 ### Test seams
 
 **Text seam** (`text-seam`):
-A door that takes as text what the team would have spoken and runs the real Guide, Analyst, Speaker and Validator, so that Marcia's golden scripts judge the room by measurement. It exists only where the runner key is set, answers 404 without it, and never reaches a tablet.
+A door that takes as text what the team would have spoken and runs the real Guide, Analyst, Speaker and Validator, so that Marcia's golden scripts judge the room by measurement. Its conversation doors are her **Golden doors**; what remains under this name is the back-translation's. It exists only where the runner key is set, answers 404 without it, and never reaches a tablet.
 _Avoid_: test mode, mock, stub, simulator, Entrada de texto
+
+**Golden doors** (`/golden/session`, `/golden/turn`):
+The two doors Marcia's own runner calls, opening a session and playing a turn, with her field names and her meaning, so that her runner judges our room unchanged. They read the runner key as a bearer credential, never refuse a field they do not know, and answer 404 while the key is unset.
+_Avoid_: text seam (for these two doors), golden API, test endpoints
 
 **Golden script**:
 One of Marcia's JSON scripts under her `golden/`: a declared draft of clips and the rounds of
