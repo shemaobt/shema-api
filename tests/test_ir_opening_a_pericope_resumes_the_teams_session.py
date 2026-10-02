@@ -12,14 +12,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import event, select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.internalization_room import sessions as sessions_api
 from app.core.enums import ProjectRole
@@ -28,7 +29,12 @@ from app.db.models.project import Project
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.sessions import append_exchange, get_session, is_panorama
+from app.services.internalization_room.sessions import (
+    append_exchange,
+    attend,
+    get_session,
+    is_panorama,
+)
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     having_finished_the_passage,
@@ -409,4 +415,63 @@ async def test_a_tablet_relaunched_in_a_room_halted_by_its_call_for_a_person_get
     assert relaunched["session_id"] == halted["session_id"]
     assert relaunched["halt"] is None
     assert relaunched["status"] == "in_progress"
+    assert await waiting_at_the_desk(client, desk) == {}
+
+
+def the_visit(session_id: str) -> str:
+    return f"{PREFIX}/facilitator/sessions/{session_id}/attended"
+
+
+async def test_a_visit_undone_after_the_tablet_reopened_the_room_leaves_the_room_going(
+    client, db_session, room_app
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    halted = await a_halted_room(client, tablet, desk)
+    visited = await client.post(the_visit(halted["session_id"]), headers=desk)
+    assert visited.status_code == 200, visited.text[:300]
+    await the_tablet_opens(client, tablet, {"pericope": P})
+
+    undone = await client.delete(the_visit(halted["session_id"]), headers=desk)
+
+    assert undone.status_code == 200, undone.text[:300]
+    assert await waiting_at_the_desk(client, desk) == {}
+
+
+async def test_a_visit_that_lands_while_the_tablet_reopens_the_room_leaves_nothing_to_put_back(
+    client, db_session, room_app, test_engine
+) -> None:
+    """The visit commits between the open's read of the halt and the open's write, which is
+    the order two requests can take in the field: the open's write is held until the
+    facilitator's own request has landed, through the room's real `attend`."""
+    team, tablet = await a_claimed_device(db_session)
+    desk, facilitator = await at_the_desk(db_session, room_app, team)
+    halted = await a_halted_room(client, tablet, desk)
+    url = test_engine.url.render_as_string(hide_password=False)
+    landed: list[str] = []
+
+    async def visit() -> None:
+        engine = create_async_engine(url)
+        async with AsyncSession(engine, expire_on_commit=False) as db:
+            await attend(db, await get_session(db, halted["session_id"]), by=facilitator.id)
+        await engine.dispose()
+
+    def the_visit_lands_first(_conn, _cursor, statement, *_: Any) -> None:
+        if landed or not statement.startswith("UPDATE ir_sessions"):
+            return
+        landed.append(statement)
+        other = threading.Thread(target=asyncio.run, args=(visit(),))
+        other.start()
+        other.join()
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", the_visit_lands_first)
+    try:
+        await the_tablet_opens(client, tablet, {"pericope": P})
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", the_visit_lands_first)
+    assert landed, "the open wrote nothing for the visit to land before"
+
+    undone = await client.delete(the_visit(halted["session_id"]), headers=desk)
+
+    assert undone.status_code == 200, undone.text[:300]
     assert await waiting_at_the_desk(client, desk) == {}

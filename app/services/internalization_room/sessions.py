@@ -217,8 +217,9 @@ async def open_session(
     every launch.
 
     A tablet that opens a session halted by its call for a person is back in the room, so
-    ``lifts`` ends that halt the way a landed turn does (`_lifted`); a warning stands, because
-    a facilitator's visit is its only exit (ADR 0039). Only a credentialed tablet lifts.
+    ``lifts`` writes what a landed turn writes for it (`_a_teams_return`): the halt lifts, and
+    a visit that lifted it becomes final. A warning stands, because a facilitator's visit is
+    its only exit (ADR 0039). Only a credentialed tablet lifts.
 
     A caller with no team has nothing to resume, so it is minted a session as before.
     """
@@ -263,8 +264,15 @@ async def open_session(
             session, created = await get_session(db, winner), False
     if after_panorama and not session.after_panorama:
         session.after_panorama = True
-    if lifts and session.status is IRSessionStatus.NEEDS_PERSON:
-        session.status = _lifted(session)
+    if lifts and (
+        session.status is IRSessionStatus.NEEDS_PERSON or session.lifted_halt is not None
+    ):
+        await db.execute(
+            update(IRSession)
+            .where(IRSession.id == session.id)
+            .values(**_a_teams_return(session))
+            .execution_options(synchronize_session=False)
+        )
     await db.commit()
     await db.refresh(session)
     return session, created
@@ -576,40 +584,48 @@ async def append_exchange(
                 issues=outcome.issues,
             )
     messages.append(guide)
-    values: dict[str, Any] = {"messages": messages}
-    nothing_to_put_back = IRSession.attended_at.is_not_distinct_from(session.attended_at)
-    if session.status is IRSessionStatus.NEEDS_PERSON:
-        nothing_to_put_back = or_(
-            nothing_to_put_back,
-            and_(
-                IRSession.halts_raised == session.halts_raised,
-                IRSession.lifted_halt == HaltKind.BLOCKING.value,
-            ),
-        )
-        values["status"] = _lifted(session)
-    values["lifted_halt"] = case((nothing_to_put_back, None), else_=IRSession.lifted_halt)
+    values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
     if state is not None:
         values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
 
 
-def _lifted(session: IRSession) -> ColumnElement[IRSessionStatus]:
-    """The status a blocking halt lifts to, written only over the halt that was read.
+def _a_teams_return(session: IRSession) -> dict[str, Any]:
+    """What the team coming back to a room writes, as of the row ``session`` was read at.
 
-    One rule for every lift the team makes, a landed turn or a tablet opening the session
-    again. Guarded by ``halts_raised`` so a halt raised between the read and the write is a
-    new ask and stands, and by the status so a lift that lost the race restores nothing.
+    One rule for every return the team makes, a landed turn or a tablet opening the session
+    again (ADR 0045). A blocking halt that was read lifts, guarded by ``halts_raised`` so a
+    halt raised between the read and the write is a new ask and stands, and by the status so
+    a lift that lost the race restores nothing.
+
+    And a visit that lifted the halt becomes final: the team's own return is the evidence the
+    room is going, so undoing the visit afterwards has nothing to put back. That holds for a
+    visit read before the write, and for one that landed in between, while it answers the
+    halt that was read.
     """
-    return case(
-        (
-            and_(
-                IRSession.status == IRSessionStatus.NEEDS_PERSON,
-                IRSession.halts_raised == session.halts_raised,
-            ),
-            halt.a_lift_restores(),
+    nothing_to_put_back = IRSession.attended_at.is_not_distinct_from(session.attended_at)
+    if session.status is not IRSessionStatus.NEEDS_PERSON:
+        return {"lifted_halt": case((nothing_to_put_back, None), else_=IRSession.lifted_halt)}
+    nothing_to_put_back = or_(
+        nothing_to_put_back,
+        and_(
+            IRSession.halts_raised == session.halts_raised,
+            IRSession.lifted_halt == HaltKind.BLOCKING.value,
         ),
-        else_=IRSession.status,
     )
+    return {
+        "status": case(
+            (
+                and_(
+                    IRSession.status == IRSessionStatus.NEEDS_PERSON,
+                    IRSession.halts_raised == session.halts_raised,
+                ),
+                halt.a_lift_restores(),
+            ),
+            else_=IRSession.status,
+        ),
+        "lifted_halt": case((nothing_to_put_back, None), else_=IRSession.lifted_halt),
+    }
 
 
 def _containment_of(outcome: TurnOutcome) -> str:
