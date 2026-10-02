@@ -21,8 +21,11 @@ read already uses, and never a payload assembled from rows:
 **The header is addressed, the rows are not.** How many places were withheld is announced to
 coordination only (GATE-04, 1.3): ``withheld_note`` decides, told who the exporter is — the
 region's coordination if they coordinate anything, as the Projetos screen addresses its own
-notice. The rows stay ``outside`` either way; the exporter's reader reaches the header and
-nothing else.
+notice. The rows stay ``outside`` either way; the exporter's reader reaches the header — and,
+since OBT-553, one thing in each row: a team's health. A file is a copy of what its exporter reads,
+and an exporter outside ``_health_audience.HEALTH_AUDIENCE`` reads no health, so their rows carry
+``overallHealth: "na"`` (``_health_audience.health_as_read``); the place is still ``outside`` for
+everybody.
 
 **Every file is logged before it is handed back**, in ``shema_exports``: who, when, the scope,
 the format, how many rows and how many withheld, and which projects and requests went out, by
@@ -72,6 +75,7 @@ from app.models.shema_transfer import (
 )
 from app.services.shema._audit import author_name
 from app.services.shema._consent import AuthorizedRequest, authorized_requests_by_project
+from app.services.shema._health_audience import health_as_read
 from app.services.shema._media_sharing import can_export_notes
 from app.services.shema._redaction import withheld_note
 from app.services.shema._scope import Readership, RegionScope
@@ -130,6 +134,8 @@ def _write(
     header: _Header,
     file_format: ExportFormat,
     language: PulseLanguage,
+    *,
+    reads_health: bool,
 ) -> _Written:
     """The rows through the boundary, the header addressed, the file rendered — no I/O at all.
 
@@ -139,16 +145,19 @@ def _write(
     counts are plain values — so it touches no session and needs none.
     """
     notes_leave = can_export_notes(EXPORT_AUDIENCE)
-    rows = [
-        ExportedProject.model_validate(project).model_copy(
-            update={
-                "open_needs": open_needs.get(project.id, 0),
-                "shared_prayer_requests": [request.text for request in authorized[project.id]],
-                "exported_notes": project.notes if notes_leave else None,
-            }
+    rows = []
+    for project in projects:
+        row = ExportedProject.model_validate(project)
+        rows.append(
+            row.model_copy(
+                update={
+                    "open_needs": open_needs.get(project.id, 0),
+                    "shared_prayer_requests": [request.text for request in authorized[project.id]],
+                    "exported_notes": project.notes if notes_leave else None,
+                    **health_as_read(row, reads_health=reads_health),
+                }
+            )
         )
-        for project in projects
-    ]
     withheld = withheld_note(rows, header.addressee)
     contains, confidential = export_copy(language)
     meta = ExportMeta(
@@ -184,7 +193,8 @@ async def export_projects(
     """The caller's scope as a file in ``file_format``, headed in ``language`` — and logged.
 
     ``scope`` is positional and has no default, for ``list_projects``' stated reason.
-    ``readership`` addresses the header and builds no row. ``now`` is injected, as every read
+    ``readership`` addresses the header and decides one thing in each row, a team's health; the
+    place in every row is ``outside`` whoever exports. ``now`` is injected, as every read
     here injects its day, and is the instant both the file and its log row carry.
     """
     projects = await list_projects(db, scope)
@@ -202,7 +212,14 @@ async def export_projects(
         addressee=addressee,
     )
     written = await asyncio.to_thread(
-        _write, projects, authorized, open_needs, header, file_format, language
+        _write,
+        projects,
+        authorized,
+        open_needs,
+        header,
+        file_format,
+        language,
+        reads_health=readership.reads_health,
     )
 
     request_ids = [request.id for project in projects for request in authorized[project.id]]

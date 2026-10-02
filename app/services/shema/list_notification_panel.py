@@ -33,6 +33,13 @@ A project notice written before OBT-559 has no facts and answers its kind and no
 prose was written once, for whoever read it then, and an urgent need's named the place
 (OBT-556, item 1).
 
+**A health notice is read by who the account is now, not by who it was when it was addressed**
+(OBT-553). ``_health_notice.py`` addresses the audience at the moment a reading turns critical, and
+a grant can be taken back afterwards; an account that left the audience — moved to the Resource
+Circle, say — would otherwise keep reading *which team went critical* in its panel. So the same
+``reads_assessments`` answer that gates the stale reading leaves the health kind out of the
+delivered rows, in the query and therefore before the cap, as §5.10 routes everything else.
+
 **A request notice points at its project only for a reader who reaches it** (OBT-541), by the
 same rule. The form's arrival and decision carry their project in ``shema_request_notices`` so
 the console can open its record; the Admin and the Gestor who hear of every arrival reach no
@@ -309,7 +316,13 @@ async def list_notification_panel(
     """
     reads_health = await reads_assessments(db, user, app_key)
     app_id = await get_shema_app_id(db)
-    rows = await list_notifications(db, user.id, app_id, limit=PANEL_CAP)
+    rows = await list_notifications(
+        db,
+        user.id,
+        app_id,
+        limit=PANEL_CAP,
+        exclude_event_types=() if reads_health else (HEALTH_EVENT_TYPE,),
+    )
     row_ids = [row.id for row in rows]
     requests = await _request_notices(db, row_ids)
     notices = await _project_notices(db, row_ids)

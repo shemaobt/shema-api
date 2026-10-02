@@ -33,18 +33,39 @@ put them on the recipient list: :func:`recipients` is read off actual grants, so
 notified when they hold one of the three roles and not otherwise. An administrative capability
 is not a pastoral responsibility, and a notice addressed to whoever holds the platform's keys is
 a notice nobody owns.
+
+**The same list decides what every other door hands over (OBT-553).** The assessment's own route
+refused the Resource Circle while the ficha, the card and the search handed it the projection,
+the history and the pastoral follow-up — and the card's tone, the *atenção* preset, the health
+facet, the health order and the export's ``overallHealth`` are all computed from those fields.
+So the question *does this reader read a team's health* is asked here and nowhere else:
+:func:`in_health_audience` answers it off a grant already read (``app/api/shema/_deps.py`` sets
+``Readership.reads_health`` with it), and :func:`health_as_read` is what a shape becomes for a
+reader outside the audience — every health field as a project nobody has assessed holds it, the
+keys kept, because the contract is frozen. It is the ``_consent.request_as_read`` mould: an
+update the service applies after building the shape and **before** deriving or filtering from
+it, so a derivation cannot carry what the field no longer does. The record's write closes the
+other half — :func:`refuse_unread_health_writes` refuses the pastoral fields to a reader who reads
+them empty, *não dá para editar o que não se vê*.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection, Mapping
+from types import MappingProxyType
+from typing import Any, Final
 
+from pydantic import BaseModel
+from pydantic.alias_generators import to_camel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
-from app.db.models.shema_enums import ShemaRegionKey
+from app.db.models.shema import ShemaProject
+from app.db.models.shema_enums import ShemaRegionKey, ShemaYesNo
 from app.services import authorization_service
+from app.services.shema._redaction import log_reference
 from app.services.shema._scope import (
     COORDINATOR_ROLE,
     GLOBAL_ROLE,
@@ -60,16 +81,26 @@ logger = logging.getLogger(__name__)
 HEALTH_AUDIENCE: tuple[str, ...] = (GLOBAL_ROLE, COORDINATOR_ROLE, OBT_LAB_ROLE)
 
 
+def in_health_audience(granted: Collection[str], *, platform_admin: bool) -> bool:
+    """Whether a caller holding ``granted`` reads a team's health — the rule, off a grant in hand.
+
+    No query: the request has already read the grant once (``app/api/shema/_deps.py``), and a
+    second read of one fact is the defect ``scope_from_roles`` was written to close. An
+    installation admin reads, as they pass every guard here.
+    """
+    return platform_admin or any(role in granted for role in HEALTH_AUDIENCE)
+
+
 async def reads_assessments(db: AsyncSession, user: User, app_key: str) -> bool:
     """Whether this account may read a health assessment at all — the role half, alone.
 
     The region half is the scope every query in this module already takes, so composing them
     here would be a second place the project filter is applied; this answers the question the
-    scope cannot.
+    scope cannot. :func:`in_health_audience` with the grant read here — one rule, two callers.
     """
     if user.is_platform_admin:
         return True
-    return bool(await granted_roles(db, user.id, app_key) & set(HEALTH_AUDIENCE))
+    return in_health_audience(await granted_roles(db, user.id, app_key), platform_admin=False)
 
 
 async def require_reads_assessments(db: AsyncSession, user: User, app_key: str) -> None:
@@ -138,3 +169,84 @@ async def recipients(
     unscoped = await authorization_service.list_role_holders(db, app_key, (GLOBAL_ROLE,))
     scopes = await scopes_for(db, holders, unscoped={holder.id for holder in unscoped})
     return [holder for holder in holders if reaches(scopes[holder.id], region)]
+
+
+#: What a reader outside the audience reads in place of each health field a shape can carry —
+#: what a project nobody has assessed holds. Typed, because ``model_copy`` does not validate:
+#: the pastoral flag is the enum's ``nao``, the field's own default, since ``ShemaYesNo`` has no
+#: third answer and ``null`` would break the contract's type.
+UNREAD_HEALTH: Final[Mapping[str, Any]] = MappingProxyType(
+    {
+        "health_emotional": None,
+        "health_relational": None,
+        "health_spiritual": None,
+        "health_physical": None,
+        "health_assessment_date": None,
+        "health_assessor": "",
+        "health_notes": "",
+        "needs_pastoral_intervention": ShemaYesNo.PT_NAO,
+        "pastoral_intervention_name": "",
+        "pastoral_intervention_when": None,
+        "health_history": None,
+    }
+)
+
+
+def health_as_read(shape: BaseModel, *, reads_health: bool) -> dict[str, Any]:
+    """The health fields ``shape`` declares, as this reader reads them — an update, or nothing.
+
+    Applied with ``model_copy`` by the service that built the shape, before anything derives,
+    filters, counts or sorts from it: the card's tone, the *atenção* preset and the health facet
+    read these fields, so a reduction applied only at the wire would leave each of them saying
+    what the field no longer does. Only the fields the shape declares, which is
+    ``LeavingShape._withhold``'s idiom: the card has no history and the export row no notes.
+    """
+    if reads_health:
+        return {}
+    return {name: value for name, value in UNREAD_HEALTH.items() if name in shape.model_fields}
+
+
+#: The health fields the record's own write takes: the pastoral follow-up. The rest of the
+#: projection has one writer, the assessment, which already refuses everybody outside the
+#: audience — and ``ShemaProjectUpdate`` refuses its names outright.
+PASTORAL_WRITES: Final[tuple[str, ...]] = (
+    "needs_pastoral_intervention",
+    "pastoral_intervention_name",
+    "pastoral_intervention_when",
+)
+
+
+def refuse_unread_health_writes(
+    project: ShemaProject,
+    sent: Collection[str],
+    *,
+    reads_health: bool,
+    user: User,
+    operation: str,
+) -> None:
+    """Refuse the pastoral fields to a reader who reads them empty — a 403 naming them.
+
+    *Não dá para editar o que não se vê* (OBT-528), at the follow-up: a reader handed ``nao``
+    and ``""`` where a team's pastoral escalation is would erase it by typing over what it
+    cannot see. Answered from the names sent and never from their values, so the refusal is no
+    oracle; ``_consent.refuse_prayer_decisions`` is the same answer for the prayer request.
+    """
+    if reads_health:
+        return
+    refused = [name for name in PASTORAL_WRITES if name in sent]
+    if not refused:
+        return
+    named = [to_camel(name) for name in refused]
+    logger.warning(
+        "shema authorization refused: a team's health this reader may not write",
+        extra={
+            "shema_operation": operation,
+            "shema_user_id": user.id,
+            "shema_refused_fields": named,
+            **log_reference(project),
+        },
+    )
+    raise AuthorizationError(
+        f"{', '.join(named)}: only the coordination and the OBT Lab write a team's pastoral "
+        "follow-up"
+    )

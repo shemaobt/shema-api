@@ -16,7 +16,13 @@ applied by the act of validating the row into
 :class:`~app.models.shema_record.ShemaProjectRecord` for that reader — this file only says who
 reads. The prayer request is the same shape of answer from its own owner (BE-09): a reader
 outside ``_consent.PRAYER_AUDIENCE`` gets a request nobody authorized as ``""``, and
-``_consent.request_as_read`` is what decides it. The three authorization columns behind every
+``_consent.request_as_read`` is what decides it. A team's health is the third (OBT-553): a reader
+outside ``_health_audience.HEALTH_AUDIENCE`` gets every health field as a project nobody has
+assessed holds it — the projection, the history and the pastoral follow-up — and
+``_health_audience.health_as_read`` decides it. Both are asked in :func:`_record_as_read`, the
+one place this record is reduced for who reads it beyond the place, and applied **before**
+``derive``, so the record's tone and health score cannot say what its fields no longer do. The
+three authorization columns behind every
 ``authorization`` key are still read by their one owner: ``_media_sharing.recorded_decision``
 builds the shape and hands it over, and ``tests/test_shema/test_privacy_owners.py`` is what keeps
 that true of the next file too.
@@ -30,6 +36,7 @@ one function, and a field that appears on the read cannot be missing from the sa
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +60,7 @@ from app.models.shema_record import (
 )
 from app.services.shema._audit import ChangesSince, changes_since
 from app.services.shema._consent import request_as_read
+from app.services.shema._health_audience import health_as_read
 from app.services.shema._media_sharing import recorded_decision
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
@@ -158,6 +166,21 @@ async def _health_history(db: AsyncSession, project_id: str) -> list[ShemaHealth
     ]
 
 
+def _record_as_read(
+    project: ShemaProject, record: ShemaProjectRecord, readership: Readership
+) -> dict[str, Any]:
+    """What this reader may not read on the record, beyond the place — one update, or nothing.
+
+    The place is the shape's own (``LeavingShape.read_by``). What else depends on who reads is
+    asked here and nowhere else in this file, each of its own owner: the prayer request of
+    ``_consent.py`` and a team's health of ``_health_audience.py``.
+    """
+    return {
+        **request_as_read(project, reads_withheld=readership.withheld_prayer),
+        **health_as_read(record, reads_health=readership.reads_health),
+    }
+
+
 async def build_record(
     db: AsyncSession, project: ShemaProject, *, readership: Readership, today: date
 ) -> ShemaProjectRecord:
@@ -178,9 +201,8 @@ async def build_record(
     assessments = await _health_history(db, project.id)
 
     reader = readership.reader_of(project.region_key)
-    record = ShemaProjectRecord.read_by(project, reader).model_copy(
+    joined = ShemaProjectRecord.read_by(project, reader).model_copy(
         update={
-            **request_as_read(project, reads_withheld=readership.withheld_prayer),
             "needs_items": needs,
             "materials": materials,
             "media_photos": photos or None,
@@ -190,6 +212,7 @@ async def build_record(
             "last_progress_date": history[-1].date if history else None,
         }
     )
+    record = joined.model_copy(update=_record_as_read(project, joined, readership))
     derived = derive(record, today, region=project.region_key)
     return record.model_copy(update={"derived": ShemaProjectDerived.of(derived)})
 

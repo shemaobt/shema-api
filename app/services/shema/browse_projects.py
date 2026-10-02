@@ -29,12 +29,22 @@ a search match this project on*, it asks ``_redaction.py``, which is the owner.
 :class:`~app.services.shema._scope.Readership` answers per project: a coordination reader's card
 carries the truth, everybody else's the region, and the search and the facets read the card the
 reader was given — so a count cannot name a place the card beside it withholds, from anybody.
+
+**And a team's health is reduced the same way, before anything is counted (OBT-553).** A reader
+outside ``_health_audience.HEALTH_AUDIENCE`` gets every health field empty on the card
+(:func:`_card_as_read`), so the tone, the health score and the *atenção* preset the pass computes
+from it cannot say which team is struggling. What the card cannot carry the search must not ask:
+:func:`_query_as_read` drops the health filter — ignored, as an unknown preset is, so no value of
+it carves out a subset — and turns the health order into the default one, and
+:func:`_facets_as_read` leaves the health group out of the counts rather than publish *na* for
+every project. Each is the one place its surface is reduced for who reads it beyond the place.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +56,7 @@ from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.models.shema_privacy import ShemaReader
 from app.models.shema_projects import (
+    DEFAULT_SORT,
     ShemaFacetCounts,
     ShemaNeedCard,
     ShemaProjectCard,
@@ -53,6 +64,7 @@ from app.models.shema_projects import (
     ShemaProjectPage,
     ShemaProjectQuery,
 )
+from app.services.shema._health_audience import health_as_read
 from app.services.shema._redaction import searchable_text, withheld_note
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.list_projects import list_projects
@@ -123,6 +135,53 @@ async def _last_progress_dates(db: AsyncSession, ids: list[str]) -> dict[str, da
     return dict((await db.execute(stmt)).all())  # type: ignore[arg-type]
 
 
+#: The name the health dimension goes by in the query, the order and the facet counts.
+_HEALTH = "health"
+
+
+def _card_as_read(card: ShemaProjectCard, readership: Readership) -> dict[str, Any]:
+    """What this reader may not read on a card, beyond the place — one update, or nothing.
+
+    The place is the shape's own (``LeavingShape.read_by``); a team's health is
+    ``_health_audience.py``'s, applied before the pass that filters, counts and derives.
+    """
+    return health_as_read(card, reads_health=readership.reads_health)
+
+
+def _query_as_read(query: ShemaProjectQuery, readership: Readership) -> ShemaProjectQuery:
+    """What this reader may ask the collection — the query, without the health it cannot read.
+
+    The health filter is **ignored**, which is what this endpoint already does with a preset it
+    does not know, and the health order falls back to the default, as an unknown sort does: the
+    answer is the same whatever the teams' health, so neither is an oracle. *Refused as
+    invalid* is not the alternative it sounds like here — an invalid value answers an empty
+    list, which would say *no project matches* and zero every count beside it.
+    """
+    if readership.reads_health:
+        return query
+    return query.model_copy(
+        update={"health": None, "sort": DEFAULT_SORT if query.sort == _HEALTH else query.sort}
+    )
+
+
+def _facets_as_read(counts: ShemaFacetCounts, readership: Readership) -> ShemaFacetCounts:
+    """The counts this reader may read — without the health group when it reads no health.
+
+    Absent and not ``{"na": total}``: every card this reader holds is unassessed by
+    construction, and a count saying so would be a number about nothing that reads as a fact.
+    """
+    if readership.reads_health:
+        return counts
+    return counts.model_copy(
+        update={
+            "groups": {
+                group: options for group, options in counts.groups.items() if group != _HEALTH
+            },
+            "group_all": {group: n for group, n in counts.group_all.items() if group != _HEALTH},
+        }
+    )
+
+
 async def _cards(
     db: AsyncSession, projects: list[ShemaProject], readership: Readership
 ) -> list[ShemaProjectCard]:
@@ -142,13 +201,15 @@ async def _cards(
     cards = []
     for project in projects:
         reader = readership.reader_of(project.region_key)
+        card = ShemaProjectCard.read_by(project, reader)
         cards.append(
-            ShemaProjectCard.read_by(project, reader).model_copy(
+            card.model_copy(
                 update={
                     "needs": needs.get(project.id, []),
                     "has_media": project.id in with_media,
                     "last_progress_date": newest.get(project.id),
                     "search_text": searchable_text(project, reader),
+                    **_card_as_read(card, readership),
                 }
             )
         )
@@ -183,6 +244,7 @@ async def browse_projects(
     region, and then only (GATE-04).
     """
     cards = await _cards(db, await list_projects(db, scope), readership)
+    query = _query_as_read(query, readership)
     result = filter_projects(cards, query, today)
 
     window = sort_records(result.visible, query.sort)
@@ -195,10 +257,13 @@ async def browse_projects(
 
     return ShemaProjectPage(
         items=items,
-        counts=ShemaFacetCounts(
-            groups={group: dict(options) for group, options in result.counts.groups.items()},
-            presets=dict(result.counts.presets),
-            group_all=dict(result.counts.group_all),
+        counts=_facets_as_read(
+            ShemaFacetCounts(
+                groups={group: dict(options) for group, options in result.counts.groups.items()},
+                presets=dict(result.counts.presets),
+                group_all=dict(result.counts.group_all),
+            ),
+            readership,
         ),
         matched=result.matched,
         total=result.total,
