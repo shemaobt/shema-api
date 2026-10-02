@@ -399,7 +399,7 @@ def submission_reaches_prayer_wall(project: ShemaProject, written: ShemaProjectU
     was given, and read alone it would lend last month's ``rede`` to a text nobody shared. The
     visibility has to be stated in ``written``, the record write the submission carries:
     unanswered, ``coordenacao``, or the text already on the record sent again without it, the
-    request is not shared, whatever the project said before.
+    submission shared nothing, whatever the project said before.
 
     **And the record has to agree.** The link is the weakest credential in the system and its
     answer is not applied until a coordinator applies it, so a leader claiming ``rede`` through
