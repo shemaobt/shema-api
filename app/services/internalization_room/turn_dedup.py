@@ -50,6 +50,15 @@ async def answer_once(
     return answered
 
 
+def in_flight(session_id: str, turn_id: str, project_id: str | None) -> bool:
+    """Whether this caller's request for this turn is still being answered in this process.
+
+    Keyed the way `answer_once` keys it, so a stranger's turn id landing on the owner's
+    turn in flight is not reported as in flight for the stranger.
+    """
+    return (session_id, turn_id, project_id) in _in_flight
+
+
 async def _on_a_session_of_its_own(
     answer: Callable[[AsyncSession], Coroutine[Any, Any, TurnResponse]],
 ) -> TurnResponse:

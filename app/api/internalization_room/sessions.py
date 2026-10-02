@@ -17,7 +17,7 @@ from app.api.internalization_room._deps import (
 from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import NotFoundError, UpstreamServiceError, ValidationError
 from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
@@ -56,6 +56,7 @@ from app.services.internalization_room.sessions import book_of, is_panorama
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
+    in_flight,
     remember_turn,
 )
 from app.services.internalization_room.voice_handles import clip_url
@@ -732,6 +733,36 @@ async def take_turn(
             reply = await answer(db)
     response.headers["Server-Timing"] = clock.server_timing()
     return reply
+
+
+@router.get(
+    "/sessions/{session_id}/turns/{turn_id}",
+    response_model=TurnResponse,
+    responses={202: {"description": "The turn is still in flight; nothing to read yet."}},
+    dependencies=[room_caller_dep],
+)
+async def look_at_turn(
+    session_id: str,
+    turn_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TurnResponse | Response:
+    """The tablet's one look at a turn it gave up on, without sending the turn again.
+
+    Posting the same `turn_id` again runs the turn when a file is attached and falls into
+    the "say it again" line when none is, so nothing could ask whether a turn landed
+    without doing it (ENG-1369). This answers 200 with what the turn door answered, 202
+    with no body while the turn is still in flight in this process, and 404 for an id
+    nothing answered — and for another team's session, the way the session read refuses it.
+    Reading writes nothing and calls no model.
+    """
+    await room.session_for_room_caller(db, session_id, project_id)
+    stored = await answered_turn(db, session_id, turn_id, project_id)
+    if stored is not None:
+        return TurnResponse(**stored)
+    if in_flight(session_id, turn_id, project_id):
+        return Response(status_code=202)
+    raise NotFoundError(f"Turn {turn_id} of session {session_id} not found")
 
 
 async def _answer_the_turn(
