@@ -70,11 +70,12 @@ request; not invented here.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final, NamedTuple
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -93,8 +94,8 @@ __all__ = [
     "check_exit_link",
     "contact_channel",
     "contact_hint",
-    "count_people",
     "count_review_due",
+    "count_withheld",
     "create_person",
     "edit_person",
     "entries_of",
@@ -308,9 +309,36 @@ async def _erase(db: AsyncSession, person: ShemaIntercessor) -> None:
     await db.commit()
 
 
-async def count_people(db: AsyncSession) -> int:
-    """How many are in the network at all — the number a withheld count is taken from."""
-    return int((await db.execute(select(func.count()).select_from(ShemaIntercessor))).scalar_one())
+def _in_the_network() -> Select[tuple[str]]:
+    """The people in the network: those holding the ``network`` consent, the ladder's floor.
+
+    **Not every row.** ``add_intercessor`` stores nobody without the consent and withdrawing it
+    erases the person, but a network imported in bulk arrives without one — the rows OBT-531's
+    batch-consent script exists for, and nothing has run it. A row with no basis is retained
+    data and not a member, so the counts the directory announces leave it out (OBT-556):
+    telling the Resource Circle that somebody exists who never agreed even to be reached is the
+    announcement the consent was meant to make impossible.
+    """
+    return select(ShemaIntercessorConsent.intercessor_id).where(
+        ShemaIntercessorConsent.context == ShemaConsentContext.NETWORK
+    )
+
+
+async def count_withheld(db: AsyncSession, *, excluding: Sequence[str]) -> int:
+    """How many people in the network the directory does not list — **a number, never a name**.
+
+    The directory's caller passes the ids it lists, so this counts the members it withholds: the
+    people holding ``network`` and not ``directory``. Counted in the database, so nothing that
+    identifies one of them is loaded into the process.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(ShemaIntercessor)
+        .where(ShemaIntercessor.id.in_(_in_the_network()))
+    )
+    if excluding:
+        stmt = stmt.where(ShemaIntercessor.id.not_in(excluding))
+    return int((await db.execute(stmt)).scalar_one())
 
 
 async def listable_ids(db: AsyncSession) -> list[str]:
@@ -506,16 +534,18 @@ async def mark_reviewed(db: AsyncSession, intercessor_id: str, *, now: datetime)
     await db.commit()
 
 
-async def count_review_due(db: AsyncSession, *, excluding: list[str], now: datetime) -> int:
+async def count_review_due(db: AsyncSession, *, excluding: Sequence[str], now: datetime) -> int:
     """How many people outside ``excluding`` are past their year — **a number, never a name**.
 
-    The directory's caller passes the ids it lists, so this counts the people it withholds. It
-    reads three dates per person and nothing else: not an id, a name, a country or a contact
-    reaches the process, and the dates are counted through :func:`review_due` and discarded.
+    The directory's caller passes the ids it lists, so this counts the people it withholds —
+    among the members of the network, the same people :func:`count_withheld` counts, so the
+    second number is always a part of the first. It reads three dates per person and nothing
+    else: not an id, a name, a country or a contact reaches the process, and the dates are
+    counted through :func:`review_due` and discarded.
     """
     stmt = select(
         ShemaIntercessor.added_at, ShemaIntercessor.reviewed_at, ShemaIntercessor.last_sent_at
-    )
+    ).where(ShemaIntercessor.id.in_(_in_the_network()))
     if excluding:
         stmt = stmt.where(ShemaIntercessor.id.not_in(excluding))
     return sum(

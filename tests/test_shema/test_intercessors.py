@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from sqlalchemy import event
 
+from app.db.models.shema_intercessor import ShemaIntercessor
 from tests.baker import make_user
 from tests.test_shema.conftest import PEOPLE, auth_header, make_intercessor, make_scoped_user
 
@@ -117,6 +118,34 @@ async def test_consenting_to_the_directory_is_not_consenting_to_an_export(
     ]
     assert (await client.get(PEOPLE, headers=headers)).json()["withheldCount"] == 0
     assert await leaving_directory(db_session) == []
+
+
+async def test_the_withheld_count_is_of_people_in_the_network(
+    db_session, client, shema_app
+) -> None:
+    """``withheldCount`` is how many **members** the list holds back (OBT-556).
+
+    One person of each kind the table can hold: listed (``network`` and ``directory``), a member
+    who did not agree to be listed (``network`` only), and a row imported in bulk with no consent
+    at all. Only the second is withheld by choice; the third was never in the network, and
+    counting every row told the Resource Circle that somebody exists who never agreed even to be
+    reached. Counted by row, this test read ``2``.
+    """
+    _user, headers = await _circle(db_session, shema_app)
+    listed = await make_intercessor(client, headers, name="Ana Listada", contact="ana@ex.org")
+    await client.put(
+        f"{PEOPLE}/{listed['id']}/consents/directory",
+        headers=headers,
+        json={"basis": "asked on the call of 3 March, said yes to the internal list"},
+    )
+    await make_intercessor(client, headers, name="Bia Reservada", contact="bia@example.org")
+    db_session.add(ShemaIntercessor(name="Cid Importado", country="BR", contact="cid@ex.org"))
+    await db_session.commit()
+
+    listing = (await client.get(PEOPLE, headers=headers)).json()
+
+    assert [person["name"] for person in listing["people"]] == ["Ana Listada"]
+    assert listing["withheldCount"] == 1
 
 
 async def test_the_export_gate_is_the_query_and_the_shape_carries_no_contact(
