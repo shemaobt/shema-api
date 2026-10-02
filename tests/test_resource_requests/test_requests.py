@@ -870,7 +870,7 @@ async def _to_column(db_session, request_id: str, stage: RRStage) -> None:
 async def test_the_gestor_reopens_an_approved_request_moved_to_revisar_and_holds_the_pen(
     db_session, client, rrf_app
 ) -> None:
-    """Karina, via Daniel, 1/out/2026: *"o Gestor abre uma revisão em nome da equipe"*.
+    """Karina, via Daniel, 1/out/2026: *"Gestor abre revisão em nome da equipe"*.
 
     The request stays the team's — it opens in their list, and the instance lock is theirs —
     but the Gestor is who writes it, because changing it is what he reopened it for.
@@ -926,6 +926,23 @@ async def test_the_team_still_needs_the_mesas_revisar_even_with_the_card_in_revi
     res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=team)
 
     assert res.status_code == 409, res.text
+    assert "Revisar" not in res.json()["detail"], "the team is told the column is enough"
+
+
+async def test_a_gestor_who_started_the_request_reopens_it_from_revisar(
+    db_session, client, rrf_app
+) -> None:
+    """The board is read off its reach, not off who started the request (PR #608 review)."""
+    gestor_user, gestor = await _gestor(db_session, rrf_app)
+    created = await create(client, gestor)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=gestor)
+    await _decide(db_session, created["id"], RRDecision.APPROVED)
+    await _to_column(db_session, created["id"], RRStage.REVISAR)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)
+
+    assert res.status_code == 201, res.text
+    assert res.json()["started_by"] == gestor_user.id
 
 
 async def test_after_the_mesas_revisar_the_pen_stays_with_the_team_whoever_opens_it(

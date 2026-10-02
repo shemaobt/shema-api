@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.rate_limit import limiter
-from app.db.models.resource_request import RRAttachment, RRDecision, RRRequest
+from app.db.models.resource_request import RRAttachment, RRDecision, RRRequest, RRStage
 from app.services.oral_collector import gcs_utils
 from tests.test_resource_requests.test_attachments import (
     PDF,
@@ -22,7 +22,14 @@ from tests.test_resource_requests.test_attachments import (
     put_file,
 )
 from tests.test_resource_requests.test_link_requests import holder
-from tests.test_resource_requests.test_requests import REQUESTS, _decide, as_mesa, draft
+from tests.test_resource_requests.test_requests import (
+    REQUESTS,
+    _decide,
+    _gestor,
+    _to_column,
+    as_mesa,
+    draft,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -198,3 +205,25 @@ async def test_the_board_reopening_a_link_request_leaves_it_the_links(
     assert revision.started_by_link_id == link["id"]
     edited = await client.patch(f"{REQUESTS}/{revision.id}", json=draft(), headers=headers)
     assert edited.status_code == 200, edited.text
+
+
+async def test_the_board_s_own_path_takes_the_pen_from_the_link(
+    db_session, client, rrf_app
+) -> None:
+    """On the board's *Revisar* path the Gestor writes the change, so the pen leaves the link
+    (FE-47, OBT-515, PR #608 review) — after the mesa's *revisar* it stays, as above."""
+    _admin, _link, headers = await holder(db_session, client)
+    own = await started_by(client, headers)
+    await client.post(f"{REQUESTS}/{own}/submit", headers=headers)
+    await _decide(db_session, own, RRDecision.APPROVED)
+    await _to_column(db_session, own, RRStage.REVISAR)
+    gestor_user, gestor = await _gestor(db_session, rrf_app)
+
+    res = await client.post(f"{REQUESTS}/{own}/revise", headers=gestor)
+
+    assert res.status_code == 201, res.text
+    revision = await db_session.get(RRRequest, res.json()["id"])
+    assert revision.started_by == gestor_user.id
+    assert revision.started_by_link_id is None
+    edited = await client.patch(f"{REQUESTS}/{revision.id}", json=draft(), headers=headers)
+    assert edited.status_code != 200, edited.text
