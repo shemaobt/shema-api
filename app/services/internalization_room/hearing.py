@@ -66,7 +66,7 @@ class HeardSpeech(BaseModel):
     language_code: str | None = None
     language_probability: float | None = None
     transcript_confidence: float | None = None
-    take_ms: int | None = None
+    take_ms: float | None = None
     #: The team cut the Guide's previous reply short to say this.
     interrupted: bool = False
 
@@ -153,5 +153,6 @@ async def heard_speech(
         transcript_confidence=result.transcript_confidence,
     )
     if speech.mother_tongue:
-        speech.take_ms = await measure_ms(audio)
+        measured = await measure_ms(audio)
+        speech.take_ms = None if measured is None else round(measured, -3)
     return speech

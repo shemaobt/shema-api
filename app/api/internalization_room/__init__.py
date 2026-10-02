@@ -6,6 +6,7 @@ from app.api.internalization_room import (
     conversation,
     coverage_channel,
     devices,
+    golden_doors,
     passages,
     questions,
     release,
@@ -13,7 +14,6 @@ from app.api.internalization_room import (
     segments,
     sessions,
     takes,
-    text_seam,
     text_seam_back_translation,
     voice,
 )
@@ -34,7 +34,7 @@ for _sub in (
     conversation,
     devices,
     attended,
-    text_seam,
+    golden_doors,
     text_seam_back_translation,
 ):
     for route in _sub.router.routes:

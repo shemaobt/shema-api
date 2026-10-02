@@ -13,7 +13,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import text_seam
+from app.api.internalization_room import golden_doors
 from app.core.config import get_settings
 from app.services.internalization_room.room_agent import CallAgent, room_agent
 from tests.text_seam_harness import (
@@ -40,7 +40,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
     )
-    monkeypatch.setattr(text_seam, "settle_coverage", _settled_later)
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settled_later)
     async with httpx.AsyncClient(
         transport=ASGITransport(app=the_app(db_session)),
         base_url="http://test",

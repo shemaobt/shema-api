@@ -60,6 +60,9 @@ class TurnOutcome:
     draft: str = ""
     verdict: str = ""
     room_note: str = ""
+    #: The turn the Guide was handed in the team's place: their words behind any room note,
+    #: or the instruction it spoke on. Empty when no Guide was asked.
+    guide_heard: str = ""
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
@@ -148,34 +151,36 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
     )
 
 
+def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements: bool) -> str:
+    """The Speaker's last user turn, behind everything already said.
+
+    What the team just said is that turn, on its own: the exchange it answers is the
+    conversation, not a heading inside the question. The instructions that ride per turn —
+    the opening, the two-movement mark — stay in that last message, which is where an
+    instruction is read as this turn's and not as something said earlier.
+
+    A turn with neither — the back-translation verdict — asks for its speech in the session's
+    own language rather than sending nothing: the API refuses an empty user message, and that
+    400 would reach the team as a fail-safe line.
+    """
+    if utterance:
+        return utterance
+    instruction = opening_instruction or SPEAK_THIS_TURN
+    if ask_for_movements:
+        return f"{instruction} {OPENING_MOVEMENT_INSTRUCTION}"
+    return instruction
+
+
 async def _draft(
     *,
     guide_prompt: str,
     conversation: list[Turn],
-    utterance: str,
+    turn: str,
     redraft_note: str,
     settings: Settings,
-    opening_instruction: str = "",
-    ask_for_movements: bool = False,
 ) -> str:
-    """Assemble the Speaker's last user turn, behind everything already said.
-
-    What the team just said is that turn, on its own: the exchange it answers is the
-    conversation, not a heading inside the question. The instructions that ride per turn —
-    the opening, the two-movement mark, the rewrite note — stay here, in the last message,
-    which is where an instruction is read as this turn's and not as something said earlier.
-
-    A turn with neither — the back-translation verdict — asks for its speech in the session's
-    own language rather than sending nothing: the API refuses an empty user message, and that
-    400 would reach the team as a fail-safe line. The fallback sits here and not at the call
-    site, because this is where the message is built.
-    """
-    if utterance:
-        user_content = utterance
-    else:
-        user_content = opening_instruction or SPEAK_THIS_TURN
-        if ask_for_movements:
-            user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
+    """Ask the Speaker for this turn, with the rewrite note behind it when there is one."""
+    user_content = turn
     if redraft_note:
         user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
     draft: str = await room_agent().turn.call_agent(
@@ -325,16 +330,16 @@ async def _voiced_after_validation(
     issues: list[dict[str, Any]] = []
     warmed_connection = False
 
+    turn = _the_guides_turn("" if opening else transcript, opening_instruction, ask_for_movements)
+
     for attempt in range(MAX_REDRAFTS + 1):
         draft, movements = split_opening_movements(
             await _draft(
                 guide_prompt=speaker_system,
                 conversation=conversation,
-                utterance="" if opening else transcript,
+                turn=turn,
                 redraft_note=redraft_note,
                 settings=settings,
-                opening_instruction=opening_instruction,
-                ask_for_movements=ask_for_movements,
             )
         )
         if not ask_for_movements:
@@ -407,6 +412,7 @@ async def _voiced_after_validation(
                     movements=movements,
                     draft=draft,
                     verdict=str(verdict["verdict"]),
+                    guide_heard=turn,
                 ),
                 started,
                 session_id,
@@ -429,6 +435,7 @@ async def _voiced_after_validation(
             fixed_line=line,
             draft=draft,
             verdict=str(verdict.get("verdict", "")),
+            guide_heard=turn,
         ),
         started,
         session_id,

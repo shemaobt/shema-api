@@ -16,7 +16,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import router, text_seam
+from app.api.internalization_room import golden_doors, router
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
@@ -29,10 +29,6 @@ from tests.text_seam_harness import (
     the_models_answer,
 )
 
-OPENING_NOTE = (
-    "[A sessão acabou de começar. A equipe abriu a passagem P01 e está à mesa, pronta para "
-    "começar. Fale primeiro.]"
-)
 MOTHER_TONGUE_NOTE = (
     "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
     "palavra chegou até você.]"
@@ -51,7 +47,7 @@ async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     async def _settled(**_: Any) -> None:
         return None
 
-    monkeypatch.setattr(text_seam, "settle_coverage", _settled)
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settled)
     test_app = FastAPI()
     test_app.include_router(router, prefix="/api/internalization-room")
     register_exception_handlers(test_app)
@@ -89,12 +85,16 @@ def _her_script(tmp_path: Path) -> Path:
     return path
 
 
-async def test_the_export_is_the_transcript_block_her_judge_is_handed(seam, tmp_path) -> None:
+async def test_the_export_is_the_transcript_block_her_judge_is_handed(
+    seam, tmp_path, monkeypatch
+) -> None:
+    agent = the_models_answer(monkeypatch)
     script = load_script(_her_script(tmp_path))
 
     session_id = await open_session(script, seam)
     played: list[Played] = []
     await play(script, seam, session_id=session_id, played=played)
+    opening = agent.guide_inputs[0]
     report, transcript = export(
         script,
         session_id=session_id,
@@ -105,13 +105,13 @@ async def test_the_export_is_the_transcript_block_her_judge_is_handed(seam, tmp_
     )
 
     assert transcript.read_text(encoding="utf-8") == (
-        f"[turn 0]\nTEAM: {OPENING_NOTE}\nGUIDE (pass): {GUIDE_LINE}\n\n"
+        f"[turn 0]\nTEAM: {opening}\nGUIDE (pass): {GUIDE_LINE}\n\n"
         f"[turn 1]\nTEAM: {TEAM_LINE}\nGUIDE (pass): {GUIDE_LINE}\n\n"
         f"[turn 2]\nTEAM: {MOTHER_TONGUE_NOTE}\nGUIDE (pass): {GUIDE_LINE}\n"
     ), "o bloco tem de entrar no prompt do juiz sem edição, no formato do runner dela"
     turns = json.loads(report.read_text(encoding="utf-8"))["turns"]
     assert [(t["idx"], t["team"], t["guide"], t["outcome"]) for t in turns] == [
-        (0, OPENING_NOTE, GUIDE_LINE, "pass"),
+        (0, opening, GUIDE_LINE, "pass"),
         (1, TEAM_LINE, GUIDE_LINE, "pass"),
         (2, MOTHER_TONGUE_NOTE, GUIDE_LINE, "pass"),
     ]

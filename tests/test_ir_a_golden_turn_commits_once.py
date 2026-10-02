@@ -1,10 +1,10 @@
-"""The text seam's own turn, counted the way `test_ir_a_voiced_turn_commits_once.py` counts
+"""A Golden doors turn, counted the way `test_ir_a_voiced_turn_commits_once.py` counts
 the voiced one: at the engine, by every `commit` event that carried a write, never by reading
 the code back.
 
-The seam is `text_seam.py`'s door, not `sessions.py`'s — the voiced turn already proved the
+The door is `golden_doors.py`'s, not `sessions.py`'s — the voiced turn already proved the
 service layer lands a turn in one UPDATE (ENG-1021); what was still open here was whether the
-seam's own route asked for that UPDATE once or asked `_land` for two.
+door's own route asked for that UPDATE once or asked `_land` for two.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import text_seam
+from app.api.internalization_room import golden_doors
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from tests.room_harness import counting_commits
@@ -42,7 +42,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
     )
     the_models_answer(monkeypatch)
-    monkeypatch.setattr(text_seam, "settle_coverage", _settled_later)
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settled_later)
 
     async def _never_voiced(text: str, **_: Any) -> None:
         raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")

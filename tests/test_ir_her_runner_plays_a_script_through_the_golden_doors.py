@@ -20,6 +20,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import golden_doors
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from app.services.internalization_room import llm
@@ -213,6 +214,99 @@ async def test_a_cut_in_in_the_mother_tongue_tells_the_guide_both_facts(
     assert answered.status_code == 200, answered.text
     assert agent.guide_inputs == [both]
     assert answered.json()["transcript"] == both
+
+
+async def test_a_team_turn_with_no_words_reaches_the_inaudible_ladder_not_a_refusal(
+    client, monkeypatch
+) -> None:
+    session_id = await _an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    for nothing in ("", "   "):
+        answered = await client.post(
+            f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": nothing}
+        )
+
+        assert answered.status_code == 200, answered.text
+        assert answered.json()["outcome"] == "fail_safe"
+    assert agent.guide_inputs == [], "a fala vazia chegou ao Guia em vez da escada de inaudível"
+
+
+async def test_an_interruption_with_words_stores_the_rooms_note_apart_from_the_teams_words(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    settled: list[str] = []
+
+    async def _settle(*, team_utterance: str, **_: Any) -> None:
+        settled.append(team_utterance)
+
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settle)
+    session_id = await _an_open_session(client)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "teamText": CUT_IN, "interrupted": True},
+    )
+
+    assert answered.status_code == 200, answered.text
+    session = await room.get_session(db_session, session_id)
+    await db_session.refresh(session)
+    assert _spoken(session.messages) == [
+        {"role": "guide", "text": GUIDE_LINE},
+        {"role": "room", "text": INTERRUPTED_NOTE},
+        {"role": "team", "text": CUT_IN},
+        {"role": "guide", "text": GUIDE_LINE},
+    ], "a nota da interrupção ficava gravada como fala da equipe"
+    assert settled == [CUT_IN], "o analista pago lia a nota da sala como palavras da equipe"
+
+
+async def test_an_interruption_with_no_words_settles_nothing(client, monkeypatch) -> None:
+    settled: list[str] = []
+
+    async def _settle(*, team_utterance: str, **_: Any) -> None:
+        settled.append(team_utterance)
+
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settle)
+    session_id = await _an_open_session(client)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "interrupted"}
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert settled == [], "a nota da interrupção ia ao classificador como se a equipe a dissesse"
+
+
+async def test_the_openings_transcript_is_what_the_guide_received(client, monkeypatch) -> None:
+    agent = the_models_answer(monkeypatch)
+    session_id = await _a_session(client)
+
+    opened = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
+    )
+
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["transcript"] == agent.guide_inputs[0], (
+        "o transcript da abertura vinha vazio e o juiz dela lia uma nota que o Guia não recebeu"
+    )
+
+
+async def test_a_mother_tongue_turn_of_a_fractional_length_is_answered_with_her_note(
+    client, monkeypatch
+) -> None:
+    session_id = await _an_open_session(client)
+    agent = the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{GOLDEN}/turn",
+        json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 2.5},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert agent.guide_inputs == [
+        "[A equipe falou na língua materna por cerca de 2.5 segundos; sem transcrição — "
+        "nenhuma palavra chegou até você.]"
+    ]
 
 
 async def test_a_session_opened_with_earlier_passages_has_the_guide_know_them_on_its_first_turn(
@@ -565,14 +659,12 @@ async def test_every_model_call_of_the_turn_comes_back_with_its_rung_and_tokens(
 async def test_the_beads_settle_before_the_answer_so_the_next_turn_reads_them(
     client, monkeypatch
 ) -> None:
-    from app.api.internalization_room import text_seam
-
     settled: list[tuple[str, str]] = []
 
     async def _settle(*, session_id: str, team_utterance: str, guide_response: str, **_: Any):
         settled.append((team_utterance, guide_response))
 
-    monkeypatch.setattr(text_seam, "settle_coverage", _settle)
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settle)
     session_id = await _an_open_session(client)
     assert settled == [], "a abertura é uma frase que a sala escreveu para si; não move conta"
 

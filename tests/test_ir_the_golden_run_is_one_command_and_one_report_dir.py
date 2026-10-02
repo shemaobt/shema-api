@@ -21,7 +21,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import text_seam
+from app.api.internalization_room import golden_doors
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from app.services.internalization_room import llm
@@ -51,7 +51,7 @@ def seam_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     async def _settled(**_: Any) -> None:
         return None
 
-    monkeypatch.setattr(text_seam, "settle_coverage", _settled)
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settled)
 
     async def _never_voiced(text: str, **_: Any) -> None:
         raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")
