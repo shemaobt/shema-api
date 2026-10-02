@@ -449,11 +449,13 @@ async def test_a_visit_that_lands_while_the_tablet_reopens_the_room_leaves_nothi
     halted = await a_halted_room(client, tablet, desk)
     url = test_engine.url.render_as_string(hide_password=False)
     landed: list[str] = []
+    visited: list[str] = []
 
     async def visit() -> None:
         engine = create_async_engine(url)
         async with AsyncSession(engine, expire_on_commit=False) as db:
             await attend(db, await get_session(db, halted["session_id"]), by=facilitator.id)
+            visited.append(halted["session_id"])
         await engine.dispose()
 
     def the_visit_lands_first(_conn, _cursor, statement, *_: Any) -> None:
@@ -470,6 +472,7 @@ async def test_a_visit_that_lands_while_the_tablet_reopens_the_room_leaves_nothi
     finally:
         event.remove(test_engine.sync_engine, "before_cursor_execute", the_visit_lands_first)
     assert landed, "the open wrote nothing for the visit to land before"
+    assert visited == [halted["session_id"]], "the visit never committed"
 
     undone = await client.delete(the_visit(halted["session_id"]), headers=desk)
 
