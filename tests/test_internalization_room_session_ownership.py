@@ -97,6 +97,10 @@ TESTED_ELSEWHERE = {
         "POST",
         f"{PREFIX}/sessions/{{session_id}}/turns",
     ): "test_internalization_room_turn_ownership.py",
+    (
+        "GET",
+        f"{PREFIX}/sessions/{{session_id}}/turns/{{turn_id}}",
+    ): "test_ir_a_turn_can_be_looked_at_without_being_sent_again.py",
     ("POST", f"{PREFIX}/sessions/{{session_id}}/release"): (
         "release_harness.py's own release cases — a stricter, pre-existing rule"
     ),
