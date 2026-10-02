@@ -27,7 +27,8 @@ is still the answer the *last* request was given — read alone, a project that 
 last month would lend it to a request the team never shared. So the submission has to say
 ``rede`` itself, and the record has to agree: a leader claiming it through an unauthenticated
 link cannot, by itself, make the network hear of anything. A request shared for the first time
-is therefore not announced on arrival; it reaches the wall when a coordinator applies it.
+is therefore **never announced**: nothing fires on arrival, nothing fires when a coordinator
+applies it, and the Resource Circle finds it on the wall without being told.
 
 **No body names a place, and none names the request.** The notice is a pointer: the language,
 and that something arrived. The record read is where the truth lives, behind the scope that
