@@ -249,6 +249,10 @@ class ShemaProject(Base):
     #: Never normalised: not trimmed, not title-cased, not transliterated. ``Embera Dobida``
     #: carries a non-breaking space and three names legitimately begin lowercase.
     language_name: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    #: What every reader but coordination reads in place of ``language_name`` while the
+    #: project is in a sensitive country — the name can name the place (OBT-560). Written by
+    #: coordination; ``None`` until it is, and then the region key stands in (fail closed).
+    public_language_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     #: Checked and never refused. The export holds ``?``, ``N/A``, ``not iso language``,
     #: ``LLL``, ``jaa-b`` and ``pah`` five times — which is why it is text and not a FK.
     language_code: Mapped[str] = mapped_column(String(50), default="", server_default="")

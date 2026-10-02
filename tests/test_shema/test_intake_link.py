@@ -43,7 +43,15 @@ LINKS = f"{PREFIX}/intake-links"
 #: deliberate (``app/models/shema_forms.py``): the form declares no place field, so the bit is
 #: a constant that says nothing — and the boundary is already underneath the shape for the day
 #: somebody adds one.
-FORM_KEYS = {"kind", "definitionVersion", "languageName", "expiresAt", "fields", "locationWithheld"}
+FORM_KEYS = {
+    "kind",
+    "definitionVersion",
+    "languageName",
+    "expiresAt",
+    "fields",
+    "locationWithheld",
+    "languageNameWithheld",
+}
 
 
 @pytest.fixture()

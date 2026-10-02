@@ -74,6 +74,7 @@ REPORT_KEYS = {
 LINE_KEYS = {
     "projectId",
     "languageName",
+    "languageNameWithheld",
     "country",
     "scopeUnits",
     "approvedAtStart",

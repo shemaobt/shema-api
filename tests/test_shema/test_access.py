@@ -442,17 +442,20 @@ def test_the_probes_are_removed_after_the_fixture() -> None:
         assert not any(path.startswith("/_probe") for path in paths)
 
 
-def test_the_module_router_is_a_plain_router_and_the_guard_is_on_the_inner_one() -> None:
+def test_the_module_router_carries_no_guard_and_the_guard_is_on_the_inner_one() -> None:
     """The shape BE-12 needs, asserted so it is not simplified away.
 
-    ``router`` carries no dependency of its own: that is what leaves room for the two
+    ``router`` carries no guard of its own: that is what leaves room for the two
     unauthenticated intake routes to be added to it directly, in a line a reviewer sees.
-    ``authenticated`` carries the guard, and everything else goes there.
+    ``authenticated`` carries the guard, and everything else goes there. Its one dependency is
+    OBT-555's cache rule, which admits everybody and refuses nobody —
+    ``tests/test_shema/test_cache_control.py`` is where it is held to what it writes.
     """
     from app.api.shema import authenticated, door, router
+    from app.api.shema._deps import NO_STORE
 
     assert isinstance(router, APIRouter)
-    assert router.dependencies == []
+    assert router.dependencies == [NO_STORE]
     assert len(authenticated.dependencies) == 1
     assert len(door.dependencies) == 1
 

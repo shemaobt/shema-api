@@ -12,7 +12,10 @@ something — the page needs nothing else, and shows nothing about the person, b
 forwarded link must not tell whoever holds it who is in the network. ``POST`` erases the person,
 their consents and every link they held, and answers 204. A link previewer fetches every URL it
 is given, which is why the ``GET`` is not the act. Every link that opens nothing — unknown,
-expired, already spent — is the same 404 with the same sentence.
+expired, already spent — is the same 404 with the same sentence. **No cache keeps the 204**: the
+route needs no ``Authorization``, so a shared cache may store it, and a stored 204 would go on
+saying the link opens after the person has left. The handler returns its own ``Response``, which
+FastAPI does not merge the router's header into, so it writes ``PER_READER_CACHE_CONTROL`` itself.
 
 **Included into the outer router on a named line** in ``app/api/shema/__init__.py``, and listed
 in ``tests/test_shema/test_access.py``'s ``UNAUTHENTICATED_PATHS``: the exemption is an edit a
@@ -33,7 +36,7 @@ slowapi's module, turning ``Db`` into a required query parameter.
 from fastapi import APIRouter, Request, Response, status
 from slowapi.util import get_remote_address
 
-from app.api.shema._deps import Db
+from app.api.shema._deps import PER_READER_CACHE_CONTROL, Db
 from app.core.rate_limit import limiter
 from app.services.shema import leave_network, open_exit_link
 
@@ -56,7 +59,10 @@ EXIT_WRITE_RATE_LIMIT = "10/minute"
 async def open_exit(token: str, request: Request, db: Db) -> Response:
     """Whether this link still lets somebody leave. Reads only; answers nothing but the fact."""
     await open_exit_link(db, token)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+        headers={"Cache-Control": PER_READER_CACHE_CONTROL},
+    )
 
 
 @router.post(_EXIT, status_code=status.HTTP_204_NO_CONTENT, response_model=None)

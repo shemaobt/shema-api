@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Response
 
-from app.api.shema._deps import APP_KEY, AdminUser, Db, Reading
+from app.api.shema._deps import APP_KEY, PER_READER_CACHE_CONTROL, AdminUser, Db, Reading
 from app.models.shema_pending import (
     ConfirmedProject,
     DiscardedProject,
@@ -31,10 +31,6 @@ from app.models.shema_pending import (
 from app.services.shema import confirm_project, list_pending_projects, reject_pending_project
 
 router = APIRouter()
-
-#: A list built for its reader, as the collection's is: nothing between the server and the Admin
-#: may keep it.
-PER_READER_CACHE_CONTROL = "private, no-store"
 
 
 @router.get("/pending-projects", response_model=list[PendingProject])
