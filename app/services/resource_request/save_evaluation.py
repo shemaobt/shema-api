@@ -3,7 +3,12 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, UnknownReferenceError, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    UnknownReferenceError,
+    UnprocessableValueError,
+    ValidationError,
+)
 from app.db.models.auth import User
 from app.db.models.resource_request import (
     RRDecision,
@@ -103,6 +108,14 @@ async def save_evaluation(
     the ``mesa`` role of an attendee is deliberately not done, because the ata states who
     was in the room, which is a fact and not a permission. Every check runs before any
     write, so a refusal leaves nothing half-saved.
+
+    **A decision is not recorded with nobody present** (FE-50, OBT-518). Karina, via Daniel,
+    1/out/2026, asked whether presence is required to save: *"Sim, obrigatório"*. That much is
+    hers. That it bites only a save carrying a **decision** is ours: scores and comments are
+    saved while the mesa is still reading, and the ata is the minutes of the decision, so a
+    draft with no one marked is a draft and not empty minutes. A 422 rather than a 400,
+    because nothing in the body is malformed — the rule depends on two fields together, which
+    is ``UnprocessableValueError``'s own case.
     """
     loaded = await get_request(db, request_id, user, app_key)
     request = loaded.request
@@ -115,6 +128,11 @@ async def save_evaluation(
         raise ValidationError(
             f"The evaluation says {payload.request_type.value} "
             f"and the request is {request.request_type.value}."
+        )
+
+    if payload.decision is not None and not payload.attendees:
+        raise UnprocessableValueError(
+            "A decision is recorded with the mesa members present: mark at least one."
         )
 
     if payload.attendees:

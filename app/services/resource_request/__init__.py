@@ -29,6 +29,7 @@ from app.services.resource_request.fund_balances import FundBalance, fund_balanc
 from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
+from app.services.resource_request.list_board_members import list_board_members
 from app.services.resource_request.list_fund_options import fund_options
 from app.services.resource_request.list_project_requests import list_project_requests
 from app.services.resource_request.list_request_cards import list_request_cards
@@ -130,6 +131,7 @@ __all__ = [
     "holds_capability",
     "link_actor",
     "link_status",
+    "list_board_members",
     "list_project_requests",
     "list_request_cards",
     "list_request_history",

@@ -275,6 +275,18 @@ A refusal it makes on purpose: `user_id` is a real FK, so a mesa member with no 
 cannot be recorded. That is the right failure rather than a gap, and BE-17 (OBT-477) — the
 half of D1 the client separated himself — is what closes it.
 
+**Who the members are, and that a decision needs them** (FE-50, OBT-518, 1/out/2026). Karina,
+via Daniel, answered two questions: members have *"conta própria"* (*"Cada membro com conta
+própria"*, not a list of names), and presence is *"Sim, obrigatório"*. So
+`GET /board-members` lists the holders of `edit_evaluation` — the mesa's role, granted in the
+PME — behind `view_evaluation`, and adding a member is granting the role, never an edit here.
+**Ours, not hers:** reading the members off `edit_evaluation` (the Gestor reads the list and is
+not on it); refusing a save that carries a **decision** with nobody present as a 422, while
+scores and comments still save with nobody marked; and serving `attendees_named` beside
+`attendees` on `EvaluationOut`, read off `users`, so a decision's minutes keep the names they
+recorded after a member's role is revoked. The names of the members themselves are still to
+arrive, and they are the Admin's to grant, not this module's to seed.
+
 **On the wire the signature is read as an e-mail, and the id stays where forensics needs
 it** (4/set/2026). `EvaluationOut` carried `evaluator_id` alone — an opaque uuid the
 frontend may not display (its §11) — so the screen had a signature it could not write down.

@@ -31,7 +31,7 @@ Nothing in this file lists an option.
 from collections.abc import Iterable
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -80,6 +80,11 @@ from app.utils.resource_request_vocabularies import (
     section_field_keys,
 )
 from app.utils.stored_time import as_utc
+
+if TYPE_CHECKING:
+    # Only for the annotation: a runtime import circles back through the services
+    # package's ``__init__``, which imports this module.
+    from app.services.resource_request._evaluation import Attendee
 
 _BUDGET_CATEGORY_SET = frozenset(BUDGET_CATEGORY_KEYS)
 
@@ -223,6 +228,18 @@ class ScoreOut(BaseModel):
     score: int | None
 
 
+class BoardMemberOut(BaseModel):
+    """A mesa member as the ata names them: the id the write sends, and what a person reads.
+
+    ``display_name`` is nullable because it is on ``users``; a screen that finds none shows
+    the e-mail, never the id (§11).
+    """
+
+    id: str
+    display_name: str | None
+    email: str
+
+
 class EvaluationOut(BaseModel):
     """The mesa's evaluation on the wire — served only behind ``view_evaluation``.
 
@@ -246,6 +263,11 @@ class EvaluationOut(BaseModel):
     real state (a draft, and every row the seed writes), never an error.
 
     **Ours, not the client's**, both of them.
+
+    ``attendees_named`` is the ata as a sheet prints it — the same people as ``attendees``,
+    in the same order, with the name beside each id (FE-50, OBT-518). Read here and not
+    off the current member list, so a decision's minutes keep the names they recorded after
+    a member's role is revoked. ``attendees`` stays for the write's round trip. Ours.
     """
 
     id: str
@@ -259,6 +281,7 @@ class EvaluationOut(BaseModel):
     scores: list[ScoreOut]
     total: int
     attendees: list[str]
+    attendees_named: list[BoardMemberOut]
     evaluated_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -271,6 +294,7 @@ class EvaluationOut(BaseModel):
         attendees: list[str],
         request_type: RRRequestType,
         evaluator_email: str | None,
+        attendees_named: Iterable["Attendee"],
     ) -> Self:
         """Build the envelope from the aggregate's parts — the ``RequestOut.of``
         precedent, here for the same reason: ``CLAUDE.md`` §2 keeps SQLAlchemy models out
@@ -293,6 +317,10 @@ class EvaluationOut(BaseModel):
             scores=[ScoreOut(criterion_key=row.criterion_key, score=row.score) for row in scores],
             total=sum_score(row.score for row in scores),
             attendees=attendees,
+            attendees_named=[
+                BoardMemberOut(id=person.id, display_name=person.display_name, email=person.email)
+                for person in attendees_named
+            ],
             evaluated_at=evaluation.evaluated_at,
             created_at=evaluation.created_at,
             updated_at=evaluation.updated_at,

@@ -30,6 +30,7 @@ from app.api.resource_requests._deps import (
     TeamReader,
 )
 from app.models.resource_request import (
+    BoardMemberOut,
     EvaluationOut,
     EvaluationWriteIn,
     RequestStatusOut,
@@ -37,6 +38,20 @@ from app.models.resource_request import (
 from app.services import resource_request as service
 
 router = APIRouter(tags=["resource requests"])
+
+
+@router.get("/board-members")
+async def list_board_members(user: CanViewEvaluation, db: Db) -> list[BoardMemberOut]:
+    """The mesa's members, for the ata's checklist (FE-50, OBT-518).
+
+    Behind ``view_evaluation``, the gate of the screen that draws the list: whoever reads
+    the evaluation reads who may be marked present in it, and nobody else learns who sits
+    on the mesa."""
+    members = await service.list_board_members(db, APP_KEY)
+    return [
+        BoardMemberOut(id=member.id, display_name=member.display_name, email=member.email)
+        for member in members
+    ]
 
 
 @router.get("/requests/{request_id}/evaluation")
