@@ -338,6 +338,12 @@ The secret that opens the **Text seam**. Empty in production, where the seam ans
 every door behind it.
 _Avoid_: api key (the room's own is a different door), token, password, Chave do runner
 
+### Build
+
+**Build**:
+The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.
+_Avoid_: version (a pericope's release), revision
+
 ### Other subsystems
 
 **Sound Necklace**:
