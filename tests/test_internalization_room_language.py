@@ -286,7 +286,7 @@ async def test_the_redraft_note_heading_the_guide_reads_is_english(
     await _draft(
         guide_prompt="system",
         conversation=[],
-        utterance="algo",
+        turn="algo",
         redraft_note="Redo it.",
         settings=get_settings(),
     )

@@ -1,38 +1,17 @@
-"""The wire of the text seam, in the names her golden runner already speaks.
+"""The wire of the text seam's back-translation door, and the model calls every seam reports.
 
-The runner points at her Next.js app or at this room by changing one base URL and nothing
-else, so the request and response fields here are hers — `sessionId`, `pericopeId`,
-`guideText`, `outcome` — spelled as she spells them and not in the room's own snake_case.
+Her back-translation runner speaks these shapes, so the fields here are hers — `sessionId`,
+`pericopeId`, `frases`, `outcome` — spelled as she spells them and not in the room's own
+snake_case.
 """
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
-
-class OpenTextSessionRequest(BaseModel):
-    pericopeId: str = Field(max_length=120)
-    #: Her scripts name the language the way a person would — `Brazilian Portuguese` — and
-    #: the room speaks in codes; either form is accepted.
-    language: str = Field(max_length=40)
-
-
-class TextSessionResponse(BaseModel):
-    sessionId: str
-    pericopeId: str
-    language: str
-
-
-class TextTurnRequest(BaseModel):
-    sessionId: str = Field(max_length=36)
-    #: What the team said, in the place the transcriber's words would have gone.
-    text: str | None = None
-    #: The session has just opened and the Guide speaks first. Only ever on a fresh session.
-    kickoff: bool = False
-    #: The words were spoken in the team's own language, for about this many seconds: they
-    #: enter as the recognizer would have flagged them, a confident detection of a language
-    #: other than the session's, and the room takes the path it already has for that.
-    motherTongue: int | None = None
+Outcome = Literal["pass", "corrected", "fail_safe"]
 
 
 class ModelCall(BaseModel):
@@ -46,22 +25,10 @@ class ModelCall(BaseModel):
     output_tokens: int
     cache_read_tokens: int | None
     cache_write_tokens: int | None
-    #: Filled once the room's usage line carries it; the whole turn's wall clock is `turnMs`.
+    #: Filled once the room's usage line carries it; the whole turn's wall clock is `latencyMs`.
     latency_ms: int | None
     #: At list price, as the room's own line prices it; null for a rung the table never priced.
     cost_usd: float | None
-
-
-class TextTurnResponse(BaseModel):
-    sessionId: str
-    transcript: str
-    guideText: str
-    #: What the judge is defined against: the Guide's own words (`pass`), the Validator's
-    #: mended version of them (`corrected`), or a pre-approved line (`fail_safe`).
-    outcome: str
-    #: Every model call the turn made, in order, so a run's cost and rung sit beside hers.
-    usage: list[ModelCall]
-    turnMs: int
 
 
 class DeclaredClip(BaseModel):

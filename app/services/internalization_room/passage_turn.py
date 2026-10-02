@@ -8,6 +8,7 @@ from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import (
     coverage_status_block,
+    earlier_passages_line,
     meaning_map_block,
     validator_map_block,
 )
@@ -33,6 +34,7 @@ async def run_turn(
     ask_for_movements: bool = False,
     mother_tongue: bool = False,
     prepared_pericope: str | None = None,
+    earlier_passages: dict[str, str] | None = None,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -48,6 +50,9 @@ async def run_turn(
     a live turn's `session_id` is that session's own, but a prepared one runs under the
     panorama's, and without the tag the two are indistinguishable in the log (ENG-968,
     ENG-1107).
+
+    `earlier_passages` is the session's stamp of this team's status on the earlier passages;
+    its fact line rides beside the coverage block, after the cache break, as in her app.
     """
     cfg = settings or get_settings()
 
@@ -62,7 +67,14 @@ async def run_turn(
         )
 
     map_block = meaning_map_block(pericope_num, book)
-    coverage_status = coverage_status_block(coverage_state, pericope_num)
+    coverage_status = "\n\n".join(
+        block
+        for block in (
+            coverage_status_block(coverage_state, pericope_num),
+            earlier_passages_line(pericope_num, book, earlier_passages),
+        )
+        if block
+    )
     return await _voiced_after_validation(
         speaker_system=render(
             cache_break_before(guide_prompt, "{{COVERAGE_STATUS}}"),

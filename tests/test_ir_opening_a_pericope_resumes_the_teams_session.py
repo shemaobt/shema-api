@@ -346,10 +346,10 @@ async def test_a_caller_with_no_team_still_gets_a_fresh_session_on_every_open(cl
     assert first.json()["session_id"] != second.json()["session_id"]
 
 
-async def test_the_text_seam_still_mints_a_session_on_every_open(client) -> None:
+async def test_the_golden_session_door_still_mints_a_session_on_every_open(client) -> None:
     body = {"pericopeId": P, "language": "pt"}
-    first = await client.post(f"{PREFIX}/text-seam/session", json=body)
-    second = await client.post(f"{PREFIX}/text-seam/session", json=body)
+    first = await client.post(f"{PREFIX}/golden/session", json=body)
+    second = await client.post(f"{PREFIX}/golden/session", json=body)
 
     assert first.status_code == second.status_code == 200
     assert first.json()["sessionId"] != second.json()["sessionId"]

@@ -31,11 +31,8 @@ from app.services.internalization_room.classify_coverage import (
     classify_coverage_by_keywords,
 )
 from app.services.internalization_room.coverage import CoverageStatus, floor_met
-from tests.text_seam_harness import RUNNER_KEY, the_app
+from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, the_app
 from tests.turn_harness import INVITATION, the_room_agent_is
-
-SEAM = "/api/internalization-room/text-seam"
-
 
 THE_GUIDE_SAYS = [
     "Welcome. Let me tell you the whole passage first, from the famine to the empty house.",
@@ -110,9 +107,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", _no_wire)
     monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
     transport = ASGITransport(app=the_app(db_session))
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://test", headers={"X-Access-Code": RUNNER_KEY}
-    ) as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=BEARER) as c:
         yield c
 
 
@@ -123,14 +118,18 @@ async def test_ruth_one_runs_to_done_on_the_keyword_classifier_and_no_provider(
     the_room_agent_is(monkeypatch, turn=scripted)
     monkeypatch.setattr(background, "classify_coverage", classify_coverage_by_keywords)
 
-    created = await client.post(f"{SEAM}/session", json={"pericopeId": "P01", "language": "en"})
+    created = await client.post(f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "en"})
     assert created.status_code == 200, created.text
     session_id = created.json()["sessionId"]
-    kickoff = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+    kickoff = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
+    )
     assert kickoff.status_code == 200, kickoff.text
 
     for said in THE_TEAM_SAYS:
-        answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": said})
+        answered = await client.post(
+            f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": said}
+        )
         assert answered.status_code == 200, answered.text
         assert answered.json()["outcome"] == "pass", answered.json()
 
@@ -162,13 +161,17 @@ async def test_a_silence_only_mentioned_in_scene_one_does_not_hold_back_the_late
     the_room_agent_is(monkeypatch, turn=ScriptedRoom(THE_GUIDE_SAYS))
     monkeypatch.setattr(background, "classify_coverage", classify_coverage_by_keywords)
 
-    created = await client.post(f"{SEAM}/session", json={"pericopeId": "P01", "language": "en"})
+    created = await client.post(f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "en"})
     assert created.status_code == 200, created.text
     session_id = created.json()["sessionId"]
-    kickoff = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+    kickoff = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
+    )
     assert kickoff.status_code == 200, kickoff.text
     for said in THE_TEAM_LEAVES_THE_SILENCE_UNTOLD:
-        answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": said})
+        answered = await client.post(
+            f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": said}
+        )
         assert answered.status_code == 200, answered.text
 
     session = await room.get_session(db_session, session_id)

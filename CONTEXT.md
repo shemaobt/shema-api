@@ -337,6 +337,18 @@ frases told back over it, with what each round is expected to produce. A runner 
 against a stack and judges it with her own checks. Read verbatim, never forked.
 _Avoid_: fixture, scenario, test case, roteiro
 
+**Room note**:
+A fact about the room the app hands the Guide in place of the team's words, bracketed and in the session's language: the session has just started, the team spoke in the mother tongue for about so many seconds, or the team cut the Guide's previous reply short. Never words the team said.
+_Avoid_: system message, prompt, instruction, Nota da sala
+
+**Earlier passages**:
+This team's status on each earlier passage of the book (approved, started, or not worked yet), kept on the session and handed to the Guide as a fact, complete or not at all.
+_Avoid_: history, progress, story so far (the digests of those passages, not the team's status on them), Passagens anteriores
+
+**Scene rehearsals**:
+The scenes whose recorded and translated scene rehearsal has reached the Guide as of a turn, the whole list each time; an empty list is the fact that none has.
+_Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de cena
+
 **Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
 The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
 every door behind it.
