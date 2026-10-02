@@ -31,7 +31,7 @@ Nothing in this file lists an option.
 from collections.abc import Iterable
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -80,6 +80,11 @@ from app.utils.resource_request_vocabularies import (
     section_field_keys,
 )
 from app.utils.stored_time import as_utc
+
+if TYPE_CHECKING:
+    # Only for the annotation: a runtime import circles back through the services
+    # package's ``__init__``, which imports this module.
+    from app.services.resource_request._evaluation import Attendee
 
 _BUDGET_CATEGORY_SET = frozenset(BUDGET_CATEGORY_KEYS)
 
@@ -289,7 +294,7 @@ class EvaluationOut(BaseModel):
         attendees: list[str],
         request_type: RRRequestType,
         evaluator_email: str | None,
-        attendees_named: Iterable[Any],
+        attendees_named: Iterable["Attendee"],
     ) -> Self:
         """Build the envelope from the aggregate's parts — the ``RequestOut.of``
         precedent, here for the same reason: ``CLAUDE.md`` §2 keeps SQLAlchemy models out
