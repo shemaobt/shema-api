@@ -19,7 +19,11 @@ place, so each record is **copied, its children repointed, and the original dele
 2. every column that references ``shema_projects.id`` is repointed — found by inspecting the
    database rather than listed here, so a table added later cannot be missed;
 3. the original is deleted and the guarded values are put back on the copy;
-4. the notification preferences' ``custom_project_ids`` (JSON, no foreign key) are mapped too.
+4. the two places a project id lives with no foreign key are mapped too: the notification
+   preferences' ``custom_project_ids`` (JSON), and the read marks of the stale notices,
+   ``shema_notification_reads.entry_id``, which is derived as ``stale:{project_id}:{date}`` —
+   left alone, every read mark on a stale notice would stop matching and the notice come back
+   unread (PR #607 review).
 
 Two of the children are append-only by trigger — ``shema_progress_history`` and
 ``shema_record_edits`` (``append_only_ddl``) — and both hold a ``RESTRICT`` foreign key to the
@@ -168,6 +172,26 @@ def _map_preferences(bind: sa.engine.Connection, mapping: dict[str, str]) -> Non
             )
 
 
+READS = "shema_notification_reads"
+STALE = "stale"
+
+
+def _map_read_marks(bind: sa.engine.Connection, mapping: dict[str, str]) -> None:
+    reads = sa.table(READS, sa.column("user_id", sa.String), sa.column("entry_id", sa.String))
+    stale = bind.execute(
+        sa.select(reads.c.user_id, reads.c.entry_id).where(reads.c.entry_id.like(f"{STALE}:%"))
+    ).all()
+    for user_id, entry_id in stale:
+        kind, project_id, rest = (entry_id.split(":", 2) + ["", ""])[:3]
+        if project_id not in mapping:
+            continue
+        bind.execute(
+            reads.update()
+            .where(reads.c.user_id == user_id, reads.c.entry_id == entry_id)
+            .values(entry_id=f"{kind}:{mapping[project_id]}:{rest}")
+        )
+
+
 def upgrade() -> None:
     op.create_table(
         "shema_project_rekeys",
@@ -190,6 +214,7 @@ def upgrade() -> None:
 
     _move(bind, mapping.items())
     _map_preferences(bind, mapping)
+    _map_read_marks(bind, mapping)
     rekeys = sa.table(REKEYS, sa.column("old_id", sa.String), sa.column("new_id", sa.String))
     if mapping:
         bind.execute(
@@ -204,4 +229,5 @@ def downgrade() -> None:
     }
     _move(bind, mapping.items())
     _map_preferences(bind, mapping)
+    _map_read_marks(bind, mapping)
     op.drop_table("shema_project_rekeys")

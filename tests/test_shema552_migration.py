@@ -79,6 +79,10 @@ async def _build_and_seed(database_url: str) -> None:
             {"id": str(uuid.uuid4()), "project": SLUG, "day": date(2026, 9, 1)},
         )
         await conn.execute(
+            text("INSERT INTO shema_notification_reads (user_id, entry_id) VALUES (:user, :entry)"),
+            {"user": USER, "entry": f"stale:{SLUG}:2026-09-01"},
+        )
+        await conn.execute(
             text(
                 "INSERT INTO shema_notification_prefs (user_id, custom_project_ids)"
                 " VALUES (:user, :ids)"
@@ -131,6 +135,9 @@ async def test_every_child_follows_its_project_the_append_only_ones_included(dat
     assert await _rows(database, "SELECT project_id FROM shema_progress_history") == [(new,)]
     [(prefs,)] = await _rows(database, "SELECT custom_project_ids FROM shema_notification_prefs")
     assert SLUG not in prefs and new in prefs and MINTED in prefs
+    assert await _rows(database, "SELECT entry_id FROM shema_notification_reads") == [
+        (f"stale:{new}:2026-09-01",)
+    ]
 
 
 async def test_the_history_is_still_append_only_after_the_move(database) -> None:
@@ -154,6 +161,9 @@ async def test_the_downgrade_gives_the_slug_back_with_everything_attached(databa
     assert await _rows(database, "SELECT project_id FROM shema_progress_history") == [(SLUG,)]
     [(prefs,)] = await _rows(database, "SELECT custom_project_ids FROM shema_notification_prefs")
     assert SLUG in prefs and MINTED in prefs
+    assert await _rows(database, "SELECT entry_id FROM shema_notification_reads") == [
+        (f"stale:{SLUG}:2026-09-01",)
+    ]
     tables = await _rows(
         database,
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'shema_project_rekeys'",
