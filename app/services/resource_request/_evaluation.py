@@ -32,6 +32,21 @@ from app.db.models.resource_request import (
 from app.utils.resource_request_vocabularies import CRITERION_KEYS
 
 
+class Attendee(NamedTuple):
+    """One person in the ata, as the sheet reads them: the id plus the name and e-mail.
+
+    The ids alone were what the ata stored and served since BE-06, and a screen holding
+    them had nowhere to read a name from but the current member list — which forgets a
+    member the day their role is revoked, so an old decision's minutes would lose names
+    they recorded (FE-50, OBT-518). Read at shaping time from ``users``, like
+    ``evaluator_email``.
+    """
+
+    id: str
+    display_name: str | None
+    email: str
+
+
 class EvaluationRecord(NamedTuple):
     """The aggregate plus the two facts about it that only the request row knows.
 
@@ -54,6 +69,7 @@ class EvaluationRecord(NamedTuple):
     attendees: list[str]
     request_type: RRRequestType
     evaluator_email: str | None
+    attendees_named: list[Attendee]
 
 
 class TeamOutcome(NamedTuple):
@@ -111,17 +127,16 @@ async def load_evaluation(
         key=lambda row: (canonical.get(row.criterion_key, len(canonical)), row.criterion_key)
     )
 
-    attendees = sorted(
-        (
-            await db.execute(
-                select(RREvaluationAttendee.user_id).where(
-                    RREvaluationAttendee.evaluation_id == evaluation.id
-                )
-            )
+    present = (
+        await db.execute(
+            select(User.id, User.display_name, User.email)
+            .join(RREvaluationAttendee, RREvaluationAttendee.user_id == User.id)
+            .where(RREvaluationAttendee.evaluation_id == evaluation.id)
+            .order_by(User.id)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
+    attendees_named = [Attendee(*row) for row in present]
+    attendees = [person.id for person in attendees_named]
 
     return EvaluationRecord(
         evaluation=evaluation,
@@ -129,6 +144,7 @@ async def load_evaluation(
         attendees=attendees,
         request_type=request_type,
         evaluator_email=evaluator_email,
+        attendees_named=attendees_named,
     )
 
 
