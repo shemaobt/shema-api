@@ -325,7 +325,7 @@ class ShemaNeedLine(LeavingShape):
             if self.estimated_amount is None
             else f" Estimated at {self.estimated_amount} {self.estimated_currency}."
         )
-        who = self.language_name or self.project_id
+        who = self.spoken_name("A project")
         return (
             f"Urgent need: {self.category}",
             f"{who}{where} raised an urgent {self.category} need.{money}",
