@@ -240,10 +240,14 @@ _Avoid_: ending, other, Fechamento
 ### Session states
 
 **Session**:
-The work of one team on one pericope, with status in progress, done or needs a person. A
-session nobody entered — no turn, no take and no halt — is not yet a room of the team: the
-Desk's column and the team's last activity ignore it.
+The work of one team on one pericope in one language, with status in progress, done or needs a
+person. A session nobody entered — no turn, no take and no halt — is not yet a room of the team:
+the Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
+
+**Opening a session**:
+A tablet asking the room for its team's session of a pericope and language: the latest one is returned whatever its state, and one is created only when none exists.
+_Avoid_: creating a session, starting a session, Abrir a passagem
 
 **Closed passage**:
 A session whose passage was closed: done, with its end stamped. It never blocks again, though a warning may still stand on it.
