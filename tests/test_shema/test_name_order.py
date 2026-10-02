@@ -118,3 +118,23 @@ async def test_the_eten_report_orders_its_lines_by_the_name_it_prints(db_session
     user = await make_user(db_session, email="eten@ordem.test")
     report = await eten_report(db_session, GLOBAL, 2027, user=user, today=TODAY)
     assert [line.project_id for line in report.snapshots] == ["aberta-b", "aberta-m", SENSITIVE]
+
+
+async def test_a_card_with_no_name_still_sorts_after_the_named_ones(db_session, projects) -> None:
+    """``sort_key`` puts blanks last; the tiebreak must not undo it on the default sort."""
+    db_session.add(
+        ShemaProject(
+            id="sem-nome",
+            language_name="",
+            bridge_language="Portugues",
+            team="",
+            region_key=ShemaRegionKey.OTHER,
+        )
+    )
+    await db_session.commit()
+    assert await _screen(db_session, NO_COORDINATION) == [
+        "aberta-b",
+        "aberta-m",
+        SENSITIVE,
+        "sem-nome",
+    ]

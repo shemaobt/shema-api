@@ -248,7 +248,13 @@ async def _cards(
                 }
             )
         )
-    return sorted(cards, key=lambda card: (collation_key(card.language_name or ""), card.id))
+    return sorted(cards, key=_by_name_read)
+
+
+def _by_name_read(card: ShemaProjectCard) -> tuple[bool, tuple[str, str], str]:
+    """The name the card carries, blanks last — ``sort_key``'s rule, for its stated reason."""
+    name = card.language_name or ""
+    return (not name, collation_key(name), card.id)
 
 
 async def browse_projects(
