@@ -981,9 +981,19 @@ What PR C built, and where it met the contract:
 - **The revision** takes `TeamWriter` on `POST /requests/{id}/revise`. A link reopens only the
   request it started (`started_by_link_id`), after a *revisar* decision and nothing else; another
   link does not reach it (404). The revision **inherits** `request_link_id` and
-  `started_by_link_id` from the original — whoever opens it, the board included — so the pen stays
+  `started_by_link_id` from the original — whoever opens it after a *revisar* decision, the board included (the board's own *Revisar* path, next item, hands the pen to the opener) — so the pen stays
   with the link and the lock is the link's: `refuse_a_second_open` reads the link when there is no
   project, and a second open instance of the link is 409.
+- **The board reopens what it sent back to *Revisar*** (FE-47, OBT-515, 1/out/2026). Karina, via
+  Daniel: when the Gestor needs to change a request the mesa already evaluated, *"o Gestor abre
+  uma revisão em nome da equipe"*. `open_revision` therefore opens for a **board member** whenever
+  the card **is** in *Revisar*, whatever the evaluation said — the Gestor moves the card there
+  first, which gives an approval's money back by the board's golden rule — and only on that path
+  the pen goes to whoever opened it (`started_by` = the opener, `started_by_link_id` cleared), so
+  the Gestor writes and sends the revision while it stays the team's (`created_by`, project and
+  lock carry over). The team still needs the mesa's *revisar*, and after a *revisar* decision the
+  pen stays with the team whoever opens it. Reading the column and handing the pen to the board
+  are ours, not the client's.
 - **`verify` answers the link's address whole** (`email`), beside the session. The public read
   keeps masking it — before the code nobody has proved anything — but whoever typed the code sent
   to that address has, and the form needs the real one to refuse a `leader_email` equal to the
