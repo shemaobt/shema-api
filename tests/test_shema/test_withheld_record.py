@@ -202,9 +202,10 @@ async def test_the_card_and_the_search_carry_no_free_text_of_a_withheld_record(
 ) -> None:
     """The Projetos screen, through a search that finds both records: the withheld card is
     reduced and the cleared card beside it is not, so the reduction is the record's and not the
-    page's."""
+    page's. The term is the bridge language, which both carry: since OBT-560 this reader cannot
+    find a withheld record by the language's real name."""
     res = await client.get(
-        PROJECTS, params={"q": "Lingua"}, headers=await _headers(db_session, shema_app, role)
+        PROJECTS, params={"q": "Portugues"}, headers=await _headers(db_session, shema_app, role)
     )
 
     cards = {card["id"]: card for card in res.json()["items"]}
