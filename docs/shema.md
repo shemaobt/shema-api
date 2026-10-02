@@ -1442,7 +1442,8 @@ Daniel, 1/out/2026, chose *"um nome alternativo, cadastrado pela coordenação"*
 replaces `language_name`/`language` with it for every reader but coordination, beside the place,
 and says so in `languageNameWithheld`. **Ours, not hers:** while none is registered the **region
 key** stands in, as it does for `location` — fail closed; a notice says *a project* and the Pulse
-*Projeto sensível* instead of the key; the search finds the card by the name the reader reads;
+*Projeto sensível* instead of the key (OBT-562 extended it to the stale and urgent-need bodies through
+`LeavingShape.spoken_name`); the search finds the card by the name the reader reads;
 and the Pulse inbox and the two notices — paths that are not shapes — take the same rule through
 `language_name_for`. `tests/test_shema/test_language_name.py` sweeps every leaving shape that
 declares a name, found by walking the subclasses. **Left named:** the collection and the ETEN
