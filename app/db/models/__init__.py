@@ -112,6 +112,7 @@ from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_notification import (
     ShemaNotificationPrefs,
     ShemaNotificationRead,
+    ShemaProjectNotice,
     ShemaRequestNotice,
 )
 from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
@@ -240,6 +241,7 @@ __all__ = [
     "ShemaProgressEntry",
     "ShemaProject",
     "ShemaProjectMember",
+    "ShemaProjectNotice",
     "ShemaProjectPendingMember",
     "ShemaProjectRekey",
     "ShemaProjectStatus",

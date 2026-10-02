@@ -29,12 +29,13 @@ checked.
   through — which is the same shape ``_scope.py``'s refusal log uses, and a stronger guarantee
   than remembering not to interpolate one.
 
-**The copy is English, and that is a pendency rather than a decision.** Every notification title
-and e-mail template in this repository is English, including the password reset the same people
-receive, and the bilingual rewrite of the product's client-facing wording belongs to whoever owns
-that conversation with the client. Inventing Portuguese here would put unapproved copy about a
-team's difficulty in front of a field coordinator on nobody's authority. The sibling
-(``app/services/resource_request/_notices.py``) records the same pendency in the same words.
+**The copy is English, and the bell does not show it** (OBT-559). Every notification title and
+e-mail template in this repository is English, and the row's ``title`` and ``body`` stay that way
+for the readers of ``notifications`` that are not the PME's bell. The bell reads the facts staged
+beside the row (``_project_notices.py``) — the project and the day — and the console words them in
+its reader's language, from a catalogue where the client's approval of the wording is recorded.
+Inventing Portuguese here would still be unapproved copy about a team's difficulty on nobody's
+authority; the console's sentence says what this one says, and no more.
 
 **The trigger is the projection and not the payload**, which is what makes *a drop* mean
 something: the overall is read before the write and after it, off the record's four flat fields,
@@ -55,8 +56,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaRegionKey
 from app.services import authorization_service
-from app.services.notifications.create_notification import create_notification
 from app.services.shema._health_audience import recipients
+from app.services.shema._project_notices import ProjectNoticeFacts, stage_project_notice
 from app.utils.shema_derivations import OverallHealth
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,9 @@ async def notify_critical(
     **Staged, never committed** — ``commit=False``, so the notices and the assessment land under
     the caller's one commit. ``create_notification``'s own docstring names that contract and the
     property it buys: an assessment that landed always has its notice, and one that rolled back
-    leaves none. The signature is called exactly as it stands; nothing here changes it.
+    leaves none. The signature is called exactly as it stands; nothing here changes it. Each row
+    is staged with its facts (``_project_notices.stage_project_notice``): the project and the day,
+    which is what the bell words in its reader's language.
 
     The actor is excluded, for the mentor who is also a regional coordinator: nobody needs to be
     told about their own act.
@@ -154,15 +157,16 @@ async def notify_critical(
         raise RuntimeError(f"App '{app_key}' is not registered; notifications cannot be addressed")
 
     body = notice_body(language_name, day=day)
+    facts = ProjectNoticeFacts(project_id=project_id, assessed_on=day)
     for recipient in told:
-        await create_notification(
+        await stage_project_notice(
             db,
             user_id=recipient.id,
             app_id=app.id,
             event_type=EVENT_TYPE,
             title=TITLE,
             body=body,
+            facts=facts,
             actor_id=actor.id,
-            commit=False,
         )
     return len(told)

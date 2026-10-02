@@ -11,19 +11,19 @@ instant it happens, because nothing happens: it is a fact about the calendar, co
 every time the panel is read, off ``app/services/shema/browse_projects.py``'s own stale
 preset, which is already scoped and already redacted.
 
-**Why this file is not a** :class:`~app.models.shema_privacy.LeavingShape`. A leaving shape
-reduces a place; :class:`ShemaNotificationEntry` never carries one. ``region`` is the coarse
-key (``south-america``, ``asia``, …) every ``RegionScope`` already answers in the clear
-(``docs/shema.md`` §6.1), not a location, a country or a base — the same distinction FE-44's
-own ``AppNotification.region`` draws. The body a notice carries is built by
-``app/services/shema/_health_notice.py``, ``_needs.py`` and ``_submission_notices.py``, each of
-which names no guarded column by design, and by ``_request_notices.py``, which carries a
-request's registered name and stage and nothing else; this file only lists what they already
-wrote plus the one computed kind, so there is nothing here left to redact. The one field that
-could say more than it should is a request notice's ``project_id`` — a project's id is its
-export slug, ``<language>-<place>`` — and ``list_notification_panel.py`` answers it only to a
-reader who reaches that project, which is §6.1's rule: whoever a project is out of scope for
-does not learn it exists.
+**Why the entry is not a** :class:`~app.models.shema_privacy.LeavingShape`**, and the one shape
+here that is.** A leaving shape reduces a place, and :class:`ShemaNotificationEntry` carries none
+of its own. ``region`` is the coarse key (``south-america``, ``asia``, …) every ``RegionScope``
+already answers in the clear (``docs/shema.md`` §6.1), not a location, a country or a base — the
+same distinction FE-44's own ``AppNotification.region`` draws. The project notices' sentence is
+the console's since OBT-559: the entry answers :class:`ShemaProjectNoticeFacts` — what happened,
+and the language's name as ``_redaction.language_name_for`` lets every recipient read it — and
+the platform's English ``title`` and ``body`` stay in the table for the readers that are not the
+bell. The one place in those facts is an urgent need's, and it lives in
+:class:`ShemaNoticePlace`, a leaving shape the panel builds with no reader — ``outside``, because
+a notice is an output path (§6.4) — and only for a reader who reaches the project. A request
+notice's ``project_id`` and a project notice's are answered on the same condition, which is
+§6.1's rule: whoever a project is out of scope for does not learn where it is.
 
 ``ShemaNotificationPrefsOut`` mirrors FE-44's frozen ``NotificationPrefs``: ``enabled``, a
 nested ``channels`` triple, ``when``/``scope`` as free text (FE-44 §5.8 leaves their vocabulary
@@ -35,7 +35,8 @@ with, with no row to look up first.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import AliasGenerator, BaseModel, ConfigDict
@@ -43,6 +44,7 @@ from pydantic.alias_generators import to_camel
 
 from app.db.models.resource_request import RRStage
 from app.db.models.shema_notification import ShemaNotificationPrefs
+from app.models.shema_privacy import LeavingShape
 
 #: The five kinds FE-44 §5.8 froze — the delivered health, need, prayer and field notices, plus
 #: the one computed kind (``stale``) that has no event at all — and, since OBT-541, the
@@ -65,12 +67,65 @@ _INWARD = ConfigDict(
 )
 
 
+class ShemaNoticePlace(LeavingShape):
+    """Where an urgent need's project is — as it leaves, for a reader who reaches it (OBT-559).
+
+    Validated straight off the ``ShemaProject`` row, so the boundary reads the flag and the region
+    itself and the panel never names the place: a cleared project's place is its place, and a
+    withheld one's is its region key, beside ``locationWithheld``. Built with no reader, so it is
+    ``outside`` even for the coordination — the notice is what leaves, not the record.
+    """
+
+    model_config = _OUTWARD
+
+    location: str = ""
+
+
+class ShemaNoticeTotal(BaseModel):
+    """One currency's total among an urgent save's needs — never a sum across currencies."""
+
+    model_config = _OUTWARD
+
+    amount: Decimal
+    currency: str
+
+
+class ShemaProjectNoticeFacts(BaseModel):
+    """What a project notice says, for the console to word in the reader's language (OBT-559).
+
+    ``language_name`` is the name every recipient may read — ``""`` when the project's own would
+    name a sensitive place and no public one is registered, which the console reads as *a
+    project*. The rest is each kind's own: ``assessed_on`` the health notice's day; ``need_count``,
+    ``need_categories`` and ``need_totals`` the urgent needs of one save; ``submitted_by`` the
+    Pulse's signer; ``days_since_update`` how long a quiet project has been quiet (``None`` when
+    it never reported). ``place`` is the urgent need's, answered only to a reader who reaches the
+    project; everybody else words the sentence with the entry's ``region``.
+    """
+
+    model_config = _OUTWARD
+
+    language_name: str = ""
+    assessed_on: date | None = None
+    need_count: int | None = None
+    need_categories: list[str] = []
+    need_totals: list[ShemaNoticeTotal] = []
+    submitted_by: str | None = None
+    days_since_update: int | None = None
+    place: ShemaNoticePlace | None = None
+
+
 class ShemaNotificationEntry(BaseModel):
     """One row of the panel — a delivered notice, or a freshly computed stale reading.
 
     ``id`` is the notification's own primary key for a delivered kind and a stable derivation
     (``stale:{projectId}:{lastProgressDate}``) for the computed one, per FE-44 §5.8's rule that
     an entry's id names what it renders and never a position.
+
+    **The five project kinds answer** ``facts`` **and an empty** ``title`` **and** ``body``
+    (OBT-559): the console writes their sentence in the reader's language. A project notice
+    written before that answers ``facts=None`` and nothing else of what it said — its prose was
+    written once, for whoever read it then, and could name the place. The two request kinds keep
+    their ``title`` and ``body`` and carry ``requestName`` and ``requestStage``.
     """
 
     model_config = _OUTWARD
@@ -90,6 +145,9 @@ class ShemaNotificationEntry(BaseModel):
     #: no registered name answers ``""`` and the console names it generically in its own language.
     request_name: str | None = None
     request_stage: RRStage | None = None
+    #: The five project kinds only: what the notice says, or ``None`` for one written before
+    #: OBT-559, whose prose is not answered.
+    facts: ShemaProjectNoticeFacts | None = None
 
 
 class ShemaNotificationChannels(BaseModel):

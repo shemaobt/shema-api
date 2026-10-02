@@ -35,10 +35,11 @@ decides who may open it, and a notification row is a copy of data in a table wit
 readers and no region predicate of its own. The copy is the leak, whatever the body says about
 withholding.
 
-**The copy is English**, like every notification title and every e-mail template in this
-repository, and that is a pendency rather than a decision — the bilingual rewrite of this
-product's client-facing wording is one of GATE-03's own open ends
-(``app/services/resource_request/_notices.py`` records the same thing in the same words).
+**The copy is English, and the bell does not show it** (OBT-559). The row's ``title`` and
+``body`` are for the readers of ``notifications`` that are not the PME's bell, like every
+notification title and e-mail template in this repository. Each row is staged with its facts
+(``_project_notices.py``) — the project, and who signed the Pulse — and the console words them in
+its reader's language.
 """
 
 from __future__ import annotations
@@ -51,8 +52,9 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaSubmission
 from app.services import authorization_service
-from app.services.notifications import create_notification, get_shema_app_id
+from app.services.notifications import get_shema_app_id
 from app.services.shema._consent import reaches_prayer_wall
+from app.services.shema._project_notices import ProjectNoticeFacts, stage_project_notice
 from app.services.shema._scope import (
     COORDINATOR_ROLE,
     OBT_LAB_ROLE,
@@ -129,8 +131,11 @@ async def notify_submission(
                 "shema_region": project.region_key.value,
             },
         )
+    arrival = ProjectNoticeFacts(
+        project_id=project.id, submitted_by=submission.submitted_by.strip() or None
+    )
     for user in arrival_recipients:
-        await create_notification(
+        await stage_project_notice(
             db,
             user_id=user.id,
             app_id=app_id,
@@ -140,7 +145,7 @@ async def notify_submission(
                 f"{submission.submitted_by or 'A team leader'} submitted the monthly Pulse for "
                 f"{language}. Open the project to review it."
             ),
-            commit=False,
+            facts=arrival,
         )
         told += 1
 
@@ -156,7 +161,7 @@ async def notify_submission(
                 },
             )
         for user in prayer_recipients:
-            await create_notification(
+            await stage_project_notice(
                 db,
                 user_id=user.id,
                 app_id=app_id,
@@ -166,7 +171,7 @@ async def notify_submission(
                     f"The Pulse received for {language} carries a prayer request the team has "
                     "shared with the network. Open the project to read it."
                 ),
-                commit=False,
+                facts=ProjectNoticeFacts(project_id=project.id),
             )
             told += 1
     return told

@@ -297,29 +297,21 @@ class ShemaNeedLine(LeavingShape):
     def as_notice(self) -> tuple[str, str]:
         """The title and the body of the notice this need sends, when it is urgent.
 
-        **The wording lives on the shape rather than in the service that sends it, and the
-        reason is the glob.** ``tests/test_shema/test_privacy_owners.py`` fails when a file in
-        ``app/services/shema/`` or ``app/api/shema/`` reads a guarded column by name, and the
-        one thing a notice has to say is *who, and roughly where*. Writing
-        ``line.location`` in the notifier would be that read — even though the value there is
-        already the region key, because the check reads the tree and not the type, and it is
-        right to: a rule that trusted the author to know which ``.location`` is safe is the
-        rule the next author gets wrong. ``app/models/`` is outside those globs precisely
-        because it is where the shapes and their rules live, so the sentence is composed here,
-        where the withholding has already happened and there is nothing left to leak.
+        **It says who, and never where** (OBT-559). A notification row is read long after it is
+        written, by whoever holds it then — a coordinator who has left the region since, about a
+        project flagged since — so a place written into it outlives the rule that withholds it.
+        Where the project is, the PME's bell reads off the project when the panel is read, for a
+        reader who reaches it (``list_notification_panel.py``).
 
         The description is deliberately absent: it is free text a team wrote about their own
         situation, and a notice is not the surface to forward it on. The amount is present when
         there is one, because for an urgent need it is the fact the recipient acts on — and it
         carries its currency, because in this module a number never travels without one.
 
-        **The copy is English**, which is a pendency rather than a decision: every notification
-        title in this repository is English, and the product's bilingual client-facing copy is
-        still open. Inventing Portuguese here would put unapproved wording in front of a field
-        team on nobody's authority — the sibling's ``_notices.py`` says the same, for the same
-        reason.
+        **The copy is English, and the bell does not show it**: the row's ``title`` and ``body``
+        are for the readers of ``notifications`` that are not the PME's bell, which words the
+        notice's facts in its reader's language (``_project_notices.py``).
         """
-        where = f" ({self.location})" if self.location else ""
         money = (
             ""
             if self.estimated_amount is None
@@ -328,7 +320,7 @@ class ShemaNeedLine(LeavingShape):
         who = self.language_name or self.project_id
         return (
             f"Urgent need: {self.category}",
-            f"{who}{where} raised an urgent {self.category} need.{money}",
+            f"{who} raised an urgent {self.category} need.{money}",
         )
 
     @classmethod

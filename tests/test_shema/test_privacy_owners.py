@@ -97,14 +97,9 @@ MEDIA_COLUMNS = frozenset({"authorization_granted", "authorized_by", "authorized
 OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "sensitive country": (
         REDACTION_COLUMNS,
-        # ``_needs.py``'s ``urgent_need_notice``/``urgent_needs_notice`` read
-        # ``ShemaNeedLine.location`` — never ``ShemaProject.location``. By the time either
-        # function sees it, ``_redaction.py``'s boundary has already reduced it to the region
-        # key or emptied it, because ``ShemaNeedLine`` is a ``LeavingShape`` and the reduction
-        # runs in its own model validator on construction (``app/models/shema_privacy.py``).
-        # The glob cannot see a Pydantic attribute apart from an ORM column by name alone, so
-        # the second reader here is real by the letter of the check and safe by what it reads —
-        # BE-15 names it rather than widening the columns the check watches.
+        # ``_needs.py`` left this list with OBT-559: its notice says who raised what and never
+        # where, so it reads no place at all — the panel reads it off the project, through
+        # ``ShemaNoticePlace``, for a reader who reaches the project.
         #
         # BE-13's two are about a **person**, never a project. ``_directory.py`` is the
         # network's own owner — the only file in either package that names
@@ -114,7 +109,7 @@ OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         # ``IntercessorCreate.sensitive_country`` — the client's own declaration in a request
         # shape, which this file keeps outside the guarded packages on purpose — and hands it
         # to the owner unchanged. Neither touches a project column.
-        frozenset({"_redaction.py", "_needs.py", "_directory.py", "add_intercessor.py"}),
+        frozenset({"_redaction.py", "_directory.py", "add_intercessor.py"}),
     ),
     "consent": (CONSENT_COLUMNS, frozenset({"_consent.py"})),
     "media authorization": (MEDIA_COLUMNS, frozenset({"_media_sharing.py"})),

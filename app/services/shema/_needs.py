@@ -42,12 +42,12 @@ its own key and id in that package, which is the sibling's shape
 (``get_rr_app_id.py``/``_deps.py``, with a test asserting the two agree). This module's copy of
 that test is ``tests/test_shema/test_needs.py``.
 
-**This file names no guarded column.** It reads the project's ``region_key`` to address a
-notice and its ``language_name`` to word one; the place, the base and the contacts it never
-touches, because the body of a notice is built by validating
-:class:`~app.models.shema_need.ShemaNeedLine` off the row — a
-:class:`~app.models.shema_privacy.LeavingShape`, which reduces them by the act of declaring
-them. That is the same trade the whole module makes: the rule is inherited, not called.
+**This file names no guarded column, and no notice it writes names a place** (OBT-559). It reads
+the project's ``region_key`` to address a notice; the place, the base and the contacts it never
+touches. The body is built by validating :class:`~app.models.shema_need.ShemaNeedLine` off the
+row — a :class:`~app.models.shema_privacy.LeavingShape` — and says who raised what, never where:
+a row is read long after it is written, by whoever holds it then, so where the project is is read
+by the panel off the project, for a reader who reaches it (``list_notification_panel.py``).
 """
 
 from __future__ import annotations
@@ -69,10 +69,11 @@ from app.db.models.shema_enums import ShemaNeedUrgency
 from app.db.models.shema_need import ShemaNeed
 from app.models.shema_need import ShemaNeedLine, ShemaNeedWrite, is_still_open
 from app.services import authorization_service
-from app.services.notifications import create_notification, get_shema_app_id
+from app.services.notifications import get_shema_app_id
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.shema import _audit
 from app.services.shema._consent import need_written
+from app.services.shema._project_notices import ProjectNoticeFacts, stage_project_notice
 from app.services.shema._scope import COORDINATOR_ROLE, OBT_LAB_ROLE, holders_reaching
 
 #: What ``notifications.event_type`` carries for this notice. Dotted and namespaced by the
@@ -406,6 +407,38 @@ class Notice(NamedTuple):
     body: str
 
 
+class UrgentNeeds(NamedTuple):
+    """What one save's urgent needs amount to — the facts a notice is worded from.
+
+    The English body below and the facts the bell words in its reader's language
+    (``_project_notices.py``, OBT-559) both read this, so the two cannot count differently.
+    """
+
+    #: How many needs the save raised to urgent.
+    raised: int
+    #: Sorted and each named once, whatever order the batch arrived in.
+    categories: tuple[str, ...]
+    #: One total per currency, in currency order — never one number across currencies.
+    totals: dict[str, Decimal]
+
+
+def urgent_needs_facts(lines: list[ShemaNeedLine]) -> UrgentNeeds:
+    """Count the batch, name its categories, and total its amounts **per currency**.
+
+    This module's rule is that a number never travels without the currency it was said in, so a
+    batch naming reais and dollars says both and adds neither to the other.
+    """
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+    for line in lines:
+        if line.estimated_amount is not None and line.estimated_currency is not None:
+            totals[line.estimated_currency] += line.estimated_amount
+    return UrgentNeeds(
+        raised=len(lines),
+        categories=tuple(sorted({line.category for line in lines})),
+        totals=dict(sorted(totals.items())),
+    )
+
+
 def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
     """What **one save's** urgent needs say to the people they reach, in one notice.
 
@@ -417,34 +450,25 @@ def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
 
     A single need is delegated to
     :meth:`~app.models.shema_need.ShemaNeedLine.as_notice` rather than recomposed here, so the
-    sentence a recipient reads has exactly one owner and the privacy argument that put it in
-    ``app/models/`` keeps holding: the description never travels, and ``line.location`` is
-    already the region key for a flagged project.
-
-    **Amounts are totalled per currency and never across them.** This module's rule is that a
-    number never travels without the currency it was said in, so a batch naming reais and
-    dollars says both and adds neither to the other.
+    sentence a recipient reads has exactly one owner, and the description never travels.
+    **Neither names the place** (OBT-559): who raised what, and the amounts per currency
+    (:func:`urgent_needs_facts`).
     """
     if len(lines) == 1:
         return Notice(*lines[0].as_notice())
 
+    urgent = urgent_needs_facts(lines)
     who = lines[0].language_name or lines[0].project_id
-    where = f" ({lines[0].location})" if lines[0].location else ""
-    categories = ", ".join(sorted({line.category for line in lines}))
-    totals: dict[str, Decimal] = defaultdict(Decimal)
-    for line in lines:
-        if line.estimated_amount is not None and line.estimated_currency is not None:
-            totals[line.estimated_currency] += line.estimated_amount
     money = (
         ""
-        if not totals
+        if not urgent.totals
         else " Estimated at "
-        + ", ".join(f"{amount} {currency}" for currency, amount in sorted(totals.items()))
+        + ", ".join(f"{amount} {currency}" for currency, amount in urgent.totals.items())
         + "."
     )
     return Notice(
-        title=f"{len(lines)} urgent needs raised",
-        body=f"{who}{where} raised {len(lines)} urgent needs: {categories}.{money}",
+        title=f"{urgent.raised} urgent needs raised",
+        body=f"{who} raised {urgent.raised} urgent needs: {', '.join(urgent.categories)}.{money}",
     )
 
 
@@ -477,14 +501,13 @@ async def notify_urgent(
     this (``create_notification``'s own docstring): a need that landed always carries its
     notice, and one that rolled back leaves none.
 
-    **The body is written by the leaving shape itself**
-    (:meth:`~app.models.shema_need.ShemaNeedLine.as_notice`), so it cannot name the place even
-    though the people it reaches could read it on the record.
-    A notice is the payload that travels furthest with the least supervision — it is listed, it
-    is counted, it is rendered next to seven others — and a rule that had to be remembered here
-    is the rule ``docs/shema.md`` §6.4 spends a section saying nobody remembers. It is also why
-    the sentence is composed there and not here: this package is globbed for guarded names, and
-    ``line.location`` written in this file would be a read the check cannot tell from a leak.
+    **The row names no place, even though the people it reaches could read it on the record**
+    (OBT-559). A notice is the payload that travels furthest with the least supervision — it is
+    listed, it is counted, it is rendered next to seven others, and it is read long after it was
+    written, by a coordinator who may have left the region since, about a project that may have
+    been flagged since. So the row carries who raised what (:func:`urgent_needs_notice`) and its
+    facts carry how many, which categories and how much (:func:`urgent_needs_facts`); where the
+    project is is the panel's to read off the project, for a reader who reaches it.
     """
     if not needs:
         return 0
@@ -497,17 +520,25 @@ async def notify_urgent(
 
     app_id = await get_shema_app_id(db)
     written = 0
-    notice = urgent_needs_notice([ShemaNeedLine.of(need, project) for need in needs])
+    lines = [ShemaNeedLine.of(need, project) for need in needs]
+    notice = urgent_needs_notice(lines)
+    urgent = urgent_needs_facts(lines)
+    facts = ProjectNoticeFacts(
+        project_id=project.id,
+        need_count=urgent.raised,
+        need_categories=urgent.categories,
+        need_totals=urgent.totals,
+    )
     for person in recipients:
-        await create_notification(
+        await stage_project_notice(
             db,
             user_id=person.id,
             app_id=app_id,
             event_type=URGENT_NEED_EVENT,
             title=notice.title,
             body=notice.body,
+            facts=facts,
             actor_id=None if actor is None else actor.id,
-            commit=False,
         )
         written += 1
     return written
