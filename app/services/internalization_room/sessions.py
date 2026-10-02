@@ -191,6 +191,7 @@ async def open_session(
     project_id: str | None = None,
     language: str | None = None,
     chosen: bool = False,
+    lifts: bool = False,
 ) -> tuple[IRSession, bool]:
     """The session the room's open door returns, and whether this open created it.
 
@@ -214,6 +215,10 @@ async def open_session(
     from the Panorama sets ``after_panorama`` on the session it lands on, or a pericope opened
     before the Panorama would leave `heard_panorama` false and the Panorama would play at
     every launch.
+
+    A tablet that opens a session halted by its call for a person is back in the room, so
+    ``lifts`` ends that halt the way a landed turn does (`_lifted`); a warning stands, because
+    a facilitator's visit is its only exit (ADR 0039). Only a credentialed tablet lifts.
 
     A caller with no team has nothing to resume, so it is minted a session as before.
     """
@@ -258,6 +263,8 @@ async def open_session(
             session, created = await get_session(db, winner), False
     if after_panorama and not session.after_panorama:
         session.after_panorama = True
+    if lifts and session.status is IRSessionStatus.NEEDS_PERSON:
+        session.status = _lifted(session)
     await db.commit()
     await db.refresh(session)
     return session, created
@@ -579,20 +586,30 @@ async def append_exchange(
                 IRSession.lifted_halt == HaltKind.BLOCKING.value,
             ),
         )
-        values["status"] = case(
-            (
-                and_(
-                    IRSession.status == IRSessionStatus.NEEDS_PERSON,
-                    IRSession.halts_raised == session.halts_raised,
-                ),
-                halt.a_lift_restores(),
-            ),
-            else_=IRSession.status,
-        )
+        values["status"] = _lifted(session)
     values["lifted_halt"] = case((nothing_to_put_back, None), else_=IRSession.lifted_halt)
     if state is not None:
         values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
+
+
+def _lifted(session: IRSession) -> ColumnElement[IRSessionStatus]:
+    """The status a blocking halt lifts to, written only over the halt that was read.
+
+    One rule for every lift the team makes, a landed turn or a tablet opening the session
+    again. Guarded by ``halts_raised`` so a halt raised between the read and the write is a
+    new ask and stands, and by the status so a lift that lost the race restores nothing.
+    """
+    return case(
+        (
+            and_(
+                IRSession.status == IRSessionStatus.NEEDS_PERSON,
+                IRSession.halts_raised == session.halts_raised,
+            ),
+            halt.a_lift_restores(),
+        ),
+        else_=IRSession.status,
+    )
 
 
 def _containment_of(outcome: TurnOutcome) -> str:

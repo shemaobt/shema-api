@@ -400,12 +400,14 @@ async def create_session(
 ) -> SessionStateResponse:
     """Open a session, and end this tablet's halt if it was standing in one.
 
-    The lift is here rather than in `open_session` because it is about the *caller* and
+    The device's lift is here rather than in `open_session` because it is about the *caller* and
     not about the session: a room going again is evidence only for the tablet that went,
     and a lift keyed on the team would clear a halt because somebody else in the room
     started something. `caller` is the gate's own result — the credential is resolved once
     per request and FastAPI's dependency cache is what makes this and `device_project_dep`
-    one query — so a caller on the shared room key names no device and lifts nothing.
+    one query — so a caller on the shared room key names no device and lifts nothing. The
+    same gate lifts the session's own halt when the open resumes a session a call for a
+    person stopped, inside `open_session`'s transaction (ADR 0045).
 
     After the session exists, so an `open_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
@@ -432,6 +434,7 @@ async def create_session(
         project_id=project_id,
         language=payload.language,
         chosen=payload.chosen,
+        lifts=caller is not None,
     )
     if caller is not None:
         await clear_needs_person(db, caller.id)

@@ -377,3 +377,53 @@ async def test_a_closed_pericopes_session_is_returned_as_it_stands(
 
     assert reopened["session_id"] == opened["session_id"]
     assert reopened["status"] == "done"
+
+
+async def waiting_at_the_desk(client: httpx.AsyncClient, desk: dict[str, str]) -> dict[str, Any]:
+    queue = await client.get(f"{PREFIX}/facilitator/sessions", headers=desk)
+    assert queue.status_code == 200, queue.text[:300]
+    return {row["session_id"]: row["halt"] for row in queue.json()["sessions"]}
+
+
+async def a_halted_room(
+    client: httpx.AsyncClient, tablet: str, desk: dict[str, str]
+) -> dict[str, Any]:
+    opened = await the_tablet_opens(client, tablet, {"pericope": P})
+    called = await client.post(
+        f"{PREFIX}/sessions/{opened['session_id']}/needs-person", headers=team_headers(tablet)
+    )
+    assert called.status_code == 200, called.text[:300]
+    assert (await waiting_at_the_desk(client, desk)) == {opened["session_id"]: "blocking"}
+    return opened
+
+
+async def test_a_tablet_relaunched_in_a_room_halted_by_its_call_for_a_person_gets_the_session_back_unhalted(  # noqa: E501
+    client, db_session, room_app
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    halted = await a_halted_room(client, tablet, desk)
+
+    relaunched = await the_tablet_opens(client, tablet, {"pericope": P})
+
+    assert relaunched["session_id"] == halted["session_id"]
+    assert relaunched["halt"] is None
+    assert relaunched["status"] == "in_progress"
+    assert await waiting_at_the_desk(client, desk) == {}
+
+
+async def test_an_open_on_the_shared_room_key_lifts_no_sessions_halt(
+    client, db_session, room_app
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    halted = await a_halted_room(client, tablet, desk)
+
+    opened = await client.post(
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": P, "after_session": halted["session_id"]},
+    )
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert await waiting_at_the_desk(client, desk) == {halted["session_id"]: "blocking"}

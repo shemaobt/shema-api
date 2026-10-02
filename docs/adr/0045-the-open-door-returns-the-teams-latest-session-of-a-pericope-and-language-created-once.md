@@ -43,6 +43,9 @@ Decided with the Orchestrator under Henok's standing rule on 2026-10-02:
   the Panorama sets `after_panorama` on the session it lands on. Without that, a pericope opened
   before the Panorama would never count the Panorama as heard, and it would play at every
   launch.
+- A credentialed open that resumes a session halted by a call for a person lifts that halt, by
+  the same rule a landed turn lifts it; a warning stands, and a caller on the shared room key
+  lifts nothing (the Definer's Q18, after ENG-1354).
 
 Rejected: a unique constraint on `ir_sessions` (above), and an advisory lock or
 `SELECT … FOR UPDATE` around the open, which the repository uses nowhere and which a unique key
