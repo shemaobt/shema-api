@@ -93,9 +93,9 @@ class ShemaNoticeTotal(BaseModel):
 class ShemaProjectNoticeFacts(BaseModel):
     """What a project notice says, for the console to word in the reader's language (OBT-559).
 
-    ``language_name`` is the name every recipient may read — ``""`` when the project's own would
-    name a sensitive place and no public one is registered, which the console reads as *a
-    project*. The rest is each kind's own: ``assessed_on`` the health notice's day; ``need_count``,
+    ``language_name`` is the name every recipient may read — ``""`` when the project is withheld
+    and has no public name registered (OBT-560), which the console reads as *a project*. The rest
+    is each kind's own: ``assessed_on`` the health notice's day; ``need_count``,
     ``need_categories`` and ``need_totals`` the urgent needs of one save; ``submitted_by`` the
     Pulse's signer; ``days_since_update`` how long a quiet project has been quiet (``None`` when
     it never reported). ``place`` is the urgent need's, answered only to a reader who reaches the

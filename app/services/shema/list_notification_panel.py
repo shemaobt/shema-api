@@ -19,8 +19,8 @@ reader's language. What happened comes off the row's
 off the project, here, through each one's owner, so a notice reads the way its project reads
 today and not the way it read when it was written:
 
-* the language's name as every recipient may read it — ``""`` for a project whose name would
-  name a withheld place (:func:`_language_name`);
+* the language's name as every recipient may read it — ``""`` for a withheld project
+  (:func:`_language_name`);
 * the region key, to every recipient;
 * the project's id and, on an urgent need, its place — **only to a reader who reaches the
   project now**, inside the caller's scope or one of its live members, the collection's own rule

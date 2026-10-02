@@ -5,7 +5,7 @@ The four writers of a project notice — ``_health_notice.py``, ``_needs.py`` an
 the platform's ``title`` and ``body``; the PME's bell showed it as it came. The bell now words the
 sentence in its reader's language, so each row is staged here with its
 :class:`~app.db.models.shema_notification.ShemaProjectNotice`: the project, and what happened.
-One function stages both, so there is no way to write a project notice the bell cannot word —
+One function stages both, so a writer that calls it cannot stage the row without its facts —
 the shape ``_request_notices._ring`` already has for the form's two notices.
 
 **What happened, never who or where.** :class:`ProjectNoticeFacts` has no field for the
