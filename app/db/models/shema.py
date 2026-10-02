@@ -208,8 +208,9 @@ class ShemaProject(Base):
     move server-side first riding on it. ``region_key`` gets no index of its own: a B-tree
     serves its leading column alone, and a second one would cost every write and buy no
     read. ``last_updated`` carries the ``recent`` preset and the freshness signal Rhythm and
-    the Forms hub both read; ``language_name`` is the collection's default order and the
-    dominant field of its text search.
+    the Forms hub both read; ``language_name`` is the dominant field of the collection's text
+    search. It stopped being the collection's order with OBT-563, which orders by the id so a
+    sensitive project cannot be placed by the real name it withholds.
 
     **Three of the filters the issue lists are not indexable here, and saying which is the
     point.** Overall health is the worst of four nullable dimensions, staleness is a

@@ -1566,8 +1566,16 @@ key** stands in, as it does for `location` — fail closed; a notice says *a pro
 `LeavingShape.spoken_name`); the search finds the card by the name the reader reads;
 and the Pulse inbox and the two notices — paths that are not shapes — take the same rule through
 `language_name_for`. `tests/test_shema/test_language_name.py` sweeps every leaving shape that
-declares a name, found by walking the subclasses. **Left named:** the collection and the ETEN
-report still **order** by the real name, so a reader could infer a little from a card's position;
+declares a name, found by walking the subclasses. ~~**Left named:** the collection and the ETEN
+report still **order** by the real name, so a reader could infer a little from a card's position.~~
+**Closed by OBT-563 (Daniel, 2/out/2026 — ours, not Karina's):** `list_projects` orders by the
+opaque id, so the rows arrive saying nothing; the Projetos screen orders its cards by the name each
+card carries before its stable sorts run, so a tie falls where the reader's name puts it; and the
+export orders its rows by `language_name_for(project, OUTSIDE)`, the name it prints. The ETEN report
+already ordered by its redacted line and only gained the test. `ix_shema_projects_language_name`
+no longer serves the collection read. `tests/test_shema/test_name_order.py` puts a project whose
+real name sorts first and public name last before OBT Lab, and it was seen to fail against the
+previous order on the screen and in the export. **Still left named:**
 `ProjectRef` (a member's own projects) and the intake form behind a leader's link print the real
 name, because their reader is the team — the form declares it in `IntakeForm._withhold_name`. The header's language reuses BE-09's
 `PulseLanguage`, which is the console's two locales under a name that says *Pulse*.

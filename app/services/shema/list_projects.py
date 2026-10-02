@@ -14,9 +14,14 @@ asserted, and so the day §9.1's own note fires — past roughly 2,000 projects,
 server takes the filter *and* the counts together — the window is already inside the scope
 instead of being added on top of it by whoever is holding the pen that week.
 
-The order is ``language_name``, which is the collection's default order on the screen and
-the one ``ix_shema_projects_language_name`` serves. A window over an unordered select is a
-window over an arbitrary page, which would make a paging test pass for the wrong reason.
+The order is the **id**, an opaque UUID since OBT-552, and that is a privacy decision
+(OBT-563, Daniel, 2/out/2026). It used to be ``language_name``, the real name, and every caller
+that hands the rows on in their order — the Projetos screen through its stable sorts, the
+export through its rows — then placed a sensitive project by the name it withholds. An order
+that says nothing is the one this read can give to every reader; whoever shows the rows orders
+them by the name the reader reads, which only the shape built for that reader knows. A window
+still needs *an* order, or a paging test passes for the wrong reason, and the id is total.
+``ix_shema_projects_language_name`` no longer serves this read.
 """
 
 from __future__ import annotations
@@ -34,13 +39,13 @@ async def list_projects(
     limit: int | None = None,
     offset: int | None = None,
 ) -> list[ShemaProject]:
-    """Every project inside ``scope``, ordered by language name.
+    """Every project inside ``scope``, ordered by id.
 
     ``scope`` is positional and has no default. A keyword with a permissive default is how
     a scope stops being applied: the call that omits it still compiles, still passes review
     and returns the whole table. There is no unscoped spelling of this call.
     """
-    stmt = visible_projects(scope).order_by(ShemaProject.language_name, ShemaProject.id)
+    stmt = visible_projects(scope).order_by(ShemaProject.id)
     if offset is not None:
         stmt = stmt.offset(offset)
     if limit is not None:

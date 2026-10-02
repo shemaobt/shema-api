@@ -77,10 +77,10 @@ from app.services.shema._audit import author_name
 from app.services.shema._consent import AuthorizedRequest, authorized_requests_by_project
 from app.services.shema._health_audience import health_as_read
 from app.services.shema._media_sharing import can_export_notes
-from app.services.shema._redaction import withheld_note
+from app.services.shema._redaction import language_name_for, withheld_note
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.list_projects import list_projects
-from app.utils.shema_facets import OPEN_NEED_STATUSES
+from app.utils.shema_facets import OPEN_NEED_STATUSES, collation_key
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +180,16 @@ def _write(
     return _Written(body=body, withheld=sum(1 for row in rows if row.location_withheld))
 
 
+def _by_name_printed(project: ShemaProject) -> tuple[tuple[str, str], str]:
+    """The file's order: the name the file prints, then the id (OBT-563).
+
+    Every row leaves ``outside`` whoever exports, so the name printed is the one
+    ``language_name_for`` gives that reader — and the rows follow it, or a sensitive project's
+    line would sit where its real name puts it, among names that say where it is not.
+    """
+    return (collation_key(language_name_for(project, ShemaReader.OUTSIDE)), project.id)
+
+
 async def export_projects(
     db: AsyncSession,
     scope: RegionScope,
@@ -197,7 +207,7 @@ async def export_projects(
     place in every row is ``outside`` whoever exports. ``now`` is injected, as every read
     here injects its day, and is the instant both the file and its log row carry.
     """
-    projects = await list_projects(db, scope)
+    projects = sorted(await list_projects(db, scope), key=_by_name_printed)
     ids = [project.id for project in projects]
     authorized = await authorized_requests_by_project(db, projects)
     open_needs = await _open_needs(db, ids)
