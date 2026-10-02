@@ -15,6 +15,7 @@ from app.api.auth import router as auth_router
 from app.api.bhsa import router as bhsa_router
 from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
+from app.api.build import router as build_router
 from app.api.devices import devices_router
 from app.api.facilitator.devices import facilitator_devices_router
 from app.api.facilitator.legend import facilitator_legend_router
@@ -138,6 +139,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_router)
+    app.include_router(build_router, prefix="/api", tags=["build"])
     app.include_router(
         access_requests_router,
         prefix="/api/access-requests",

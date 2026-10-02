@@ -51,7 +51,7 @@ jobs:
 
       - name: Build and Push Backend
         run: |
-          docker build -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} .
+          docker build --build-arg GIT_SHA=${{ github.sha }} -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} .
           docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }}
 
       - name: Run migrations

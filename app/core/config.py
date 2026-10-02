@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +9,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     env: str = "development"
+    #: The git SHA the image was built from, baked in as `GIT_SHA` at build time.
+    build_id: str = Field("unknown", validation_alias="GIT_SHA")
     port: int = 8000
 
     database_url: str
@@ -141,6 +144,11 @@ class Settings(BaseSettings):
     @property
     def qdrant_collection(self) -> str:
         return "meaning_map_prod" if self.env == "production" else "meaning_map_test"
+
+    @field_validator("build_id", mode="before")
+    @classmethod
+    def _an_empty_build_id_is_unset(cls, value: object) -> object:
+        return value or "unknown"
 
 
 @lru_cache
