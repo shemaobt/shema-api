@@ -1433,8 +1433,21 @@ file never carries it, its request or its id in `shema_exports`; an import namin
 `create_project`, the existence oracle `POST /projects` already has; the import inherits it by
 being the same path.~~ **Closed by OBT-551 (1/out/2026, Daniel), and the id stopped naming a place altogether with OBT-552:** a new record's id is a minted
 UUID, and a slug is refused before anything is read with one fixed sentence, so neither the create
-nor the import can tell a slug that exists elsewhere from one that never did (§5.1). The free text of an authorized request, the language name and the vitality
-can still name a place — this section's residuals. The header's language reuses BE-09's
+nor the import can tell a slug that exists elsewhere from one that never did (§5.1). The free text of an authorized request and the vitality
+can still name a place — this section's residuals. ~~The language name~~ **closed by OBT-560 (2/out/2026):**
+a sensitive project's language name can name the place (*Sa'di of High Egypt*), and Karina, via
+Daniel, 1/out/2026, chose *"um nome alternativo, cadastrado pela coordenação"*. That much is hers.
+`shema_projects.public_language_name` holds it, written by coordination alone
+(`COORDINATION_WRITES`) and read by `_redaction.py` alone (`REDACTION_COLUMNS`); `LeavingShape`
+replaces `language_name`/`language` with it for every reader but coordination, beside the place,
+and says so in `languageNameWithheld`. **Ours, not hers:** while none is registered the **region
+key** stands in, as it does for `location` — fail closed; a notice says *a project* and the Pulse
+*Projeto sensível* instead of the key; the search finds the card by the name the reader reads;
+and the Pulse inbox and the two notices — paths that are not shapes — take the same rule through
+`language_name_for`. `tests/test_shema/test_language_name.py` sweeps every leaving shape that
+declares a name, found by walking the subclasses. **Left named:** the collection and the ETEN
+report still **order** by the real name, so a reader could infer a little from a card's position;
+`ProjectRef` (a member's own projects) prints the real name, because the member is the team. The header's language reuses BE-09's
 `PulseLanguage`, which is the console's two locales under a name that says *Pulse*.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
@@ -2163,6 +2176,8 @@ which is the property that made deciding now cheap enough to do.
 > report that keeps the region and never the country. **To confirm, and not decided here:** the
 > answer was about the id, and for a flagged project the id — like the language name GATE-04
 > (1.5) already lets through — can itself name the place, which the recorded report then keeps.
+> **Both closed:** the id by OBT-552 (1/out/2026), the language name by OBT-560 (2/out/2026) — a
+> flagged project's line carries the name coordination registered, or the region key (§6.4).
 
 ### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — open, and BE-16 is running fail-closed against it
 
