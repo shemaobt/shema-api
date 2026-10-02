@@ -163,6 +163,9 @@ ADDED_BY_THE_SCHEMA = (
     "discarded_at",
     "discarded_by",
     "discard_reason",
+    #: OBT-560: the name every reader but coordination reads for a sensitive project. Not a key
+    #: of FE-44's contract — the server's answer to a privacy residue the contract predates.
+    "public_language_name",
 )
 
 #: FE-44 §5.1's own two numbers. The table's column count is derived from them, not equal to

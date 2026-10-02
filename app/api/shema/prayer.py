@@ -19,8 +19,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Response
 from fastapi.responses import PlainTextResponse
 
-from app.api.shema._deps import Db, ResourceCircleUser, Scope
-from app.api.shema.projects import PER_READER_CACHE_CONTROL
+from app.api.shema._deps import PER_READER_CACHE_CONTROL, Db, ResourceCircleUser, Scope
 from app.models.shema_prayer import PrayerRequestEntry, PulseLanguage
 from app.services.shema import generate_prayer_pulse, list_prayer_requests
 
@@ -32,7 +31,7 @@ async def read_prayer_wall(db: Db, scope: Scope, response: Response) -> list[Pra
     """Every authorized request in the caller's reach — the gate is the service's, never ours.
 
     One URL answers each scope differently, so nothing between the server and the reader keeps
-    it: :data:`~app.api.shema.projects.PER_READER_CACHE_CONTROL`, for the collection's reason.
+    it: :data:`~app.api.shema._deps.PER_READER_CACHE_CONTROL`, for the collection's reason.
     """
     response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
     return await list_prayer_requests(db, scope)

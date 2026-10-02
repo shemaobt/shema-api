@@ -10,9 +10,12 @@ and this is it.
 
 **Why the language name is the one thing.** *If it must show context, show the minimum that
 makes the form answerable* — and a leader who holds links for two projects has to be able to
-tell which form they are filling before they fill it. It is not a guarded field:
-``app/models/shema_privacy.py``'s list is places, bases and contacts, and
-``shema_submissions`` already snapshots this same value for the same reason.
+tell which form they are filling before they fill it. Since OBT-560 the name **is** guarded
+everywhere else — a sensitive project's name can name the place — and it stays real here on
+purpose: the link's holder is the team, the reason ``ProjectRef`` keeps it too, and two links of
+two unnamed sensitive projects in one region would otherwise both read *africa*.
+``IntakeForm`` declares that exception in its own class, so this file still reads one column and
+``shema_submissions`` still snapshots the same value for the same reason.
 
 **There is no scope here and that is not an omission.** The token is the authorization, and it
 is project-scoped in the column: the statement can only return the project the link names. That

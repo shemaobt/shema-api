@@ -71,14 +71,23 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, ReceivedSubmissionDetail
-from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
+from app.services.shema._redaction import language_name_for
+from app.services.shema._scope import (
+    NO_COORDINATION,
+    Readership,
+    RegionScope,
+    refuse_out_of_scope,
+    visible_projects,
+)
 from app.services.shema._submission_archive import archived_answers
 from app.services.shema.read_intake_form import form_fields
 from app.utils.shema_forms import PULSE_KIND, spec_fields
 from app.utils.stored_time import as_utc
 
 
-def as_received(submission: ShemaSubmission, definition_version: int) -> ReceivedSubmission:
+def as_received(
+    submission: ShemaSubmission, definition_version: int, language_name: str
+) -> ReceivedSubmission:
     """One row on the wire — the kind is a constant because only the Pulse is archivable.
 
     ``kind`` is read off :data:`~app.utils.shema_forms.PULSE_KIND` rather than off a column,
@@ -90,7 +99,7 @@ def as_received(submission: ShemaSubmission, definition_version: int) -> Receive
         id=submission.id,
         kind=PULSE_KIND,
         project_id=submission.project_id,
-        language_name=submission.language_name,
+        language_name=language_name,
         submitted_by=submission.submitted_by,
         received_at=as_utc(submission.received_at).date(),
         definition_version=definition_version,
@@ -131,10 +140,10 @@ def readable_answers(
     return {key: value for key, value in answers.items() if key in unmapped}
 
 
-def _scoped(scope: RegionScope) -> Select[tuple[ShemaSubmission, int]]:
+def _scoped(scope: RegionScope) -> Select[tuple[ShemaSubmission, int, ShemaProject]]:
     """Submissions joined to their project and their definition, inside the caller's reach."""
     return (
-        select(ShemaSubmission, ShemaFormDefinition.version)
+        select(ShemaSubmission, ShemaFormDefinition.version, ShemaProject)
         .join(ShemaFormDefinition, ShemaFormDefinition.id == ShemaSubmission.definition_id)
         .join(ShemaProject, ShemaProject.id == ShemaSubmission.project_id)
         .where(ShemaProject.id.in_(select(visible_projects(scope).subquery().c.id)))
@@ -142,7 +151,11 @@ def _scoped(scope: RegionScope) -> Select[tuple[ShemaSubmission, int]]:
 
 
 async def list_submissions(
-    db: AsyncSession, scope: RegionScope, *, project_id: str | None = None
+    db: AsyncSession,
+    scope: RegionScope,
+    *,
+    project_id: str | None = None,
+    readership: Readership = NO_COORDINATION,
 ) -> list[ReceivedSubmission]:
     """Everything received for the projects the caller reaches, newest first.
 
@@ -154,8 +167,19 @@ async def list_submissions(
     if project_id is not None:
         stmt = stmt.where(ShemaSubmission.project_id == project_id)
     return [
-        as_received(submission, version) for submission, version in (await db.execute(stmt)).all()
+        as_received(submission, version, inbox_name(project, readership))
+        for submission, version, project in (await db.execute(stmt)).all()
     ]
+
+
+def inbox_name(project: ShemaProject, readership: Readership) -> str:
+    """The name this inbox may print — read off the project, never the archived copy (OBT-560).
+
+    The archive keeps the name the Pulse arrived under, and for a sensitive project that name can
+    name the place: OBT Lab reads this inbox and is not coordination. ``readership`` defaults to
+    nobody coordinating, so a caller that forgets it prints less, never more.
+    """
+    return language_name_for(project, readership.reader_of(project.region_key))
 
 
 async def read_submission(
@@ -165,6 +189,7 @@ async def read_submission(
     *,
     user: User,
     may_apply: bool = False,
+    readership: Readership = NO_COORDINATION,
 ) -> ReceivedSubmissionDetail:
     """One submission, with the answers as they arrived and the form they answered.
 
@@ -184,9 +209,9 @@ async def read_submission(
             scope, user=user, operation="read_submission", project_id=submission_id
         )
 
-    submission, version = row
+    submission, version, project = row
     definition = await db.get(ShemaFormDefinition, submission.definition_id)
-    received = as_received(submission, version)
+    received = as_received(submission, version, inbox_name(project, readership))
     return ReceivedSubmissionDetail(
         **received.model_dump(),
         fields=[] if definition is None else form_fields(definition),

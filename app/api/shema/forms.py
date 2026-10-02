@@ -186,15 +186,20 @@ async def revoke_link(link_id: str, db: Db, scope: Scope, user: CoordinatorUser)
 
 @router.get("/forms/submissions", response_model=list[ReceivedSubmission])
 async def received(
-    db: Db, scope: Scope, user: CurrentUser, project_id: str | None = None
+    db: Db, scope: Scope, user: CurrentUser, reading: Reading, project_id: str | None = None
 ) -> list[ReceivedSubmission]:
     """FE-44 §9.9's inbox: everything received for the projects the caller reaches."""
-    return await list_submissions(db, scope, project_id=project_id)
+    return await list_submissions(db, scope, project_id=project_id, readership=reading)
 
 
 @router.get("/forms/submissions/{submission_id}", response_model=ReceivedSubmissionDetail)
 async def received_detail(
-    submission_id: str, db: Db, scope: Scope, user: CurrentUser, may_apply: MayApply
+    submission_id: str,
+    db: Db,
+    scope: Scope,
+    user: CurrentUser,
+    may_apply: MayApply,
+    reading: Reading,
 ) -> ReceivedSubmissionDetail:
     """One submission opened — the answers as they arrived, beside the form they answered.
 
@@ -210,7 +215,9 @@ async def received_detail(
     coordinator who is about to apply a leader's consent level must be shown it, and the
     ``resourceCircle`` account that cannot apply anything must not be.
     """
-    return await read_submission(db, scope, submission_id, user=user, may_apply=may_apply)
+    return await read_submission(
+        db, scope, submission_id, user=user, may_apply=may_apply, readership=reading
+    )
 
 
 @router.post(

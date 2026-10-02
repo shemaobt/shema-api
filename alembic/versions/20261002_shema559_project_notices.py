@@ -1,13 +1,13 @@
 """shema_project_notices: what a project notice in the PME's bell says, as facts
 
 Revision ID: 20261002_shema559
-Revises: 20261001_shema552
+Revises: 20261002_shema560
 Create Date: 2026-10-02
 
-OBT-559. The parent is `20261001_shema552`, read with `uv run alembic heads` in this worktree on
-2/out/2026 immediately before this file was written — a measurement, not a value to remember
-(`docs/shema.md` §7.1). OBT-560 (shema-api#610) writes `20261002_shema560` on the same parent; the
-one of the two that lands second is re-pointed at the other. The id carries the issue number, as
+OBT-559. The parent is `20261002_shema560`, read with `alembic heads` on `dev` on 2/out/2026 after
+OBT-560 (shema-api#610) landed — a measurement, not a value to remember (`docs/shema.md` §7.1).
+This file was written on `20261001_shema552`, the parent the two shared, and re-pointed when #610
+landed first. The id carries the issue number, as
 `20260929_shema541` does, so two siblings cannot mint the same `shemaNN`.
 
 The four project notices — a health reading turned critical, urgent needs, a Pulse and its prayer
@@ -33,7 +33,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20261002_shema559"
-down_revision: str | None = "20261001_shema552"
+down_revision: str | None = "20261002_shema560"
 branch_labels = None
 depends_on = None
 
