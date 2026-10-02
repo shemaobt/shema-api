@@ -23,7 +23,6 @@ it.
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -31,6 +30,7 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition
 from app.models.shema_forms import IntakeField, IntakeForm
 from app.services.shema._intake_tokens import expires_on, verify_intake_token
+from app.services.shema._redaction import leaving_inputs
 from app.utils.shema_forms import spec_fields
 
 
@@ -70,18 +70,18 @@ async def read_intake_form(db: AsyncSession, raw_token: str) -> IntakeForm:
     if definition is None:
         raise NotFoundError("The form this link was issued for is no longer published.")
 
-    language_name = (
-        await db.execute(
-            select(ShemaProject.language_name).where(ShemaProject.id == link.project_id)
-        )
-    ).scalar_one_or_none()
-    if language_name is None:
+    project = await db.get(ShemaProject, link.project_id)
+    if project is None:
         raise NotFoundError("The project this link was issued for no longer exists.")
 
+    # The flag, the region and the public name ride along so the boundary decides the name
+    # the link's holder reads (OBT-560): a sensitive project's own name can name the place,
+    # and a shape built without the flag would withhold every project's name, fail closed.
     return IntakeForm(
         kind=definition.kind,
         definition_version=definition.version,
-        language_name=language_name,
+        language_name=project.language_name,
+        **leaving_inputs(project),
         expires_at=expires_on(link),
         fields=form_fields(definition),
     )

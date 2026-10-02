@@ -50,9 +50,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaSubmission
+from app.models.shema_privacy import ShemaReader
 from app.services import authorization_service
 from app.services.notifications import create_notification, get_shema_app_id
 from app.services.shema._consent import reaches_prayer_wall
+from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import (
     COORDINATOR_ROLE,
     OBT_LAB_ROLE,
@@ -116,7 +118,9 @@ async def notify_submission(
     people they were addressed to.
     """
     app_id = await get_shema_app_id(db)
-    language = submission.language_name or project.language_name or project.id
+    # The project's name as the recipients may read it, not the archived copy: OBT Lab is told
+    # here and is not coordination, and a sensitive project's name can name the place (OBT-560).
+    language = language_name_for(project, ShemaReader.OTHER, fallback="") or "a project"
 
     told = 0
     arrival_recipients = await _recipients(db, app_key, ARRIVAL_ROLES, project)

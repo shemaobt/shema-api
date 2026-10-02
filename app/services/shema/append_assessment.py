@@ -86,10 +86,12 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.models.shema_health import RECORD_FIELDS, ShemaHealthAssessmentSubmission
+from app.models.shema_privacy import ShemaReader
 from app.services.shema import _audit
 from app.services.shema._consent import request_written
 from app.services.shema._health_audience import require_reads_assessments
 from app.services.shema._health_notice import entered_critical, notify_critical
+from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
 from app.utils.shema_derivations import OverallHealth, overall_of
 from app.utils.shema_health_questions import CURRENT_QUESTION_SET, DIMENSIONS
@@ -305,7 +307,8 @@ async def append_assessment(
             db,
             app_key=app_key,
             project_id=project.id,
-            language_name=project.language_name,
+            # Fail closed for every recipient: a notice is not a shape (OBT-560).
+            language_name=language_name_for(project, ShemaReader.OTHER, fallback=""),
             region=project.region_key,
             day=project.health_assessment_date or day,
             actor=user,
