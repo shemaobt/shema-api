@@ -20,6 +20,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY --from=builder /app/.venv /app/.venv
 COPY . .
 
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PORT=8080
 EXPOSE 8080

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +9,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     env: str = "development"
+    #: The git SHA the image was built from, baked in as `GIT_SHA` at build time.
+    build_id: str = Field("unknown", validation_alias="GIT_SHA")
     port: int = 8000
 
     database_url: str
