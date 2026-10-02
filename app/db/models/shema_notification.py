@@ -5,11 +5,14 @@ entries are derived from the projects**, so the platform's ``notifications`` tab
 wrong home for them. What a store is needed for is the two things a derivation cannot hold —
 what a person asked to be told about, and what they have already seen.
 
-**One detail table, and it exists because something finally deep-links** (OBT-541). §4.6 said
-a Shemá detail table would have no reader until a notice pointed somewhere; the resource-request
-form's two notices, rung into this app's bell, point at the project's record. So each of those
-rows carries its project, and the registered name and stage the console renders in its own
-language, in :class:`ShemaRequestNotice` — beside the platform's row, never inside it.
+**Two detail tables, each beside the platform's row and never inside it.** §4.6 said a Shemá
+detail table would have no reader until a notice pointed somewhere. The resource-request form's
+two notices were the first (OBT-541): each row carries its project, and the registered name and
+stage the console renders in its own language, in :class:`ShemaRequestNotice`. The four project
+notices are the second (OBT-559): the console writes their sentence in the reader's language, so
+each row carries what happened — the day, the needs, who sent the Pulse — in
+:class:`ShemaProjectNotice`, and the panel reads who and where the project is off the project
+itself, when it is read.
 
 Entry ids are stable derivations of what a row renders — ``health:{projectId}:{date}``,
 ``need:{projectId}:{category}:{submittedAt}`` — never of a position, because a removed need
@@ -28,10 +31,10 @@ and adds ``get_shema_app_id`` beside ``get_mm_app_id`` and ``get_rr_app_id`` —
 which ``get_oc_app_id`` was not.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, text
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, ForeignKey, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -145,3 +148,50 @@ class ShemaRequestNotice(Base):
     )
     request_name: Mapped[str] = mapped_column(String(255), default="", server_default="")
     stage: Mapped[str] = mapped_column(String(20))
+
+
+class ShemaProjectNotice(Base):
+    """What a project notice in the bell says, as facts the console words itself (OBT-559).
+
+    One row per ``notifications`` row the four project writers stage — a health reading turned
+    critical, urgent needs, a Pulse and the prayer request it carried — keyed by that row, like
+    :class:`ShemaRequestNotice`. The platform's ``title`` and ``body`` stay English prose for the
+    readers that are not the bell; the bell reads this instead, so the sentence lands in the
+    reader's language.
+
+    **What happened, and never who or where.** The project is a pointer; its language's name, its
+    region and its place are read off the project when the panel is read, through the owners of
+    each (``_redaction.language_name_for``, the region key, ``LeavingShape``). So there is no
+    column a name or a place could be stored in and outlive the rule that withholds it: a notice
+    written before its project was flagged sensitive reads the way the project reads now, which
+    is what a row of prose could not do (OBT-556, item 1). The facts columns are each one kind's:
+
+    * ``assessed_on`` — the health notice: the day the reading turned critical;
+    * ``need_count``, ``need_categories``, ``need_totals`` — the urgent needs of one save: how
+      many, which categories, and the amounts **per currency, never across them** (``[{"amount":
+      "5000.00", "currency": "BRL"}]``, the amount a string so no float ever touches it);
+    * ``submitted_by`` — the Pulse: the name the leader signed it with.
+
+    The prayer notice carries none of them: the project is the whole of what it says.
+
+    ``project_id`` restricts on delete like :class:`ShemaRequestNotice`'s — a project is marked,
+    never deleted (OBT-547).
+    """
+
+    __tablename__ = "shema_project_notices"
+
+    notification_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("notifications.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(120), ForeignKey("shema_projects.id"), nullable=False
+    )
+    assessed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    need_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    need_categories: Mapped[list[str] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
+    need_totals: Mapped[list[dict[str, str]] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
+    submitted_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
