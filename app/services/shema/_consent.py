@@ -41,6 +41,8 @@ to the record by :func:`request_as_read` and to every write of a request or a sh
 request it was given for, so a new text arriving without one is unauthorized again
 (:func:`request_written`, :func:`need_written`) — and a submission, announced before anybody
 applies it, is authorized by its own answer (:func:`submission_reaches_prayer_wall`, OBT-554).
+Taking an authorization back is named here too (:func:`withdraws_authorization`, OBT-561),
+because *did the team stop sharing* is a question about the gate; the archive owns the erasure.
 """
 
 from __future__ import annotations
@@ -374,6 +376,24 @@ def request_written(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str,
     if moved:
         written[REQUEST_VISIBILITY] = None
     return written
+
+
+def withdraws_authorization(project: ShemaProject, sent: Mapping[str, Any]) -> bool:
+    """Whether ``sent`` takes back the authorization of the request on the wall (OBT-561).
+
+    Read **before** the write lands, off the record as it stands: a request that reaches the
+    wall, and a write that **states** a visibility other than ``rede`` — the team stopping the
+    sharing. Then every archived Pulse that shared a request is cleaned
+    (``_submission_archive.erase_shared_requests``).
+
+    **A new text arriving without a visibility is not a withdrawal**, although
+    :func:`request_written` clears the authorization for it: the team did not stop sharing, it
+    wrote something new, and nothing it shared before is taken back. Compared with ``==``, not
+    ``is``: ``sent`` is a mapping, and a raw ``"rede"`` read as a withdrawal would erase.
+    """
+    if REQUEST_VISIBILITY not in sent or not reaches_prayer_wall(project):
+        return False
+    return bool(sent[REQUEST_VISIBILITY] != ShemaPrayerVisibility.REDE)
 
 
 def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:

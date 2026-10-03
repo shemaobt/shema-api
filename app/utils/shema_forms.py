@@ -287,6 +287,11 @@ def spec_hash(spec: list[dict[str, Any]]) -> str:
 #: :data:`PULSE_FIELDS` above, which is data.
 PRAYER_FIELD: Final = "prayerRequest"
 
+#: The answer that authorizes :data:`PRAYER_FIELD` — the two leave an archived Pulse together
+#: when the team withdraws the authorization (OBT-561), because an authorization belongs to the
+#: request it was given for and would otherwise be applied, later, to whatever text is there.
+PRAYER_VISIBILITY_FIELD: Final = "prayerVisibility"
+
 #: The answer snapshotted onto ``shema_submissions.submitted_by`` and stamped as
 #: ``ProgressHistoryEntry.fromField``. A wire key, named once, for the same reason the one
 #: above is: the archive and the progress trail must carry the same name, and two call sites

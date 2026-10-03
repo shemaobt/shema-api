@@ -148,7 +148,22 @@ class ShemaSubmission(Base):
     #: *archived byte-identically* means for a submission that arrived as a payload rather
     #: than as a file. Written only after the submission passed its definition whole: a store
     #: of unvalidated payloads to clean later is a store nobody ever cleans.
+    #:
+    #: **One exception, and it is the client's** (OBT-561): when the team withdraws the
+    #: authorization of a prayer request, the request leaves every archived Pulse that shared
+    #: it — Karina, via Daniel, 1/out/2026: *"o pedido é apagado também do Pulso guardado"*.
+    #: The answer is removed and the envelope rewritten; :attr:`content_hash` keeps the hash of
+    #: the bytes as they arrived, so the same file sent again is still the same submission and
+    #: still a no-op, rather than the way the text would come back.
     archived_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    #: When a withdrawn prayer request was removed from :attr:`archived_payload`, and by whom —
+    #: the trace the removal leaves, which never holds the text it removed (OBT-561).
+    prayer_request_erased_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+    prayer_request_erased_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     #: When a coordinator applied this to the record, or ``NULL`` while it is still an inbox
     #: entry. It is what keeps applying **idempotent** on a second attempt, and it is a
     #: timestamp rather than a flag for the reason ``used_at`` below is one.
