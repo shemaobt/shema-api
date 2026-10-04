@@ -90,7 +90,6 @@ GLOBE_EDGES = [
 ]
 
 
-@pytest.mark.asyncio
 async def test_patch_with_three_nulls_clears_the_whole_location(client, db_session) -> None:
     """The console's *Clear location* sends this body; it used to answer 200 and keep all."""
     project = await _located_project(db_session)
@@ -113,7 +112,6 @@ async def test_patch_with_three_nulls_clears_the_whole_location(client, db_sessi
     assert (stored.latitude, stored.longitude, stored.location_display_name) == (None, None, None)
 
 
-@pytest.mark.asyncio
 async def test_patch_clearing_the_coordinates_keeps_the_name(client, db_session) -> None:
     project = await _located_project(db_session)
     headers = await _admin_headers(db_session)
@@ -130,7 +128,6 @@ async def test_patch_clearing_the_coordinates_keeps_the_name(client, db_session)
     assert stored.location_display_name == "Manaus"
 
 
-@pytest.mark.asyncio
 async def test_patch_with_only_the_name_keeps_the_coordinates(client, db_session) -> None:
     project = await _located_project(db_session)
     headers = await _admin_headers(db_session)
@@ -147,7 +144,6 @@ async def test_patch_with_only_the_name_keeps_the_coordinates(client, db_session
     assert stored.location_display_name == "Manaus, Amazonas"
 
 
-@pytest.mark.asyncio
 async def test_patch_clearing_only_the_name_keeps_the_coordinates(client, db_session) -> None:
     project = await _located_project(db_session)
     headers = await _admin_headers(db_session)
@@ -164,7 +160,6 @@ async def test_patch_clearing_only_the_name_keeps_the_coordinates(client, db_ses
     assert stored.location_display_name is None
 
 
-@pytest.mark.asyncio
 async def test_patch_with_coordinates_only_keeps_the_name(client, db_session) -> None:
     project = await _located_project(db_session)
     headers = await _admin_headers(db_session)
@@ -181,7 +176,6 @@ async def test_patch_with_coordinates_only_keeps_the_name(client, db_session) ->
     assert stored.location_display_name == "Manaus"
 
 
-@pytest.mark.asyncio
 async def test_patch_gives_a_location_that_is_only_a_name(client, db_session) -> None:
     lang = await make_language(db_session, code="nam")
     project = await make_project(db_session, language_id=lang.id, name="Unlocated")
@@ -199,7 +193,6 @@ async def test_patch_gives_a_location_that_is_only_a_name(client, db_session) ->
     assert stored.location_display_name == "Alto Xingu"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("body", HALF_PAIRS)
 async def test_patch_with_half_a_pair_is_refused_and_changes_nothing(
     client, db_session, body
@@ -214,7 +207,6 @@ async def test_patch_with_half_a_pair_is_refused_and_changes_nothing(
     assert (stored.latitude, stored.longitude) == (-3.1, -60.0)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("body", OFF_THE_GLOBE)
 async def test_patch_with_a_point_off_the_globe_is_refused(client, db_session, body) -> None:
     project = await _located_project(db_session)
@@ -227,7 +219,6 @@ async def test_patch_with_a_point_off_the_globe_is_refused(client, db_session, b
     assert (stored.latitude, stored.longitude) == (-3.1, -60.0)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("raw", NOT_A_NUMBER)
 async def test_patch_with_nan_or_infinity_is_refused(client, db_session, raw) -> None:
     """``json.loads`` reads ``NaN`` and ``Infinity``, so they do reach the model."""
@@ -241,7 +232,6 @@ async def test_patch_with_nan_or_infinity_is_refused(client, db_session, raw) ->
     assert (stored.latitude, stored.longitude) == (-3.1, -60.0)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(("latitude", "longitude"), GLOBE_EDGES)
 async def test_patch_accepts_the_edges_of_the_globe(
     client, db_session, latitude, longitude
@@ -270,7 +260,6 @@ async def _post_project(client, db_session, **location) -> httpx.Response:
     )
 
 
-@pytest.mark.asyncio
 async def test_create_with_a_location_that_is_only_a_name_is_accepted(client, db_session) -> None:
     resp = await _post_project(client, db_session, location_display_name="Alto Xingu")
 
@@ -280,7 +269,6 @@ async def test_create_with_a_location_that_is_only_a_name_is_accepted(client, db
     assert body["location_display_name"] == "Alto Xingu"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "location",
     [
@@ -296,7 +284,6 @@ async def test_create_with_half_a_pair_is_refused(client, db_session, location) 
     assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("location", OFF_THE_GLOBE)
 async def test_create_with_a_point_off_the_globe_is_refused(client, db_session, location) -> None:
     resp = await _post_project(client, db_session, **location)
@@ -304,7 +291,6 @@ async def test_create_with_a_point_off_the_globe_is_refused(client, db_session, 
     assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("raw", NOT_A_NUMBER)
 async def test_create_with_nan_or_infinity_is_refused(client, db_session, raw) -> None:
     lang = await make_language(db_session, code="nan")
@@ -316,7 +302,6 @@ async def test_create_with_nan_or_infinity_is_refused(client, db_session, raw) -
     assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(("latitude", "longitude"), GLOBE_EDGES)
 async def test_create_accepts_the_edges_of_the_globe(
     client, db_session, latitude, longitude

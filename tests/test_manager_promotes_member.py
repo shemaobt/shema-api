@@ -46,7 +46,6 @@ async def _team(db_session: AsyncSession):
     return project, manager, member
 
 
-@pytest.mark.asyncio
 async def test_manager_promotes_a_member_and_cannot_undo_it(client, db_session) -> None:
     project, manager, member = await _team(db_session)
     headers = await _headers(db_session, manager)
@@ -62,7 +61,6 @@ async def test_manager_promotes_a_member_and_cannot_undo_it(client, db_session) 
     assert revoke.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_manager_grants_access_directly_as_manager(client, db_session) -> None:
     project, manager, _member = await _team(db_session)
     newcomer = await make_user(db_session, email="newcomer@promote.com")
@@ -78,7 +76,6 @@ async def test_manager_grants_access_directly_as_manager(client, db_session) -> 
     assert granted.json()["role"] == "manager"
 
 
-@pytest.mark.asyncio
 async def test_platform_admin_undoes_a_promotion(client, db_session) -> None:
     project, manager, member = await _team(db_session)
     admin = await make_user(db_session, email="admin@promote.com", is_platform_admin=True)

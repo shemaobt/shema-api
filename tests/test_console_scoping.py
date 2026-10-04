@@ -41,7 +41,6 @@ async def _headers(db_session: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-@pytest.mark.asyncio
 async def test_get_managed_project_ids_only_manager_role(db_session) -> None:
     lang = await make_language(db_session, code="gmp")
     user = await make_user(db_session, email="gmp@scope.com")
@@ -56,7 +55,6 @@ async def test_get_managed_project_ids_only_manager_role(db_session) -> None:
     assert ids == [managed.id]
 
 
-@pytest.mark.asyncio
 async def test_list_organizations_by_projects(db_session) -> None:
     lang = await make_language(db_session, code="lob")
     managed = await make_project(db_session, language_id=lang.id, name="Managed")
@@ -72,7 +70,6 @@ async def test_list_organizations_by_projects(db_session) -> None:
     assert await organization_service.list_organizations_by_projects(db_session, []) == []
 
 
-@pytest.mark.asyncio
 async def test_list_organizations_includes_the_ones_managed_directly(db_session) -> None:
     """An organization manager with no project still sees the organization they run."""
     owner = await make_user(db_session, email="org-owner@example.com")
@@ -91,7 +88,6 @@ async def test_list_organizations_includes_the_ones_managed_directly(db_session)
     assert [o.slug for o in orgs] == ["joined-org"]
 
 
-@pytest.mark.asyncio
 async def test_list_organizations_unions_project_and_direct_scopes(db_session) -> None:
     """The two scopes add up instead of one replacing the other."""
     owner = await make_user(db_session, email="both-scopes@example.com")
@@ -111,7 +107,6 @@ async def test_list_organizations_unions_project_and_direct_scopes(db_session) -
     assert [o.slug for o in orgs] == ["via-project", "via-manager"]
 
 
-@pytest.mark.asyncio
 async def test_list_languages_by_projects(db_session) -> None:
     lang_a = await make_language(db_session, code="laa")
     lang_b = await make_language(db_session, code="lbb")
@@ -124,7 +119,6 @@ async def test_list_languages_by_projects(db_session) -> None:
     assert await language_service.list_languages_by_projects(db_session, []) == []
 
 
-@pytest.mark.asyncio
 async def test_list_languages_by_projects_leaves_out_the_deactivated(db_session) -> None:
     """A manager's list agrees with a direct read: a deactivated language is absent from both."""
     active = await make_language(db_session, code="lac")
@@ -141,7 +135,6 @@ async def test_list_languages_by_projects_leaves_out_the_deactivated(db_session)
     assert [lng.code for lng in languages] == ["lac"]
 
 
-@pytest.mark.asyncio
 async def test_list_phases_by_projects(db_session) -> None:
     lang = await make_language(db_session, code="lpp")
     managed = await make_project(db_session, language_id=lang.id, name="Managed")
@@ -157,7 +150,6 @@ async def test_list_phases_by_projects(db_session) -> None:
     assert await phase_service.list_phases_by_projects(db_session, []) == []
 
 
-@pytest.mark.asyncio
 async def test_list_phases_by_projects_filter_outside_scope_is_empty(db_session) -> None:
     lang = await make_language(db_session, code="lpf")
     managed = await make_project(db_session, language_id=lang.id, name="Managed")
@@ -172,7 +164,6 @@ async def test_list_phases_by_projects_filter_outside_scope_is_empty(db_session)
     assert result == []
 
 
-@pytest.mark.asyncio
 async def test_console_gate_refuses_a_plain_member_on_the_project_list(db_session, client) -> None:
     lang = await make_language(db_session, code="cgl")
     user = await make_user(db_session, email="member@gate.com")
@@ -184,7 +175,6 @@ async def test_console_gate_refuses_a_plain_member_on_the_project_list(db_sessio
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_console_gate_does_not_shadow_the_per_project_read(db_session, client) -> None:
     """The gate belongs to the console's collections, not to the routes ``assert_project_access``
     already answers for: a member of a project still reads that project and its phases."""
@@ -202,7 +192,6 @@ async def test_console_gate_does_not_shadow_the_per_project_read(db_session, cli
     assert phases.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_per_project_read_still_refuses_a_stranger(db_session, client) -> None:
     lang = await make_language(db_session, code="cgs")
     user = await make_user(db_session, email="stranger@gate.com")

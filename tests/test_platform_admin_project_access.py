@@ -14,7 +14,6 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_grant_user_access_rejects_platform_admin(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     lang = await make_language(db_session, code="kos")
@@ -24,7 +23,6 @@ async def test_grant_user_access_rejects_platform_admin(db_session) -> None:
         await project_service.grant_user_access(db_session, project.id, admin.id)
 
 
-@pytest.mark.asyncio
 async def test_grant_user_access_rejects_unknown_user(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id)
@@ -35,7 +33,6 @@ async def test_grant_user_access_rejects_unknown_user(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_update_user_access_role_rejects_platform_admin(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     lang = await make_language(db_session, code="kos")
@@ -45,7 +42,6 @@ async def test_update_user_access_role_rejects_platform_admin(db_session) -> Non
         await project_service.update_user_access_role(db_session, project.id, admin.id, "manager")
 
 
-@pytest.mark.asyncio
 async def test_update_user_access_role_rejects_unknown_user(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id)
@@ -56,7 +52,6 @@ async def test_update_user_access_role_rejects_unknown_user(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_list_project_user_access_excludes_platform_admins(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id)
@@ -72,7 +67,6 @@ async def test_list_project_user_access_excludes_platform_admins(db_session) -> 
     assert user_obj.id == member.id
 
 
-@pytest.mark.asyncio
 async def test_create_project_admin_creator_gets_no_membership(db_session) -> None:
     from sqlalchemy import select
 
@@ -92,7 +86,6 @@ async def test_create_project_admin_creator_gets_no_membership(db_session) -> No
     assert rows == []
 
 
-@pytest.mark.asyncio
 async def test_member_count_agrees_with_the_listed_members(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id)
@@ -107,7 +100,6 @@ async def test_member_count_agrees_with_the_listed_members(db_session) -> None:
     assert counts[project.id] == len(listed) == 1
 
 
-@pytest.mark.asyncio
 async def test_member_count_is_zero_when_only_an_admin_is_linked(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id)
@@ -119,7 +111,6 @@ async def test_member_count_is_zero_when_only_an_admin_is_linked(db_session) -> 
     assert counts.get(project.id, 0) == 0
 
 
-@pytest.mark.asyncio
 async def test_create_invite_rejects_platform_admin_and_writes_nothing(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id)

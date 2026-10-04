@@ -1,5 +1,3 @@
-import pytest
-
 from app.services import project_service
 from tests.baker import (
     make_language,
@@ -9,7 +7,6 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_count_team_sizes_counts_distinct_users(db_session) -> None:
     lang = await make_language(db_session, code="tsa")
     project = await make_project(db_session, language_id=lang.id)
@@ -22,7 +19,6 @@ async def test_count_team_sizes_counts_distinct_users(db_session) -> None:
     assert sizes == {project.id: 2}
 
 
-@pytest.mark.asyncio
 async def test_count_team_sizes_zero_for_project_without_access(db_session) -> None:
     lang = await make_language(db_session, code="tsb")
     project = await make_project(db_session, language_id=lang.id)
@@ -31,7 +27,6 @@ async def test_count_team_sizes_zero_for_project_without_access(db_session) -> N
     assert sizes == {project.id: 0}
 
 
-@pytest.mark.asyncio
 async def test_count_team_sizes_isolates_projects(db_session) -> None:
     lang = await make_language(db_session, code="tsc")
     p1 = await make_project(db_session, language_id=lang.id, name="P1")
@@ -46,12 +41,10 @@ async def test_count_team_sizes_isolates_projects(db_session) -> None:
     assert sizes == {p1.id: 2, p2.id: 1}
 
 
-@pytest.mark.asyncio
 async def test_count_team_sizes_empty_input(db_session) -> None:
     assert await project_service.count_project_team_sizes(db_session, []) == {}
 
 
-@pytest.mark.asyncio
 async def test_count_team_sizes_excludes_platform_admins(db_session) -> None:
     lang = await make_language(db_session, code="tsp")
     project = await make_project(db_session, language_id=lang.id)
@@ -64,7 +57,6 @@ async def test_count_team_sizes_excludes_platform_admins(db_session) -> None:
     assert sizes == {project.id: 1}
 
 
-@pytest.mark.asyncio
 async def test_members_preview_excludes_platform_admins(db_session) -> None:
     lang = await make_language(db_session, code="tsq")
     project = await make_project(db_session, language_id=lang.id)

@@ -37,14 +37,12 @@ async def an_admin(db: AsyncSession) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-@pytest.mark.asyncio
 async def test_list_refuses_a_misspelled_status(client, db_session) -> None:
     headers = await an_admin(db_session)
     response = await client.get(CHANGE_REQUESTS_URL, params={"status": "aproved"}, headers=headers)
     assert response.status_code == 422
 
 
-@pytest.mark.asyncio
 async def test_list_refuses_a_misspelled_kind(client, db_session) -> None:
     headers = await an_admin(db_session)
     response = await client.get(
@@ -53,7 +51,6 @@ async def test_list_refuses_a_misspelled_kind(client, db_session) -> None:
     assert response.status_code == 422
 
 
-@pytest.mark.asyncio
 async def test_list_accepts_the_known_filters(client, db_session) -> None:
     headers = await an_admin(db_session)
     response = await client.get(

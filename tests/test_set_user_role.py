@@ -13,7 +13,6 @@ async def _access_rows(db_session, user_id: str) -> dict[str, str]:
     return {access.project_id: access.role for access in result.scalars()}
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_promotes_to_platform_admin(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     target = await make_user(db_session, email="target@example.com")
@@ -28,7 +27,6 @@ async def test_set_user_role_promotes_to_platform_admin(db_session) -> None:
     assert await _access_rows(db_session, target.id) == {project.id: "member"}
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_manager_with_project_ids_upserts_access(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     target = await make_user(db_session, email="target@example.com")
@@ -56,7 +54,6 @@ async def test_set_user_role_manager_with_project_ids_upserts_access(db_session)
     assert len(rows) == 2
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_manager_deduplicates_repeated_project_ids(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     target = await make_user(db_session, email="target@example.com")
@@ -78,7 +75,6 @@ async def test_set_user_role_manager_deduplicates_repeated_project_ids(db_sessio
     assert rows[0].role == "manager"
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_manager_without_project_ids_keeps_existing(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     target = await make_user(db_session, email="target@example.com", is_platform_admin=True)
@@ -93,7 +89,6 @@ async def test_set_user_role_manager_without_project_ids_keeps_existing(db_sessi
     assert await _access_rows(db_session, target.id) == {project.id: "manager"}
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_manager_without_project_ids_requires_managed_project(
     db_session,
 ) -> None:
@@ -107,7 +102,6 @@ async def test_set_user_role_manager_without_project_ids_requires_managed_projec
         await user_service.set_user_role(db_session, target.id, admin, "manager")
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_demotes_manager_access_to_member(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     target = await make_user(db_session, email="target@example.com", is_platform_admin=True)
@@ -130,7 +124,6 @@ async def test_set_user_role_demotes_manager_access_to_member(db_session) -> Non
     assert await _access_rows(db_session, other.id) == {managed.id: "manager"}
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_user_not_found(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
 
@@ -140,7 +133,6 @@ async def test_set_user_role_user_not_found(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_project_not_found(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     target = await make_user(db_session, email="target@example.com")
@@ -155,7 +147,6 @@ async def test_set_user_role_project_not_found(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_set_user_role_rejects_self_change(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
 

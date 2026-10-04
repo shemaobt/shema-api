@@ -158,7 +158,6 @@ async def _member_setup(db_session, suffix: str):
     return actor, target, app, member_role
 
 
-@pytest.mark.asyncio
 async def test_revoke_role_records_who_revoked(db_session) -> None:
     """A revocation has an author — what the Shemá Admin's history reads it by (OBT-543)."""
     actor, target, app, member_role = await _member_setup(db_session, "who")
@@ -171,7 +170,6 @@ async def test_revoke_role_records_who_revoked(db_session) -> None:
     assert assignment.revoked_by == actor.id
 
 
-@pytest.mark.asyncio
 async def test_revoke_role_revokes_every_live_duplicate(db_session) -> None:
     """Two live rows of one grant — two requests that landed together — used to be a 500 here,
     and revoking one of them would have left the role held."""
@@ -184,7 +182,6 @@ async def test_revoke_role_revokes_every_live_duplicate(db_session) -> None:
     assert await authorization_service.list_roles(db_session, target.id, app.app_key) == []
 
 
-@pytest.mark.asyncio
 async def test_assign_and_revoke_leave_the_transaction_to_the_caller_when_asked(
     db_session,
 ) -> None:
