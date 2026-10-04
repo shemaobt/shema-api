@@ -19,7 +19,6 @@ from app.services.project_health import create_interview, post_message
         "here. Unskip in CI when running against a real Postgres."
     )
 )
-@pytest.mark.asyncio
 async def test_concurrent_posts_both_persist(db_session, test_engine, ph_app, stub_llm):
     """Two concurrent POST /messages must both persist their team turn.
 

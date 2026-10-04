@@ -1,0 +1,30 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 3,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "rehearsal_before_opening",
+      "quote": "Então agora ensaiem essa parte juntos, na língua de vocês — a história inteira, do começo grande até sobrar a mulher sozinha.",
+      "why": "O guia mandou a equipe ensaiar a passagem inteira depois de dar só um resumo geral, sem ter aberto nenhuma parte com os nomes, os lugares e o que acontece em cada cena. A equipe pediu para ensaiar, mas o guia deveria ter aberto ao menos a primeira parte antes; o resultado foi um primeiro reconto magro na volta 2."
+    },
+    {
+      "turn": 10,
+      "severity": "major",
+      "kind": "gap_praised_as_complete",
+      "quote": "ouvi a história inteira, do começo ao fim: [...] Seco e direto, do jeito que a história conta.",
+      "why": "O reconto da equipe omitiu 'efrateus' e a ideia de morar como estrangeiros, só por um tempo — justamente o ponto que o guia tinha trabalhado na volta 3 — e ainda disse 'foram morar'. O guia declarou a contagem inteira e passou para a gravação sem nomear as faltas. A equipe corrigiu sozinha na volta 11, mas a checagem falhou aqui."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um colega de mesa: respondeu ao que a equipe disse a cada volta, acompanhou quando a equipe avançou por conta própria e voltou quando precisava. A checagem dos recontos foi, na maior parte, honesta e calorosa — apontou com clareza o que a história não conta (a doença, o choro, o enterro, o par de casamentos, o 'Deus deixou') e tratou cada silêncio como conteúdo de propósito, sem preencher nenhum. A contenção foi impecável: nada fora do que a história dá, nenhum spoiler sobre quem casou com quem, nenhuma menção a Deus como causa, nenhuma bênção. Duas falhas: na volta 1 o guia mandou ensaiar a passagem inteira sem ter aberto as partes com nomes e acontecimentos, e na volta 10 elogiou como inteira uma contagem que deixou de fora 'efrateus' e o morar como estrangeiro, que ele mesmo tinha ensinado. Vale reforçar no prompt que o guia abra a primeira parte com detalhe antes do primeiro ensaio e que compare o reconto final item por item com o que já foi trabalhado antes de liberar a gravação."
+}

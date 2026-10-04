@@ -10,7 +10,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.run_turn import OPENING_BUDGET, run_turn
+from app.services.internalization_room.run_turn import run_turn
 from app.services.internalization_room.sessions import get_session, is_panorama
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
@@ -34,8 +34,15 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     The passage is written down beside the line. What it is for is `hand_over`; why it cannot
     be derived instead is on the column.
 
-    Failure here is silent on purpose: the prepared line is an optimisation, and the session
-    opens perfectly well without one.
+    Failure here is silent to the session, not to the log: the prepared line is an
+    optimisation and the session opens perfectly well without one, but a refusal or a
+    transport error still leaves a WARNING behind, naming the session and the pericope.
+
+    It is written as one movement on purpose, not two: `run_turn` is never asked to split it,
+    so it carries no scene clip to store or hand over. The live opening's two-movement pacing
+    depends on nothing this line's absence would break — a turn with no segments is spoken
+    whole (ENG-775), and matching the split here would cost a second stored audio key and a
+    migration for pacing no team has a way to notice is different.
     """
     try:
         async with AsyncSessionLocal() as db:
@@ -46,6 +53,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             if pericope is None:
                 logger.info("Nothing left to prepare: the team has closed every passage")
                 return
+            await db.commit()
             outcome = await run_turn(
                 transcript="",
                 coverage_state={},
@@ -54,15 +62,28 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
                 pericope_num=pericope,
                 opening=True,
-                already_met=True,
                 session_language=LANGUAGE_NAMES[spoken],
                 language_code=spoken,
                 settings=get_settings(),
                 session_id=panorama_session_id,
-                budget=OPENING_BUDGET,
+                prepared_pericope=pericope,
             )
             if outcome.used_fail_safe:
-                logger.info("Not keeping a fail-safe as the prepared opening")
+                reason = (
+                    ", ".join(str(issue.get("problem", "?")) for issue in outcome.issues)
+                    or "no issue reported"
+                )
+                logger.warning(
+                    "Prepared opening refused by the Validator for session %s, pericope %s: %s",
+                    panorama_session_id,
+                    pericope,
+                    reason,
+                    extra={
+                        "session_id": panorama_session_id,
+                        "pericope": pericope,
+                        "reason": reason,
+                    },
+                )
                 return
             speech, _ = await synthesize_facilitator_speech(outcome.speech, language=spoken)
             panorama = await get_session(db, panorama_session_id)
@@ -70,8 +91,15 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             panorama.prepared_audio_key = speech.key
             panorama.prepared_pericope = pericope
             await db.commit()
-    except Exception:
-        logger.exception("Could not prepare the opening for %s", pericope)
+    except Exception as error:
+        logger.warning(
+            "Could not prepare the opening for session %s, pericope %s: %s",
+            panorama_session_id,
+            pericope,
+            error,
+            extra={"session_id": panorama_session_id, "pericope": pericope},
+            exc_info=True,
+        )
 
 
 def hand_over(prepared: IRSession, opening: IRSession) -> bool:
@@ -113,7 +141,9 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     return True
 
 
-async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str] | None:
+async def take_prepared(
+    db: AsyncSession, session: IRSession, *, commit: bool = True
+) -> tuple[str, str] | None:
     """The line this session was handed, consumed once so a later turn never repeats it.
 
     A panorama is handed nothing, even when a ready line is sitting on its own row — that row
@@ -121,6 +151,11 @@ async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str]
     it. Reading it here opened the book by telling a team that had chosen no passage how the
     first one begins, and spent the line doing it, so the passage they went on to choose paid
     the wait this whole mechanism exists to spare them.
+
+    ``commit=False`` leaves the transaction open for a caller who still has to write the
+    exchange this line becomes: the two used to land in commits of their own, so a caller
+    racing another for the same line could consume it, lose the exchange to `_land`'s version
+    guard, and still leave the consumption standing.
     """
     if is_panorama(session.pericope):
         return None
@@ -130,5 +165,6 @@ async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str]
     session.prepared_speech = None
     session.prepared_audio_key = None
     session.prepared_pericope = None
-    await db.commit()
+    if commit:
+        await db.commit()
     return speech, key

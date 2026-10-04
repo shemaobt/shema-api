@@ -1,0 +1,23 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 8,
+      "severity": "minor",
+      "kind": "gap_not_re_rehearsed",
+      "quote": "Tudo bem, seguimos. Só guardem isso: eles foram morar em Moabe como estrangeiros, por um tempo.",
+      "why": "No turno 7 o guia apontou honestamente que faltou o 'morar como estrangeiros' no reconto, mas quando a equipe pediu para continuar, seguiu adiante sem mandar ensaiar de novo a primeira parte até ficar inteira. Cedeu à equipe (adaptativo), mas deixou a lacuna só como lembrete."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um par à mesa: cada turno respondeu de fato ao que a equipe disse, incluindo perguntas difíceis sobre Moabe, sobre Deus e a fome, e sobre qual filho casou com Rute. Manteve a contenção com firmeza: não confirmou nem negou o spoiler sobre Boaz, não revelou o pareamento das esposas, não atribuiu a fome a Deus, e tratou cada um desses silêncios como conteúdo da história, avisando que a tradução também precisa guardá-los. Abriu cada parte antes de pedir reconto, só convidou o ensaio quando a equipe disse que entendeu, e checou o reconto com honestidade, nomeando o que faltou (o morar como estrangeiro) sem elogiar como completo. A única falha, pequena, foi seguir para a segunda parte a pedido da equipe sem mandar reensaiar a primeira até ficar inteira. O registro ficou simples e direto, sem 'o mapa', sem bênçãos; a sessão parece ter sido cortada antes do fim, então não houve instrução de gravar."
+}

@@ -94,7 +94,6 @@ def _make_segment_results(count: int) -> list[SegmentResult]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_persist_split_segments_sets_lineage_on_every_child(
     db_session: AsyncSession,
 ) -> None:
@@ -130,7 +129,6 @@ async def test_persist_split_segments_sets_lineage_on_every_child(
         assert child.upload_status == UploadStatus.VERIFIED
 
 
-@pytest.mark.asyncio
 async def test_persist_split_segments_archives_parent_instead_of_deleting(
     db_session: AsyncSession,
 ) -> None:
@@ -160,7 +158,6 @@ async def test_persist_split_segments_archives_parent_instead_of_deleting(
     assert refreshed.splitting_status == SplittingStatus.ARCHIVED_AFTER_SPLIT
 
 
-@pytest.mark.asyncio
 async def test_list_recordings_excludes_archived_parents(
     db_session: AsyncSession,
 ) -> None:
@@ -192,7 +189,6 @@ async def test_list_recordings_excludes_archived_parents(
     assert archived.id not in ids
 
 
-@pytest.mark.asyncio
 async def test_get_split_status_orders_children_by_split_index(
     db_session: AsyncSession,
 ) -> None:
@@ -242,7 +238,6 @@ async def test_get_split_status_orders_children_by_split_index(
     assert segment_ids == ["c-0", "c-1", "c-2"]
 
 
-@pytest.mark.asyncio
 async def test_get_split_status_falls_back_to_created_at_for_legacy_rows(
     db_session: AsyncSession,
 ) -> None:
@@ -291,7 +286,6 @@ async def test_get_split_status_falls_back_to_created_at_for_legacy_rows(
     assert segment_ids == ["legacy-a", "legacy-b", "legacy-c"]
 
 
-@pytest.mark.asyncio
 async def test_get_split_status_empty_when_not_split(
     db_session: AsyncSession,
 ) -> None:
@@ -375,7 +369,6 @@ def test_recording_update_rejects_split_lineage_fields() -> None:
     assert dumped == {"title": "new"}
 
 
-@pytest.mark.asyncio
 async def test_backfill_populates_legacy_split_groups(
     db_session: AsyncSession,
 ) -> None:
@@ -430,7 +423,6 @@ async def test_backfill_populates_legacy_split_groups(
     assert rows["b1"] == (1, 2)
 
 
-@pytest.mark.asyncio
 async def test_backfill_is_idempotent(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -467,7 +459,6 @@ async def test_backfill_is_idempotent(db_session: AsyncSession) -> None:
     assert second_groups == 0
 
 
-@pytest.mark.asyncio
 async def test_backfill_ignores_non_split_rows(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)

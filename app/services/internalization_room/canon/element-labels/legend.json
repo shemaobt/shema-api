@@ -22,6 +22,26 @@
     }
   },
   "element_kind": {
+    "arc": {
+      "pt": "Arco da passagem",
+      "en": "Arc of the passage",
+      "es": "Arco del pasaje"
+    },
+    "context": {
+      "pt": "Contexto",
+      "en": "Context",
+      "es": "Contexto"
+    },
+    "tone": {
+      "pt": "Tom",
+      "en": "Tone",
+      "es": "Tono"
+    },
+    "function": {
+      "pt": "Função comunicativa",
+      "en": "Communicative function",
+      "es": "Función comunicativa"
+    },
     "scene": {
       "pt": "Cena",
       "en": "Scene",

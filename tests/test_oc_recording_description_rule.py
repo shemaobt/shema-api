@@ -12,6 +12,7 @@ from app.utils.description_rule import (
     count_clusters,
     is_sufficient_description,
 )
+from tests.oral_collector_harness import SHARED_VECTOR
 
 
 def test_the_threshold_counts_graphemes_not_code_points() -> None:
@@ -104,19 +105,8 @@ def test_interior_whitespace_counts() -> None:
     assert is_sufficient_description(" ".join(["ab"] * 10))
 
 
-SHARED_VECTOR = [
-    ("cjk", "時間" * 10, 20),
-    ("devanagari_with_matras", "कि" * 20, 20),
-    ("arabic_with_diacritics", "بَ" * 20, 20),
-    ("emoji_zwj_family", "\U0001f468‍\U0001f469‍\U0001f467" * 20, 20),
-    ("hangul_jamo", "가" * 20, 20),
-]
-
-
 def test_the_shared_vector_counts_the_same_on_both_sides() -> None:
-    """These are the five cases where a naive implementation diverges: matras and
-    diacritics attach to their base, a ZWJ sequence is one cluster however many people
-    are in it, and jamo L+V compose into one syllable. The client repository runs the
-    same table."""
+    """The five cases where a naive implementation diverges, and the client repository
+    runs the same table — which is why it lives in the harness rather than here."""
     for name, text, expected in SHARED_VECTOR:
         assert count_clusters(text) == expected, name

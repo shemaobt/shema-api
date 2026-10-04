@@ -7,7 +7,6 @@ from app.services.book_context.update_section import update_section
 from tests.baker import make_bcd, make_bible_book, make_user
 
 
-@pytest.mark.asyncio
 async def test_lock_draft_bcd(db_session):
     user = await make_user(db_session, email="lock1@test.com")
     book = await make_bible_book(
@@ -25,7 +24,6 @@ async def test_lock_draft_bcd(db_session):
     assert result.locked_at is not None
 
 
-@pytest.mark.asyncio
 async def test_lock_allows_review_status(db_session):
     user = await make_user(db_session, email="lock2@test.com")
     book = await make_bible_book(
@@ -41,7 +39,6 @@ async def test_lock_allows_review_status(db_session):
     assert result.locked_by == user.id
 
 
-@pytest.mark.asyncio
 async def test_lock_rejects_approved_status(db_session):
     user = await make_user(db_session, email="lock2b@test.com")
     book = await make_bible_book(
@@ -57,7 +54,6 @@ async def test_lock_rejects_approved_status(db_session):
         await lock_bcd(db_session, bcd, user.id)
 
 
-@pytest.mark.asyncio
 async def test_lock_rejects_if_locked_by_other(db_session):
     user1 = await make_user(db_session, email="lock3a@test.com")
     user2 = await make_user(db_session, email="lock3b@test.com")
@@ -76,7 +72,6 @@ async def test_lock_rejects_if_locked_by_other(db_session):
         await lock_bcd(db_session, bcd, user2.id)
 
 
-@pytest.mark.asyncio
 async def test_lock_allows_relock_by_same_user(db_session):
     user = await make_user(db_session, email="lock4@test.com")
     book = await make_bible_book(
@@ -94,7 +89,6 @@ async def test_lock_allows_relock_by_same_user(db_session):
     assert result.locked_by == user.id
 
 
-@pytest.mark.asyncio
 async def test_unlock_by_holder(db_session):
     user = await make_user(db_session, email="unlock1@test.com")
     book = await make_bible_book(
@@ -113,7 +107,6 @@ async def test_unlock_by_holder(db_session):
     assert result.locked_at is None
 
 
-@pytest.mark.asyncio
 async def test_unlock_by_admin(db_session):
     user = await make_user(db_session, email="unlock2a@test.com")
     admin = await make_user(db_session, email="unlock2b@test.com")
@@ -132,7 +125,6 @@ async def test_unlock_by_admin(db_session):
     assert result.locked_by is None
 
 
-@pytest.mark.asyncio
 async def test_unlock_rejects_non_holder_non_admin(db_session):
     user1 = await make_user(db_session, email="unlock3a@test.com")
     user2 = await make_user(db_session, email="unlock3b@test.com")
@@ -150,7 +142,6 @@ async def test_unlock_rejects_non_holder_non_admin(db_session):
         await unlock_bcd(db_session, bcd, user2.id)
 
 
-@pytest.mark.asyncio
 async def test_update_section_requires_lock(db_session):
     user = await make_user(db_session, email="nolock1@test.com")
     book = await make_bible_book(
@@ -166,7 +157,6 @@ async def test_update_section_requires_lock(db_session):
         await update_section(db_session, bcd.id, "places", [], user.id)
 
 
-@pytest.mark.asyncio
 async def test_update_section_rejects_wrong_user(db_session):
     user1 = await make_user(db_session, email="wronguser1@test.com")
     user2 = await make_user(db_session, email="wronguser2@test.com")

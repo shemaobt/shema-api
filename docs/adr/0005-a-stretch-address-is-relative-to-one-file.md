@@ -11,13 +11,17 @@ intervals, that made re-recording one stretch shift every stretch after it. Rela
 file, subdividing becomes writing rows rather than cutting audio, which is what lets the room
 subdivide with no connection.
 
-The address is rewritten on exactly one occasion, and that occasion is not a stretch changing.
-When a stretch is recorded again in the mother tongue, the room performs a **Rebuild**: the
-passage is assembled around the new audio and kept as a **Rehearsal** recording of its own,
-and every stretch that was a slice of the recording it rebuilt is re-pointed at the file that
-came out, at the time it now sits there. The audio under each of them is the same audio; what
-moved is the file it sits inside.
+The address was rewritten on exactly one occasion, and that occasion was not a stretch
+changing. While the room had a per-stretch mother-tongue correction it performed a **Rebuild**:
+the passage was assembled around the new audio and kept as a **Rehearsal** recording of its own,
+and every stretch that was a slice of the recording it rebuilt was re-pointed at the file that
+came out, at the time it then sat there. The audio under each of them was the same audio; what
+moved was the file it sat inside. Stretches of another recording were not touched, and a session
+could hold more than one: a rebuilding that could not be carried out left the correction on its
+own file.
 
-Stretches of another recording are not touched, and a session can hold more than one: a
-rebuilding that could not be carried out leaves the correction on its own file. A rebuilt
-passage is therefore a new **Take**, and not a version of anything.
+That gesture is gone with the correction it served (ADR 0025), and the module that performed it
+went with it. What a team re-records is the **Part**, which is an upload of its own (ADR 0023),
+so no address is rewritten any more: a row keeps the address it was born with, and the rows that
+were re-pointed stay as history. A passage the server assembled is a **Take** like any other,
+and never a version of anything.

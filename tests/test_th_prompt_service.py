@@ -17,7 +17,6 @@ from app.services.translation_helper.update_agent_prompt import update_agent_pro
 from tests.baker import make_user
 
 
-@pytest.mark.asyncio
 async def test_seed_agent_prompts_inserts_five(db_session) -> None:
     inserted = await seed_agent_prompts(db_session)
     assert inserted == 5
@@ -25,7 +24,6 @@ async def test_seed_agent_prompts_inserts_five(db_session) -> None:
     assert {r.agent_id for r in rows} == {str(a) for a in AgentId}
 
 
-@pytest.mark.asyncio
 async def test_seed_agent_prompts_is_idempotent(db_session) -> None:
     first = await seed_agent_prompts(db_session)
     second = await seed_agent_prompts(db_session)
@@ -35,7 +33,6 @@ async def test_seed_agent_prompts_is_idempotent(db_session) -> None:
     assert len(count) == 5
 
 
-@pytest.mark.asyncio
 async def test_get_agent_prompt_returns_seeded(db_session) -> None:
     await seed_agent_prompts(db_session)
     row = await get_agent_prompt(db_session, AgentId.STORYTELLER)
@@ -43,20 +40,17 @@ async def test_get_agent_prompt_returns_seeded(db_session) -> None:
     assert row.prompt == DEFAULT_PROMPTS[AgentId.STORYTELLER]["prompt"]
 
 
-@pytest.mark.asyncio
 async def test_get_agent_prompt_raises_when_missing(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Agent prompt .* not found"):
         await get_agent_prompt(db_session, AgentId.STORYTELLER)
 
 
-@pytest.mark.asyncio
 async def test_list_agent_prompts_returns_all_seeded(db_session) -> None:
     await seed_agent_prompts(db_session)
     rows = await list_agent_prompts(db_session)
     assert len(rows) == 5
 
 
-@pytest.mark.asyncio
 async def test_update_agent_prompt_bumps_version_when_prompt_changes(db_session) -> None:
     await seed_agent_prompts(db_session)
     admin = await make_user(db_session, email="th_admin@test.com", is_platform_admin=True)
@@ -71,7 +65,6 @@ async def test_update_agent_prompt_bumps_version_when_prompt_changes(db_session)
     assert updated.updated_by == admin.id
 
 
-@pytest.mark.asyncio
 async def test_update_agent_prompt_no_bump_when_only_metadata(db_session) -> None:
     await seed_agent_prompts(db_session)
     admin = await make_user(db_session, email="th_admin2@test.com", is_platform_admin=True)
@@ -85,7 +78,6 @@ async def test_update_agent_prompt_no_bump_when_only_metadata(db_session) -> Non
     assert updated.version == 1
 
 
-@pytest.mark.asyncio
 async def test_reset_agent_prompt_restores_default_and_bumps_version(db_session) -> None:
     await seed_agent_prompts(db_session)
     admin = await make_user(db_session, email="th_admin3@test.com", is_platform_admin=True)
@@ -98,13 +90,11 @@ async def test_reset_agent_prompt_restores_default_and_bumps_version(db_session)
     assert reset.version == 3
 
 
-@pytest.mark.asyncio
 async def test_get_system_prompt_text_falls_back_to_default(db_session) -> None:
     text = await get_system_prompt_text(db_session, AgentId.STORYTELLER)
     assert text == DEFAULT_PROMPTS[AgentId.STORYTELLER]["prompt"]
 
 
-@pytest.mark.asyncio
 async def test_seed_agent_prompts_recovers_from_savepoint_conflict(db_session) -> None:
     """B-1: when a parallel boot pre-seeds one of the agents, the loop's
     IntegrityError on that row must NOT poison the final commit. SQLAlchemy's
@@ -156,7 +146,6 @@ async def test_seed_agent_prompts_recovers_from_savepoint_conflict(db_session) -
     assert sorted(final_rows) == sorted(str(a) for a in AgentId)
 
 
-@pytest.mark.asyncio
 async def test_get_system_prompt_text_prefers_db(db_session) -> None:
     await seed_agent_prompts(db_session)
     admin = await make_user(db_session, email="th_admin4@test.com", is_platform_admin=True)

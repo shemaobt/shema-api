@@ -21,6 +21,17 @@ jobs:
     uses: shemaobt/.github/.github/workflows/joaozinho-review.yml@main
     with:
       lens_pack: python-fastapi
+      # Named rather than left to the reusable workflow's default, because
+      # `request-joaozinho-on-dev.yml` requests this same login and the two have to
+      # agree: a request for anyone else fires this workflow and skips it.
+      reviewer_login: joaocarvoli
+      # A pull request into `dev` merges with no human approval, so there the bot may
+      # request changes. It blocks through that review and never through this check:
+      # a requested change is a successful run, so `joaozinho / review` is green
+      # either way, and `dev` keeps `required_pull_request_reviews` at zero approvals
+      # so that the review still holds the merge. Into `main` a person approves and
+      # the bot stays advisory: see docs/adr/0001-staging-environment.md.
+      verdict_mode: ${{ github.base_ref == 'dev' && 'block' || 'comment' }}
       app_id: ${{ vars.JOAOZINHO_APP_ID }}
     secrets:
       app_private_key: ${{ secrets.JOAOZINHO_APP_PRIVATE_KEY }}

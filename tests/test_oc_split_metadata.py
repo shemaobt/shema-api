@@ -128,7 +128,6 @@ def _segment_results(count: int) -> list[SegmentResult]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_persist_split_segments_propagates_inherited_metadata_to_every_child(
     db_session: AsyncSession,
 ) -> None:
@@ -179,7 +178,6 @@ async def test_persist_split_segments_propagates_inherited_metadata_to_every_chi
         assert child.secondary_register_id == "casual"
 
 
-@pytest.mark.asyncio
 async def test_persist_split_segments_resets_cleaning_status_to_none_on_every_child(
     db_session: AsyncSession,
 ) -> None:
@@ -224,7 +222,6 @@ async def test_persist_split_segments_resets_cleaning_status_to_none_on_every_ch
         assert child.cleaning_status == CleaningStatus.NONE
 
 
-@pytest.mark.asyncio
 async def test_persist_split_segments_keeps_lineage_fields_intact(
     db_session: AsyncSession,
 ) -> None:
@@ -270,7 +267,6 @@ async def test_persist_split_segments_keeps_lineage_fields_intact(
         assert child.split_segment_count == 3
 
 
-@pytest.mark.asyncio
 async def test_persist_split_segments_archives_parent_after_split(
     db_session: AsyncSession,
 ) -> None:
@@ -313,7 +309,6 @@ async def test_persist_split_segments_archives_parent_after_split(
     assert refreshed.splitting_status == SplittingStatus.ARCHIVED_AFTER_SPLIT
 
 
-@pytest.mark.asyncio
 async def test_persist_split_segments_keeps_nulls_as_nulls_when_parent_has_no_metadata(
     db_session: AsyncSession,
 ) -> None:
@@ -365,7 +360,6 @@ async def test_persist_split_segments_keeps_nulls_as_nulls_when_parent_has_no_me
     assert child.secondary_register_id is None
 
 
-@pytest.mark.asyncio
 async def test_request_split_snapshots_parent_metadata_into_payload(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -421,7 +415,6 @@ async def test_request_split_snapshots_parent_metadata_into_payload(
     assert event.data["secondary_register_id"] == "casual"
 
 
-@pytest.mark.asyncio
 async def test_request_split_rejects_segment_whose_effective_triple_matches_parent_secondary(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -473,7 +466,6 @@ async def test_request_split_rejects_segment_whose_effective_triple_matches_pare
     assert captured == []
 
 
-@pytest.mark.asyncio
 async def test_request_split_allows_segment_with_single_field_overlap_with_parent_secondary(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

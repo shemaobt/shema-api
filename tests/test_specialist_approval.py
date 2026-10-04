@@ -6,7 +6,6 @@ from app.services.book_context.get_approval_status import get_approval_status
 from tests.baker import make_bcd, make_bible_book, make_user
 
 
-@pytest.mark.asyncio
 async def test_exegete_can_approve(db_session):
     user = await make_user(db_session, email="exg1@test.com")
     book = await make_bible_book(
@@ -22,7 +21,6 @@ async def test_exegete_can_approve(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_biblical_language_specialist_can_approve(db_session):
     user = await make_user(db_session, email="bls1@test.com")
     book = await make_bible_book(
@@ -38,7 +36,6 @@ async def test_biblical_language_specialist_can_approve(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_translation_specialist_can_approve(db_session):
     user = await make_user(db_session, email="trs1@test.com")
     book = await make_bible_book(
@@ -54,7 +51,6 @@ async def test_translation_specialist_can_approve(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_two_specialists_covering_two_specialties_stay_review(db_session):
     user1 = await make_user(db_session, email="spec1@test.com")
     user2 = await make_user(db_session, email="spec2@test.com")
@@ -73,7 +69,6 @@ async def test_two_specialists_covering_two_specialties_stay_review(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_two_specialists_same_specialty_stay_review(db_session):
     user1 = await make_user(db_session, email="dupe_spec1@test.com")
     user2 = await make_user(db_session, email="dupe_spec2@test.com")
@@ -92,7 +87,6 @@ async def test_two_specialists_same_specialty_stay_review(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_specialist_with_two_roles_plus_another_specialist_approves(db_session):
     spec1 = await make_user(db_session, email="spec1_multi@test.com")
     spec2 = await make_user(db_session, email="spec2_single@test.com")
@@ -111,7 +105,6 @@ async def test_specialist_with_two_roles_plus_another_specialist_approves(db_ses
     assert result.status.value == "approved"
 
 
-@pytest.mark.asyncio
 async def test_user_with_multiple_specialist_roles(db_session):
     user1 = await make_user(db_session, email="multi1@test.com")
     user2 = await make_user(db_session, email="multi2@test.com")
@@ -131,7 +124,6 @@ async def test_user_with_multiple_specialist_roles(db_session):
     assert result.status.value == "approved"
 
 
-@pytest.mark.asyncio
 async def test_facilitator_cannot_approve(db_session):
     user = await make_user(db_session, email="fac_no_approve@test.com")
     book = await make_bible_book(
@@ -147,7 +139,6 @@ async def test_facilitator_cannot_approve(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["facilitator"])
 
 
-@pytest.mark.asyncio
 async def test_single_user_with_two_specialties_stays_review(db_session):
     user = await make_user(db_session, email="solo_spec@test.com")
     book = await make_bible_book(
@@ -169,7 +160,6 @@ async def test_single_user_with_two_specialties_stays_review(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_admin_still_instant_approves(db_session):
     admin = await make_user(db_session, email="admin_spec@test.com")
     book = await make_bible_book(
@@ -185,7 +175,6 @@ async def test_admin_still_instant_approves(db_session):
     assert result.status.value == "approved"
 
 
-@pytest.mark.asyncio
 async def test_specialist_then_admin_approves(db_session):
     spec = await make_user(db_session, email="spec_pre@test.com")
     admin = await make_user(db_session, email="admin_post@test.com")
@@ -204,7 +193,6 @@ async def test_specialist_then_admin_approves(db_session):
     assert result.status.value == "approved"
 
 
-@pytest.mark.asyncio
 async def test_viewer_cannot_approve(db_session):
     user = await make_user(db_session, email="viewer_spec@test.com")
     book = await make_bible_book(
@@ -220,7 +208,6 @@ async def test_viewer_cannot_approve(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["viewer"])
 
 
-@pytest.mark.asyncio
 async def test_analyst_cannot_approve(db_session):
     user = await make_user(db_session, email="analyst_spec@test.com")
     book = await make_bible_book(
@@ -236,7 +223,6 @@ async def test_analyst_cannot_approve(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["analyst"])
 
 
-@pytest.mark.asyncio
 async def test_approval_status_empty(db_session):
     user = await make_user(db_session, email="status1@test.com")
     book = await make_bible_book(
@@ -257,7 +243,6 @@ async def test_approval_status_empty(db_session):
     assert status.is_complete is False
 
 
-@pytest.mark.asyncio
 async def test_approval_status_partial(db_session):
     user = await make_user(db_session, email="status2@test.com")
     book = await make_bible_book(
@@ -279,7 +264,6 @@ async def test_approval_status_partial(db_session):
     assert status.is_complete is False
 
 
-@pytest.mark.asyncio
 async def test_approval_status_partial_two_specialties(db_session):
     user1 = await make_user(db_session, email="status3a@test.com")
     user2 = await make_user(db_session, email="status3b@test.com")
@@ -304,7 +288,6 @@ async def test_approval_status_partial_two_specialties(db_session):
     assert status.is_complete is False
 
 
-@pytest.mark.asyncio
 async def test_approval_status_complete_all_three_specialties(db_session):
     user1 = await make_user(db_session, email="status4a@test.com")
     user2 = await make_user(db_session, email="status4b@test.com")

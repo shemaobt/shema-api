@@ -8,7 +8,6 @@ from app.services.project_health.invite_admin import invite_admin
 from tests.baker import make_user
 
 
-@pytest.mark.asyncio
 async def test_invite_admin_grants_role_to_existing_user(db_session, ph_app):
     inviter = await make_user(db_session, email="inviter@test.com")
     invitee = await make_user(db_session, email="newbie@test.com")
@@ -21,7 +20,6 @@ async def test_invite_admin_grants_role_to_existing_user(db_session, ph_app):
     assert ("project-health", "admin") in roles
 
 
-@pytest.mark.asyncio
 async def test_invite_admin_is_idempotent(db_session, ph_app):
     inviter = await make_user(db_session, email="inviter@test.com")
     await make_user(db_session, email="newbie@test.com")
@@ -31,7 +29,6 @@ async def test_invite_admin_is_idempotent(db_session, ph_app):
     assert first.access_request_id == second.access_request_id
 
 
-@pytest.mark.asyncio
 async def test_invite_admin_rejects_unknown_email(db_session, ph_app):
     inviter = await make_user(db_session, email="inviter@test.com")
     with pytest.raises(NotFoundError):

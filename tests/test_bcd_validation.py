@@ -1,5 +1,3 @@
-import pytest
-
 from app.services.book_context.validate_against_brief import validate_map_against_brief
 from tests.baker import make_bible_book, make_meaning_map, make_pericope, make_user
 
@@ -89,7 +87,6 @@ SAMPLE_MAP_DATA_FIRST_PERICOPE = {
 }
 
 
-@pytest.mark.asyncio
 async def test_warns_missing_established_list_non_first_pericope(db_session):
     user = await make_user(db_session, email="val1@test.com")
     book = await make_bible_book(
@@ -129,7 +126,6 @@ async def test_warns_missing_established_list_non_first_pericope(db_session):
     assert any(i.severity == "error" and "Already Established" in i.message for i in issues)
 
 
-@pytest.mark.asyncio
 async def test_passes_first_pericope_with_nothing_entry(db_session):
     user = await make_user(db_session, email="val2@test.com")
     book = await make_bible_book(
@@ -160,7 +156,6 @@ async def test_passes_first_pericope_with_nothing_entry(db_session):
     assert not any(i.severity == "error" for i in issues)
 
 
-@pytest.mark.asyncio
 async def test_warns_established_name_in_level_3(db_session):
     user = await make_user(db_session, email="val3@test.com")
     book = await make_bible_book(
@@ -200,7 +195,6 @@ async def test_warns_established_name_in_level_3(db_session):
     assert any("Naomi" in i.message and i.section.startswith("prop_") for i in issues)
 
 
-@pytest.mark.asyncio
 async def test_passes_when_level_3_has_no_established_names(db_session):
     user = await make_user(db_session, email="val4@test.com")
     book = await make_bible_book(

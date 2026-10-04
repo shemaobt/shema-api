@@ -38,11 +38,11 @@ env:
 jobs:
   migrations:
     runs-on: ubuntu-latest
-    # The same ceiling this job carries on `main`, where the whole job — graph check,
-    # upgrade, the downgrade/upgrade walk, then the migration-marked tests ENG-980 added
-    # below — measured 3m04. Taken from `main` for parity; this branch's one measured run:
-    # the job 1m53. Without a ceiling the job inherits GitHub's 360-minute default and a
-    # hung run stays "pending" for six hours (ENG-913).
+    # Twice what the whole job (graph check, upgrade, `alembic check`, downgrade/upgrade walk,
+    # then the migration-marked tests) measures on the runner, rounded up: 3m04s measured on
+    # this PR's own run (shemaobt/shema-api#474, job 106511275884), the new step 2m08s of it
+    # (ENG-980). Without a ceiling the job inherits GitHub's 360-minute default and a hung run
+    # stays "pending" for six hours (ENG-913).
     timeout-minutes: 7
 
     services:
@@ -91,10 +91,21 @@ jobs:
             exit 1
           fi
 
-      - name: Upgrade and downgrade on a clean database
+      - name: Upgrade a clean database to head
+        run: uv run alembic upgrade head
+
+      - name: The models match the migrated schema
         run: |
           set -euo pipefail
-          uv run alembic upgrade head
+          # `alembic check` compares Base.metadata against the database the migrations
+          # just built, so a model changed without a migration fails here. The suite
+          # cannot see it: pytest builds its tables with `create_all`, from the models,
+          # so both sides of the comparison move together and it is always green.
+          uv run alembic check
+
+      - name: Downgrade the newest migrations and upgrade again
+        run: |
+          set -euo pipefail
           # The newest migration has to undo exactly what it did: a downgrade that
           # leaves the schema dirty fails the next upgrade.
           #
@@ -111,13 +122,13 @@ jobs:
             uv run alembic upgrade head
           done <<< "$targets"
 
-      # The migration-walking tests build their own throwaway SQLite file each and never
-      # touch this job's Postgres — but only once `DATABASE_URL` is cleared. The job sets it
-      # at job level, and the suite's conftest honours it when set: left in place, they would
-      # run against this Postgres instead, serially (AGENTS.md: a run that names its own
-      # database runs without `-n`), and create tables over the schema the upgrade step above
-      # just migrated — a step-level `env` cannot unset a job-level one in Actions, so the
-      # `run` line does it. `main` sends fourteen files here; this branch has eight of them.
+      # The nineteen migration-walking tests build their own throwaway SQLite file each and
+      # never touch this job's Postgres — but only once `DATABASE_URL` is cleared. The job
+      # sets it at job level, and the suite's conftest honours it when set: left in place, the
+      # nineteen would run against this Postgres instead, serially (AGENTS.md: a run that
+      # names its own database runs without `-n`), and create tables over the schema the
+      # upgrade step above just migrated — a step-level `env` cannot unset a job-level one in
+      # Actions, so the `run` line does it.
       - name: Run the tests that walk a migration
         run: env -u DATABASE_URL uv run pytest tests/ -n 4 --dist loadfile -rfE -m migration
         env:

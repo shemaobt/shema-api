@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: doctrine
+        name: doctrine guard
+        description: >
+          Fails on a speech ceiling, probe/station contract, memory window, "say less" note,
+          non-frontier model, or app-owned conversation mode reintroduced outside
+          scripts/doctrine_allowlist.py. Same six rules as check-doctrine.mjs in
+          Tripod-Internalization; see scripts/check_doctrine.py.
+        entry: uv run python scripts/check_doctrine.py
+        language: system
+        pass_filenames: false

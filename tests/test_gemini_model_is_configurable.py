@@ -15,7 +15,6 @@ from pathlib import Path
 from app.core.config import Settings
 from app.services.i18n.back_translate_content import back_translation_model
 from app.services.i18n.translate_content import translation_model as i18n_translation_model
-from app.services.internalization_room.llm import room_model
 from app.services.platform.disfluency import disfluency_model
 from app.services.platform.translation import translation_model
 from app.services.project_health.agents.llm_client import fast_model, quality_model
@@ -53,7 +52,6 @@ def test_every_feature_reads_the_model_from_settings() -> None:
     for accessor in (
         chat_model,
         title_model,
-        room_model,
         translation_model,
         disfluency_model,
         i18n_translation_model,

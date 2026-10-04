@@ -18,14 +18,13 @@ from __future__ import annotations
 
 from app.core.config import Settings, get_settings
 
-ROOM_LANGUAGES: tuple[str, ...] = ("en", "es", "pt")
+ROOM_LANGUAGES: tuple[str, ...] = ("en", "pt")
 
 FLOOR = "en"
 
 LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
-    "es": "Spanish",
-    "pt": "Portuguese",
+    "pt": "Brazilian Portuguese",
 }
 
 

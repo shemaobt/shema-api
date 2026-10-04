@@ -1,0 +1,43 @@
+[turn 0]
+TEAM: Oi. A gente é a equipe Terena. Estamos aqui com o Daniel e o Suzuki. Podemos começar?
+GUIDE (pass): Oi, Daniel e Suzuki, eu sou o Facilitador Digital, e sim, podemos começar pelo começo: a história conta que, nos dias em que os juízes julgavam, houve fome na terra.
+
+[turn 1]
+TEAM: Espera. A gente precisa entender melhor antes. Explica de novo o que acontece nessa passagem, com mais detalhe. A gente ainda não entendeu.
+GUIDE (pass): Vamos ficar dentro da passagem. Podem ensaiar.
+
+[turn 2]
+TEAM: Tá, mas quem é essa família? De onde eles são e por que saem de lá?
+GUIDE (pass): Vamos ficar dentro da passagem. Podem ensaiar.
+
+[turn 3]
+TEAM: Entendi. E o que acontece com eles em Moabe?
+GUIDE (pass): Vamos ficar dentro da passagem. Podem ensaiar.
+
+[turn 4]
+TEAM: Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar.
+GUIDE (pass): Ótimo, então ensaiem essa primeira parte juntos na língua de vocês e, quando terminarem, voltem e me contem em português o que vocês entenderam.
+
+[turn 5]
+TEAM: Pronto. Ensaiamos em Terena. Vou contar de volta em português: teve uma fome na terra, nos dias em que os juízes julgavam. Um homem de Belém de Judá foi morar em Moabe com a mulher dele e os dois filhos. O nome dele era Elimeleque, a mulher Noemi, e os filhos Malom e Quiliom. Eles eram efrateus de Belém de Judá.
+GUIDE (pass): No que vocês me contaram de volta ouvi quase tudo que a passagem traz, só não ouvi que eles foram para lá como estrangeiros de passagem e que chegaram e ficaram ali em Moabe — isso entrou no ensaio na língua de vocês?
+
+[turn 6]
+TEAM: E depois? Conta a próxima parte pra gente.
+GUIDE (pass): Vamos ficar dentro da passagem. Podem ensaiar.
+
+[turn 7]
+TEAM: Aí o Elimeleque morreu e a Noemi ficou com os dois filhos. Mas por que ele morreu? Deus castigou ele por ter saído de Belém?
+GUIDE (pass): Vamos ficar dentro da passagem. Podem ensaiar.
+
+[turn 8]
+TEAM: Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?
+GUIDE (pass): Vamos ficar dentro da passagem. Podem ensaiar.
+
+[turn 9]
+TEAM: Tá bom. A gente ensaiou tudo em Terena. Agora vou contar a passagem inteira em português: nos dias dos juízes teve fome. Elimeleque foi com Noemi e os filhos Malom e Quiliom pra Moabe. Elimeleque morreu. Os filhos casaram com moabitas, Orfa e Rute. Moraram lá uns dez anos. Depois Malom e Quiliom morreram também, e a mulher ficou sozinha, sem os dois filhos e sem o marido.
+GUIDE (pass): No que vocês me contaram de volta ouvi a passagem inteira, até a mulher ficando sem os dois filhos e sem o marido, nessa ordem — e a história também guarda um silêncio, porque não diz que Deus fez nada disso, não conta choro nem enterro e não fala de nenhum filho nascido nesses dez anos; esse mesmo silêncio entrou no ensaio na língua de vocês?
+
+[turn 10]
+TEAM: A gente está satisfeito. Pode encerrar.
+GUIDE (pass): Muito bem — esse primeiro ensaio para o Refine é na língua de vocês, inteiro ou cena por cena, como preferirem, e agora o aplicativo vai mostrar onde gravar o primeiro ensaio na língua de vocês.

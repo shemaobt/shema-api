@@ -1,0 +1,263 @@
+"""A late opening is not the session's third line, and it does not vanish either.
+
+The tablet asks for the opening, the Guide's call hangs on the provider, the tablet gives
+up and the team taps and speaks; their turn is answered and stored first. When the opening
+finally lands it used to be appended behind the team's turn — `[team, guide, guide]` — and,
+once the session row learned to refuse a stale write, it took a 409 instead and was never
+stored and never remembered, so a resend of its `turn_id` fell through to the re-open path
+and was answered with the team turn's speech.
+
+Two independent ``AsyncSession``s stand in for the opening and the team's turn, the way
+two concurrent requests would, rather than sharing one identity map that would hide the
+lateness entirely.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.api.internalization_room import sessions as sessions_api
+from app.core.room_enums import CoverageStatus
+from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.sessions import (
+    append_exchange,
+    append_opening,
+    apply_coverage,
+    create_session,
+    get_session,
+    save_comprehension,
+)
+from app.services.internalization_room.voice_handles import clip_url
+from app.services.platform.tts import SynthesizedSpeech
+from tests.release_harness import KEY, PREFIX, P
+from tests.room_harness import room_client
+from tests.turn_harness import the_room_agent_is
+
+OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
+TEAM_ANSWER = "Noemi voltou para Belem com Rute no tempo da colheita"
+TEAM_TURN_LINE = "Vamos ficar nesta cena. O que voces contariam?"
+SESSIONS_LOGGER = "app.services.internalization_room.sessions"
+
+
+@pytest.fixture()
+def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+async def test_an_opening_on_a_session_where_nobody_has_spoken_is_its_first_line(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await create_session(db_session, pericope=P, language="pt")
+
+    landed = await append_opening(db_session, session, guide_response=OPENING)
+
+    assert landed is True
+    async with rival_factory() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
+    assert [message["text"] for message in reread.messages] == [OPENING]
+
+
+async def test_an_opening_landing_after_the_teams_first_turn_is_dropped_and_logged(
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session = await create_session(db_session, pericope=P, language="pt")
+
+    async with rival_factory() as rival_db:
+        late_opening = await get_session(rival_db, session.id)
+
+        await save_comprehension(
+            db_session, session, ComprehensionState(practiced_scene_ids=["S1"])
+        )
+        await append_exchange(
+            db_session, session, team_utterance=TEAM_ANSWER, guide_response=TEAM_TURN_LINE
+        )
+
+        with caplog.at_level(logging.WARNING, logger=SESSIONS_LOGGER):
+            landed = await append_opening(
+                rival_db, late_opening, guide_response=OPENING, state=ComprehensionState()
+            )
+
+    assert landed is False
+    async with rival_factory() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
+    assert [message["text"] for message in reread.messages] == [TEAM_ANSWER, TEAM_TURN_LINE], (
+        "a abertura atrasada era apendada atrás do turno da equipe, ou levava 409 e sumia"
+    )
+    assert reread.comprehension["practiced_scene_ids"] == ["S1"], (
+        "o estado lido antes de o Guia pensar não pode escrever por cima do da equipe"
+    )
+    assert session.id in caplog.text and "opening" in caplog.text, (
+        "descartada em silêncio, nada dizia que a abertura chegou tarde"
+    )
+
+
+class _TeamSpeaksWhileTheGuideThinks:
+    """A Guide whose one call is long enough for the team to take a whole turn."""
+
+    def __init__(self, rival_factory: async_sessionmaker[AsyncSession], session_id: str) -> None:
+        self.rival_factory = rival_factory
+        self.session_id = session_id
+
+    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return '{"verdict": "pass", "issues": []}'
+        async with self.rival_factory() as rival_db:
+            team = await get_session(rival_db, self.session_id)
+            await append_exchange(
+                rival_db, team, team_utterance=TEAM_ANSWER, guide_response=TEAM_TURN_LINE
+            )
+        return OPENING
+
+
+class _RecordingVoice:
+    def __init__(self) -> None:
+        self.spoken: list[str] = []
+
+    async def __call__(self, text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
+        self.spoken.append(text)
+        entry = SynthesizedSpeech(
+            audio=b"audio",
+            mime_type="audio/mpeg",
+            etag="e",
+            cached=False,
+            key=self.key_of(text),
+        )
+        return entry, False
+
+    @staticmethod
+    def key_of(text: str) -> str:
+        return f"tts/voice/{len(text)}.mp3"
+
+
+@pytest.fixture()
+async def client(db_session, monkeypatch):
+    async with room_client(db_session, monkeypatch) as c:
+        yield c
+
+
+async def _ask_for_the_opening(client, session_id: str):
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        headers={"X-Room-Key": KEY},
+        data={"turn_id": "abertura"},
+    )
+
+
+async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_teams_turn(
+    client, db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await create_session(db_session, pericope=P, language="pt")
+    voice = _RecordingVoice()
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
+    the_room_agent_is(monkeypatch, turn=_TeamSpeaksWhileTheGuideThinks(rival_factory, session.id))
+
+    late = await _ask_for_the_opening(client, session.id)
+    assert late.status_code == 200, late.text[:300]
+    assert late.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING))
+
+    again = await _ask_for_the_opening(client, session.id)
+    assert again.status_code == 200, again.text[:300]
+    assert again.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING)), (
+        "o reenvio da abertura era respondido pelo _say_it_again com a fala do turno da equipe"
+    )
+    assert TEAM_TURN_LINE not in voice.spoken
+
+    async with rival_factory() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
+    assert [message["text"] for message in reread.messages] == [TEAM_ANSWER, TEAM_TURN_LINE]
+
+
+class _TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(_TeamSpeaksWhileTheGuideThinks):
+    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
+        line = await super().__call__(system_prompt=system_prompt)
+        if "corrected_response" not in system_prompt:
+            lit = dict(initial_state(P))
+            lit[next(iter(lit))] = CoverageStatus.ENGAGED.value
+            async with self.rival_factory() as rival_db:
+                await apply_coverage(rival_db, self.session_id, lit)
+        return line
+
+
+async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_that_turn_lit(
+    client, db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await create_session(db_session, pericope=P, language="pt")
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
+    the_room_agent_is(
+        monkeypatch, turn=_TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id)
+    )
+
+    late = await _ask_for_the_opening(client, session.id)
+
+    assert late.status_code == 200, late.text[:300]
+    assert late.json()["coverage"]["engaged"] == 1, (
+        "a abertura descartada respondia com as contas lidas antes do Guia, e a conta que o"
+        " turno da equipe acendeu apagava na tela"
+    )
+
+
+PREPARED = "Vamos ficar nesta parte."
+PREPARED_KEY = "tts/voice/m/f/prepared.mp3"
+
+
+@pytest.fixture()
+async def per_request_client(db_session, monkeypatch, rival_factory):
+    async with room_client(db_session, monkeypatch, per_request=rival_factory) as c:
+        yield c
+
+
+async def test_a_prepared_opening_handed_over_after_the_teams_first_turn_is_dropped_and_logged(
+    per_request_client,
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The team's turn lands between the opening's read of the empty session and its write —
+    the only window the prepared line has, since nothing it does in between waits on a model.
+    """
+    session = await create_session(db_session, pericope=P, language="pt")
+    session.prepared_speech = PREPARED
+    session.prepared_audio_key = PREPARED_KEY
+    session.prepared_pericope = P
+    await db_session.commit()
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
+
+    real_take_prepared = sessions_api.take_prepared
+
+    async def take_prepared_after_the_team_spoke(*args: Any, **kwargs: Any) -> Any:
+        async with rival_factory() as rival_db:
+            team = await get_session(rival_db, session.id)
+            await append_exchange(
+                rival_db, team, team_utterance=TEAM_ANSWER, guide_response=TEAM_TURN_LINE
+            )
+        return await real_take_prepared(*args, **kwargs)
+
+    monkeypatch.setattr(sessions_api, "take_prepared", take_prepared_after_the_team_spoke)
+
+    with caplog.at_level(logging.WARNING, logger=SESSIONS_LOGGER):
+        late = await _ask_for_the_opening(per_request_client, session.id)
+
+    assert late.status_code == 200, late.text[:300]
+    assert late.json()["audio_url"] == clip_url(PREPARED_KEY)
+    async with rival_factory() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
+    assert [message["text"] for message in reread.messages] == [TEAM_ANSWER, TEAM_TURN_LINE], (
+        "a abertura preparada levava 409 no guarda de version em vez de ser descartada"
+    )
+    assert session.id in caplog.text and "opening" in caplog.text, (
+        "descartada em silêncio, nada dizia que a abertura preparada chegou tarde"
+    )
+
+    again = await _ask_for_the_opening(per_request_client, session.id)
+    assert again.status_code == 200, again.text[:300]
+    assert again.json()["audio_url"] == clip_url(PREPARED_KEY), (
+        "o 409 não guardava a resposta, e o reenvio caía no _say_it_again com a fala da equipe"
+    )

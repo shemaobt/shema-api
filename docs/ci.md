@@ -6,33 +6,42 @@ purpose, because the test job has been measured between 6 and 56 minutes and a c
 one step at a time pays the slowest job once per step. The rest run on their own triggers,
 named in the table.
 
-A test that spawns a process to prove what it proves does not run in the Test job: the eight
-that walk a migration carry the `migration` marker and run in Migrations, which already walks
-the graph on Postgres; the one that opens a fresh interpreter carries `fresh_interpreter` and
-runs in Checks, which already boots the application in a clean interpreter as one of its four
-commands. `tests/test_ci_gates.py` pins the three selections as a partition of the whole
-suite, so a file cannot fall outside all three without that turning red.
-[ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-beside.md). `main` marks
-fourteen files and three; this branch has eight and one, and the rest arrive with whatever
-carries `main` into `dev`.
+A test that spawns a process to prove what it proves does not run in the Test job: the
+nineteen files that walk a migration carry the `migration` marker and run in Migrations, which
+already walks the graph on Postgres; the three that open a fresh interpreter carry
+`fresh_interpreter` and run in Checks, which already boots the application in a clean
+interpreter as one of its seven commands. `tests/test_ci_gates.py` pins the three selections
+as a partition of the whole suite, so a file cannot fall outside all three without that
+turning red. [ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-beside.md).
 
 | Workflow | What it gates |
 |---|---|
-| Checks | One job, one check on the pull request, four commands in a queue under a 10-minute ceiling: `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), and `mypy app/`, then the file marked `fresh_interpreter`. `main` runs three more commands here, the two doctrine passes and the canon drift check; this branch has no job for them and neither promotion invented one. |
-| Test | The pytest suite on SQLite in four processes split by file, with the schema created once per process, selecting out the tests marked `migration` or `fresh_interpreter`, under a 12-minute ceiling. `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
-| Migrations | The graph stands at one head with no duplicate revision ids, the newest migrations walk down and back up on a clean Postgres, then the eight tests marked `migration` run with `DATABASE_URL` cleared so they build their own SQLite files instead of running against the job's Postgres. |
+| Checks | One job, one check on the pull request: the seven commands in a queue under a 10-minute ceiling — `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), `mypy app/`, the two passes of the doctrine guard, and the canon drift check, which talks to Marcia's repository and carries `GITHUB_TOKEN` for it — then the three files marked `fresh_interpreter`. |
+| Test | The pytest suite on SQLite in four processes split by file, selecting out the tests marked `migration` or `fresh_interpreter`, with the schema created once per process, under a 12-minute ceiling, against a step measured at 6m21s on the runner with ~3700 tests (ENG-1092). `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
+| Migrations | The graph stands at one head with no duplicate revision ids, the models match the migrated schema (`alembic check`), the newest migrations walk down and back up on a clean Postgres, then the nineteen files marked `migration` run with `DATABASE_URL` cleared so they build their own SQLite files instead of running against the job's Postgres. |
 | Deploy | A push to `main` builds the image, upgrades the production database and deploys to Cloud Run. |
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
 | Claude mention | Answers an `@claude` mention on a pull request or issue. |
 | Claude cost report | A weekly usage rollup, posted to a webhook when one is configured. |
-| Reviews | Two review workflows, each fired by requesting its reviewer on the pull request; re-request to re-run. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
+| Reviews | Two review workflows, each fired by requesting its reviewer on the pull request; re-request to re-run. On a pull request into `dev` the request is made automatically, and remade on every head, because the check is keyed to the head SHA. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
+| Request Joãozinho on dev | Requests the reviewer on every head of a pull request into `dev`, including one retargeted onto it, which is what fires the review there. It requests nobody when the author is Joãozinho's own login or a bot, because the review would skip and a skipped check counts as passing. |
 
 Both deploys pull their configuration from GCP Secret Manager, and each sets a few plain
-environment variables on the service directly. They are not the same few. Production sets one,
-the platform bucket. Staging sets that one and three more — the environment name, the mail
-provider and the job-queue app id — because each has to differ from production's: the app id
-in particular, since a second registration under production's id would overwrite it. Anything
-secret comes from Secret Manager, never from a workflow file.
+environment variables on the service directly. They are not the same few. Production sets six:
+the platform bucket, the oral-collector's bucket, the mail provider, the Azure tenant id, the
+Azure client id and the CORS origins. Staging sets six of its own — the environment name, the
+mail provider, the job-queue app id, its two buckets and its CORS origins — because each has to
+differ from production's: the app id in particular, since a second registration under
+production's id would overwrite it. Anything secret comes from Secret Manager, never from a
+workflow file, and the Azure client secret is mounted from there like the rest; the tenant and
+client ids beside it are not secret.
+
+A workflow that names only some of the service's plain variables still deploys, because
+`--update-env-vars` merges: whatever was set by hand survives, unnamed and unrecorded. The
+secret set has no such mercy — `--set-secrets` replaces it whole, so a mapping missing from the
+file is a mount removed from the service on the next merge. The other edge of naming them is that
+these keys now belong to the file: changing a CORS origin is a pull request, and an edit made on
+the service by hand is reverted, silently, by the next deploy.
 
 Staging answers at <https://tripod-backend-staging-f7ssqjozfq-uc.a.run.app>. Each client names
 that address in its own variable, not a shared one: the Internalization Room reads

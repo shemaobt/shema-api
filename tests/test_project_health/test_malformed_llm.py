@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from app.db.models.project_health import PHLanguage
 from app.services.project_health import create_interview, post_message
 from app.services.project_health.agents import orchestrator
 
 
-@pytest.mark.asyncio
 async def test_post_message_handles_malformed_llm_json(db_session, ph_app, monkeypatch):
     """When Gemini returns invalid JSON, safe_parse_json falls back to the
     default and the interview should still progress (facilitator reply,

@@ -5,9 +5,13 @@ sentence that drifts out of the bridge language is not a blemish — it is a lin
 cannot use, and there is no scrollback to recover from it.
 """
 
+import logging
+
 import pytest
 
 from app.services.internalization_room.bridge_language import strays_from
+
+BRIDGE_LANGUAGE_LOGGER = "app.services.internalization_room.bridge_language"
 
 PT = (
     "Olá, eu sou o Facilitador Digital. Antes de entrarmos nas partes, vamos sentir "
@@ -59,3 +63,12 @@ def test_the_map_terms_belong_in_portuguese() -> None:
 def test_the_room_can_be_run_in_another_bridge_language() -> None:
     assert strays_from(EN, language_code="en") is False
     assert strays_from(PT, language_code="en") is True
+
+
+def test_a_refused_draft_leaves_its_length_in_the_log_not_its_words(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING, logger=BRIDGE_LANGUAGE_LOGGER):
+        assert strays_from(EN, language_code="pt") is True
+    assert EN not in caplog.text
+    assert "113 characters" in caplog.text

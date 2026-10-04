@@ -20,7 +20,6 @@ or a column.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 from typing import Any
 
@@ -35,12 +34,24 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.room_harness import (
+    a_piece_still_to_be_told,
+    heard_every_part,
+    nothing_is_read_ahead,
+    press_terminei,
+)
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 LANGUAGE = "pt"
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:
@@ -91,10 +102,9 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -109,14 +119,12 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     from app.api.internalization_room import back_translation as bt_api
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return "Vocês contaram bem."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         said_aloud.append(text)
@@ -198,10 +206,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The team listened; what is missing is the telling. Reporting it is what keeps these cases
+    about the untold stretch and not about the part nobody played.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _three_stretches_told(client: httpx.AsyncClient) -> str:
@@ -232,22 +243,12 @@ async def _standing(db: AsyncSession, session_id: str) -> list[IRSegment]:
     return await service.final_segments(db, session_id)
 
 
-async def _re_record_the_native(db: AsyncSession, session_id: str, segment: IRSegment) -> IRSegment:
-    """Redo one stretch's mother-tongue audio, which is what leaves it waiting to be told.
-
-    The service refuses to carry the old explanation across when the slice moves — it
-    belonged to audio nobody will hear again — so the stretch comes back with nothing the
-    team said, which is the state this file is about.
-    """
+async def _leave_it_waiting_to_be_told(
+    db: AsyncSession, session_id: str, segment: IRSegment
+) -> IRSegment:
+    """Leave one stretch waiting to be told back, by cutting it in two."""
     session = await get_session(db, session_id)
-    return await service.capture_segment(
-        db,
-        session,
-        take_id=segment.take_id,
-        starts_ms=segment.starts_ms,
-        ends_ms=segment.ends_ms + 1500,
-        replaces=segment,
-    )
+    return await a_piece_still_to_be_told(db, session, segment)
 
 
 async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRSegment:
@@ -265,7 +266,6 @@ async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRS
     )
 
 
-@pytest.mark.asyncio
 async def test_the_room_names_the_stretch_that_was_never_told_back(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -276,16 +276,15 @@ async def test_the_room_names_the_stretch_that_was_never_told_back(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    waiting = await _re_record_the_native(db_session, session_id, standing[1])
+    waiting = await _leave_it_waiting_to_be_told(db_session, session_id, standing[1])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == waiting.id, (
         "a resposta tem de dizer qual trecho falta, e não apenas que falta algum"
     )
 
 
-@pytest.mark.asyncio
 async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -297,10 +296,10 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    later = await _re_record_the_native(db_session, session_id, standing[2])
-    earlier = await _re_record_the_native(db_session, session_id, standing[0])
+    later = await _leave_it_waiting_to_be_told(db_session, session_id, standing[2])
+    earlier = await _leave_it_waiting_to_be_told(db_session, session_id, standing[0])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == earlier.id, (
         "a equipe conta a passagem na sequência dela; mandá-la para um buraco no meio "
@@ -309,7 +308,6 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     assert body["untold_segment_id"] != later.id
 
 
-@pytest.mark.asyncio
 async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -321,9 +319,9 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    await _re_record_the_native(db_session, session_id, standing[1])
+    await _leave_it_waiting_to_be_told(db_session, session_id, standing[1])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] is not None
     assert body["checked"] is False, "um endereço não é uma passagem conferida"
@@ -339,21 +337,19 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_with_every_stretch_told_names_no_stretch(
-    client: httpx.AsyncClient, analyst: Analyst
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
     """Case 4. The ordinary path is untouched: a verdict, and no address."""
     session_id = await _three_stretches_told(client)
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] is None
     assert body["checked"] is True
     assert analyst.readings == 1
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -367,11 +363,13 @@ async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
 
-    retired_with_no_telling = await _re_record_the_native(db_session, session_id, standing[0])
+    retired_with_no_telling = await _leave_it_waiting_to_be_told(
+        db_session, session_id, standing[0]
+    )
     await _explain(db_session, session_id, retired_with_no_telling)
-    still_waiting = await _re_record_the_native(db_session, session_id, standing[2])
+    still_waiting = await _leave_it_waiting_to_be_told(db_session, session_id, standing[2])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == still_waiting.id
     assert body["untold_segment_id"] != retired_with_no_telling.id, (
@@ -380,7 +378,6 @@ async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_divided_in_two_is_named_by_its_first_half(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -393,11 +390,11 @@ async def test_a_stretch_divided_in_two_is_named_by_its_first_half(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    await _re_record_the_native(db_session, session_id, standing[2])
+    await _leave_it_waiting_to_be_told(db_session, session_id, standing[2])
     session = await get_session(db_session, session_id)
     head, tail = await service.divide_segment(db_session, session, standing[0], at_ms=4000)
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == head.id
     assert body["untold_segment_id"] != tail.id, (

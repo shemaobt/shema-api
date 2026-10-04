@@ -1,0 +1,30 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 3,
+    "rehearsal_and_honest_checking": 4,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 10,
+      "severity": "minor",
+      "kind": "gap_not_named",
+      "quote": "Curto e seco, do jeito que a história conta.",
+      "why": "A recontagem da equipe deixou de fora 'efrateus', 'na terra' e o modo de ficar em Moabe (como estrangeiros, de passagem) — coisas que o guia já tinha destacado antes — e o guia passou direto para a instrução de gravar sem nomear essas faltas. A equipe corrigiu por conta própria no turno 11, mas a checagem aqui foi menos rigorosa que nas anteriores."
+    },
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "early_whole_rehearsal",
+      "quote": "Então ensaiem essa forma toda juntos, na língua de vocês",
+      "why": "O guia mandou ensaiar a passagem inteira depois de só uma visão geral, sem abrir nenhuma parte. Foi a pedido da equipe, então é adaptação e não erro grave, mas resultou numa recontagem sem as mortes no turno 2."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se manteve fiel ao mapa do começo ao fim: cada afirmação sobre a passagem (dias dos juízes, 'casa do pão', morar como estrangeiro, 'cerca de dez anos', 'a mulher' sem nome) está no mapa, e nada de fora entrou. As checagens foram honestas e calorosas nos turnos 2, 4, 6 e 8: apontou a falta das mortes, a tristeza e o enterro inventados, o pareamento dos casais que a história retém, e a agência de Deus que a passagem cala — sempre com a fórmula 'isso a passagem não diz' e sem preencher o silêncio. Os quatro silêncios significativos foram tratados como conteúdo, com a explicação de que o peso está no pouco que a história diz. O guia seguiu a equipe quando ela pulou adiante e mudou o tamanho das partes, e encerrou mandando gravar, sem bênção. Pontos fracos menores: aceitou ensaio da passagem inteira logo após a visão geral (a pedido da equipe), e no turno 10 deixou passar sem nomear a ausência de 'efrateus' e do modo de ficar em Moabe antes de encaminhar a gravação."
+}

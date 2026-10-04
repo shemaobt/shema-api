@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from app.core.config import Settings
@@ -83,7 +84,7 @@ async def test_empty_audio_is_an_error() -> None:
 
 
 async def test_without_an_api_key_it_is_a_configuration_error() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await transcribe_speech(
             WEBM,
             language="pt-BR",
@@ -92,7 +93,7 @@ async def test_without_an_api_key_it_is_a_configuration_error() -> None:
         )
 
 
-@pytest.mark.parametrize("status", [429, 500, 503])
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
 async def test_elevenlabs_unavailability_is_an_upstream_failure_not_a_client_error(
     status: int,
 ) -> None:
@@ -107,6 +108,18 @@ async def test_a_malformed_request_to_elevenlabs_stays_a_business_error() -> Non
         await transcribe_speech(
             WEBM, language="pt-BR", settings=_settings(), client=_client(_err(422))
         )
+
+
+@pytest.mark.parametrize(
+    "failure", [httpx.ConnectError("boom"), httpx.ReadTimeout("boom")], ids=["connect", "timeout"]
+)
+async def test_a_dropped_connection_to_elevenlabs_is_an_upstream_failure_too(
+    failure: Exception,
+) -> None:
+    client = SimpleNamespace(post=AsyncMock(side_effect=failure))
+
+    with pytest.raises(UpstreamServiceError):
+        await transcribe_speech(WEBM, language="pt-BR", settings=_settings(), client=client)
 
 
 @pytest.mark.parametrize("language", ["", "   ", "-BR"])

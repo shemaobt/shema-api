@@ -4,14 +4,18 @@ A fail-safe is the sentence the team hears when the model failed or the network 
 ElevenLabs for it at that moment is the worst possible time to need a network call, so these
 lines are synthesized once, here, and travel inside the app.
 
-    uv run python scripts/render_fixed_voice_lines.py                    # what is missing
-    uv run python scripts/render_fixed_voice_lines.py --check            # did the text drift
-    uv run python scripts/render_fixed_voice_lines.py --language pt      # one language only
+Every run is told where the app's bundle is; there is nothing here that could know it.
+
+    OUT=<app checkout>/assets/audio
+    uv run python scripts/render_fixed_voice_lines.py --out "$OUT"              # what is missing
+    uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --check      # did it drift
+    uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --language pt
 
 `--check` is the guard against silent freezing: edit a line in the authored prompt and the
-manifest no longer matches, so the suite refuses until someone renders it again. It covers
-every language the room claims, because a line edited in one of them is as frozen as a line
-edited in any other.
+manifest no longer matches, so it reports the drift and exits non-zero until someone renders
+it again. It covers every language the room claims, because a line edited in one of them is
+as frozen as a line edited in any other. Re-rendering after a prompt edit is a person's job:
+nothing in the suite does it, and nothing in the suite reads the bundle.
 
 One bundle per language, each rendered in that language's own voice. A team never hears two
 languages in one session, so a language whose lines are unwritten is not filled in from
@@ -29,24 +33,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.fail_safe import (
+    PROCESS_STEPS,
+    FailSafe,
+    process_line,
+    utterances,
+)
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.synthesize_facilitator_speech import (
-    synthesize_facilitator_speech,
+    render_facilitator_speech,
 )
 
-DEFAULT_OUT = Path(__file__).resolve().parents[2] / "internalization-room/assets/audio"
 MANIFEST = "manifest.json"
 
 #: Lines the app plays outside a turn: they are not fail-safes and do not live in the prompt,
 #: but they must be in the bundle, because the room says them before it can do anything at all.
 #:
-#: `sem_conexao` and `toque_para_comecar` are absent from Portuguese and only from Portuguese.
-#: Their Portuguese audio was rendered before this script existed and their wording was never
-#: written down, so declaring a guess here would make the next render overwrite approved audio
-#: with it. The other languages have no approved audio to overwrite, so theirs is written here
-#: like any other line — a room that cannot say it has no connection, or cannot invite a team
-#: to begin, is a room that opens in silence.
+#: `sem_conexao` is absent from Portuguese and only from Portuguese. Its Portuguese audio was
+#: rendered before this script existed and its wording was never written down, so declaring a
+#: guess here would make the next render overwrite approved audio with it. The other languages
+#: have no approved audio to overwrite, so theirs is written here like any other line — a room
+#: that cannot say it has no connection is a room that opens in silence.
 #:
 #: A language with none written renders none, rather than borrowing another language's words.
 STANDALONE: dict[str, dict[str, str]] = {
@@ -68,7 +75,6 @@ STANDALONE: dict[str, dict[str, str]] = {
             "It is not anything you did — we just have no connection. "
             "We can wait a moment and try again."
         ),
-        "toque_para_comecar": ("Whenever you are ready, touch the circle and we begin."),
         "gravacao_presa": (
             "There is a recording of yours I have not been able to store yet. "
             "It is not lost, it is here with me. "
@@ -86,7 +92,6 @@ STANDALONE: dict[str, dict[str, str]] = {
             "No es nada que ustedes hayan hecho — simplemente no hay conexión. "
             "Podemos esperar un momento e intentarlo de nuevo."
         ),
-        "toque_para_comecar": ("Cuando estén listos, toquen el círculo y empezamos."),
         "gravacao_presa": (
             "Hay una grabación de ustedes que todavía no he podido guardar. "
             "No se perdió, está aquí conmigo. "
@@ -111,13 +116,23 @@ NEVER_SHIPPED = frozenset({FailSafe.UNTOLD_STRETCH, FailSafe.STRETCH_TO_CORRECT}
 
 
 def catalogue(language_code: str) -> dict[str, str]:
-    """Every pre-approved line the app ships, by the name it plays it under."""
+    """Every pre-approved line the app ships, by the name it plays it under.
+
+    Two sources, because the room speaks two kinds of fixed line and only one of them is a
+    failure. The process families are read off the step tables rather than listed again
+    here: a name written twice is a name that drifts, and it is the tables the accessor
+    answers from, so a step added there has to reach the bundle by the same act.
+    """
     lines: dict[str, str] = {}
     for kind in FailSafe:
         if kind in NEVER_SHIPPED:
             continue
         for index, text in enumerate(utterances(kind, language_code)):
             lines[f"{kind}{index}"] = text
+    for family, steps in PROCESS_STEPS.items():
+        for step in steps:
+            text, name = process_line(family, step, language_code)
+            lines[name] = text
     lines.update(STANDALONE.get(language_code, {}))
     return lines
 
@@ -190,9 +205,7 @@ async def render(out: Path, language_code: str, *, force: bool) -> None:
         if not force and clip.exists() and manifest.get(name) == fingerprint(text):
             print(f"  = {language_code}/{name}")
             continue
-        speech, _ = await synthesize_facilitator_speech(
-            text, language=language_code, store=_NoCache()
-        )
+        speech = await render_facilitator_speech(text, language=language_code, store=_NoCache())
         clip.write_bytes(speech.audio)
         manifest[name] = fingerprint(text)
         print(f"  + {language_code}/{name}  {len(speech.audio) // 1024} KB  {text[:48]}")
@@ -206,7 +219,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="report drift, render nothing")
     parser.add_argument("--force", action="store_true", help="re-render every line")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="the audio folder of the app checkout the bundle ships in",
+    )
     parser.add_argument(
         "--language",
         default=",".join(ROOM_LANGUAGES),

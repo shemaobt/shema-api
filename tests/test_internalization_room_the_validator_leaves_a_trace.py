@@ -21,23 +21,28 @@ import pytest
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.run_turn import MAX_REDRAFTS, run_turn
-from tests.test_internalization_room_turn import (
+from tests.turn_harness import (
     GUIDE,
     VALIDATOR,
     FakeAgent,
     P,
-    _settings,
-    patch_agent,
+    settings,
+    the_agent_answers,
 )
 
-#: Re-exported so pytest resolves it as a fixture here too — `patch_agent` is a fixture
-#: function, not a side-effect import, so silencing the unused-import warning alone (this
-#: codebase's usual idiom for an unused import) still leaves every test parameter of the
-#: same name looking like a redefinition of it to ruff. `__all__` marks the name genuinely
-#: used.
-__all__ = ["patch_agent"]
 
-LOGGER_NAME = "app.services.internalization_room.run_turn"
+@pytest.fixture
+def patch_agent(monkeypatch: pytest.MonkeyPatch):
+    """The fake in place of the model, for the cases in this module."""
+
+    def _install(agent: FakeAgent) -> FakeAgent:
+        return the_agent_answers(monkeypatch, agent)
+
+    return _install
+
+
+LOGGER_NAME = "app.services.internalization_room.validated_turn"
+BRIDGE_LANGUAGE_LOGGER_NAME = "app.services.internalization_room.bridge_language"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 
@@ -68,16 +73,21 @@ async def _a_turn(session_id: str, **overrides: Any):
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
         "pericope_num": P,
-        "settings": _settings(),
+        "settings": settings(),
     }
     kwargs.update(overrides)
     return await run_turn(**kwargs)
 
 
-@pytest.mark.asyncio
-async def test_a_validator_answering_loose_text_three_times_leaves_three_traces(
+async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_draft(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Both readings are of the first draft, so both traces name attempt 1.
+
+    Three traces on attempts 1, 2 and 3 was the shape when an unreadable reply cost a
+    redraft; a reply the room cannot read is now read again before anything is redrawn.
+    """
+
     class Garbage(FakeAgent):
         async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             is_validator = "corrected_response" in system_prompt
@@ -93,19 +103,18 @@ async def test_a_validator_answering_loose_text_three_times_leaves_three_traces(
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 3
-    for attempt, record in enumerate(refusals, start=1):
-        assert record.__dict__["attempt"] == attempt
+    assert len(refusals) == 2
+    for record in refusals:
+        assert record.__dict__["attempt"] == 1
         assert record.__dict__["session_id"] == "sessao-1"
         assert "json" in record.__dict__["condition"].lower()
         assert "desculpe, não consigo" in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_json_without_a_verdict_key_also_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(FakeAgent(verdicts=[{"ok": True}] * (MAX_REDRAFTS + 1)))
+    patch_agent(FakeAgent(verdicts=[{"ok": True}] * 2))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-2")
@@ -113,13 +122,12 @@ async def test_json_without_a_verdict_key_also_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 3
+    assert len(refusals) == 2
     for record in refusals:
         assert "verdict" in record.__dict__["condition"].lower()
         assert '"ok": true' in record.getMessage().lower()
 
 
-@pytest.mark.asyncio
 async def test_a_regenerate_verdict_leaves_the_whole_reply(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -147,15 +155,10 @@ async def test_a_regenerate_verdict_leaves_the_whole_reply(
         assert "claims_to_see_the_screen" in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(
-        FakeAgent(
-            verdicts=[{"verdict": "correct", "corrected_response": "  "}] * (MAX_REDRAFTS + 1)
-        )
-    )
+    patch_agent(FakeAgent(verdicts=[{"verdict": "correct", "corrected_response": "  "}] * 2))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-4")
@@ -163,14 +166,13 @@ async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 3
+    assert len(refusals) == 2
     for record in refusals:
         assert "correct" in record.__dict__["condition"].lower()
         assert "empty" in record.__dict__["condition"].lower()
         assert "corrected_response" in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_words(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -187,11 +189,14 @@ async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_w
         )
     )
 
-    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+    with (
+        caplog.at_level(logging.WARNING, logger=LOGGER_NAME),
+        caplog.at_level(logging.WARNING, logger=BRIDGE_LANGUAGE_LOGGER_NAME),
+    ):
         outcome = await _a_turn("sessao-5")
 
     assert outcome.used_fail_safe is True
-    assert outcome.speech in utterances(FailSafe.OFF_BRIDGE_LANGUAGE, "pt")
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
     refusals = _refusal_records(caplog)
     assert len(refusals) == 3
@@ -200,9 +205,9 @@ async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_w
         assert draft not in record.getMessage()
         for value in record.__dict__.values():
             assert draft not in str(value)
+    assert draft not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -231,7 +236,6 @@ async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(
     assert TEAM_ANSWER not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_every_refusal_carries_the_sessions_own_id(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -254,14 +258,17 @@ async def test_every_refusal_carries_the_sessions_own_id(
         assert record.__dict__["session_id"] != "?"
 
 
-@pytest.mark.asyncio
 async def test_a_passing_verdict_leaves_no_refusal_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
     patch_agent(FakeAgent(verdicts=[{"verdict": "pass", "issues": []}], drafts=["Fala normal."]))
 
-    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-8")
 
     assert outcome.used_fail_safe is False
     assert _refusal_records(caplog) == []
+    assert any(
+        record.name == LOGGER_NAME and "sessao-8" in record.getMessage()
+        for record in caplog.records
+    ), "o turno some do próprio logger sem deixar rasto nenhum, nem o de sempre"

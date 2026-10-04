@@ -1,5 +1,7 @@
 from functools import lru_cache
+from typing import Literal
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,6 +9,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     env: str = "development"
+    #: The git SHA the image was built from, baked in as `GIT_SHA` at build time.
+    build_id: str = Field("unknown", validation_alias="GIT_SHA")
     port: int = 8000
 
     database_url: str
@@ -24,6 +28,13 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     google_maps_api_key: str = ""
     recaptcha_secret_key: str = ""
+    anthropic_api_key: str = ""
+    #: The workspace an identity-bound key acts in, sent as the `anthropic-workspace-id`
+    #: header. A Console key tied to a person is not scoped to a workspace on its own, and
+    #: every call under one answers 400 until the workspace is named; a classic workspace key
+    #: carries its own scope and wants this empty, so it is a value the deployment supplies
+    #: rather than a branch in the code.
+    anthropic_workspace_id: str = ""
     google_embedding_model: str = "gemini-embedding-001"
     google_llm_model: str = "gemini-3.1-pro-preview"
     #: The two Gemini tiers every feature speaks through. They were literals in nine
@@ -34,6 +45,29 @@ class Settings(BaseSettings):
     #: features failing at once. Here, moving off one is an environment variable.
     gemini_fast_model: str = "gemini-3-flash-preview"
     gemini_quality_model: str = "gemini-3-flash-preview"
+    #: The room's three model ladders, most capable first, comma-separated. A ladder rather
+    #: than one id because a key is not entitled to every model: the room steps down a rung
+    #: when the API answers that this key cannot use the one above, and only then — a rate
+    #: limit keeps the rung it is on. The voice carries the Guide and the Validator, and
+    #: DOCTRINE.md forbids anything but a frontier model there; analysis reads the telling
+    #: back against the map; the classifier only moves beads and runs off the voice path.
+    #: These and their parameters are Marcia's artifacts (DOCTRINE.md 5.1), not ours to tune —
+    #: including the classifier's own call in classify_coverage.py, thinking and its ceiling
+    #: ruled 2026-09-21, see docs/doctrine/rulings/2026-09-21-the-classifier-thinks-with-room-
+    #: for-it.md
+    tripod_voice_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
+    tripod_analysis_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
+    tripod_classifier_model: str = "claude-sonnet-5,claude-sonnet-4-6"
+    #: The one clock on the room's turn: the deployment's own function ceiling (Cloud Run's
+    #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
+    #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
+    internalization_room_turn_bound_ms: int = 300_000
+    #: How long the Guide's and the Validator's prefix survives a rehearsal pause. Anthropic's
+    #: default cache entry is 5 minutes; a team that steps away for the ensaio comes back to a
+    #: cold prefix and pays its ~16k/~14k tokens again on the first turn back. Empty reverts to
+    #: that default without a code change — a deployment sets this blank if the 1-hour write
+    #: (2x the 5-minute write) turns out not to pay for itself.
+    internalization_room_voice_cache_ttl: Literal["1h", ""] = "1h"
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5
@@ -47,6 +81,11 @@ class Settings(BaseSettings):
     ph_elevenlabs_api_key: str = ""
 
     internalization_room_api_key: str = ""
+    internalization_room_clip_signing_key: str = ""
+    #: What her golden runner presents to drive the room by text instead of by microphone.
+    #: Empty is the production configuration: the text seam then does not exist, and its
+    #: routes answer 404 rather than asking for a credential nobody has been given.
+    internalization_room_runner_key: str = ""
     #: The room bills its own voice. Empty falls back to the shared key.
     internalization_room_elevenlabs_api_key: str = ""
     #: The room's Portuguese voice. One native voice per language it speaks, never one
@@ -147,6 +186,11 @@ class Settings(BaseSettings):
     @property
     def qdrant_collection(self) -> str:
         return "meaning_map_prod" if self.env == "production" else "meaning_map_test"
+
+    @field_validator("build_id", mode="before")
+    @classmethod
+    def _an_empty_build_id_is_unset(cls, value: object) -> object:
+        return value or "unknown"
 
 
 @lru_cache

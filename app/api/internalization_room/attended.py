@@ -1,7 +1,8 @@
 """The facilitator's own way out of a halt: they went.
 
 `NEEDS_PERSON` had one exit and it belonged to the team — a turn that lands. **The server
-still lifts on a landing turn and this slice does not touch that**; `test_the_pause_is_not_a_
+still lifts a blocking halt on a landing turn and this slice does not touch that** (a warning
+it never lifts: ENG-1163, and this route is the warning's only exit); `test_the_pause_is_not_a_
 latch` is where it is asserted, and an earlier draft of this file claimed the opposite. What
 is wrong is that the team's turn was the *only* exit, because it makes the queue drain on the
 team's schedule rather than on the facilitator's. A person walks over, helps, and leaves while
@@ -25,6 +26,7 @@ from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import AttendedResponse
 from app.services import internalization_room as room
 from app.services.internalization_room import halt
+from app.services.internalization_room.nudge_channel import nudge
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
@@ -56,7 +58,9 @@ async def mark_attended(
     both of those are argued.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    return _answer(await room.attend(db, session, by=user.id))
+    attended = await room.attend(db, session, by=user.id)
+    nudge(attended.project_id, "halts")
+    return _answer(attended)
 
 
 @router.delete("/facilitator/sessions/{session_id}/attended", response_model=AttendedResponse)
@@ -70,4 +74,6 @@ async def undo_attended(
     the Desk.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
-    return _answer(await room.unattend(db, session))
+    unattended = await room.unattend(db, session)
+    nudge(unattended.project_id, "halts")
+    return _answer(unattended)

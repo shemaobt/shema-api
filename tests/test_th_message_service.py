@@ -32,7 +32,6 @@ def _patch_genai(monkeypatch, *, assistant_text: str, title_text: str = "auto ti
     return calls
 
 
-@pytest.mark.asyncio
 async def test_send_message_persists_both_turns(monkeypatch, db_session) -> None:
     user = await make_user(db_session, email="th_msg_a@test.com")
     chat = await make_th_chat(db_session, user.id)
@@ -64,7 +63,6 @@ async def test_send_message_persists_both_turns(monkeypatch, db_session) -> None
     assert calls["assistant"][0]["system_prompt"] == "STORY PROMPT"
 
 
-@pytest.mark.asyncio
 async def test_send_message_auto_titles_first_user_message(monkeypatch, db_session) -> None:
     user = await make_user(db_session, email="th_msg_b@test.com")
     chat = await make_th_chat(db_session, user.id, title=None)
@@ -77,7 +75,6 @@ async def test_send_message_auto_titles_first_user_message(monkeypatch, db_sessi
     assert chat.title == "The Story of Ruth"
 
 
-@pytest.mark.asyncio
 async def test_send_message_no_title_overwrite_on_subsequent(monkeypatch, db_session) -> None:
     user = await make_user(db_session, email="th_msg_c@test.com")
     chat = await make_th_chat(db_session, user.id, title="My existing title")
@@ -91,7 +88,6 @@ async def test_send_message_no_title_overwrite_on_subsequent(monkeypatch, db_ses
     assert chat.title == "My existing title"
 
 
-@pytest.mark.asyncio
 async def test_send_message_raises_for_unknown_chat(monkeypatch, db_session) -> None:
     user = await make_user(db_session, email="th_msg_d@test.com")
     _patch_genai(monkeypatch, assistant_text="never called")
@@ -99,7 +95,6 @@ async def test_send_message_raises_for_unknown_chat(monkeypatch, db_session) -> 
         await send_message(db_session, "missing-chat-id", user.id, "hi")
 
 
-@pytest.mark.asyncio
 async def test_send_message_falls_back_to_content_when_title_generation_fails(
     monkeypatch, db_session
 ) -> None:
@@ -127,7 +122,6 @@ async def test_send_message_falls_back_to_content_when_title_generation_fails(
     assert chat.title.startswith("Tell me about")
 
 
-@pytest.mark.asyncio
 async def test_send_message_does_not_persist_user_msg_when_gemini_fails(
     monkeypatch, db_session
 ) -> None:
@@ -161,7 +155,6 @@ async def test_send_message_does_not_persist_user_msg_when_gemini_fails(
     assert pending_msgs[0].content == "this should not persist"
 
 
-@pytest.mark.asyncio
 async def test_send_message_uses_agent_override(monkeypatch, db_session) -> None:
     user = await make_user(db_session, email="th_msg_e@test.com")
     chat = await make_th_chat(db_session, user.id, agent_id=AgentId.STORYTELLER)

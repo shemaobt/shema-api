@@ -10,11 +10,11 @@ database instead is a sweep: every row of every table deleted in one transaction
 two seeded `App` rows written again. Why it is not a rollback, and what it was measured
 against, is [ADR 0031](../docs/adr/0031-one-lint-check-and-a-schema-once-per-worker.md).
 
-Seven tables here are append-only, guarded by a SQLite trigger that aborts any `DELETE` on
+Several tables are append-only, guarded by a SQLite trigger that aborts any `DELETE` on
 them, and cases hold that guard by asserting it raises. Dropping the whole schema stepped
 over them; a sweep cannot, so it takes the guards off and puts them back inside its own
 transaction, reading their definitions from `sqlite_master` rather than from a list here
-that would go stale the first time an eighth table joins them.
+that would go stale the first time another table joins them.
 
 `app.db.models` is imported here on purpose. `Base.metadata` is populated by importing the
 models, and a schema created once, at the start of a process, must not depend on which of
@@ -39,9 +39,24 @@ os.environ.setdefault("INNGEST_DEV", "1")
 
 import app.db.models  # noqa: F401
 from app.core.database import Base
+from app.services.internalization_room import llm
+from app.services.platform import tts
 
 #: The one the app is already pointed at, so the fixtures and the routes share a database.
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
+
+
+@pytest.fixture(autouse=True)
+def _nothing_kept_outlives_its_test():
+    from app.api.internalization_room.sessions import forget_session_languages
+
+    llm._CLIENTS.clear()
+    tts.forget_what_is_kept()
+    forget_session_languages()
+    yield
+    llm._CLIENTS.clear()
+    tts.forget_what_is_kept()
+    forget_session_languages()
 
 
 @pytest.fixture(scope="session")

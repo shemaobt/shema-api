@@ -45,6 +45,7 @@ from app.models.team import (
     TeamListingResponse,
 )
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.entered import entered
 from app.services.internalization_room.progression import active_passages
 from app.services.project.facilitated_scope import facilitated_projects as _facilitated_projects
 from app.services.project.facilitated_scope import within as _within
@@ -58,10 +59,17 @@ def _last_activity_subquery(scope: Select | None) -> Subquery:
     All three tables, not just the session's own row: a raised hand does not update the
     session it was asked in, and a count that misses it errs **low**. On a work queue that is
     the worse direction — a facilitator does not go looking for what does not appear.
+
+    **One case is deliberately low: a session nobody entered (ENG-964).** No turn, no take
+    and no halt — the invitation door and the panorama spoke mint one before any stored row
+    is read, and it is referenced by nothing once the stored row wins (ADR 0033 of the
+    internalization-room repository). It is not a room of the team, so it must not move
+    them up a facilitator's queue; `entered()` excludes it from this leg alone; the question
+    and take legs read every row they always did.
     """
     moments = union_all(
         select(IRSession.project_id.label("project_id"), IRSession.updated_at.label("at")).where(
-            _within(IRSession.project_id, scope)
+            _within(IRSession.project_id, scope), entered()
         ),
         select(IRQuestion.project_id.label("project_id"), IRQuestion.created_at.label("at")).where(
             _within(IRQuestion.project_id, scope)

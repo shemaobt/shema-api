@@ -1,0 +1,318 @@
+{
+  "name": "P01-opening-and-mother-tongue",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "baseUrl": "http://127.0.0.1:8034/api/internalization-room/text-seam/",
+  "sessionId": "ebf418c9-59f6-423c-9e61-7600d11ccd05",
+  "refused": null,
+  "turns": [
+    {
+      "idx": 0,
+      "team": "[A sessão acabou de começar. A equipe abriu a passagem P01 e está à mesa, pronta para começar. Fale primeiro.]",
+      "guide": "Olá, pessoal. Eu sou o Facilitador Digital. Vou estar aqui na mesa com vocês, pensando junto, enquanto a gente conhece bem essa passagem antes de vocês traduzirem. Quem mais vai falar hoje são vocês, entre si. Eu só vou apontar uma coisa aqui e ali e fazer uma pergunta de vez em quando.\n\nA passagem de hoje é o começo do livro de Rute. Ela começa bem aberta, falando de um tempo inteiro, de uma época. E depois vai fechando rápido em cima de uma só família. Tem fome na terra. A família sai de casa e vai morar em terra estranha. São quatro pessoas: o pai, a mãe e dois filhos. Aí o pai morre. Os dois filhos casam com mulheres daquela terra. Passam mais ou menos dez anos. E no fim, os dois filhos morrem também. De quatro pessoas, sobra uma mulher só, longe de casa.\n\nReparem no jeito de contar. A voz é simples, direta, sem enfeite. Quem conta não para pra chorar. Não diz o que ninguém sente por dentro. Não diz que Deus fez nada disso. Só conta as perdas, uma atrás da outra, com poucas palavras. E o peso vem justamente do que fica sem dizer. Três mortes em cinco versos.\n\nAntes de entrarmos nas partes, conversem um pouco entre vocês: como é que essa forma de contar, tão seca, soa pra vocês? Que sensação ela deixa? Quando quiserem, me contem em português o que vocês acharam.\n\nAgora vamos entrar na primeira parte, os versos um e dois.\n\nA história começa dizendo que foi no tempo em que os juízes governavam Israel. Era um tempo confuso, sem um líder firme no país. Foi antes de Israel ter reis. E nesse tempo veio uma fome na terra.\n\nEntão um homem sai da cidade dele, Belém de Judá, e vai morar por um tempo nos campos de Moabe. Moabe é terra estranha, de um povo que Israel sempre teve briga. Ele leva a esposa e os dois filhos. A história dá os nomes: o homem se chama Elimeleque, a esposa é Noemi, e os filhos são Malom e Quiliom. E diz que eles eram efrateus, de Belém de Judá. Eles chegam em Moabe e ficam lá.\n\nDuas coisinhas pra vocês guardarem. Primeiro: Belém quer dizer \"casa de pão\". E é justamente na casa de pão que não tem pão. Segundo: eles vão \"morar por um tempo\", como estrangeiros, como quem está de passagem, não pra ficar de vez.\n\nE reparem: aqui também a história não diz que o Senhor Jeová mandou a fome, nem que foi Ele quem tirou a família de casa. Deus não aparece fazendo nada nessa abertura.\n\nConversem entre vocês sobre essa cena: quem está nela, de onde saem, pra onde vão, e por quê. Se tiver alguma coisa que não ficou clara, me perguntem. Quando estiverem prontos, me contem em português como vocês entenderam essa parte.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 45166,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1057,
+          "output_tokens": 1242,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 16272,
+          "latency_ms": 22508,
+          "cost_usd": 0.27607
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1308,
+          "output_tokens": 1361,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 13808,
+          "latency_ms": 22396,
+          "cost_usd": 0.25373
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 1,
+      "team": "Bom dia. Somos a equipe Terena: o Jean, o Daniel e o Suzuki. Pode continuar.",
+      "guide": "Bom dia, Jean, Daniel e Suzuki. Que bom estar aqui com vocês.\n\nEntão vamos ficar um pouco nessa primeira parte, os versos um e dois. Deixa eu contar de novo, bem curto.\n\nEra o tempo dos juízes, um tempo sem líder firme em Israel. Veio fome na terra. Um homem chamado Elimeleque saiu de Belém de Judá, que quer dizer \"casa de pão\", com a esposa Noemi e os dois filhos, Malom e Quiliom. Eles eram efrateus. Foram pros campos de Moabe, terra de um povo estranho, pra morar lá por um tempo, como estrangeiros. E chegaram e ficaram lá.\n\nFicou claro quem está na cena, de onde saem e pra onde vão? Se tiver alguma dúvida, me perguntem agora. Se estiver claro, conversem entre vocês na língua de vocês sobre essa parte, e depois me contem em português como vocês entenderam.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 37719,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2048,
+          "output_tokens": 557,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 11368,
+          "cost_usd": 0.052398
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1675,
+          "output_tokens": 810,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 13430,
+          "cost_usd": 0.060702
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 6140,
+          "output_tokens": 1142,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 12840,
+          "cost_usd": 0.0237
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 2,
+      "team": "Entendemos o começo. Vamos ensaiar essa primeira parte entre nós.",
+      "guide": "Ótimo. Vão em frente.\n\nEnsaiem essa primeira parte juntos, na língua de vocês. Podem usar as mãos, se levantar, fazer o caminho de Belém até Moabe, se quiserem. Isso ajuda a história a entrar.\n\nQuando terminarem, voltem e me contem em português o que vocês disseram no ensaio. Só o que vocês falaram mesmo, do jeito que saiu.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 19587,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2428,
+          "output_tokens": 214,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 8053,
+          "cost_usd": 0.039048
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1861,
+          "output_tokens": 409,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 9642,
+          "cost_usd": 0.042512
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5915,
+          "output_tokens": 11,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1848,
+          "cost_usd": 0.01194
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 3,
+      "team": "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma palavra chegou até você.]",
+      "guide": "Obrigado. Eu ouvi vocês falando, mas eu não entendo a língua de vocês.\n\nAgora me contem em português o que vocês disseram nesse ensaio. Só o que saiu mesmo, do jeito que vocês falaram. Um de vocês pode contar, ou podem contar juntos.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 15886,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2610,
+          "output_tokens": 159,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 4597,
+          "cost_usd": 0.038118
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1985,
+          "output_tokens": 623,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 11258,
+          "cost_usd": 0.054452
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 4,
+      "team": "Pronto. Em português: no tempo em que os juízes mandavam, faltou comida na terra. Um homem de Belém de Judá foi morar em Moabe com a esposa e os dois meninos. Ele era Elimeleque, ela Noemi, os meninos Malom e Quiliom, gente de Efrata, de Belém.",
+      "guide": "Muito bom. No que vocês me contaram de volta, está quase tudo que a passagem traz nessa parte: o tempo dos juízes, a fome, Belém de Judá, o homem com a esposa e os dois meninos, os quatro nomes, e que eram gente de Efrata. Isso é bonito de ouvir.\n\nUma coisinha só. Vocês disseram que ele \"foi morar em Moabe\". A passagem diz um pouco mais: que ele foi morar lá *por um tempo*, como estrangeiro, como quem está de passagem, não pra ficar de vez. Esse jeito de morar, de passagem, entrou no ensaio na língua de vocês, ou ficou de fora?",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 32890,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2831,
+          "output_tokens": 488,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 9986,
+          "cost_usd": 0.056778
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2364,
+          "output_tokens": 706,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 11477,
+          "cost_usd": 0.062392
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 6087,
+          "output_tokens": 1059,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 11380,
+          "cost_usd": 0.022764
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 5,
+      "team": "E a próxima parte?",
+      "guide": "Tudo bem, vamos pra próxima. Só guardem essa coisinha: a família foi pra Moabe pra morar *por um tempo*, de passagem. Isso vai importar mais pra frente.\n\nA segunda parte é o verso três. É bem curta. A história diz só isso: Elimeleque, o marido de Noemi, morreu. E Noemi ficou com os dois filhos. Eles ainda estão lá em Moabe, longe de casa.\n\nReparem no jeito de contar. Poucas palavras. A história não diz por que ele morreu. Não diz quem causou. Não fala de choro, nem de enterro, nem de luto. Só diz que ele morreu e que ela ficou com os filhos.\n\nFicou claro o que acontece aqui? Se quiserem que eu conte de novo, ou tiverem alguma pergunta, me digam. Se estiver claro, ensaiem essa parte juntos na língua de vocês, e depois voltem e me contem em português o que vocês disseram.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 38655,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3037,
+          "output_tokens": 718,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 14287,
+          "cost_usd": 0.070338
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2720,
+          "output_tokens": 699,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 12575,
+          "cost_usd": 0.065602
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5289,
+          "output_tokens": 919,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 11764,
+          "cost_usd": 0.019768
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 6,
+      "team": "Espera, espera. Antes disso: a Noemi ficou sozinha ou ficou com os filhos quando o marido morreu?",
+      "guide": "Boa pergunta, e importante.\n\nNesse verso, ela ficou com os filhos. A história diz: Elimeleque, o marido de Noemi, morreu, e Noemi ficou com os dois filhos, Malom e Quiliom. Então ela não está sozinha aqui. Perdeu o marido, mas os dois meninos estão com ela. E os três continuam lá em Moabe, longe de Belém.\n\nFicou claro assim? Se sim, ensaiem essa parte juntos na língua de vocês, e depois me contem em português o que vocês disseram.",
+      "outcome": "pass",
+      "interrupted": true,
+      "turnMs": 24254,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3424,
+          "output_tokens": 336,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 7767,
+          "cost_usd": 0.055108
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2965,
+          "output_tokens": 488,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 9099,
+          "cost_usd": 0.057502
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5176,
+          "output_tokens": 462,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 7335,
+          "cost_usd": 0.014972
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 7,
+      "team": "Tá. Então ela ficou com os dois filhos. Pode seguir.",
+      "guide": "Isso mesmo. Ela ficou com os dois filhos, Malom e Quiliom, lá em Moabe.\n\nEntão agora ensaiem essa parte juntos, na língua de vocês: a morte de Elimeleque e Noemi ficando com os dois filhos. É curtinho, mas contem do jeito que a história conta, sem enfeite.\n\nQuando terminarem, voltem e me contem em português o que vocês disseram.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 29714,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3646,
+          "output_tokens": 222,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 5738,
+          "cost_usd": 0.051628
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3146,
+          "output_tokens": 417,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 9062,
+          "cost_usd": 0.055762
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5112,
+          "output_tokens": 1248,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 14843,
+          "cost_usd": 0.022704
+        }
+      ],
+      "mechanical": []
+    }
+  ]
+}

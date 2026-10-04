@@ -15,7 +15,6 @@ def test_hash_password_and_verify() -> None:
     assert not auth_service.verify_password("wrong-password", hashed)
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_email_returns_user(db_session) -> None:
     await make_user(db_session, email="alice@example.com")
     user = await auth_service.get_user_by_email(db_session, "alice@example.com")
@@ -23,13 +22,11 @@ async def test_get_user_by_email_returns_user(db_session) -> None:
     assert user.email == "alice@example.com"
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_email_returns_none_when_missing(db_session) -> None:
     user = await auth_service.get_user_by_email(db_session, "nobody@example.com")
     assert user is None
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id_returns_user(db_session) -> None:
     created = await make_user(db_session, email="bob@example.com")
     user = await auth_service.get_user_by_id(db_session, created.id)
@@ -37,13 +34,11 @@ async def test_get_user_by_id_returns_user(db_session) -> None:
     assert user.id == created.id
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id_returns_none_when_missing(db_session) -> None:
     user = await auth_service.get_user_by_id(db_session, "00000000-0000-0000-0000-000000000000")
     assert user is None
 
 
-@pytest.mark.asyncio
 async def test_signup_user_creates_user(db_session) -> None:
     payload = UserSignupRequest(
         email="new@example.com",
@@ -56,7 +51,6 @@ async def test_signup_user_creates_user(db_session) -> None:
     assert auth_service.verify_password("password123", user.password_hash)
 
 
-@pytest.mark.asyncio
 async def test_signup_user_raises_conflict_when_email_exists(db_session) -> None:
     await make_user(db_session, email="taken@example.com")
     payload = UserSignupRequest(
@@ -68,7 +62,6 @@ async def test_signup_user_raises_conflict_when_email_exists(db_session) -> None
         await auth_service.signup_user(db_session, payload)
 
 
-@pytest.mark.asyncio
 async def test_authenticate_user_returns_user_when_valid(db_session) -> None:
     await make_user(db_session, email="valid@example.com", password="secret456")
     user = await auth_service.authenticate_user(db_session, "valid@example.com", "secret456")
@@ -76,21 +69,18 @@ async def test_authenticate_user_returns_user_when_valid(db_session) -> None:
     assert user.email == "valid@example.com"
 
 
-@pytest.mark.asyncio
 async def test_authenticate_user_raises_when_wrong_password(db_session) -> None:
     await make_user(db_session, email="valid@example.com", password="secret456")
     with pytest.raises(AuthenticationError, match="Invalid credentials"):
         await auth_service.authenticate_user(db_session, "valid@example.com", "wrong")
 
 
-@pytest.mark.asyncio
 async def test_authenticate_user_raises_when_user_inactive(db_session) -> None:
     await make_user(db_session, email="inactive@example.com", is_active=False)
     with pytest.raises(AuthorizationError, match="Inactive user"):
         await auth_service.authenticate_user(db_session, "inactive@example.com", "password123")
 
 
-@pytest.mark.asyncio
 async def test_issue_tokens_returns_pair_and_persists_refresh(db_session) -> None:
     user = await make_user(db_session, email="token-user@example.com")
     access_token, refresh_token = await auth_service.issue_tokens(db_session, user)
@@ -102,7 +92,6 @@ async def test_issue_tokens_returns_pair_and_persists_refresh(db_session) -> Non
     assert payload.get("sub") == user.id
 
 
-@pytest.mark.asyncio
 async def test_refresh_access_token_returns_new_access_when_valid(db_session) -> None:
     user = await make_user(db_session, email="refresh@example.com")
     _, refresh_token = await auth_service.issue_tokens(db_session, user)
@@ -113,7 +102,6 @@ async def test_refresh_access_token_returns_new_access_when_valid(db_session) ->
     assert payload.get("sub") == user.id
 
 
-@pytest.mark.asyncio
 async def test_refresh_access_token_raises_when_token_revoked(db_session) -> None:
     user = await make_user(db_session, email="revoked@example.com")
     _, refresh_token = await auth_service.issue_tokens(db_session, user)
@@ -122,7 +110,6 @@ async def test_refresh_access_token_raises_when_token_revoked(db_session) -> Non
         await auth_service.refresh_access_token(db_session, refresh_token)
 
 
-@pytest.mark.asyncio
 async def test_get_current_user_from_access_token_returns_user(db_session) -> None:
     user = await make_user(db_session, email="me@example.com")
     access_token, _ = await auth_service.issue_tokens(db_session, user)
@@ -131,7 +118,6 @@ async def test_get_current_user_from_access_token_returns_user(db_session) -> No
     assert current.email == user.email
 
 
-@pytest.mark.asyncio
 async def test_get_current_user_from_access_token_raises_when_inactive(db_session) -> None:
     user = await make_user(db_session, email="inactive-me@example.com", is_active=False)
     access_token, _ = await auth_service.issue_tokens(db_session, user)
@@ -139,7 +125,6 @@ async def test_get_current_user_from_access_token_raises_when_inactive(db_sessio
         await auth_service.get_current_user_from_access_token(db_session, access_token)
 
 
-@pytest.mark.asyncio
 async def test_revoke_refresh_token_idempotent_when_already_revoked(db_session) -> None:
     user = await make_user(db_session, email="double-revoke@example.com")
     _, refresh_token = await auth_service.issue_tokens(db_session, user)

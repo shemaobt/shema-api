@@ -1,16 +1,14 @@
-"""What the room says when the Guide or the Validator cannot be reached.
+"""What the room says when a model answered and the room itself could not go on with it.
 
-Read from the endpoint, because the failure being described is an HTTP one: a model or
-transport error used to leave `take_turn` as a 500, which the tablet shows as a broken
-room and which stops a session over an outage that lasted seconds. The fail-safe line the
-policy already promises is the answer, and the endpoint names it in `fixed_line` — those
-lines ship as audio inside the app, so a failing network costs no synthesis.
+Read from the endpoint, because the failure being described is an HTTP one. A model or
+transport error is no longer answered here at all — it rises as a 502 with its cause, see
+`test_ir_an_outage_is_an_error_not_an_utterance.py` — so what is left to this file is the
+line between a canned answer the policy promises and a defect of ours that must stay a 500.
 """
 
 import asyncio
 import json
-import logging
-import sys
+import threading
 from typing import Any
 
 import httpx
@@ -18,9 +16,9 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -28,14 +26,6 @@ P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 CORRECTED_LINE = "Fiquem nesta cena. O que vocês contariam?"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
-
-
-def _unrepairable_lines() -> set[str]:
-    """The names the app plays for a turn nothing could repair, straight from the policy."""
-    return {
-        f"{FailSafe.UNREPAIRABLE}{index}"
-        for index in range(len(utterances(FailSafe.UNREPAIRABLE, "pt")))
-    }
 
 
 class _Agent:
@@ -119,24 +109,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
 
 def _the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> None:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", _Agent(list(script)))
-
-
-def _the_assessor_finds_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the assessor out of the way on turns that carry a team answer."""
-    module = sys.modules["app.services.internalization_room.comprehension.assessor"]
-
-    async def _empty(**_: Any) -> str:
-        return json.dumps(
-            {
-                "observations": [],
-                "mother_tongue_practice_reported": False,
-                "practice_evidence_excerpt": "",
-            }
-        )
-
-    monkeypatch.setattr(module, "call_agent", _empty)
+    the_room_agent_is(monkeypatch, turn=_Agent(list(script)))
 
 
 async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
@@ -161,37 +134,18 @@ async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx
     )
 
 
-async def test_a_guide_that_cannot_be_reached_answers_the_room_not_the_tablet(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+async def test_a_rehearsal_in_the_teams_own_language_is_voiced_by_the_guide_not_from_the_tin(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, spoken: list[str]
 ) -> None:
-    """A timeout on the Guide is a bad minute, not a broken room.
-
-    The tablet reads a 500 as the room itself failing and the session stops for a person,
-    over an outage that was over before anyone reached the door.
-    """
-    _the_models_answer(monkeypatch, RuntimeError("the model is unreachable"))
-    session_id = await _a_room_opening_a_passage(client)
-
-    answered = await _the_room_takes_a_turn(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    assert answered.json()["fixed_line"] in _unrepairable_lines()
-    assert answered.json()["degraded"] is True
-
-
-async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Both turns are voiced from the tin, and only one of them is a room in trouble.
-
-    The tablet counts canned answers toward fetching a facilitator, so a team rehearsing in
+    """The tablet counts canned answers toward fetching a facilitator, so a team rehearsing in
     its own language — the one thing the room asks them for — spent that count three turns
-    running and stopped the session for someone who was not in the house.
+    running and stopped the session for someone who was not in the house. The room used to
+    keep it off the count by marking the line affirming; now no line is drawn from the tin at
+    all, and the Guide answers the fact of the rehearsal in its own words.
     """
     from app.api.internalization_room import sessions as sessions_api
 
     _the_models_answer(monkeypatch, GUIDE_LINE, json.dumps({"verdict": "pass", "issues": []}))
-    _the_assessor_finds_nothing(monkeypatch)
     session_id = await _a_room_opening_a_passage(client)
     assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
 
@@ -200,6 +154,7 @@ async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
             text="koeti yoko vitukeovo enepone itukovo",
             language_code="und",
             language_probability=0.99,
+            take_ms=12_000,
         )
 
     monkeypatch.setattr(sessions_api, "heard_speech", _rehearsed_in_their_own_language)
@@ -208,22 +163,12 @@ async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
 
     assert answered.status_code == 200, answered.text[:300]
     body = answered.json()
-    assert body["fixed_line"].startswith(FailSafe.OFF_BRIDGE_LANGUAGE)
-    assert body["used_fail_safe"] is True
+    assert body["fixed_line"] == "", "a sala respondia com a linha fixa G, da lata"
+    assert body["used_fail_safe"] is False
     assert body["degraded"] is False
-
-
-async def test_a_validator_that_cannot_be_reached_degrades_the_same_turn(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Two call sites, one turn: covering the Guide and leaving the Validator is half a fix."""
-    _the_models_answer(monkeypatch, GUIDE_LINE, RuntimeError("the validator is unreachable"))
-    session_id = await _a_room_opening_a_passage(client)
-
-    answered = await _the_room_takes_a_turn(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    assert answered.json()["fixed_line"] in _unrepairable_lines()
+    assert body["transcript"] == ""
+    assert body["audio_url"], "o turno não trazia clipe nenhum para o tablet tocar"
+    assert spoken[-1] == GUIDE_LINE
 
 
 async def test_a_validator_listing_its_issues_as_plain_strings_still_gets_a_second_draft(
@@ -275,35 +220,6 @@ async def test_a_turn_the_models_answer_is_spoken_as_the_guide_wrote_it(
     assert spoken == [GUIDE_LINE]
 
 
-async def test_a_failed_call_is_logged_without_repeating_what_the_team_said(
-    client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """An outage the operation cannot see is the one it cannot fix.
-
-    The team's words are not part of what it needs to see: the room degrading is an
-    infrastructure fact, and a transcript in an operations log is the team's speech kept
-    somewhere nobody agreed to.
-    """
-    _the_assessor_finds_nothing(monkeypatch)
-    _the_models_answer(monkeypatch, GUIDE_LINE, _passes(), RuntimeError("the model is gone"))
-    session_id = await _a_room_opening_a_passage(client)
-    await _the_room_takes_a_turn(client, session_id)
-
-    with caplog.at_level(logging.ERROR, logger="app.services.internalization_room.run_turn"):
-        answered = await _the_team_answers(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    failures = [
-        record
-        for record in caplog.records
-        if record.name == "app.services.internalization_room.run_turn" and record.exc_info
-    ]
-    assert failures, "uma falha do modelo tem de deixar rastro com o traceback"
-    assert TEAM_ANSWER not in caplog.text
-
-
 async def test_a_bug_in_the_rooms_own_checks_is_not_dressed_up_as_an_outage(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -314,12 +230,11 @@ async def test_a_bug_in_the_rooms_own_checks_is_not_dressed_up_as_an_outage(
     it in a log nobody is watching instead of where someone would see it.
     """
     _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
-    module = sys.modules["app.services.internalization_room.run_turn"]
 
     def _explodes(*_args: Any, **_kwargs: Any) -> bool:
         raise AssertionError("a defect in the room's own bridge-language check")
 
-    monkeypatch.setattr(module, "strays_from", _explodes)
+    the_room_agent_is(monkeypatch, strays_from=_explodes)
     session_id = await _a_room_opening_a_passage(client)
 
     answered = await _the_room_takes_a_turn(client, session_id)
@@ -342,3 +257,26 @@ async def test_a_cancelled_turn_is_never_dressed_up_as_a_fail_safe(
 
     with pytest.raises(asyncio.CancelledError):
         await _the_room_takes_a_turn(client, session_id)
+
+
+async def test_the_bridge_language_check_runs_beside_the_event_loop_not_on_it(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
+    ran_on: list[int] = []
+
+    def _where_it_ran(text: str, language_code: str = "pt") -> bool:
+        ran_on.append(threading.get_ident())
+        return False
+
+    the_room_agent_is(monkeypatch, strays_from=_where_it_ran)
+    session_id = await _a_room_opening_a_passage(client)
+
+    answered = await _the_room_takes_a_turn(client, session_id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert ran_on
+    assert threading.get_ident() not in ran_on, (
+        "o langdetect rodava na thread do loop: enquanto ele lia a fala, nenhum outro "
+        "pedido do servidor andava"
+    )

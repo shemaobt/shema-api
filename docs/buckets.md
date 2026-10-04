@@ -16,7 +16,10 @@ What belongs in the allowlist, and why the range header stays while the write ve
 The oral-collector's bucket — its audio and the console's uploaded images, one bucket — is
 named per environment by `GCS_OC_BUCKET`, which is not `GCS_PLATFORM_BUCKET` above: that one
 is the server-side TTS cache. Its CORS is `gcs-cors.json`, applied by hand like the others.
-See [ADR 0029](adr/0029-the-oral-collectors-bucket-is-a-setting.md).
+See [ADR 0029](adr/0029-the-oral-collectors-bucket-is-a-setting.md). Production's deploy
+names it explicitly; the local files (`docker-compose.yml`, `.env.example`) default to the
+staging bucket, so a run at home that configures nothing cannot reach production's files
+([ADR 0033](adr/0033-production-declares-its-own-bucket.md)).
 
 ## Cloud Run origins
 

@@ -18,6 +18,7 @@ from app.services.internalization_room.canon.parse_map import (
 LOGS_DIR = VENDOR / "compilation-log"
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
+_CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
 
 
 class PreservationRule(BaseModel):
@@ -28,6 +29,25 @@ class PreservationRule(BaseModel):
 
     def render(self) -> str:
         return f"- [{self.pericope}] {self.rule_id} ({self.kind}): {self.note}"
+
+    def folds_into(self, absence_text: str) -> bool:
+        """Whether this rule is about the silence one scene's absence describes.
+
+        A structural-absence rule and a scene absence about the *same* silence are one thing
+        for the team to work, not two. Matched against this scene's own silence only: a
+        multi-scene rule's own wording would make every absence appear related merely because
+        the rule mentions its theme globally.
+        """
+        if not self.kind.startswith("STRUCTURAL_ABSENCE_"):
+            return False
+        text = absence_text.lower()
+        if "DIVINE_AGENCY" in self.kind:
+            return bool(re.search(r"\bgod\b|yhwh|divine|cause|causation|sent|agent", text))
+        if re.search(r"GRIEF|MOURNING|FUNERAL", self.kind):
+            return bool(re.search(r"grief|grieving|mourn|mourning|funeral|lament|wept|weep", text))
+        if re.search(r"OFFSPRING|CHILD", self.kind):
+            return bool(re.search(r"child|children|offspring|heir|born|birth", text))
+        return False
 
 
 def _extract_audit(text: str) -> list[dict]:
@@ -66,6 +86,53 @@ def _extract_audit(text: str) -> list[dict]:
     return []
 
 
+def _extract_checklist(text: str) -> dict:
+    """Pull the validation_checklist object out of a Compilation Log.
+
+    Same reasoning as `_extract_audit`: located by key and scanned brace by brace, so a quoted
+    field name landing in the document's prose ahead of the real block is never mistaken for it.
+    """
+    found = _CHECKLIST_BLOCK.search(text)
+    if not found:
+        return {}
+    start = found.start(1)
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                checklist: dict = json.loads(text[start : index + 1])
+                return checklist
+    return {}
+
+
+@lru_cache(maxsize=8)
+def _register_complete(book: str) -> dict[str, bool]:
+    """The checklist's own `high_risk_register_complete` flag, per pericope, for one book."""
+    complete: dict[str, bool] = {}
+    for path in sorted(LOGS_DIR.glob(f"*-{book}-*-COMPILATION-LOG.md")):
+        pericope = path.name.split("-", 1)[0]
+        checklist = _extract_checklist(path.read_text(encoding="utf-8"))
+        if "high_risk_register_complete" in checklist:
+            complete[pericope] = bool(checklist["high_risk_register_complete"])
+    return complete
+
+
 @lru_cache(maxsize=8)
 def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     """The book's withholdings: audit entries the project marked `do_not_decide`.
@@ -95,8 +162,8 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
 
     The same refusal, asked rather than raised. The wheel offers the passages a team can
     choose from and the progression names the one it lands on next, and both have to know
-    which passages open at all — a copy of these two conditions in either of them would stop
-    matching this one the day a third signal joins.
+    which passages open at all — a copy of these three conditions in either of them would stop
+    matching this one the day a fourth signal joins.
     """
     pericope = meaning_map.pericope_num
     book = meaning_map.book
@@ -105,7 +172,15 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
             f"{pericope}: no preservation layer in the {book} canon — the passage's "
             "withholdings were never written, so its completion floor cannot be met"
         )
-    if meaning_map.sta_status != SURVEYED_STATUS:
+    survey_complete = meaning_map.sta_status == SURVEYED_STATUS
+    register_complete = _register_complete(book).get(pericope)
+    if register_complete is not None and register_complete != survey_complete:
+        return (
+            f"{pericope}: the checklist says the high-risk register is "
+            f"{'complete' if register_complete else 'incomplete'} but the survey is "
+            f"{meaning_map.sta_status!r} — the register and the survey disagree"
+        )
+    if not survey_complete:
         return (
             f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
             f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
@@ -123,7 +198,7 @@ def require_walkable(meaning_map: MeaningMap) -> None:
     and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
     passage; running costs Refine a false assurance, which is the more expensive of the two.
 
-    The two signals are read separately on purpose. Ruth's last eight passages happen to
+    The three signals are read separately on purpose. Ruth's passages past the edge happen to
     carry both — no preservation layer *and* a pending survey — but agreement is not either
     one being read, and a layer written before the survey closes would otherwise walk.
     """
@@ -163,7 +238,8 @@ def build_book_material(book: str) -> str:
         f"{header}\n\n{digests}\n\n"
         "## PRESERVATION NOTES — the book's withholdings "
         "(HARD CONSTRAINTS, union of all passages)\n"
-        f"{notes}\n"
+        "The panorama must honor each — never state, pair, name, or attribute what a "
+        f"passage withholds until its moment.\n\n{notes}\n"
     )
 
 
@@ -178,7 +254,12 @@ def story_so_far(book: str, current_pericope: str) -> str:
     if not earlier:
         return ""
     digests = "\n\n".join(pericope_digest(m) for m in earlier)
-    return f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n\n{digests}\n"
+    return (
+        f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n"
+        "Grounded material: it may be used to answer the team's questions about the story "
+        "so far and to situate the current passage in the book. Nothing beyond these "
+        f"passages and the current map exists.\n\n{digests}\n"
+    )
 
 
 def vendor_pin() -> str:

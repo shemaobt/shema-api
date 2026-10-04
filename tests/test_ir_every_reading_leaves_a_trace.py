@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from typing import Any
 
 import pytest
@@ -31,6 +30,8 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     verify_correction,
 )
+from app.services.internalization_room.part_names import Addresses
+from tests.turn_harness import the_room_agent_is
 
 LOGGER_NAME = "app.services.internalization_room.back_translation"
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
@@ -65,13 +66,12 @@ def _told() -> list[IRSegment]:
 @pytest.fixture
 def patch_model(monkeypatch: pytest.MonkeyPatch):
     """Answer the one call `analyse_telling_back`/`verify_correction` make, with `reply`."""
-    module = sys.modules["app.services.internalization_room.back_translation"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
         return agent
 
     return _install
@@ -85,14 +85,17 @@ def _records(caplog: pytest.LogCaptureFixture, reading: str) -> list[logging.Log
     ]
 
 
-@pytest.mark.asyncio
 async def test_an_accepted_analysis_reading_leaves_an_info_record(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:
     raw = json.dumps(
         {
             "findings": [
-                {"kind": "addition", "note": "você me disse que ela ficaria junto das servas"}
+                {
+                    "kind": "addition",
+                    "chunk": 1,
+                    "note": "você me disse que ela ficaria junto das servas",
+                }
             ]
         }
     )
@@ -118,7 +121,6 @@ async def test_an_accepted_analysis_reading_leaves_an_info_record(
     assert raw in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_an_accepted_correction_reading_leaves_an_info_record(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -131,7 +133,7 @@ async def test_an_accepted_correction_reading_leaves_an_info_record(
     )
     patch_model(raw)
     finding = Finding(
-        kind=FindingKind.MEANING_CHANGE, note="Boaz não falou nisso", segment_id="segmento-1"
+        kind=FindingKind.ADDITION, note="Boaz não falou nisso", segment_id="segmento-1"
     )
     earlier = _segment(1, "Boaz fala pra Rute colher espigas em outros campos.")
     corrected = _segment(
@@ -140,12 +142,14 @@ async def test_an_accepted_correction_reading_leaves_an_info_record(
 
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         check = await verify_correction(
-            finding=finding,
+            findings=[finding],
             earlier=earlier,
             corrected=corrected,
+            chunk=1,
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
+            addresses=Addresses(),
             settings=_settings(),
             session_id=SESSION_ID,
         )
@@ -162,7 +166,6 @@ async def test_an_accepted_correction_reading_leaves_an_info_record(
     assert raw in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_the_teams_own_words_do_not_reach_this_logger(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -183,12 +186,14 @@ async def test_the_teams_own_words_do_not_reach_this_logger(
 
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         check = await verify_correction(
-            finding=finding,
+            findings=[finding],
             earlier=earlier,
             corrected=corrected,
+            chunk=1,
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
+            addresses=Addresses(),
             settings=_settings(),
             session_id=SESSION_ID,
         )
@@ -200,7 +205,6 @@ async def test_the_teams_own_words_do_not_reach_this_logger(
     assert marker not in logger_text
 
 
-@pytest.mark.asyncio
 async def test_a_refused_reading_leaves_only_the_refusal_trace(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:

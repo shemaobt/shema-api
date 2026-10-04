@@ -17,7 +17,6 @@ or a column, and none of them copies the sentence into a literal.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 from typing import Any
 
@@ -34,6 +33,13 @@ from app.services.internalization_room.fail_safe import FailSafe, first, localiz
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.room_harness import (
+    a_piece_still_to_be_told,
+    heard_every_part,
+    nothing_is_read_ahead,
+    press_terminei,
+)
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -55,7 +61,6 @@ FAMILIES: dict[str, dict[FailSafe, int]] = {
         FailSafe.INAUDIBLE: 3,
         FailSafe.HARD_STOP: 1,
         FailSafe.INSTANT_ACK: 4,
-        FailSafe.OFF_BRIDGE_LANGUAGE: 1,
         FailSafe.UNTOLD_STRETCH: 3,
         ASKED: 1,
     },
@@ -66,7 +71,6 @@ FAMILIES: dict[str, dict[FailSafe, int]] = {
         FailSafe.INAUDIBLE: 3,
         FailSafe.HARD_STOP: 1,
         FailSafe.INSTANT_ACK: 4,
-        FailSafe.OFF_BRIDGE_LANGUAGE: 1,
         FailSafe.UNTOLD_STRETCH: 3,
         ASKED: 1,
     },
@@ -77,11 +81,15 @@ FAMILIES: dict[str, dict[FailSafe, int]] = {
         FailSafe.INAUDIBLE: 3,
         FailSafe.HARD_STOP: 1,
         FailSafe.INSTANT_ACK: 4,
-        FailSafe.OFF_BRIDGE_LANGUAGE: 1,
         FailSafe.UNTOLD_STRETCH: 3,
         ASKED: 1,
     },
 }
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:
@@ -138,15 +146,13 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
 VERDICT_DRAFT = "No que vocês me contaram, uma coisa não apareceu."
-VERDICT_DRAFT_ES = "En lo que ustedes me contaron, una cosa no apareció."
 
 
 class Room:
@@ -175,14 +181,13 @@ def room(monkeypatch: pytest.MonkeyPatch) -> Room:
 
     # The package re-exports a `run_turn` function under the submodule's own name, so the
     # module has to be asked for by path rather than by attribute.
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return heard.draft
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         heard.said.append(text)
@@ -264,10 +269,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _two_stretches_told(
@@ -285,18 +293,11 @@ async def _two_stretches_told(
     return session_id, take_id
 
 
-async def _re_record_the_native(db: AsyncSession, session_id: str, *, take_id: str) -> IRSegment:
-    """Redo one stretch's mother-tongue audio, which leaves it waiting to be told back."""
+async def _leave_it_waiting_to_be_told(db: AsyncSession, session_id: str) -> IRSegment:
+    """Leave one stretch waiting to be told back, by cutting the last one in two."""
     session = await get_session(db, session_id)
-    standing = await service.final_segments(db, session_id)
-    return await service.capture_segment(
-        db,
-        session,
-        take_id=take_id,
-        starts_ms=9000,
-        ends_ms=24000,
-        replaces=standing[-1],
-    )
+    standing = (await service.final_segments(db, session_id))[-1]
+    return await a_piece_still_to_be_told(db, session, standing)
 
 
 def _last_guide_turn(session: IRSession) -> str:
@@ -381,9 +382,8 @@ def test_no_other_family_changed(language: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_one(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """The heart of it: the sentence reaches the team in the breath that names the finding.
 
@@ -394,7 +394,7 @@ async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_on
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["finding_segment_id"], "o veredito tem de estar apontando um trecho"
@@ -405,9 +405,8 @@ async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_on
     )
 
 
-@pytest.mark.asyncio
 async def test_the_verdict_is_still_said_first(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """The request is added to the verdict, never said instead of it.
 
@@ -417,24 +416,9 @@ async def test_the_verdict_is_still_said_first(
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     assert room.said[-1].startswith(VERDICT_DRAFT)
-
-
-@pytest.mark.asyncio
-async def test_the_room_asks_in_the_language_of_the_session(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
-) -> None:
-    """A team hearing the finding in one language and the request in another hears two rooms."""
-    analyst.found("missing", chunk=1)
-    room.draft = VERDICT_DRAFT_ES
-    session_id, _ = await _two_stretches_told(client, language="es")
-
-    await _finish(client, session_id)
-
-    assert _asked_for_the_whole_stretch(room.said[-1], "es")
-    assert not _asked_for_the_whole_stretch(room.said[-1], "pt")
 
 
 # ---------------------------------------------------------------------------
@@ -442,20 +426,18 @@ async def test_the_room_asks_in_the_language_of_the_session(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_a_clean_verdict_asks_for_nothing_to_be_told_over(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """Nothing to correct, so a correction instruction is noise on the badge turn."""
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["finding_segment_id"] is None
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, room: Room
 ) -> None:
@@ -464,18 +446,17 @@ async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
     What that team owes is the stretch they never told, and the family written for it says
     so. Asking them to tell a stretch *again* would name work they have not done once.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     assert analyst.readings == 0
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """No address, so no stretch on screen, so no microphone that replaces anything.
 
@@ -486,15 +467,14 @@ async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
     analyst.found("missing", chunk=None)
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["finding_segment_id"] is None
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """`unclear` names a stretch and still hands nothing to the screen.
 
@@ -505,13 +485,12 @@ async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
     analyst.found("unclear", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["finding_segment_id"], "o achado aponta um trecho"
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -527,26 +506,30 @@ async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     stretch. The finding still names its stretch here, which is what makes the case worth
     having: every other reason to withhold the request is absent.
     """
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
-    async def refuses_to_draft(**_: Any) -> str:
-        raise RuntimeError("o modelo caiu no meio do veredito")
+    async def refuses_every_draft(*, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "regenerate", "issues": ["fora do mapa"]})
+        return "Vamos ficar nesta cena."
 
-    monkeypatch.setattr(turn_module, "call_agent", refuses_to_draft)
+    the_room_agent_is(monkeypatch, turn=refuses_every_draft)
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["used_fail_safe"], "este caso só vale se o turno tiver mesmo degradado"
     assert body["finding_segment_id"], "e o achado continua apontando um trecho"
     assert room.said == [], "nada foi sintetizado: a fala vem do pacote do app"
-    assert not _asked_for_the_whole_stretch(
-        _last_guide_turn(await get_session(db_session, session_id))
+    remembered = await get_session(db_session, session_id)
+    assert not _asked_for_the_whole_stretch(_last_guide_turn(remembered))
+    recorded = remembered.messages[-1]
+    assert recorded["outcome"] == "fail_safe"
+    assert "Noemi" in recorded["team_utterance"], (
+        "a rodada de recontagem disparou e o registro não guardava o que a equipe contou"
     )
 
 
-@pytest.mark.asyncio
 async def test_what_the_room_said_is_what_the_session_remembers(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, room: Room
 ) -> None:
@@ -559,7 +542,7 @@ async def test_what_the_room_said_is_what_the_session_remembers(
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     session = await get_session(db_session, session_id)
 

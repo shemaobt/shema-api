@@ -2,3 +2,6 @@
 
 ### Health check
 GET {{baseUrl}}/health
+
+### Build
+GET {{baseUrl}}/api/version

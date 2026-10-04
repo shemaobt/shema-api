@@ -110,7 +110,6 @@ SAMPLE_BCD_DATA = {
 }
 
 
-@pytest.mark.asyncio
 async def test_first_pericope_returns_nothing_established(db_session):
     user = await make_user(db_session, email="brief1@test.com")
     book = await make_bible_book(
@@ -138,7 +137,6 @@ async def test_first_pericope_returns_nothing_established(db_session):
     assert "Nothing" in brief.established_items[0].description
 
 
-@pytest.mark.asyncio
 async def test_slices_participants_before_target_verse(db_session):
     user = await make_user(db_session, email="brief2@test.com")
     book = await make_bible_book(
@@ -176,7 +174,6 @@ async def test_slices_participants_before_target_verse(db_session):
     assert "Boaz" not in participant_names
 
 
-@pytest.mark.asyncio
 async def test_slices_participant_arcs_at_target_verse(db_session):
     user = await make_user(db_session, email="brief3@test.com")
     book = await make_bible_book(
@@ -215,7 +212,6 @@ async def test_slices_participant_arcs_at_target_verse(db_session):
     assert "bitter, renames herself Mara" not in arc_states
 
 
-@pytest.mark.asyncio
 async def test_includes_active_threads(db_session):
     user = await make_user(db_session, email="brief4@test.com")
     book = await make_bible_book(
@@ -251,7 +247,6 @@ async def test_includes_active_threads(db_session):
     assert "Ruth's security" in thread_labels
 
 
-@pytest.mark.asyncio
 async def test_marks_resolved_threads(db_session):
     user = await make_user(db_session, email="brief5@test.com")
     book = await make_bible_book(
@@ -287,7 +282,6 @@ async def test_marks_resolved_threads(db_session):
     assert bitterness.is_resolved_at_entry is True
 
 
-@pytest.mark.asyncio
 async def test_filters_places_before_target(db_session):
     user = await make_user(db_session, email="brief6@test.com")
     book = await make_bible_book(
@@ -324,7 +318,6 @@ async def test_filters_places_before_target(db_session):
     assert "Boaz's field" not in place_names
 
 
-@pytest.mark.asyncio
 async def test_filters_institutions_before_target(db_session):
     user = await make_user(db_session, email="brief7@test.com")
     book = await make_bible_book(
@@ -361,7 +354,6 @@ async def test_filters_institutions_before_target(db_session):
     assert "kinsman-redeemer" not in inst_names
 
 
-@pytest.mark.asyncio
 async def test_returns_error_when_no_approved_bcd(db_session):
     await make_user(db_session, email="brief8@test.com")
     book = await make_bible_book(
@@ -385,7 +377,6 @@ async def test_returns_error_when_no_approved_bcd(db_session):
         await compute_entry_brief(db_session, pericope.id)
 
 
-@pytest.mark.asyncio
 async def test_same_chapter_different_verses(db_session):
     user = await make_user(db_session, email="brief9@test.com")
     book = await make_bible_book(

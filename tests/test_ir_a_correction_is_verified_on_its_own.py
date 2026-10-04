@@ -19,7 +19,6 @@ a column.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 import re
 from typing import Any
@@ -33,6 +32,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
+from tests.room_harness import (
+    CORRECTION_MARK,
+    heard_every_part,
+    nothing_is_read_ahead,
+    press_terminei,
+)
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -44,7 +50,6 @@ LANGUAGE = "pt"
 
 #: The heading that only the correction prompt carries. The double tells the two readings
 #: apart by it, the way a reader would — not by counting calls.
-CORRECTION_MARK = "## What the team told back now"
 EARLIER_MARK = "## What the team told back before"
 FINDING_MARK = "## The finding to verify"
 
@@ -67,6 +72,11 @@ _NAME = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕ][\wáéíóúâêôãõç]+")
 FIRST_TELLING = "Noemi ouviu que havia pão em Belém e resolveu voltar de Moabe."
 SECOND_TELLING = "Ela disse às duas noras que voltassem para a casa de suas mães."
 THIRD_TELLING = "Rute disse que ia junto e não a deixaria."
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:
@@ -113,7 +123,7 @@ class ReaderOfTellings:
         return self.answer
 
     def _verify(self, prompt: str) -> dict[str, Any]:
-        finding = _section(prompt, FINDING_MARK, EARLIER_MARK)
+        finding = _without_the_address(_section(prompt, FINDING_MARK, EARLIER_MARK))
         earlier = _section(prompt, EARLIER_MARK, CORRECTION_MARK)
         now = _section(prompt, CORRECTION_MARK, None)
 
@@ -136,6 +146,19 @@ def _section(prompt: str, start: str, end: str | None) -> str:
     return body.split(end, 1)[0] if end and end in body else body
 
 
+#: The address the room puts on each finding: the frase, and the part the stretch is a slice
+#: of. It is taken out before the elements are read, because a scene title is passage content
+#: and carries the passage's own names — P01 scene 1 is *Fome e ida para Moabe* — so a double
+#: reading proper names off the whole section would count the room's address as something the
+#: analyst reported. Anchored to the shape the block writes, kind and bracket and colon, so a
+#: note of the analyst's own that happens to carry brackets is not mutilated with it.
+_THE_ADDRESS = re.compile(r"^(- \w+) \[[^\]]*\](:)", re.M)
+
+
+def _without_the_address(finding: str) -> str:
+    return _THE_ADDRESS.sub(r"\1\2", finding)
+
+
 def _names(text: str) -> set[str]:
     return set(_NAME.findall(text))
 
@@ -155,10 +178,9 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> ReaderOfTellings:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = ReaderOfTellings()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -169,14 +191,12 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     from app.api.internalization_room import back_translation as bt_api
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return "No que você me contou, vamos olhar uma parte de novo."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         said.append(text)
@@ -254,10 +274,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _tell_that_stretch_again(
@@ -309,14 +332,13 @@ async def _a_finding_raised_on_the_first_stretch(
     """The room reads the whole telling-back once and raises one finding on stretch one."""
     session_id = await _three_stretches_told(client)
     analyst.answer = _finding_on_the_first()
-    first = await _finish(client, session_id)
+    first = await _finish(client, db, session_id)
     assert first.status_code == 200, first.text
     assert analyst.full_readings, "a primeira leitura tem de ter acontecido"
     standing = await service.final_segments(db, session_id)
     return session_id, standing[0]
 
 
-@pytest.mark.asyncio
 async def test_a_correction_is_verified_without_the_other_stretches(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -326,7 +348,7 @@ async def test_a_correction_is_verified_without_the_other_stretches(
     await _tell_that_stretch_again(
         client, session_id, first, saying="Noemi e Orfa voltaram de Moabe para Belém."
     )
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert analyst.verifications, "a correção tinha de ser verificada, não relida"
@@ -335,7 +357,6 @@ async def test_a_correction_is_verified_without_the_other_stretches(
     assert THIRD_TELLING not in asked
 
 
-@pytest.mark.asyncio
 async def test_the_verification_is_given_the_earlier_telling(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -344,14 +365,13 @@ async def test_the_verification_is_given_the_earlier_telling(
     corrected = "Noemi e Orfa voltaram de Moabe para Belém."
 
     await _tell_that_stretch_again(client, session_id, first, saying=corrected)
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     asked = analyst.verifications[0]
     assert FIRST_TELLING in asked
     assert corrected in asked
 
 
-@pytest.mark.asyncio
 async def test_an_accepted_correction_moves_the_team_past_that_finding(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -366,21 +386,20 @@ async def test_an_accepted_correction_moves_the_team_past_that_finding(
             ],
         }
     )
-    first_answer = await _finish(client, session_id)
+    first_answer = await _finish(client, db_session, session_id)
     assert first_answer.json()["findings_remaining"] == 2
     standing = await service.final_segments(db_session, session_id)
 
     await _tell_that_stretch_again(
         client, session_id, standing[0], saying="Noemi e Orfa voltaram de Moabe para Belém."
     )
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["findings_remaining"] == 1
     assert answered.json()["finding_segment_id"] != standing[0].id
 
 
-@pytest.mark.asyncio
 async def test_a_refused_correction_gives_the_team_the_same_finding_back(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -390,7 +409,7 @@ async def test_a_refused_correction_gives_the_team_the_same_finding_back(
     await _tell_that_stretch_again(
         client, session_id, first, saying="Noemi voltou de Moabe para Belém, e havia pão lá."
     )
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
     standing = await service.final_segments(db_session, session_id)
 
@@ -404,7 +423,6 @@ async def test_a_refused_correction_gives_the_team_the_same_finding_back(
     assert body["checked"] is False
 
 
-@pytest.mark.asyncio
 async def test_retelling_a_stretch_in_other_words_is_not_a_refusal(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -428,7 +446,7 @@ async def test_retelling_a_stretch_in_other_words_is_not_a_refusal(
     # is under test is whether the verification accepted the retelling, not what a whole
     # reading makes of the passage afterwards.
     analyst.answer = '{"evidence_sufficient": true, "findings": []}'
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert len(analyst.full_readings) == 2, (
@@ -441,7 +459,6 @@ async def test_retelling_a_stretch_in_other_words_is_not_a_refusal(
     assert "wording" in asked.lower()
 
 
-@pytest.mark.asyncio
 async def test_losing_an_element_is_refused_even_when_the_finding_was_answered(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -456,7 +473,7 @@ async def test_losing_an_element_is_refused_even_when_the_finding_was_answered(
     await _tell_that_stretch_again(
         client, session_id, first, saying="Orfa estava lá com a sogra dela."
     )
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert analyst.verifications, (
@@ -472,9 +489,8 @@ async def test_losing_an_element_is_refused_even_when_the_finding_was_answered(
     )
 
 
-@pytest.mark.asyncio
 async def test_the_first_reading_still_gets_every_stretch(
-    client: httpx.AsyncClient, analyst: ReaderOfTellings
+    client: httpx.AsyncClient, analyst: ReaderOfTellings, db_session: AsyncSession
 ) -> None:
     """Acceptance 1. The control against this slice leaking into discovery.
 
@@ -483,7 +499,7 @@ async def test_the_first_reading_still_gets_every_stretch(
     """
     session_id = await _three_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert analyst.verifications == [], "a primeira leitura não é uma verificação"
@@ -493,7 +509,6 @@ async def test_the_first_reading_still_gets_every_stretch(
     assert THIRD_TELLING in read
 
 
-@pytest.mark.asyncio
 async def test_bringing_in_what_the_map_does_not_tell_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -513,7 +528,7 @@ async def test_bringing_in_what_the_map_does_not_tell_is_refused(
         first,
         saying="Noemi e Orfa voltaram de Moabe para Belém, que fica perto de Jerusalém.",
     )
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert analyst.verifications, "a correção tem de ter sido verificada"
@@ -548,7 +563,6 @@ async def _the_last_finding_answered(
     return session_id
 
 
-@pytest.mark.asyncio
 async def test_clean_verifications_do_not_check_the_passage_on_their_own(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -561,7 +575,7 @@ async def test_clean_verifications_do_not_check_the_passage_on_their_own(
     session_id = await _the_last_finding_answered(client, db_session, analyst)
     analyst.answer = '{"evidence_sufficient": true, "findings": []}'
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert len(analyst.full_readings) == 2, (
@@ -573,7 +587,6 @@ async def test_clean_verifications_do_not_check_the_passage_on_their_own(
     assert THIRD_TELLING in closing_reading
 
 
-@pytest.mark.asyncio
 async def test_a_closing_reading_that_finds_something_sends_the_team_back(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -586,7 +599,7 @@ async def test_a_closing_reading_that_finds_something_sends_the_team_back(
         }
     )
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert body["checked"] is False
@@ -594,7 +607,6 @@ async def test_a_closing_reading_that_finds_something_sends_the_team_back(
     assert body["finding_kind"] == "missing"
 
 
-@pytest.mark.asyncio
 async def test_a_clean_closing_reading_checks_the_passage(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -602,7 +614,7 @@ async def test_a_clean_closing_reading_checks_the_passage(
     session_id = await _the_last_finding_answered(client, db_session, analyst)
     analyst.answer = '{"evidence_sufficient": true, "findings": []}'
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert body["checked"] is True
@@ -612,7 +624,6 @@ async def test_a_clean_closing_reading_checks_the_passage(
     )
 
 
-@pytest.mark.asyncio
 async def test_the_closing_reading_is_not_paid_for_twice(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -623,11 +634,11 @@ async def test_the_closing_reading_is_not_paid_for_twice(
     """
     session_id = await _the_last_finding_answered(client, db_session, analyst)
     analyst.answer = '{"evidence_sufficient": true, "findings": []}'
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
     readings_when_it_closed = len(analyst.full_readings)
     verifications_when_it_closed = len(analyst.verifications)
 
-    again = await _finish(client, session_id)
+    again = await _finish(client, db_session, session_id)
 
     assert again.json()["checked"] is True
     assert len(analyst.full_readings) == readings_when_it_closed, (
@@ -638,9 +649,8 @@ async def test_the_closing_reading_is_not_paid_for_twice(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_got_it_right_first_time_pays_for_one_reading(
-    client: httpx.AsyncClient, analyst: ReaderOfTellings
+    client: httpx.AsyncClient, analyst: ReaderOfTellings, db_session: AsyncSession
 ) -> None:
     """Acceptance 3 read from the other side, and a control on fairness.
 
@@ -651,7 +661,7 @@ async def test_a_team_that_got_it_right_first_time_pays_for_one_reading(
     session_id = await _three_stretches_told(client)
     analyst.answer = '{"evidence_sufficient": true, "findings": []}'
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert body["checked"] is True

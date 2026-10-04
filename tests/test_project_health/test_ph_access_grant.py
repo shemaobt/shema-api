@@ -1,5 +1,3 @@
-import pytest
-
 from app.services.access_request._default_roles import default_role_for
 from app.services.access_request.review_access_request import review_access_request
 from app.services.authorization.has_role import has_role
@@ -16,7 +14,6 @@ def test_project_health_resolves_to_a_role_it_defines() -> None:
     assert default_role_for("project-health") == "user"
 
 
-@pytest.mark.asyncio
 async def test_review_approve_grants_user_role_for_project_health(db_session, ph_app) -> None:
     """The full request→approve→access path works for Project Health.
 

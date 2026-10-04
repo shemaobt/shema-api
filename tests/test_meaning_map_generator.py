@@ -83,7 +83,6 @@ def mock_settings():
     )
 
 
-@pytest.mark.asyncio
 @patch("app.services.meaning_map.generator.bhsa_loader")
 async def test_generate_raises_when_bhsa_not_loaded(mock_bhsa, mock_settings) -> None:
     mock_bhsa.get_status.return_value = BHSAStatus(
@@ -94,7 +93,6 @@ async def test_generate_raises_when_bhsa_not_loaded(mock_bhsa, mock_settings) ->
         await generate_meaning_map("Genesis 1:1-5", settings=mock_settings)
 
 
-@pytest.mark.asyncio
 @patch("app.services.meaning_map.generator.bhsa_loader")
 async def test_generate_raises_when_qdrant_client_none(mock_bhsa, mock_settings) -> None:
     mock_bhsa.get_status.return_value = BHSAStatus(
@@ -106,7 +104,6 @@ async def test_generate_raises_when_qdrant_client_none(mock_bhsa, mock_settings)
         await generate_meaning_map("Genesis 1:1-5", settings=mock_settings, qdrant_client=None)
 
 
-@pytest.mark.asyncio
 @patch("app.services.meaning_map.generator.rag_query")
 @patch("app.services.meaning_map.generator.bhsa_loader")
 @patch("app.services.meaning_map.generator.ChatGoogleGenerativeAI")
@@ -133,7 +130,6 @@ async def test_generate_raises_on_llm_failure(
         await generate_meaning_map("Genesis 1:1-5", settings=mock_settings, qdrant_client=qdrant)
 
 
-@pytest.mark.asyncio
 @patch("app.services.meaning_map.generator.rag_query")
 @patch("app.services.meaning_map.generator.bhsa_loader")
 @patch("app.services.meaning_map.generator.ChatGoogleGenerativeAI")

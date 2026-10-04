@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Resp
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
@@ -20,6 +20,7 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
+    HeardRequest,
     InboxQuestionView,
     LabelledElement,
     QuestionAudioResponse,
@@ -30,6 +31,7 @@ from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.background import transcribe_question
 from app.services.internalization_room.canon.labels import label_index
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.voice_handles import (
     facilitator_audio_url,
     from_question_handle,
@@ -52,6 +54,7 @@ async def raise_question(
     device_id: str = DeviceId,
     element_key: str | None = Form(default=None),
     file: UploadFile = File(...),
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> QuestionRaisedResponse:
     """Take the hand down and keep what was asked.
@@ -76,7 +79,7 @@ async def raise_question(
     audio = await file.read()
     if len(audio) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
-    session = await session_service.get_session(db, session_id)
+    session = await session_service.session_for_room_caller(db, session_id, project_id)
     question = await service.raise_question(
         db,
         device_id=device_id,
@@ -86,6 +89,7 @@ async def raise_question(
         element_key=element_key,
         audio=audio,
     )
+    nudge(question.project_id, "hands")
     background.add_task(transcribe_question, question_id=question.id, audio=audio)
     return QuestionRaisedResponse(question_id=question.id, status=str(question.status))
 
@@ -94,9 +98,11 @@ async def raise_question(
     "/questions/replies", response_model=HandRepliesResponse, dependencies=[room_caller_dep]
 )
 async def replies(
-    device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
+    device_id: str = DeviceId,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> HandRepliesResponse:
-    waiting = await service.replies_for(db, device_id)
+    waiting = await service.replies_for(db, device_id, project_id=project_id)
     return HandRepliesResponse(
         replies=[
             HandReplyView(
@@ -110,24 +116,36 @@ async def replies(
 
 
 @router.get("/questions/audio/{handle}", dependencies=[room_caller_dep])
-async def team_audio(handle: str) -> Response:
+async def team_audio(
+    handle: str, project_id: str | None = device_project_dep, db: AsyncSession = Depends(get_db)
+) -> Response:
     """Serve a facilitator's spoken reply to the app that asked.
 
     The room's voice route cannot carry these bytes: it only answers for keys under the
     room's synthesized speech, so every reply address it was handed came back a 404 and
     the answer never reached the team. This route reads the one folder a question writes.
     """
+    key = from_question_handle(handle)
+    if key is None:
+        raise NotFoundError("No such audio")
+    await service.question_for_room_caller(db, key, project_id)
+    await db.commit()
     return await _audio(handle)
 
 
 @router.post("/questions/{question_id}/heard", dependencies=[room_caller_dep])
 async def heard(
-    question_id: str, device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
+    question_id: str,
+    payload: HeardRequest | None = None,
+    device_id: str = DeviceId,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    question = await service.get_question(db, question_id)
-    if question.device_id != device_id:
-        raise NotFoundError(f"Question {question_id} not found")
-    await service.mark_heard(db, question)
+    question = await service.get_question_for_device(
+        db, question_id, device_id=device_id, project_id=project_id
+    )
+    await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
+    nudge(question.project_id, "hands")
     return {"status": "heard"}
 
 
@@ -199,6 +217,7 @@ async def facilitator_audio(
     if key is None:
         raise NotFoundError("No such audio")
     await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
+    await db.commit()
     return await _audio(handle)
 
 
@@ -223,6 +242,7 @@ async def listen_to_question(
     question = await service.get_question_for_facilitator(db, user, question_id)
     if not question.audio_key:
         raise NotFoundError("No such recording")
+    await db.commit()
     signed = await service.listen_address(question.audio_key)
     return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
 
@@ -239,6 +259,7 @@ async def reply(
         raise ValidationError("Audio payload exceeds 25 MB limit")
     question = await service.get_question_for_facilitator(db, user, question_id)
     await service.answer_with_voice(db, question, audio=audio, answered_by=user.id)
+    nudge(question.project_id, "hands")
     return {"status": "answered"}
 
 
@@ -248,6 +269,7 @@ async def resolve(
 ) -> dict[str, str]:
     question = await service.get_question_for_facilitator(db, user, question_id)
     await service.resolve_elsewhere(db, question, answered_by=user.id)
+    nudge(question.project_id, "hands")
     return {"status": "resolved"}
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import re
 from functools import lru_cache
+from typing import Any, Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
 from app.services.internalization_room.languages import FLOOR
@@ -15,10 +16,11 @@ class FailSafe(enum.StrEnum):
     INAUDIBLE = "D"
     HARD_STOP = "E"
     INSTANT_ACK = "F"
-    OFF_BRIDGE_LANGUAGE = "G"
     UNTOLD_STRETCH = "H"
     STRETCH_TO_CORRECT = "I"
 
+
+ProcessFamily = Literal["P", "X"]
 
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
@@ -36,7 +38,7 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     return parsed
 
 
-def utterances(kind: FailSafe, language_code: str = FLOOR) -> list[str]:
+def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> list[str]:
     """The pre-approved lines for one situation, in the session language when written.
 
     These are application strings and not a model call, which is the whole point of a
@@ -57,7 +59,7 @@ def utterances(kind: FailSafe, language_code: str = FLOOR) -> list[str]:
     return sections.get((str(kind), None), [])
 
 
-def localized(kind: FailSafe, language_code: str) -> list[str]:
+def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     """The lines written *for this language*, and nothing borrowed from another.
 
     ``utterances`` never comes back empty, because it falls back to the authored block —
@@ -96,9 +98,111 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     The name is what the app plays: these lines are shipped as audio inside the app, so a
     failure costs no synthesis and needs no network — which matters, because the network is
     often what failed.
+
+    It takes a ``FailSafe`` and never a process family, so that a step cannot be handed to
+    the one reader that rotates: ``choose("X", turn=7)`` would answer X-whole where the step
+    means the retelling, and the type is what refuses it. The lookup underneath is closed to
+    the same two sets, so the refusal does not end here and turn into silence one call down.
     """
     lines = utterances(kind, language_code)
     if not lines:
         return "", ""
     index = turn % len(lines)
     return lines[index], f"{kind}{index}"
+
+
+def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
+    """The D line for one more miss, read off how many the room is already answering.
+
+    The ladder used to be indexed by the length of the conversation, so the very first miss
+    could draw the third line and a team heard perfectly for twenty turns met whichever line
+    the count landed on. It walks the run of misses now — the trailing guide turns that
+    answered with a D line — and any turn the room did hear starts it over.
+
+    It stays on the last line rather than wrapping: a fourth miss re-opening with the first
+    line would ask again as if for the first time, and her rule is one D per evidence asked.
+    """
+    misses = 0
+    for message in reversed(messages):
+        if message.get("role") != "guide":
+            continue
+        if message.get("category") != str(FailSafe.INAUDIBLE):
+            break
+        misses += 1
+    last = len(utterances(FailSafe.INAUDIBLE, language_code)) - 1
+    return choose(FailSafe.INAUDIBLE, language_code, turn=min(misses, last))
+
+
+#: Consecutive validation fail-safes before the room stops re-asking and pauses out loud.
+FAILURES_BEFORE_THE_PAUSE = 2
+
+
+def validation_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
+    """The line for one more draft the Validator would not settle: A0, A1, then the pause.
+
+    Repeated validation failures used to walk the A catalogue by the parity of the record,
+    so a session picked two of its four lines and the graceful pause never came. The count
+    is the A and E lines in the trailing run of fail-safe turns; a turn that needed no
+    fail-safe ends the run, and a miss in between does not, because the team was not
+    answered by the Guide on that turn either.
+
+    The third consecutive failure is category E, and E is a spoken line and nothing more:
+    the session stays open behind it, and a fourth failure says it again. Nothing here
+    decides that a person is needed — that call is the tablet's.
+    """
+    failures = 0
+    for message in reversed(messages):
+        if message.get("role") != "guide":
+            continue
+        if message.get("outcome") != "fail_safe":
+            break
+        if message.get("category") in (str(FailSafe.UNREPAIRABLE), str(FailSafe.HARD_STOP)):
+            failures += 1
+    if failures >= FAILURES_BEFORE_THE_PAUSE:
+        return choose(FailSafe.HARD_STOP, language_code)
+    return choose(FailSafe.UNREPAIRABLE, language_code, turn=failures)
+
+
+class UnknownProcessLine(LookupError):
+    """A process line was asked for by a family or a step nobody wrote.
+
+    Every other lookup in this module answers a miss with ``""`` or ``[]``, because a
+    fail-safe that cannot find its block is better silent than wrong — the team is already
+    meeting a failure and a wrong sentence would make it worse. A process step is the
+    opposite case: the caller is the app walking its own steps, so a name that is not in
+    the tables is a bug of ours, and a step served as silence would stall a screen with no
+    trace of why. It is a ``LookupError`` and not one of the errors in ``app.core``: those
+    are registered to become a status code, and a step nobody wrote must not reach a team
+    standing in a room as a 404 about their own session.
+    """
+
+
+PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
+    "P": ("start", "tell", "unheard", "approved"),
+    "X": ("open", "retell", "whole", "frases", "thanks"),
+}
+
+
+def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
+    """The line for one step of the telling-back or of the external check, and its name.
+
+    A fail-safe answers a failure and rotates, on the authored file's own instruction. A
+    process line marks a step, and her prose says of both families that *"the order is
+    fixed and read by position"*: rotating them would voice the thanks where the step means
+    the invitation. So there is no ``turn`` here, and the same step always answers the same.
+
+    The language resolution is ``choose``'s, unchanged — regional, then primary, then the
+    authored English — and so is the shape of the answer, because the two consumers want
+    different halves of it: a step spoken by the server needs the text, and a step played
+    from the app's bundle needs the name.
+    """
+    steps = PROCESS_STEPS.get(family)
+    if steps is None or step not in steps:
+        raise UnknownProcessLine(f"no process line is written for {family!r} step {step!r}")
+    position = steps.index(step)
+    lines = utterances(family, language_code)
+    if position >= len(lines):
+        raise UnknownProcessLine(
+            f"family {family!r} has no line at position {position} in {language_code!r}"
+        )
+    return lines[position], f"{family}{position}"

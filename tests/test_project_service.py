@@ -29,7 +29,6 @@ async def _grant_access_at(db_session, project_id, user_id, granted_at) -> Proje
     return access
 
 
-@pytest.mark.asyncio
 async def test_create_project(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await project_service.create_project(
@@ -40,7 +39,6 @@ async def test_create_project(db_session) -> None:
     assert project.description == "Kokama project"
 
 
-@pytest.mark.asyncio
 async def test_create_project_assigns_creator_as_manager(db_session) -> None:
     from sqlalchemy import select
 
@@ -62,7 +60,6 @@ async def test_create_project_assigns_creator_as_manager(db_session) -> None:
     assert access.role == "manager"
 
 
-@pytest.mark.asyncio
 async def test_create_project_with_location(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await project_service.create_project(
@@ -78,7 +75,6 @@ async def test_create_project_with_location(db_session) -> None:
     assert project.location_display_name == "São Paulo, Brazil"
 
 
-@pytest.mark.asyncio
 async def test_update_project_location(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id, name="No Location")
@@ -96,7 +92,6 @@ async def test_update_project_location(db_session) -> None:
     assert updated.location_display_name == "São Paulo, Brazil"
 
 
-@pytest.mark.asyncio
 async def test_update_project_location_partial(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(
@@ -115,7 +110,6 @@ async def test_update_project_location_partial(db_session) -> None:
     assert updated.location_display_name == "Updated Place Name"
 
 
-@pytest.mark.asyncio
 async def test_update_project_location_writes_none_as_a_clear(db_session) -> None:
     """``None`` handed to the service is a value to store, not a field to skip."""
     lang = await make_language(db_session, code="kos")
@@ -137,7 +131,6 @@ async def test_update_project_location_writes_none_as_a_clear(db_session) -> Non
     )
 
 
-@pytest.mark.asyncio
 async def test_update_project_location_raises_when_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Project .* not found"):
         await project_service.update_project_location(
@@ -148,7 +141,6 @@ async def test_update_project_location_raises_when_not_found(db_session) -> None
         )
 
 
-@pytest.mark.asyncio
 async def test_get_project_by_id(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     created = await make_project(db_session, language_id=lang.id, name="P1")
@@ -157,13 +149,11 @@ async def test_get_project_by_id(db_session) -> None:
     assert project.id == created.id
 
 
-@pytest.mark.asyncio
 async def test_get_project_or_404_raises_when_missing(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Project .* not found"):
         await project_service.get_project_or_404(db_session, "00000000-0000-0000-0000-000000000000")
 
 
-@pytest.mark.asyncio
 async def test_can_access_project_true_via_direct_user(db_session) -> None:
     user = await make_user(db_session, email="u@example.com")
     lang = await make_language(db_session, code="kos")
@@ -173,7 +163,6 @@ async def test_can_access_project_true_via_direct_user(db_session) -> None:
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_can_access_project_true_via_organization(db_session) -> None:
     user = await make_user(db_session, email="orguser@example.com")
     org = await make_organization(db_session, slug="org")
@@ -185,7 +174,6 @@ async def test_can_access_project_true_via_organization(db_session) -> None:
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_can_access_project_false(db_session) -> None:
     user = await make_user(db_session, email="nobody@example.com")
     lang = await make_language(db_session, code="kos")
@@ -194,7 +182,6 @@ async def test_can_access_project_false(db_session) -> None:
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_list_projects_accessible_to_user_includes_direct(db_session) -> None:
     user = await make_user(db_session, email="direct@example.com")
     lang = await make_language(db_session, code="kos")
@@ -205,7 +192,6 @@ async def test_list_projects_accessible_to_user_includes_direct(db_session) -> N
     assert projects[0].id == p1.id
 
 
-@pytest.mark.asyncio
 async def test_list_projects_accessible_to_user_includes_via_org(db_session) -> None:
     user = await make_user(db_session, email="viaorg@example.com")
     org = await make_organization(db_session, slug="team")
@@ -218,7 +204,6 @@ async def test_list_projects_accessible_to_user_includes_via_org(db_session) -> 
     assert projects[0].id == p1.id
 
 
-@pytest.mark.asyncio
 async def test_list_projects_accessible_to_user_empty_when_no_access(db_session) -> None:
     user = await make_user(db_session, email="noaccess@example.com")
     lang = await make_language(db_session, code="kos")
@@ -227,7 +212,6 @@ async def test_list_projects_accessible_to_user_empty_when_no_access(db_session)
     assert projects == []
 
 
-@pytest.mark.asyncio
 async def test_grant_user_access_creates_access(db_session) -> None:
     user = await make_user(db_session, email="grant@example.com")
     lang = await make_language(db_session, code="kos")
@@ -237,7 +221,6 @@ async def test_grant_user_access_creates_access(db_session) -> None:
     assert access.user_id == user.id
 
 
-@pytest.mark.asyncio
 async def test_grant_user_access_idempotent(db_session) -> None:
     user = await make_user(db_session, email="idem@example.com")
     lang = await make_language(db_session, code="kos")
@@ -248,7 +231,6 @@ async def test_grant_user_access_idempotent(db_session) -> None:
     assert access.user_id == user.id
 
 
-@pytest.mark.asyncio
 async def test_grant_organization_access_creates_access(db_session) -> None:
     org = await make_organization(db_session, slug="new-org")
     lang = await make_language(db_session, code="kos")
@@ -258,7 +240,6 @@ async def test_grant_organization_access_creates_access(db_session) -> None:
     assert access.organization_id == org.id
 
 
-@pytest.mark.asyncio
 async def test_update_project_name_and_description(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Old Name", description="Old desc")
@@ -270,7 +251,6 @@ async def test_update_project_name_and_description(db_session) -> None:
     assert updated.language_id == lang.id
 
 
-@pytest.mark.asyncio
 async def test_update_project_changes_language(db_session) -> None:
     lang1 = await make_language(db_session, name="English", code="eng")
     lang2 = await make_language(db_session, name="French", code="fra")
@@ -279,7 +259,6 @@ async def test_update_project_changes_language(db_session) -> None:
     assert updated.language_id == lang2.id
 
 
-@pytest.mark.asyncio
 async def test_update_project_raises_not_found_for_missing_project(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Project .* not found"):
         await project_service.update_project(
@@ -287,7 +266,6 @@ async def test_update_project_raises_not_found_for_missing_project(db_session) -
         )
 
 
-@pytest.mark.asyncio
 async def test_update_project_raises_not_found_for_invalid_language(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -299,7 +277,6 @@ async def test_update_project_raises_not_found_for_invalid_language(db_session) 
         )
 
 
-@pytest.mark.asyncio
 async def test_create_project_rejects_inactive_language(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     lang.is_active = False
@@ -308,7 +285,6 @@ async def test_create_project_rejects_inactive_language(db_session) -> None:
         await project_service.create_project(db_session, name="X", language_id=lang.id)
 
 
-@pytest.mark.asyncio
 async def test_update_project_rejects_inactive_language(db_session) -> None:
     active = await make_language(db_session, code="act")
     inactive = await make_language(db_session, code="ina")
@@ -319,7 +295,6 @@ async def test_update_project_rejects_inactive_language(db_session) -> None:
         await project_service.update_project(db_session, project.id, language_id=inactive.id)
 
 
-@pytest.mark.asyncio
 async def test_list_project_user_access_returns_users(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -334,7 +309,6 @@ async def test_list_project_user_access_returns_users(db_session) -> None:
     assert user_obj.email in ("ua1@example.com", "ua2@example.com")
 
 
-@pytest.mark.asyncio
 async def test_list_project_user_access_returns_empty_when_none(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Empty Project")
@@ -342,7 +316,6 @@ async def test_list_project_user_access_returns_empty_when_none(db_session) -> N
     assert results == []
 
 
-@pytest.mark.asyncio
 async def test_list_project_organization_access_returns_orgs(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -357,7 +330,6 @@ async def test_list_project_organization_access_returns_orgs(db_session) -> None
     assert org_obj.slug in ("org-one", "org-two")
 
 
-@pytest.mark.asyncio
 async def test_list_project_organization_access_returns_empty_when_none(
     db_session,
 ) -> None:
@@ -367,7 +339,6 @@ async def test_list_project_organization_access_returns_empty_when_none(
     assert results == []
 
 
-@pytest.mark.asyncio
 async def test_revoke_user_access_removes_grant(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -378,7 +349,6 @@ async def test_revoke_user_access_removes_grant(db_session) -> None:
     assert len(results) == 0
 
 
-@pytest.mark.asyncio
 async def test_revoke_user_access_raises_not_found(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -387,7 +357,6 @@ async def test_revoke_user_access_raises_not_found(db_session) -> None:
         await project_service.revoke_user_access(db_session, project.id, user.id)
 
 
-@pytest.mark.asyncio
 async def test_revoke_organization_access_removes_grant(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -398,7 +367,6 @@ async def test_revoke_organization_access_removes_grant(db_session) -> None:
     assert len(results) == 0
 
 
-@pytest.mark.asyncio
 async def test_revoke_organization_access_raises_not_found(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -407,7 +375,6 @@ async def test_revoke_organization_access_raises_not_found(db_session) -> None:
         await project_service.revoke_organization_access(db_session, project.id, org.id)
 
 
-@pytest.mark.asyncio
 async def test_serialize_project_responses_with_phases_and_members(db_session) -> None:
     stamper = await make_user(db_session, email="stamper@example.com", is_platform_admin=True)
     lang = await make_language(db_session, code="kos")
@@ -444,7 +411,6 @@ async def test_serialize_project_responses_with_phases_and_members(db_session) -
     assert by_id[bare.id].members_preview == []
 
 
-@pytest.mark.asyncio
 async def test_phases_total_is_the_journey_not_the_stamped_rows(db_session) -> None:
     """A project on a nine-phase journey reads 1/9 the day it is assigned, not 1/1.
 
@@ -472,7 +438,6 @@ async def test_phases_total_is_the_journey_not_the_stamped_rows(db_session) -> N
     assert response.phases_total == 9
 
 
-@pytest.mark.asyncio
 async def test_phases_total_falls_back_to_stamped_rows_without_a_journey(db_session) -> None:
     """A project with no journey has no other set to measure against, so the old count stands."""
     lang = await make_language(db_session, code="njr")
@@ -486,7 +451,6 @@ async def test_phases_total_falls_back_to_stamped_rows_without_a_journey(db_sess
     assert response.phases_total == 1
 
 
-@pytest.mark.asyncio
 async def test_serialize_project_response_detail(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id, name="Detail")
@@ -511,7 +475,6 @@ async def test_serialize_project_response_detail(db_session) -> None:
     assert response.image_url is None
 
 
-@pytest.mark.asyncio
 async def test_serialize_members_preview_capped_at_four_ordered_by_granted_at(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id, name="Crowded")
@@ -530,7 +493,6 @@ async def test_serialize_members_preview_capped_at_four_ordered_by_granted_at(db
     assert [m.user_id for m in response.members_preview] == [u.id for u in users[:4]]
 
 
-@pytest.mark.asyncio
 async def test_serialize_members_preview_capped_per_project_not_globally(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     first = await make_project(db_session, language_id=lang.id, name="Crowded A")
@@ -577,7 +539,6 @@ def test_oc_project_list_response_excludes_console_only_fields() -> None:
     assert "member_count" in fields
 
 
-@pytest.mark.asyncio
 async def test_update_project_sets_image_url(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id, name="Image")
@@ -588,7 +549,6 @@ async def test_update_project_sets_image_url(db_session) -> None:
     assert updated.name == "Image"
 
 
-@pytest.mark.asyncio
 async def test_update_project_clears_image_url(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id, name="Image")
@@ -602,7 +562,6 @@ async def test_update_project_clears_image_url(db_session) -> None:
     assert updated.image_url is None
 
 
-@pytest.mark.asyncio
 async def test_update_project_keeps_image_url_when_not_provided(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id, name="Image")

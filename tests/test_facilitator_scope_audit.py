@@ -69,10 +69,14 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator"
 AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
+#: The only body the force route accepts as a force. Without it the route answers
+#: `nothing_to_force` for every caller alike, which would tell this audit nothing about scope.
+FORCE = {"json": {"force": True}}
 
 
 def _dependency_calls(dependant) -> set:
@@ -258,6 +262,7 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     # withdrawn, so sharing a session would make each case depend on the other's order.
     attend_id, _ = await _a_recorded_session_of(db, owner, f"a{tag}")
     unattend_id, _ = await _a_recorded_session_of(db, owner, f"u{tag}")
+    force_id, _ = await _a_recorded_session_of(db, owner, f"z{tag}")
     patch_device = await _a_device_of(db, owner, f"p{tag}")
     delete_device = await _a_device_of(db, owner, f"d{tag}")
     # One device per route, for the reason the two sessions above are separate: the mark and
@@ -277,6 +282,13 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
                 {"json": {**claim["json"], "project_id": absent}},
             ),
             "ids": (owner.project.id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{DESK}/teams/{owner.project.id}/nudges", {}),
+            "absent": (f"{DESK}/teams/{absent}/nudges", {}),
+            "ids": (owner.project.id, absent),
+            "owner_expects": "stream",
         },
         {
             "method": "PATCH",
@@ -396,10 +408,50 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             #: over. That is the answer to somebody who *is* the owner — a stranger gets
             #: 404, the same as for an id that never existed. The two codes differing is
             #: what scoping means here, and asserting 200 would mean building a
-            #: release-ready session inside a scope audit: bridge calibrated,
-            #: comprehension evaluated, consent given, floor met, rehearsal audio and a
-            #: telling-back. The audit would then fail whenever any of those changed,
+            #: release-ready session inside a scope audit: comprehension evaluated,
+            #: the floor met, rehearsal audio, a telling-back read by the analyst and a
+            #: report of playback. The audit would then fail whenever any of those changed,
             #: which is every one of them except scope.
+            "owner_expects": 409,
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/releases/1", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/releases/1", {}),
+            "ids": (session_id, absent),
+            #: The owner is refused too, and again by a different door: this session has
+            #: approved nothing, so there is no version 1 of its passage to read back. The
+            #: message says that, where a stranger is told the session does not exist —
+            #: which is the scoping, and is what the case above measures. Asserting 200
+            #: would mean approving a release inside a scope audit, for the reason the
+            #: read beside this one gives.
+            "owner_expects": 404,
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/retroverificacao", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/retroverificacao", {}),
+            #: The owner reaches this one, unlike the three reads above: the file is the record
+            #: of whatever the check learned, and a session that recorded almost nothing has a
+            #: file saying almost nothing rather than none at all. Nothing has to be built for
+            #: it — no gate, no version, no analyst — so asking for 200 costs this audit
+            #: nothing and is what makes the refusal beside it mean scope.
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/conversation", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/conversation", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
+            "ids": (force_id, absent),
+            #: The owner is refused by the gate, for the reason the read above is: a force
+            #: sets aside two blockers and a session this far from finished stands on the
+            #: others. A stranger is still 404, which is the whole question here.
             "owner_expects": 409,
         },
     ]
@@ -423,6 +475,10 @@ def _shape(body, *ids: str):
 REFUSING_TEMPLATES = {
     ("POST", f"{DESK}/devices/claim"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/conversation"),
+    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),
     ("POST", f"{DESK}/devices/{{device_id}}/attended"),
@@ -432,6 +488,7 @@ REFUSING_TEMPLATES = {
     ("GET", f"{DESK}/teams/{{team_id}}/coverage"),
     ("GET", f"{DESK}/teams/{{team_id}}/pericopes"),
     ("GET", f"{DESK}/teams/{{team_id}}/sessions"),
+    ("GET", f"{DESK}/teams/{{team_id}}/nudges"),
     ("GET", f"{IR}/facilitator/questions"),
     ("GET", f"{IR}/facilitator/questions/{{question_id}}/audio"),
     ("GET", f"{IR}/facilitator/questions/audio/{{handle}}"),
@@ -533,14 +590,21 @@ async def test_the_same_resources_are_reachable_by_the_team_that_owns_them(clien
     made-up ids — true of any API, scoped or not, and exactly how this audit would rot
     into decoration.
     """
+    from app.main import app
+
     b = await a_facilitator(db_session, email="b@example.com")
 
     refused = []
     for case in await refusing_routes(db_session, b, "own"):
         method = case["method"]
         owned_url, owned_kw = case["owned"]
-        answer = await client.request(method, owned_url, headers=b.headers, **owned_kw)
         expected = case.get("owner_expects")
+        if expected == "stream":
+            status = await opening_status(app, owned_url, b.headers)
+            if status != 200:
+                refused.append(f"{method} {owned_url} -> {status}")
+            continue
+        answer = await client.request(method, owned_url, headers=b.headers, **owned_kw)
         if expected is not None:
             if answer.status_code != expected:
                 refused.append(f"{method} {owned_url} -> {answer.status_code}, esperado {expected}")

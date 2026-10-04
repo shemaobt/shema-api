@@ -14,7 +14,6 @@ production dicts they happen to match.
 """
 
 import json
-import sys
 from typing import Any
 
 import pytest
@@ -27,6 +26,7 @@ from app.services.internalization_room.classify_coverage import classify_coverag
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.languages import LANGUAGE_NAMES, ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import run_turn
+from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -47,9 +47,9 @@ _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
 }
 
 _EXPECTED_NOTHING_TOLD_BACK = {
-    "pt": "(a equipe ainda não contou nada de volta)",
-    "en": "(the team has not told anything back yet)",
-    "es": "(el equipo aún no ha contado nada de vuelta)",
+    "pt": "(a equipe ainda não traduziu nada)",
+    "en": "(the team has not translated anything yet)",
+    "es": "(el equipo aún no ha traducido nada)",
 }
 
 
@@ -59,7 +59,6 @@ def _settings() -> Settings:
 
 def _patch_validator_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     """Let the Guide draft through, then record the system prompt the Validator is judged by."""
-    module = sys.modules["app.services.internalization_room.run_turn"]
     captured: dict[str, str] = {}
 
     async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
@@ -68,43 +67,40 @@ def _patch_validator_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
             return json.dumps({"verdict": "pass", "issues": []})
         return "fala"
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, turn=agent)
     return captured
 
 
 def _patch_classifier_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    module = sys.modules["app.services.internalization_room.classify_coverage"]
     captured: dict[str, str] = {}
 
     async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         captured["system"] = system_prompt
         return json.dumps({"decisions": []})
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, classifier=agent)
     return captured
 
 
 def _patch_analyst_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    module = sys.modules["app.services.internalization_room.back_translation"]
     captured: dict[str, str] = {}
 
     async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         captured["system"] = system_prompt
         return json.dumps({"findings": []})
 
-    monkeypatch.setattr(module, "call_agent", agent)
+    the_room_agent_is(monkeypatch, analyst=agent)
     return captured
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
-async def test_the_validator_opens_the_session_in_its_own_language(
+async def test_the_validator_opens_the_session_in_english_whichever_language_it_is(
     monkeypatch: pytest.MonkeyPatch, language_code: str
 ) -> None:
-    """The negative check names the other two languages' exact sentences, not the substring
-    "ainda não": with `messages=[]` the Validator also renders `recent_conversation_block`'s
-    own Portuguese fallback ("(início da sessão — ainda não houve troca)"), which is a
-    separate, out-of-scope placeholder (run_turn.py:190) this ticket does not touch.
+    """ENG-822 re-scoped this placeholder: the backend now composes it in English for every
+    session, and only {{SESSION_LANGUAGE}} carries what language the team hears — a `pt`
+    session must see the same English sentence an `en` one does, never its old Portuguese
+    translation.
     """
     captured = _patch_validator_capture(monkeypatch)
 
@@ -122,17 +118,17 @@ async def test_the_validator_opens_the_session_in_its_own_language(
     )
 
     system = captured["system"]
-    assert _EXPECTED_VALIDATOR_OPENING[language_code] in system
-    for other, sentence in _EXPECTED_VALIDATOR_OPENING.items():
-        if other != language_code:
-            assert sentence not in system
+    assert _EXPECTED_VALIDATOR_OPENING["en"] in system
+    assert _EXPECTED_VALIDATOR_OPENING["pt"] not in system
+    assert _EXPECTED_VALIDATOR_OPENING["es"] not in system
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
-async def test_the_classifier_sees_the_no_utterance_placeholder_in_the_sessions_own_language(
+async def test_the_classifier_sees_the_no_utterance_placeholder_in_english(
     monkeypatch: pytest.MonkeyPatch, language_code: str
 ) -> None:
+    """ENG-822 re-scoped this placeholder too: composed in English for every session, same as
+    the Validator's opening one — only {{SESSION_LANGUAGE}} carries the team's language."""
     captured = _patch_classifier_capture(monkeypatch)
 
     await classify_coverage(
@@ -142,18 +138,15 @@ async def test_the_classifier_sees_the_no_utterance_placeholder_in_the_sessions_
         classifier_prompt=CLASSIFIER,
         pericope_num=P,
         session_language=LANGUAGE_NAMES[language_code],
-        language_code=language_code,
         settings=_settings(),
     )
 
     system = captured["system"]
-    assert _EXPECTED_CLASSIFIER_NO_UTTERANCE[language_code] in system
-    for other, sentence in _EXPECTED_CLASSIFIER_NO_UTTERANCE.items():
-        if other != language_code:
-            assert sentence not in system
+    assert _EXPECTED_CLASSIFIER_NO_UTTERANCE["en"] in system
+    assert _EXPECTED_CLASSIFIER_NO_UTTERANCE["pt"] not in system
+    assert _EXPECTED_CLASSIFIER_NO_UTTERANCE["es"] not in system
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
 async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_sessions_own_language(
     monkeypatch: pytest.MonkeyPatch, language_code: str
@@ -177,7 +170,6 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
             assert sentence not in system
 
 
-@pytest.mark.asyncio
 async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
