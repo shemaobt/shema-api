@@ -30,16 +30,18 @@ from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_rr_app_id import RR_APP_KEY
 from app.services.resource_request.notify_decision import DECISION_COPY
 from tests.baker import make_user
-from tests.test_resource_requests.conftest import auth_header, grant
-from tests.test_resource_requests.test_evaluations import (
+from tests.resource_request_harness import (
     REQUESTS,
     as_gestor,
+    as_mesa,
+    as_team,
+    create,
     decidable,
     give_fund,
     put_evaluation,
     submitted_request,
 )
-from tests.test_resource_requests.test_requests import as_mesa, as_team
+from tests.test_resource_requests.conftest import auth_header, grant
 
 
 @pytest.fixture()
@@ -255,8 +257,6 @@ async def test_um_rascunho_ainda_em_edicao_nao_avisa_a_mesa(
     team = await as_team(db_session, rrf_app)
     await as_mesa(db_session, rrf_app)
     posted.clear()
-
-    from tests.test_resource_requests.test_requests import create
 
     await create(client, team)
 

@@ -30,14 +30,18 @@ from app.services.resource_request._attachment_rules import (
 from app.services.resource_request._attachment_storage import GCS_RR_BUCKET
 from app.utils import resource_request_vocabularies as v
 from tests.baker import make_user
+from tests.resource_request_harness import (
+    PDF,
+    FakeStore,
+    as_mesa,
+    as_team,
+    attachment_url,
+    create,
+    put_file,
+)
 from tests.test_resource_requests.conftest import auth_header, grant
-from tests.test_resource_requests.test_requests import as_mesa, as_team, create
 
 REQUESTS = "/api/resource-requests/requests"
-
-
-def attachment_url(request_id: str) -> str:
-    return f"{REQUESTS}/{request_id}/attachment"
 
 
 # ——— ten minimal real files ——————————————————————————————————————————————————————
@@ -86,7 +90,6 @@ def ole2_file(marker_at_512: bytes) -> bytes:
     return header + b"\x00" * (512 - len(header)) + marker_at_512 + b"\x00" * 16
 
 
-PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
 RTF = b"{\\rtf1\\ansi Orcamento}"
 CSV = b"categoria,valor\npapel,12.50\n"
 CSV_CP1252 = "categoria,orçamento\npapel,12.50\n".encode("cp1252")
@@ -115,48 +118,12 @@ THE_TEN: dict[str, bytes] = {
 # ——— the storage fake ————————————————————————————————————————————————————————————
 
 
-class FakeStore:
-    """Records every object and every signature request; deletes nothing, has no delete."""
-
-    def __init__(self) -> None:
-        self.objects: dict[tuple[str, str], tuple[bytes, str]] = {}
-        self.signed: list[tuple[str, str, int]] = []
-
-    async def upload(
-        self, bucket: str, key: str, data: bytes, content_type: str, **_: object
-    ) -> str:
-        self.objects[(bucket, key)] = (data, content_type)
-        return f"gs://{bucket}/{key}"
-
-    async def sign(
-        self,
-        bucket: str,
-        key: str,
-        *,
-        expiry_minutes: int = 15,
-        response_content_type: str | None = None,
-    ) -> str:
-        self.signed.append((bucket, key, expiry_minutes))
-        return f"https://storage.example/signed/{key}?x-goog-expires={expiry_minutes * 60}"
-
-
 @pytest.fixture()
 def storage(monkeypatch) -> FakeStore:
     fake = FakeStore()
     monkeypatch.setattr(gcs_utils, "upload_gcs_object", fake.upload)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", fake.sign)
     return fake
-
-
-async def put_file(
-    client, request_id: str, headers: dict[str, str], data: bytes, content_type: str, **params
-):
-    return await client.put(
-        attachment_url(request_id),
-        content=data,
-        headers={**headers, "Content-Type": content_type},
-        params=params,
-    )
 
 
 # ——— the private bucket and the content-addressed key ————————————————————————————

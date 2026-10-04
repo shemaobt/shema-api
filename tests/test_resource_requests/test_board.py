@@ -18,7 +18,7 @@ The graph across the six columns is total — the record of that decision is
 is not on the board, and nothing enters ``aprovado`` without a fund and an amount.
 
 No test uses a platform-admin account (they pass every guard unconditionally), and the
-draft builders are ``test_requests``'s and ``test_evaluations``'s own, imported rather
+draft and evaluation builders are ``tests/resource_request_harness.py``'s, imported rather
 than repeated.
 """
 
@@ -39,23 +39,23 @@ from app.db.models.resource_request import (
     RRStage,
 )
 from tests.baker import make_user
-from tests.test_resource_requests.conftest import grant
-from tests.test_resource_requests.test_evaluations import (
+from tests.resource_request_harness import (
+    answers,
     as_gestor,
+    as_mesa,
+    as_team,
+    create,
     endorse,
     give_fund,
+    move,
     put_evaluation,
 )
-from tests.test_resource_requests.test_requests import answers, as_mesa, as_team, create
+from tests.test_resource_requests.conftest import grant
 
 REQUESTS = "/api/resource-requests/requests"
 FUNDS = "/api/resource-requests/funds"
 
 STAGES = [stage.value for stage in RRStage]
-
-
-async def move(client, headers, request_id: str, to: str):
-    return await client.post(f"{REQUESTS}/{request_id}/move", json={"to": to}, headers=headers)
 
 
 async def board_card(db_session, client, team, valor: str, fund: str | None) -> str:

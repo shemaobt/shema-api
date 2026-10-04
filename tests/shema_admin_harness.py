@@ -1,14 +1,19 @@
-"""What the three files about the Admin's surface share — a client, the routes, the accounts.
+"""What the cases about the Admin's surface share — a client, the routes, the accounts.
 
-Not in ``conftest.py`` on purpose: that file is every Shemá test's, and several branches edit
-it at once. The client here mounts what those tests need and the shared one does not: the
-form's invitation routes, where an invite is accepted, and ``/api/roles``, the raw tool the
-surface closes for the two apps.
+``test_shema/test_admin_gate.py``, ``test_admin_grants.py`` and ``test_admin_invites.py`` drive
+the surface, and ``test_pending_projects.py`` signs the same Admin in to confirm what an
+approval filed. Not in ``tests/test_shema/conftest.py`` on purpose: that file is every Shemá
+test's, and several branches edit it at once. The client here mounts what those tests need and
+the shared one does not: the form's invitation routes, where an invite is accepted, and
+``/api/roles``, the raw tool the surface closes for the two apps.
+
+Builders and constants only. ``surface_client`` is a context manager a case opens, not a
+fixture, so nothing here has to travel as one.
 
 **The Admin of these tests holds ``admin`` in both apps and is not an installation admin.**
 An installation admin passes every guard, so a refusal proved with one proves nothing, and an
 Admin holding the role in one app only is a case of its own
-(``test_admin_gate.py::test_an_admin_held_only_in_the_form_is_refused``).
+(``test_shema/test_admin_gate.py::test_an_admin_held_only_in_the_form_is_refused``).
 
 Addresses are ``@shema.example``: ``EmailStr`` refuses the reserved ``.test`` TLD, and the
 invitation routes validate with it.

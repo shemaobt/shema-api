@@ -16,12 +16,18 @@ from app.db.models.auth import App
 from app.db.models.notification import Notification
 from app.db.models.resource_request import RRRequest, RRRequestFieldHistory, RRRequestLink
 from tests.baker import make_user
+from tests.resource_request_harness import (
+    LINKS,
+    REQUESTS,
+    as_mesa,
+    draft,
+    endorse,
+    give_fund,
+    holder,
+    put_evaluation,
+)
 from tests.test_resource_requests.conftest import auth_header
-from tests.test_resource_requests.test_evaluations import endorse, give_fund, put_evaluation
-from tests.test_resource_requests.test_requests import REQUESTS, as_mesa, draft
 
-LINKS = "/api/resource-requests/links"
-PUBLIC = "/api/resource-requests/link"
 START = f"{REQUESTS}/start"
 
 
@@ -42,18 +48,6 @@ def posted(monkeypatch) -> list[dict[str, str]]:
 
     monkeypatch.setattr("app.services.resource_request._notices.send_email", _record)
     return sent
-
-
-async def holder(db_session, client, email: str = "equipe@fora.org"):
-    """An Admin, a link they issued to ``email``, and the holder's link session."""
-    admin = await make_user(db_session, email=f"admin-{email}", is_platform_admin=True)
-    body = (
-        await client.post(
-            LINKS, json={"email": email}, headers=await auth_header(db_session, admin)
-        )
-    ).json()
-    verified = await client.post(f"{PUBLIC}/{body['token']}/verify", json={"code": body["code"]})
-    return admin, body, {"Authorization": f"Bearer {verified.json()['session']}"}
 
 
 # ——— starting ——————————————————————————————————————————————————————————————————

@@ -11,14 +11,15 @@ No test here uses a platform-admin account: an admin passes every guard in the m
 unconditionally (``_deps.py``), so a negative test written with one passes for the wrong
 reason.
 
-The draft builders are ``test_requests``'s own, imported rather than repeated — a second
-copy of the 26-row payload would drift exactly the way second serializers do.
+The draft builders, and the evaluation's own, are ``tests/resource_request_harness.py``'s —
+imported rather than repeated, because a second copy of the 26-row payload would drift
+exactly the way second serializers do.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import event, select
 
@@ -26,99 +27,24 @@ from app.db.models.resource_request import (
     RRBoardTransition,
     RREvaluation,
     RREvaluationAttendee,
-    RRFund,
     RRFundMovement,
     RRMovementKind,
     RRRequest,
     RRSnapshot,
 )
 from app.utils import resource_request_vocabularies as v
-from app.utils.jwt import decode_token
 from tests.baker import make_user
-from tests.test_resource_requests.conftest import auth_header, grant
-from tests.test_resource_requests.test_requests import as_mesa, as_team, create
-
-REQUESTS = "/api/resource-requests/requests"
-
-
-def evaluation(request_type: str = "traducao", **over: object) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "request_type": request_type,
-        "scores": [{"criterion_key": key, "score": 4} for key in v.CRITERION_KEYS[request_type]],
-        "comments": "avaliado",
-    }
-    payload.update(over)
-    return payload
-
-
-async def as_gestor(db_session, rrf_app, email: str = "gestor@rr.test") -> dict[str, str]:
-    user = await make_user(db_session, email=email)
-    await grant(db_session, user, rrf_app, "gestor")
-    return await auth_header(db_session, user)
-
-
-async def submitted_request(client, headers) -> dict:
-    created = await create(client, headers)
-    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
-    assert res.status_code == 200, res.text
-    return res.json()
-
-
-async def give_fund(db_session, request_id: str, fund_id: str = "linguas") -> None:
-    """The mesa assigns the fund at triage (GATE-01 D4). The route for it exists since
-    BE-11 (OBT-470) — ``PUT /requests/{id}/fund`` — and this shortcut stays for the tests
-    that are not about the assignment: it sets up a precondition in one statement instead
-    of driving a second endpoint, and ``test_fund_assignment.py`` pins that the two write
-    the same column."""
-    if (
-        await db_session.execute(select(RRFund).where(RRFund.id == fund_id))
-    ).scalar_one_or_none() is None:
-        db_session.add(RRFund(id=fund_id, name="Shema Línguas"))
-    request = (
-        await db_session.execute(select(RRRequest).where(RRRequest.id == request_id))
-    ).scalar_one()
-    request.fund_id = fund_id
-    await db_session.commit()
-
-
-async def endorse(db_session, request_id: str) -> None:
-    """The base leader's endorsement, as the precondition it is for anything past
-    ``triagem`` (BE-16, OBT-476). The act is the link's since BE-23 (OBT-535) — a code, a
-    page, a name — and this shortcut is ``give_fund``'s twin for the same reason: these
-    tests are about what happens *after* a card may be analysed, not about who signs it.
-    ``test_endorsement.py`` is what pins the real act, and ``endorsed_at`` is the column the
-    rule reads."""
-    request = (
-        await db_session.execute(select(RRRequest).where(RRRequest.id == request_id))
-    ).scalar_one()
-    request.endorsed_email = request.leader_email
-    request.endorsed_at = datetime.now(UTC)
-    await db_session.commit()
-
-
-async def decidable(db_session, client, headers) -> dict:
-    """A submitted request the mesa may actually decide. Since BE-16's rule is enforced,
-    all four decisions move the card past ``triagem`` and that exit waits for the base's
-    signature (``guard_endorsement``) — so the endorsement is a precondition of deciding,
-    exactly as it is of the board's ``board_card``. Tests that only score, and the ones
-    about who may touch the evaluation at all, keep ``submitted_request``: they never move
-    the card, so the rule never fires on them."""
-    request = await submitted_request(client, headers)
-    await endorse(db_session, request["id"])
-    return request
-
-
-async def put_evaluation(client, headers, request_id: str, **over: object):
-    """A save as the mesa sends it. A decision travels with who was present (FE-50,
-    OBT-518), so a save carrying one and naming nobody marks the caller — the member
-    pressing the button was in the room. A test about the ata names its own attendees."""
-    if over.get("decision") is not None and "attendees" not in over:
-        token = headers["Authorization"].removeprefix("Bearer ")
-        over["attendees"] = [decode_token(token)["sub"]]
-    return await client.put(
-        f"{REQUESTS}/{request_id}/evaluation", json=evaluation(**over), headers=headers
-    )
-
+from tests.resource_request_harness import (
+    REQUESTS,
+    as_gestor,
+    as_mesa,
+    as_team,
+    create,
+    decidable,
+    give_fund,
+    put_evaluation,
+    submitted_request,
+)
 
 # ——— who may touch it ————————————————————————————————————————————————————————————
 

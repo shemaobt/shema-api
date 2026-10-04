@@ -23,6 +23,7 @@ from app.services.authorization import list_roles
 from app.services.shema._scope import ROLE_KEYS, ROLE_PRECEDENCE, SHEMA_APP_ROLES
 from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS, seeded_roles
 from tests.baker import grant_app_role, make_app, make_user
+from tests.shema_harness import UNAUTHENTICATED_PATHS, reaches
 from tests.test_shema.conftest import (
     PREFIX,
     ROLE_PROBES,
@@ -31,29 +32,6 @@ from tests.test_shema.conftest import (
     UNGUARDED_PROBE,
     auth_header,
     grant,
-)
-
-#: Paths under ``/api/shema`` that are allowed to carry no authentication.
-#:
-#: **Two paths and two methods each, which are the module's whole hole.** BE-04 expected this
-#: list to stay empty until BE-12 and BE-12 added exactly the entry it predicted: ``GET`` and
-#: ``POST /api/shema/intake/{token}``, by FE-44 §9.0 and ``docs/shema.md`` §6.6, where the token
-#: *is* the guard and the guard is a service function (``verify_intake_token``) so the rule
-#: holds for any future caller of it rather than for the two routes it was written under.
-#:
-#: **The second is OBT-531's exit link**, ``GET`` and ``POST
-#: /api/shema/intercessors/leave/{token}``: a person in the prayer network has no account, and
-#: this is how they leave. Same shape — the token is the guard and ``leave_intercessor.py`` is
-#: the guard — and ``tests/test_shema/test_intercessor_exit.py`` is where each method is held to
-#: what it may do: the ``GET`` changes nothing, the ``POST`` erases.
-#:
-#: A route that arrives without a line added here fails ``test_every_shema_route_is_guarded``,
-#: which is what makes forgetting a guard a red build rather than an open endpoint. Keyed by
-#: path because that is what the audit compares; the two methods on it are both exempt and
-#: ``tests/test_shema/test_intake_link.py`` is where each is held to what it may actually
-#: serve — the guard being absent is the premise of that file, not a gap in this one.
-UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
-    {f"{PREFIX}/intake/{{token}}", f"{PREFIX}/intercessors/leave/{{token}}"}
 )
 
 #: Routes behind the PME's door rather than the Shemá app gate (OBT-523): reachable by an
@@ -222,8 +200,8 @@ def test_every_shema_route_is_guarded() -> None:
 
     Not a convention and not a review item: every route mounted under ``/api/shema`` must
     carry the app guard, and the only way to be exempt is a line in
-    ``UNAUTHENTICATED_PATHS`` above — which is a deliberate edit somebody has to justify,
-    rather than a dependency somebody forgot.
+    ``UNAUTHENTICATED_PATHS`` (``tests/shema_harness.py``) — which is a deliberate edit
+    somebody has to justify, rather than a dependency somebody forgot.
 
     The guard is recognised by ``get_current_user`` appearing in the route's resolved
     dependency chain, which is what both platform guards close over. Asking the chain rather
@@ -239,7 +217,7 @@ def test_every_shema_route_is_guarded() -> None:
             continue
         if route.path in UNAUTHENTICATED_PATHS:
             continue
-        if not _reaches(route.dependant, get_current_user):
+        if not reaches(route.dependant, get_current_user):
             unguarded.append(f"{sorted(route.methods)} {route.path}")
 
     assert unguarded == [], f"routes under {PREFIX} with no authentication: {unguarded}"
@@ -255,20 +233,6 @@ def test_only_the_listed_paths_sit_behind_the_door() -> None:
 
     assert behind == DOOR_ROUTES
     assert behind <= mounted, "a door route was included after the door was mounted"
-
-
-def _reaches(dependant, target, depth: int = 0) -> bool:
-    """Whether ``target`` appears anywhere in ``dependant``'s tree.
-
-    Depth-limited because FastAPI's dependency graph is a tree of arbitrary depth and a
-    cycle would hang the suite rather than fail it.
-    """
-    if depth > 8:
-        return False
-    for sub in dependant.dependencies:
-        if sub.call is target or _reaches(sub, target, depth + 1):
-            return True
-    return False
 
 
 def test_every_authenticated_route_reaches_the_application() -> None:

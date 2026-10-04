@@ -30,18 +30,18 @@ from app.db.models.resource_request import (
 from app.services.common import tokens
 from app.utils.stored_time import as_utc
 from tests.baker import make_user
-from tests.test_resource_requests.conftest import auth_header, grant
-from tests.test_resource_requests.test_board import move
-from tests.test_resource_requests.test_evaluations import give_fund
-from tests.test_resource_requests.test_requests import (
+from tests.resource_request_harness import (
     LEADER_EMAIL,
     REQUESTS,
-    _decide,
     as_mesa,
     as_team,
     create,
+    decide,
     draft,
+    give_fund,
+    move,
 )
+from tests.test_resource_requests.conftest import auth_header, grant
 
 PUBLIC = "/api/resource-requests/endorse"
 
@@ -496,7 +496,7 @@ async def test_a_revision_keeps_the_address_and_needs_a_new_endorsement(
     created = await create(client, team)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
     await endorsed(client, posted)
-    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await decide(db_session, created["id"], RRDecision.REVISE)
 
     revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=team)).json()
 

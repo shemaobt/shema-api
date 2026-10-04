@@ -6,8 +6,8 @@ through it, the base endorses and the mesa assigns the fund, and the mesa approv
 the decision's own transaction, rather than by calling the service beside it.
 
 The Admin of these tests holds ``admin`` in both apps and is not an installation admin, as in
-``admin_surface.py``; the negative cases by role use no installation admin either, because one
-passes every guard and would prove nothing. Addresses are ``@fora.example`` and
+``tests/shema_admin_harness.py``; the negative cases by role use no installation admin either,
+because one passes every guard and would prove nothing. Addresses are ``@fora.example`` and
 ``@shema.example``: the invitation routes validate with ``EmailStr``, which refuses ``.test``.
 """
 
@@ -38,9 +38,8 @@ from app.services.shema import (
     within_scope,
 )
 from tests.baker import make_user
-from tests.test_resource_requests.test_evaluations import endorse, give_fund, put_evaluation
-from tests.test_resource_requests.test_requests import REQUESTS, draft
-from tests.test_shema.admin_surface import FORM_INVITES, INVITES, give_urls, make_admin
+from tests.resource_request_harness import REQUESTS, draft, endorse, give_fund, put_evaluation
+from tests.shema_admin_harness import FORM_INVITES, INVITES, give_urls, make_admin
 from tests.test_shema.conftest import (
     PREFIX,
     SESSION,

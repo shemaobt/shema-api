@@ -23,7 +23,7 @@ from app.api.shema._deps import APP_KEY, FORM_APP_KEY, AdminUser
 from app.db.models.auth import Role, UserAppRole
 from app.main import create_app
 from tests.baker import make_app, make_role, make_user
-from tests.test_shema.admin_surface import (
+from tests.shema_admin_harness import (
     CHANGES,
     GRANTS,
     INVITES,
@@ -34,8 +34,8 @@ from tests.test_shema.admin_surface import (
     make_admin,
     surface_client,
 )
+from tests.shema_harness import reaches
 from tests.test_shema.conftest import auth_header, grant
-from tests.test_shema.test_access import _reaches
 
 #: The surface, pinned: a route added under ``/access`` is an edit to this set, and every one
 #: of them must carry the Admin guard.
@@ -235,9 +235,7 @@ def test_the_seven_routes_are_pinned_and_each_carries_the_admin_guard() -> None:
     }
 
     assert set(mounted) == ADMIN_ROUTES
-    unguarded = [
-        key for key, route in mounted.items() if not _reaches(route.dependant, admin_check)
-    ]
+    unguarded = [key for key, route in mounted.items() if not reaches(route.dependant, admin_check)]
     assert unguarded == []
 
 
