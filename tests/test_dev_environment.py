@@ -106,6 +106,15 @@ def test_services_wait_for_the_database(compose: dict, service: str) -> None:
     assert compose["services"][service]["depends_on"]["db"]["condition"] == "service_healthy"
 
 
+def test_the_backend_falls_back_to_the_staging_oral_collector_bucket(compose: dict) -> None:
+    """The worker runs procrastinate's bcd_generation queue, not the oral-collector's
+    Inngest functions, which the `inngest` service reaches over HTTP at the backend
+    alone: only the backend needs the fallback."""
+    env = compose["services"]["backend"]["environment"]
+
+    assert env["GCS_OC_BUCKET"] == "${GCS_OC_BUCKET:-tripod-image-uploads-staging}"
+
+
 def test_no_service_reads_the_neon_dev_secret() -> None:
     assert NEON_LOCAL_SECRET not in COMPOSE.read_text()
 
@@ -258,6 +267,12 @@ def test_the_local_dump_stays_out_of_git() -> None:
 
     assert f"{DUMP_DIR}/*" in ignored
     assert f"!{DUMP_DIR}/.gitkeep" in ignored
+
+
+def test_env_example_names_the_staging_oral_collector_bucket() -> None:
+    lines = (ROOT / ".env.example").read_text().splitlines()
+
+    assert "GCS_OC_BUCKET=tripod-image-uploads-staging" in lines
 
 
 def test_signing_key_never_reaches_the_image() -> None:

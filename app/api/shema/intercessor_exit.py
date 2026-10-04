@@ -18,8 +18,8 @@ saying the link opens after the person has left. The handler returns its own ``R
 FastAPI does not merge the router's header into, so it writes ``PER_READER_CACHE_CONTROL`` itself.
 
 **Included into the outer router on a named line** in ``app/api/shema/__init__.py``, and listed
-in ``tests/test_shema/test_access.py``'s ``UNAUTHENTICATED_PATHS``: the exemption is an edit a
-reviewer reads, as the intake's is.
+in ``UNAUTHENTICATED_PATHS`` (``tests/shema_harness.py``): the exemption is an edit a reviewer
+reads, as the intake's is.
 
 **Rate-limited per address, and the bucket is named rather than inferred.** slowapi's default
 scope for ``@limiter.limit`` is the request's URL, and here the URL carries the token — so a

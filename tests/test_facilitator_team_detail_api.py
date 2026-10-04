@@ -37,6 +37,7 @@ from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_bo
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     grant_facilitator_app_role,
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -45,7 +46,7 @@ from tests.baker import (
 )
 
 TEAM_NOT_FOUND = "Team not found"
-PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
+ENGAGED = CoverageStatus.ENGAGED.value
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
@@ -96,13 +97,15 @@ async def a_facilitator(db: AsyncSession, *, email: str, tongue: str = "Terena")
 
 async def moved(db: AsyncSession, team, *, pericope: str, keys: list[str]):
     session = await open_ir_session(db, pericope=pericope, project_id=team.id)
-    await room.apply_coverage(db, session.id, dict.fromkeys(keys, PARTIALLY_ENGAGED))
+    await room.apply_coverage(db, session.id, dict.fromkeys(keys, ENGAGED))
     return session
 
 
 async def having_closed(db: AsyncSession, team, *pericopes: str) -> None:
+    """Worked to the floor and then recorded — the floor alone closes nothing."""
     for pericope in pericopes:
-        await moved(db, team, pericope=pericope, keys=element_keys(pericope))
+        session = await moved(db, team, pericope=pericope, keys=element_keys(pericope))
+        await having_finished_the_passage(db, session)
 
 
 def keys_in_scene(pericope: str, scene: int | None) -> list[str]:
@@ -112,7 +115,6 @@ def keys_in_scene(pericope: str, scene: int | None) -> list[str]:
 # ------------------------------------------------------------------ the row, at its own address
 
 
-@pytest.mark.asyncio
 async def test_the_team_is_served_at_its_own_address(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="propria@x.com")
 
@@ -128,7 +130,36 @@ async def test_the_team_is_served_at_its_own_address(client, db_session) -> None
     assert body["last_activity_at"] is None
 
 
-@pytest.mark.asyncio
+async def test_a_session_nobody_entered_is_not_this_teams_last_activity(client, db_session) -> None:
+    """ENG-964, at the address the queue's own card shares its query with.
+
+    No turn, no take: a session the invitation door or the panorama spoke minted and the
+    stored row won over (ADR 0033 of the internalization-room repository) is not a room of
+    the team, so it must not read as their last activity here any more than it does on the
+    queue's card.
+    """
+    _user, team, headers = await a_facilitator(db_session, email="sem-turno@x.com")
+    await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+
+    assert body["last_activity_at"] is None
+
+
+async def test_a_session_halted_before_any_turn_landed_still_counts_as_activity(
+    client, db_session
+) -> None:
+    """Calling a person is an act of the team, even the very first one (the same exception
+    the queue's own card carries)."""
+    _user, team, headers = await a_facilitator(db_session, email="parada-sem-turno@x.com")
+    session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+    await room.mark_needs_person(db_session, session)
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+
+    assert body["last_activity_at"] is not None
+
+
 async def test_the_answer_carries_no_fact_about_the_facilitator(client, db_session) -> None:
     """`serves_any_team` and `open_hands_total` answer the *caller*, not this team.
 
@@ -152,7 +183,6 @@ async def test_the_answer_carries_no_fact_about_the_facilitator(client, db_sessi
 # --------------------------------------------------------------------- the refusal, byte for byte
 
 
-@pytest.mark.asyncio
 async def test_a_team_the_caller_does_not_facilitate_answers_exactly_as_one_that_is_absent(
     client, db_session
 ) -> None:
@@ -172,14 +202,12 @@ async def test_a_team_the_caller_does_not_facilitate_answers_exactly_as_one_that
     assert not_yours.json()["detail"] == TEAM_NOT_FOUND
 
 
-@pytest.mark.asyncio
 async def test_an_anonymous_caller_reads_nothing(client, db_session) -> None:
     _user, team, _headers = await a_facilitator(db_session, email="anon@x.com")
 
     assert (await client.get(team_url(team.id))).status_code in (401, 403)
 
 
-@pytest.mark.asyncio
 async def test_nothing_at_this_address_writes(client, db_session) -> None:
     """D-03 again: the team walks the book on its own and the facilitator reads."""
     _user, team, headers = await a_facilitator(db_session, email="so-leitura@x.com")
@@ -194,14 +222,12 @@ async def test_nothing_at_this_address_writes(client, db_session) -> None:
 # ------------------------------------------------------- closed_total: a position, not a measure
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_not_started_has_closed_nothing(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="zero@x.com")
 
     assert (await client.get(team_url(team.id), headers=headers)).json()["closed_total"] == 0
 
 
-@pytest.mark.asyncio
 async def test_closed_total_counts_the_passages_whose_floor_is_met(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="duas@x.com")
     await having_closed(db_session, team, FIRST, SECOND)
@@ -209,7 +235,6 @@ async def test_closed_total_counts_the_passages_whose_floor_is_met(client, db_se
     assert (await client.get(team_url(team.id), headers=headers)).json()["closed_total"] == 2
 
 
-@pytest.mark.asyncio
 async def test_a_passage_merely_touched_is_not_a_passage_closed(client, db_session) -> None:
     """`closed_total` asks the floor, and does not count the passages that have events.
 
@@ -230,7 +255,6 @@ async def test_a_passage_merely_touched_is_not_a_passage_closed(client, db_sessi
     assert body["active_passage"]["pericope"] == SECOND
 
 
-@pytest.mark.asyncio
 async def test_a_passage_closed_out_of_order_still_counts(client, db_session) -> None:
     """`closed_total` is about the book's passages, not about how far the team walked.
 
@@ -245,7 +269,6 @@ async def test_a_passage_closed_out_of_order_still_counts(client, db_session) ->
     assert body["active_passage"]["pericope"] == SECOND
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_finished_the_book_has_closed_all_of_it(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="fim@x.com")
     await having_closed(db_session, team, *CANON)
@@ -260,7 +283,6 @@ async def test_a_team_that_finished_the_book_has_closed_all_of_it(client, db_ses
 # ------------------------ scene_the_team_is_in: where they are, not where they owe
 
 
-@pytest.mark.asyncio
 async def test_the_scene_is_where_they_last_moved_and_not_where_they_have_yet_to_go(
     client, db_session
 ) -> None:
@@ -283,7 +305,6 @@ async def test_the_scene_is_where_they_last_moved_and_not_where_they_have_yet_to
     assert len(scene_one) > 2, "o cenário precisa de conta por trabalhar na cena 1"
 
 
-@pytest.mark.asyncio
 async def test_the_scene_is_served_as_a_key_and_not_as_a_number(client, db_session) -> None:
     """Same decision ENG-449 just took for `ElementCoverage.scene`: the client composes nothing."""
     _user, team, headers = await a_facilitator(db_session, email="chave@x.com")
@@ -295,45 +316,25 @@ async def test_the_scene_is_served_as_a_key_and_not_as_a_number(client, db_sessi
     assert served in element_keys(FIRST), "a cena servida não é uma conta desta passagem"
 
 
-@pytest.mark.asyncio
-async def test_a_bead_that_spans_scenes_cannot_say_which_one_they_are_in(
-    client, db_session
-) -> None:
-    """The case every other one here walks past, because they all move a *scene* bead.
+async def test_a_person_moved_in_scene_four_puts_the_team_in_scene_four(client, db_session) -> None:
+    """The case the dedupe used to walk past.
 
-    `elements_of` dedupes entities across the passage — Naomi in three scenes is one thing for
-    the team to work with, not three — so an entity's bead carries the scene it **first**
-    appeared in. Five of P01's beads are like that, and `being:B3` spans scenes 1 to 4 while
-    saying `1`. Reading its scene as the team's position answers `scene:1` for a team that may
-    be anywhere in the passage, which is the opposite of what the field claims.
-
-    So a bead that belongs to more than one scene does not answer, and the most recent one that
-    does answers instead. Here the team moved scene 3's own bead and then Naomi: the answer
-    stays `scene:3`, because Naomi cannot say and scene 3 can.
+    An entity is a bead in every scene it appears in, so Naomi in scene 4 of P01 — "the woman"
+    — is her own bead with her own scene. Here the team moved scene 3's own bead and then her:
+    the answer is `scene:4`, because the bead that moved last knows where it sits.
     """
     _user, team, headers = await a_facilitator(db_session, email="abrange@x.com")
 
     await moved(db_session, team, pericope=FIRST, keys=keys_in_scene(FIRST, 3)[:1])
-    await moved(db_session, team, pericope=FIRST, keys=["being:B3"])
+    await moved(db_session, team, pericope=FIRST, keys=["being:S4:B3"])
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
 
-    assert body["scene_the_team_is_in"] == "scene:3"
+    assert body["scene_the_team_is_in"] == "scene:4", (
+        "a conta de Naomi atravessava as quatro cenas dizendo '1', e por isso não respondia"
+    )
 
 
-@pytest.mark.asyncio
-async def test_a_team_whose_only_movement_spans_scenes_is_in_no_scene(client, db_session) -> None:
-    """`None` rather than the first appearance, which would be a confident wrong answer."""
-    _user, team, headers = await a_facilitator(db_session, email="so-abrange@x.com")
-
-    await moved(db_session, team, pericope=FIRST, keys=["being:B3"])
-
-    assert (await client.get(team_url(team.id), headers=headers)).json()[
-        "scene_the_team_is_in"
-    ] is None
-
-
-@pytest.mark.asyncio
 async def test_a_team_that_has_moved_nothing_is_in_no_scene(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="parada@x.com")
 
@@ -342,7 +343,6 @@ async def test_a_team_that_has_moved_nothing_is_in_no_scene(client, db_session) 
     ] is None
 
 
-@pytest.mark.asyncio
 async def test_a_team_at_the_end_of_the_book_is_in_no_scene(client, db_session) -> None:
     """There is no passage they are on, so there is no scene within it."""
     _user, team, headers = await a_facilitator(db_session, email="fim-cena@x.com")
@@ -353,7 +353,6 @@ async def test_a_team_at_the_end_of_the_book_is_in_no_scene(client, db_session) 
     ] is None
 
 
-@pytest.mark.asyncio
 async def test_a_preservation_rule_does_not_move_them_out_of_the_scene_they_were_in(
     client, db_session
 ) -> None:
@@ -378,7 +377,6 @@ async def test_a_preservation_rule_does_not_move_them_out_of_the_scene_they_were
     ] == "scene:1"
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_only_worked_the_rules_is_in_no_scene(client, db_session) -> None:
     """`None` survives where it is the whole truth: nothing they moved locates them."""
     _user, team, headers = await a_facilitator(db_session, email="so-regras@x.com")
@@ -392,7 +390,6 @@ async def test_a_team_that_has_only_worked_the_rules_is_in_no_scene(client, db_s
 # --------------------------------------------------------------------------------- what it costs
 
 
-@pytest.mark.asyncio
 async def test_the_answer_does_not_pay_per_bead_or_per_team(
     client, db_session, test_engine
 ) -> None:

@@ -56,8 +56,8 @@ from app.models.shema_privacy import (
     LeavingShape,
     withheld_value,
 )
+from tests.shema_harness import reaches
 from tests.test_shema.conftest import PREFIX
-from tests.test_shema.test_access import _reaches
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -429,7 +429,7 @@ def test_only_the_listed_routes_take_the_callers_reader() -> None:
     for route in app.routes:
         if not isinstance(route, APIRoute) or not route.path.startswith(PREFIX):
             continue
-        if _reaches(route.dependant, _reading):
+        if reaches(route.dependant, _reading):
             for method in set(route.methods or ()) - {"HEAD", "OPTIONS"}:
                 taking.add((method, route.path))
 

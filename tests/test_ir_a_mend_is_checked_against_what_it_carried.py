@@ -21,7 +21,6 @@ next is the case's subject. None of them names a table or a column.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 import logging
 import re
@@ -36,6 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -67,6 +68,11 @@ NO_LONGER_TOLD = "havia pão em Belém"
 #: The element the finding on the first stretch names as missing — "Orfa não apareceu neste
 #: trecho." A correction that brings it back is the answer arriving, never an addition.
 BROUGHT_BACK = "Orfa é citada pelo nome"
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:
@@ -142,10 +148,9 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> ReaderOfTellings:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = ReaderOfTellings()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -161,15 +166,13 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     from app.api.internalization_room import back_translation as bt_api
 
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         briefed.append(system_prompt)
         return "No que você me contou, vamos olhar uma parte de novo."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         return (type("Voiced", (), {"key": "clipe"})(), 0)
@@ -246,10 +249,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _tell_that_stretch_again(
@@ -289,7 +295,7 @@ async def _a_finding_raised_on_the_first_stretch(
             ],
         }
     )
-    first = await _finish(client, session_id)
+    first = await _finish(client, db, session_id)
     assert first.status_code == 200, first.text
     assert analyst.full_readings, "a primeira leitura tem de ter acontecido"
     standing = await service.final_segments(db, session_id)
@@ -314,14 +320,13 @@ async def _a_correction_verified_as(
     analyst.verification = reply
     analyst.answer = '{"evidence_sufficient": true, "findings": []}'
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db, session_id)
     assert answered.status_code == 200, answered.text
     assert analyst.verifications, "a correção tem de ter sido verificada, não relida"
     corrected = (await service.final_segments(db, session_id))[0]
     return answered.json(), corrected
 
 
-@pytest.mark.asyncio
 async def test_an_element_counted_as_no_longer_told_is_a_finding_on_that_stretch(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -351,7 +356,6 @@ async def test_an_element_counted_as_no_longer_told_is_a_finding_on_that_stretch
     assert body["checked"] is False
 
 
-@pytest.mark.asyncio
 async def test_the_team_is_told_which_element_fell(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -375,9 +379,7 @@ async def test_the_team_is_told_which_element_fell(
     assert STILL_TOLD not in about, "o que continua dito não é uma perda"
 
 
-_FINDING_LINE = re.compile(
-    r"^- (?:missing|addition|meaning_change|preservation_violation|unclear): (.+)$", re.M
-)
+_FINDING_LINE = re.compile(r"^- (?:missing|addition|unclear)(?: \[[^\]]*\])?: (.+)$", re.M)
 
 
 def _the_finding_the_speaker_was_given(spoken: list[str]) -> str:
@@ -392,7 +394,6 @@ def _the_finding_the_speaker_was_given(spoken: list[str]) -> str:
     return "\n".join(found)
 
 
-@pytest.mark.asyncio
 async def test_a_count_with_nothing_lost_and_nothing_reported_is_a_clean_mend(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -415,7 +416,6 @@ async def test_a_count_with_nothing_lost_and_nothing_reported_is_a_clean_mend(
     assert body["finding_kind"] is None
 
 
-@pytest.mark.asyncio
 async def test_an_element_both_counted_and_reported_is_heard_once(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -445,15 +445,14 @@ async def test_an_element_both_counted_and_reported_is_heard_once(
     assert body["finding_segment_id"] == corrected.id
 
 
-@pytest.mark.asyncio
 async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
     """The guard on the derivation's reach: it decides losses, and nothing else.
 
-    Everything the earlier telling carried is still told, and what the reader raises is a
-    changed meaning. A derivation that read the enumeration as evidence about anything but
-    presence would answer the team about a loss that did not happen.
+    Everything the earlier telling carried is still told, and what the reader raises is an
+    addition. A derivation that read the enumeration as evidence about anything but presence
+    would answer the team about a loss that did not happen.
     """
     body, _ = await _a_correction_verified_as(
         client,
@@ -461,15 +460,48 @@ async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
         analyst,
         _a_reply_enumerating(
             [_element(STILL_TOLD, still_told=True), _element(NO_LONGER_TOLD, still_told=True)],
-            findings=[{"kind": "meaning_change", "note": "A nova contagem diz que ela insistiu."}],
+            findings=[{"kind": "addition", "note": "A nova contagem diz que ela insistiu."}],
         ),
     )
 
     assert body["findings_remaining"] == 1
-    assert body["finding_kind"] == "meaning_change"
+    assert body["finding_kind"] == "addition"
 
 
-@pytest.mark.asyncio
+async def test_a_correction_check_that_names_a_retired_kind_reads_as_addition(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ReaderOfTellings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A reader still writing the older taxonomy is read, not refused.
+
+    A correction check that comes back with a retired kind used to leave the room with no
+    verdict for a stretch the team had just retold. The name reads as the addition it
+    describes, and the check goes on being a check.
+    """
+    with caplog.at_level(logging.WARNING, logger=ROOM_LOG):
+        body, _ = await _a_correction_verified_as(
+            client,
+            db_session,
+            analyst,
+            _a_reply_enumerating(
+                [_element(STILL_TOLD, still_told=True), _element(NO_LONGER_TOLD, still_told=True)],
+                findings=[
+                    {
+                        "kind": "preservation_violation",
+                        "note": "A nova contagem diz o que a história guarda.",
+                    }
+                ],
+            ),
+        )
+
+    assert body["findings_remaining"] == 1
+    assert body["finding_kind"] == "addition"
+    assert "unknown finding kind" not in caplog.text
+    assert "cannot judge" not in caplog.text
+
+
 async def test_an_element_the_map_gives_that_only_the_new_telling_states_is_a_clean_mend(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -499,7 +531,6 @@ async def test_an_element_the_map_gives_that_only_the_new_telling_states_is_a_cl
     assert body["finding_kind"] is None
 
 
-@pytest.mark.asyncio
 async def test_an_addition_matching_what_was_brought_back_is_suppressed(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -536,7 +567,6 @@ async def test_an_addition_matching_what_was_brought_back_is_suppressed(
         ),
     ],
 )
-@pytest.mark.asyncio
 async def test_a_count_that_cannot_be_read_leaves_the_reported_findings_standing(
     client: httpx.AsyncClient,
     db_session: AsyncSession,

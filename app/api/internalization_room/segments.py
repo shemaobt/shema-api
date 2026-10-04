@@ -6,23 +6,24 @@ had no door. These are the doors, and nothing else: choosing where to cut is the
 rules about where a cut may land are the service's, and neither is decided here.
 """
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
-from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
+from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
     divide_segment,
+    refuse_a_slice_the_stretch_does_not_sit_on,
     segment_for_session,
-    slice_moved,
 )
-from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 
 router = APIRouter()
@@ -38,6 +39,7 @@ def segment_view(segment: IRSegment) -> SegmentView:
         ends_ms=segment.ends_ms,
         pass_number=segment.pass_number,
         told=segment.transcript is not None,
+        bridge_take_id=segment.bridge_take_id,
     )
 
 
@@ -60,6 +62,7 @@ async def divide(
     session_id: str,
     segment_id: str,
     payload: DivideSegmentRequest,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
     """The team heard two ideas where they had told one, and cuts the stretch in two.
@@ -71,100 +74,61 @@ async def divide(
     `at_ms` is counted from the start of the recording, the same as the stretch's own bounds.
     Where it may fall is `divide_segment`'s to say.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     segment = await segment_for_session(db, session.id, segment_id)
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
+    nudge(session.project_id, "stretches")
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
 
 
-@router.post(
-    "/sessions/{session_id}/segments/{segment_id}/replace",
-    response_model=SegmentsResponse,
-    dependencies=[room_caller_dep],
-)
 async def replace(
     session_id: str,
     segment_id: str,
+    background: BackgroundTasks,
     take_id: str = Form(...),
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
-    file: UploadFile | None = File(default=None),
+    file: UploadFile = File(...),
     device_id: str = device_dep,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
-    """A new version of one stretch: a new explanation, or a new recording under it.
+    """One **Correction**: the same stretch told again, over the recording it already sits in.
 
-    Both of the product's corrections come through here, and which one it is falls out of what
-    the caller sends rather than out of a flag it could get wrong:
+    It is the only correction the room has. A stretch is a listening pause and not a unit
+    anybody rehearsed, so what a team does about a *recording* that is wrong is record the
+    **Part** again — an upload under that part's number, which is a different route (ADR 0023,
+    ADR 0025). This answer assembles nothing and names no take of the server's; an old composed
+    row is history, and it travels as the part its number makes it, by the same rule as any
+    take — `current_parts`, which the check and the **Packet** both read.
 
-    - the same slice with audio is the explanation redone over a recording that did not move;
-    - a different slice is the mother tongue re-recorded, and it arrives with no explanation —
-      the one belonging to audio nobody will hear again does not carry over. Sending both is
-      refused by `capture_segment`, which is where that rule lives.
-
-    A stretch left waiting this way is told again by calling this route a second time with its
-    own slice and the new audio. That is the same correction as the first case, which is why
-    there is no third verb.
-
-    A re-recorded mother tongue also rebuilds the recording of the passage around it, and the
-    answer names what it rebuilt. Without that the correction was real and unhearable: the
-    corrected minute lived in a file of its own and the rest of the passage in another, so
-    playing the passage back meant stitching, and the product asked three times for the other
-    thing — one recording, updated. `recompose_passage` is where it happens and why a failure
-    there answers 200 with nothing named rather than losing the team their correction.
+    The audio is therefore not optional: without it there is no correction to express, and a
+    call that omits it is the app's own bug, refused by this signature before any service runs.
 
     The bytes are stored before anything is asked of them, as on the telling-back route: a
     transcriber that times out must not take the recording with it. And when nothing could be
     made out, **the stretch is not replaced at all** — swapping a good explanation for an empty
-    one over a transcriber hiccup would lose the team's work to somebody else's outage.
+    one over a transcriber hiccup would lose the team's work to somebody else's outage. It is
+    still one more telling of that stretch, counted on the row that is standing, because there is
+    no new row to count on: an outage that came free would let a team correcting one stretch
+    tell it forever without the room ever offering them a person.
 
-    What is *not* stored first is a request that cannot succeed. A different slice arriving with
-    an explanation is refused by `capture_segment` either way, but only after the recording had
-    been kept and the transcriber paid — and the orphan take then travelled to Refine among the
-    telling-backs. It is knowable from the stretch and the form fields, so it is answered before
-    anything is spent, which is the argument the telling-back route already makes for the slice
+    What is *not* stored first is a request that cannot succeed. A slice that is not this
+    stretch's is refused by `capture_segment` either way, but only after the recording had been
+    kept and the transcriber paid — and the orphan take then travelled to Refine among the
+    telling-backs. It is knowable from the stretch and the form fields, so the same refusal is
+    asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
-    if file is None:
-        version = await room.capture_segment(
-            db,
-            session,
-            take_id=rehearsal.id,
-            starts_ms=starts_ms,
-            ends_ms=ends_ms,
-            pass_number=segment.pass_number,
-            replaces=segment,
-        )
-        rebuilt = await room.recompose_passage(
-            db,
-            session,
-            device_id=device_id,
-            replaced=segment,
-            corrected=rehearsal,
-            version=version,
-        )
-        return SegmentsResponse(
-            session_id=session.id,
-            segments=await _units(db, session.id),
-            composed_take_id=rebuilt.id if rebuilt is not None else None,
-        )
-
-    if slice_moved(segment, rehearsal.id, starts_ms, ends_ms):
-        raise ValidationError(
-            "A stretch re-recorded in the mother tongue starts with no telling-back: send the "
-            "new recording on its own, and tell it back afterwards"
-        )
+    refuse_a_slice_the_stretch_does_not_sit_on(segment, rehearsal.id, starts_ms, ends_ms)
 
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
-
-    state = room.back_translation_of(session)
-    told_again = state.retells + 1
 
     retro = await store_take(
         db,
@@ -176,27 +140,24 @@ async def replace(
         scope=session.pericope,
         audio=audio_bytes,
         pass_number=segment.pass_number,
-        chunk_index=segment.ordinal,
+        ordinal=segment.ordinal,
         content_type=file.content_type or "audio/mp4",
     )
+    await db.commit()
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
 
-    state.retells = told_again
-    await room.save_back_translation(db, session, state)
-    spent = told_again >= RETELLS_BEFORE_A_WARNING
-    if spent:
-        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
-
     if not text.strip():
+        crossed = await room.count_an_empty_telling(db, session, segment)
+        nudge_stretches(session.project_id, warned=crossed)
         return SegmentsResponse(
             session_id=session.id,
             segments=await _units(db, session.id),
             captured=False,
-            needs_person=spent,
+            needs_person=crossed,
         )
 
-    await room.capture_segment(
+    crossed = await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=rehearsal.id,
@@ -207,6 +168,20 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
+    nudge_stretches(session.project_id, warned=crossed)
+    background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(
-        session_id=session.id, segments=await _units(db, session.id), needs_person=spent
+        session_id=session.id,
+        segments=await _units(db, session.id),
+        needs_person=crossed,
     )
+
+
+router.add_api_route(
+    "/sessions/{session_id}/segments/{segment_id}/replace",
+    replace,
+    methods=["POST"],
+    response_model=SegmentsResponse,
+    dependencies=[room_caller_dep, idempotency_dep],
+    route_class_override=IdempotentRoute,
+)

@@ -81,9 +81,10 @@ class PHReport(Base):
 
 class PHAgentPrompt(Base):
     __tablename__ = "ph_agent_prompts"
+    __table_args__ = (UniqueConstraint("prompt_key", name="uq_ph_agent_prompts_prompt_key"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    prompt_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    prompt_key: Mapped[str] = mapped_column(String(64), index=True)
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(Text)
     template: Mapped[str] = mapped_column(Text)

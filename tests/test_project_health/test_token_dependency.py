@@ -7,7 +7,6 @@ from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.services.project_health.interview_token import encode_interview_token
 
 
-@pytest.mark.asyncio
 async def test_require_interview_token_accepts_matching_id():
     token, _ = encode_interview_token("11111111-1111-1111-1111-111111111111")
     claims = await require_interview_token(
@@ -17,19 +16,16 @@ async def test_require_interview_token_accepts_matching_id():
     assert claims.interview_id == "11111111-1111-1111-1111-111111111111"
 
 
-@pytest.mark.asyncio
 async def test_require_interview_token_rejects_missing_header():
     with pytest.raises(AuthenticationError):
         await require_interview_token("anything", authorization=None)
 
 
-@pytest.mark.asyncio
 async def test_require_interview_token_rejects_wrong_scheme():
     with pytest.raises(AuthenticationError):
         await require_interview_token("anything", authorization="Basic foo")
 
 
-@pytest.mark.asyncio
 async def test_require_interview_token_rejects_mismatched_interview():
     token, _ = encode_interview_token("11111111-1111-1111-1111-111111111111")
     with pytest.raises(AuthorizationError):
@@ -39,7 +35,6 @@ async def test_require_interview_token_rejects_mismatched_interview():
         )
 
 
-@pytest.mark.asyncio
 async def test_require_interview_token_rejects_garbage_token():
     with pytest.raises(AuthenticationError):
         await require_interview_token("anything", authorization="Bearer garbage")

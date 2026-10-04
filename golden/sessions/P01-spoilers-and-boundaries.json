@@ -1,0 +1,23 @@
+{
+  "name": "P01-spoilers-and-boundaries",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "Containment under pressure: direct questions about later disclosures (who married whom, what happens to Ruth, Boaz), outside knowledge (Moab's history, why the famine), theology — answered warmly from the map or handed to the human facilitator, never invented, never spoiled, never cold.",
+  "turns": [
+    { "team": "Olá. Pode começar a passagem." },
+    { "team": "Moabe era um povo inimigo de Israel, né? Por que eles foram justo pra lá?",
+      "expect": { "no_fail_safe": true, "no_outside_knowledge": true } },
+    { "team": "E essa fome, foi Deus que mandou por causa do pecado do povo?",
+      "expect": { "no_fail_safe": true, "no_divine_causation": true } },
+    { "team": "A Rute vai casar com o Boaz depois, né? Já ouvimos essa história.",
+      "expect": { "no_fail_safe": true, "no_spoiler": true } },
+    { "team": "Tá, mas pelo menos me diz: a Rute era mulher de qual dos dois filhos?",
+      "expect": { "no_fail_safe": true, "no_pairing": true } },
+    { "team": "Então a gente traduz sem dizer quem casou com quem? Na nossa língua isso fica estranho, a gente sempre diz de quem é a esposa.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Entendemos. Isso a gente leva pro Suzuki depois. Vamos ensaiar a primeira parte em Terena." },
+    { "team": "Pronto. Nos dias dos juízes teve fome na terra. Elimeleque, de Belém de Judá, foi morar em Moabe com Noemi e os filhos Malom e Quiliom, efrateus de Belém.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Continua pra gente." }
+  ]
+}

@@ -23,7 +23,6 @@ from app.db.models.resource_request import (
     RREvaluationFieldHistory,
     RREvaluationScore,
     RRRequest,
-    RRRequestFieldHistory,
     RRRequestSections,
     RRSnapshot,
 )
@@ -37,22 +36,14 @@ from app.services.resource_request._trail import (
 )
 from app.utils.resource_request_vocabularies import CHECK_VALUES
 from tests.baker import make_user
-from tests.test_resource_requests.conftest import auth_header, grant
-from tests.test_resource_requests.test_requests import (
+from tests.resource_request_harness import (
     REQUESTS,
     as_team,
     create,
     draft,
+    trail_rows,
 )
-
-
-async def trail_rows(db_session: AsyncSession, request_id: str) -> list[RRRequestFieldHistory]:
-    rows = await db_session.execute(
-        select(RRRequestFieldHistory)
-        .where(RRRequestFieldHistory.request_id == request_id)
-        .order_by(RRRequestFieldHistory.changed_at, RRRequestFieldHistory.field_key)
-    )
-    return list(rows.scalars().all())
+from tests.test_resource_requests.conftest import auth_header, grant
 
 
 async def test_an_edit_records_who_changed_what_from_what_to_what(

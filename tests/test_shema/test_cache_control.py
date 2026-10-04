@@ -40,13 +40,13 @@ from app.db.models.shema_form import ShemaSubmission
 from app.main import create_app
 from app.services.shema import issue_exit_link
 from tests.baker import make_user
+from tests.shema_harness import UNAUTHENTICATED_PATHS, reaches
 from tests.test_shema.conftest import (
     PREFIX,
     auth_header,
     make_intercessor,
     make_shema_project,
 )
-from tests.test_shema.test_access import UNAUTHENTICATED_PATHS, _reaches
 
 #: What the module's answers say, as the console's other tests read it off the wire — the literal
 #: and not the constant, so a constant that changed would fail here rather than agree with itself.
@@ -67,7 +67,7 @@ def test_every_route_under_the_module_passes_through_no_store() -> None:
     outside = [
         f"{sorted(route.methods)} {route.path}"
         for route in routes
-        if not _reaches(route.dependant, NO_STORE.dependency)
+        if not reaches(route.dependant, NO_STORE.dependency)
     ]
 
     assert routes, f"no route mounted under {PREFIX}"

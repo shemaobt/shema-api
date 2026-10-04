@@ -22,7 +22,7 @@ from typing import Protocol
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 from app.services.platform.voices import language_hint
 
 logger = logging.getLogger(__name__)
@@ -64,20 +64,28 @@ async def transcribe_speech(
 
     cfg = settings or get_settings()
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
-        headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
-        files={"file": ("answer.webm", audio, mime_type)},
-        data={"model_id": cfg.elevenlabs_stt_model, "language_code": language_hint(language)},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
+            headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
+            files={"file": ("answer.webm", audio, mime_type)},
+            data={"model_id": cfg.elevenlabs_stt_model, "language_code": language_hint(language)},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs STT unreachable: %s", error)
+        raise UpstreamServiceError(
+            f"Transcription request could not reach ElevenLabs: {error}"
+        ) from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs STT failed: status=%s body=%s", response.status_code, response.text[:500]
         )
-        raise _upstream_or_validation_error(response.status_code)
+        raise upstream_or_validation_error(
+            response.status_code, f"Transcription request failed with status {response.status_code}"
+        )
 
     text = str(response.json().get("text") or "").strip()
     logger.info(
@@ -88,14 +96,6 @@ async def transcribe_speech(
         len(text),
     )
     return text
-
-
-def _upstream_or_validation_error(status_code: int) -> Exception:
-    """Their outage is not our client's bad request — same split as the TTS service."""
-    message = f"Transcription request failed with status {status_code}"
-    if status_code == 429 or status_code >= 500:
-        return UpstreamServiceError(message)
-    return ValidationError(message)
 
 
 def _make_client() -> httpx.AsyncClient:

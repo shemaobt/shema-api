@@ -33,6 +33,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.stream_harness import opening_status
 
 APP_KEY = "internalization-room"
 FACILITATOR_ROLE = "facilitator"
@@ -55,6 +56,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/facilitator/teams/{team_id}/coverage"): {"params": {"pericope": "P01"}},
     ("GET", "/api/facilitator/teams/{team_id}/pericopes"): {},
     ("GET", "/api/facilitator/teams/{team_id}/sessions"): {},
+    ("GET", "/api/facilitator/teams/{team_id}/nudges"): {},
     ("GET", "/api/internalization-room/facilitator/questions"): {},
     ("GET", "/api/internalization-room/facilitator/questions/{question_id}/audio"): {},
     ("GET", "/api/internalization-room/facilitator/questions/audio/{handle}"): {},
@@ -65,10 +67,24 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes"): {},
     ("GET", "/api/internalization-room/facilitator/takes/{take_id}/audio"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/release"): {},
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/releases/{version}",
+    ): {},
+    ("POST", "/api/internalization-room/facilitator/sessions/{session_id}/release"): {
+        "json": {"force": True}
+    },
+    (
+        "GET",
+        "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao",
+    ): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/conversation"): {},
     ("GET", "/api/internalization-room/facilitator/sessions"): {},
     ("POST", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
     ("DELETE", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
 }
+
+_STREAMS = {("GET", "/api/facilitator/teams/{team_id}/nudges")}
 
 _PLACEHOLDER = "algum-id"
 
@@ -149,6 +165,11 @@ async def knock(client, headers) -> dict[tuple[str, str], int]:
             head, _, rest = url.partition("{")
             _, _, tail = rest.partition("}")
             url = f"{head}{_PLACEHOLDER}{tail}"
+        if (method, path) in _STREAMS:
+            from app.main import app
+
+            statuses[(method, path)] = await opening_status(app, url, headers)
+            continue
         response = await client.request(method, url, headers=headers, **_REQUESTS[(method, path)])
         statuses[(method, path)] = response.status_code
     return statuses
@@ -158,7 +179,6 @@ def _refused(statuses: dict[tuple[str, str], int]) -> list[str]:
     return [f"{m} {p} -> {s}" for (m, p), s in statuses.items() if s != 403]
 
 
-@pytest.mark.asyncio
 async def test_another_role_on_the_same_app_is_refused_everywhere(client, db_session, room_app):
     """Holding *a* role is not holding *this* one.
 
@@ -174,7 +194,6 @@ async def test_another_role_on_the_same_app_is_refused_everywhere(client, db_ses
     assert _refused(statuses) == [], "rotas abertas a quem tem outro papel do app"
 
 
-@pytest.mark.asyncio
 async def test_project_access_alone_does_not_open_the_door(client, db_session, room_app):
     """The case that separates this gate from the scoping that already existed.
 
@@ -189,14 +208,12 @@ async def test_project_access_alone_does_not_open_the_door(client, db_session, r
     assert _refused(statuses) == [], "rotas abertas a quem so tem acesso de projeto"
 
 
-@pytest.mark.asyncio
 async def test_no_credential_at_all_is_refused_everywhere(client):
     statuses = await knock(client, {})
 
     assert [f"{m} {p} -> {s}" for (m, p), s in statuses.items() if s != 401] == []
 
 
-@pytest.mark.asyncio
 async def test_a_revoked_grant_closes_the_door_again(client, db_session, room_app):
     """Taking the role away has to take the access away.
 
@@ -214,7 +231,6 @@ async def test_a_revoked_grant_closes_the_door_again(client, db_session, room_ap
     assert _refused(statuses) == [], "um papel revogado ainda abre portas"
 
 
-@pytest.mark.asyncio
 async def test_the_role_gets_past_the_gate(client, db_session, room_app):
     """Past the door, not to a 200: what happens next belongs to the scoping issues."""
     user = await make_user(db_session, email="facilitadora@example.com")
@@ -226,7 +242,6 @@ async def test_the_role_gets_past_the_gate(client, db_session, room_app):
     assert 403 not in statuses.values(), f"quem tem o papel foi barrado no portao: {statuses}"
 
 
-@pytest.mark.asyncio
 async def test_a_platform_admin_still_passes(client, db_session, room_app):
     """`require_role` curto-circuita em `is_platform_admin`. Afirmado, nao presumido."""
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
@@ -276,7 +291,6 @@ def test_the_audit_covers_both_route_families():
     )
 
 
-@pytest.mark.asyncio
 async def test_the_gate_does_not_re_read_the_role_tables_on_every_request(
     client, db_session, room_app, test_engine
 ):

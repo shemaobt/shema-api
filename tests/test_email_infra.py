@@ -11,34 +11,7 @@ from app.db.models.auth import PasswordResetToken
 from app.services.auth.request_password_reset import request_password_reset
 from app.services.common.email import render_email, send_email
 from tests.baker import make_user
-
-
-class _OkResponse:
-    def raise_for_status(self) -> None:
-        pass
-
-    def json(self) -> dict:
-        return {}
-
-
-def _client_class(recorded: list, error: Exception | None = None):
-    class _Client:
-        def __init__(self, *args, **kwargs) -> None:
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc) -> bool:
-            return False
-
-        async def post(self, url: str, **kwargs):
-            if error is not None:
-                raise error
-            recorded.append((url, kwargs))
-            return _OkResponse()
-
-    return _Client
+from tests.email_harness import client_class
 
 
 class _NoNetworkClient:
@@ -62,7 +35,7 @@ async def test_send_email_hands_recipient_subject_and_sender_to_resend(monkeypat
     monkeypatch.setattr(settings, "email_provider", "resend")
     monkeypatch.setattr(settings, "resend_api_key", "test-key")
     recorded: list = []
-    monkeypatch.setattr(httpx, "AsyncClient", _client_class(recorded))
+    monkeypatch.setattr(httpx, "AsyncClient", client_class(recorded))
 
     sent = await send_email(
         "dest@example.com",
@@ -90,7 +63,7 @@ async def test_a_provider_outage_is_reported_not_raised(monkeypatch) -> None:
     monkeypatch.setattr(settings, "email_provider", "resend")
     monkeypatch.setattr(settings, "resend_api_key", "test-key")
     monkeypatch.setattr(
-        httpx, "AsyncClient", _client_class([], error=httpx.ConnectError("provider down"))
+        httpx, "AsyncClient", client_class([], error=httpx.ConnectError("provider down"))
     )
 
     sent = await send_email("dest@example.com", "Subject", "<p>body</p>")
@@ -167,7 +140,7 @@ async def test_a_dead_provider_does_not_revert_the_password_reset_token(
     monkeypatch.setattr(settings, "email_provider", "resend")
     monkeypatch.setattr(settings, "resend_api_key", "test-key")
     monkeypatch.setattr(
-        httpx, "AsyncClient", _client_class([], error=httpx.ConnectError("provider down"))
+        httpx, "AsyncClient", client_class([], error=httpx.ConnectError("provider down"))
     )
     await make_user(db_session, email="reset-me@example.com")
     await db_session.commit()

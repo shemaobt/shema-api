@@ -1,12 +1,21 @@
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError, ValidationError
-from app.services.platform.tts import cache_key, synthesize_speech
+from app.services.platform import stt, tts
+from app.services.platform.tts import (
+    cache_key,
+    etag_of,
+    fetch_clip,
+    synthesize_speech,
+    synthesize_speech_key,
+)
 from app.services.platform.voices import VOICES, resolve_voice
 
 MP3 = b"\xff\xfb\x90fake-mpeg-frame"
@@ -48,9 +57,13 @@ class MemoryStore:
         self.reads += 1
         return self.objects.get(key)
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def exists(self, key: str) -> bool:
+        return key in self.objects
+
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
         self.writes += 1
         self.objects[key] = data
+        return data
 
 
 async def test_synthesizes_and_returns_the_mp3() -> None:
@@ -73,6 +86,19 @@ async def test_synthesizes_and_returns_the_mp3() -> None:
     assert kwargs["headers"]["xi-api-key"] == "fake-elevenlabs"
 
 
+async def test_the_output_format_reaches_elevenlabs_in_the_query_not_the_body() -> None:
+    client = _client(_ok())
+    store = MemoryStore()
+
+    await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    _, kwargs = client.post.await_args
+    assert kwargs["params"]["output_format"] == "mp3_44100_128"
+    assert "output_format" not in kwargs["json"]
+
+
 async def test_second_call_with_same_text_does_not_hit_elevenlabs() -> None:
     """The heart of the issue: each question is synthesized ONCE, forever, for every app."""
     client = _client(_ok(), _ok())
@@ -92,6 +118,25 @@ async def test_second_call_with_same_text_does_not_hit_elevenlabs() -> None:
     assert store.writes == 1
 
 
+async def test_a_clip_already_in_memory_is_served_without_reading_the_bucket_again() -> None:
+    """The bug ENG-1004 left open: the platform route never checked `_FRESH` on a hit."""
+    client = _client(_ok())
+    store = MemoryStore()
+
+    first = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+    second = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert store.reads == 1, (
+        "o hit baixava o clipe inteiro do bucket de novo mesmo com os bytes já na memória"
+    )
+    assert second.cached is True
+    assert second.etag == first.etag
+
+
 async def test_the_cache_survives_the_process_because_it_lives_in_the_bucket() -> None:
     # A cold worker (new store, same bucket) still finds the object: this is what the
     # in-process LRU in project_health/translation_helper does NOT do.
@@ -100,6 +145,7 @@ async def test_the_cache_survives_the_process_because_it_lives_in_the_bucket() -
         QUESTION, language="pt-BR", settings=_settings(), client=_client(_ok()), store=store
     )
 
+    tts.forget_what_is_kept()  # a different process starts with no in-memory copy at all
     cold = MemoryStore()
     cold.objects = dict(store.objects)  # same bucket; different process
     client = _client(_ok())
@@ -205,11 +251,12 @@ async def test_empty_text_is_an_error() -> None:
         )
 
 
-@pytest.mark.parametrize("status", [429, 500, 503])
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
 async def test_elevenlabs_unavailability_is_an_upstream_failure_not_a_client_error(
     status: int,
 ) -> None:
-    # Their 429/5xx is not a bad request from the SPA: as a 400, the right alert never fires.
+    # A revoked key, a spent quota, or 429/5xx is not a bad request from the SPA: as a 400,
+    # the right alert never fires.
     store = MemoryStore()
 
     with pytest.raises(UpstreamServiceError):
@@ -222,6 +269,20 @@ async def test_elevenlabs_unavailability_is_an_upstream_failure_not_a_client_err
         )
 
     assert store.writes == 0  # no half-clip in the cache
+
+
+@pytest.mark.parametrize(
+    "failure", [httpx.ConnectError("boom"), httpx.ReadTimeout("boom")], ids=["connect", "timeout"]
+)
+async def test_a_dropped_connection_to_elevenlabs_is_an_upstream_failure_too(
+    failure: Exception,
+) -> None:
+    client = SimpleNamespace(post=AsyncMock(side_effect=failure))
+
+    with pytest.raises(UpstreamServiceError):
+        await synthesize_speech(
+            QUESTION, language="pt-BR", settings=_settings(), client=client, store=MemoryStore()
+        )
 
 
 async def test_a_malformed_request_to_elevenlabs_stays_a_business_error() -> None:
@@ -251,7 +312,7 @@ async def test_a_cache_write_failure_does_not_throw_away_the_audio_we_paid_for()
 
 
 async def test_without_an_api_key_it_is_a_configuration_error() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await synthesize_speech(
             QUESTION,
             language="pt-BR",
@@ -385,3 +446,99 @@ async def test_an_own_key_stands_in_for_a_missing_shared_one() -> None:
     )
 
     assert client.post.await_count == 1
+
+
+async def test_the_tts_client_holds_its_connection_a_minute_the_stt_client_still_lets_go_at_five(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tts, "_DEFAULT_CLIENT", None)
+    monkeypatch.setattr(stt, "_DEFAULT_CLIENT", None)
+
+    tts_client = tts._make_client()
+    stt_client = stt._make_client()
+
+    assert tts_client._transport._pool._keepalive_expiry == 60.0
+    assert stt_client._transport._pool._keepalive_expiry == 5.0
+
+
+async def test_a_warm_up_without_an_api_key_never_reaches_elevenlabs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    elevenlabs = SimpleNamespace(get=AsyncMock())
+    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
+
+    tts.warm_connection_in_background(api_key="")
+    await asyncio.gather(*tts._PENDING_WARMUPS, return_exceptions=True)
+
+    assert elevenlabs.get.await_count == 0, (
+        "sem chave configurada, a síntese recusa antes da rede; o aquecimento ia até "
+        "api.elevenlabs.io mesmo assim, inclusive de dentro da suíte"
+    )
+
+
+class _AlreadyWonStore(MemoryStore):
+    """Put refuses this instance's bytes: another instance's rendering already won."""
+
+    def __init__(self, winner: bytes) -> None:
+        super().__init__()
+        self._winner = winner
+
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes:
+        self.writes += 1
+        return self._winner
+
+
+async def test_a_synthesis_that_loses_the_write_remembers_the_winners_bytes_not_its_own() -> None:
+    store = _AlreadyWonStore(winner=b"rendered-elsewhere")
+    client = _client(_ok(b"rendered-here"))
+
+    key = await synthesize_speech_key(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert key.cached is False
+    assert await fetch_clip(key.key, store=store) == b"rendered-elsewhere", (
+        "esta instância continuava servindo a própria renderização da memória mesmo depois "
+        "de o put dizer que outra já tinha vencido"
+    )
+
+
+async def test_the_generic_route_serves_the_winners_bytes_when_its_own_write_lost() -> None:
+    store = _AlreadyWonStore(winner=b"rendered-elsewhere")
+    client = _client(_ok(b"rendered-here"))
+
+    result = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    assert result.audio == b"rendered-elsewhere", (
+        "/tts/speak devolvia a própria renderização, e o aparelho a guardava por um dia "
+        "como imutável sob uma chave que nenhuma outra instância serve com esses bytes"
+    )
+    assert result.etag == etag_of(b"rendered-elsewhere")
+    assert result.cached is False
+
+
+async def test_a_clip_whose_write_failed_is_not_served_from_memory_afterwards() -> None:
+    class BrokenStore(MemoryStore):
+        async def put(self, key: str, data: bytes, content_type: str) -> bytes:
+            self.writes += 1
+            raise RuntimeError("bucket down")
+
+    store = BrokenStore()
+    client = _client(_ok(b"rendered-here"), _ok(b"rendered-here"))
+
+    first = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+    assert first.audio == b"rendered-here" and first.cached is False
+
+    assert await fetch_clip(first.key, store=store) is None, (
+        "a semente antes do put deixava na memória bytes que o bucket nunca recebeu, e "
+        "este worker passava a servi-los como cached em vez de tentar gravar de novo"
+    )
+    second = await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+    assert second.cached is False
+    assert store.writes == 2

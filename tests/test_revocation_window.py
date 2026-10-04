@@ -136,7 +136,6 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-@pytest.mark.asyncio
 async def test_a_role_revoked_elsewhere_stops_opening_the_door_within_the_window(
     client, db_session, room_app, clock
 ):
@@ -171,7 +170,6 @@ async def test_a_role_revoked_elsewhere_stops_opening_the_door_within_the_window
     )
 
 
-@pytest.mark.asyncio
 async def test_a_deactivated_account_stops_getting_in_within_the_window(
     client, db_session, room_app, clock
 ):

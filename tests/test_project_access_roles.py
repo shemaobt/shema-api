@@ -16,7 +16,6 @@ async def _project(db):
     return await make_project(db, language_id=lang.id)
 
 
-@pytest.mark.asyncio
 async def test_is_project_manager(db_session) -> None:
     project = await _project(db_session)
     manager = await make_user(db_session, email="m@example.com")
@@ -28,7 +27,6 @@ async def test_is_project_manager(db_session) -> None:
     assert await project_service.is_project_manager(db_session, member.id, project.id) is False
 
 
-@pytest.mark.asyncio
 async def test_grant_access_allows_admin_and_manager(db_session) -> None:
     project = await _project(db_session)
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
@@ -40,7 +38,6 @@ async def test_grant_access_allows_admin_and_manager(db_session) -> None:
     await project_service.assert_can_grant_access(db_session, manager, project.id, "manager")
 
 
-@pytest.mark.asyncio
 async def test_grant_access_forbidden_for_member(db_session) -> None:
     project = await _project(db_session)
     member = await make_user(db_session, email="u@example.com")
@@ -50,7 +47,6 @@ async def test_grant_access_forbidden_for_member(db_session) -> None:
         await project_service.assert_can_grant_access(db_session, member, project.id, "member")
 
 
-@pytest.mark.asyncio
 async def test_manager_cannot_grant_a_facilitator(db_session) -> None:
     project = await _project(db_session)
     manager = await make_user(db_session, email="m@example.com")
@@ -62,7 +58,6 @@ async def test_manager_cannot_grant_a_facilitator(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_admin_can_grant_a_facilitator(db_session) -> None:
     project = await _project(db_session)
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
@@ -70,7 +65,6 @@ async def test_admin_can_grant_a_facilitator(db_session) -> None:
     await project_service.assert_can_grant_access(db_session, admin, project.id, "facilitator")
 
 
-@pytest.mark.asyncio
 async def test_manager_can_modify_a_member(db_session) -> None:
     project = await _project(db_session)
     manager = await make_user(db_session, email="m@example.com")
@@ -81,7 +75,6 @@ async def test_manager_can_modify_a_member(db_session) -> None:
     await project_service.assert_can_modify_member_role(db_session, manager, project.id, member.id)
 
 
-@pytest.mark.asyncio
 async def test_manager_cannot_modify_another_manager(db_session) -> None:
     project = await _project(db_session)
     manager = await make_user(db_session, email="m@example.com")
@@ -95,7 +88,6 @@ async def test_manager_cannot_modify_another_manager(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_manager_cannot_modify_a_facilitator(db_session) -> None:
     project = await _project(db_session)
     manager = await make_user(db_session, email="m@example.com")
@@ -109,7 +101,6 @@ async def test_manager_cannot_modify_a_facilitator(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_admin_can_modify_a_manager(db_session) -> None:
     project = await _project(db_session)
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
@@ -119,7 +110,6 @@ async def test_admin_can_modify_a_manager(db_session) -> None:
     await project_service.assert_can_modify_member_role(db_session, admin, project.id, manager.id)
 
 
-@pytest.mark.asyncio
 async def test_non_manager_cannot_modify_roles(db_session) -> None:
     project = await _project(db_session)
     member = await make_user(db_session, email="u@example.com")
@@ -133,7 +123,6 @@ async def test_non_manager_cannot_modify_roles(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_modify_missing_target_raises_not_found(db_session) -> None:
     project = await _project(db_session)
     manager = await make_user(db_session, email="m@example.com")

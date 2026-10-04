@@ -405,9 +405,10 @@ async def test_the_intake_routes_need_no_authorization_header(
 ) -> None:
     """The premise of this whole file, asserted so it cannot become true by accident later.
 
-    ``tests/test_shema/test_access.py`` names the path in ``UNAUTHENTICATED_PATHS``; this is
-    the other side of that line — the route really does answer with no bearer token, which is
-    the one thing the audit cannot check by reading a dependency tree.
+    ``tests/shema_harness.py`` names the path in ``UNAUTHENTICATED_PATHS``, the list
+    ``test_access.py``'s audit exempts; this is the other side of that line — the route really
+    does answer with no bearer token, which is the one thing the audit cannot check by reading
+    a dependency tree.
     """
     token = (await mint(client, headers)).json()["token"]
 

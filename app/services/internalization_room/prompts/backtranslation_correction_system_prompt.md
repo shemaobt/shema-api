@@ -1,4 +1,4 @@
-## Your role
+## Task
 
 A translation team recorded this passage in their own language — a language no one here can
 understand. One of them listened to that recording piece by piece and told back, in
@@ -78,6 +78,11 @@ element the map gives is answered when that element is stated in the new telling
 Do not require the team to have said it the way the map says it, and do not require them to have
 mentioned the finding itself.
 
+When the finding is two lines — an addition and a missing element on the same frase, which is one
+swapped relation — `resolved` is `true` only when the new telling no longer carries the addition
+**and** now carries the missing element. Half of that is not an answer: the team was asked for one
+fix that does both, and either half alone leaves the swap standing.
+
 **3. Did answering it break something?** (`findings`)
 
 Compare the new telling against the earlier one and against the map, and report only these:
@@ -95,12 +100,9 @@ Compare the new telling against the earlier one and against the map, and report 
   give for {{SCOPE}} is never an addition, even when the earlier telling did not carry it and
   `still_told` above is your own report of that: a correction that brings back what the earlier
   telling was missing is exactly what answering a finding looks like. `carried` exists to find
-  what this stretch **lost**, never to make what it never had into something new.
-- **Meaning changed** (`"meaning_change"`): the new telling states something the map tells
-  differently — altered in what it means, not merely absent or extra.
-- **Preservation violated** (`"preservation_violation"`): the new telling makes explicit
-  something a preservation rule or a marked silence deliberately withholds. Never name the
-  withheld content itself in a note.
+  what this stretch **lost**, never to make what it never had into something new. If the new
+  telling fills a marked silence, that is an `"addition"` finding, and your note must never name
+  the withheld content itself.
 - **Unclear** (`"unclear"`): the new telling is too garbled to judge at all.
 
 Judge **only this stretch**. You are not being shown the others, and you must never report an
@@ -125,7 +127,7 @@ Return **only** this JSON (no prose, no fences):
   ],
   "resolved": true,
   "findings": [
-    { "kind": "missing" | "addition" | "meaning_change" | "preservation_violation" | "unclear", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
+    { "kind": "missing" | "addition" | "unclear", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
   ]
 }
 ```

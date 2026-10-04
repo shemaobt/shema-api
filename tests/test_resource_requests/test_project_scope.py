@@ -22,6 +22,15 @@ from app.db.models.resource_request import (
 from app.services.oral_collector import gcs_utils
 from app.services.resource_request import count_project_translations
 from tests.baker import make_user
+from tests.resource_request_harness import (
+    PDF,
+    REQUESTS,
+    FakeStore,
+    create,
+    decide,
+    draft,
+    put_file,
+)
 from tests.test_resource_requests.conftest import (
     auth_header,
     grant,
@@ -29,8 +38,6 @@ from tests.test_resource_requests.conftest import (
     make_project,
     own_project_id,
 )
-from tests.test_resource_requests.test_attachments import PDF, FakeStore, put_file
-from tests.test_resource_requests.test_requests import REQUESTS, _decide, create, draft
 
 
 async def member_of(db_session, project_id: str, email: str):
@@ -144,7 +151,7 @@ async def test_a_revision_stays_in_the_project(db_session, client, rrf_app) -> N
     headers = await auth_header(db_session, team)
     created = await create(client, headers)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
-    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await decide(db_session, created["id"], RRDecision.REVISE)
 
     opened = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)
 
@@ -258,7 +265,7 @@ async def test_a_teammate_does_not_open_a_revision_of_anothers_request(
     _bia, bia = await member_of(db_session, "kadiweu", "bia@rr.test")
     started = await create(client, ana)
     await client.post(f"{REQUESTS}/{started['id']}/submit", headers=ana)
-    await _decide(db_session, started["id"], RRDecision.REVISE)
+    await decide(db_session, started["id"], RRDecision.REVISE)
 
     res = await client.post(f"{REQUESTS}/{started['id']}/revise", headers=bia)
 

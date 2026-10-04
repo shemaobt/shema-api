@@ -2,9 +2,9 @@
 
 The completion floor the design names is *every concrete element of the map — each scene,
 being, place, object, time, significant absence, **and preserved element** — engaged*. The
-last eight passages of Ruth carry no `do_not_decide` audit entry at all, so their coverage
-spine is built without a single `preserved:` bead and their comprehension pack without a
-single `preserved_element` checkpoint. Nothing refused them: the room walked them, met a
+passages of Ruth past the canon's edge carry no `do_not_decide` audit entry at all, so their
+coverage spine is built without a single `preserved:` bead and their comprehension pack
+without a single `preserved_element` checkpoint. Nothing refused them: the room walked them, met a
 floor that was missing its top row, and handed Refine a package claiming the floor was met.
 
 Two tests carry the slice, in opposite directions.
@@ -14,14 +14,15 @@ the original code by the session being created normally.
 
 **`test_a_passage_that_carries_its_preservation_layer_still_opens`** is the counterweight,
 and is the more important of the two. A guard that overshoots takes the whole book down —
-six passages that are walkable today, and the room with them.
+seven passages that are walkable today, and the room with them.
 
-The canon is read here rather than named: a test that wrote "P07 to P14" would keep passing
-on the day the project writes those eight layers, which is exactly the day it must stop.
+The canon is read here rather than named: a test that wrote "P08 to P14" would keep passing
+on the day the project writes those seven layers, which is exactly the day it must stop.
 """
 
 from __future__ import annotations
 
+import json
 import textwrap
 from collections.abc import Iterator
 from pathlib import Path
@@ -33,21 +34,45 @@ from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon import book_material, parse_map
 from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.labels import LABELS_DIR
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
+
+#: The passages a team can actually be standing on today — the rest are vendored but refused
+#: by `require_walkable`. Read from the canon, like `CANON` above, so this grows with the book
+#: rather than needing an edit every time a passage opens.
+WALKABLE = [
+    meaning_map.pericope_num
+    for meaning_map in load_book(ROOM_BOOK)
+    if not book_material.unwalkable(meaning_map)
+]
+
+
+def _without_a_preservation_layer(canon: list[str]) -> str | None:
+    """The first pericope with no `preserved:` bead, or `None` once the canon has none left.
+
+    A plain `next(...)` with no default raised `StopIteration` at import time on the day
+    every passage in `canon` carries the layer — that took the whole module down as a
+    collection error instead of reddening a test, which is ENG-925's `WITHOUT_LAYER` defect.
+    """
+    return next(
+        (
+            pericope
+            for pericope in canon
+            if not any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
+        ),
+        None,
+    )
+
 
 WITH_LAYER = next(
     pericope
     for pericope in CANON
     if any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
 )
-WITHOUT_LAYER = next(
-    pericope
-    for pericope in CANON
-    if not any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
-)
+WITHOUT_LAYER = _without_a_preservation_layer(CANON)
 
 #: A whole little canon of its own — one map and one Compilation Log — so the two signals can
 #: be set against each other. The real Ruth material has them agreeing everywhere, and
@@ -73,6 +98,12 @@ _PENDING_MAP = textwrap.dedent(
 
     ### 2.2 Context
     None. This passage exists only inside this test.
+
+    ### 2.3 Emotion / Tone / Pace
+    Flat, because nothing happens.
+
+    ### 2.4 Communicative Function
+    To be refused at the door of the room.
 
     ## 3. Level 2 — Scenes / Episodes
 
@@ -140,10 +171,21 @@ def _forget_the_canon() -> None:
     book_material.preservation_rules.cache_clear()
 
 
+def test_the_lookup_answers_none_rather_than_raising_once_every_passage_has_the_layer() -> None:
+    """Falsifies the fix directly: a bare `next(...)` here raises `StopIteration` on an empty
+    generator, which is exactly what the day every pericope carries a layer produces — an
+    empty `canon` is that day's shape, since nothing in it is left to fail the `if`.
+    """
+    assert _without_a_preservation_layer([]) is None
+
+
 async def test_a_passage_with_no_preservation_layer_does_not_open(
     db_session: AsyncSession,
 ) -> None:
     """The gate. Refused, and the refusal says which layer is missing and for which passage."""
+    if WITHOUT_LAYER is None:
+        pytest.skip("every passage in the canon now carries a preservation layer")
+
     with pytest.raises(ValidationError) as refusal:
         await create_session(db_session, pericope=WITHOUT_LAYER)
 
@@ -155,7 +197,7 @@ async def test_a_passage_with_no_preservation_layer_does_not_open(
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
-    """The counterweight: the six that are walkable today go on being walkable, spine intact."""
+    """The counterweight: the seven that are walkable today go on being walkable, spine intact."""
     preserved = [
         element.key for element in elements_for(WITH_LAYER) if element.kind is ElementKind.PRESERVED
     ]
@@ -195,3 +237,55 @@ async def test_a_map_whose_survey_is_pending_is_not_consumable_canon(
         await create_session(db_session, pericope=a_passage_whose_survey_is_pending)
 
     assert a_passage_whose_survey_is_pending in str(refusal.value)
+
+
+def test_the_book_opens_as_far_as_ruth_2_17_23_and_no_further() -> None:
+    """Where the boundary actually falls, named by the reference and not by a pericope id.
+
+    The rule test above derives both of its sides from the same canon, so it holds whichever
+    passages carry a layer and says nothing about which ones do. The project wrote the seventh
+    passage's withholdings on 31 August and the vendored copy predated them, so the wheel
+    closed at 2:16: a team that finished the field was told the book had nothing left in it,
+    with seven passages still in the folder.
+    """
+    maps = load_book(ROOM_BOOK)
+    opens = [m.pericope_num for m in maps if not book_material.unwalkable(m)]
+    ends_at = next(m.pericope_num for m in maps if m.reference == "Ruth 2:17-23")
+
+    assert opens == CANON[: CANON.index(ends_at) + 1], (
+        f"o livro que se caminha vai de Rute 1:1 a 2:23, sem buraco no meio — abriram {opens}"
+    )
+
+    refusals = [book_material.unwalkable(m) for m in maps if m.pericope_num not in opens]
+    assert all(reason and "no preservation layer" in reason for reason in refusals), (
+        f"a recusa tem que nomear a camada que falta, e alguma recusou por outra coisa: {refusals}"
+    )
+
+
+@pytest.mark.parametrize("pericope_num", WALKABLE)
+def test_every_preserved_bead_of_a_walkable_passage_has_a_label(pericope_num: str) -> None:
+    """The inverse of `labels.py`'s orphans guard — ENG-925.
+
+    `orphans` (`canon/labels.py`) catches a label the canon no longer serves; nothing caught
+    the other direction until now. The re-vendor that almost shipped in ENG-787 added seven
+    `preserved:*` beads to P07 with no matching catalogue entry.
+
+    Reads the shipped `ruth.json` directly rather than going through `labelled_elements`:
+    that loader builds its returned key set from the same `elements_for` call this test
+    filters, so `preserved <= {e.key for e in labelled_elements(...)}` can never be false —
+    it is either true, or the call raises first (`_text` refuses a missing key) and the
+    comparison is never reached at all. Comparing against the catalogue's own keys instead
+    also catches the shape that leaves `labelled_elements` silent: a walkable passage with
+    *no* catalogue entry at all takes the canon fallback (`labels.py:103`) and answers every
+    bead, preserved ones included, with `label_pt=None, label_es=None` — a real gap the
+    exception-based version could not see, caught on the PR's bot review.
+    """
+    preserved = {
+        element.key
+        for element in elements_for(pericope_num)
+        if element.kind is ElementKind.PRESERVED
+    }
+    catalogue = json.loads((LABELS_DIR / "ruth.json").read_text(encoding="utf-8"))
+    named = set(catalogue.get(pericope_num, {}))
+
+    assert preserved <= named

@@ -16,7 +16,6 @@ a column.
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 from typing import Any
 
@@ -31,12 +30,24 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.room_harness import (
+    a_piece_still_to_be_told,
+    heard_every_part,
+    nothing_is_read_ahead,
+    press_terminei,
+)
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 LANGUAGE = "pt"
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:
@@ -86,10 +97,9 @@ async def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 @pytest.fixture()
 def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
 
     reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
+    the_room_agent_is(monkeypatch, analyst=reader)
     return reader
 
 
@@ -107,14 +117,13 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     # The package re-exports a `run_turn` function under the submodule's own name, so the
     # module has to be asked for by path rather than by attribute.
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return "Vocês contaram bem."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(text: str, *_: Any, **__: Any):
         spoken.append(text)
@@ -196,10 +205,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _two_stretches_told(client: httpx.AsyncClient) -> tuple[str, str]:
@@ -215,23 +227,11 @@ async def _two_stretches_told(client: httpx.AsyncClient) -> tuple[str, str]:
     return session_id, take_id
 
 
-async def _re_record_the_native(db: AsyncSession, session_id: str, *, take_id: str) -> IRSegment:
-    """Redo one stretch's mother-tongue audio, which is what leaves it waiting to be told.
-
-    The service refuses to carry the old explanation across when the slice moves — the
-    explanation belonged to audio nobody will hear again — so the stretch comes back with
-    nothing the team said, which is exactly the state this gate is about.
-    """
+async def _leave_it_waiting_to_be_told(db: AsyncSession, session_id: str) -> IRSegment:
+    """Leave one stretch waiting to be told back, by cutting the last one in two."""
     session = await get_session(db, session_id)
-    standing = await service.final_segments(db, session_id)
-    return await service.capture_segment(
-        db,
-        session,
-        take_id=take_id,
-        starts_ms=9000,
-        ends_ms=24000,
-        replaces=standing[-1],
-    )
+    standing = (await service.final_segments(db, session_id))[-1]
+    return await a_piece_still_to_be_told(db, session, standing)
 
 
 async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRSegment:
@@ -249,7 +249,6 @@ async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRS
     )
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -258,10 +257,10 @@ async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
     Its prompt calls an element missing when it appears in no stretch, so a subset makes it
     raise findings about the stretch that was left out.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert analyst.readings == 0, (
@@ -270,7 +269,6 @@ async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
     )
 
 
-@pytest.mark.asyncio
 async def test_the_room_tells_the_team_instead_of_going_quiet(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -280,10 +278,10 @@ async def test_the_room_tells_the_team_instead_of_going_quiet(
     used to answer with. Naming a line the tablet may not carry is not the same as being
     heard, and that is the whole of what changed.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert body["audio_url"], "a equipe tem de ter o que tocar, sem depender do pacote do app"
@@ -291,7 +289,6 @@ async def test_the_room_tells_the_team_instead_of_going_quiet(
     assert spoken, "e alguma coisa tem de ter sido dita para haver endereço"
 
 
-@pytest.mark.asyncio
 async def test_what_the_room_says_is_the_waiting_line_and_not_another_familys(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -300,16 +297,15 @@ async def test_what_the_room_says_is_the_waiting_line_and_not_another_familys(
     The D family is the one this must never be: it says the room could not hear, which is
     false — it heard everything — and it asks the team to repeat what they already told.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     assert spoken[-1] in utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE)
     assert spoken[-1] not in utterances(FailSafe.INAUDIBLE, LANGUAGE)
 
 
-@pytest.mark.asyncio
 async def test_the_room_does_not_say_the_same_thing_twice_running(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -319,11 +315,11 @@ async def test_the_room_does_not_say_the_same_thing_twice_running(
     appended, because the gate answers before the turn loop — so a rotation keyed on the
     conversation stands still and the room repeats itself word for word.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
-    await _finish(client, session_id)
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
+    await _finish(client, db_session, session_id)
 
     assert len(spoken) == 2
     assert spoken[0] != spoken[1], (
@@ -333,9 +329,8 @@ async def test_the_room_does_not_say_the_same_thing_twice_running(
     assert set(spoken) <= set(utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE))
 
 
-@pytest.mark.asyncio
 async def test_the_other_families_are_still_played_from_the_app(
-    client: httpx.AsyncClient, analyst: Analyst, spoken: list[str]
+    client: httpx.AsyncClient, analyst: Analyst, spoken: list[str], db_session: AsyncSession
 ) -> None:
     """Scenario 5. Only this one line moved; the fail-safes stay where they belong.
 
@@ -345,14 +340,13 @@ async def test_the_other_families_are_still_played_from_the_app(
     """
     session_id = await _open_session(client)
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))
     assert body["audio_url"] == ""
     assert spoken == [], "nada foi sintetizado no caminho de 'não ouvi nada'"
 
 
-@pytest.mark.asyncio
 async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -362,10 +356,10 @@ async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained
     `checked` is what the app strikes the passage off the wheel by. A finished passage never
     comes back, so there is no undoing this one.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["checked"] is False
     standing = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
@@ -374,30 +368,28 @@ async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained
     )
 
 
-@pytest.mark.asyncio
 async def test_the_gate_opens_itself_when_the_last_stretch_is_explained(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
     """Scenario 4. Nobody unlocks anything: the condition stops holding and the reading runs."""
-    session_id, take_id = await _two_stretches_told(client)
-    waiting = await _re_record_the_native(db_session, session_id, take_id=take_id)
-    assert (await _finish(client, session_id)).json()["checked"] is False
+    session_id, _ = await _two_stretches_told(client)
+    waiting = await _leave_it_waiting_to_be_told(db_session, session_id)
+    assert (await _finish(client, db_session, session_id)).json()["checked"] is False
 
     await _explain(db_session, session_id, waiting)
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert analyst.readings == 1, "a leitura roda assim que a retrotradução está inteira"
     assert answered.json()["checked"] is True
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_with_every_stretch_explained_is_read_as_before(
-    client: httpx.AsyncClient, analyst: Analyst
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
     """Scenario 5. Regression: the ordinary path gets no slower and no narrower."""
     session_id, _take_id = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert analyst.readings == 1
@@ -405,9 +397,8 @@ async def test_a_telling_back_with_every_stretch_explained_is_read_as_before(
     assert body["fixed_line"] == "", "o caminho normal fala pela síntese, não por fala fixa"
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_with_no_stretch_at_all_answers_as_before(
-    client: httpx.AsyncClient, analyst: Analyst
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
     """Scenario 6. There is already a path for this one, and it is not this one.
 
@@ -416,7 +407,7 @@ async def test_a_telling_back_with_no_stretch_at_all_answers_as_before(
     """
     session_id = await _open_session(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert analyst.readings == 0

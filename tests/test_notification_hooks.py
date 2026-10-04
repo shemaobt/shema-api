@@ -24,7 +24,6 @@ async def _get_notifications(db_session, user_id: str) -> list[Notification]:
     return list(result.scalars().all())
 
 
-@pytest.mark.asyncio
 async def test_approve_creates_notification_for_analyst(db_session, mm_app) -> None:
     analyst = await make_user(db_session, email="hook-analyst1@test.com")
     checker = await make_user(db_session, email="hook-checker1@test.com")
@@ -43,7 +42,6 @@ async def test_approve_creates_notification_for_analyst(db_session, mm_app) -> N
     assert notifs[0].app_id == mm_app.id
 
 
-@pytest.mark.asyncio
 async def test_revisions_requested_creates_notification(db_session, mm_app) -> None:
     analyst = await make_user(db_session, email="hook-analyst2@test.com")
     checker = await make_user(db_session, email="hook-checker2@test.com")
@@ -59,7 +57,6 @@ async def test_revisions_requested_creates_notification(db_session, mm_app) -> N
     assert "Gen 1:1-5" in notifs[0].body
 
 
-@pytest.mark.asyncio
 async def test_draft_to_crosscheck_creates_no_notification(db_session, mm_app) -> None:
     analyst = await make_user(db_session, email="hook-analyst3@test.com")
     book = await make_bible_book(db_session)
@@ -72,7 +69,6 @@ async def test_draft_to_crosscheck_creates_no_notification(db_session, mm_app) -
     assert len(notifs) == 0
 
 
-@pytest.mark.asyncio
 async def test_add_feedback_creates_notification_for_analyst(db_session, mm_app) -> None:
     analyst = await make_user(db_session, email="hook-analyst4@test.com")
     checker = await make_user(db_session, email="hook-checker4@test.com")
@@ -88,7 +84,6 @@ async def test_add_feedback_creates_notification_for_analyst(db_session, mm_app)
     assert "Exod 2:1-10" in notifs[0].body
 
 
-@pytest.mark.asyncio
 async def test_add_feedback_no_notification_when_self(db_session, mm_app) -> None:
     analyst = await make_user(db_session, email="hook-analyst5@test.com")
     book = await make_bible_book(db_session)

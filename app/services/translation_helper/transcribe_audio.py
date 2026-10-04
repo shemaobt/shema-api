@@ -6,7 +6,7 @@ import math
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ async def transcribe_audio_detailed(
         raise ValidationError("Audio payload is empty")
     cfg = settings or get_settings()
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     resolved_mime = _guess_mime_type(filename, mime_type)
     if resolved_mime == "audio/mpeg" and not filename and not mime_type:
@@ -137,19 +137,27 @@ async def transcribe_audio_detailed(
 
     upload_name = _filename_for_upload(filename, resolved_mime)
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
-        headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
-        files={"file": (upload_name, audio_bytes, resolved_mime)},
-        data={"model_id": cfg.elevenlabs_stt_model},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
+            headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
+            files={"file": (upload_name, audio_bytes, resolved_mime)},
+            data={"model_id": cfg.elevenlabs_stt_model},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs STT unreachable: %s", error)
+        raise UpstreamServiceError(
+            f"Transcription request could not reach ElevenLabs: {error}"
+        ) from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs STT failed: status=%s body=%s",
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"Transcription request failed with status {response.status_code}")
+        raise upstream_or_validation_error(
+            response.status_code, f"Transcription request failed with status {response.status_code}"
+        )
 
     payload = response.json()
     text = (payload.get("text") or "").strip()

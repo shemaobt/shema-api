@@ -21,10 +21,11 @@ import pytest
 from sqlalchemy import select
 
 from app.db.models.shema import ShemaProject
-from app.db.models.shema_enums import ShemaNeedUrgency, ShemaPrayerVisibility, ShemaRegionKey
+from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
 from app.db.models.shema_need import ShemaNeed
 from app.services.shema import authorized_requests_by_project
-from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user, make_shema_project
+from tests.shema_harness import HOME, need, person
+from tests.test_shema.conftest import PREFIX, auth_header, make_shema_project
 
 WALL = f"{PREFIX}/prayer/requests"
 PULSE = f"{PREFIX}/prayer/pulse"
@@ -32,7 +33,6 @@ PROJECTS = f"{PREFIX}/projects"
 SUBMISSIONS = f"{PREFIX}/forms/submissions"
 EXPORT = f"{PREFIX}/export/projects"
 
-HOME = ShemaRegionKey.OTHER
 AWAY = ShemaRegionKey.AFRICA
 
 #: What a team said nobody else may read. Every assertion that something is withheld looks for
@@ -76,33 +76,6 @@ async def seed(
     project.prayer_visibility = visibility
     await db_session.commit()
     return project
-
-
-async def need(
-    db_session, project: ShemaProject, description: str, *, shared: bool, answered: bool = False
-) -> ShemaNeed:
-    row = ShemaNeed(
-        project_id=project.id,
-        category="financial",
-        urgency=ShemaNeedUrgency.LOW,
-        description=description,
-        prayer_shared=shared,
-        prayer_answered=answered,
-    )
-    db_session.add(row)
-    await db_session.commit()
-    return row
-
-
-async def person(db_session, shema_app, role_key: str, regions=(HOME,)):
-    user = await make_scoped_user(
-        db_session,
-        shema_app,
-        email=f"{role_key.lower()}-{'-'.join(regions)}@oracao.test",
-        role_key=role_key,
-        regions=list(regions),
-    )
-    return await auth_header(db_session, user)
 
 
 @pytest.fixture()

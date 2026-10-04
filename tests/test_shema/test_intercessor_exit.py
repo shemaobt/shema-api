@@ -233,8 +233,8 @@ async def test_leaving_logs_the_event_and_not_the_person(
 
 
 async def test_the_exit_routes_need_no_authorization_header(client, db_session, person) -> None:
-    """The premise of the whole path: the person has no account. ``test_access.py`` names the
-    path in ``UNAUTHENTICATED_PATHS``; this is the other side of that line."""
+    """The premise of the whole path: the person has no account. ``tests/shema_harness.py``
+    names the path in ``UNAUTHENTICATED_PATHS``; this is the other side of that line."""
     raw = await issue_exit_link(db_session, person["id"])
 
     assert (await client.get(_exit(raw))).status_code == 204

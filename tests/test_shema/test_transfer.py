@@ -39,8 +39,8 @@ from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
 from app.models.shema_transfer import CSV_BOM, ExportedProject
 from app.services.shema.save_project import MINTED_ID_REQUIRED, _bump_version
+from tests.shema_harness import need, person
 from tests.test_shema.conftest import PREFIX, make_shema_project
-from tests.test_shema.test_prayer import need, person
 
 EXPORT = f"{PREFIX}/export/projects"
 IMPORT = f"{PREFIX}/import/projects"

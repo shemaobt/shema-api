@@ -1,9 +1,12 @@
+import asyncio
+import logging
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langdetect.detector_factory import init_factory
 
 from app.api.access_requests import router as access_requests_router
 from app.api.annotation_studio import router as annotation_studio_router
@@ -12,10 +15,12 @@ from app.api.auth import router as auth_router
 from app.api.bhsa import router as bhsa_router
 from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
+from app.api.build import router as build_router
 from app.api.change_requests import router as change_requests_router
 from app.api.devices import devices_router
 from app.api.facilitator.devices import facilitator_devices_router
 from app.api.facilitator.legend import facilitator_legend_router
+from app.api.facilitator.nudges import facilitator_nudges_router
 from app.api.facilitator.teams import facilitator_teams_router
 from app.api.health import router as health_router
 from app.api.internalization_room import router as internalization_room_router
@@ -62,9 +67,12 @@ from app.core.logging import setup_logging
 from app.core.qdrant import close_qdrant, init_qdrant
 from app.core.rate_limit import limiter
 from app.services.bhsa import loader
+from app.services.internalization_room.llm import close_clients
 from app.services.meaning_map.seed_books import seed_books
 from app.services.project_health.prompts.seed_prompts import seed_default_prompts
 from app.services.translation_helper.seed_agent_prompts import seed_agent_prompts
+
+logger = logging.getLogger(__name__)
 
 
 def _load_bhsa_background() -> None:
@@ -98,16 +106,23 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 flush=True,
             )
     await init_qdrant()
+    await asyncio.to_thread(init_factory)
     threading.Thread(target=_load_bhsa_background, daemon=True).start()
     try:
         yield
     finally:
+        await close_clients()
         await close_qdrant()
         await close_db()
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if not settings.internalization_room_clip_signing_key:
+        logger.warning(
+            "INTERNALIZATION_ROOM_CLIP_SIGNING_KEY is not set: the room's clip addresses are "
+            "served unsigned, and anyone handed one can mint another"
+        )
     app = FastAPI(title="Tripod Backend", version="0.1.0", lifespan=lifespan)
 
     app.state.limiter = limiter
@@ -127,11 +142,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         # Neither is CORS-safelisted: without this a browser client cannot read them at all.
         # The sound-necklace autosave version guard rides on ETag; X-Tts-Cached is what makes
-        # TTS cache warming observable.
+        # TTS cache warming observable. The range headers are left out on purpose; the test
+        # that pins this list says why.
         expose_headers=["ETag", "X-Tts-Cached"],
     )
 
     app.include_router(health_router)
+    app.include_router(build_router, prefix="/api", tags=["build"])
     app.include_router(
         access_requests_router,
         prefix="/api/access-requests",
@@ -177,6 +194,11 @@ def create_app() -> FastAPI:
         facilitator_teams_router,
         prefix="/api/facilitator/teams",
         tags=["facilitator-teams"],
+    )
+    app.include_router(
+        facilitator_nudges_router,
+        prefix="/api/facilitator/teams",
+        tags=["facilitator-nudges"],
     )
     app.include_router(
         facilitator_legend_router,

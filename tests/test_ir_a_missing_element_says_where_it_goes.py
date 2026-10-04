@@ -9,7 +9,6 @@ in `test_internalization_room_back_translation.py` exercises the plain `chunk` c
 """
 
 import logging
-import sys
 from typing import Any
 
 import pytest
@@ -23,6 +22,7 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     closing_block,
 )
+from tests.turn_harness import the_room_agent_is
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 P = "P03"
@@ -57,14 +57,13 @@ def _told() -> list[IRSegment]:
 
 @pytest.fixture
 def patch_analyst(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.back_translation"]
 
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             agent.system = system_prompt
             return reply
 
-        monkeypatch.setattr(module, "call_agent", agent)
+        the_room_agent_is(monkeypatch, analyst=agent)
         return agent
 
     return _install
@@ -83,7 +82,6 @@ async def _findings_for(reply: str, patch_analyst):
     return analysis.findings
 
 
-@pytest.mark.asyncio
 async def test_after_on_the_last_chunk_sends_the_team_to_rehearsal(patch_analyst) -> None:
     """Case 1: nothing to point at past the last chunk, and the room goes on recording."""
     findings = await _findings_for(
@@ -97,7 +95,6 @@ async def test_after_on_the_last_chunk_sends_the_team_to_rehearsal(patch_analyst
     assert closing_block(findings[0]) == CLOSING_MISSING_TO_REHEARSAL
 
 
-@pytest.mark.asyncio
 async def test_after_in_the_middle_points_at_the_next_chunk(patch_analyst) -> None:
     """Case 2: missing after chunk 3 is missing at the start of chunk 4."""
     findings = await _findings_for(
@@ -108,7 +105,6 @@ async def test_after_in_the_middle_points_at_the_next_chunk(patch_analyst) -> No
     assert findings[0].segment_id == "segmento-4"
 
 
-@pytest.mark.asyncio
 async def test_inside_points_at_the_named_chunk(patch_analyst) -> None:
     """Case 3 (guard): the missing content is inside the chunk itself."""
     findings = await _findings_for(
@@ -119,7 +115,6 @@ async def test_inside_points_at_the_named_chunk(patch_analyst) -> None:
     assert findings[0].segment_id == "segmento-3"
 
 
-@pytest.mark.asyncio
 async def test_before_on_the_first_chunk_points_at_the_first_chunk(patch_analyst) -> None:
     """Case 4 (guard): before chunk 1 is still chunk 1 — there is no chunk 0."""
     findings = await _findings_for(
@@ -130,7 +125,6 @@ async def test_before_on_the_first_chunk_points_at_the_first_chunk(patch_analyst
     assert findings[0].segment_id == "segmento-1"
 
 
-@pytest.mark.asyncio
 async def test_without_where_the_chunk_is_used_as_is(patch_analyst) -> None:
     """Case 5 (guard): a reply with no `where` at all keeps today's behaviour."""
     findings = await _findings_for(
@@ -141,7 +135,6 @@ async def test_without_where_the_chunk_is_used_as_is(patch_analyst) -> None:
     assert findings[0].segment_id == "segmento-5"
 
 
-@pytest.mark.asyncio
 async def test_a_null_chunk_still_sends_the_team_to_rehearsal(patch_analyst) -> None:
     """Case 5 (guard): a legacy `null` chunk still means no stretch to point at."""
     findings = await _findings_for(
@@ -152,7 +145,6 @@ async def test_a_null_chunk_still_sends_the_team_to_rehearsal(patch_analyst) -> 
     assert findings[0].segment_id is None
 
 
-@pytest.mark.asyncio
 async def test_an_unrecognised_where_is_ignored_and_leaves_a_trace(
     patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -172,13 +164,12 @@ async def test_an_unrecognised_where_is_ignored_and_leaves_a_trace(
     )
 
 
-@pytest.mark.asyncio
 async def test_other_kinds_ignore_where(patch_analyst) -> None:
     """Case 7 (guard): `where` only means something for a `missing` finding."""
     findings = await _findings_for(
-        '{"findings":[{"kind":"meaning_change","chunk":2,"where":"after","note":"mudou"}]}',
+        '{"findings":[{"kind":"unclear","chunk":2,"where":"after","note":"não deu"}]}',
         patch_analyst,
     )
 
-    assert findings[0].kind is FindingKind.MEANING_CHANGE
+    assert findings[0].kind is FindingKind.UNCLEAR
     assert findings[0].segment_id == "segmento-2"

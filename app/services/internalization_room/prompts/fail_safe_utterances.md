@@ -51,16 +51,30 @@ Use when the Guide couldn't produce a safe answer. Re-anchor to the current scen
 ### B. The team's question is outside the map (the honest-silence path)
 This is not strictly a *failure* — it's the designed boundary behavior, but it lives here because the orchestration may route to it when a question can't be answered from the map. (The Guide prompt also handles this inline; these are backups.)
 
+**Ruled by Marcia 2026-09-21** (ENG-833, item A1) — B-pt is hers, verbatim, entered as reserve: "already confirmed ... in exactly this text, as reserve." Reserve means present, never called; nothing in code may route to `FailSafe.OUTSIDE_MAP` (`tests/test_ir_b_and_c_have_no_caller.py`).
+
 - "That's a good question. This passage doesn't tell us that — it stays focused on what's right here in front of us. Let's stay with what the passage is showing us."
 - "The passage is quiet about that. Let's look at what it does tell us in this part."
 
+### B-pt. (Português brasileiro)
+
+- "Boa pergunta. Isso a passagem não conta — ela fica no que está bem aqui na nossa frente. Vamos ficar com o que ela está mostrando."
+- "A passagem fica quieta sobre isso. Vamos olhar o que ela conta nesta parte."
+
 ### C. The question is important but the map can't answer it (handoff to facilitator)
 Use when a question matters and reaching outside the map would be the only way to answer — route to the human.
+
+**Ruled by Marcia 2026-09-21** (ENG-833, item A1) — C-pt is hers, verbatim, entered as reserve alongside B-pt, on the same word: "already confirmed ... in exactly this text, as reserve." Nothing in code may route to `FailSafe.HANDOFF` (`tests/test_ir_b_and_c_have_no_caller.py`).
 
 - "That's an important question, and it's exactly the kind to bring to your facilitator — someone who can take it further than this passage goes on its own."
 - "That deserves a real answer, and it's beyond what this passage tells us. Let's set it aside to bring to your facilitator, and keep going here."
 
 *(The UI's "this needs our facilitator" affordance should also be offered here; log the question — it's signal about what the map doesn't cover.)*
+
+### C-pt. (Português brasileiro)
+
+- "Essa pergunta é importante, e é bem do tipo de levar ao facilitador de vocês — alguém que pode ir mais longe do que esta passagem vai sozinha."
+- "Isso merece uma resposta de verdade, e vai além do que esta passagem conta. Vamos guardar para levar ao facilitador de vocês, e seguir por aqui."
 
 ### D. Couldn't hear / transcription failed
 Use when the team's audio didn't come through.
@@ -74,17 +88,6 @@ Use when the team's audio didn't come through.
 - "Desculpa, não consegui ouvir direito — podem repetir?"
 - "Essa me escapou. Podem dizer de novo?"
 - "O som não chegou bem — podem falar mais uma vez?"
-
-### G. Confidently detected speech outside the bridge language
-Use when automatic language detection is highly confident that the team has just practiced in
-another language. Affirm the practice, state the Guide's boundary, and request a telling-back in
-the bridge language. Never feed the uncertain transcript to the Guide as if it were bridge speech.
-
-- "Good — you tried it in your own language. I can't check those words directly. Now, could someone tell me in English what you said?"
-
-### G-pt. (Português brasileiro)
-
-- "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
 
 ### F. Instant acknowledgements (played the moment the team finishes speaking)
 Not a failure path — the *pacing* path. Each real turn takes several seconds of honest work
@@ -104,12 +107,68 @@ of these tiny pre-approved lines, then the thoughtful reply follows. Content-fre
 - "Deixa eu pensar um instante."
 - "Tá."
 
+### P. Process lines — the telling-back (retroverificação por frases)
+Not a failure path — the *process* path (docs/RETROVERIFICACAO-POR-FRASES-SPEC.md §5). The app owns
+the steps of the back-translation check (the full listen, the telling frase by frase, the refusal
+while a take is still unheard, the approval) and voices these fixed lines at those steps. They say
+what to DO, never anything about the passage. The order is fixed and read by position
+(`src/turn/failsafe.ts` — `btProcessLine`): start · tell · unheard · approved. The session language
+is named inside the "tell" line.
+
+- "First let's listen to your whole recording, from beginning to end. For now, just listen."
+- "Now let's go back to the beginning. You will listen to your recording and, at each sentence, pause to translate for me only what was said there. Tap the circle to pause, translate, and tap again so the recording goes on. Don't add anything and don't explain; it doesn't need to sound nice. Say in English exactly what that sentence says. Pause wherever it helps you remember what was said so you can translate it. When the whole recording has been translated, tap 'done'."
+- "There is still a part of the recording to listen to before I check."
+- "Approved as the team's final draft. It goes to OBT Refine."
+
+### P-pt. (Português brasileiro)
+
+- "Primeiro vamos ouvir a gravação de vocês inteira, do começo ao fim. Por enquanto é só ouvir."
+- "Agora vamos voltar ao começo. Vocês vão ouvir a gravação de vocês e, a cada frase, pausar para me traduzir só o que foi dito ali. Toquem no círculo para pausar, traduzam, e toquem de novo para a gravação seguir. Não acrescentem nada e não expliquem; não precisa ficar bonito. Digam em português exatamente o que aquela frase diz. Façam as pausas onde for melhor para vocês lembrarem do que foi dito e traduzirem. Quando a gravação inteira estiver traduzida, toquem em 'terminei'."
+- "Ainda falta ouvir um trecho da gravação antes de eu conferir."
+- "Aprovado como rascunho final da equipe. Ele vai para o OBT Refine."
+
+### X. Process lines — the external check (Checagem Externa)
+Not a failure path — the *process* path of the second phase (docs/CHECAGEM-EXTERNA-SPEC.md §1, §5),
+like P. After the team's final draft is approved, listeners who did NOT help translate hear the whole
+passage and react: first a retelling of what they heard, then comments on the whole, then frase by
+frase. The app owns those steps and voices these fixed lines at them, through `/api/ack?cat=X&step=`
+(`step` = open · retell · whole · frases · thanks) exactly as category P is voiced. **There is no model
+call anywhere in this phase**: listener audio is stored as audio and never transcribed. The lines say
+what to DO, never anything about the passage; they name only the buttons on the screen ('está boa',
+'nada a acrescentar'). The order is fixed and read by position (`src/turn/failsafe.ts` —
+`externalLines`): open · retell · whole · frases · thanks. **Ruled by Marcia 2026-09-04 late evening**
+— the Portuguese texts are hers, verbatim (X-retell, X-frases and X-thanks carry her edits; X-open
+and X-whole stood as drafted); the English lines mirror her Portuguese. X-retell addresses "vocês" and
+then "você" on purpose — **ruled by Marcia 2026-09-08**: sometimes one listener retells alone, sometimes
+a group works together; the mix stays and is not an open detail. Consent sentence added to X-open —
+Marcia's ruling 2026-09-08 (João's question: the listener must know they are recorded before speaking).
+
+- "Now it's the turn of those who didn't help translate. What you say here is recorded, only for the team to hear afterwards. You will hear the whole passage. Then I'll ask what you understood. There is no right answer: what you understood is what matters."
+- "Now tell me, in your own way, what you heard. It doesn't need to be perfect, tell what you remember. Tap the circle to speak and tap again when you finish."
+- "Did anything stay unclear? Would you like to comment on anything about the whole passage? If so, tap the circle and speak, as many times as you want. If not, tap 'nothing to add'."
+- "Now, listen to the sentences one by one. When you hear a sentence, if you think it is good, tap the 'it's good' button. But if you think the sentence needs to change in some way, or if you think it is not clear, tap the circle again and make your comment."
+- "Thank you for your help. What you said is kept for the team to hear."
+
+### X-pt. (Português brasileiro)
+
+- "Agora é a vez de quem não ajudou a traduzir. O que vocês disserem aqui fica gravado, só para a equipe ouvir depois. Vocês vão ouvir a passagem inteira. Depois eu pergunto o que vocês entenderam. Não tem resposta certa: o que vocês entenderam é o que importa."
+- "Agora me contem, do jeito de vocês, o que vocês ouviram. Não precisa ser perfeito, conte o que você se lembrar. Toquem no círculo para falar e toquem de novo quando terminarem."
+- "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem inteira? Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em 'nada a acrescentar'."
+- "Agora, escute as frases uma por uma. Quando ouvir uma frase, se achar que ela está boa, clique no botão 'está boa'. Mas se achar que a frase precisa mudar em alguma coisa, ou se achar que ela não está clara, clique novamente no círculo e faça o seu comentário."
+- "Agradecemos sua ajuda. O que vocês disseram fica guardado para a equipe ouvir."
+
 ### E. Hard stop (repeated failures across multiple turns)
 If fail-safes fire repeatedly across several consecutive turns (e.g. 3+), something is wrong (a bad map load, an outage). Don't loop forever. Degrade to a graceful pause and surface the facilitator handoff.
+
+**Ruled by Marcia 2026-09-21** (ENG-833, item A1) — E-pt is hers, "the whole sentence, as you wrote it."
 
 - "Let's take a short pause here. This might be a good moment to bring in your facilitator, and we can pick this up again together."
 
 The orchestration should also flag this state for review (it usually means a map-load or service problem, not a content problem).
+
+### E-pt. (Português brasileiro)
+
+- "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de vocês, e a gente retoma isso junto."
 
 ---
 

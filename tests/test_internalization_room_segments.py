@@ -30,6 +30,8 @@ from app.services.internalization_room.back_translation import analyse_telling_b
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.takes import store_take
 from app.services.platform.storage import StoredObject
+from tests.room_harness import a_piece_still_to_be_told, heard_every_part, press_terminei
+from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -282,6 +284,8 @@ async def test_the_order_the_team_told_in_survives_a_later_write(
         take_id=take.id,
         starts_ms=9000,
         ends_ms=21000,
+        bridge_take_id="retro-de-novo",
+        transcript="segundo, contado outra vez",
         replaces=middle,
     )
 
@@ -306,8 +310,6 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
     reading by accident — which is the failure that matters, because what the analyst reads
     is what the team is told to fix.
     """
-    import sys
-
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
 
@@ -335,9 +337,7 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
         seen["prompt"] = system_prompt
         return '{"evidence_sufficient": true, "findings": []}'
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
-    )
+    the_room_agent_is(monkeypatch, analyst=agent)
     await analyse_telling_back(
         segments=await service.final_segments(db_session, session.id),
         scope=PASSAGE,
@@ -357,122 +357,7 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
 
 
 # ---------------------------------------------------------------------------
-# 5. New native audio never sits beside the old translation
-# ---------------------------------------------------------------------------
-
-
-async def test_a_re_recorded_native_stretch_leaves_no_old_translation_behind(
-    db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """**The case that carries the product decision.**
-
-    Correcting only the mother-tongue audio does not exist: touching it always means the
-    explanation in the bridge language is redone. So there must be no state in which the
-    analyst reads the new recording together with the explanation of the old one.
-
-    Two halves, and both are load-bearing: replacing the native audio leaves the stretch with
-    nothing told back about it, and asking to replace the native audio *while handing over a
-    telling-back* is refused outright rather than quietly accepted.
-
-    Refusing every replacement that carries an explanation would be the wrong rule and is
-    tested against below: redoing only the explanation, over audio that did not move, is the
-    product's other correction and has to go on working.
-    """
-    session = await _room_session(db_session)
-    first_take = await _rehearsal(db_session, session, b"o primeiro ensaio")
-    retro = await store_take(
-        db_session,
-        session_id=session.id,
-        device_id=DEVICE,
-        project_id=session.project_id,
-        pericope=session.pericope,
-        kind=IRTakeKind.RETRO,
-        scope=session.pericope,
-        audio=b"a equipe explicou em portugues",
-    )
-    second_take = await _rehearsal(db_session, session, b"o ensaio regravado")
-
-    told = await service.capture_segment(
-        db_session,
-        session,
-        take_id=first_take.id,
-        starts_ms=0,
-        ends_ms=9000,
-        bridge_take_id=retro.id,
-        transcript="a explicação da gravação velha",
-    )
-    regravado = await service.capture_segment(
-        db_session,
-        session,
-        take_id=second_take.id,
-        starts_ms=0,
-        ends_ms=11000,
-        replaces=told,
-    )
-
-    current = await service.final_segments(db_session, session.id)
-
-    assert [one.id for one in current] == [regravado.id]
-    assert current[0].take_id == second_take.id
-    assert current[0].transcript is None, (
-        "o nativo novo não pode chegar acompanhado da explicação do nativo velho"
-    )
-    assert current[0].bridge_take_id is None, (
-        "nem do áudio da explicação velha, que é a mesma coisa dita de outro jeito"
-    )
-
-    import sys
-
-    seen: dict[str, str] = {}
-
-    async def agent(*, system_prompt: str, user_content: str, **_: Any) -> str:
-        seen["prompt"] = system_prompt
-        return '{"evidence_sufficient": true, "findings": []}'
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
-    )
-    await analyse_telling_back(
-        segments=current,
-        scope=PASSAGE,
-        pericope_num=PASSAGE,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
-
-    assert "a explicação da gravação velha" not in seen["prompt"], (
-        "e o estado proibido é sobre o que o analista lê, não sobre o que a linha guarda"
-    )
-
-    third_take = await _rehearsal(db_session, session, b"o ensaio regravado outra vez")
-    with pytest.raises(ValidationError):
-        await service.capture_segment(
-            db_session,
-            session,
-            take_id=third_take.id,
-            starts_ms=0,
-            ends_ms=12000,
-            transcript="a explicação da gravação velha",
-            replaces=regravado,
-        )
-
-    redito = await service.capture_segment(
-        db_session,
-        session,
-        take_id=second_take.id,
-        starts_ms=0,
-        ends_ms=11000,
-        transcript="a explicação refeita, sobre o mesmo áudio",
-        replaces=regravado,
-    )
-
-    assert redito.transcript == "a explicação refeita, sobre o mesmo áudio", (
-        "refazer só a explicação, sobre áudio que não se moveu, é a outra correção do produto"
-    )
-
-
-# ---------------------------------------------------------------------------
-# 6. A stretch knows what it was divided out of
+# 5. A stretch knows what it was divided out of
 # ---------------------------------------------------------------------------
 
 
@@ -527,7 +412,7 @@ async def test_a_stretch_knows_which_stretch_it_was_divided_out_of(
 
 
 async def test_the_back_translation_the_room_already_does_goes_on_working(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The regression case of the slice, and it is large on purpose.
 
@@ -537,8 +422,6 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     """
     import json
     import sys
-
-    turn_module = sys.modules["app.services.internalization_room.run_turn"]
 
     session_id = await _open_session(client)
     take_id = await _record(client, session_id, b"a equipe ensaiou a passagem inteira")
@@ -560,16 +443,14 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
             '{"kind": "missing", "chunk": 2, "note": "faltou dizer para onde Rute ia"}]}'
         )
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", analyst
-    )
+    the_room_agent_is(monkeypatch, analyst=analyst)
 
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return "Vocês contaram bem. Falta uma coisa."
 
-    monkeypatch.setattr(turn_module, "call_agent", speaker)
+    the_room_agent_is(monkeypatch, turn=speaker)
 
     async def _voice(*_: Any, **__: Any):
         return (type("Voiced", (), {"key": "uma-chave"})(), 0)
@@ -580,8 +461,8 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
         _voice,
     )
 
-    verdict = await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
+    verdict = await press_terminei(
+        client, session_id, report=await heard_every_part(db_session, session_id)
     )
 
     assert verdict.status_code == 200, verdict.text
@@ -593,16 +474,6 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     told = await _told_so_far(client, session_id)
     assert body["finding_segment_id"] == told[1]["segment_id"], (
         "o achado aponta o trecho que o analista numerou, e não a passagem inteira"
-    )
-
-    restarted = await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/restart", headers={"X-Room-Key": KEY}
-    )
-
-    assert restarted.status_code == 200, restarted.text
-    assert restarted.json()["chunks"] == 0
-    assert await _told_so_far(client, session_id) == [], (
-        "recomeçar a retrotradução deixa a sessão sem trecho corrente nenhum"
     )
 
 
@@ -626,7 +497,6 @@ async def test_a_stretch_that_was_divided_cannot_be_replaced_as_a_unit(
     """
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
-    other = await _rehearsal(db_session, session, b"o ensaio regravado")
 
     whole = await service.capture_segment(
         db_session, session, take_id=take.id, starts_ms=0, ends_ms=20000, transcript="o todo"
@@ -637,26 +507,27 @@ async def test_a_stretch_that_was_divided_cannot_be_replaced_as_a_unit(
 
     with pytest.raises(ValidationError):
         await service.capture_segment(
-            db_session, session, take_id=other.id, starts_ms=0, ends_ms=21000, replaces=whole
+            db_session, session, take_id=take.id, starts_ms=0, ends_ms=20000, replaces=whole
         )
 
     assert [one.id for one in await service.final_segments(db_session, session.id)] == [head.id]
 
 
-async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
+async def test_a_piece_cut_off_and_not_yet_told_is_not_read_as_something_told(
     db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A re-recorded stretch has nothing told back about it yet, and nothing is not a text.
+    """A piece the team cut has nothing told back about it yet, and nothing is not a text.
 
     It reached the analyst as a literal ``None`` — a line the team never said, which the
-    analyst compares against the map and can raise a finding on. The stretch is real and the
+    analyst compares against the map and can raise a finding on. The piece is real and the
     tablet must still see it; what it has no business being is evidence.
-    """
-    import sys
 
+    Cutting is the one verb left that leaves a stretch standing with nothing said on it, so the
+    rule is measured over that: the counts below are what a cut produces, and what carries the
+    rule is that the untold piece is absent from what the analyst reads.
+    """
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
-    other = await _rehearsal(db_session, session, b"o ensaio regravado")
 
     kept = await service.capture_segment(
         db_session,
@@ -666,18 +537,20 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
         ends_ms=9000,
         transcript="Noemi mandou Rute voltar.",
     )
-    waiting = await service.capture_segment(
+    whole = await service.capture_segment(
         db_session, session, take_id=take.id, starts_ms=9000, ends_ms=21000, transcript="a refazer"
     )
-    await service.capture_segment(
-        db_session, session, take_id=other.id, starts_ms=0, ends_ms=12000, replaces=waiting
-    )
+    waiting = await a_piece_still_to_be_told(db_session, session, whole)
 
     current = await service.final_segments(db_session, session.id)
     readable = service.told_back(current)
 
-    assert len(current) == 2, "o trecho à espera continua sendo uma unidade para o tablet"
-    assert [one.id for one in readable] == [kept.id]
+    assert len(current) == 3, "a peça por contar continua sendo uma unidade para o tablet"
+    assert len(readable) == 2
+    assert waiting.id not in [one.id for one in readable], (
+        "o que a equipe ainda não contou não é o que o analista lê"
+    )
+    assert kept.id in [one.id for one in readable]
 
     seen: dict[str, str] = {}
 
@@ -685,12 +558,10 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
         seen["prompt"] = system_prompt
         return (
             '{"evidence_sufficient": true, "findings": '
-            '[{"kind": "missing", "chunk": 2, "note": "x"}]}'
+            '[{"kind": "missing", "chunk": 3, "note": "x"}]}'
         )
 
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
-    )
+    the_room_agent_is(monkeypatch, analyst=agent)
     analysis = await analyse_telling_back(
         segments=readable,
         scope=PASSAGE,
@@ -704,5 +575,5 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
     )
     assert analysis is not None
     assert analysis.findings[0].segment_id is None, (
-        "e um achado não pode cair num trecho que ainda não foi contado"
+        "e o achado na posição onde a peça por contar estaria não cai nela: ela não foi lida"
     )

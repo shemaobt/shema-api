@@ -102,7 +102,7 @@ def test_only_do_not_decide_rules_reach_the_preservation_set() -> None:
     """P01 R1 is `required_in_audit` but not `do_not_decide` — a preference, not a constraint."""
     rules = preservation_rules("Ruth")
 
-    assert len(rules) == 32
+    assert len(rules) == 39
     assert not any(r.pericope == "P01" and r.rule_id == "R1" for r in rules)
 
 

@@ -7,7 +7,7 @@ written in both apps; and every grant and revocation — of a role, and of a reg
 ``changes`` with its author and its date.
 
 Every account here is an ordinary one: the Admin holds ``admin`` in both apps and is not an
-installation admin (``admin_surface.py``).
+installation admin (``tests/shema_admin_harness.py``).
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from app.services.shema._scope import (
     SHEMA_APP_ROLES,
 )
 from app.services.user.delete_user import delete_user
-from tests.test_shema.admin_surface import (
+from tests.shema_admin_harness import (
     CHANGES,
     GRANTS,
     PEOPLE,

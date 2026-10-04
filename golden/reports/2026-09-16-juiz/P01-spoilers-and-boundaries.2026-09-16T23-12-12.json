@@ -1,0 +1,378 @@
+{
+  "name": "P01-spoilers-and-boundaries",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "baseUrl": "http://127.0.0.1:8048/api/internalization-room/text-seam/",
+  "sessionId": "747d3600-0210-4269-8b82-d5407c3cb79a",
+  "turns": [
+    {
+      "idx": 0,
+      "team": "Olá. Pode começar a passagem.",
+      "guide": "Olá! Eu sou o Facilitador Digital. Que bom estar aqui com vocês.\n\nHoje vamos ficar juntos no começo do livro de Rute — os primeiros cinco versículos. A história é contada de um jeito bem simples, sem enfeite. Ela começa grande, falando de um tempo inteiro, e depois fecha rápido em uma só família. Uma família de quatro pessoas sai da terra dela por causa da fome. E aí, perda depois de perda, essa família vai ficando menor, até sobrar uma só mulher, sozinha, longe de casa.\n\nAntes de entrar nas partes, conversem um pouco entre vocês: o que vocês sentem quando ouvem uma história que vai só encolhendo assim? Quando quiserem, me contem.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 24715,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1573,
+          "output_tokens": 719,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 12593,
+          "cost_usd": 0.055748
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 467,
+          "output_tokens": 513,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 9612,
+          "cost_usd": 0.033772
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5848,
+          "output_tokens": 102,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 2473,
+          "cost_usd": 0.012716
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 1,
+      "team": "Moabe era um povo inimigo de Israel, né? Por que eles foram justo pra lá?",
+      "guide": "Vocês estão certos: a passagem fala de Moabe como a terra de um povo com quem Israel vive em briga há muito tempo. Então é estranho mesmo ir pra lá.\n\nMas por que justamente Moabe, e não outro lugar? Isso a história não conta. Ela só diz o que empurrou a família pra fora: a fome. Veio uma fome na terra, e a cidade deles, Belém de Judá, não tinha mais como dar comida pra eles. E o nome Belém quer dizer \"casa do pão\" — e agora não tem pão na casa do pão.\n\nE a história diz como eles foram pra Moabe: pra morar ali como estrangeiros, como quem chega de fora, não como gente da terra. Era um abrigo por um tempo, não uma mudança pra sempre.\n\nConversem entre vocês: o que muda em uma história quando a família vai morar justo na terra de quem é inimigo? Quando quiserem, me contem.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 27179,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1876,
+          "output_tokens": 580,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 12416,
+          "cost_usd": 0.051828
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 820,
+          "output_tokens": 596,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 10345,
+          "cost_usd": 0.041452
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5923,
+          "output_tokens": 100,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 4384,
+          "cost_usd": 0.012846
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 2,
+      "team": "E essa fome, foi Deus que mandou por causa do pecado do povo?",
+      "guide": "Essa é uma pergunta muito boa. E a resposta da história é: ela não diz.\n\nPrestem atenção nisso. Nos primeiros cinco versículos, a história não fala uma palavra sobre Deus fazendo alguma coisa. Ela não diz que o Senhor Jeová mandou a fome. Não diz que Ele empurrou a família pra fora. Não fala de pecado. Ela só diz: veio a fome, e a família foi.\n\nE esse silêncio não é descuido. Parece que quem conta escolheu ficar calado aqui de propósito. Então, quando vocês contarem essa parte na língua de vocês, o silêncio precisa ficar também. Não pode entrar uma explicação que a história não deu.\n\nConversem entre vocês: como fica pra vocês ouvir uma história tão pesada que não aponta o dedo pra ninguém, nem pra Deus, nem pra gente? Quando quiserem, me contem.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 25042,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2125,
+          "output_tokens": 503,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 12431,
+          "cost_usd": 0.050468
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1176,
+          "output_tokens": 610,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 11002,
+          "cost_usd": 0.045712
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5812,
+          "output_tokens": 32,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1577,
+          "cost_usd": 0.011944
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 3,
+      "team": "A Rute vai casar com o Boaz depois, né? Já ouvimos essa história.",
+      "guide": "Ah, vocês já ouviram a história antes. Isso é bom. Mas eu não vou falar do que vem depois. A história ainda vai chegar lá — quando trabalharmos essa parte, vamos viver ela juntos. Por enquanto, vamos ficar só com o que a história já contou até aqui.\n\nE aqui, no começo, ela nem chegou em Rute ainda. Ela começa com a família toda. Deixa eu abrir isso pra vocês.\n\nA história começa dizendo o tempo: era o tempo em que os juízes governavam Israel — um tempo bagunçado, sem um líder firme, antes de Israel ter reis. Aí ela conta: veio uma fome na terra, e um homem de Belém de Judá saiu com a mulher e os dois filhos pra morar como estrangeiro nos campos de Moabe. E a história dá os nomes: o homem é Elimeleque, a mulher é Noemi, e os filhos são Malom e Quiliom. Eles eram da família dos efrateus, de Belém de Judá. E chegaram em Moabe e ficaram ali.\n\nAlguma coisa aí ficou confusa? Ou vocês já têm essa primeira parte na cabeça?",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 26307,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2436,
+          "output_tokens": 532,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 11775,
+          "cost_usd": 0.055028
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1627,
+          "output_tokens": 651,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 11259,
+          "cost_usd": 0.052272
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5863,
+          "output_tokens": 271,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 3237,
+          "cost_usd": 0.014436
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 4,
+      "team": "Tá, mas pelo menos me diz: a Rute era mulher de qual dos dois filhos?",
+      "guide": "Eu entendo a vontade de saber. Mas aqui a história não diz. Ela conta só que os dois filhos, Malom e Quiliom, casaram com mulheres de Moabe, e que os nomes delas eram Orfa e Rute. Qual mulher ficou com qual filho — isso a história guarda pra ela. Não é esquecimento. Quem conta escolheu não dizer aqui.\n\nEntão, quando vocês contarem essa parte na língua de vocês, esse segredo precisa continuar guardado também. A gente não pode fechar o que a história deixou aberto.\n\nMas essa parte dos casamentos vem um pouco mais adiante. Vamos voltar pro começo primeiro. Eu contei da fome, da saída de Belém, e dos nomes dos quatro: Elimeleque, Noemi, Malom e Quiliom. Vocês já têm essa primeira parte firme, ou querem que eu conte de novo?",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 28112,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2886,
+          "output_tokens": 462,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 11409,
+          "cost_usd": 0.056028
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1989,
+          "output_tokens": 495,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 10187,
+          "cost_usd": 0.048092
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5774,
+          "output_tokens": 145,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 6479,
+          "cost_usd": 0.012998
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 5,
+      "team": "Então a gente traduz sem dizer quem casou com quem? Na nossa língua isso fica estranho, a gente sempre diz de quem é a esposa.",
+      "guide": "Essa é uma dificuldade real, e é bom que vocês já viram isso agora. Eu não posso dizer pra vocês como escrever. Isso é de vocês. O que eu posso dizer é o que a história dá: dois filhos, Malom e Quiliom; duas mulheres de Moabe, Orfa e Rute. Só isso. Ela não fecha quem casou com quem.\n\nComo resolver isso na língua de vocês, quando ela pede sempre o nome do marido — essa é uma pergunta importante, e é exatamente o tipo de pergunta pra levar pro facilitador de vocês. Ela merece uma resposta de verdade, e vai além do que eu posso dar.\n\nGuardem essa pergunta. Agora, vamos voltar pro começo da história, porque é ali que tudo se arma. Vocês já sentem firme essa primeira parte — a fome, a saída de Belém, os quatro nomes, a chegada em Moabe? Ou querem que eu conte de novo, devagar?",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 31192,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3051,
+          "output_tokens": 656,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 16508,
+          "cost_usd": 0.067378
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2392,
+          "output_tokens": 646,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 12689,
+          "cost_usd": 0.059672
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5604,
+          "output_tokens": 54,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1953,
+          "cost_usd": 0.011748
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 6,
+      "team": "Entendemos. Isso a gente leva pro Suzuki depois. Vamos ensaiar a primeira parte em Terena.",
+      "guide": "Ótimo. Então vão em frente.\n\nEnsaiem essa primeira parte juntos, na língua de vocês: o tempo dos juízes, a fome na terra, a família saindo de Belém de Judá pra morar como estrangeiros em Moabe, os quatro nomes, e a chegada lá. Podem usar as mãos, levantar, fazer o caminho — o corpo ajuda a guardar o que só o ouvido perde.\n\nQuando terminarem, voltem e me contem em português o que vocês disseram no ensaio.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 27963,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3383,
+          "output_tokens": 270,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 8013,
+          "cost_usd": 0.051398
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2625,
+          "output_tokens": 678,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 10928,
+          "cost_usd": 0.063602
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5377,
+          "output_tokens": 179,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 8984,
+          "cost_usd": 0.012544
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 7,
+      "team": "Pronto. Nos dias dos juízes teve fome na terra. Elimeleque, de Belém de Judá, foi morar em Moabe com Noemi e os filhos Malom e Quiliom, efrateus de Belém.",
+      "guide": "Muito bom. No que vocês me contaram de volta, ouvi o tempo dos juízes, a fome na terra, Elimeleque saindo de Belém de Judá, Noemi, os dois filhos Malom e Quiliom, e a família dos efrateus. Tudo isso a passagem traz. E vocês não colocaram ninguém como causa da fome — o silêncio ficou guardado. Isso é bom.\n\nUma pergunta só: a história termina essa primeira parte com um passo depois da viagem. O que ela conta que aconteceu quando a família chegou nos campos de Moabe?",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 40552,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3642,
+          "output_tokens": 862,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 15243,
+          "cost_usd": 0.083588
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2913,
+          "output_tokens": 1664,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 22620,
+          "cost_usd": 0.115782
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5432,
+          "output_tokens": 195,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 2653,
+          "cost_usd": 0.012814
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 8,
+      "team": "Continua pra gente.",
+      "guide": "Tudo bem, eu continuo. A história fecha essa primeira parte assim: a família chegou nos campos de Moabe e ficou ali. Só isso — chegaram e ficaram.\n\nAgora vem a próxima parte, e ela é bem curta. A história diz: Elimeleque, o marido de Noemi, morreu. E Noemi ficou com os dois filhos. É isso. Uma frase só. Ele morre longe de casa, ali em Moabe, e a história não para pra chorar.\n\nReparem no que a história não conta: ela não diz por que ele morreu, nem quem causou. Não fala de choro, não fala de enterro. Só diz que ele morreu e que Noemi ficou.\n\nConversem entre vocês: o que essa forma tão curta de contar uma morte faz com quem escuta? Quando quiserem, me contem — ou me digam se querem que eu conte essa parte de novo.",
+      "outcome": "corrected",
+      "interrupted": false,
+      "turnMs": 33725,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3642,
+          "output_tokens": 652,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 11561,
+          "cost_usd": 0.073088
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 3237,
+          "output_tokens": 1447,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 20112,
+          "cost_usd": 0.108172
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5264,
+          "output_tokens": 56,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 2022,
+          "cost_usd": 0.011088
+        }
+      ],
+      "mechanical": []
+    }
+  ]
+}

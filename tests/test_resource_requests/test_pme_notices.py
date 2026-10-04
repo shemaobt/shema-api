@@ -29,17 +29,19 @@ from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.shema import list_notification_panel, region_scope
 from tests.baker import make_user
-from tests.test_resource_requests.conftest import grant, make_membership
-from tests.test_resource_requests.test_evaluations import (
+from tests.resource_request_harness import (
     REQUESTS,
     as_gestor,
+    as_mesa,
+    as_team,
     decidable,
+    draft,
     endorse,
     give_fund,
+    holder,
     put_evaluation,
 )
-from tests.test_resource_requests.test_link_requests import holder
-from tests.test_resource_requests.test_requests import as_mesa, as_team, draft
+from tests.test_resource_requests.conftest import grant, make_membership
 
 #: As chaves de avaliação, nas duas grafias em que poderiam vazar — a da coluna e a do fio.
 EVALUATION_KEYS = {

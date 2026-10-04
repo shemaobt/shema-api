@@ -21,10 +21,6 @@ telling the team to ask the app. Rendered as *el facilitador de ustedes* to lean
 same lean the Portuguese took with *o facilitador de vocês*. If that still reads ambiguously
 in the field, the alternative is to drop the term: *la persona que los acompaña*.
 
-⚠ Section G names the session's own language inside the line, the way each block does: the
-English says "tell me in English", the Portuguese "me contar em português", so the Spanish
-says *decirme en español*. It is the language the room is speaking, never a fixed one.
-
 ### A-es. (Español)
 
 - "Vamos a detenernos un momento aquí y mirar de nuevo lo que está pasando en esta parte del pasaje."
@@ -59,16 +55,12 @@ says *decirme en español*. It is the language the room is speaking, never a fix
 - "Mmm — déjenme pensarlo un momento."
 - "Claro."
 
-### G-es. (Español)
-
-- "Qué bueno — lo intentaron en su propia lengua. Yo no puedo revisar esas palabras directamente. Ahora, ¿alguien me puede decir en español lo que dijeron?"
-
 ### H-es. (Español)
 
-- "Todavía falta parte del pasaje por contarme. Terminemos eso primero, y después reviso todo junto."
-- "Todavía hay un pedazo que no me contaron. Cuéntenmelo, y luego miro el pasaje entero."
-- "Todavía falta un poco por contar. Cuando terminen, lo reviso todo de una vez."
+- "Todavía falta parte del pasaje por traducirme. Terminemos eso primero, y después reviso todo junto."
+- "Todavía hay un pedazo que no me tradujeron. Tradúzcanmelo, y luego miro el pasaje entero."
+- "Todavía falta un poco por traducir. Cuando terminen, lo reviso todo de una vez."
 
 ### I-es. (Español)
 
-- "Necesito que me cuenten esta parte entera de nuevo — lo que ya me habían contado, y también lo que faltó."
+- "Necesito que me traduzcan esta parte entera de nuevo — lo que ya me habían traducido, y también lo que faltó."

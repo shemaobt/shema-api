@@ -20,8 +20,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Twelve, the ceiling `main` moved to with ENG-1092: at 4768 tests this branch's job passed
-    # seven minutes and cancelled green runs (shema-api#592). ADR 0031 has the measurements.
+    # Twelve, over a `Run tests` step measured at 6m21s on the runner with ~3700 tests
+    # (run 36022234700), where the seven-minute ceiling set with ENG-980 over a 2m04-2m31
+    # step cancelled a green run at 7m15s (ENG-1092). The suite on `dev` met the same seven
+    # minutes at 4768 tests (shema-api#592); ADR 0031 has its measurements.
     # The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
     # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
     timeout-minutes: 12
@@ -49,8 +51,8 @@ jobs:
 
       # `--dist loadfile` is load-bearing, not tuning: the schema is created once per process
       # and two cases of the database's own contract depend on a module running in file order
-      # on one worker. `-v` went with it, because four workers interleaving 4000 lines is not
-      # a log anybody reads.
+      # on one worker. `-v` went with it, because four workers interleaving over 6000 lines is
+      # not a log anybody reads.
       - name: Run tests
         run: uv run pytest tests/ -n 4 --dist loadfile -rfE -m "not migration and not fresh_interpreter"
         env:

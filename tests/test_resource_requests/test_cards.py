@@ -16,8 +16,8 @@ from app.db.models.shema_enums import ShemaRegionKey
 from app.models.resource_request import RequestCardOut
 from app.services.shema import set_region_scope
 from tests.baker import make_user
+from tests.resource_request_harness import REQUESTS, as_team, decide, draft
 from tests.test_resource_requests.conftest import auth_header, grant, make_membership
-from tests.test_resource_requests.test_requests import REQUESTS, _decide, as_team, draft
 
 PROJECT = "kadiweu"
 CARDS = f"{REQUESTS}/cards"
@@ -61,7 +61,7 @@ async def one_sent_one_open(client, db_session):
     ana, ana_h = await member(db_session, "ana@cards.test")
     sent = (await client.post(REQUESTS, json=draft(), headers=ana_h)).json()
     await client.post(f"{REQUESTS}/{sent['id']}/submit", headers=ana_h)
-    await _decide(db_session, sent["id"], RRDecision.APPROVED)
+    await decide(db_session, sent["id"], RRDecision.APPROVED)
     opened = (await client.post(REQUESTS, json=draft(), headers=ana_h)).json()
     return ana, ana_h, sent, opened
 
@@ -299,7 +299,7 @@ async def test_a_revision_card_names_what_it_revises(db_session, client, rrf_app
     headers = await as_team(db_session, rrf_app)
     sent = (await client.post(REQUESTS, json=draft(), headers=headers)).json()
     await client.post(f"{REQUESTS}/{sent['id']}/submit", headers=headers)
-    await _decide(db_session, sent["id"], RRDecision.REVISE)
+    await decide(db_session, sent["id"], RRDecision.REVISE)
     revision = (await client.post(f"{REQUESTS}/{sent['id']}/revise", headers=headers)).json()
 
     cards = {card["id"]: card for card in (await client.get(CARDS, headers=headers)).json()}

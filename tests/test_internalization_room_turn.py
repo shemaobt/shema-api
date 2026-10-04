@@ -1,13 +1,8 @@
-import json
-import sys
 from typing import Any
 
 import pytest
 
-from app.core.config import Settings
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRPromptKey
-from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.practice import (
     guide_invited_mother_tongue_practice,
@@ -23,47 +18,22 @@ from app.services.internalization_room.run_turn import (
     run_turn,
     split_opening_movements,
 )
-
-GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
-VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
-P = "P03"
-
-
-def _settings() -> Settings:
-    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
-
-
-class FakeAgent:
-    """Stands in for the LLM: alternates Guide draft, Validator verdict, Guide draft…"""
-
-    def __init__(self, verdicts: list[dict[str, Any]], drafts: list[str] | None = None):
-        self.verdicts = verdicts
-        self.drafts = drafts or [f"rascunho {i}" for i in range(len(verdicts) + 1)]
-        self.calls: list[str] = []
-        self.guide_inputs: list[str] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        is_validator = "corrected_response" in system_prompt
-        self.calls.append("validator" if is_validator else "guide")
-        if not is_validator:
-            self.guide_inputs.append(user_content)
-        if is_validator:
-            return json.dumps(self.verdicts[len([c for c in self.calls if c == "validator"]) - 1])
-        return self.drafts[len([c for c in self.calls if c == "guide"]) - 1]
+from tests.turn_harness import (
+    GUIDE,
+    VALIDATOR,
+    FakeAgent,
+    P,
+    settings,
+    the_agent_answers,
+)
 
 
 @pytest.fixture
 def patch_agent(monkeypatch: pytest.MonkeyPatch):
-    """Swap `call_agent` for a fake inside the turn module.
-
-    The package re-exports the `run_turn` function, which shadows the module of the same
-    name, so the dotted-string form of setattr would patch the function object.
-    """
-    module = sys.modules["app.services.internalization_room.run_turn"]
+    """The fake in place of the model, for the cases in this module."""
 
     def _install(agent: FakeAgent) -> FakeAgent:
-        monkeypatch.setattr(module, "call_agent", agent)
-        return agent
+        return the_agent_answers(monkeypatch, agent)
 
     return _install
 
@@ -162,7 +132,9 @@ def test_the_invitation_the_guide_is_shown_is_one_the_room_can_recognise() -> No
     actually reads: the verb, and the phrase for the language the rehearsal is in.
     """
     guide = render(GUIDE, SESSION_LANGUAGE="English", MEANING_MAP="", COVERAGE_STATUS="")
-    rule = guide[guide.index("Open the part, then send them to REHEARSE it") :]
+    rule = guide[
+        guide.index("Open the part, then — once they have it — send them to REHEARSE it") :
+    ]
     rule = rule[: rule.index("\n")]
     example = rule[rule.index('*"') + 2 :]
     example = example[: example.index('"*')]
@@ -208,25 +180,33 @@ def test_render_fills_every_placeholder() -> None:
 
 def test_the_coverage_block_lists_only_what_is_left() -> None:
     state = merge(initial_state(P), pericope_num=P, engaged=["scene:1", "scene:2"])
-    block = coverage_status_block(state, P)
+    covered, left = coverage_status_block(state, P).split("REMAINING")
 
-    assert "[scene:3]" in block
-    assert "[scene:1]" not in block
+    assert "  scene: S3 (v.18)" in left
+    assert "S1 (v.15)" not in left
+    assert "S1 (v.15)" in covered
 
 
 def test_a_finished_map_says_nothing_remains() -> None:
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     block = coverage_status_block(whole, P)
 
-    assert "nada" in block
+    assert "none" in block
 
 
 def test_peer_cue_is_read_off_the_reply() -> None:
     assert detects_peer_cue("Agora ensaiem essa parte entre vocês, na língua de vocês.")
+    assert detects_peer_cue("Conversem entre vocês sobre o que ouviram.")
+    assert detects_peer_cue("Discutam essa parte antes de me contar.")
+    assert detects_peer_cue("Contem a cena um com o outro, com calma.")
+    assert detects_peer_cue("Now discuss this part before you tell me.")
+    assert detects_peer_cue("Tell the scene to each other, slowly.")
+    assert detects_peer_cue("Now rehearse this scene together in your own language.")
     assert not detects_peer_cue("Me contem o que aconteceu com a família.")
+    assert not detects_peer_cue("Ensayen juntos esta escena en su propia lengua, entre ustedes.")
+    assert not detects_peer_cue("Essa discussão fica para depois, vamos seguir juntos.")
 
 
-@pytest.mark.asyncio
 async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     agent = patch_agent(FakeAgent(verdicts=[]))
 
@@ -239,7 +219,7 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is True
@@ -248,7 +228,35 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     assert agent.calls == []
 
 
-@pytest.mark.asyncio
+async def test_a_third_silence_in_a_row_draws_the_third_d_line_whatever_the_conversation_length(
+    patch_agent,
+) -> None:
+    agent = patch_agent(FakeAgent(verdicts=[]))
+    two_misses = [
+        {"role": "guide", "text": "Vamos conhecer a cena.", "outcome": "pass"},
+        {"role": "team", "text": ""},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+    ]
+
+    outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="   ",
+        coverage_state=initial_state(P),
+        messages=two_misses,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=settings(),
+    )
+
+    assert outcome.fixed_line == "D2", (
+        "quatro mensagens guardadas davam D1 pela paridade, fosse a primeira falha ou a terceira"
+    )
+    assert agent.calls == []
+
+
 async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
@@ -266,7 +274,7 @@ async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.speech == "Ensaiem essa parte entre vocês."
@@ -275,7 +283,6 @@ async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     assert agent.calls == ["guide", "validator"]
 
 
-@pytest.mark.asyncio
 async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None:
     patch_agent(
         FakeAgent(
@@ -299,7 +306,7 @@ async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.speech == "Vamos ficar com o que a passagem conta."
@@ -307,7 +314,6 @@ async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None
     assert outcome.issues
 
 
-@pytest.mark.asyncio
 async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
@@ -328,7 +334,7 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is True
@@ -338,16 +344,15 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     assert agent.calls.count("guide") == MAX_REDRAFTS + 1
 
 
-@pytest.mark.asyncio
-async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearing_the_g_line(
+async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_not_the_g_line(
     patch_agent,
 ) -> None:
-    """The same pre-approved line answers two opposite situations, and only the branch knows.
+    """A team that rehearsed in its own language never sat in this exchange at all.
 
-    Category G affirms a team that rehearsed in its own language. Here nobody rehearsed:
-    the Guide itself could not stay in the room's language across three drafts, and the
-    room reaches for G because it is the closest thing it holds. Reading the failure off
-    the line name would file this one as healthy."""
+    Only the Guide's draft strayed, three times running, and the team never spoke. Category
+    G is reserved for a team detected in another language; a draft that cannot hold the
+    bridge language is an ordinary unrepairable draft, the same exit any other exhausted
+    redraft takes."""
     patch_agent(
         FakeAgent(
             verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
@@ -365,15 +370,15 @@ async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearin
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
-    assert outcome.speech in utterances(FailSafe.OFF_BRIDGE_LANGUAGE, "pt")
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    assert outcome.fixed_line.startswith("A")
     assert outcome.used_fail_safe is True
     assert outcome.degraded is True
 
 
-@pytest.mark.asyncio
 async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> None:
     class Garbage(FakeAgent):
         async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
@@ -392,13 +397,12 @@ async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> Non
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is True
 
 
-@pytest.mark.asyncio
 async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
@@ -420,11 +424,11 @@ async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_ag
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     first_call, second_call = agent.guide_inputs[0], agent.guide_inputs[1]
-    assert "Nota de reescrita" not in first_call
-    assert "Nota de reescrita" in second_call
+    assert "Rewrite note" not in first_call
+    assert "Rewrite note" in second_call
     assert "imported_knowledge" in second_call
     assert "Rute era moabita" in second_call

@@ -18,8 +18,8 @@ from app.db.models.resource_request import RRRequest, RRRequestLink
 from app.services.common import tokens
 from scripts.seed_apps_roles import seeded_roles
 from tests.baker import make_app, make_role, make_user
+from tests.resource_request_harness import REQUESTS, draft
 from tests.test_resource_requests.conftest import auth_header, grant, make_membership
-from tests.test_resource_requests.test_requests import REQUESTS, draft
 
 LINKS = "/api/resource-requests/links"
 

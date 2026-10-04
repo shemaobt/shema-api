@@ -1,0 +1,30 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 3
+  },
+  "incidents": [
+    {
+      "turn": 5,
+      "severity": "minor",
+      "kind": "near_verbatim_repeat_of_closing",
+      "quote": "Conversem entre vocês: quem são as quatro pessoas dessa família, de onde saem, e pra onde vão? Quando estiverem prontos, me contem em português o que vocês falaram.",
+      "why": "A mesma pergunta de fechamento aparece quase igual nos turnos 3, 4 e 5; o conteúdo da resposta era novo, mas o fecho virou fórmula fixa em vez de reagir ao rumo da conversa."
+    },
+    {
+      "turn": 8,
+      "severity": "minor",
+      "kind": "moved_on_before_telling_whole",
+      "quote": "Tudo bem, vamos em frente. Só guardem esse detalhe: em Moabe eles eram gente de fora, de passagem.",
+      "why": "O guia havia pedido um novo ensaio do detalhe 'morar como estrangeiro', mas ao pedido de 'continua' avançou sem confirmar que o pedaço entrou na contagem em Terena; adaptou ao time, porém deixou a primeira parte sem fechamento verificado."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um par à mesa: cada turno respondeu de fato ao que a equipe disse, inclusive nas perguntas difíceis sobre Moabe, sobre Deus ter mandado a fome, sobre Boaz e sobre com quem Rute casou. A contenção foi exemplar — recusou o spoiler de Boaz sem grosseria, não emparelhou as esposas com os filhos, e tratou os silêncios (ausência de Deus como causa, ausência de luto e enterro) como conteúdo intencional a ser preservado na tradução. Abriu cada cena a partir do que a história conta antes de pedir qualquer coisa de volta, e checou a única recontagem com honestidade, apontando o que faltou ('morar como estrangeiro') sem elogiar como completo. Os lapsos foram pequenos: a frase de fechamento dos turnos 3 a 5 repetiu-se quase igual, virando fórmula, e no turno 8 o guia avançou para a segunda cena sem confirmar que o pedaço corrigido entrou no ensaio, embora tenha carregado o detalhe adiante. A sessão ainda não terminou, então a instrução final de gravar não podia ser avaliada."
+}

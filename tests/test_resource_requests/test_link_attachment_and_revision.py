@@ -15,20 +15,20 @@ from sqlalchemy import select
 from app.core.rate_limit import limiter
 from app.db.models.resource_request import RRAttachment, RRDecision, RRRequest, RRStage
 from app.services.oral_collector import gcs_utils
-from tests.test_resource_requests.test_attachments import (
+from tests.resource_request_harness import (
     PDF,
-    FakeStore,
-    attachment_url,
-    put_file,
-)
-from tests.test_resource_requests.test_link_requests import holder
-from tests.test_resource_requests.test_requests import (
     REQUESTS,
-    _decide,
-    _gestor,
-    _to_column,
+    FakeStore,
+    a_gestor,
     as_mesa,
+    as_team,
+    attachment_url,
+    create,
+    decide,
     draft,
+    holder,
+    put_file,
+    to_column,
 )
 
 
@@ -115,8 +115,6 @@ async def test_a_submitted_request_takes_no_new_file_from_its_link(
 @pytest.mark.usefixtures("files")
 async def test_a_person_still_uploads_under_their_own_name(db_session, client, rrf_app) -> None:
     """The pair holds exactly one author: the account's upload keeps ``uploaded_by``."""
-    from tests.test_resource_requests.test_requests import as_team, create
-
     headers = await as_team(db_session, rrf_app)
     own = (await create(client, headers))["id"]
 
@@ -134,7 +132,7 @@ async def test_a_link_reopens_its_request_after_revisar(db_session, client, rrf_
     _admin, link, headers = await holder(db_session, client)
     own = await started_by(client, headers)
     await client.post(f"{REQUESTS}/{own}/submit", headers=headers)
-    await _decide(db_session, own, RRDecision.REVISE)
+    await decide(db_session, own, RRDecision.REVISE)
 
     res = await client.post(f"{REQUESTS}/{own}/revise", headers=headers)
 
@@ -152,7 +150,7 @@ async def test_only_a_revise_decision_reopens_it_for_the_link(db_session, client
     _admin, _link, headers = await holder(db_session, client)
     own = await started_by(client, headers)
     await client.post(f"{REQUESTS}/{own}/submit", headers=headers)
-    await _decide(db_session, own, RRDecision.CONDITIONAL)
+    await decide(db_session, own, RRDecision.CONDITIONAL)
 
     res = await client.post(f"{REQUESTS}/{own}/revise", headers=headers)
 
@@ -163,7 +161,7 @@ async def test_the_link_revision_obeys_one_open_per_link(db_session, client, rrf
     _admin, _link, headers = await holder(db_session, client)
     own = await started_by(client, headers)
     await client.post(f"{REQUESTS}/{own}/submit", headers=headers)
-    await _decide(db_session, own, RRDecision.REVISE)
+    await decide(db_session, own, RRDecision.REVISE)
     blocking = (
         await client.post(f"{REQUESTS}/start", json={"request_type": "traducao"}, headers=headers)
     ).json()
@@ -183,7 +181,7 @@ async def test_another_link_does_not_reopen_it(db_session, client, rrf_app) -> N
     _b, _lb, other = await holder(db_session, client, "outra@fora.org")
     own = await started_by(client, owner)
     await client.post(f"{REQUESTS}/{own}/submit", headers=owner)
-    await _decide(db_session, own, RRDecision.REVISE)
+    await decide(db_session, own, RRDecision.REVISE)
 
     res = await client.post(f"{REQUESTS}/{own}/revise", headers=other)
 
@@ -196,7 +194,7 @@ async def test_the_board_reopening_a_link_request_leaves_it_the_links(
     _admin, link, headers = await holder(db_session, client)
     own = await started_by(client, headers)
     await client.post(f"{REQUESTS}/{own}/submit", headers=headers)
-    await _decide(db_session, own, RRDecision.REVISE)
+    await decide(db_session, own, RRDecision.REVISE)
 
     res = await client.post(f"{REQUESTS}/{own}/revise", headers=await as_mesa(db_session, rrf_app))
 
@@ -215,9 +213,9 @@ async def test_the_board_s_own_path_takes_the_pen_from_the_link(
     _admin, _link, headers = await holder(db_session, client)
     own = await started_by(client, headers)
     await client.post(f"{REQUESTS}/{own}/submit", headers=headers)
-    await _decide(db_session, own, RRDecision.APPROVED)
-    await _to_column(db_session, own, RRStage.REVISAR)
-    gestor_user, gestor = await _gestor(db_session, rrf_app)
+    await decide(db_session, own, RRDecision.APPROVED)
+    await to_column(db_session, own, RRStage.REVISAR)
+    gestor_user, gestor = await a_gestor(db_session, rrf_app)
 
     res = await client.post(f"{REQUESTS}/{own}/revise", headers=gestor)
 

@@ -33,26 +33,27 @@ PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
 TESTS_DIR = Path(__file__).resolve().parent
 
 #: ENG-554 names four gates — lint, test, migrations, boots — and that is four names, not
-#: four jobs. Lint was three jobs on this branch, each paying the same four setup steps, and
-#: a pull request showed three checks for one job's work: ENG-969 collapsed them into one job
-#: that runs the same commands in a queue. ENG-980 renamed that job `checks` because it no
-#: longer only lints. Keyed by file, because nothing here assumes one file is one job.
+#: four jobs. Lint was five jobs once, each paying the same four setup steps, and a pull
+#: request showed five checks for 40 seconds of work: ENG-969 collapsed them into one job
+#: that runs the same seven commands in a queue. ENG-980 renamed that job `checks` because it
+#: no longer only lints. Keyed by file, because nothing here assumes one file is one job.
 GATES = {
     "checks.yml": {"checks"},
     "test.yml": {"test"},
     "migrations.yml": {"migrations"},
 }
 
-#: The four commands the three jobs ran, in the order the single job runs them, followed by
+#: The seven commands the five jobs ran, in the order the single job runs them, followed by
 #: the process-spawning tests ENG-980 moved into this job. Held as an ordered subsequence: a
-#: check that stops being reached is a check that stopped guarding. `main` has seven commands
-#: here — the doctrine guard and the canon drift check have no job on this branch, and
-#: neither the promotion of ENG-969 nor this one invented them.
+#: check that stops being reached is a check that stopped guarding.
 CHECKS_COMMANDS_IN_ORDER = [
     "ruff check .",
     "ruff format --check .",
     "import app.main",
     "mypy app/",
+    "scripts/check_doctrine.py",
+    "scripts/sync_doctrine.py --check",
+    "scripts/sync_internalization_canon.py --check",
     "-m fresh_interpreter",
 ]
 
@@ -63,29 +64,37 @@ INTEGRATION_GLOB = "integration/**"
 #: so the trigger staying narrow is a property worth holding, not a detail.
 TOO_BROAD = {"**", "*", "main", "master"}
 
-#: ENG-980's own lists, cut to what this branch has: eight of its fourteen migration walks
-#: and one of its three fresh interpreters. The eight absent here are
-#: `test_ir_spine_migration`, `test_ir_bridge_mode_migration`, `test_ir_session_version_migration`,
-#: `test_ir_the_hard_stretch_migration`, `test_ir_turns_migration`,
-#: `test_oc_recordings_dedupe_migration`, `test_internalization_room_import_order` and
-#: `test_the_suite_runs_twice_at_once`; they arrive with whatever carries `main` into `dev`.
-#: Read here rather than derived, so a file the ticket names and the repo marks wrong is what
+#: ENG-980's own lists, and every migration test added since: the nineteen files that walk a
+#: migration and the three that open a fresh interpreter, read here rather than derived, so a
+#: file the ticket names and the repo marks wrong is what
 #: `test_the_files_carry_the_marker_the_ticket_gives_them` catches instead of something this
 #: file assumes into agreement with itself.
 MIGRATION_FILES = {
+    "test_ir_spine_migration.py",
     "test_device_migration.py",
     "test_ir_project_id_migration.py",
     "test_ir_coverage_events_migration.py",
     "test_ir_session_ended_at_migration.py",
     "test_ir_attended_migration.py",
+    "test_oc_recordings_dedupe_migration.py",
     "test_ir_prepared_pericope_migration.py",
     "test_ir_segments_migration.py",
     "test_ir_session_language_migration.py",
+    "test_ir_bridge_mode_migration.py",
+    "test_ir_session_version_migration.py",
+    "test_ir_the_hard_stretch_migration.py",
+    "test_ir_turns_migration.py",
+    "test_ir_standing_warning_migration.py",
+    "test_ir_idempotency_key_migration.py",
+    "test_ir_closed_passage_repair_migration.py",
+    "test_ir_team_sessions_migration.py",
     "test_shema552_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {
+    "test_internalization_room_import_order.py",
     "test_app_boots.py",
+    "test_the_suite_runs_twice_at_once.py",
 }
 
 
@@ -139,12 +148,15 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 
 #: A job with no `timeout-minutes` inherits GitHub's 360-minute default, which is how a hung
 #: run stayed "pending" for six hours instead of turning red (ENG-913). The canon check was
-#: the last job left without one. ENG-969 puts every gate under a ceiling: 10 for checks
-#: (was lint), whose four commands cost well under a minute of work, and 12 for test, the
-#: number ENG-1092 set on `main`, after seven cancelled green runs of this branch's 4768
-#: tests (shemaobt/shema-api#592). Migrations carries
-#: 7 for parity with `main`, where the whole job measured 3m04 on shemaobt/shema-api#474's
-#: own run once the `-m migration` step was added; this branch's own run measured 1m53.
+#: the last job left without one. ENG-969 puts every gate under a ceiling: 10 for lint (now
+#: checks), whose seven commands cost 40 seconds of work, and 10 for test, twice the five
+#: minutes its step is expected to take now that the suite runs in four processes. ENG-980
+#: raises the migrations ceiling to fit the `-m migration` step it adds, at twice the 3m04s
+#: the whole job measured on shemaobt/shema-api#474's own CI run. ENG-1092 raises the test
+#: ceiling to 12: at ~3700 tests the step measured 6m21s on shemaobt/shema-api#534, and a
+#: run cancelled at 7m15s was the timeout doing the wrong job. The suite on `dev` met the same
+#: seven minutes at 4768 tests, cancelling green runs of shemaobt/shema-api#592, and took the
+#: twelve with it.
 JOB_TIMEOUT_MINUTES = {
     ("test.yml", "test"): 12,
     ("checks.yml", "checks"): 10,
@@ -176,8 +188,8 @@ def _checks_step_running(fragment: str) -> dict:
     return running[0]
 
 
-def test_checks_is_one_check_and_not_three() -> None:
-    """Three jobs cost one pull request three lines and two repeated setups for one job's work."""
+def test_checks_is_one_check_and_not_five() -> None:
+    """Five jobs cost one pull request five lines and four repeated setups for 40 s of work."""
     jobs = sorted(_workflow("checks.yml")["jobs"])
 
     assert jobs == ["checks"], f"checks.yml defines {jobs}"
@@ -191,9 +203,9 @@ def test_checks_yml_replaces_lint_yml() -> None:
     assert workflow.get("name") == "Checks", f"checks.yml is named {workflow.get('name')}"
 
 
-def test_the_one_job_runs_every_check_the_three_jobs_ran() -> None:
-    """Collapsing the jobs must not drop a check: the four commands this branch has, then
-    the tests that spawn processes, still run, in order."""
+def test_the_one_job_runs_every_check_the_five_jobs_ran() -> None:
+    """Collapsing the jobs must not drop a check: the seven commands, then the tests that
+    spawn processes, still run, in order."""
     runs = [step["run"] for step in _checks_steps() if "run" in step]
 
     unreached = list(CHECKS_COMMANDS_IN_ORDER)
@@ -202,6 +214,13 @@ def test_the_one_job_runs_every_check_the_three_jobs_ran() -> None:
             unreached.pop(0)
 
     assert unreached == [], f"the checks job never reaches, in this order: {unreached}"
+
+
+def test_the_canon_check_carries_the_token_its_api_calls_need() -> None:
+    """Its two calls to Marcia's repository share the runner's 60 requests/hour without it."""
+    step = _checks_step_running("scripts/sync_internalization_canon.py --check")
+
+    assert step.get("env", {}).get("GITHUB_TOKEN"), f"{step.get('name')} has env {step.get('env')}"
 
 
 def test_the_boot_import_carries_the_three_variables_it_needs() -> None:
@@ -233,7 +252,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
 
 def test_the_migrations_job_runs_the_migration_marked_tests_with_the_variable_cleared() -> None:
     """G3 (criterion 4): a step `env` cannot unset a job-level `env` in Actions — only the
-    `run` line can, and without it the eight would run serially, against the job's
+    `run` line can, and without it the nineteen would run serially, against the job's
     Postgres, on top of the schema the previous step just migrated."""
     steps = _workflow("migrations.yml")["jobs"]["migrations"]["steps"]
     running = [step for step in steps if "-m migration" in step.get("run", "")]
@@ -265,7 +284,7 @@ def test_the_two_markers_are_registered() -> None:
 def _module_level_marker(path: Path) -> str | None:
     """The name of the mark a file's `pytestmark = pytest.mark.<name>` line carries, by AST.
 
-    Reads the source rather than importing it: importing one of the nine files to ask
+    Reads the source rather than importing it: importing one of the twenty-two files to ask
     what it is marked with is exactly the cost this ticket moves out of the PR job.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))

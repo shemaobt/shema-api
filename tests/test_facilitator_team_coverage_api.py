@@ -39,6 +39,7 @@ from app.services.internalization_room.canon.elements import ElementKind, elemen
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     grant_facilitator_app_role,
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -57,11 +58,14 @@ NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
 #: Written out rather than derived from `elements_for`, so a canon that silently loses a bead
 #: fails here instead of agreeing with itself.
 PILOT = {
-    "P01": {"elements": 29, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P02": {"elements": 24, "scenes": [1, 2, 3], "preserved": 4},
-    "P05": {"elements": 34, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P14": {"elements": 10, "scenes": [1], "preserved": 0},
+    "P01": {"elements": 44, "scenes": [1, 2, 3, 4], "preserved": 3},
+    "P02": {"elements": 39, "scenes": [1, 2, 3], "preserved": 4},
+    "P05": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 5},
+    "P14": {"elements": 14, "scenes": [1], "preserved": 0},
 }
+
+#: The four Level-1 axes open every passage, and like a preservation rule they sit in no scene.
+AXES = ("arc", "context", "tone", "function")
 
 #: Real canon, no labels written for it. Ten of Ruth's fourteen are in this position.
 UNLABELLED = "P03"
@@ -135,6 +139,16 @@ async def a_session_that_moved(
     return session
 
 
+async def a_session_the_team_finished(db: AsyncSession, *, project_id: str | None, pericope: str):
+    """A conversation this team took to its end, which is their own recording of the passage.
+
+    Working every bead is not the end of one: the floor is the gate on the invitation to
+    record, and the record is what closes the passage.
+    """
+    session = await open_ir_session(db, pericope=pericope, project_id=project_id)
+    return await having_finished_the_passage(db, session)
+
+
 def by_key(body: list[dict]) -> dict[str, dict]:
     return {element["key"]: element for element in body}
 
@@ -201,7 +215,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     preserved = [e for e in body if e["kind"] == ElementKind.PRESERVED.value]
     assert len(preserved) == expected["preserved"]
     assert all(e["scene"] is None for e in preserved)
-    assert all(e["scene"] is not None for e in body if e not in preserved)
+    assert [e["key"] for e in body[:4]] == list(AXES)
+    assert all(e["scene"] is None for e in body[:4])
+    assert all(e["scene"] is not None for e in body[4:] if e not in preserved)
 
 
 async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncSession) -> None:
@@ -213,7 +229,9 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
     tell two beads apart by reading them.
 
     What is deliberately *not* asserted is that the three languages differ. `being:B10` is
-    Rute in all three, and demanding a difference would demand a mistranslation.
+    Rute in all three, and demanding a difference would demand a mistranslation. Nor that a
+    name is unique across the passage: Ruth is a bead in each of P02's three scenes, told
+    apart by the scene column, so the names are distinct within a scene.
     """
     _user, project, headers = await a_facilitator(db_session, email="b1lang@x.com")
 
@@ -225,7 +243,7 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
             named = element[f"label_{language}"]
             assert named.strip()
             assert named != element["key"]
-    assert len({element["label_pt"] for element in body}) == len(body)
+    assert len({(element["scene"], element["label_pt"]) for element in body}) == len(body)
 
 
 # ------------------------------------------------------------- behaviour 2: touched_in_session
@@ -343,7 +361,7 @@ async def test_an_untouched_bead_says_so_and_names_no_session(
 
     body = (await client.get(coverage_url(project.id, "P14"), headers=headers)).json()
 
-    assert len(body) == 10
+    assert len(body) == PILOT["P14"]["elements"]
     assert {e["status"] for e in body} == {NOT_ENCOUNTERED}
     assert all(e["touched_in_session"] is None for e in body)
 
@@ -459,7 +477,7 @@ async def test_the_whole_necklace_costs_one_query(client, db_session: AsyncSessi
         response = await client.get(coverage_url(project.id, "P05"), headers=headers)
 
     assert response.status_code == 200
-    assert len(response.json()) == 34
+    assert len(response.json()) == PILOT["P05"]["elements"]
     assert len(counted.against("ir_coverage_events")) == 1
 
 
@@ -477,12 +495,7 @@ async def test_the_pericope_omitted_means_the_one_the_team_is_on(
     that has closed the first is answered about the second.
     """
     _user, project, headers = await a_facilitator(db_session, email="b6@x.com")
-    await a_session_that_moved(
-        db_session,
-        project_id=project.id,
-        pericope="P01",
-        moved=dict.fromkeys(element_keys("P01"), PARTIALLY_ENGAGED),
-    )
+    await a_session_the_team_finished(db_session, project_id=project.id, pericope="P01")
 
     response = await client.get(coverage_url(project.id), headers=headers)
     named = await client.get(coverage_url(project.id, "P02"), headers=headers)
@@ -512,11 +525,8 @@ async def test_a_team_that_closed_the_book_has_no_passage_to_default_to(
 
     _user, project, headers = await a_facilitator(db_session, email="b6end@x.com")
     for meaning_map in load_book(ROOM_BOOK):
-        await a_session_that_moved(
-            db_session,
-            project_id=project.id,
-            pericope=meaning_map.pericope_num,
-            moved=dict.fromkeys(element_keys(meaning_map.pericope_num), PARTIALLY_ENGAGED),
+        await a_session_the_team_finished(
+            db_session, project_id=project.id, pericope=meaning_map.pericope_num
         )
 
     refused = await client.get(coverage_url(project.id), headers=headers)
@@ -606,7 +616,9 @@ async def test_a_preservation_rule_still_belongs_to_no_scene(
 
     body = (await client.get(coverage_url(project.id, "P01"), headers=headers)).json()
 
-    assert [bead["scene"] for bead in body if bead["kind"] == "preserved"] == [None] * 5
+    assert [bead["scene"] for bead in body if bead["kind"] == "preserved"] == [None] * PILOT["P01"][
+        "preserved"
+    ]
 
 
 # ---------------------------------------------- behaviour 7: non-enumeration, and its ordering

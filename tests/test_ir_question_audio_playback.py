@@ -192,7 +192,6 @@ async def a_raised_hand(db_session, store):
     )
 
 
-@pytest.mark.asyncio
 async def test_playing_a_question_carries_no_shared_room_key(client, db_session, room_app, store):
     """The credential is the person's, not the tablet's.
 
@@ -213,7 +212,6 @@ async def test_playing_a_question_carries_no_shared_room_key(client, db_session,
     assert played.json()["url"], "a rota devolve o endereco assinado no corpo (ENG-533)"
 
 
-@pytest.mark.asyncio
 async def test_the_room_key_alone_does_not_open_the_question(client, db_session, room_app, store):
     """The half of Behaviour 2 the absence check cannot reach.
 
@@ -232,7 +230,6 @@ async def test_the_room_key_alone_does_not_open_the_question(client, db_session,
     assert played.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_listening_without_a_login_is_refused(client, db_session, room_app, store):
     question = await a_raised_hand(db_session, store)
 
@@ -241,7 +238,6 @@ async def test_listening_without_a_login_is_refused(client, db_session, room_app
     assert played.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_storage_trouble_is_not_dressed_up_as_a_missing_recording(
     client, db_session, room_app, store, settings, monkeypatch
 ):
@@ -278,7 +274,6 @@ async def test_storage_trouble_is_not_dressed_up_as_a_missing_recording(
         "este teste passa, a suite fica vermelha e alguem tem de vir aqui remover a marca."
     ),
 )
-@pytest.mark.asyncio
 async def test_a_question_the_facilitator_has_no_link_to_is_refused(
     client, db_session, room_app, store
 ):

@@ -147,7 +147,6 @@ async def _halt(client: httpx.AsyncClient, session_id: str) -> None:
     assert asked.status_code == 200, asked.text[:200]
 
 
-@pytest.mark.asyncio
 async def test_a_room_that_halted_for_a_person_is_visible_to_one(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -164,7 +163,6 @@ async def test_a_room_that_halted_for_a_person_is_visible_to_one(
     assert halted[0]["status"] == IRSessionStatus.NEEDS_PERSON.value
 
 
-@pytest.mark.asyncio
 async def test_the_id_the_listing_gives_opens_the_door_it_addresses(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -184,7 +182,6 @@ async def test_the_id_the_listing_gives_opens_the_door_it_addresses(
     assert [t["take_id"] for t in recorded.json()["takes"]] == [take.id]
 
 
-@pytest.mark.asyncio
 async def test_an_open_question_leads_to_the_session_it_came_from(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -211,7 +208,6 @@ async def test_an_open_question_leads_to_the_session_it_came_from(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_session_still_under_way_is_not_in_the_listing(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -232,7 +228,6 @@ async def test_a_session_still_under_way_is_not_in_the_listing(
     assert under_way.id not in shown
 
 
-@pytest.mark.asyncio
 async def test_the_most_recent_session_is_at_the_front(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -254,7 +249,6 @@ async def test_the_most_recent_session_is_at_the_front(
     assert order.index(newer.id) < order.index(older.id)
 
 
-@pytest.mark.asyncio
 async def test_without_a_login_the_listing_does_not_answer(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -264,7 +258,6 @@ async def test_without_a_login_the_listing_does_not_answer(
     assert (await client.get(f"{IR}/facilitator/sessions")).status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_the_room_key_does_not_open_the_facilitator_listing(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -277,7 +270,6 @@ async def test_the_room_key_does_not_open_the_facilitator_listing(
     assert listed.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_a_facilitator_of_another_team_does_not_see_the_halted_room(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -306,7 +298,6 @@ async def test_a_facilitator_of_another_team_does_not_see_the_halted_room(
     )
 
 
-@pytest.mark.asyncio
 async def test_the_facilitator_of_the_team_still_sees_it(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:

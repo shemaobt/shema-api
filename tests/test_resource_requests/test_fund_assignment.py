@@ -11,7 +11,7 @@ and not a restrictive default, which is why it is tested against a real Gestor s
 rather than asserted about the capability map alone.
 
 No test uses a platform-admin account — they pass every guard unconditionally — and the
-draft builders are ``test_requests``'s own, imported rather than repeated.
+draft builders are ``tests/resource_request_harness.py``'s, imported rather than repeated.
 """
 
 from __future__ import annotations
@@ -30,13 +30,16 @@ from app.db.models.resource_request import (
 )
 from app.services.resource_request import list_fund_options as options_service
 from app.services.resource_request._fund_choices import options_from
-from tests.test_resource_requests.test_evaluations import (
+from tests.resource_request_harness import (
+    answers,
     as_gestor,
+    as_mesa,
+    as_team,
+    create,
     endorse,
     give_fund,
     put_evaluation,
 )
-from tests.test_resource_requests.test_requests import answers, as_mesa, as_team, create
 
 #: The package re-exports the ``assign_fund`` *function* under the name of its own module,
 #: so ``from … import assign_fund`` hands back the function and a ``setattr`` on it patches

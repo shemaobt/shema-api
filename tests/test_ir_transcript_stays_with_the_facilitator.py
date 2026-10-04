@@ -10,8 +10,10 @@ one route that carries the field today. A promise kept by remembering to leave a
 each new schema is a promise the next route breaks. Everything below is derived from the
 mounted application, so a route that would break it fails this file on the day it is written:
 
-* which routes the room app reaches — every mounted route whose dependency tree contains the
-  tablet's gates (`require_room_caller`, `require_device`), read off `route.dependant`;
+* which routes the room app reaches — every mounted route whose dependency tree, or whose own
+  body, calls the tablet's gates (`require_room_caller`, `require_device`) — shared with the
+  credential audit as `room_route_audit_harness.room_app_routes` (ENG-1039), so a route gated
+  by hand instead of by `Depends` cannot go unaudited in one file and not the other;
 * which of those can reach a question — the ones the room's question router mounts, read off
   the module rather than listed here, so a fourth one is covered the day it is added;
 * what a route can put in a body — every model reachable from the return type FastAPI
@@ -41,6 +43,7 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRS
 from app.models.internalization_room import InboxQuestionView
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.voice_handles import to_handle
+from tests.room_route_audit_harness import room_app_routes
 
 #: How the facilitator's card spells the two fields that must never travel together to the
 #: room. Read off the card rather than typed here, so a rename that keeps the leak takes this
@@ -61,28 +64,6 @@ SENTINEL = "SENTINELA-TRANSCRICAO-QUE-NAO-PODE-SAIR-DA-MESA"
 FIXTURE = Path(__file__).parent / "fixtures" / "pergunta-1500ms.m4a"
 DEVICE = "tablet-da-equipe-1"
 SESSION = "sessao-1"
-
-
-def _dependency_calls(dependant) -> set:
-    calls = {dependant.call}
-    for sub in dependant.dependencies:
-        calls |= _dependency_calls(sub)
-    return calls
-
-
-def room_app_routes() -> list:
-    """Every mounted route a tablet can reach, in path order."""
-    from app.api.internalization_room._deps import require_device, require_room_caller
-    from app.main import app
-
-    gates = {require_room_caller, require_device}
-    reachable = [
-        route
-        for route in app.routes
-        if getattr(route, "dependant", None) is not None
-        and gates & _dependency_calls(route.dependant)
-    ]
-    return sorted(reachable, key=lambda route: (route.path, sorted(route.methods)))
 
 
 def question_routes_the_room_reaches() -> list:

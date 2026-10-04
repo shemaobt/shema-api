@@ -1,0 +1,34 @@
+# Tripod canon — vendor pin
+#
+# This file pins the ONE published compiler commit that every vendored Tripod
+# artifact in this repo is sourced from (Meaning Maps, Meaning Coordinates,
+# Compilation Logs, and the book aliases tables). It is the single source of
+# truth for the data seam. See docs/AUTHORITATIVE-SOURCE-SEAM.md.
+#
+# Re-sync ONLY via `scripts/sync-canon.mjs` (which rewrites this file and runs
+# `scripts/vendor-canon.sh`). The build's drift guard (`scripts/check-drift.mjs`)
+# fails if any vendored file's sha256 no longer matches what was recorded at this
+# pin. Never read canon from a working branch, an uncommitted tree, or by
+# runtime-fetching the portal.
+
+source_repo:      marciasuzuki/tripod_compiler
+pin_commit:       7372ec0e9d3a64e6864d4f1d2619dd5e21900ad2
+pin_ref:          origin/main
+pin_committed:    2026-08-31
+vendored_on:      2026-09-03
+
+# Schema versions at this pin (informational):
+tagset_version:   TRIPOD_STA_v2_0
+validation_rules: v0.19
+enumerations:     v0.23
+
+# Published / consumable books at this pin (derived: aliases in pins.json sources
+# + complete artifact triads in fixtures — the ONLY books vendored here):
+published_books:  Esther (E01-E18) + Jonah (J01-J05) + Ruth (P01-P14) = 37 pericopes
+
+# Recorded aliases sha256 at this pin (from the compiler's _spec/pins.json).
+# The drift guard re-reads these from pins.json when the compiler repo is available,
+# and always enforces them against the vendored bytes via VENDOR_MANIFEST.json.
+sha256_esther_aliases:   3353c0316b6bbca642643ce08b8527a07eda6c0e3fcfee5f84fe3ae1e64fd1d9
+sha256_jonah_aliases:   6b8043d20b1c45dc6f47f305aac3107f82033e09f8035975a1003dbbeb5d0e7f
+sha256_ruth_aliases:   87eadad49b4a61ec6d506fb10dc626ca72f0090b760edae798a6303c98c18da5

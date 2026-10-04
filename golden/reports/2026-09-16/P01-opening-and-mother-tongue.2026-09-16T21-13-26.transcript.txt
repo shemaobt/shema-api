@@ -1,0 +1,65 @@
+[turn 0]
+TEAM: [A sessão acabou de começar. A equipe abriu a passagem P01 e está à mesa, pronta para começar. Fale primeiro.]
+GUIDE (corrected): Olá, pessoal. Eu sou o Facilitador Digital. Estou aqui na mesa com vocês, pensando junto, para ajudar vocês a entender bem esta passagem antes de traduzir.
+
+Antes de olhar as partes, vamos sentir o todo. A história começa lá atrás, no tempo dos juízes, quando não tinha um líder firme sobre Israel. Vem uma fome, e uma família sai de Belém de Judá e vai morar como estrangeira em Moabe. São quatro pessoas: o pai, a mãe e dois filhos. Aí o pai morre. Os dois filhos casam com mulheres de Moabe. Passam mais ou menos dez anos. E os dois filhos morrem também. No fim, sobra uma mulher só, sem os dois filhos e sem marido, longe de casa.
+
+Reparem no jeito de contar: é seco, direto. Cada perda vem em poucas palavras. Ninguém chora na história, ninguém fala do que sente, e a história não diz que Deus fez nada disso. O peso vem justamente do que não é dito.
+
+Agora vamos entrar na primeira parte. É o tempo dos juízes, e cai uma fome sobre a terra. Um homem de Belém de Judá sai da cidade dele com a mulher e os dois filhos. O nome dele é Elimeleque. A mulher é Noemi. Os filhos são Malom e Quiliom. Eles são efrateus, uma família antiga de Belém. Eles vão para os campos de Moabe, para morar ali como estrangeiros, só de passagem — não para ficar de vez. E chegam lá, e ficam lá.
+
+Uma coisa para reparar: o nome Belém quer dizer "casa de pão". E é justamente na casa de pão que não tem pão. Por isso a família sai. E Moabe é a terra de um povo com quem Israel tem briga antiga.
+
+Conversem um pouco entre vocês: quem são essas quatro pessoas, de onde saíram, para onde foram e por quê. Se alguma coisa ainda não ficou clara — quem é quem, o que é morar como estrangeiro, qualquer coisa — me perguntem, que eu conto de novo. Quando quiserem, me digam em português o que vocês entenderam.
+
+[turn 1]
+TEAM: Bom dia. Somos a equipe Terena: o Jean, o Daniel e o Suzuki. Pode continuar.
+GUIDE (pass): Bom dia, Jean, Daniel e Suzuki. Que bom estar aqui com vocês. Equipe Terena — vou lembrar bem.
+
+Então, antes de a gente seguir, eu quero ouvir vocês. Essa primeira parte que eu contei: a fome na terra, no tempo dos juízes, e a família que sai de Belém e vai para Moabe.
+
+Conversem um pouco entre vocês, do jeito de vocês. Depois me contem em português, com as palavras de vocês: o que aconteceu na terra, e em que tempo isso foi? Se alguma coisa não ficou clara, é só me perguntar que eu conto de novo.
+
+[turn 2]
+TEAM: Entendemos o começo. Vamos ensaiar essa primeira parte entre nós.
+GUIDE (pass): Ótimo. Então vão em frente: ensaiem essa primeira parte juntos, na língua de vocês. Contem a fome na terra, o tempo dos juízes, e a família que sai de Belém de Judá e vai morar como estrangeira nos campos de Moabe. Usem as mãos, se levantem, mostrem a saída da cidade — o corpo ajuda a lembrar.
+
+Quando terminarem, voltem aqui e me contem em português o que vocês disseram no ensaio.
+
+[turn 3]
+TEAM: [A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma palavra chegou até você.]
+GUIDE (fail_safe): Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?
+
+[turn 4]
+TEAM: Pronto. Em português: no tempo em que os juízes mandavam, faltou comida na terra. Um homem de Belém de Judá foi morar em Moabe com a esposa e os dois meninos. Ele era Elimeleque, ela Noemi, os meninos Malom e Quiliom, gente de Efrata, de Belém.
+GUIDE (pass): Muito bom. No que vocês me contaram de volta, eu ouvi tudo isso: o tempo dos juízes, a fome na terra, o homem que sai de Belém de Judá com a mulher e os dois filhos, os nomes de cada um — Elimeleque, Noemi, Malom e Quiliom — e que eram efrateus, gente de Belém. Está tudo alinhado com o que a passagem conta.
+
+Só uma coisa que não ouvi no que vocês me disseram: a passagem fala que eles foram morar em Moabe como estrangeiros, só de passagem — não para ficar de vez. Esse jeito de morar, como quem está de passagem, entrou no ensaio na língua de vocês, ou ficou de fora?
+
+[turn 5]
+TEAM: E a próxima parte?
+GUIDE (pass): Podemos ir, sim. Só guardem essa ideia para o ensaio na língua de vocês: eles foram para Moabe para morar como estrangeiros, de passagem, não para ficar de vez. Isso muda o jeito de contar a saída.
+
+Agora a segunda parte. É curta. A família está em Moabe. E Elimeleque, o marido de Noemi, morre. Noemi fica ali, com os dois filhos, Malom e Quiliom, longe de Belém.
+
+Reparem no jeito de contar: a história não diz por que ele morreu, nem quem causou isso. Não fala de choro, não fala de enterro, não fala de luto. Só diz que ele morreu e que Noemi ficou com os dois filhos. Poucas palavras, e a perda pesa justamente por isso.
+
+Conversem entre vocês sobre essa parte. Se alguma coisa não ficou clara, me perguntem. Quando estiverem com ela na mão, me digam, e a gente segue.
+
+[turn 6]
+TEAM: Espera, espera. Antes disso: a Noemi ficou sozinha ou ficou com os filhos quando o marido morreu?
+GUIDE (pass): Boa pergunta — e é importante mesmo. Nessa parte, quando o marido morre, Noemi **não** fica sozinha. A história diz: Elimeleque, o marido de Noemi, morreu, e ela ficou com os dois filhos, Malom e Quiliom. Os dois meninos estão vivos, ali com ela, em Moabe.
+
+O ficar sozinha vem só lá no fim da passagem, depois que os dois filhos também morrem. Aqui ainda não. Aqui é a primeira perda: cai o marido, e sobra a mãe com os dois filhos.
+
+Reparem numa coisa nesse jeito de dizer: "Noemi ficou com os dois filhos". A história vai usar esse mesmo jeito de falar — "ficou", "sobrou" — de novo lá no fim. É bom guardar isso.
+
+Ficou claro agora? Se quiserem, eu conto de novo.
+
+[turn 7]
+TEAM: Tá. Então ela ficou com os dois filhos. Pode seguir.
+GUIDE (pass): Isso mesmo: o marido morre, e Noemi fica com os dois filhos, Malom e Quiliom, ali em Moabe.
+
+Então agora ensaiem essa segunda parte juntos, na língua de vocês. Contem a morte de Elimeleque e Noemi ficando com os dois filhos. Lembrem do jeito seco da história: poucas palavras, sem choro, sem enterro, sem dizer quem causou. Se quiserem, mostrem com o corpo — um cai, três ficam de pé.
+
+Quando terminarem, voltem e me contem em português o que vocês disseram no ensaio.

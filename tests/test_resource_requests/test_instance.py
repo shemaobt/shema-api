@@ -13,9 +13,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.resource_request import RRDecision, RRRequest
 from tests.baker import make_user
+from tests.resource_request_harness import REQUESTS, decide, draft, trail_rows
 from tests.test_resource_requests.conftest import auth_header, grant, make_membership, make_project
-from tests.test_resource_requests.test_history import trail_rows
-from tests.test_resource_requests.test_requests import REQUESTS, _decide, draft
 
 START = f"{REQUESTS}/start"
 
@@ -350,7 +349,7 @@ async def test_a_revision_inherits_the_pen_and_obeys_the_lock(db_session, client
     _bia, bia = await member_of(db_session, "kadiweu", "bia@instancia.test")
     sent = (await client.post(REQUESTS, json=draft(), headers=ana)).json()
     await client.post(f"{REQUESTS}/{sent['id']}/submit", headers=ana)
-    await _decide(db_session, sent["id"], RRDecision.REVISE)
+    await decide(db_session, sent["id"], RRDecision.REVISE)
 
     blocking = (await start(client, bia)).json()
     refused = await client.post(f"{REQUESTS}/{sent['id']}/revise", headers=ana)

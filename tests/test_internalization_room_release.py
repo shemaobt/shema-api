@@ -1,35 +1,29 @@
 """The Refine handoff artifact: fail-closed gates and a closed-world package."""
 
+import json
 from datetime import UTC, datetime
+from hashlib import sha256
 
-import httpx
 import pytest
-from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession
+from app.services.internalization_room import release as release_module
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     FindingKind,
     SupersededAttempt,
 )
-from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import floor_met, initial_state, merge
 from app.services.internalization_room.release import (
+    FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
+    approve_release,
     build_internalization_release,
+    compose_internalization_release,
 )
+from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import (
     capture_segment,
     divide_segment,
@@ -38,179 +32,34 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     create_session,
-    report_playback,
     save_back_translation,
     save_comprehension,
 )
-from tests.baker import make_app, make_role, make_user
-from tests.test_facilitator_role_gate import (
-    APP_KEY,
-    FACILITATOR_ROLE,
-    auth_header,
-    grant_app_role,
-    with_a_team,
+from tests.release_harness import (
+    CLIP_MS,
+    P,
+    checked_telling_back,
+    ensaio_take,
+    one_stretch,
+    ready_session,
+    reported_playback,
+    retro_take,
+    told_back_with_an_open_finding,
 )
 
-P = "P03"
 
-
-@pytest.fixture()
-async def client(db_session: AsyncSession):
-    from app.core.database import get_db
-    from app.main import app
-
-    async def _get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
-    app.dependency_overrides.pop(get_db, None)
-
-
-@pytest.fixture()
-async def room_app(db_session: AsyncSession):
-    app = await make_app(db_session, app_key=APP_KEY, name="Sala de Internalização")
-    await make_role(
-        db_session, app.id, role_key=FACILITATOR_ROLE, label="Facilitador", is_system=True
-    )
-    return app
-
-
-def _supported_comprehension(pericope: str, *, carry_one: bool = False) -> ComprehensionState:
-    checkpoints = list(checkpoints_for(pericope))
-    ledger = []
-    for index, checkpoint in enumerate(checkpoints):
-        result = (
-            EvidenceResult.CARRY_TO_REFINE
-            if carry_one and index == 0
-            else EvidenceResult.DEMONSTRATED
-        )
-        ledger.append(
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=result,
-            )
-        )
-    return ComprehensionState(
-        ledger=list(ledger),
-        practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
-    )
-
-
-async def _one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):
-    return await capture_segment(
-        db,
-        session,
-        take_id="ensaio-1",
-        starts_ms=0,
-        ends_ms=61000,
-        bridge_take_id="retro-1",
-        transcript=text,
-    )
-
-
-async def _checked_telling_back(db: AsyncSession, session: IRSession) -> BackTranslationState:
-    told = await _one_stretch(db, session)
-    return BackTranslationState(
-        scope=P,
-        findings=[],
-        evidence_sufficient=True,
-        checked=True,
-        analysed_segment_ids=[told.id],
-    )
-
-
-def _ensaio_take(
-    session_id: str,
-    *,
-    scope: str = "passagem-inteira",
-    pass_number: int | None = None,
-    chunk_index: int | None = None,
-    sha256: str = "a" * 64,
-    created_at: datetime | None = None,
-) -> IRTake:
-    take = IRTake(
-        session_id=session_id,
-        device_id="tablet-1",
-        pericope=P,
-        kind=IRTakeKind.ENSAIO,
-        scope=scope,
-        pass_number=pass_number,
-        chunk_index=chunk_index,
-        storage_key=f"takes/{session_id}/ensaio/{sha256}",
-        size_bytes=2048,
-        sha256=sha256,
-        crc32c="AAAAAAA=",
-        content_type="audio/mp4",
-    )
-    if created_at is not None:
-        take.created_at = created_at
-    return take
-
-
-async def _reported_playback(
-    db: AsyncSession,
-    session: IRSession,
-    state: BackTranslationState,
-    *,
-    played_ranges: list[list[int]] | None = None,
-    clip_duration_ms: int | None = 61000,
-) -> None:
-    """Store the telling-back together with the team's report of what the tablet played.
-
-    Through the room's own write path rather than by filling the fields, because the room
-    binds a report to the rehearsal it is about at the moment it arrives. A report assembled
-    here would name no recording, which is a state the release is entitled to refuse.
-
-    The defaults describe a clip played through; a case about a report that falls short says
-    so by naming the numbers it means.
-    """
-    await report_playback(
-        db,
-        session,
-        state,
-        played_ranges=[[0, 61000]] if played_ranges is None else played_ranges,
-        clip_duration_ms=clip_duration_ms,
-    )
-
-
-async def _ready_session(
-    db: AsyncSession, *, project_id: str | None = None, **comprehension_kwargs
-):
-    session = await create_session(
-        db, pericope=P, bridge_mode="guided_microchecks", project_id=project_id
-    )
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
-    db.add(_ensaio_take(session.id))
-    await db.commit()
-    await _reported_playback(db, session, await _checked_telling_back(db, session))
-    return session
-
-
-@pytest.mark.asyncio
 async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) -> None:
-    """`telling_back_not_checked` left this list with ENG-584: a telling-back has to exist,
-    which `no_telling_back` already says, but it does not have to have come out clean."""
+    """`telling_back_not_checked` left this list with ENG-584 and came back with ENG-882: a
+    telling-back has to exist, which `no_telling_back` already says, and it has to have come
+    out clean, which is Marcia's gate and only a facilitator's code sets aside."""
     session = await create_session(db_session, pericope=P)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert blocked.value.blockers == [
-        "recording_consent_never_given",
-        "no_rehearsal_audio",
-        "no_telling_back",
-    ]
+    assert blocked.value.blockers == ["no_rehearsal_audio", "no_telling_back"]
 
 
-@pytest.mark.asyncio
 async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope="OV")
 
@@ -220,34 +69,86 @@ async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
     assert blocked.value.blockers == ["panorama_sessions_never_release"]
 
 
-@pytest.mark.asyncio
 async def test_a_ready_session_releases_a_labeled_sealed_package(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session)
+    """The fingerprint is recomputed the way a consumer would, from the packet it received.
+
+    Asked of the module's own helper, the case agreed with whatever that helper did and could
+    not have caught it drifting from the contract Refine reads: what the hash has to be is
+    the canonical dump of the sealed content, and that is what is written out here.
+    """
+    session = await ready_session(db_session)
 
     artifact = await build_internalization_release(db_session, session)
 
     assert artifact["purpose"] == "first_team_rehearsal"
     assert artifact["readiness"] == "ready_for_refine"
-    assert artifact["bridge_mode"] == "guided_microchecks"
     assert artifact["comprehension"]["outcome"] == "ready_supported"
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
-    assert artifact["back_translation"]["played_ranges"] == [[0, 61000]]
+    assert [entry["played_ranges"] for entry in artifact["back_translation"]["played_by_take"]] == [
+        [[0, CLIP_MS]]
+    ]
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
+    sealed.pop("created_at")
+    sealed.pop("release_id")
+    sealed.pop("version")
+    sealed.pop("check")
+    canonical = json.dumps(sealed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert len(stamp) == 64
-    from app.services.internalization_room.release import _package_sha256
-
-    assert stamp == _package_sha256(sealed)
+    assert stamp == sha256(canonical.encode("utf-8")).hexdigest()
 
 
-@pytest.mark.asyncio
+class _FixedClock:
+    """A stand-in for the module's ``datetime``, answering ``now`` from a fixed queue."""
+
+    def __init__(self, instants: list[datetime]) -> None:
+        self._instants = list(instants)
+
+    def now(self, tz=None):
+        return self._instants.pop(0)
+
+
+async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await ready_session(db_session)
+    first_instant = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    second_instant = datetime(2026, 9, 10, 9, 0, tzinfo=UTC)
+    monkeypatch.setattr(release_module, "datetime", _FixedClock([first_instant, second_instant]))
+
+    first = await build_internalization_release(db_session, session)
+    second = await build_internalization_release(db_session, session)
+
+    assert first["created_at"] == first_instant.isoformat()
+    assert second["created_at"] == second_instant.isoformat()
+    assert first["package_sha256"] == second["package_sha256"], (
+        "duas leituras da mesma sessão não mudaram nada além do relógio de exportação"
+    )
+
+
+async def test_one_more_stretch_told_changes_the_packet_hash(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await ready_session(db_session)
+    frozen = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    monkeypatch.setattr(release_module, "datetime", _FixedClock([frozen, frozen]))
+
+    before = await build_internalization_release(db_session, session)
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    after = await build_internalization_release(db_session, session)
+
+    assert before["package_sha256"] != after["package_sha256"], (
+        "o mesmo relógio nas duas leituras não pode esconder que o conteúdo mudou"
+    )
+
+
 async def test_a_carried_point_travels_with_its_canonical_material(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session, carry_one=True)
+    session = await ready_session(db_session, carry_one=True)
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -259,11 +160,10 @@ async def test_a_carried_point_travels_with_its_canonical_material(
     assert artifact["open_questions"] >= 1
 
 
-@pytest.mark.asyncio
 async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession) -> None:
-    session = await _ready_session(db_session)
-    state = await _checked_telling_back(db_session, session)
-    await _reported_playback(db_session, session, state, played_ranges=[[0, 20000]])
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
+    await reported_playback(db_session, session, state, played_ranges=[[0, 20000]])
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -271,7 +171,6 @@ async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession)
     assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
 
 
-@pytest.mark.asyncio
 async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_release(
     db_session: AsyncSession,
 ) -> None:
@@ -281,9 +180,9 @@ async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_rele
     61-second stretch it is filed against, because the clip is 37 seconds long. The
     package that carries it must not travel.
     """
-    session = await _ready_session(db_session)
-    state = await _checked_telling_back(db_session, session)
-    await _reported_playback(db_session, session, state, clip_duration_ms=37000)
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
+    await reported_playback(db_session, session, state, clip_duration_ms=37000)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -291,27 +190,23 @@ async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_rele
     assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
 
 
-@pytest.mark.asyncio
 async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSession) -> None:
-    session = await _ready_session(db_session)
-    state = await _checked_telling_back(db_session, session)
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
     state.superseded = [
-        SupersededAttempt(
-            findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
-            evidence_sufficient=False,
-        )
+        SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
     ]
-    await _reported_playback(db_session, session, state)
+    await reported_playback(db_session, session, state)
     await retire_every_segment(db_session, session.id)
-    abandoned = await _one_stretch(db_session, session, "tentativa antiga")
+    abandoned = await one_stretch(db_session, session, "tentativa antiga")
     await retire_every_segment(db_session, session.id)
-    kept = await _one_stretch(db_session, session)
+    kept = await one_stretch(db_session, session)
 
     artifact = await build_internalization_release(db_session, session)
 
     archived = artifact["back_translation"]["superseded_attempts"][0]
     assert archived["findings"][0]["kind"] == "missing"
-    assert archived["evidence_sufficient"] is False
+    assert "evidence_sufficient" not in archived
     replaced = artifact["back_translation"]["superseded_segments"]
     assert abandoned.id in [one["segment_id"] for one in replaced]
     assert "tentativa antiga" in [one["text"] for one in replaced], (
@@ -320,112 +215,154 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
     assert [one["segment_id"] for one in artifact["back_translation"]["segments"]] == [kept.id]
 
 
-@pytest.mark.asyncio
 async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     db_session: AsyncSession,
 ) -> None:
-    """A re-record starts the parts at one again, so the rehearsal the team abandoned and
-    the one they kept both reach here as `parte-1`, chunk 1, and the audio is addressed by
-    its own hash, so both rows stay.
+    """Two takes under part one: the packet carries the newest, and the file carries both.
 
-    The pass is the only label that separates them, and the order has to come from it: the
-    tablet's outbox drains whenever the link comes back, so the abandoned take can be
-    written down after the take that replaced it.
+    The rehearsal the team abandoned and the one they kept both arrive as `parte-1`, and the
+    audio is addressed by its own hash, so both rows stay. What Refine is handed is the draft
+    the team is working on — one take per part — and the earlier one is history, which the
+    **Retroverification file** is where the facilitator and the consultant read.
 
-    The whole-passage take `_ready_session` leaves carries neither a chunk nor a pass, and
-    it is read here too: it comes first on every engine now that `takes_of` says where a
-    NULL belongs, which is the same reading order — the undivided recording before the
-    parts, and a take from before the room sent a pass before the ones that carry it.
+    Which of the two is the part is the pass the tablet counted, and not the moment the upload
+    landed: the outbox drains whenever the link comes back, so the abandoned take can be written
+    down *after* the take that replaced it, and it is written down that way here on purpose.
+
+    The whole-passage take `ready_session` leaves is a part of its own: it carries no number,
+    and the undivided recording reads before the numbered parts on either engine.
+
+    Composed rather than built, because the gate is not the subject: the two takes under part
+    one carry no telling of their own, which is a part nobody told back and a refusal of its
+    own file's. What this case asks is which of them the packet calls the part.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     db_session.add(
-        _ensaio_take(
+        ensaio_take(
             session.id,
             scope="parte-1",
             pass_number=2,
-            chunk_index=1,
+            ordinal=1,
             sha256="c" * 64,
             created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
         )
     )
     db_session.add(
-        _ensaio_take(
+        ensaio_take(
             session.id,
             scope="parte-1",
             pass_number=1,
-            chunk_index=1,
+            ordinal=1,
             sha256="b" * 64,
             created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
         )
     )
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
+    file = await retroverification_file(db_session, session)
 
     seen = [
-        (take["chunk_index"], take["pass_number"], take["sha256"])
+        (take["ordinal"], take["pass_number"], take["sha256"])
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
-    assert seen == [(None, None, "a" * 64), (1, 1, "b" * 64), (1, 2, "c" * 64)], (
-        "sem a passada, quem abrisse a passagem no Refine ouvia o ensaio abandonado como "
-        "o primeiro da equipe, e pela chegada a ordem sairia trocada"
+    assert seen == [(None, None, "a" * 64), (1, 2, "c" * 64)], (
+        "o ensaio que a equipe abandonou viajava para o Refine ao lado do que ficou, e nada "
+        "nos rótulos dizia qual era qual; e pela chegada a escolha sairia trocada, porque a "
+        "passada 1 foi anotada depois da 2"
+    )
+    assert "b" * 64 in [take.sha256 for take in file.takes], (
+        "e a tomada abandonada continua inteira no arquivo de retroverificação"
     )
 
 
-async def _told_back_with_an_open_finding(
-    db: AsyncSession, session: IRSession
-) -> BackTranslationState:
-    """A telling-back the team finished and chose not to resolve.
-
-    `analysed_segment_ids` names the stretch because the analyst did read it — that is what
-    makes the finding open rather than the verdict unasked.
-
-    `checked` is written as `finding is None and evidence_sufficient`, so an open finding
-    makes it false — which is the whole state this slice is about.
-    """
-    told = await _one_stretch(db, session)
-    return BackTranslationState(
-        scope=P,
-        findings=[
-            Finding(
-                kind=FindingKind.MEANING_CHANGE,
-                note="a equipe disse que Noemi voltou alegre",
-                segment_id=told.id,
-            )
-        ],
-        evidence_sufficient=True,
-        checked=False,
-        analysed_segment_ids=[told.id],
-    )
-
-
-@pytest.mark.asyncio
-async def test_a_session_carrying_an_open_finding_still_releases(
+async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
     db_session: AsyncSession,
 ) -> None:
-    """Taking the questions to Refine is an outcome the room is meant to have.
-
-    Refusing it left the rehearsal, the coverage, the ledger and the telling-back on the
-    tablet with no way out, for a team that had done every piece of the work.
-    """
-    session = await _ready_session(db_session)
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session)
+    told_last = retro_take(
+        session.id,
+        pass_number=2,
+        sha256="d" * 64,
+        created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
     )
+    told_first = retro_take(
+        session.id,
+        pass_number=1,
+        sha256="e" * 64,
+        created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
+    )
+    told_second = retro_take(
+        session.id,
+        pass_number=1,
+        sha256="f" * 64,
+        created_at=datetime(2026, 8, 23, 11, 0, tzinfo=UTC),
+    )
+    db_session.add_all([told_last, told_first, told_second])
+    await db_session.commit()
 
     artifact = await build_internalization_release(db_session, session)
 
-    assert artifact["readiness"] == "ready_for_refine"
-    assert artifact["back_translation"]["checked"] is False
+    retro_takes = artifact["back_translation"]["retro_takes"]
+    assert [take["take_id"] for take in retro_takes] == [
+        told_first.id,
+        told_second.id,
+        told_last.id,
+    ], "sem ordinal, o pacote lista pela passada e depois pela chegada"
 
 
-@pytest.mark.asyncio
+async def test_a_session_carrying_an_open_finding_is_refused(
+    db_session: AsyncSession,
+) -> None:
+    """ENG-584 argued the other way here, and the argument lost.
+
+    It was that taking the questions to Refine is an outcome the room is meant to have, and
+    that refusing it left a team who had done every piece of the work with no way out. What
+    it did not weigh is what a disputed finding actually is: the map wrong, which is rare and
+    worth having; the team not understanding; the recogniser erring. Only the first deserves
+    to travel, and a door open to all three sends the other two downstream as a passage the
+    room approved — heard as approved at the community's check.
+
+    The way out is still there and it is a person's: the raised hand, answered, and then the
+    facilitator's code.
+    """
+    session = await ready_session(db_session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert blocked.value.blockers == ["telling_back_not_checked"]
+
+
+async def test_a_never_analysed_telling_back_is_named_before_the_open_finding(
+    db_session: AsyncSession,
+) -> None:
+    """One errand at a time, and this is the one that comes first.
+
+    A telling-back nobody read has no finding to be open: its emptiness is the default, not a
+    reading. Named `telling_back_not_checked`, a facilitator would go looking for a finding
+    that was never raised, and would find the room had never been asked.
+    """
+    session = await ready_session(db_session)
+    state = await told_back_with_an_open_finding(db_session, session)
+    state.analysed_segment_ids = None
+    await reported_playback(db_session, session, state)
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert blocked.value.blockers == ["telling_back_never_analysed"]
+
+
 async def test_a_session_that_never_told_anything_back_is_still_refused(
     db_session: AsyncSession,
 ) -> None:
     """The door that has to stay shut: nothing was told back at all."""
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     await save_back_translation(db_session, session, BackTranslationState(scope=P))
     await retire_every_segment(db_session, session.id)
 
@@ -435,9 +372,8 @@ async def test_a_session_that_never_told_anything_back_is_still_refused(
     assert "no_telling_back" in blocked.value.blockers
 
 
-@pytest.mark.asyncio
 async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSession) -> None:
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -446,78 +382,53 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
     assert artifact["back_translation"]["findings"] == []
 
 
-@pytest.mark.asyncio
-async def test_a_session_below_the_floor_and_unpracticed_still_releases(
+async def test_the_forced_row_keeps_the_note_the_packet_lost(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session)
-    session.coverage_state = {}
-    await save_comprehension(db_session, session, ComprehensionState(recording_consent_given=True))
-    await db_session.commit()
-    assert not floor_met(session.coverage_state, P), "a fixture já vinha acima do piso"
+    """A forced packet that does not name the finding is worse than the refusal it replaced.
 
-    artifact = await build_internalization_release(db_session, session)
+    The release exists because a person overruled the room, so what they overruled has to be
+    inside it and on the row beside it. Without that the question reaches Refine unseen, and
+    unlike a blocked release that looks resolved.
 
-    assert artifact["comprehension"]["outcome"] == "needs_more_work"
-    assert artifact["comprehension"]["practiced_scene_ids"] == []
-
-
-@pytest.mark.asyncio
-async def test_the_desk_reads_that_session_with_no_blocker(
-    client: httpx.AsyncClient, db_session: AsyncSession, room_app
-) -> None:
-    user = await make_user(db_session, email="facilitadora-piso@example.com")
-    await grant_app_role(db_session, room_app, user, FACILITATOR_ROLE)
-    project = await with_a_team(db_session, user, tag="abaixo-do-piso")
-    session = await _ready_session(db_session, project_id=project.id)
-    session.coverage_state = {}
-    await save_comprehension(db_session, session, ComprehensionState(recording_consent_given=True))
-    await db_session.commit()
-    assert not floor_met(session.coverage_state, P), "a fixture já vinha acima do piso"
-
-    response = await client.get(
-        f"/api/internalization-room/facilitator/sessions/{session.id}/release",
-        headers=await auth_header(db_session, user),
-    )
-
-    assert response.status_code == 200, response.text
-    assert response.json()["comprehension"]["outcome"] == "needs_more_work"
-
-
-@pytest.mark.asyncio
-async def test_the_finding_travels_in_the_package_it_unblocked(
-    db_session: AsyncSession,
-) -> None:
-    """A package that does not name the finding is worse than the refusal.
-
-    The team would have carried the question all the way to Refine and nobody there would
-    see it — and unlike a blocked release, that looks resolved.
+    What the two say about it differs by one key, and only one. The packet names the kind and
+    the address, because Refine is where the team works; the row keeps the analyst's own words,
+    because a facilitator reading back what was overruled is reading the consultant's material.
+    The row is dumped from the state the packet was composed from and not from the packet's own
+    list, which is what lets one lose the note while the other keeps it.
     """
-    session = await _ready_session(db_session)
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    overruled = "a equipe disse que Noemi voltou alegre"
+    session = await ready_session(db_session, project_id="time-que-discordou")
+    await reported_playback(
+        db_session,
+        session,
+        await told_back_with_an_open_finding(db_session, session, note=overruled),
     )
 
-    artifact = await build_internalization_release(db_session, session)
+    release = await approve_release(db_session, session, forced_by="a-facilitadora")
 
-    carried = artifact["back_translation"]["findings"]
-    assert [finding["kind"] for finding in carried] == ["meaning_change"]
-    assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
+    carried = release.packet["back_translation"]["findings"]
+    assert [finding["kind"] for finding in carried] == ["addition"]
     assert carried[0]["segment_id"] is not None
+    assert carried[0]["chunk"] == 1
+    assert "note" not in carried[0]
+    assert release.forced_open_findings[0]["note"] == overruled
+    assert [
+        {key: value for key, value in finding.items() if key != "note"}
+        for finding in release.forced_open_findings
+    ] == carried
 
 
-@pytest.mark.asyncio
 async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
-    """Comprehension and the floor leave the gate; the neighbouring doors are not loosened.
+    """The floor and the practice leave the gate; the telling-back's door is not loosened.
 
-    Below the floor and unpractised, what still refuses is the bridge language never
-    calibrated and consent never given (ADR 0037 on main).
+    Below the floor and unpractised, the one thing refused is what the telling-back still
+    carries (ADR 0037).
     """
-    session = await _ready_session(db_session)
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
-    session.bridge_mode = "calibration_pending"
     await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
     await db_session.commit()
@@ -525,13 +436,9 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
 
-    assert blocked.value.blockers == [
-        "bridge_language_never_calibrated",
-        "recording_consent_never_given",
-    ]
+    assert blocked.value.blockers == ["telling_back_not_checked"]
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     db_session: AsyncSession,
 ) -> None:
@@ -541,13 +448,13 @@ async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     telling-back, and its defaults — no findings, evidence sufficient — are the same
     package a clean check produces.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     await save_back_translation(
         db_session,
         session,
         BackTranslationState(scope=P),
     )
-    await _one_stretch(db_session, session)
+    await one_stretch(db_session, session)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -555,7 +462,6 @@ async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     assert "telling_back_never_analysed" in blocked.value.blockers
 
 
-@pytest.mark.asyncio
 async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     db_session: AsyncSession,
 ) -> None:
@@ -567,7 +473,7 @@ async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     hearing their own recording again and finding two ideas in it, which is them working, so
     the first telling is kept rather than the division being refused.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     whole = (await final_segments(db_session, session.id))[0]
     for half in await divide_segment(db_session, session, whole, at_ms=30000):
         await capture_segment(
@@ -592,3 +498,189 @@ async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     assert whole.id not in [
         one["segment_id"] for one in artifact["back_translation"]["superseded_segments"]
     ], "nem entre os aposentados, porque nada tomou o lugar dele"
+
+
+async def _a_row_written_before_the_taxonomy_shrank(db: AsyncSession, session: IRSession) -> None:
+    """A stored telling-back carrying a retired kind in `findings` and in a superseded one.
+
+    Written through the room's own write path first, so the report of what the tablet played
+    is bound to the rehearsal exactly as it is in the field, and only the kinds are then set
+    to the names the older server wrote.
+    """
+    state = await told_back_with_an_open_finding(db, session)
+    state.superseded = [
+        SupersededAttempt(findings=[Finding(kind=FindingKind.ADDITION, note="trocaram quem pediu")])
+    ]
+    await reported_playback(db, session, state)
+    stored = dict(session.back_translation)
+    stored["findings"] = [dict(stored["findings"][0], kind="meaning_change")]
+    stored["superseded"] = [
+        dict(
+            stored["superseded"][0],
+            findings=[dict(stored["superseded"][0]["findings"][0], kind="wrong_relation")],
+        )
+    ]
+    session.back_translation = stored
+    await db.commit()
+
+
+async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
+    db_session: AsyncSession,
+) -> None:
+    """Refine reads the three kinds, whatever the row was written with.
+
+    A retired name reaching the packet would put a kind nobody downstream defines in front
+    of the people who have to act on it, on a session the team started before the change.
+    """
+    session = await ready_session(db_session)
+    await _a_row_written_before_the_taxonomy_shrank(db_session, session)
+
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
+
+    assert [f["kind"] for f in artifact["back_translation"]["findings"]] == ["addition"]
+    assert [
+        f["kind"]
+        for attempt in artifact["back_translation"]["superseded_attempts"]
+        for f in attempt["findings"]
+    ] == ["addition"]
+
+
+async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
+    db_session: AsyncSession,
+) -> None:
+    """A row written before the evidence flag went still ships, one finding lighter.
+
+    Nothing migrates the row: the stored key is ignored on the way in, and the thin-evidence
+    finding beside it is no finding at all. What the package carries is what the team still
+    has to answer, and `checked` alone says whether the reading came out clean.
+    """
+    session = await ready_session(db_session)
+    told = await final_segments(db_session, session.id)
+    stored = dict(session.back_translation)
+    stored["evidence_sufficient"] = False
+    stored["checked"] = False
+    stored["findings"] = [
+        {"kind": "insufficient_evidence", "note": "contaram pouco", "segment_id": None},
+        {"kind": "missing", "note": "Orfa não apareceu", "segment_id": told[0].id},
+    ]
+    stored["superseded"] = [
+        {
+            "findings": [
+                {"kind": "insufficient_evidence", "note": "pouco na primeira", "segment_id": None}
+            ],
+            "evidence_sufficient": False,
+            "played_ranges": [],
+            "clip_duration_ms": None,
+        }
+    ]
+    session.back_translation = stored
+    await db_session.commit()
+
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
+
+    package = artifact["back_translation"]
+    assert "evidence_sufficient" not in package
+    assert all("evidence_sufficient" not in attempt for attempt in package["superseded_attempts"])
+    assert [f["kind"] for f in package["findings"]] == ["missing"]
+    assert package["superseded_attempts"][0]["findings"] == []
+    assert package["checked"] is False
+
+
+async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await ready_session(db_session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
+
+    assert artifact["open_questions"] == 1
+
+
+async def test_a_standing_swap_is_one_open_question_in_the_headline(
+    db_session: AsyncSession,
+) -> None:
+    """The packet counts what the team was told is left, not how many rows hold it.
+
+    A swap is two findings and one thing to do. Counted by rows, the packet tells Refine two
+    questions are open on a passage the room told the team has one thing left — and Refine
+    reads that headline to decide how much of the draft still needs a person.
+    """
+    session = await ready_session(db_session)
+    state = await told_back_with_an_open_finding(db_session, session)
+    state.findings = [
+        *state.findings,
+        Finding(
+            kind=FindingKind.MISSING,
+            note="a notícia do pão não apareceu",
+            segment_id=state.findings[0].segment_id,
+            chunk=state.findings[0].chunk,
+        ),
+    ]
+    await reported_playback(db_session, session, state)
+
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
+
+    assert [finding["kind"] for finding in artifact["back_translation"]["findings"]] == [
+        "addition",
+        "missing",
+    ]
+    assert artifact["open_questions"] == 1
+
+
+async def test_a_superseded_telling_back_is_history_and_counts_nothing(
+    db_session: AsyncSession,
+) -> None:
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
+    state.superseded = [
+        SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
+    ]
+    await reported_playback(db_session, session, state)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 0
+    assert artifact["back_translation"]["superseded_attempts"][0]["findings"][0]["kind"] == (
+        "missing"
+    )
+
+
+async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await ready_session(db_session, carry_one=True)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
+
+    assert artifact["open_questions"] == 2

@@ -38,8 +38,24 @@ The group of translators that owns the work. In the schema the column is called 
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
 
 **Desk**:
-The facilitator's web app, consumer of the routes for questions, halts and sessions by team.
+The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
 _Avoid_: panel, dashboard, Mesa
+
+**Nudge**:
+A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
+_Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
+
+**Attention** (*Atendimento*):
+What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
+_Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
+
+**Phase** (*fase*):
+One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
+_Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
+
+**Visit** (*visita*):
+One session of the team on a pericope as the Desk shows it: the pericope is the unit of the Desk and the visit is one attempt at it. The pericope's line shows the current visit; the earlier ones, with how each ended, are listed in the Retroverification phase.
+_Avoid_: session (in the Desk's prose; it is the server's word for the same row), attempt, round, Sessão
 
 **Room**:
 The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
@@ -56,40 +72,48 @@ The slice of the passage checked in one reading by the analyst, which can be sma
 _Avoid_: stretch (the persistent object; a scope is one reading's slice of the passage), trecho, window, Escopo
 
 **Take**:
-An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, the whole passage in the mother tongue) or back-translation (`retro`, a stretch told in the bridge language).
-_Avoid_: recording, audio
+An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's number is that part; the earlier ones stay as history.
+_Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
 **Mother tongue**:
 The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
 _Avoid_: native, L1, Língua materna
 
 **Bridge language**:
-The language the team tells back in, and which the analyst reads. `bridge_mode` is the calibration state of that language.
+The language the team tells back in, and which the analyst reads.
 _Avoid_: L2, Portuguese, Língua-ponte
 
-**Stretch** (`segment`):
-The persistent, addressable object of one told slice of the passage: a slice of a rehearsal take, the matching back-translation take, the transcript, the order and the pass. A correction is a new row that supersedes the previous one, never an edit.
+**Stretch** (`segment`; frase, in Marcia's method and her prompts):
+The persistent, addressable object of one told slice of the passage: a slice of a rehearsal take, the matching back-translation take, the transcript, the order and the pass. A correction is a new row that supersedes the previous one, never an edit. A telling with no words is refused, never a stretch.
 _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk (the ephemeral position in one reading, not this object)
 
 **Chunk**:
-The numbered position of a stretch in the list the analyst receives in one reading. It exists only for the length of the call; the server turns the number back into a stretch.
-_Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name)
+The numbered position of a stretch in the list the analyst receives in one reading, the frase number of the prompts. The server turns the number back into a stretch, and a **Finding** keeps the number it was given beside the stretch it resolved to. The two are not one answer: a **Missing with an address** placed *after* frase N resolves to stretch N+1, so an addition and a missing element are one swap of one frase when they share the number and not when they share the stretch.
+_Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name), chunk_index (the takes column is `ordinal`)
 
 **Pass** (`pass_number`):
 How many times a stretch has been told: one on the first telling, two when told again after a finding.
-_Avoid_: attempt, version, Passe
+_Avoid_: attempt, version, Passe, tellings (the count of every telling of the stretch, kept on the row)
 
 **Telling back**:
-The act of saying, in the bridge language, what a stretch of the mother tongue holds.
-_Avoid_: translating, transcribing, Contar de volta
+The act of saying, in the bridge language, what a stretch of the mother tongue holds. The Portuguese the room writes and speaks for it is *traduzir / tradução*, and its English and Spanish room literals say *translated* / *traducido*; *contar* belongs to the Conversation with the Guide alone, and *recontar* to the External Check.
+_Avoid_: translating (in English prose; the room's own English literal does say translated), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
 
 **Untold**:
-A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called.
+A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called. A current **Part** with no standing stretch is untold ground as well: the check refuses *terminei* on it, naming the part on `untold_take_ids` before the analyst runs, and it refuses the **Release** as `untold_part`.
 _Avoid_: missing, pending, Não contado
 
 **Rehearsal** (`ensaio`):
 The recording of the whole passage in the mother tongue, and the station where it happens. It is where the team returns when something is missing beyond everything already told.
 _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
+
+**Part**:
+One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
+_Avoid_: clip (Marcia's word for it), chunk, segment, Parte
+
+**Recording grain** (`recording_grain`):
+Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
+_Avoid_: granularity, mode, shape, Granularidade
 
 **Meaning Map**:
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
@@ -108,14 +132,26 @@ Where a stretch sits: the take it belongs to, and its start and end in milliseco
 that one file.
 _Avoid_: range, offset, position, Endereço
 
+**Frase number** (`frase`):
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam). A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position in the reading the analyst was just given, which is the one the team just heard. The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English).
+_Avoid_: ordinal (per sibling group, never per passage), position, index, n (her listener number), Número da frase
+
 **Divided stretch** (`parent_id`, `ordinal`):
 A stretch cut out of another one, numbered among its own siblings rather than among the
 session's stretches.
 _Avoid_: child, split, subsegment, Trecho dividido
 
 **Element kind**:
-What a bead of the Meaning Map is: scene, being, place, object, time, absence or preserved.
+What a bead of the Meaning Map is. Six kinds sit in a scene of the passage — scene, being, place, object, time, absence; a preserved rule and the four Level-1 axes — arc, context, tone, function — belong to the passage and to none of its scenes.
 _Avoid_: type, category, Tipo de elemento
+
+**Scene pointer** (`current_scene_id`):
+The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+_Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
+
+**Invited scene** (`invited_scene_id`):
+The scene a rehearsal invitation is about: the first scene of the passage still owed a rehearsal on the turn the Guide invites, kept with the turn's record and credited when the team reports the rehearsal done. Never the **Scene pointer**, which has not settled when the invitation is spoken.
+_Avoid_: current scene, pointer, practised scene (the credit's result, not its target), Cena convidada
 
 **Coverage event** (`ir_coverage_events`):
 One recorded movement of a bead from one coverage state to the next.
@@ -124,11 +160,11 @@ _Avoid_: log, history, audit, Evento de cobertura
 ### Findings
 
 **Finding**:
-The analyst's answer about a told stretch: a kind, a note and, when there is one, a stretch. The kinds: missing, addition, meaning change, wrong relation, reordered event, preservation violation, insufficient evidence, unclear.
-_Avoid_: error, problem, Achado
+The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear. An addition or an unclear always names its **Chunk**; one that names none, or names one outside this reading, is not raised — it is dropped with a log line, the way the retired kind is, and a reply left with no finding at all once every one of them is dropped this way is refused, not read as a clean telling-back.
+_Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
 
-**Missing with an address** (`missing` with `where` before or inside):
-An element of the Map that is absent and whose place fits inside an existing chunk. The team records that stretch again and tells it again.
+**Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
+An element of the Map that is absent and whose place fits an existing chunk: before it, inside it, or after it when a later chunk exists. The team records that stretch again and tells it again.
 _Avoid_: internal missing, Falta com endereço
 
 **Missing without an address** (`missing` with `where` after on the last chunk):
@@ -139,9 +175,17 @@ _Avoid_: external missing, missing null, Falta sem endereço
 The field of a missing finding that says whether the absent content sits before, inside or after the chunk it cites.
 _Avoid_: position, offset, Onde
 
-**Sufficient evidence** (`evidence_sufficient`):
-The distinction between "no difference appeared" and "too little was told to check". When it is false, there is always an insufficient evidence or unclear finding naming the limit.
-_Avoid_: confidence, score, Evidência suficiente
+**Swap** (`current_findings`; *relação trocada*, in Marcia's words):
+An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again, one **Correction check** answering both — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
+_Avoid_: pair (it says there are two things), swapped relation (Marcia's phrase for the mistake, not for what the room carries), troca
+
+**Priority**:
+The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, a finding the **Correction check** put at the front keeps the front for the round that follows, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
+_Avoid_: severity, ranking, sorting (the stored list keeps the analyst's order), Prioridade
+
+**Filled silence** (`fills_silence`):
+An addition the analyst reported under the wire kind `silence`: the telling says something the passage keeps quiet on purpose. It stays an addition for the app, the packet, the golden scripts and the Speaker, and decides only the **Priority**.
+_Avoid_: fourth kind, silence kind (the wire name only), Silêncio preenchido
 
 **Points at a stretch** (`points_at_a_stretch`):
 The property of a finding that puts one specific stretch on screen with the two microphones. It decides the closing of the verdict.
@@ -150,49 +194,67 @@ _Avoid_: has an address, Aponta um trecho
 ### Correction and verification
 
 **Correction**:
-The retaking of exactly one stretch, at the place the current finding points to, to answer it. Detected because only one position of the list changed.
-_Avoid_: mend (the app's word for the same gesture), fix, retell (the count of tellings, not this gesture), Correção
+The retelling of exactly one stretch, in the bridge language and over the recording it already sits in, at the place the current finding points to. Detected because only one position of the list changed; it always carries audio, and no rule counts how many a stretch may have.
+_Avoid_: mend (the app's word for the same gesture), fix, retell (the count of tellings, not this gesture), Correção, mother-tongue correction (retired: a recording error is answered by recording the **Part** again), rebuild (retired: the passage the server assembled around a correction)
 
 **Retell**:
-Each new telling of the same stretch after a finding. On the third retell the room asks for a person: a warning, never a cap.
-_Avoid_: attempt, retry, Reconto
+Each new telling of the same stretch after a finding; in the room's Portuguese, *traduzir de novo*. The third telling of a stretch makes it a hard stretch: a warning, never a cap.
+_Avoid_: attempt, retry, Reconto, Recontar
+
+**Idempotency key** (`Idempotency-Key`):
+The tablet's one name for one telling sent to the chunk door, or for one **Correction**, carried unchanged on every resend of it. A resend under the same key is answered with the answer the first one settled and is never counted again; a key is forgotten after a day.
+_Avoid_: request id, retry token, turn id (a turn's own name, not this)
+
+**Hard stretch**:
+A stretch the team told three times. The room asks for a person once when it happens, and the fact is kept for the consultant, cleared by nothing that follows.
+_Avoid_: warning (the halt it raises), retell budget, notice, Frase difícil
 
 **Superseded**:
 An attempt at telling back that was replaced by a new recording. Its findings become marked history; they never vanish.
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and verified by one whole reading of the analyst and leaves the rotation for good. Spot correction checks never produce it.
-_Avoid_: complete, done, Conferida
+The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
+_Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
-**Heard the rehearsal** (`playback_confirms_rehearsal`):
-The evidence that the team listened to the whole rehearsal, on the current take, before closing.
+**Heard the rehearsal** (`unheard_parts`):
+The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
 _Avoid_: complete playback, Ouviu o ensaio
 
-**Abandoned**:
-A superseded stretch that never got a replacement, which is what starting a telling-back
-over leaves behind on every stretch of a session at once.
-_Avoid_: erased, discarded, cancelled, Abandonada
+**Unheard part** (`unheard_take_ids`):
+A current **Part** of the rehearsal the team's listening report does not cover, named by its take in the refusal the check answers with before the analyst runs. A part recorded again is unheard until it is played through.
+_Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part never heard), Parte não ouvida
 
-**Rebuild**:
-A new passage take assembled around a stretch that was recorded again, which every stretch
-of the recording it replaces is then re-pointed at.
-_Avoid_: version, merge, recomposition, Reconstrução
+**Abandoned**:
+A superseded stretch that never got a replacement: what recording a **Part** again leaves
+behind on that part's stretches, and what a session told back and started over before
+2026-09-18 still carries as history.
+_Avoid_: erased, discarded, cancelled, Abandonada, restart (retired: the telling-back started over)
 
 ### Verdict closings
 
 **Closing**:
-How the Speaker ends the verdict turn: handing the choice back to the screen, with a question, without a question because the passage is checked, asking for a spoken answer, or sending the team to record more and go back to the rehearsal.
+How the Speaker ends the verdict turn: handing the choice back to the screen, with a question, inviting the last listening and the approval because the passage is checked, asking for a spoken answer, or sending the team to record more and go back to the rehearsal.
 _Avoid_: ending, other, Fechamento
 
 ### Session states
 
 **Session**:
-The work of one team on one pericope, with status in progress, done or needs a person.
+The work of one team on one pericope in one language, with status in progress, done or needs a
+person. A session nobody entered — no turn, no take and no halt — is not yet a room of the team:
+the Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
 
+**Opening a session**:
+A tablet asking the room for its team's session of a pericope and language: the latest one is returned whatever its state, and one is created only when none exists.
+_Avoid_: creating a session, starting a session, Abrir a passagem
+
+**Closed passage**:
+A session whose passage was closed: done, with its end stamped. It never blocks again, though a warning may still stand on it.
+_Avoid_: finished session, ended room, Passagem fechada
+
 **Needs a person** (`needs_person`):
-A halt, not an end: it travels beside the status, never inside it, with the kind blocking or warning.
+A blocking halt, not an end: it travels beside the status, never inside it.
 _Avoid_: error, failure, status, Precisa de pessoa
 
 **Halt**:
@@ -203,9 +265,88 @@ _Avoid_: blockage, lockup, Parada
 Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
 
+**Halt reason** (`halt_reason`):
+Why the room asked for a person, in one of five families the tablet names when it asks: the device was refused, the server kept failing, the sound or the recorder failed, the session was lost, or the room and the server disagree. A warning's reason is the hard stretch. A halt that names none reads as "the room stopped".
+_Avoid_: cause, error, message, detail, Motivo da parada
+
+**Warning**:
+The halt kind that only calls somebody over: the session goes on while it stands, a landing turn never ends it, and only the Desk attending the session does. The telling-back answers still name the moment one is raised `needs_person`, the older wire name.
+_Avoid_: needs a person, notice, alert, Aviso
+
+**Station**:
+The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. An abandoned session keeps the station it stopped in.
+_Avoid_: stage, phase, status (the session's own three states), Estação
+
+**Conversation**:
+The Internalization's lines between the team and the Guide, as the Desk reads them: ordered turns of the team, the Guide and the room's own notes, each with its moment and, when the Guide gave way to a fixed line, the fail-safe's category.
+_Avoid_: transcript, chat, history
+
 **Refine**:
-The later product stage that receives the back-translation artifact. It does not live on this server.
+The later product stage that receives the packet. It does not live on this server.
 _Avoid_: review, refinement
+
+### Release
+
+**Release** (`ir_releases`):
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
+_Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
+
+**Version**:
+The number of a release within its pericope and project, from one, never reused.
+_Avoid_: revision, pass (the count of tellings of a stretch), v-number
+
+**Packet**:
+The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
+_Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
+
+**Blocker**:
+One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor and comprehension readiness are facts of the ledger, never blockers). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
+_Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
+
+**Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
+A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: audio, a telling-back, its reading and an untold stretch are material, not a dispute.
+_Avoid_: override, bypass, forced approval, Aprovação forçada
+
+**Check block** (`check`):
+The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address, and where the retroverification file is. Never the analyst's note.
+_Avoid_: check state, manifest check, conferência
+
+**Retroverification file** (`retroverificacao`):
+The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team; the analyst's note lives here and nowhere else.
+_Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
+
+### Process lines
+
+**Process line**:
+One of Marcia's fixed lines for a step of the telling-back (P: start, tell, unheard, approved) or of the external check (X: open, retell, whole, frases, thanks), copied verbatim from her file, read by position in the session language and never rotated. It is not a fail-safe: a fail-safe answers a failure and rotates, a process line marks a step and is always the same one. No model sits on its path.
+_Avoid_: fail-safe (A to I), prompt, canned line, Linha de processo
+
+### Test seams
+
+**Text seam** (`text-seam`):
+A door that takes as text what the team would have spoken and runs the real Guide, Analyst, Speaker and Validator, so that Marcia's golden scripts judge the room by measurement. Its conversation doors are her **Golden doors**; what remains under this name is the back-translation's. It exists only where the runner key is set, answers 404 without it, and never reaches a tablet.
+_Avoid_: test mode, mock, stub, simulator, Entrada de texto
+
+**Golden doors** (`/golden/session`, `/golden/turn`):
+The two doors Marcia's own runner calls, opening a session and playing a turn, with her field names and her meaning, so that her runner judges our room unchanged. They read the runner key as a bearer credential, never refuse a field they do not know, and answer 404 while the key is unset.
+_Avoid_: text seam (for these two doors), golden API, test endpoints
+
+**Golden script**:
+One of Marcia's JSON scripts under her `golden/`: a declared draft of clips and the rounds of
+frases told back over it, with what each round is expected to produce. A runner plays one
+against a stack and judges it with her own checks. Read verbatim, never forked.
+_Avoid_: fixture, scenario, test case, roteiro
+
+**Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
+The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
+every door behind it.
+_Avoid_: api key (the room's own is a different door), token, password, Chave do runner
+
+### Build
+
+**Build**:
+The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.
+_Avoid_: version (a pericope's release), revision
 
 ### Other subsystems
 

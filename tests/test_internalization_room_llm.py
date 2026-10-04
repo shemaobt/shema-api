@@ -1,74 +1,95 @@
+import asyncio
 import logging
+from types import SimpleNamespace
 from typing import Any
 
+import anthropic
+import httpx2
 import pytest
-from google.genai import types
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core.config import Settings
+from app.core.exceptions import UpstreamServiceError
 from app.services.internalization_room import llm
 
 
-def _settings() -> Settings:
-    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
+def _settings(**overrides: Any) -> Settings:
+    base: dict[str, Any] = {
+        "database_url": "sqlite+aiosqlite:///./test.db",
+        "anthropic_api_key": "sk-ant-fake",
+    }
+    base.update(overrides)
+    return Settings(**base)
 
 
-class FakeModels:
-    def __init__(self, response: types.GenerateContentResponse):
-        self.response = response
-        self.config: types.GenerateContentConfig | None = None
+class FakeMessages:
+    def __init__(self, reply: SimpleNamespace):
+        self.reply = reply
+        self.kwargs: dict[str, Any] = {}
 
-    async def generate_content(self, **kwargs: Any) -> types.GenerateContentResponse:
-        self.config = kwargs["config"]
-        return self.response
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.kwargs = kwargs
+        return self.reply
 
 
 class FakeClient:
-    def __init__(self, response: types.GenerateContentResponse):
-        self.aio = type("Aio", (), {"models": FakeModels(response)})()
+    def __init__(self, reply: SimpleNamespace, **options: Any):
+        self.messages = FakeMessages(reply)
+        self.options = options
 
 
-def _response(
-    text: str, reason: types.FinishReason, thoughts: int = 0, output: int = 0
-) -> types.GenerateContentResponse:
-    return types.GenerateContentResponse(
-        candidates=[
-            types.Candidate(
-                content=types.Content(role="model", parts=[types.Part(text=text)]),
-                finish_reason=reason,
-            )
-        ],
-        usage_metadata=types.GenerateContentResponseUsageMetadata(
-            thoughts_token_count=thoughts, candidates_token_count=output
+def _reply(
+    text: str,
+    stop_reason: str = "end_turn",
+    output: int = 0,
+    cache_read: int = 0,
+    cache_creation: SimpleNamespace | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=text)],
+        stop_reason=stop_reason,
+        model="claude-fable-5-1",
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=output,
+            cache_read_input_tokens=cache_read,
+            cache_creation_input_tokens=(
+                cache_creation.ephemeral_5m_input_tokens + cache_creation.ephemeral_1h_input_tokens
+                if cache_creation
+                else 0
+            ),
+            cache_creation=cache_creation,
         ),
     )
 
 
 @pytest.fixture
 def fake_client(monkeypatch: pytest.MonkeyPatch):
-    def _install(response: types.GenerateContentResponse) -> FakeClient:
-        client = FakeClient(response)
-        monkeypatch.setattr(llm.genai, "Client", lambda **_: client)
-        return client
+    def _install(reply: SimpleNamespace) -> dict[str, FakeClient]:
+        holder: dict[str, FakeClient] = {}
+
+        def _build(**options: Any) -> FakeClient:
+            holder["client"] = FakeClient(reply, **options)
+            return holder["client"]
+
+        monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", _build)
+        return holder
 
     return _install
 
 
-@pytest.mark.asyncio
-async def test_every_room_call_names_a_thinking_level(fake_client):
-    client = fake_client(_response("ok", types.FinishReason.STOP))
+async def test_the_guide_drafts_on_the_frontier_model_the_doctrine_names(fake_client):
+    holder = fake_client(_reply("ok"))
 
     await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
 
-    thinking = client.aio.models.config.thinking_config
-    assert thinking is not None, (
-        "sem nível explícito o modelo pensa sem teto e come o orçamento de saída"
+    assert holder["client"].messages.kwargs["model"] == "claude-fable-5-1", (
+        "a sala rascunhava no gemini-3-flash-preview, o modelo da falha do dia 3 de setembro"
     )
-    assert thinking.thinking_level is types.ThinkingLevel.LOW
 
 
-@pytest.mark.asyncio
 async def test_a_truncated_answer_is_reported_not_swallowed(fake_client, caplog):
-    fake_client(_response('{"verd', types.FinishReason.MAX_TOKENS, thoughts=1151, output=45))
+    fake_client(_reply('{"verd', stop_reason="max_tokens", output=45))
 
     with caplog.at_level(logging.WARNING):
         await llm.call_agent(
@@ -78,14 +99,12 @@ async def test_a_truncated_answer_is_reported_not_swallowed(fake_client, caplog)
             settings=_settings(),
         )
 
-    assert "MAX_TOKENS" in caplog.text
-    assert "1151" in caplog.text
+    assert "max_tokens" in caplog.text
     assert "1200" in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_a_finished_answer_stays_quiet(fake_client, caplog):
-    fake_client(_response("ok", types.FinishReason.STOP, thoughts=10, output=2))
+    fake_client(_reply("ok", output=2))
 
     with caplog.at_level(logging.WARNING):
         text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
@@ -94,12 +113,541 @@ async def test_a_finished_answer_stays_quiet(fake_client, caplog):
     assert caplog.text == ""
 
 
-@pytest.mark.asyncio
 async def test_an_empty_answer_still_says_why(fake_client, caplog):
-    response = types.GenerateContentResponse(candidates=[])
+    reply = _reply("ok")
+    reply.content = []
 
-    fake_client(response)
+    fake_client(reply)
     with caplog.at_level(logging.WARNING):
         assert await llm.call_agent(system_prompt="s", user_content="u", settings=_settings()) == ""
 
-    assert "no candidates" in caplog.text
+    assert "no content" in caplog.text
+
+
+async def test_an_identity_bound_key_names_the_workspace_it_acts_in(fake_client) -> None:
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(
+        system_prompt="s",
+        user_content="u",
+        settings=_settings(anthropic_workspace_id="wrkspc-de-teste"),
+    )
+
+    headers = holder["client"].options["default_headers"]
+    assert headers["anthropic-workspace-id"] == "wrkspc-de-teste", (
+        "a chave do Console é ligada a uma pessoa e a API responde 400 'not scoped to a "
+        "workspace' sem esse cabeçalho: a sala inteira ficava muda em produção"
+    )
+
+
+async def test_a_classic_key_sends_no_workspace_header_at_all(fake_client) -> None:
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert holder["client"].options["default_headers"] is None, (
+        "um cabeçalho de workspace vazio viaja em toda chamada de uma chave clássica, que "
+        "não tem workspace nenhum para nomear"
+    )
+
+
+def _status(code: int) -> httpx2.Response:
+    """A real response object, because the SDK's errors read `response.request` on the way up."""
+    return httpx2.Response(
+        status_code=code, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    )
+
+
+def _refusal_response() -> httpx2.Response:
+    return _status(404)
+
+
+class LadderMessages:
+    """A key that cannot use the rungs above `usable`, and answers on the first it can."""
+
+    def __init__(self, usable: str, refusal: type[Exception]):
+        self.usable = usable
+        self.refusal = refusal
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if kwargs["model"] != self.usable:
+            raise self.refusal("nope", response=_refusal_response(), body=None)
+        return _reply("ok")
+
+
+@pytest.fixture(autouse=True)
+def _forget_which_rung_answered():
+    """The settled rung outlives a test, so a step-down here would steer a later file."""
+    llm._SETTLED.clear()
+    yield
+    llm._SETTLED.clear()
+
+
+@pytest.fixture
+def ladder_client(monkeypatch: pytest.MonkeyPatch):
+    def _install(usable: str, refusal: type[Exception]) -> LadderMessages:
+        messages = LadderMessages(usable, refusal)
+        monkeypatch.setattr(
+            llm.anthropic,
+            "AsyncAnthropic",
+            lambda **options: SimpleNamespace(messages=messages, options=options),
+        )
+        return messages
+
+    return _install
+
+
+async def test_a_model_this_key_cannot_use_steps_down_to_the_next_rung(ladder_client) -> None:
+    messages = ladder_client("claude-opus-5", anthropic.NotFoundError)
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"], (
+        "uma chave sem acesso ao topo da escada derrubava o turno inteiro em vez de descer "
+        "um degrau, e a sala respondia com linha enlatada por uma questão de permissão"
+    )
+    assert text == "ok"
+
+
+class RefusingMessages:
+    """A first rung that turns the request away at the door, and a second that answers."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if kwargs["model"] == "claude-fable-5-1":
+            reply = _reply("", stop_reason="refusal")
+            reply.content = []
+            return reply
+        return _reply("ok")
+
+
+async def test_a_rung_that_refuses_outright_hands_the_request_to_the_next(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingMessages()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"], (
+        "um degrau que recusava a pedido inteiro (stop_reason refusal, zero tokens) era "
+        "devolvido como resposta vazia; a verificação da correção falhava cinco vezes e a "
+        "sessão pedia uma pessoa por um turno em que a equipe acertou tudo"
+    )
+    assert text == "ok"
+    assert llm._SETTLED == {}, (
+        "uma recusa é sobre este pedido, não sobre a chave: o degrau de cima continua sendo "
+        "o primeiro a ser perguntado no próximo turno"
+    )
+
+
+class FlakyMessages:
+    """A rung that fails a scripted number of times, in order, before it answers."""
+
+    def __init__(self, failures: list[Exception]):
+        self.failures = failures
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if self.failures:
+            raise self.failures.pop(0)
+        return _reply("ok")
+
+
+@pytest.fixture
+def flaky_client(monkeypatch: pytest.MonkeyPatch):
+    def _install(*failures: Exception) -> FlakyMessages:
+        messages = FlakyMessages(list(failures))
+        monkeypatch.setattr(
+            llm.anthropic,
+            "AsyncAnthropic",
+            lambda **options: SimpleNamespace(messages=messages, options=options),
+        )
+        monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
+        return messages
+
+    return _install
+
+
+async def test_a_rate_limit_retries_once_on_the_same_rung(flaky_client) -> None:
+    messages = flaky_client(anthropic.RateLimitError("slow down", response=_status(429), body=None))
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"], (
+        "um limite de taxa gastava a escada inteira na hora, e a sessão seguia num modelo "
+        "mais fraco por um minuto de pressa; a pressa passageira agora ganha uma segunda "
+        "tentativa no mesmo degrau antes de mexer na escada"
+    )
+    assert text == "ok"
+
+
+async def test_a_rate_limit_twice_still_raises(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.RateLimitError("slow down", response=_status(429), body=None),
+        anthropic.RateLimitError("slow down", response=_status(429), body=None),
+    )
+
+    with pytest.raises(UpstreamServiceError):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"], (
+        "a retentativa é uma única: um segundo 429 seguido no mesmo degrau sobe como antes, "
+        "em vez de abrir uma fila de tentativas escondida do chamador"
+    )
+
+
+async def test_an_overload_retries_once_on_the_same_rung(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.OverloadedError("Overloaded", response=_status(529), body=None)
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"]
+    assert text == "ok"
+
+
+async def test_a_5xx_retries_once_on_the_same_rung(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.ServiceUnavailableError("Service unavailable", response=_status(503), body=None)
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-fable-5-1"]
+    assert text == "ok"
+
+
+async def test_a_bad_request_is_not_retried(flaky_client) -> None:
+    messages = flaky_client(
+        anthropic.BadRequestError(
+            "Your credit balance is too low", response=_status(400), body=None
+        )
+    )
+
+    with pytest.raises(UpstreamServiceError):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1"], (
+        "um 400 não é uma pressa passageira: é o pedido que está errado, e repeti-lo sem "
+        "mudar nada só paga a mesma recusa duas vezes"
+    )
+
+
+async def test_a_refusal_then_a_rate_limit_on_the_next_rung_still_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rung that refuses outright steps down; the rung under it can still be flaky."""
+
+    class _RefusesThenFlaky:
+        def __init__(self) -> None:
+            self.asked: list[str] = []
+            self._second_rung_failed_once = False
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            model = kwargs["model"]
+            self.asked.append(model)
+            if model == "claude-fable-5-1":
+                reply = _reply("", stop_reason="refusal")
+                reply.content = []
+                return reply
+            if not self._second_rung_failed_once:
+                self._second_rung_failed_once = True
+                raise anthropic.RateLimitError("slow down", response=_status(429), body=None)
+            return _reply("ok")
+
+    messages = _RefusesThenFlaky()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+    monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5", "claude-opus-5"], (
+        "a retentativa é do degrau, não do topo: uma recusa desce a escada uma vez, e o "
+        "degrau seguinte ainda ganha sua própria tentativa extra numa pressa passageira"
+    )
+    assert text == "ok"
+
+
+async def test_a_retry_that_meets_a_not_found_on_the_last_rung_logs_its_true_attempt(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A 529 retried into a 404 on the last rung still says which of the room's tries it was."""
+
+    class _RetryThenNotFound:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            self.calls += 1
+            if self.calls == 1:
+                raise anthropic.OverloadedError("Overloaded", response=_status(529), body=None)
+            raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=_RetryThenNotFound(), options=options),
+    )
+    monkeypatch.setattr(llm, "_RETRY_WAIT_S", 0)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="app.services.internalization_room.llm"),
+        pytest.raises(UpstreamServiceError),
+    ):
+        await llm.call_agent(
+            system_prompt="s",
+            user_content="u",
+            ladder=["claude-fable-5-1"],
+            settings=_settings(),
+        )
+
+    attempts = [record.attempt for record in caplog.records if hasattr(record, "attempt")]
+    assert attempts == [1, 2], (
+        "um 529 retentado que topava com um 404 no último degrau escrevia a segunda linha "
+        "como se fosse a primeira, e o campo attempt deixava de dizer qual tentativa era"
+    )
+
+
+async def test_the_conversation_travels_as_turns_with_the_new_utterance_last(fake_client):
+    """The Guide is handed the exchange it lived, not a block of text describing it.
+
+    Nine exchanges in, the Guide greeted the team and introduced itself: everything older
+    than six messages had never been in its prompt. The room now sends what was said as the
+    turns it was said in, and `user_content` is the last of them.
+    """
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(
+        system_prompt="s",
+        user_content="e a fome?",
+        conversation=[
+            {"role": "assistant", "text": "Sou o guia."},
+            {"role": "user", "text": "a fome levou eles embora"},
+            {"role": "assistant", "text": "Isso mesmo."},
+        ],
+        settings=_settings(),
+    )
+
+    assert holder["client"].messages.kwargs["messages"] == [
+        {"role": "assistant", "content": "Sou o guia."},
+        {"role": "user", "content": "a fome levou eles embora"},
+        {"role": "assistant", "content": "Isso mesmo."},
+        {"role": "user", "content": "e a fome?"},
+    ]
+
+
+async def test_a_caller_that_names_no_conversation_still_sends_one_user_message(fake_client):
+    """The analyst, the classifier and the two back-translation callers share this function."""
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert holder["client"].messages.kwargs["messages"] == [{"role": "user", "content": "u"}]
+
+
+async def test_the_guide_and_the_validator_prefix_cache_for_an_hour_by_default(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("guide", "validator"):
+        await llm.call_agent(
+            system_prompt=f"map{llm.CACHE_BREAK}turn",
+            user_content="u",
+            role=role,
+            settings=_settings(),
+        )
+
+        assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+            "type": "ephemeral",
+            "ttl": "1h",
+        }, (
+            f"o prefixo do {role} caía a cada 5 minutos e a pausa de ensaio da equipe relia "
+            f"~16k/14k tokens do zero na volta"
+        )
+
+
+async def test_the_judge_and_the_classifier_stay_on_the_five_minute_cache(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("judge", "analyst", "correction check", "classifier", "?"):
+        await llm.call_agent(
+            system_prompt=f"map{llm.CACHE_BREAK}turn",
+            user_content="u",
+            role=role,
+            settings=_settings(),
+        )
+
+        assert "ttl" not in holder["client"].messages.kwargs["system"][0]["cache_control"], (
+            f"o {role} não fica no caminho da voz, e uma escrita de 1h custa o dobro de uma "
+            f"de 5 min sem nenhum ganho — a doutrina só cobre a voz"
+        )
+
+
+async def test_the_hour_cache_reverts_to_five_minutes_through_a_setting(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(
+        system_prompt=f"map{llm.CACHE_BREAK}turn",
+        user_content="u",
+        role="guide",
+        settings=_settings(internalization_room_voice_cache_ttl=""),
+    )
+
+    assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+        "type": "ephemeral"
+    }, (
+        "um deployment que precisasse voltar aos 5 minutos não tinha como, sem esperar um "
+        "novo deploy do código"
+    )
+
+
+def test_a_mistyped_ttl_setting_is_refused_at_boot() -> None:
+    with pytest.raises(PydanticValidationError):
+        _settings(internalization_room_voice_cache_ttl="1H")
+
+    with pytest.raises(PydanticValidationError):
+        _settings(internalization_room_voice_cache_ttl="5m")
+
+
+async def test_the_usage_line_says_which_cache_lifetime_each_written_token_bought(
+    fake_client, caplog
+):
+    fake_client(
+        _reply(
+            "ok",
+            cache_creation=SimpleNamespace(
+                ephemeral_5m_input_tokens=3_000, ephemeral_1h_input_tokens=90_000
+            ),
+        )
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert "cache_write=93000 cache_write_5m=3000 cache_write_1h=90000 " in caplog.text, (
+        "a escrita no cache era um número só, e a de 1 hora custa 2x o input contra 1,25x"
+    )
+
+
+async def test_an_hour_of_cache_write_costs_twice_a_five_minute_one(fake_client, caplog):
+    fake_client(
+        _reply(
+            "ok",
+            cache_creation=SimpleNamespace(
+                ephemeral_5m_input_tokens=0, ephemeral_1h_input_tokens=1_000_000
+            ),
+        )
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    record = next(r for r in caplog.records if getattr(r, "cost_usd", None) is not None)
+    assert record.cost_usd == pytest.approx(20.0001), (
+        "o milhão de tokens de escrita de 1h era cobrado ao preço de 5 min (US$ 12,50 no "
+        "Fable 5.1), e o total do turno saía US$ 7,50 abaixo do que ele de fato custou"
+    )
+
+
+async def test_a_cache_write_with_no_lifetime_breakdown_still_costs_the_five_minute_rate(
+    fake_client, caplog
+):
+    reply = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="ok")],
+        stop_reason="end_turn",
+        model="claude-fable-5-1",
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=0,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=1_000_000,
+            cache_creation=None,
+        ),
+    )
+    fake_client(reply)
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    record = next(r for r in caplog.records if getattr(r, "cost_usd", None) is not None)
+    assert record.cost_usd == pytest.approx(12.5001), (
+        "um milhão de tokens de escrita sem o detalhe de vida (uma resposta sem o "
+        "campo novo da API) virava custo zero em vez do preço de 5 minutos, e o total do "
+        "turno caía a menos da metade do que de fato custou"
+    )
+    assert "cache_write=1000000 cache_write_5m=0 cache_write_1h=0 " in caplog.text, (
+        "a linha [llm-usage] imprimia o palpite de preço (5m) como se fosse o que a API "
+        "de fato disse, e uma escrita sem atribuição ficava indistinguível de uma de 5 "
+        "minutos confirmada"
+    )
+
+
+async def test_a_call_that_wrote_nothing_to_the_cache_says_zero_for_both_lifetimes(
+    fake_client, caplog
+):
+    fake_client(_reply("ok"))
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert "cache_write=0 cache_write_5m=0 cache_write_1h=0 " in caplog.text
+
+
+@pytest.fixture
+def counted_builds(monkeypatch: pytest.MonkeyPatch) -> list[FakeClient]:
+    built: list[FakeClient] = []
+
+    def _build(**options: Any) -> FakeClient:
+        built.append(FakeClient(_reply("ok"), **options))
+        return built[-1]
+
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", _build)
+    return built
+
+
+async def test_two_calls_on_one_event_loop_share_one_client_instead_of_one_each(
+    counted_builds: list[FakeClient],
+) -> None:
+    await llm.call_agent(system_prompt="s", user_content="u", role="guide", settings=_settings())
+    await llm.call_agent(
+        system_prompt="s", user_content="u", role="validator", settings=_settings()
+    )
+
+    assert len(counted_builds) == 1, (
+        "cada chamada do Guia e do Validador abria um cliente novo, com handshake TLS e "
+        "contexto SSL, enquanto a equipe esperava a resposta"
+    )
+
+
+def test_a_second_event_loop_builds_its_own_client_rather_than_borrowing_one(
+    counted_builds: list[FakeClient],
+) -> None:
+    async def _ask() -> str:
+        return await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    for _ in range(2):
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_ask())
+        finally:
+            loop.close()
+
+    assert len(counted_builds) == 2, (
+        "um cliente preso a um loop fechado era entregue a outro, e a conexão dele não "
+        "responde fora do loop que a abriu"
+    )

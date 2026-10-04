@@ -113,9 +113,9 @@ authenticated.include_router(transfer_router)  # BE-14
 #: FE-44 §9.0 and ``docs/shema.md`` §6.6: the token *is* the guard, and the guard is a service
 #: function (``verify_intake_token``) so the rule holds for any future caller of it rather than
 #: for the two routes it was written under. Included into ``router`` and not ``authenticated``,
-#: which is what makes the exemption visible in a diff; ``tests/test_shema/test_access.py``
-#: carries the two paths in ``UNAUTHENTICATED_PATHS`` and fails on a third that arrives without
-#: a line added there. BE-12.
+#: which is what makes the exemption visible in a diff; ``tests/shema_harness.py`` carries the
+#: two paths in ``UNAUTHENTICATED_PATHS``, and ``tests/test_shema/test_access.py`` fails on a
+#: third that arrives without a line added there. BE-12.
 router.include_router(intake_router)
 
 #: **The module's second deliberate hole** (OBT-531). ``GET`` and ``POST

@@ -35,7 +35,6 @@ async def _project_access(db, project_id, user_id):
     return result.scalar_one_or_none()
 
 
-@pytest.mark.asyncio
 async def test_create_project_request(db_session) -> None:
     user = await make_user(db_session)
     lang = await make_language(db_session, code="prj")
@@ -48,7 +47,6 @@ async def test_create_project_request(db_session) -> None:
     assert request.name == "Genesis"
 
 
-@pytest.mark.asyncio
 async def test_create_project_request_requires_name_and_language(db_session) -> None:
     user = await make_user(db_session)
     with pytest.raises(ValidationError):
@@ -57,7 +55,6 @@ async def test_create_project_request_requires_name_and_language(db_session) -> 
         )
 
 
-@pytest.mark.asyncio
 async def test_create_project_request_unknown_language(db_session) -> None:
     user = await make_user(db_session)
     with pytest.raises(NotFoundError):
@@ -68,7 +65,6 @@ async def test_create_project_request_unknown_language(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_create_project_request_with_new_language(db_session) -> None:
     user = await make_user(db_session)
     payload = ChangeRequestCreate(
@@ -83,7 +79,6 @@ async def test_create_project_request_with_new_language(db_session) -> None:
     assert request.new_language_code == "ara"
 
 
-@pytest.mark.asyncio
 async def test_create_project_request_new_language_bad_code(db_session) -> None:
     user = await make_user(db_session)
     with pytest.raises(ValidationError):
@@ -96,7 +91,6 @@ async def test_create_project_request_new_language_bad_code(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_create_project_request_rejects_both_language_sources(db_session) -> None:
     user = await make_user(db_session)
     lang = await make_language(db_session, code="prj")
@@ -114,7 +108,6 @@ async def test_create_project_request_rejects_both_language_sources(db_session) 
         )
 
 
-@pytest.mark.asyncio
 async def test_approve_create_project_with_new_language(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -143,7 +136,6 @@ async def test_approve_create_project_with_new_language(db_session) -> None:
     assert access is not None and access.role == "manager"
 
 
-@pytest.mark.asyncio
 async def test_approve_create_project_new_language_duplicate_conflicts(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -162,7 +154,6 @@ async def test_approve_create_project_new_language_duplicate_conflicts(db_sessio
         )
 
 
-@pytest.mark.asyncio
 async def test_create_language_request_lowercases_code(db_session) -> None:
     user = await make_user(db_session)
     request = await change_request_service.create_change_request(
@@ -171,7 +162,6 @@ async def test_create_language_request_lowercases_code(db_session) -> None:
     assert request.code == "kok"
 
 
-@pytest.mark.asyncio
 async def test_create_language_request_bad_code(db_session) -> None:
     user = await make_user(db_session)
     with pytest.raises(ValidationError):
@@ -180,7 +170,6 @@ async def test_create_language_request_bad_code(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_edit_language_request_scoped_to_managed_project(db_session) -> None:
     manager = await make_user(db_session, email="m@example.com")
     lang = await make_language(db_session, code="edt")
@@ -194,7 +183,6 @@ async def test_edit_language_request_scoped_to_managed_project(db_session) -> No
     assert request.kind == "edit_language"
 
 
-@pytest.mark.asyncio
 async def test_edit_language_request_bad_code(db_session) -> None:
     manager = await make_user(db_session, email="m@example.com")
     lang = await make_language(db_session, code="edt")
@@ -208,7 +196,6 @@ async def test_edit_language_request_bad_code(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_edit_language_request_forbidden_when_not_managed(db_session) -> None:
     user = await make_user(db_session)
     lang = await make_language(db_session, code="edt")
@@ -220,7 +207,6 @@ async def test_edit_language_request_forbidden_when_not_managed(db_session) -> N
         )
 
 
-@pytest.mark.asyncio
 async def test_approve_create_project_grants_manager_access(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -242,7 +228,6 @@ async def test_approve_create_project_grants_manager_access(db_session) -> None:
     assert access.role == "manager"
 
 
-@pytest.mark.asyncio
 async def test_approve_create_project_without_grant(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -261,7 +246,6 @@ async def test_approve_create_project_without_grant(db_session) -> None:
     assert access is None
 
 
-@pytest.mark.asyncio
 async def test_approve_create_language_stamps_creator(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -280,7 +264,6 @@ async def test_approve_create_language_stamps_creator(db_session) -> None:
     assert language.code == "kok"
 
 
-@pytest.mark.asyncio
 async def test_approve_edit_language_applies_changes(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -301,7 +284,6 @@ async def test_approve_edit_language_applies_changes(db_session) -> None:
     assert updated.code == "new"
 
 
-@pytest.mark.asyncio
 async def test_reject_does_not_apply(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -315,7 +297,6 @@ async def test_reject_does_not_apply(db_session) -> None:
     assert result.created_entity_id is None
 
 
-@pytest.mark.asyncio
 async def test_review_non_pending_conflicts(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -331,7 +312,6 @@ async def test_review_non_pending_conflicts(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_approve_create_language_duplicate_code_conflicts(db_session) -> None:
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
     requester = await make_user(db_session, email="r@example.com")
@@ -345,7 +325,6 @@ async def test_approve_create_language_duplicate_code_conflicts(db_session) -> N
         )
 
 
-@pytest.mark.asyncio
 async def test_list_and_mine(db_session) -> None:
     requester = await make_user(db_session, email="r@example.com")
     await _pending(

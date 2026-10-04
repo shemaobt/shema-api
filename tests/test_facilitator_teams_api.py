@@ -31,6 +31,8 @@ from app.db.models.internalization_room import (
     IRQuestionStatus,
     IRSession,
     IRSessionStatus,
+    IRTake,
+    IRTakeKind,
 )
 from app.services.device.create_device import create_device
 from app.services.internalization_room.canon.elements import element_keys
@@ -38,6 +40,7 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import apply_coverage, create_session
 from tests.baker import (
     grant_facilitator_app_role,
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -115,13 +118,24 @@ async def a_session(
     pericope: str = "P01",
     status: IRSessionStatus = IRSessionStatus.IN_PROGRESS,
     when: datetime | None = None,
+    entered: bool = True,
 ) -> IRSession:
+    """A conversation, inserted directly rather than through the room (ENG-446's own
+    shortcut, kept for this file's cases about the queue rather than the room's turn loop).
+
+    `entered` carries one turn by default (ENG-964): every case here but the ones naming
+    the boundary itself treats this session as the team's activity, and a session with no
+    turn and no take is not that any more. Pass `entered=False` for the cases that test
+    that boundary.
+    """
     at = when or datetime.now(UTC) - RECENTLY
     session = IRSession(
         pericope=pericope,
         status=status,
         project_id=team.id,
-        messages=[],
+        messages=[{"role": "team", "text": "oi"}, {"role": "guide", "text": "ok"}]
+        if entered
+        else [],
         coverage_state={},
         kept_takes={},
         back_translation={},
@@ -137,17 +151,14 @@ async def a_session(
 async def having_closed(db: AsyncSession, team, *passages: str) -> None:
     """Walk this team through these passages the way the room does.
 
-    The coverage events — what these routes actually read — are still written by
+    The coverage events — what the necklace and the element list read — are still written by
     `apply_coverage`, so the fixture cannot agree with a route that reads them differently
-    from how the room writes them. `open_ir_session` says what it inserts and when.
+    from how the room writes them. `open_ir_session` says what it inserts and when. Closing
+    is the second half and a different fact: the team recorded their rehearsal of it.
     """
     for passage in passages:
         session = await open_ir_session(db, pericope=passage, project_id=team.id)
-        await apply_coverage(
-            db,
-            session.id,
-            dict.fromkeys(element_keys(passage), CoverageStatus.PARTIALLY_ENGAGED.value),
-        )
+        await having_finished_the_passage(db, session)
 
 
 async def having_closed_the_book(db: AsyncSession, team) -> None:
@@ -158,19 +169,12 @@ async def having_closed_the_book(db: AsyncSession, team) -> None:
     passages because "complete" now means the book, not a session — and since ENG-589 eight of
     them are no longer passages the room will open, which is what `open_ir_session` covers.
     """
-    from app.services.internalization_room import sessions as room
-    from app.services.internalization_room.canon.elements import element_keys
     from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-    from app.services.internalization_room.coverage import CoverageStatus
 
     for meaning_map in load_book(ROOM_BOOK):
         passage = meaning_map.pericope_num
         session = await open_ir_session(db, pericope=passage, project_id=team.id)
-        await room.apply_coverage(
-            db,
-            session.id,
-            dict.fromkeys(element_keys(passage), CoverageStatus.PARTIALLY_ENGAGED.value),
-        )
+        await having_finished_the_passage(db, session)
 
 
 async def a_raised_hand(
@@ -212,7 +216,6 @@ def named(payload: dict) -> list[str]:
 # Behaviour 1 — the list is the caller's, and it carries the whole card.
 
 
-@pytest.mark.asyncio
 async def test_the_list_holds_only_the_teams_the_caller_facilitates(client, db_session):
     mine = await a_team(db_session, name="Equipe Terena")
     await a_team(db_session, name="Equipe de Outra Pessoa")
@@ -224,7 +227,6 @@ async def test_the_list_holds_only_the_teams_the_caller_facilitates(client, db_s
     assert named(answer.json()) == ["Equipe Terena"]
 
 
-@pytest.mark.asyncio
 async def test_every_field_the_card_draws_is_answered(client, db_session):
     """The client computes none of them — so each has to arrive, not be derivable."""
     team = await a_team(db_session, name="Equipe Terena", tongue="Terena")
@@ -248,7 +250,6 @@ async def test_every_field_the_card_draws_is_answered(client, db_session):
     assert card["last_activity_at"] is not None
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_never_held_a_session_still_has_a_passage(client, db_session):
     """§4: with no history the team starts at P01. A card with no passage draws nothing."""
     team = await a_team(db_session, name="Equipe Guajajara")
@@ -260,7 +261,6 @@ async def test_a_team_that_has_never_held_a_session_still_has_a_passage(client, 
     assert card["last_activity_at"] is None
 
 
-@pytest.mark.asyncio
 async def test_the_panorama_is_not_a_passage(client, db_session):
     """The panorama is material about the book and plays at the opening of a new passage.
 
@@ -285,7 +285,6 @@ async def test_the_panorama_is_not_a_passage(client, db_session):
 # Behaviour 2 — the counts are of things to do, and they agree with the routes that own them.
 
 
-@pytest.mark.asyncio
 async def test_only_an_open_hand_is_a_hand_that_is_waiting(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
     await a_raised_hand(db_session, team, status=IRQuestionStatus.OPEN)
@@ -299,7 +298,6 @@ async def test_only_an_open_hand_is_a_hand_that_is_waiting(client, db_session):
     assert payload["open_hands_total"] == 1
 
 
-@pytest.mark.asyncio
 async def test_the_device_count_agrees_with_the_device_list_route(client, db_session):
     """One number, two routes. They are allowed to be wrong; they are not allowed to differ."""
     team = await a_team(db_session, name="Equipe Terena")
@@ -314,7 +312,6 @@ async def test_the_device_count_agrees_with_the_device_list_route(client, db_ses
     assert counted == len(listed) == 2
 
 
-@pytest.mark.asyncio
 async def test_a_hand_belonging_to_no_team_is_counted_for_nobody(client, db_session):
     """`project_id` is nullable and null is the normal state until ENG-454 ships.
 
@@ -343,7 +340,6 @@ async def test_a_hand_belonging_to_no_team_is_counted_for_nobody(client, db_sess
 # Behaviour 3 — the state, defined here once and served.
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_closed_every_passage_reads_complete_and_stands_on_none(
     client, db_session
 ):
@@ -363,7 +359,6 @@ async def test_a_team_that_closed_every_passage_reads_complete_and_stands_on_non
     assert card["active_passage"] is None
 
 
-@pytest.mark.asyncio
 async def test_closing_one_passage_moves_the_team_on_rather_than_finishing_it(client, db_session):
     """The case that separates the two meanings of "done" the old state collapsed."""
     team = await a_team(db_session, name="Equipe Kayapó")
@@ -373,6 +368,7 @@ async def test_closing_one_passage_moves_the_team_on_rather_than_finishing_it(cl
         session.id,
         dict.fromkeys(element_keys("P01"), CoverageStatus.PARTIALLY_ENGAGED.value),
     )
+    await having_finished_the_passage(db_session, session)
     _user, headers = await a_facilitator(db_session, team)
 
     card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
@@ -381,7 +377,6 @@ async def test_closing_one_passage_moves_the_team_on_rather_than_finishing_it(cl
     assert card["state"] == "in_progress"
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_finished_the_book_is_still_found_by_name(client, db_session):
     """The search reads the passage's two names, and such a team has neither.
 
@@ -396,7 +391,6 @@ async def test_a_team_that_finished_the_book_is_still_found_by_name(client, db_s
     assert named(answer.json()) == ["Equipe Tikuna"]
 
 
-@pytest.mark.asyncio
 async def test_a_passage_left_untouched_for_long_enough_reads_stalled(client, db_session):
     team = await a_team(db_session, name="Equipe Xavante")
     await a_session(db_session, team, when=datetime.now(UTC) - LONG_AGO)
@@ -407,7 +401,6 @@ async def test_a_passage_left_untouched_for_long_enough_reads_stalled(client, db
     assert card["state"] == "stalled"
 
 
-@pytest.mark.asyncio
 async def test_a_finished_passage_is_never_stalled_however_long_ago_it_was(client, db_session):
     """Stalled means work has stopped, not that the team is quiet. A team that finished
     and moved on is not somebody to chase."""
@@ -423,7 +416,6 @@ async def test_a_finished_passage_is_never_stalled_however_long_ago_it_was(clien
     assert card["state"] == "complete"
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_never_met_is_in_progress_and_not_stalled(client, db_session):
     """ "Never started" is not "stopped".
 
@@ -438,7 +430,6 @@ async def test_a_team_that_has_never_met_is_in_progress_and_not_stalled(client, 
     assert card["state"] == "in_progress"
 
 
-@pytest.mark.asyncio
 async def test_a_hand_raised_since_keeps_a_team_out_of_stalled(client, db_session):
     """A raised hand is the team doing something, and it is not in the session's row."""
     team = await a_team(db_session, name="Equipe Macuxi")
@@ -454,7 +445,6 @@ async def test_a_hand_raised_since_keeps_a_team_out_of_stalled(client, db_sessio
 # Behaviour 4 — the order is the product decision, so it is served.
 
 
-@pytest.mark.asyncio
 async def test_the_queue_is_ordered_by_open_hands_then_by_recent_activity(client, db_session):
     quiet = await a_team(db_session, name="Silenciosa")
     busy = await a_team(db_session, name="Duas maos")
@@ -477,7 +467,6 @@ async def test_the_queue_is_ordered_by_open_hands_then_by_recent_activity(client
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_never_acted_sorts_last_rather_than_first(client, db_session):
     never = await a_team(db_session, name="Nunca se reuniu")
     long_quiet = await a_team(db_session, name="Calada ha muito")
@@ -490,10 +479,97 @@ async def test_a_team_that_has_never_acted_sorts_last_rather_than_first(client, 
     ]
 
 
+# Behaviour 4b — a session nobody entered is not the team's activity (ENG-964).
+
+
+async def test_a_session_nobody_entered_does_not_move_the_team_up_the_queue(client, db_session):
+    """A launch that nobody entered must not read as more recent than the team's real,
+    older activity — the empty session's own moment is not `last_activity_at`."""
+    team_a = await a_team(db_session, name="Equipe A")
+    team_b = await a_team(db_session, name="Equipe B")
+    old_turn = datetime.now(UTC) - LONG_AGO
+    between = datetime.now(UTC) - timedelta(days=45)
+    await a_session(db_session, team_a, when=old_turn)
+    await a_session(db_session, team_a, when=datetime.now(UTC) - RECENTLY, entered=False)
+    await a_session(db_session, team_b, when=between)
+    _user, headers = await a_facilitator(db_session, team_a, team_b)
+
+    payload = (await client.get(TEAMS_URL, headers=headers)).json()
+
+    assert named(payload) == ["Equipe B", "Equipe A"]
+    by_name = {team["name"]: team for team in payload["teams"]}
+    assert by_name["Equipe A"]["last_activity_at"].startswith(old_turn.date().isoformat())
+
+
+async def test_a_team_whose_only_session_is_unentered_has_never_acted(client, db_session):
+    team = await a_team(db_session, name="Equipe Munduruku")
+    await a_session(db_session, team, entered=False)
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+
+    assert card["last_activity_at"] is None
+    assert card["state"] == "in_progress"
+
+
+async def test_a_take_still_counts_even_when_its_own_session_is_unentered(client, db_session):
+    """The take leg of the union is untouched by `entered()`: a take counts by its own
+    `project_id`, whether or not the session it names is itself entered.
+
+    The take's `session_id` here names no session in this test at all (`ir_takes` carries no
+    foreign key, ADR 0006) — on purpose, so a take that would have made its *own* session
+    entered (had it named one) is not this case's confound. The unentered session's own
+    moment is left the most recent of the three, so only the correct exclusion of its row
+    from the session leg lets the take's older moment through as the answer; a session leg
+    that still counted it would answer with its moment instead.
+    """
+    team = await a_team(db_session, name="Equipe Terena")
+    old_turn = datetime.now(UTC) - LONG_AGO
+    await a_session(db_session, team, when=old_turn)
+    await a_session(db_session, team, when=datetime.now(UTC) - RECENTLY, entered=False)
+    take_moment = old_turn + timedelta(days=1)
+    db_session.add(
+        IRTake(
+            session_id="nenhuma-sessao-deste-teste",
+            device_id="tablet-da-equipe",
+            project_id=team.id,
+            pericope="P01",
+            kind=IRTakeKind.ENSAIO,
+            scope="P01",
+            storage_key="x",
+            size_bytes=1,
+            sha256="0" * 64,
+            crc32c="0" * 8,
+            content_type="audio/aac",
+            created_at=take_moment,
+        )
+    )
+    await db_session.commit()
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+
+    assert card["last_activity_at"].startswith(take_moment.date().isoformat()), card[
+        "last_activity_at"
+    ]
+
+
+async def test_a_session_halted_before_any_turn_landed_still_counts_as_activity(client, db_session):
+    """Calling a person is an act of the team, even the very first one: the tablet can ask
+    for a person before a turn ever lands, and the queue must not read that team as never
+    having acted."""
+    team = await a_team(db_session, name="Equipe Kaiwá")
+    await a_session(db_session, team, status=IRSessionStatus.NEEDS_PERSON, entered=False)
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+
+    assert card["last_activity_at"] is not None
+
+
 # Behaviour 5 — the two empty states are different things and are told apart.
 
 
-@pytest.mark.asyncio
 async def test_a_facilitator_with_no_teams_gets_an_empty_list_and_says_so(client, db_session):
     user = await make_user(db_session, email="sem-equipe@example.com")
     await grant_facilitator_app_role(db_session, user.id)
@@ -505,7 +581,6 @@ async def test_a_facilitator_with_no_teams_gets_an_empty_list_and_says_so(client
     assert answer.json() == {"teams": [], "serves_any_team": False, "open_hands_total": 0}
 
 
-@pytest.mark.asyncio
 async def test_a_restriction_that_matches_nothing_still_says_the_facilitator_has_teams(
     client, db_session
 ):
@@ -529,7 +604,6 @@ async def test_a_restriction_that_matches_nothing_still_says_the_facilitator_has
 # Behaviour 6 — the restriction is the server's, and the totals do not travel with it.
 
 
-@pytest.mark.asyncio
 async def test_the_search_ignores_case_and_accents(client, db_session):
     """Somebody typing at speed does not stop for an accent, and the keyboard may not
     carry one. The shape of the word belongs to whoever wrote it down."""
@@ -541,7 +615,6 @@ async def test_the_search_ignores_case_and_accents(client, db_session):
         assert named(found.json()) == ["Equipe Kaiwá"], typed
 
 
-@pytest.mark.asyncio
 async def test_the_search_reaches_the_tongue_the_pericope_and_the_reference(client, db_session):
     """The card draws all of them, so any of them is what the facilitator remembers."""
     team = await a_team(db_session, name="Equipe Sateré-Mawé", tongue="Sateré-Mawé")
@@ -556,7 +629,6 @@ async def test_the_search_reaches_the_tongue_the_pericope_and_the_reference(clie
         assert named(found.json()) == ["Equipe Sateré-Mawé"], typed
 
 
-@pytest.mark.asyncio
 async def test_each_filter_narrows_to_the_state_it_names(client, db_session):
     with_hands = await a_team(db_session, name="Com maos")
     working = await a_team(db_session, name="Trabalhando")
@@ -582,7 +654,6 @@ async def test_each_filter_narrows_to_the_state_it_names(client, db_session):
     assert await under("complete") == ["Concluida"]
 
 
-@pytest.mark.asyncio
 async def test_the_search_and_the_filter_compose(client, db_session):
     """One question, not two answers for the screen to intersect."""
     quiet_kaiwa = await a_team(db_session, name="Equipe Kaiwá", tongue="Kaiwá")
@@ -601,7 +672,6 @@ async def test_the_search_and_the_filter_compose(client, db_session):
     assert named(answer.json()) == ["Equipe Kaiwá do rio"]
 
 
-@pytest.mark.asyncio
 async def test_the_open_hands_total_does_not_narrow_with_the_restriction(client, db_session):
     """The browser tab draws this number while nobody is looking at the Desk.
 
@@ -622,7 +692,6 @@ async def test_the_open_hands_total_does_not_narrow_with_the_restriction(client,
     assert narrowed["open_hands_total"] == 3
 
 
-@pytest.mark.asyncio
 async def test_a_filter_this_route_does_not_know_is_refused(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
     _user, headers = await a_facilitator(db_session, team)
@@ -635,7 +704,6 @@ async def test_a_filter_this_route_does_not_know_is_refused(client, db_session):
 # Behaviour 7 — one query, whatever the size of the roll.
 
 
-@pytest.mark.asyncio
 async def test_the_number_of_statements_does_not_grow_with_the_teams(
     client, db_session, test_engine
 ):
@@ -684,7 +752,6 @@ async def test_the_number_of_statements_does_not_grow_with_the_teams(
 # Behaviour 8 — a platform admin is not scoped to nothing.
 
 
-@pytest.mark.asyncio
 async def test_a_platform_admin_sees_every_team(client, db_session):
     """Settled by ENG-439 and repeated here rather than assumed: the one person able to
     investigate an installation must not be the one person who sees no team in it."""

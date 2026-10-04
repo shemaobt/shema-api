@@ -1,5 +1,3 @@
-import pytest
-
 from app.core.org_scope import get_managed_org_ids
 from app.services import project_service
 from app.services.project.list_projects_for_user import list_projects_for_user
@@ -14,7 +12,6 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_list_projects_by_org_returns_linked_projects(db_session) -> None:
     lang = await make_language(db_session, code="lfb")
     org = await make_organization(db_session, slug="org-filter")
@@ -28,14 +25,12 @@ async def test_list_projects_by_org_returns_linked_projects(db_session) -> None:
     assert [p.name for p in projects] == ["Alpha", "Beta"]
 
 
-@pytest.mark.asyncio
 async def test_list_projects_by_org_empty_when_no_access(db_session) -> None:
     org = await make_organization(db_session, slug="org-empty")
     projects = await project_service.list_projects_by_organization(db_session, org.id)
     assert projects == []
 
 
-@pytest.mark.asyncio
 async def test_list_projects_by_org_does_not_return_other_org_projects(db_session) -> None:
     lang = await make_language(db_session, code="lfo")
     org_a = await make_organization(db_session, slug="org-a")
@@ -52,7 +47,6 @@ async def test_list_projects_by_org_does_not_return_other_org_projects(db_sessio
     assert [p.name for p in result_b] == ["For B"]
 
 
-@pytest.mark.asyncio
 async def test_manager_autoscope_sees_only_projects_they_manage(db_session) -> None:
     lang = await make_language(db_session, code="mas")
     manager = await make_user(db_session, email="mgr@scope.com")
@@ -67,7 +61,6 @@ async def test_manager_autoscope_sees_only_projects_they_manage(db_session) -> N
     assert [p.name for p in projects] == ["Managed Project"]
 
 
-@pytest.mark.asyncio
 async def test_manager_filter_by_unmanaged_org_returns_empty(db_session) -> None:
     lang = await make_language(db_session, code="mun")
     manager = await make_user(db_session, email="mgr-no@scope.com")
@@ -81,7 +74,6 @@ async def test_manager_filter_by_unmanaged_org_returns_empty(db_session) -> None
     assert projects == []
 
 
-@pytest.mark.asyncio
 async def test_manager_filter_by_managed_org_returns_projects(db_session) -> None:
     lang = await make_language(db_session, code="mfm")
     manager = await make_user(db_session, email="mgr-own@scope.com")
@@ -97,7 +89,6 @@ async def test_manager_filter_by_managed_org_returns_projects(db_session) -> Non
     assert projects[0].name == "Good Project"
 
 
-@pytest.mark.asyncio
 async def test_is_project_manager_only_true_for_manager_role(db_session) -> None:
     lang = await make_language(db_session, code="ipm")
     user = await make_user(db_session, email="ipm@scope.com")
@@ -112,7 +103,6 @@ async def test_is_project_manager_only_true_for_manager_role(db_session) -> None
     assert await project_service.is_project_manager(db_session, user.id, unrelated.id) is False
 
 
-@pytest.mark.asyncio
 async def test_manager_via_member_role_sees_projects(db_session) -> None:
     lang = await make_language(db_session, code="mmr")
     manager = await make_user(db_session, email="role-mgr@scope.com")

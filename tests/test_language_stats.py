@@ -6,7 +6,6 @@ from app.services import language_service
 from tests.baker import make_language, make_project
 
 
-@pytest.mark.asyncio
 async def test_language_stats_lists_projects(db_session) -> None:
     lang = await make_language(db_session, code="ksa")
     other = await make_language(db_session, code="oth")
@@ -23,7 +22,6 @@ async def test_language_stats_lists_projects(db_session) -> None:
     ]
 
 
-@pytest.mark.asyncio
 async def test_language_stats_empty_when_unused(db_session) -> None:
     lang = await make_language(db_session, code="ksb")
     stats = await language_service.get_language_stats(db_session, lang.id)
@@ -31,7 +29,6 @@ async def test_language_stats_empty_when_unused(db_session) -> None:
     assert stats.projects == []
 
 
-@pytest.mark.asyncio
 async def test_language_stats_missing_raises_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Language .* not found"):
         await language_service.get_language_stats(

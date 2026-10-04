@@ -7,7 +7,6 @@ from app.services.book_context.resolve_feedback import resolve_feedback
 from tests.baker import make_bcd, make_bible_book, make_user
 
 
-@pytest.mark.asyncio
 async def test_list_bcds_returns_all(db_session):
     user = await make_user(db_session, email="api1@test.com")
     book = await make_bible_book(
@@ -24,7 +23,6 @@ async def test_list_bcds_returns_all(db_session):
     assert len(items) == 2
 
 
-@pytest.mark.asyncio
 async def test_list_bcds_filter_by_book(db_session):
     user = await make_user(db_session, email="api2@test.com")
     book1 = await make_bible_book(
@@ -49,7 +47,6 @@ async def test_list_bcds_filter_by_book(db_session):
     assert items[0].book_id == book1.id
 
 
-@pytest.mark.asyncio
 async def test_add_feedback_creates_entry(db_session):
     user = await make_user(db_session, email="api3@test.com")
     book = await make_bible_book(
@@ -67,7 +64,6 @@ async def test_add_feedback_creates_entry(db_session):
     assert fb.resolved is False
 
 
-@pytest.mark.asyncio
 async def test_list_feedback_returns_ordered(db_session):
     user = await make_user(db_session, email="api4@test.com")
     book = await make_bible_book(
@@ -86,7 +82,6 @@ async def test_list_feedback_returns_ordered(db_session):
     assert items[0].content == "First"
 
 
-@pytest.mark.asyncio
 async def test_resolve_feedback_marks_resolved(db_session):
     user = await make_user(db_session, email="api5@test.com")
     book = await make_bible_book(
@@ -103,7 +98,6 @@ async def test_resolve_feedback_marks_resolved(db_session):
     assert resolved.resolved is True
 
 
-@pytest.mark.asyncio
 async def test_resolve_feedback_raises_not_found(db_session):
     user = await make_user(db_session, email="api6@test.com")
     book = await make_bible_book(

@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 6,
+      "severity": "minor",
+      "kind": "gap_filled_by_guide_instead_of_re_rehearsal",
+      "quote": "Só para fechar a primeira cena: a história diz que eles chegaram nos campos de Moabe e ficaram ali. E ficaram como forasteiros",
+      "why": "A equipe não tinha incluído a chegada e o morar como forasteiros na conta de volta da cena 1; o guia supriu a lacuna ele mesmo e seguiu adiante em vez de mandar a equipe ensaiar de novo até a cena ficar inteira. Escolha adaptativa (a equipe já pedia a próxima parte), mas afrouxa o ciclo de ensaio."
+    },
+    {
+      "turn": 9,
+      "severity": "minor",
+      "kind": "incomplete_check_of_retelling",
+      "quote": "apareceu quase tudo que a passagem traz: os dias dos juízes, a fome, os quatro nomes, Moabe",
+      "why": "A conta de volta da passagem inteira omitiu Belém de Judá, os efrateus e o morar como forasteiros; o guia foi honesto ('quase tudo') e apontou o 'ficou' duplicado, mas não nomeou essas outras faltas."
+    },
+    {
+      "turn": 10,
+      "severity": "minor",
+      "kind": "open_check_left_unresolved",
+      "quote": "Vale a pena conversar sobre isso quando forem gravar.",
+      "why": "A pergunta sobre o primeiro 'ficou com os dois filhos' (rima exigida pela regra R3) ficou sem resposta da equipe; o guia respeitou o pedido de encerrar, mas deixou um item de forma obrigatória apenas como lembrete em vez de confirmá-lo."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um colega de mesa: respondeu a cada pedido de entender (turnos 1, 2 e 3) abrindo a passagem com mais detalhe, sem redirecionar nem repetir, e abriu cada cena antes de convidar ao ensaio. Tratou os silêncios como conteúdo de forma exemplar: recusou dar causa divina à morte de Elimeleque (turno 7), recusou parear Rute com Malom (turno 8), lembrou que nenhum filho nasce nos dez anos e que não há choro nem enterro. A contenção foi total, sem 'o mapa', sem bênçãos, com registro simples e direto, e a sessão terminou mandando gravar em Terena. Na checagem dos ensaios foi honesto — apontou a chegada faltante no turno 5 e a rima do 'ficou' no turno 9 — mas em dois momentos afrouxou: supriu ele mesmo a lacuna da cena 1 em vez de mandar ensaiar de novo, e na conta de volta inteira não nomeou a falta de Belém de Judá, dos efrateus e do morar como forasteiros. Adaptou-se bem quando a equipe pulou adiante ou pediu para encerrar."
+}

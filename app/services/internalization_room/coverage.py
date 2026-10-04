@@ -7,9 +7,12 @@ from enum import StrEnum
 #: because `app/models` needs it too — see `app/core/room_enums.py`.
 from app.core import room_enums
 from app.core.room_enums import CoverageStatus
+from app.db.models.internalization_room import IRSession
+from app.models.internalization_room import CoverageView
 from app.services.internalization_room.canon.elements import (
     Element,
     ElementKind,
+    absence_index,
     element_keys,
     elements_for,
 )
@@ -31,8 +34,8 @@ def is_panorama(pericope: str) -> bool:
 
 _RANK = {
     CoverageStatus.NOT_ENCOUNTERED: 0,
-    CoverageStatus.SURFACED: 1,
-    CoverageStatus.PARTIALLY_ENGAGED: 2,
+    CoverageStatus.PARTIALLY_ENGAGED: 1,
+    CoverageStatus.SURFACED: 2,
     CoverageStatus.ENGAGED: 3,
 }
 
@@ -90,7 +93,6 @@ def merge(
     *,
     pericope_num: str,
     surfaced: Iterable[str] = (),
-    partially_engaged: Iterable[str] = (),
     engaged: Iterable[str] = (),
 ) -> dict[str, str]:
     """Advance coverage. Movement is one-way: a status never drops back.
@@ -101,7 +103,6 @@ def merge(
     merged = {**initial_state(pericope_num), **state}
     buckets = (
         (surfaced, CoverageStatus.SURFACED),
-        (partially_engaged, CoverageStatus.PARTIALLY_ENGAGED),
         (engaged, CoverageStatus.ENGAGED),
     )
     for keys, status in buckets:
@@ -136,27 +137,30 @@ def counts(state: dict[str, str]) -> dict[str, int]:
     """Two numbers, meaning what they have always meant.
 
     `engaged` is the beads the team worked in their own words; `surfaced` is the cumulative
-    "encountered at least" figure and so takes in the partly worked ones too. Because the
-    completion floor now admits `partially_engaged`, a session can reach `done` with
-    `engaged` short of `total` — visible to the facilitator, and the coverage route's to
-    render.
+    "encountered at least" figure — everything above `not_encountered`, which takes in a
+    row still written under the retired status. The necklace fills a bead on `engaged`
+    alone, so a passage the team only echoed shows every bead waiting.
     """
     engaged = sum(1 for value in state.values() if value == CoverageStatus.ENGAGED)
-    encountered = (
-        CoverageStatus.SURFACED,
-        CoverageStatus.PARTIALLY_ENGAGED,
-        CoverageStatus.ENGAGED,
-    )
-    surfaced = sum(1 for value in state.values() if value in encountered)
+    surfaced = sum(1 for value in state.values() if value != CoverageStatus.NOT_ENCOUNTERED)
     return {"engaged": engaged, "surfaced": surfaced, "total": len(state)}
+
+
+def coverage_view(session: IRSession) -> CoverageView:
+    numbers = counts(session.coverage_state or {})
+    return CoverageView(
+        engaged=numbers["engaged"],
+        surfaced=numbers["surfaced"],
+        total=numbers["total"],
+        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+    )
 
 
 def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
     """What the team has not worked yet, with labels the Guide can act on.
 
-    A partly worked element stays on this list even though it satisfies the completion
-    floor: the floor being met is not the same as the work being finished. It is also the
-    only way the element can still be promoted — the classifier is shown this list and
+    A bead short of `engaged` stays on this list whatever word it stands at, because this
+    is the only way it can still be promoted — the classifier is shown this list and
     nothing else, so a bead dropped from it is frozen at whatever status it left with.
     """
     merged = {**initial_state(pericope_num), **state}
@@ -167,51 +171,61 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
     ]
 
 
+def current_scene(state: dict[str, str], pericope_num: str) -> str | None:
+    """The first scene with a bead still short of `engaged`, once one scene bead is.
+
+    Ledger state, read off which scene-scoped beads the team has worked: none of them
+    engaged is the whole-passage opening, all of them engaged is the whole-passage
+    integration, and both are answered with no scene at all. The pointer the rehearsal is
+    read against lives in `live_turn` and answers to what the team has said, not to this.
+    """
+    merged = {**initial_state(pericope_num), **state}
+    beads = [
+        (element.scene, merged.get(element.key) == CoverageStatus.ENGAGED)
+        for element in elements_for(pericope_num)
+        if element.scene is not None
+    ]
+    if not any(engaged for _, engaged in beads):
+        return None
+    for scene in sorted({scene for scene, _ in beads}):
+        if not all(engaged for at, engaged in beads if at == scene):
+            return f"S{scene}"
+    return None
+
+
+_EXITS_AT_SURFACED = frozenset({"arc", "context", "tone", "function"})
+
+
 def floor_met(state: dict[str, str], pericope_num: str) -> bool:
-    """Every element worked with, at least in part.
+    """Every concrete element engaged; a Level-1 axis at least surfaced.
 
-    *Tripod Internalization · Interaction Flows*
-    (`internalization-room/docs/spec/interaction-flows.md`, §3) lets only the four abstract
-    Level-1 axes exit at `surfaced`; the maps expose no such elements, so every bead here is
-    concrete and none is exempt. What the floor does not demand is the strong reading of every
-    one of them. A passage's preservation rules are engaged by noticing a silence, which mostly
-    reaches the room as the team taking up the Guide's noticing rather than arriving at it
-    themselves; requiring the unprompted version from all five of Ruth 1's is how a passage
-    becomes one that never closes. Since `done` is what moves a team on to the next passage, a
-    floor that cannot be reached does not hold a team to a higher standard — it holds them
-    still.
+    Hard Rule #2 of her design: "**Only** `engaged` **counts for coverage.** `surfaced`
+    (Guide mentioned it) is not enough. If `surfaced` ever counts as covered, sessions
+    complete hollow" (`marcia/CLAUDE.md:31`). The floor once came down a step to meet the
+    echo, on the argument that a preservation rule is mostly engaged as the team taking up
+    the Guide's noticing and that demanding more of all five of Ruth 1's made a passage
+    that never closes. Her classifier settles that at the other end: the echo of a silence
+    is written `engaged`, so the floor asks the full reading of every bead and the silences
+    are the beads a team can fill by taking them up. A bead still standing at the retired
+    `partially_engaged` is one the ledger has not seen the team take up, and it holds the
+    floor like `surfaced` does.
 
-    `surfaced` remains below the floor, so a session where the Guide did the talking still
-    cannot complete. Biased against completing hollow: anything unknown counts as not met.
+    The floor is a ledger fact. Nothing the room says reads it; what does is
+    `session_is_done` — the `done` a turn answers with, and the stamp progression follows.
+    The release never reads it (ADR 0037). Biased against completing hollow: anything
+    unknown counts as not met.
     """
     merged = {**initial_state(pericope_num), **state}
     for element in elements_for(pericope_num):
+        bar = (
+            CoverageStatus.SURFACED
+            if element.kind.value in _EXITS_AT_SURFACED
+            else CoverageStatus.ENGAGED
+        )
         standing = CoverageStatus(merged.get(element.key, CoverageStatus.NOT_ENCOUNTERED))
-        if _RANK[standing] < _RANK[CoverageStatus.PARTIALLY_ENGAGED]:
+        if _RANK[standing] < _RANK[bar]:
             return False
     return True
-
-
-def engaged_scene_ids(state: dict[str, str], pericope_num: str) -> list[str]:
-    """The scenes whose every element is `engaged`, in scene order.
-
-    A scene only reaches the strong reading of all its beads by the team telling it in their
-    own words, so the readiness gate accepts this in place of the spoken practice report — a
-    team that worked a scene through and simply moved on without saying "pronto" was being
-    sent back to rehearse it again. The substitution is a reading, never a record:
-    `practiced_scene_ids` keeps meaning what the team actually reported, and nothing here is
-    written back into it.
-
-    Elements the map leaves unplaced carry no scene and are ignored, exactly as the scene
-    pointer ignores them.
-    """
-    by_scene: dict[int, bool] = {}
-    for element in elements_for(pericope_num):
-        if element.scene is None:
-            continue
-        engaged = state.get(element.key) == CoverageStatus.ENGAGED.value
-        by_scene[element.scene] = by_scene.get(element.scene, True) and engaged
-    return [f"S{scene}" for scene in sorted(by_scene) if by_scene[scene]]
 
 
 def absence_positions(pericope_num: str) -> list[int]:

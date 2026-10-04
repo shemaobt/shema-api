@@ -1,45 +1,19 @@
 # Fail-Safe Utterances — Portuguese supplement
 
-The underscore marks this as ours, not one of the project's authored prompts. It carries two
-kinds of thing.
-
-First, the `-pt` blocks the authored file does not ship. It has them for sections A, D, F and G
-but not for B, C and E — and the room speaks Portuguese, so without these the Facilitator would
-switch to English at exactly the worst moment: a question the map cannot answer, a handoff, a
-hard stop.
-
-Second, the sections the authored file has no counterpart for in any language, because the
-situations they name did not exist when that file was written: H and I. Each carries its own
-English block here as well as its `-pt` one, since there is no authored English to fall back to.
-
-Translated from the authored English, matching the register of the existing `-pt` blocks:
-warm, short sentences, `vocês`, spoken pronoun placement. Reviewed and approved by Marcia
-(2026-08-10), along with the offline notice the app carries as an audio asset.
-
-⚠ One choice here is not mechanical. The English says "your facilitator", meaning the team's
-**human** facilitator (the Guide prompt spells it out: "their human facilitator or
-consultant"). But the app introduces itself as *o Facilitador Digital*, so a bare "o
-facilitador" could read as the app telling the team to ask the app. Rendered as "o facilitador
-de vocês" to lean human. If that still reads ambiguously in the field, the alternative is to
-drop the term entirely: "a pessoa que acompanha vocês".
-
-### B-pt. (Português brasileiro)
-
-- "Boa pergunta. Isso a passagem não conta — ela fica no que está bem aqui na nossa frente. Vamos ficar com o que ela está mostrando."
-- "A passagem fica quieta sobre isso. Vamos olhar o que ela conta nesta parte."
-
-### C-pt. (Português brasileiro)
-
-- "Essa pergunta é importante, e é bem do tipo de levar ao facilitador de vocês — alguém que pode ir mais longe do que esta passagem vai sozinha."
-- "Isso merece uma resposta de verdade, e vai além do que esta passagem conta. Vamos guardar para levar ao facilitador de vocês, e seguir por aqui."
-
-### E-pt. (Português brasileiro)
-
-- "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de vocês, e a gente retoma isso junto."
+The underscore marks this as ours, not one of the project's authored prompts. B, C and E
+moved out of here into the authored file's own `B-pt`/`C-pt`/`E-pt` on her word (ENG-833:
+Marcia confirmed the text 2026-09-21, "as reserve, with 'o facilitador de vocês'"), leaving
+this file with one kind of thing: the sections the authored file has no counterpart for in
+any language, because the situations they name did not exist when that file was written —
+H and I. Each carries its own English block here as well as its `-pt` one, since there is no
+authored English to fall back to. The record of that move — and of everything this file used
+to carry — is beside it, in `_fail_safe_pt_supplement_provenance.md`.
 
 ## H. A stretch is still waiting to be told back
 
-**Not authored by the project. Approved by Henok as written, 2026-08-29.**
+**Not authored by the project. Approved by Henok as written, 2026-08-29; the *traduzir*
+wording approved by Henok, 2026-09-10, and the English lines brought to the same word,
+2026-09-11.**
 
 **This one is spoken, not shipped.** Every other family here is played from audio inside the
 app, because a fail-safe has to work when nothing else does — no network, no model. H is not a
@@ -70,20 +44,22 @@ already told, rather than telling what was not).
 
 ### H.
 
-- "There's still part of the passage for you to tell me. Let's finish that first, and then I'll check it all together."
-- "There's still some you haven't told me. Tell me that, and then I'll look at the whole passage."
-- "There's still a bit left to tell. When you're done, I'll check it all at once."
+- "There's still part of the passage for you to translate for me. Let's finish that first, and then I'll check it all together."
+- "There's still some you haven't translated for me. Translate that, and then I'll look at the whole passage."
+- "There's still a bit left to translate. When you're done, I'll check it all at once."
 
 ### H-pt. (Português brasileiro)
 
-- "Ainda falta parte da passagem para vocês me contarem. Vamos terminar isso primeiro, e depois eu confiro tudo junto."
-- "Ainda tem pedaço que vocês não me contaram. Me contem, e aí eu olho a passagem inteira."
-- "Ainda falta contar um pouco. Quando vocês terminarem, eu confiro tudo de uma vez."
+- "Ainda falta parte da passagem para vocês me traduzirem. Vamos terminar isso primeiro, e depois eu confiro tudo junto."
+- "Ainda tem pedaço que vocês não me traduziram. Me traduzam, e aí eu olho a passagem inteira."
+- "Ainda falta traduzir um pouco. Quando vocês terminarem, eu confiro tudo de uma vez."
 
 ## I. A stretch was pointed at, and correcting it replaces it
 
 **Not authored by the project. Written for ENG-693 with the product owner's authorization,
-2026-09-01, and given as fixed: the wording is not the implementer's to adjust.**
+2026-09-01, and given as fixed: the wording is not the implementer's to adjust; the
+*traduzir* wording approved by Henok, 2026-09-10, and the English line brought to the same
+word, 2026-09-11.**
 
 ⚠ Neither the English nor the Spanish here has been read by a native speaker. ENG-683 records
 that this is true of every English and Spanish line the room speaks, not just this one.
@@ -109,11 +85,11 @@ reads.
 **What the sentence may not do**, from a log where a draft was rejected for doing it:
 
 - **It does not name the bridge language.** "in English" is false in a Spanish session, and
-  the facilitator is already speaking the bridge language, so "tell me" anchors it alone.
+  the facilitator is already speaking the bridge language, so "for me" anchors it alone.
 - **It does not claim the two recordings were compared.** The Guide never checks the mother
   tongue and says that limit out loud; claiming the comparison is an epistemic-policy
   violation.
-- **It does not instruct the interface.** "Tell me this whole part again" describes work and
+- **It does not instruct the interface.** "Translate this whole part again" describes work and
   passes; "tap the button" is a flow-policy violation.
 
 It is said only where the screen actually offers a microphone on one stretch — a finding that
@@ -123,8 +99,8 @@ warn about.
 
 ### I.
 
-- "I need you to tell me this whole part again — what you already told me, and what was missing too."
+- "I need you to translate this whole part again for me — what you already translated, and what was missing too."
 
 ### I-pt. (Português brasileiro)
 
-- "Preciso que vocês me contem esta parte inteira de novo — o que já tinham contado, e também o que faltou."
+- "Preciso que vocês me traduzam esta parte inteira de novo — o que já tinham traduzido, e também o que faltou."

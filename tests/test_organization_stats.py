@@ -1,5 +1,3 @@
-import pytest
-
 from app.models.org import OrganizationStatsResponse
 from app.services import organization_service
 from tests.baker import (
@@ -12,14 +10,12 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_stats_empty_org(db_session) -> None:
     org = await make_organization(db_session, slug="empty-stats")
     stats = await organization_service.get_organization_stats(db_session, org.id)
     assert stats == OrganizationStatsResponse(project_count=0, member_count=0, language_count=0)
 
 
-@pytest.mark.asyncio
 async def test_stats_with_data(db_session) -> None:
     org = await make_organization(db_session, slug="data-stats")
     lang = await make_language(db_session, name="English", code="en")
@@ -39,7 +35,6 @@ async def test_stats_with_data(db_session) -> None:
     assert stats.language_count == 1
 
 
-@pytest.mark.asyncio
 async def test_stats_distinct_languages(db_session) -> None:
     org = await make_organization(db_session, slug="lang-stats")
     lang_a = await make_language(db_session, name="French", code="fr")

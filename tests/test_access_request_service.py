@@ -21,7 +21,6 @@ async def _setup_app(db):
     return app, role
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_success(db_session) -> None:
     app, _ = await _setup_app(db_session)
     user = await make_user(db_session, email="new@test.com")
@@ -33,7 +32,6 @@ async def test_create_access_request_success(db_session) -> None:
     assert req.note is None
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_with_note(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="noted@test.com")
@@ -41,7 +39,6 @@ async def test_create_access_request_with_note(db_session) -> None:
     assert req.note == "Please add me"
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_idempotent(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="idem@test.com")
@@ -50,14 +47,12 @@ async def test_create_access_request_idempotent(db_session) -> None:
     assert first.id == second.id
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_invalid_app(db_session) -> None:
     user = await make_user(db_session, email="bad@test.com")
     with pytest.raises(NotFoundError, match="App not found"):
         await create_access_request(db_session, user.id, "nonexistent-app")
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_after_rejection(db_session) -> None:
     app, _ = await _setup_app(db_session)
     user = await make_user(db_session, email="rejected@test.com")
@@ -66,7 +61,6 @@ async def test_create_access_request_after_rejection(db_session) -> None:
     assert new_req.status == "pending"
 
 
-@pytest.mark.asyncio
 async def test_get_user_access_request_found(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="get1@test.com")
@@ -76,7 +70,6 @@ async def test_get_user_access_request_found(db_session) -> None:
     assert found.id == created.id
 
 
-@pytest.mark.asyncio
 async def test_get_user_access_request_none(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="get2@test.com")
@@ -84,14 +77,12 @@ async def test_get_user_access_request_none(db_session) -> None:
     assert found is None
 
 
-@pytest.mark.asyncio
 async def test_get_user_access_request_invalid_app(db_session) -> None:
     user = await make_user(db_session, email="get3@test.com")
     with pytest.raises(NotFoundError, match="App not found"):
         await get_user_access_request(db_session, user.id, "nonexistent-app")
 
 
-@pytest.mark.asyncio
 async def test_list_access_requests_all(db_session) -> None:
     await _setup_app(db_session)
     u1 = await make_user(db_session, email="list1@test.com")
@@ -103,7 +94,6 @@ async def test_list_access_requests_all(db_session) -> None:
     assert all(ak == APP_KEY for _, ak in rows)
 
 
-@pytest.mark.asyncio
 async def test_list_access_requests_filter_by_status(db_session) -> None:
     app, _ = await _setup_app(db_session)
     u1 = await make_user(db_session, email="listf1@test.com")
@@ -114,7 +104,6 @@ async def test_list_access_requests_filter_by_status(db_session) -> None:
     assert len(rows) == 1
 
 
-@pytest.mark.asyncio
 async def test_list_access_requests_filter_by_app_key(db_session) -> None:
     await _setup_app(db_session)
     other_app = await make_app(db_session, app_key="other-app", name="Other")
@@ -125,13 +114,11 @@ async def test_list_access_requests_filter_by_app_key(db_session) -> None:
     assert len(rows) == 1
 
 
-@pytest.mark.asyncio
 async def test_list_access_requests_empty(db_session) -> None:
     rows = await list_access_requests(db_session)
     assert rows == []
 
 
-@pytest.mark.asyncio
 async def test_review_approve_assigns_analyst(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="approve@test.com")
@@ -145,7 +132,6 @@ async def test_review_approve_assigns_analyst(db_session) -> None:
     assert has is True
 
 
-@pytest.mark.asyncio
 async def test_review_reject(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="reject@test.com")
@@ -160,7 +146,6 @@ async def test_review_reject(db_session) -> None:
     assert has is False
 
 
-@pytest.mark.asyncio
 async def test_review_invalid_status(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="inv@test.com")
@@ -170,14 +155,12 @@ async def test_review_invalid_status(db_session) -> None:
         await review_access_request(db_session, admin, req.id, "maybe")
 
 
-@pytest.mark.asyncio
 async def test_review_not_found(db_session) -> None:
     admin = await make_user(db_session, email="admin4@test.com", is_platform_admin=True)
     with pytest.raises(NotFoundError, match="Access request not found"):
         await review_access_request(db_session, admin, "nonexistent-id", "approved")
 
 
-@pytest.mark.asyncio
 async def test_review_already_reviewed(db_session) -> None:
     await _setup_app(db_session)
     user = await make_user(db_session, email="already@test.com")

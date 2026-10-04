@@ -12,7 +12,6 @@ stage. Every proposition stays available to the free-retell assessor regardless.
 
 from __future__ import annotations
 
-import re
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -30,22 +29,6 @@ class Checkpoint(BaseModel):
     scene_id: str | None = None
     source_id: str
     canonical: dict[str, Any] = Field(default_factory=dict)
-
-
-def _absence_matches_rule(absence_text: str, kind: str) -> bool:
-    """Match a rule against this scene's silence only.
-
-    A multi-scene rule's own wording would make every absence appear related merely
-    because the rule mentions its theme globally.
-    """
-    text = absence_text.lower()
-    if "DIVINE_AGENCY" in kind:
-        return bool(re.search(r"\bgod\b|yhwh|divine|cause|causation|sent|agent", text))
-    if re.search(r"GRIEF|MOURNING|FUNERAL", kind):
-        return bool(re.search(r"grief|grieving|mourn|mourning|funeral|lament|wept|weep", text))
-    if re.search(r"OFFSPRING|CHILD", kind):
-        return bool(re.search(r"child|children|offspring|heir|born|birth", text))
-    return False
 
 
 def semantic_spine_proposition_numbers(meaning_map: MeaningMap) -> set[int]:
@@ -89,20 +72,12 @@ def derive_checkpoints(meaning_map: MeaningMap, *, book: str) -> list[Checkpoint
             )
         )
 
-    structural_rules = [
-        rule
-        for rule in preservation_rules(book)
-        if rule.pericope == pericope and rule.kind.startswith("STRUCTURAL_ABSENCE_")
-    ]
+    rules = [rule for rule in preservation_rules(book) if rule.pericope == pericope]
     folded_rule_ids: set[str] = set()
     for scene in meaning_map.scenes:
         if not (scene.absence or "").strip():
             continue
-        related = [
-            rule
-            for rule in structural_rules
-            if _absence_matches_rule(scene.absence or "", rule.kind)
-        ]
+        related = [rule for rule in rules if rule.folds_into(scene.absence or "")]
         folded_rule_ids.update(rule.rule_id for rule in related)
         out.append(
             Checkpoint(

@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 3,
+    "answers_requests_to_understand": 3,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 3,
+    "adaptivity": 3
+  },
+  "incidents": [
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "did_not_follow_lead",
+      "quote": "Antes de eu continuar, quero ouvir vocês.",
+      "why": "A equipe disse 'Pode continuar' e o guia, em vez de continuar, devolveu a palavra sem acrescentar nada; a abertura já tinha sido feita no turno 0, então é um lapso leve, mas não reagiu ao pedido explícito."
+    },
+    {
+      "turn": 4,
+      "severity": "minor",
+      "kind": "inconsistent_check",
+      "quote": "está tudo o que a história traz nessa parte",
+      "why": "O guia declara a recontagem completa e logo em seguida aponta que faltou o sentido de 'morar como estrangeiro, de passagem'. A conferência foi honesta no fim, mas a frase inicial afirma completude antes de nomear a lacuna."
+    },
+    {
+      "turn": 5,
+      "severity": "major",
+      "kind": "verbatim_repeat",
+      "quote": "Vocês disseram que ele \"foi morar em Moabe\". A história diz que eles foram morar lá como estrangeiros, só de passagem — um abrigo por um tempo, não pra ficar de vez.",
+      "why": "A equipe pediu a próxima parte e o guia repetiu quase palavra por palavra o turno anterior em vez de abrir a próxima cena ou reformular a pergunta; a doutrina proíbe repetir o turno anterior e pede que o guia acompanhe a mudança de direção da equipe."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se manteve inteiramente dentro do mapa: tudo que afirmou sobre a fome, a família, Belém como 'casa do pão', os efrateus, a morte de Elimeleque e o modo seco de contar está no mapa, e ele levantou os silêncios (ninguém diz que Deus fez nada; sem choro, sem enterro, sem causa) como conteúdo, sem preenchê-los. Abriu a primeira cena antes de pedir qualquer ensaio, só convidou o ensaio depois que a equipe disse ter entendido, e conferiu a recontagem apontando com cuidado a nuance de 'morar como estrangeiro, de passagem'. No turno 6 respondeu muito bem à pergunta sobre Noemi, recontando a cena do mapa e oferecendo contar de novo. O ponto fraco foi o turno 5: quando a equipe pediu a próxima parte, o guia repetiu o turno anterior quase textualmente em vez de seguir ou reformular; no turno 7 corrigiu o rumo, guardando o ponto para depois. Vale também encurtar o turno de abertura, que traz muitas ideias de uma vez, e evitar dizer 'está tudo' antes de nomear a lacuna."
+}

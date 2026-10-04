@@ -16,7 +16,6 @@ from sqlalchemy import select
 
 from app.db.models.resource_request import (
     RRDecision,
-    RREvaluation,
     RRRequest,
     RRSnapshot,
     RRStage,
@@ -24,65 +23,18 @@ from app.db.models.resource_request import (
 from app.utils import resource_request_vocabularies as v
 from app.utils.resource_request_typed_fields import PROMOTED_TO_SPINE
 from tests.baker import make_user
+from tests.resource_request_harness import (
+    REQUESTS,
+    a_gestor,
+    answers,
+    as_mesa,
+    as_team,
+    create,
+    decide,
+    draft,
+    to_column,
+)
 from tests.test_resource_requests.conftest import auth_header, grant
-
-REQUESTS = "/api/resource-requests/requests"
-
-
-def answers(request_type: str = "traducao") -> dict[str, str]:
-    """Every required answer filled, with the three that are columns given real values."""
-    filled = dict.fromkeys(v.REQUIRED_TEXT_FIELDS[request_type], "preenchido")
-    filled["tpp_date"] = "2026-08-25"
-    filled["leader_date"] = "2026-08-25"
-    filled["amount_requested"] = "1200.00"
-    for key in filled:
-        allowed = v.VOCABULARY_VALUES.get(key)
-        if allowed:
-            filled[key] = allowed[0]
-    return filled
-
-
-#: The base leader every test draft names (BE-23, OBT-535): required to submit, and nobody's
-#: own address among the accounts these tests sign in with.
-LEADER_EMAIL = "lider@base.org"
-
-
-def draft(request_type: str = "traducao", **over: object) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "request_type": request_type,
-        "currency": "BRL",
-        "leader_email": LEADER_EMAIL,
-        "declaration": True,
-        "fields": answers(request_type),
-        "langs": [],
-        "team": [{"name": "Ana", "role": "coordenação"}] if request_type == "traducao" else [],
-        "chrono": [],
-        "budget": [
-            {"category_key": key, "description": "", "quantity": None, "amount": None}
-            for key in v.BUDGET_CATEGORY_KEYS
-        ],
-    }
-    payload.update(over)
-    return payload
-
-
-async def as_team(db_session, rrf_app, email: str = "equipe@rr.test") -> dict[str, str]:
-    user = await make_user(db_session, email=email)
-    await grant(db_session, user, rrf_app, "equipe")
-    return await auth_header(db_session, user)
-
-
-async def as_mesa(db_session, rrf_app, email: str = "mesa@rr.test") -> dict[str, str]:
-    user = await make_user(db_session, email=email)
-    await grant(db_session, user, rrf_app, "mesa")
-    return await auth_header(db_session, user)
-
-
-async def create(client, headers, **over: object) -> dict:
-    res = await client.post(REQUESTS, json=draft(**over), headers=headers)
-    assert res.status_code == 201, res.text
-    return res.json()
-
 
 # ——— the draft ———————————————————————————————————————————————————————————————————
 
@@ -340,7 +292,7 @@ async def test_a_mesa_member_who_is_also_equipe_still_reaches_every_request(
 
     Since ``20260828_rr02`` whoever registers is ``equipe``, so a mesa member holds ``equipe``
     **plus** ``mesa`` — two rows, with no constraint on ``(user_id, app_id)`` to prevent it.
-    ``as_mesa`` above grants one role and cannot see this: ``Reach.every`` asks
+    ``as_mesa`` grants one role and cannot see this: ``Reach.every`` asks
     ``granted - {TEAM_ROLE, LEADER_ROLE}``, and asked the other way round — ``TEAM_ROLE in
     granted`` — it would answer *team* for exactly this account and hide the board from the
     mesa. The Líder's own middle reach is ``test_endorsement.py``'s subject.
@@ -709,26 +661,6 @@ async def test_submitting_does_not_move_the_card(db_session, client, rrf_app) ->
 # ——— revision —————————————————————————————————————————————————————————————————————
 
 
-async def _decide(
-    db_session,
-    request_id: str,
-    decision: RRDecision | None,
-    evaluated_at: datetime | None = None,
-) -> None:
-    """Write the mesa's decision straight to the table — BE-06 is what will write it for real.
-
-    ``evaluated_at`` is stamped from the session by BE-06, and it is what orders two
-    decisions on one snapshot, so a test about ordering has to set it.
-    """
-    snapshot = (
-        await db_session.execute(select(RRSnapshot).where(RRSnapshot.request_id == request_id))
-    ).scalar_one()
-    db_session.add(
-        RREvaluation(snapshot_id=snapshot.id, decision=decision, evaluated_at=evaluated_at)
-    )
-    await db_session.commit()
-
-
 async def test_a_request_nobody_evaluated_cannot_be_revised(db_session, client, rrf_app) -> None:
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
@@ -749,7 +681,7 @@ async def test_only_a_revise_decision_opens_a_revision(
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
-    await _decide(db_session, created["id"], decision)
+    await decide(db_session, created["id"], decision)
 
     res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)
 
@@ -768,7 +700,7 @@ async def test_a_revision_is_a_new_row_linked_to_what_was_evaluated(
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
     submitted = (await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)).json()
-    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await decide(db_session, created["id"], RRDecision.REVISE)
 
     res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)
 
@@ -794,7 +726,7 @@ async def test_a_revision_carries_the_content_forward(db_session, client, rrf_ap
     created = await create(client, headers)
     before = (await client.get(f"{REQUESTS}/{created['id']}", headers=headers)).json()
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
-    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await decide(db_session, created["id"], RRDecision.REVISE)
 
     revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)).json()
 
@@ -812,7 +744,7 @@ async def test_editing_a_revision_leaves_the_evaluated_snapshot_alone(
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
     submitted = (await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)).json()
-    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await decide(db_session, created["id"], RRDecision.REVISE)
     revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)).json()
 
     changed = draft()
@@ -840,7 +772,7 @@ async def test_a_revision_opened_by_the_mesa_still_belongs_to_the_team(
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
-    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await decide(db_session, created["id"], RRDecision.REVISE)
     mesa = await as_mesa(db_session, rrf_app)
 
     revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=mesa)).json()
@@ -850,21 +782,6 @@ async def test_a_revision_opened_by_the_mesa_still_belongs_to_the_team(
 
 
 # ——— the Gestor reopens what the board sent back (FE-47, OBT-515) —————————————————————
-
-
-async def _gestor(db_session, rrf_app):
-    user = await make_user(db_session, email="gestor@rr.test")
-    await grant(db_session, user, rrf_app, "gestor")
-    return user, await auth_header(db_session, user)
-
-
-async def _to_column(db_session, request_id: str, stage: RRStage) -> None:
-    """The board's move, as its result: the money half is BE-08's and tested there."""
-    request = (
-        await db_session.execute(select(RRRequest).where(RRRequest.id == request_id))
-    ).scalar_one()
-    request.stage = stage
-    await db_session.commit()
 
 
 async def test_the_gestor_reopens_an_approved_request_moved_to_revisar_and_holds_the_pen(
@@ -878,9 +795,9 @@ async def test_the_gestor_reopens_an_approved_request_moved_to_revisar_and_holds
     team = await as_team(db_session, rrf_app)
     created = await create(client, team)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
-    await _decide(db_session, created["id"], RRDecision.APPROVED)
-    await _to_column(db_session, created["id"], RRStage.REVISAR)
-    gestor_user, gestor = await _gestor(db_session, rrf_app)
+    await decide(db_session, created["id"], RRDecision.APPROVED)
+    await to_column(db_session, created["id"], RRStage.REVISAR)
+    gestor_user, gestor = await a_gestor(db_session, rrf_app)
 
     res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)
 
@@ -903,9 +820,9 @@ async def test_the_gestor_does_not_reopen_a_card_still_in_aprovado(
     team = await as_team(db_session, rrf_app)
     created = await create(client, team)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
-    await _decide(db_session, created["id"], RRDecision.APPROVED)
-    await _to_column(db_session, created["id"], RRStage.APROVADO)
-    _user, gestor = await _gestor(db_session, rrf_app)
+    await decide(db_session, created["id"], RRDecision.APPROVED)
+    await to_column(db_session, created["id"], RRStage.APROVADO)
+    _user, gestor = await a_gestor(db_session, rrf_app)
 
     res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)
 
@@ -920,8 +837,8 @@ async def test_the_team_still_needs_the_mesas_revisar_even_with_the_card_in_revi
     team = await as_team(db_session, rrf_app)
     created = await create(client, team)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
-    await _decide(db_session, created["id"], RRDecision.APPROVED)
-    await _to_column(db_session, created["id"], RRStage.REVISAR)
+    await decide(db_session, created["id"], RRDecision.APPROVED)
+    await to_column(db_session, created["id"], RRStage.REVISAR)
 
     res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=team)
 
@@ -933,11 +850,11 @@ async def test_a_gestor_who_started_the_request_reopens_it_from_revisar(
     db_session, client, rrf_app
 ) -> None:
     """The board is read off its reach, not off who started the request (PR #608 review)."""
-    gestor_user, gestor = await _gestor(db_session, rrf_app)
+    gestor_user, gestor = await a_gestor(db_session, rrf_app)
     created = await create(client, gestor)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=gestor)
-    await _decide(db_session, created["id"], RRDecision.APPROVED)
-    await _to_column(db_session, created["id"], RRStage.REVISAR)
+    await decide(db_session, created["id"], RRDecision.APPROVED)
+    await to_column(db_session, created["id"], RRStage.REVISAR)
 
     res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)
 
@@ -952,9 +869,9 @@ async def test_after_the_mesas_revisar_the_pen_stays_with_the_team_whoever_opens
     team = await as_team(db_session, rrf_app)
     created = await create(client, team)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
-    await _decide(db_session, created["id"], RRDecision.REVISE)
-    await _to_column(db_session, created["id"], RRStage.REVISAR)
-    _user, gestor = await _gestor(db_session, rrf_app)
+    await decide(db_session, created["id"], RRDecision.REVISE)
+    await to_column(db_session, created["id"], RRStage.REVISAR)
+    _user, gestor = await a_gestor(db_session, rrf_app)
 
     revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=gestor)).json()
 
@@ -967,7 +884,7 @@ async def test_the_original_keeps_its_own_rows(db_session, client, rrf_app) -> N
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
     await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
-    await _decide(db_session, created["id"], RRDecision.REVISE)
+    await decide(db_session, created["id"], RRDecision.REVISE)
 
     await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)
 

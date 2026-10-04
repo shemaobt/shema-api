@@ -24,7 +24,6 @@ SAMPLE_PARTICIPANTS = [
 ]
 
 
-@pytest.mark.asyncio
 async def test_create_bcd_success(db_session):
     user = await make_user(db_session, email="creator@test.com")
     book = await make_bible_book(
@@ -42,7 +41,6 @@ async def test_create_bcd_success(db_session):
     assert bcd.version == 1
 
 
-@pytest.mark.asyncio
 async def test_create_bcd_rejects_nt_book(db_session):
     user = await make_user(db_session, email="creator2@test.com")
     book = await make_bible_book(
@@ -59,7 +57,6 @@ async def test_create_bcd_rejects_nt_book(db_session):
         await create_bcd(db_session, book.id, user.id, "narrative")
 
 
-@pytest.mark.asyncio
 async def test_get_latest_approved_returns_highest_version(db_session):
     user = await make_user(db_session, email="creator3@test.com")
     book = await make_bible_book(
@@ -78,7 +75,6 @@ async def test_get_latest_approved_returns_highest_version(db_session):
     assert result.version == 2
 
 
-@pytest.mark.asyncio
 async def test_get_latest_approved_skips_drafts(db_session):
     user = await make_user(db_session, email="creator4@test.com")
     book = await make_bible_book(
@@ -97,7 +93,6 @@ async def test_get_latest_approved_skips_drafts(db_session):
     assert result.version == 1
 
 
-@pytest.mark.asyncio
 async def test_get_latest_approved_returns_none_when_no_approved(db_session):
     user = await make_user(db_session, email="creator5@test.com")
     book = await make_bible_book(
@@ -114,7 +109,6 @@ async def test_get_latest_approved_returns_none_when_no_approved(db_session):
     assert result is None
 
 
-@pytest.mark.asyncio
 async def test_update_section_in_draft(db_session):
     user = await make_user(db_session, email="creator6@test.com")
     book = await make_bible_book(
@@ -134,7 +128,6 @@ async def test_update_section_in_draft(db_session):
     assert result.participant_register == SAMPLE_PARTICIPANTS
 
 
-@pytest.mark.asyncio
 async def test_update_section_rejects_if_approved(db_session):
     user = await make_user(db_session, email="creator7@test.com")
     book = await make_bible_book(
@@ -152,7 +145,6 @@ async def test_update_section_rejects_if_approved(db_session):
         )
 
 
-@pytest.mark.asyncio
 async def test_create_new_version_from_approved(db_session):
     user = await make_user(db_session, email="creator8@test.com")
     book = await make_bible_book(

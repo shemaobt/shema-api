@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 3,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 3,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "near_repeat_question",
+      "quote": "quem são as quatro pessoas dessa família, de onde eles saíram, e o que fez eles saírem de casa?",
+      "why": "A equipe só se apresentou e disse 'pode continuar'; o guia devolveu quase a mesma pergunta de fechamento do turno 0, sem avançar nem reagir de fato ao que a equipe disse."
+    },
+    {
+      "turn": 0,
+      "severity": "minor",
+      "kind": "silence_not_raised",
+      "quote": "Uma coisa pra notar: o nome Belém quer dizer \"casa do pão\".",
+      "why": "Ao abrir a cena 1, o guia não levantou o silêncio marcado para essa cena (a história não diz que Deus mandou a fome nem tirou a família de casa). Nada foi preenchido, mas o silêncio da cena 1 ficou sem ser apontado; só o da cena 2 foi trabalhado no turno 5."
+    },
+    {
+      "turn": 5,
+      "severity": "minor",
+      "kind": "gap_not_rerehearsed",
+      "quote": "Tudo bem, vamos em frente. Só guardem essa ideia no ouvido",
+      "why": "No turno 4 o guia nomeou honestamente a lacuna (morar como estrangeiro, de passagem), mas quando a equipe pediu a próxima parte, deixou a cena 1 seguir sem confirmar que a ideia entrou no ensaio nem pedir um novo ensaio; a narração ficou incompleta."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se manteve inteiramente dentro do que a passagem traz: abriu a visão geral, depois cada cena com o que acontece, quem está lá e onde, sem nenhuma afirmação de fora, sem citar 'o mapa', sem bênçãos. Respondeu bem à pergunta da equipe no turno 6 (Noemi ficou com os filhos), levantou os silêncios da cena 2 como coisa que a história não conta, e conferiu a narração da cena 1 com honestidade, nomeando o que faltou (a ideia de morar como estrangeiro, de passagem) em vez de elogiar como completa. As falhas são pequenas: no turno 1 praticamente repetiu a pergunta do turno 0 em vez de reagir ao que a equipe disse; deixou a lacuna da cena 1 seguir sem novo ensaio quando a equipe pediu a próxima parte; e não apontou o silêncio da cena 1 (nenhuma menção a Deus agindo). O ritmo e a linguagem foram simples e curtos, e o guia acompanhou a direção da equipe. A transcrição termina antes do fechamento, então não houve ainda o pedido para gravar."
+}

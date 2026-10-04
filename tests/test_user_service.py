@@ -13,7 +13,6 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_list_users(db_session) -> None:
     await make_user(db_session, email="alice@example.com", display_name="Alice")
     await make_user(db_session, email="bob@example.com", display_name="Bob")
@@ -23,7 +22,6 @@ async def test_list_users(db_session) -> None:
     assert "bob@example.com" in emails
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id(db_session) -> None:
     created = await make_user(db_session, email="findme@example.com")
     user = await user_service.get_user_by_id(db_session, created.id)
@@ -31,13 +29,11 @@ async def test_get_user_by_id(db_session) -> None:
     assert user.email == "findme@example.com"
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id_raises_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match="not found"):
         await user_service.get_user_by_id(db_session, "00000000-0000-0000-0000-000000000000")
 
 
-@pytest.mark.asyncio
 async def test_update_user_toggles_is_active(db_session) -> None:
     admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
     created = await make_user(db_session, email="toggle@example.com", is_active=True)
@@ -46,7 +42,6 @@ async def test_update_user_toggles_is_active(db_session) -> None:
     assert updated.is_active is False
 
 
-@pytest.mark.asyncio
 async def test_update_user_toggles_is_platform_admin(db_session) -> None:
     admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
     created = await make_user(db_session, email="admin@example.com", is_platform_admin=False)
@@ -55,7 +50,6 @@ async def test_update_user_toggles_is_platform_admin(db_session) -> None:
     assert updated.is_platform_admin is True
 
 
-@pytest.mark.asyncio
 async def test_update_user_clears_avatar_when_explicitly_null(db_session) -> None:
     admin = await make_user(db_session, email="clearnull-admin@example.com", is_platform_admin=True)
     created = await make_user(db_session, email="clearnull@example.com")
@@ -66,7 +60,6 @@ async def test_update_user_clears_avatar_when_explicitly_null(db_session) -> Non
     assert updated.avatar_url is None
 
 
-@pytest.mark.asyncio
 async def test_update_user_clears_avatar_when_empty_string(db_session) -> None:
     admin = await make_user(
         db_session, email="clearempty-admin@example.com", is_platform_admin=True
@@ -79,7 +72,6 @@ async def test_update_user_clears_avatar_when_empty_string(db_session) -> None:
     assert updated.avatar_url is None
 
 
-@pytest.mark.asyncio
 async def test_update_user_keeps_avatar_when_field_is_omitted(db_session) -> None:
     """The actor is somebody else on purpose: #101 refuses an admin deactivating themselves."""
     admin = await make_user(
@@ -104,7 +96,6 @@ async def test_update_user_rejects_self_admin_flag_change(db_session) -> None:
     assert admin.is_platform_admin is True
 
 
-@pytest.mark.asyncio
 async def test_update_user_rejects_self_deactivation(db_session) -> None:
     admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
 
@@ -115,7 +106,6 @@ async def test_update_user_rejects_self_deactivation(db_session) -> None:
     assert admin.is_active is True
 
 
-@pytest.mark.asyncio
 async def test_update_user_allows_self_profile_fields(db_session) -> None:
     admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
 
@@ -127,7 +117,6 @@ async def test_update_user_allows_self_profile_fields(db_session) -> None:
     assert updated.locale == "pt-BR"
 
 
-@pytest.mark.asyncio
 async def test_update_user_raises_not_found(db_session) -> None:
     admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
     with pytest.raises(NotFoundError, match="not found"):
@@ -136,7 +125,6 @@ async def test_update_user_raises_not_found(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_list_user_roles_returns_roles(db_session) -> None:
     user = await make_user(db_session, email="roled@example.com")
     app = await make_app(db_session, app_key="my-app", name="My App")
@@ -150,14 +138,12 @@ async def test_list_user_roles_returns_roles(db_session) -> None:
     assert granted_at is not None
 
 
-@pytest.mark.asyncio
 async def test_list_user_roles_returns_empty_for_no_roles(db_session) -> None:
     user = await make_user(db_session, email="noroles@example.com")
     roles = await user_service.list_user_roles(db_session, user.id)
     assert roles == []
 
 
-@pytest.mark.asyncio
 async def test_search_users_below_the_query_floor_returns_empty(db_session) -> None:
     await make_user(db_session, email="alice@example.com", display_name="Alice")
     await make_user(db_session, email="bob@example.com", display_name="Bob")
@@ -167,7 +153,6 @@ async def test_search_users_below_the_query_floor_returns_empty(db_session) -> N
     assert await user_service.search_users(db_session, "a") == []
 
 
-@pytest.mark.asyncio
 async def test_search_users_at_the_query_floor_matches(db_session) -> None:
     await make_user(db_session, email="alice@example.com", display_name="Alice")
     await make_user(db_session, email="bob@example.com", display_name="Bob")
@@ -182,13 +167,11 @@ async def _derive_role(db_session, user) -> str:
     return user_service.build_user_list_response(user, is_manager=user.id in manager_ids).role
 
 
-@pytest.mark.asyncio
 async def test_derived_role_member_without_access(db_session) -> None:
     user = await make_user(db_session, email="plain@example.com")
     assert await _derive_role(db_session, user) == "member"
 
 
-@pytest.mark.asyncio
 async def test_derived_role_member_with_non_manager_access(db_session) -> None:
     user = await make_user(db_session, email="member-access@example.com")
     lang = await make_language(db_session)
@@ -197,7 +180,6 @@ async def test_derived_role_member_with_non_manager_access(db_session) -> None:
     assert await _derive_role(db_session, user) == "member"
 
 
-@pytest.mark.asyncio
 async def test_derived_role_manager_with_manager_access(db_session) -> None:
     user = await make_user(db_session, email="manages@example.com")
     lang = await make_language(db_session)
@@ -206,7 +188,6 @@ async def test_derived_role_manager_with_manager_access(db_session) -> None:
     assert await _derive_role(db_session, user) == "manager"
 
 
-@pytest.mark.asyncio
 async def test_derived_role_platform_admin_prevails_over_manager(db_session) -> None:
     user = await make_user(db_session, email="admin-manager@example.com", is_platform_admin=True)
     lang = await make_language(db_session)
@@ -215,7 +196,6 @@ async def test_derived_role_platform_admin_prevails_over_manager(db_session) -> 
     assert await _derive_role(db_session, user) == "platform_admin"
 
 
-@pytest.mark.asyncio
 async def test_list_users_derives_mixed_roles(db_session) -> None:
     member = await make_user(db_session, email="mix-member@example.com")
     manager = await make_user(db_session, email="mix-manager@example.com")

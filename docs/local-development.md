@@ -8,10 +8,12 @@ Locally the only secret needed is the JWT signing key; the database is the local
 container, and Compose never points at Neon. Production additionally needs its Neon
 connection string.
 
-Outgoing mail reads two more on Cloud Run — `tripod_backend_email_provider` (`log`, `resend`
-or `microsoft_graph`) and `tripod_backend_resend_api_key`. Compose reads both too, but treats
-them as optional: when unreadable, the provider falls back to `log` and no e-mail leaves a
-local machine. The sender is **not** a secret: `EMAIL_FROM_ADDRESS` is unset everywhere and
+Outgoing mail is chosen by `EMAIL_PROVIDER` (`log`, `resend` or `microsoft_graph`). On Cloud
+Run each deploy names it as a plain variable — production `microsoft_graph`, with the Azure
+client secret mounted beside it, and staging `log`, so no e-mail leaves staging. Compose reads
+`tripod_backend_email_provider` and `tripod_backend_resend_api_key`, but treats them as
+optional: when unreadable, the provider falls back to `log` and no e-mail leaves a local
+machine. The sender is **not** a secret: `EMAIL_FROM_ADDRESS` is unset everywhere and
 defaults to `noreply@shemaywam.com`, the address the code has always sent from. It must stay a
 verified sender on the Resend domain — pointing it at another address is an administrative
 change on the provider first, and a rejected sender surfaces only as a log line, never as an

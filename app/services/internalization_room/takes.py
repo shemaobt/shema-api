@@ -11,9 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.facilitates_project import facilitates_project
@@ -34,7 +34,7 @@ class TakeStore(Protocol):
 
     async def get(self, key: str) -> bytes | None: ...
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+    async def put(self, key: str, data: bytes, content_type: str) -> bytes: ...
 
     async def stat(self, key: str) -> StoredObject | None: ...
 
@@ -73,7 +73,7 @@ async def store_take(
     audio: bytes,
     project_id: str | None = None,
     pass_number: int | None = None,
-    chunk_index: int | None = None,
+    ordinal: int | None = None,
     content_type: str = AUDIO_MIME,
     store: TakeStore | None = None,
 ) -> IRTake:
@@ -100,6 +100,7 @@ async def store_take(
     already = existing.scalar_one_or_none()
     if already is not None:
         return already
+    await db.commit()
 
     speech_store = store or _store()
     await speech_store.put(key, audio, content_type)
@@ -114,7 +115,7 @@ async def store_take(
         kind=kind,
         scope=scope,
         pass_number=pass_number,
-        chunk_index=chunk_index,
+        ordinal=ordinal,
         storage_key=key,
         size_bytes=len(audio),
         sha256=digest,
@@ -124,7 +125,6 @@ async def store_take(
     )
     db.add(take)
     await db.commit()
-    await db.refresh(take)
     return take
 
 
@@ -187,17 +187,6 @@ async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IR
     return take
 
 
-async def take_bytes(take: IRTake) -> bytes | None:
-    """The audio a take names, or nothing when the object is not in the bucket.
-
-    Nothing rather than a refusal: a row whose object never landed is a real state here — the
-    row is written after the upload precisely so the reverse cannot happen, but a bucket that
-    lost the object, or a take stored before this API owned the key, both read the same way.
-    The caller decides what an absent recording means to it.
-    """
-    return await _store().get(take.storage_key)
-
-
 async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
     """A short-lived signed URL, so the bytes never pass through the API.
 
@@ -222,6 +211,10 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     mother tongue. Checked rather than trusted: a slice of somebody else's recording, or of a
     telling-back, is not a stretch of this passage at all, and stored unchecked it would read
     downstream as one.
+
+    Both callers name this take in the request body, so a miss here is a row the caller named
+    that does not exist — the house rule of `UnknownReferenceError` — and not the session gone,
+    which the caller already resolved from the path before reaching this call.
     """
     result = await db.execute(
         select(IRTake).where(
@@ -232,7 +225,7 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     )
     take = result.scalar_one_or_none()
     if take is None:
-        raise NotFoundError(f"Internalization room rehearsal take {take_id} not found")
+        raise UnknownReferenceError(f"Internalization room rehearsal take {take_id} not found")
     return take
 
 
@@ -243,8 +236,9 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     the wrong sequence for whoever reviews the session.
 
     Both columns are nullable and the placement is named rather than left to the engine:
-    a take with no chunk is the undivided passage and a take with no pass predates the
-    room sending one, so either is the earliest thing in its own group. Unnamed, SQLite
+    a take with no ordinal belongs to no stretch — the undivided passage, or a recording
+    that captured none — and a take with no pass predates the room sending one, so either
+    is the earliest thing in its own group. Unnamed, SQLite
     read that the same way and PostgreSQL read it upside down, which put the oldest
     recording of a session at the bottom of the packet on the only database that serves
     a real team.
@@ -253,9 +247,106 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
         select(IRTake)
         .where(IRTake.session_id == session_id)
         .order_by(
-            IRTake.chunk_index.asc().nulls_first(),
+            IRTake.ordinal.asc().nulls_first(),
             IRTake.pass_number.asc().nulls_first(),
             IRTake.created_at,
         )
     )
     return list(result.scalars().all())
+
+
+def current_parts(takes: list[IRTake]) -> list[IRTake]:
+    """The rehearsal takes that *are* the session's parts: the newest under each number.
+
+    A **Part** is one rehearsal take of the passage, and its identity is the number the tablet
+    sent with it — never the scope string, which the text seam writes as the pericope for every
+    part it declares. Recording a part again stores a second take under that number; the newest
+    of them is the part, and the earlier ones stay as history, which the **Retroverification
+    file** is where anybody reads.
+
+    A take with no number is the rehearsal told whole, which is one part of its own.
+
+    **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
+    the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
+    alone it would be wrong, and this module says why two functions up: that stamp is when the
+    upload landed, and the outbox drains whenever the link comes back, so the rehearsal that
+    arrives last is sometimes the one the team abandoned. The pass is the tablet's own count of
+    its own recordings and does not move with the link.
+
+    So this must be handed the list in that order — `takes_of`'s — and it answers in it, so the
+    parts come back in the reading order and no caller sorts them again.
+    """
+    newest: dict[int | None, IRTake] = {}
+    for take in takes:
+        if take.kind is IRTakeKind.ENSAIO:
+            newest[take.ordinal] = take
+    chosen = {take.id for take in newest.values()}
+    return [take for take in takes if take.id in chosen]
+
+
+#: Where a declared part's key lives, and the device a text seam speaks for. A part declared
+#: through the seam has no bytes and no bucket object: it is the address a stretch is a slice
+#: of, and nothing else, so the key carries the name her script gave it.
+TEXT_SEAM_PREFIX = "text-seam"
+TEXT_SEAM_DEVICE = "text-seam"
+TEXT_SEAM_CONTENT_TYPE = "text/plain"
+
+
+def _declared_key(session_id: str, key: str) -> str:
+    return f"{TEXT_SEAM_PREFIX}/{session_id}/{key}"
+
+
+async def declare_rehearsal_parts(
+    db: AsyncSession, session: IRSession, keys: list[str]
+) -> list[IRTake]:
+    """Her draft clips as real rehearsal takes, declared rather than uploaded.
+
+    A **Part** the room can address is a row, not a file: `current_stretch_at`,
+    `report_playback` and `unheard_parts` all read the row and the report, and none of them
+    opens the audio. So the seam writes the row and stores nothing — the bucket is never
+    touched, and the size and checksums say what they are, which is that there are no bytes
+    to describe.
+
+    `store_take` is deliberately not reused: it exists to put bytes somewhere and read them
+    back, and it refuses a take with no audio. What they share is the row, and the row is
+    written here.
+
+    Only the keys: a declared part's length is not a column of a take, it is what the listening
+    report says about it, and that is where her `durationMs` lands.
+    """
+    declared = [
+        IRTake(
+            id=str(uuid.uuid4()),
+            project_id=session.project_id,
+            session_id=session.id,
+            device_id=TEXT_SEAM_DEVICE,
+            pericope=session.pericope,
+            kind=IRTakeKind.ENSAIO,
+            scope=session.pericope,
+            storage_key=_declared_key(session.id, key),
+            size_bytes=0,
+            sha256="",
+            crc32c="",
+            content_type=TEXT_SEAM_CONTENT_TYPE,
+            ordinal=position,
+        )
+        for position, key in enumerate(keys)
+    ]
+    db.add_all(declared)
+    await db.commit()
+    for take in declared:
+        await db.refresh(take)
+    return declared
+
+
+async def declared_parts_by_key(db: AsyncSession, session_id: str) -> dict[str, IRTake]:
+    """The parts a seam session declared, by the key her script names them with."""
+    prefix = _declared_key(session_id, "")
+    result = await db.execute(
+        select(IRTake).where(
+            IRTake.session_id == session_id,
+            IRTake.kind == IRTakeKind.ENSAIO,
+            IRTake.storage_key.startswith(prefix),
+        )
+    )
+    return {take.storage_key.removeprefix(prefix): take for take in result.scalars()}

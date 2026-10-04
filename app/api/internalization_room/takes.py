@@ -11,12 +11,13 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.models.internalization_room import TakeResponse, TakesResponse
 from app.services import internalization_room as room
+from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.takes import (
     listen_url,
     store_take,
@@ -38,7 +39,7 @@ def _view(take: IRTake) -> TakeResponse:
         sha256=take.sha256,
         size_bytes=take.size_bytes,
         verified=take.verified_at is not None,
-        chunk_index=take.chunk_index,
+        ordinal=take.ordinal,
         pass_number=take.pass_number,
         pericope=take.pericope,
         recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",
@@ -65,6 +66,7 @@ async def keep_take(
     chunk_index: int | None = Form(default=None),
     file: UploadFile = File(...),
     device_id: str = device_dep,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TakeResponse:
     """Store one take and answer with where it landed.
@@ -72,21 +74,37 @@ async def keep_take(
     The app keeps its local copy until this answers, and re-sends the same bytes after a lost
     connection without checking anything first. That is safe because the key is the hash of
     the audio: a repeat lands on the same object and returns the row that already exists.
+
+    A retro take kept here carries no ordinal, whatever the form says. The number the tablet
+    sends is its own position in its own list, and the ordinal is the stretch's — written
+    where a stretch is captured, which this route never does. A rehearsal take keeps the
+    number it was sent with: that one is a part of the passage, not a telling of a stretch.
+
+    **A rehearsal take under a number the session already has is that part recorded again**,
+    and this call is the whole of that verb: the app says which part it is recording by the
+    number it sends, so nothing else has to be asked of it. What follows from it — which
+    stretches stop counting, which findings go with them, and that the check starts over — is
+    one service, called once the bytes are safe. It does not live inside the storing: that
+    primitive knows nothing of parts — the routes that keep a telling of a stretch store through
+    it as well — and what follows from a part arriving is the room's question, not storage's.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    take_kind = _kind(kind)
     take = await store_take(
         db,
         session_id=session.id,
         device_id=device_id,
         project_id=session.project_id,
         pericope=session.pericope,
-        kind=_kind(kind),
+        kind=take_kind,
         scope=scope,
         audio=await file.read(),
         pass_number=pass_number,
-        chunk_index=chunk_index,
+        ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
         content_type=file.content_type or "audio/mp4",
     )
+    await room.retire_the_part_recorded_again(db, session, take)
+    nudge(session.project_id, "takes")
     return _view(take)
 
 
@@ -95,8 +113,12 @@ async def keep_take(
     response_model=TakesResponse,
     dependencies=[room_caller_dep],
 )
-async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> TakesResponse:
-    session = await room.get_session(db, session_id)
+async def list_takes(
+    session_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TakesResponse:
+    session = await room.session_for_room_caller(db, session_id, project_id)
     return TakesResponse(
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
@@ -111,7 +133,10 @@ async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> Tak
     dependencies=[room_caller_dep],
 )
 async def room_listens_to_take(
-    session_id: str, take_id: str, db: AsyncSession = Depends(get_db)
+    session_id: str,
+    take_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Give the team back the telling it just recorded, by the same signed redirect.
 
@@ -122,9 +147,13 @@ async def room_listens_to_take(
 
     The take is named inside its session rather than on its own, because the credential
     at this door is the same string on every tablet — `take_in_session` is where that
-    argument is written out.
+    argument is written out. The session is resolved through `session_for_room_caller`
+    first, for the same reason every other room route now does: naming a take inside
+    another project's session is still naming that project's session.
     """
+    await room.session_for_room_caller(db, session_id, project_id)
     take = await take_in_session(db, session_id, take_id)
+    await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
@@ -160,4 +189,5 @@ async def listen_to_take(
     do it — the same reason the sound necklace redirects rather than proxies.
     """
     take = await take_for_facilitator(db, user, take_id)
+    await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)

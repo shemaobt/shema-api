@@ -33,7 +33,6 @@ async def _auth_header(db_session, user) -> dict[str, str]:
     return {"Authorization": f"Bearer {access}"}
 
 
-@pytest.mark.asyncio
 async def test_reactivate_endpoint_admin_returns_active_language(client, db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     language = await make_language(db_session, code="kos")
@@ -48,7 +47,6 @@ async def test_reactivate_endpoint_admin_returns_active_language(client, db_sess
     assert body["is_active"] is True
 
 
-@pytest.mark.asyncio
 async def test_reactivate_endpoint_forbidden_for_non_admin(client, db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     manager = await make_user(db_session, email="manager@example.com")
@@ -61,7 +59,6 @@ async def test_reactivate_endpoint_forbidden_for_non_admin(client, db_session) -
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_reactivate_endpoint_missing_returns_404(client, db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     headers = await _auth_header(db_session, admin)

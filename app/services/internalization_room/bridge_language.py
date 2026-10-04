@@ -35,10 +35,10 @@ def strays_from(text: str, language_code: str = FLOOR) -> bool:
     if top.lang == language_code or top.prob < MIN_CONFIDENCE_TO_REFUSE:
         return False
     logger.warning(
-        "Draft strays from %s: detected %s at %.2f — %s",
+        "Draft strays from %s: detected %s at %.2f — %d characters",
         language_code,
         top.lang,
         top.prob,
-        stripped[:120],
+        len(stripped),
     )
     return True

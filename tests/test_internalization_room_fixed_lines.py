@@ -6,29 +6,63 @@ these lines travel with the app. The cost of that is a frozen copy, and the guar
 silent freeze is this file.
 """
 
+import json
 import re
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 import scripts.render_fixed_voice_lines as render
+from app.services.internalization_room._default_prompts import (
+    _PROMPTS_DIR,
+    fail_safe_utterances,
+)
 from app.services.internalization_room.fail_safe import FailSafe, choose, localized
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 
-BUNDLE = Path(__file__).resolve().parents[2] / "internalization-room/assets/audio"
+
+def test_the_render_script_needs_to_be_told_where_the_bundle_is(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The bundle lives in the app's checkout, and the script has no way of knowing where.
+
+    It used to guess it as a sibling of this repository. From a worktree the guess lands on a
+    folder that does not exist, and `--check` then reports every clip as never rendered — the
+    loudest possible answer, saying nothing about the bundle and hiding real drift inside it.
+
+    The refusal is read for the argument it names, not only for argparse's exit code: that
+    code answers any bad invocation, and would go on answering if some other flag were the
+    one made required.
+    """
+    monkeypatch.setattr(sys, "argv", ["render_fixed_voice_lines.py", "--check"])
+
+    with pytest.raises(SystemExit) as refused:
+        render.main()
+
+    assert refused.value.code == 2
+    assert "--out" in capsys.readouterr().err
 
 
-@pytest.mark.skip(
-    reason="paused by decision: re-rendering after a prompt edit is a person's job for now. "
-    "Re-enable with `uv run python scripts/render_fixed_voice_lines.py --check`, which still "
-    "works and still exits non-zero on drift."
-)
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_every_line_the_room_can_speak_is_rendered_and_current(spoken: str) -> None:
-    complaints = render.drift(BUNDLE, spoken)
-    assert complaints == [], (
-        "as falas fixas saíram de sincronia com o prompt — rode "
-        "`uv run python scripts/render_fixed_voice_lines.py`"
+async def test_a_line_rendered_twice_is_written_with_its_sound_both_times(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import get_settings
+    from app.services.platform import tts
+
+    voiced = SimpleNamespace(status_code=200, content=b"\xff\xfbvoz", text="")
+    elevenlabs = SimpleNamespace(post=AsyncMock(return_value=voiced))
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
+    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
+
+    await render.render(tmp_path, "pt", force=True)
+    await render.render(tmp_path, "pt", force=True)
+
+    assert {clip.read_bytes() for clip in tmp_path.rglob("*.mp3")} == {b"\xff\xfbvoz"}, (
+        "a sala devolvia ao script só a chave da fala: ele quebrava perguntando ao bucket se o "
+        "clipe existia, e uma fala já conhecida ia para o bundle como arquivo vazio"
     )
 
 
@@ -62,8 +96,8 @@ def test_every_language_ships_the_same_lines_so_a_turn_in_one_is_a_turn_in_all()
     """O servidor manda `fixed_line` por nome, e o app resolve o nome no pacote do idioma.
 
     Só os nomes que o servidor pode mandar. As falas soltas não chegam por turno — o app as
-    toca sozinho — e o português é o único idioma sem `sem_conexao` e `toque_para_comecar`
-    escritos, porque o áudio dele foi gravado antes deste script e a letra nunca foi anotada.
+    toca sozinho — e o português é o único idioma sem `sem_conexao` escrito, porque o áudio
+    dele foi gravado antes deste script e a letra nunca foi anotada.
     """
     named = re.compile(r"^[A-Z]\d+$")
     shipped = {
@@ -82,10 +116,62 @@ def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all
     for spoken in ROOM_LANGUAGES:
         written = render.STANDALONE.get(spoken, {})
         catalogue = render.catalogue(spoken)
-        for name in ("sem_conexao", "toque_para_comecar", "gravacao_presa", "microfone"):
+        for name in ("sem_conexao", "gravacao_presa", "microfone"):
             assert (name in catalogue) == (name in written), (
                 f"{name} em {spoken!r} entrou no pacote sem letra escrita nesse idioma"
             )
+
+
+def test_the_touch_to_start_invitation_is_gone_from_the_catalogue() -> None:
+    """Marcia (RESPOSTA-MARCIA.md, item 10): 'Convite falado a cada 25 s: tirem.'
+
+    A voz agora abre a sessão quando a passagem abre; um convite repetido vira cobrança, e
+    a linha que pedia o toque para começar não deve mais aparecer no pacote de nenhum idioma.
+    """
+    for spoken in ROOM_LANGUAGES:
+        assert "toque_para_comecar" not in render.catalogue(spoken)
+        assert "toque_para_comecar" not in render.STANDALONE.get(spoken, {})
+
+
+def test_a_leftover_manifest_entry_for_the_gone_invitation_shows_up_as_drift(
+    tmp_path: Path,
+) -> None:
+    """The render manifest still lists a clip that no longer has a line to justify it.
+
+    A room that keeps its old fixed-line renders on disk after the prompt drops one would
+    ship a clip nothing plays and `--check` would never catch it, unless the drift guard
+    itself treats a manifest entry with no matching catalogue entry as the orphan it is.
+    """
+    bundle = tmp_path / "en"
+    bundle.mkdir()
+    (bundle / render.MANIFEST).write_text(json.dumps({"toque_para_comecar": "stale"}))
+
+    complaints = render.drift(tmp_path, "en")
+
+    assert any(
+        "toque_para_comecar" in complaint and "no longer in the prompt" in complaint
+        for complaint in complaints
+    ), f"um manifesto com a linha do convite deveria acusar o órfão, e não acusou: {complaints}"
+
+
+def test_a_language_the_room_does_not_claim_keeps_its_draft_and_reaches_no_mouth() -> None:
+    """The Spanish supplement stays for the day she offers the language, and only for that.
+
+    Reading it was never a decision anybody took: the loader globbed the directory, so a
+    draft dropped beside the authored file was spoken by whatever asked for its language.
+    """
+    draft = (_PROMPTS_DIR / "_fail_safe_es_supplement.md").read_text(encoding="utf-8")
+    reachable = {kind: localized(kind, "es") for kind in FailSafe if localized(kind, "es")}
+
+    assert "STATUS: DRAFT — awaiting validation." in draft
+    assert reachable == {}, (
+        "o suplemento em espanhol é rascunho e diz de si mesmo que nada ali foi aprovado "
+        f"para ser dito a uma equipe, e mesmo assim a sala o falava: {reachable}"
+    )
+    assert "-es." not in fail_safe_utterances(), (
+        "o texto concatenado ainda carrega blocos em espanhol, então basta alguém pedir a "
+        "língua para a sala falar rascunho"
+    )
 
 
 def test_a_repeated_failure_does_not_repeat_the_same_sentence() -> None:

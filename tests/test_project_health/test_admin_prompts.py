@@ -29,7 +29,6 @@ from app.services.project_health.prompts import (
 from tests.baker import make_user
 
 
-@pytest.mark.asyncio
 async def test_seed_inserts_all_keys_and_is_idempotent(db_session):
     inserted = await seed_default_prompts(db_session)
     assert inserted == len(PROMPT_KEYS)
@@ -39,13 +38,11 @@ async def test_seed_inserts_all_keys_and_is_idempotent(db_session):
     assert again == 0
 
 
-@pytest.mark.asyncio
 async def test_get_prompt_template_returns_default_before_seed(db_session):
     text = await get_prompt_template(db_session, "facilitator_system")
     assert text == get_default_template("facilitator_system")
 
 
-@pytest.mark.asyncio
 async def test_get_prompt_template_returns_db_value_after_edit(db_session):
     await seed_default_prompts(db_session)
     admin = await make_user(db_session, email="p@example.com", is_platform_admin=True)
@@ -55,7 +52,6 @@ async def test_get_prompt_template_returns_db_value_after_edit(db_session):
     assert fetched == new_template
 
 
-@pytest.mark.asyncio
 async def test_update_bumps_version_only_when_template_changes(db_session):
     await seed_default_prompts(db_session)
     admin = await make_user(db_session, email="p@example.com", is_platform_admin=True)
@@ -70,7 +66,6 @@ async def test_update_bumps_version_only_when_template_changes(db_session):
     assert row2.version == 2
 
 
-@pytest.mark.asyncio
 async def test_update_rejects_missing_required_placeholder(db_session):
     await seed_default_prompts(db_session)
     admin = await make_user(db_session, email="p@example.com", is_platform_admin=True)
@@ -79,7 +74,6 @@ async def test_update_rejects_missing_required_placeholder(db_session):
         await update_prompt(db_session, "facilitator_system", updated_by=admin.id, template=bad)
 
 
-@pytest.mark.asyncio
 async def test_update_rejects_unknown_placeholder(db_session):
     await seed_default_prompts(db_session)
     admin = await make_user(db_session, email="p@example.com", is_platform_admin=True)
@@ -88,7 +82,6 @@ async def test_update_rejects_unknown_placeholder(db_session):
         await update_prompt(db_session, "evidence_mapper", updated_by=admin.id, template=bad)
 
 
-@pytest.mark.asyncio
 async def test_reset_restores_default_and_bumps_version(db_session):
     await seed_default_prompts(db_session)
     admin = await make_user(db_session, email="p@example.com", is_platform_admin=True)
@@ -99,13 +92,11 @@ async def test_reset_restores_default_and_bumps_version(db_session):
     assert row.version == 3  # 1 (seed) → 2 (edit) → 3 (reset)
 
 
-@pytest.mark.asyncio
 async def test_get_prompt_or_404_rejects_unknown_key(db_session):
     with pytest.raises(NotFoundError):
         await get_prompt_or_404(db_session, "not_a_real_key")
 
 
-@pytest.mark.asyncio
 async def test_facilitator_prompt_renders_with_db_template(db_session):
     await seed_default_prompts(db_session)
     admin = await make_user(db_session, email="p@example.com", is_platform_admin=True)
@@ -118,7 +109,6 @@ async def test_facilitator_prompt_renders_with_db_template(db_session):
     assert "x" in rendered
 
 
-@pytest.mark.asyncio
 async def test_all_other_prompts_render_without_unsubstituted_tokens(db_session):
     for prompt_fn in (
         lambda db: coverage_planner_prompt(db, PHLanguage.EN),

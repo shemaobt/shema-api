@@ -23,8 +23,8 @@ from app.db.models.auth import AccessInvite, App, Role, UserAppRole
 from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_region import ShemaUserRegion
 from app.services.shema import set_region_scope
-from tests.test_email_infra import _client_class
-from tests.test_shema.admin_surface import (
+from tests.email_harness import client_class
+from tests.shema_admin_harness import (
     CHANGES,
     FORM_INVITES,
     GRANTS,
@@ -132,7 +132,7 @@ async def test_every_invite_links_to_the_pmes_page_and_leaves_through_the_templa
         monkeypatch.setattr(settings, "email_provider", "resend")
         monkeypatch.setattr(settings, "resend_api_key", "test-key")
         recorded: list = []
-        monkeypatch.setattr(httpx, "AsyncClient", _client_class(recorded))
+        monkeypatch.setattr(httpx, "AsyncClient", client_class(recorded))
         sent = await client.post(
             INVITES, json=_invite("seat@shema.example", "mesa", FORM_APP_KEY), headers=headers
         )

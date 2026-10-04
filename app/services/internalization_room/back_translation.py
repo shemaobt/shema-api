@@ -5,18 +5,24 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
-from app.db.models.internalization_room import IRSegment
+from app.db.models.internalization_room import IRSegment, IRTake
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import call_agent
+from app.services.internalization_room.llm import analysis_ladder
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.render import render
+from app.services.internalization_room.room_agent import room_agent
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +30,53 @@ logger = logging.getLogger(__name__)
 class FindingKind(enum.StrEnum):
     MISSING = "missing"
     ADDITION = "addition"
-    MEANING_CHANGE = "meaning_change"
-    WRONG_RELATION = "wrong_relation"
-    REORDERED_EVENT = "reordered_event"
-    PRESERVATION_VIOLATION = "preservation_violation"
-    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     UNCLEAR = "unclear"
 
 
-EVIDENCE_LIMIT_KINDS = frozenset({FindingKind.INSUFFICIENT_EVIDENCE, FindingKind.UNCLEAR})
+EVIDENCE_LIMIT_KINDS = frozenset({FindingKind.UNCLEAR})
+
+#: The wire name a reply or a stored row may still carry, which is no finding at all: thin
+#: evidence about a legible stretch does not stop the passage from being checked (ADR 0013).
+_RETIRED_EVIDENCE_KIND = "insufficient_evidence"
+
+
+def _is_the_retired_evidence_kind(entry: Any) -> bool:
+    return isinstance(entry, dict) and entry.get("kind") == _RETIRED_EVIDENCE_KIND
+
+
+def _without_the_retired_evidence_kind(data: Any) -> Any:
+    """The findings of a stored row or a fresh reply, with the retired name taken out.
+
+    The two stored containers validate through it, so a row written before the ruling opens
+    with that finding gone from `findings` and from `superseded[].findings`. `BtAnalysis`
+    does not: it is only ever built here, from findings this has already been over. A copy
+    rather than a mutation, because the row it is handed is the session's own JSON column.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+        return data
+    kept = [entry for entry in data["findings"] if not _is_the_retired_evidence_kind(entry)]
+    return {**data, "findings": kept}
+
+
+#: The wire name for a **Filled silence**. Her analyst's contract emits three kinds and marks
+#: one inside the note, so the name is a request in the pending letter rather than something a
+#: reading carries today; until it arrives the effective **Priority** starts one tier down. It
+#: is read here and folded away, and the fact is kept as a flag on the finding.
+_THE_NAME_FOR_A_FILLED_SILENCE = "silence"
+
+_NAMES_READ_AS_ADDITION = frozenset(
+    {
+        _THE_NAME_FOR_A_FILLED_SILENCE,
+        "meaning_change",
+        "wrong_relation",
+        "reordered_event",
+        "preservation_violation",
+    }
+)
+
+
+def _what_a_name_reads_as(kind_raw: str) -> str:
+    return FindingKind.ADDITION.value if kind_raw in _NAMES_READ_AS_ADDITION else kind_raw
 
 
 class Finding(BaseModel):
@@ -51,19 +95,81 @@ class Finding(BaseModel):
     #: as a position in the list that call was given and resolved to an address here, where
     #: it is already being validated.
     segment_id: str | None = None
+    #: The frase number the analyst gave, kept beside the stretch it resolved to. `None` when
+    #: the reply named no readable position, and on every row written before the field existed.
+    #:
+    #: The stretch alone cannot say which frase a finding is about: a missing element placed
+    #: *after* frase N resolves to stretch N+1, so an addition on frase N and that missing
+    #: element land on two different stretches while being one swap of one frase.
+    chunk: int | None = None
+    #: A **Filled silence**: the telling says something the passage keeps quiet on purpose.
+    #: The top tier of the **Priority**, and the only thing that puts one addition above
+    #: another. It decides the Priority and nothing else — the kind stays `addition` for the
+    #: app, the packet, the golden scripts and the Speaker, and the withheld content is
+    #: never named.
+    fills_silence: bool = False
+    #: Whether a Correction check raised it. What a mend broke is answered on the stretch the
+    #: team just retold rather than behind whatever outranks it elsewhere, so the flag keeps
+    #: the front for as long as the finding is on the list. The front used to be list
+    #: position alone, which the Priority applied at the pick would have read straight past.
+    raised_by_check: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _a_name_that_reads_as_addition(cls, data: Any) -> Any:
+        """The wire name folded to the kind every consumer sees, the silence kept as a flag.
+
+        One fold for a fresh reply and for a stored row, because the two are the same
+        question asked in two places: after the collapse to three kinds a **Filled silence**
+        *is* an addition, and nothing structured in a finding tells it from any other.
+
+        A flag already set is never cleared. The state is a JSON column revalidated on every
+        request, so a row written with it comes back naming `addition`, and a fold that read
+        the name alone would take the silence out of the finding the moment it was stored.
+        """
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("kind")
+        if not isinstance(raw, str):
+            return data
+        return {
+            **data,
+            "kind": _what_a_name_reads_as(raw),
+            "fills_silence": bool(data.get("fills_silence"))
+            or raw == _THE_NAME_FOR_A_FILLED_SILENCE,
+        }
 
 
 class BtAnalysis(BaseModel):
-    """One completed analyst pass.
+    """One completed analyst pass."""
 
-    ``evidence_sufficient`` is the difference between "no difference appeared" and "there
-    was not enough telling-back to look for one". Weak evidence must never read as a
-    clean check: when it is False, at least one finding names the limit, so the Voice has
-    something concrete to resolve or send to Refine.
+    findings: list[Finding] = Field(default_factory=list)
+
+
+class ReadAhead(BtAnalysis):
+    segment_ids: list[str]
+
+
+class CorrectionCheck(BaseModel):
+    """One verification of one corrected stretch.
+
+    ``resolved`` and ``findings`` are independent on purpose: a correction can answer the
+    finding it was asked about and still drop an element only that stretch carried, and it can
+    leave the finding standing while breaking nothing. Collapsing them into one verdict would
+    make the room unable to tell the team which of the two happened.
+
+    ``findings`` is what the room decided, not a copy of what the reader wrote: the losses the
+    reader's own count implies are already in it, and the ones it said twice are in it once.
+    The count itself is not carried here — nothing downstream asks what was enumerated, only
+    what it means for this stretch, and a field nobody reads is one more thing to keep true.
     """
 
-    evidence_sufficient: bool = True
+    resolved: bool
     findings: list[Finding] = Field(default_factory=list)
+
+
+class CorrectionAhead(CorrectionCheck):
+    segment_ids: list[str]
 
 
 class SupersededAttempt(BaseModel):
@@ -76,9 +182,14 @@ class SupersededAttempt(BaseModel):
     """
 
     findings: list[Finding] = Field(default_factory=list)
-    evidence_sufficient: bool = True
+    played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _thin_evidence_is_no_finding(cls, data: Any) -> Any:
+        return _without_the_retired_evidence_kind(data)
 
 
 class VoicedVerdict(BaseModel):
@@ -105,32 +216,45 @@ class BackTranslationState(BaseModel):
 
     scope: str = ""
     findings: list[Finding] = Field(default_factory=list)
-    evidence_sufficient: bool = True
     checked: bool = False
+    #: When the check last ran, stamped where `checked` is stamped: at the verdict, clean or
+    #: not. It is not when it came out clean — a team that came out with a finding also has an
+    #: answer to when the analyst last read them, and that is the question the packet's
+    #: `lastCheckAt` asks.
+    #:
+    #: `None` for a telling-back no verdict has reached, and for every row written before this
+    #: field existed: the state is a JSON column revalidated on every request, so an older row
+    #: loads with it absent and nothing was migrated (the precedent `chunk` set). No route
+    #: starts a whole telling-back over yet — `retire_every_segment` and `superseded` are
+    #: written only by tests — so nothing clears this today. Recording one part again
+    #: (`sessions.retire_the_part_recorded_again`, from the take upload) sets `checked` back
+    #: to false and leaves this standing: the analyst did last read the team then, which is
+    #: what `lastCheckAt` asks, so the packet shows `checked: false` beside that moment until
+    #: the next verdict stamps a new one.
+    checked_at: datetime | None = None
     superseded: list[SupersededAttempt] = Field(default_factory=list)
+    #: What the team listened to, one entry per rehearsal part, each in that part's own
+    #: milliseconds. This is the report, and the only one the gate reads: a part carries its own
+    #: subject, so recording one part again loses the listening to that part and to nothing else.
+    played_by_take: list[PlayedTake] = Field(default_factory=list)
+    #: The shape the tablets in the field still send: one span list and one total over the parts
+    #: glued together. Kept because it is the record of what that build reported, and read by
+    #: nothing. Numbers with no subject say a clip was played through without saying which clip,
+    #: so they went on reading as proof after the team threw that recording away and started the
+    #: telling-back over on a new one (ADR 0017).
+    #:
+    #: Read leniently, where the door above is strict. Nothing measures this pair — the covering
+    #: arithmetic is asked of `played_by_take` and of nothing else — so a shape it cannot use is
+    #: no danger here, while refusing it on the way out of the database would stop a row written
+    #: by an older build from loading on every route of that session.
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
-    #: Which rehearsal recordings the report above is about: the ones the telling-back stood
-    #: on when the report was stored, stamped by the server. The two fields beside it are
-    #: numbers with no subject — they say a clip was played through without saying which clip,
-    #: so they went on reading as proof after the team threw that recording away and started
-    #: the telling-back over on a new one.
-    #:
-    #: The subject is taken from the stretches rather than from the takes table because a
-    #: stretch names the recording it is a slice of, checked when it was captured, and that
-    #: answer does not move. Which take is "the newest" does: `created_at` is stamped when the
-    #: upload lands, and the tablet's outbox drains whenever the link comes back, so a rehearsal
-    #: the team abandoned can be written down after the one that replaced it.
-    #:
-    #: The server stamps it because the tablet cannot be asked to. Naming the recording in the
-    #: `finish` payload would mean every app already in the field stops being able to release.
+    #: Which rehearsal recordings the flat report above was stored against, stamped by the
+    #: server from the stretches. It was the subject that report could not carry for itself,
+    #: and it is not evidence either: it says which recordings existed when the report arrived,
+    #: never that any of them was played. The gate does not consult it, and neither does
+    #: anything else: it is kept because a row written before the parts were named carries it.
     played_take_ids: list[str] = Field(default_factory=list)
-    #: How many stretches the team has told back a second time. The retell is the one cycle
-    #: the team can repeat at will, so it is counted here — a counter the app cannot reach.
-    #: At `RETELLS_BEFORE_A_WARNING` the room asks for a person to come and watch, and that
-    #: is all it does: nothing is refused, the next stretch is taken like any other, and the
-    #: next turn that lands clears the mark. A warning, not a cap (ENG-706).
-    retells: int = 0
     #: How many times the first-round gate has already turned the team back. It is what
     #: rotates the waiting line, and it cannot be read off the conversation: the gate answers
     #: before the turn loop, so no exchange is appended and a rotation keyed on the messages
@@ -153,9 +277,9 @@ class BackTranslationState(BaseModel):
     #: Whether a stretch-by-stretch verification has run since the last whole reading. It is
     #: what the closing gate turns on: a verification answers the finding it was shown and
     #: nothing else, so a list emptied by verifications alone has never been measured against
-    #: the set. Two things live only in the set — a correction can answer, by accident, a
-    #: finding raised on another stretch, and whether the telling-back is too thin to judge at
-    #: all — and `checked` strikes the passage off the wheel for good, with no undo.
+    #: the set. One thing lives only in the set — a correction can answer, by accident, a
+    #: finding raised on another stretch — and `checked` strikes the passage off the wheel for
+    #: good, with no undo.
     #:
     #: A first reading never turns it on, which is what keeps a team that got it right the
     #: first time paying for one reading and not two.
@@ -166,24 +290,53 @@ class BackTranslationState(BaseModel):
     #: the analyst and then failed before the team heard anything — that one saves nothing at
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
+    read_ahead: ReadAhead | None = None
+    correction_ahead: CorrectionAhead | None = None
 
-    @property
-    def current_finding(self) -> Finding | None:
-        """The one finding the Speaker is allowed to voice this turn."""
-        return self.findings[0] if self.findings else None
+    @model_validator(mode="before")
+    @classmethod
+    def _thin_evidence_is_no_finding(cls, data: Any) -> Any:
+        """The retired name leaves the row, and the verdict it produced leaves with it.
+
+        A row that stored that finding also stored the clip the Speaker said about it, and
+        `terminei` serves a stored verdict rather than reading again. Dropping the finding
+        and keeping the verdict left the team hearing *too little to check* on every press,
+        about a frase the room no longer has anything to say about, until they recorded
+        something. Without it the next press decides again on what the row still holds: no
+        finding left is the checked closing, and a `missing` that survived the drop is
+        voiced instead. The analyst is not asked again — the reading it already did stands.
+        """
+        without = _without_the_retired_evidence_kind(data)
+        if without is data or len(without["findings"]) == len(data["findings"]):
+            return without
+        return {**without, "verdict": None}
 
     def already_analysed(self, segments: list[IRSegment]) -> bool:
         return self.analysed_segment_ids is not None and self.analysed_segment_ids == [
             segment.id for segment in segments
         ]
 
+    def read_ahead_of(self, segments: list[IRSegment]) -> ReadAhead | None:
+        if self.read_ahead is None or self.read_ahead.segment_ids != [
+            segment.id for segment in segments
+        ]:
+            return None
+        return self.read_ahead
+
+    def correction_ahead_of(self, segments: list[IRSegment]) -> CorrectionAhead | None:
+        if self.correction_ahead is None or self.correction_ahead.segment_ids != [
+            segment.id for segment in segments
+        ]:
+            return None
+        return self.correction_ahead
+
     @property
     def never_analysed(self) -> bool:
         """The analyst has not read this telling-back at all.
 
         Distinct from `not already_analysed`, which is also true when more was told back
-        after the last pass. Never read is the state whose defaults — no findings, evidence
-        sufficient — are indistinguishable from a clean check.
+        after the last pass. Never read is the state whose default — no findings — is
+        indistinguishable from a clean check.
         """
         return self.analysed_segment_ids is None
 
@@ -191,7 +344,9 @@ class BackTranslationState(BaseModel):
 PLAYBACK_TOLERANCE_MS = 750
 
 
-def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: int | None) -> bool:
+def played_ranges_cover_clip(
+    played_ranges: list[tuple[int, int]], clip_duration_ms: int | None
+) -> bool:
     """Whether the reported playback reached the whole clip, within tolerance.
 
     A telling-back is a check of what was actually heard, not of what the team remembers,
@@ -200,7 +355,7 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     at either edge or between stretches. This is the arithmetic only: an absent report is
     not a short one, so it is not this function's to judge and comes back True. Whether a
     report exists at all, and whether it is about the recording still in play, is
-    `playback_confirms_rehearsal`, which is what the release gate asks.
+    `unheard_parts`, which is what the release gate asks.
 
     The merged reach has to *land on* the clip's end, not merely reach it: a report that
     runs past the end by more than the same slack cannot be a report about this clip at
@@ -222,36 +377,71 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
 
 
-def playback_confirms_rehearsal(state: BackTranslationState, rehearsal_take_ids: list[str]) -> bool:
-    """Whether the team has evidence of hearing the rehearsal they told back about, whole.
+def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
+    """The parts of the rehearsal the current stretches are slices of, sorted.
 
-    Three things have to hold together, and each one alone was a way through. The report has
-    to exist: no report is silence, and silence used to read as consent because empty ranges
-    over an empty duration satisfied the coverage arithmetic — which is what a `finish` with
-    no body produces, and what the shipped app sends whenever the clip did not run to its end.
-    It has to be about the recordings the telling-back is still standing on: once the team
-    starts over on a clip they recorded again, a report made against the old one describes
-    audio nobody will hear. And it has to reach the end of that clip, which is the check that
-    was already here.
-
-    Both numbers are required rather than either. A duration with no ranges is a report that
-    nothing was played, and ranges with no duration cannot be checked against anything —
-    taking either as proof reopens the same hole through a smaller door.
+    The subject of the listening question, and the one both askers have to agree on: the check
+    refuses on it before the analyst, and the release blocks on it at the handoff. Asked of the
+    stretches that count — a stretch whose audio was replaced names a recording no part is any
+    more — so a part leaves the question by being recorded over and by nothing else.
     """
-    if not state.played_take_ids or sorted(state.played_take_ids) != sorted(rehearsal_take_ids):
-        return False
-    if not state.played_ranges or not state.clip_duration_ms:
-        return False
-    return played_ranges_cover_clip(state.played_ranges, state.clip_duration_ms)
+    return sorted({stretch.take_id for stretch in stretches})
+
+
+def untold_parts(parts: list[IRTake], rehearsal_take_ids: list[str]) -> list[IRTake]:
+    """Which of the rehearsal's current parts carry nobody's words, in the order they read.
+
+    Empty is told. A part the team recorded again arrives with no stretch of its own, and the
+    stretches of the recording it replaced went with that recording (ADR 0023) — so a part can
+    stand in the **Packet** as the rehearsal while nothing anybody said is about it.
+
+    Asked of the parts and answered about the parts, because the question is which recording is
+    current and that is a fact of the takes. What was heard of it is a fact of the report, and
+    the function below is where that is asked (ADR 0026).
+    """
+    return [part for part in parts if part.id not in rehearsal_take_ids]
+
+
+def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) -> list[str]:
+    """Which parts of the rehearsal the team has no evidence of having heard, sorted.
+
+    Empty is heard. The question is asked once per part and answered per part, because that is
+    how the team listens: a part is its own recording, and recording one again says nothing
+    about the others. Asked of the whole passage instead, one retake threw away the listening
+    to every part at once, and the answer could never say which part to send the team back to.
+
+    A part is heard when an entry names it and that entry reaches the end of *that part's* own
+    length. Both numbers are required rather than either: a length with nothing played is a
+    report that the team played nothing at all, and spans with no length cannot be checked
+    against anything. The arithmetic itself answers True to both of those — an absent report is
+    not a short one, which is not its question — so the two are asked here, where they are.
+
+    Entries naming recordings the stretches no longer name are ignored rather than refused.
+    They are the residue of a part the team recorded again, about audio no stretch is a slice
+    of any more; refusing on them would refuse a rehearsal that was in fact heard whole.
+
+    The flat report beside this one is never consulted, and neither is the server-stamped
+    subject. A report we cannot tie to a recording is not evidence about any recording, so a
+    row written before the parts were named names every part and the team plays it through
+    again (ADR 0017).
+    """
+    heard = {
+        entry.take_id
+        for entry in state.played_by_take
+        if entry.played_ranges
+        and entry.clip_duration_ms
+        and played_ranges_cover_clip(entry.played_ranges, entry.clip_duration_ms)
+    }
+    return sorted(set(rehearsal_take_ids) - heard)
 
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own
-#: language. Keyed by the language code, in the shape `calibration.py` already uses — an
+#: language. Keyed by the language code, in the shape the other per-language tables use — an
 #: unclaimed language falls back to the authored English line.
 _NOTHING_TOLD_BACK_YET: dict[str, str] = {
-    "pt": "(a equipe ainda não contou nada de volta)",
-    "en": "(the team has not told anything back yet)",
-    "es": "(el equipo aún no ha contado nada de vuelta)",
+    "pt": "(a equipe ainda não traduziu nada)",
+    "en": "(the team has not translated anything yet)",
+    "es": "(el equipo aún no ha traducido nada)",
 }
 
 
@@ -275,7 +465,7 @@ def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str
 def _refused(condition: str, raw: str, session: str) -> None:
     """Every refusal leaves the reply behind it, whole, with the condition that refused.
 
-    Five of the seven exits below used to return None in silence. A reply the model did
+    They used to return None in silence. A reply the model did
     produce was then indistinguishable from one it never did, and the night of 2026-09-01
     was spent unable to say what the analyst had answered. The reply is logged whole
     rather than cut at a few hundred characters: it is bounded by the call's output cap,
@@ -283,6 +473,68 @@ def _refused(condition: str, raw: str, session: str) -> None:
     the line can be tied to the request that got the 502, across replicas and teams.
     """
     logger.warning("BT analyst reply refused (%s) for session %s: %s", condition, session, raw)
+
+
+def _landed_without_a_frase(raw: str, session: str) -> None:
+    """A missing element the analyst named no readable frase for, counted rather than guessed.
+
+    It is the one silent landing in this parser: an unrecognised `where` is refused out loud
+    above, and a `where` left off lands on the frase the reply did name, which is the rule and
+    not an accident (ADR 0007). A chunk left off degrades to no address at all — the team is
+    sent to record more and go back to the rehearsal — and nothing said so, so neither the
+    golden scripts nor production could say how often the model leaves it out. Her prompt item
+    leaves the number optional while our output block requires it, and the item is not ours to
+    edit, so this counts until she rules.
+
+    The reply is behind it whole, as every other line in this file carries one.
+    """
+    logger.warning("BT analyst missing finding without a chunk for session %s: %s", session, raw)
+
+
+def _dropped_without_a_frase(kind: FindingKind, note: str, raw: str, session: str) -> None:
+    """An addition or an unclear the analyst named no readable frase for; dropped, not raised.
+
+    A missing element still lands with no chunk at all — the story simply has not been told
+    that far, and `_landed_without_a_frase` counts it. The other two kinds are a statement
+    about a chunk, and one naming none, or one outside the reading the analyst was given,
+    names nothing the team can act on: it goes the way the retired evidence kind does,
+    dropped and the rest of the reply read, rather than reaching the tablet as a finding
+    with no stretch.
+
+    Said only once the reading has been accepted, the way `_dropped` is: a reply that drops
+    every one of its findings to this rule is refused instead (`_parse_analysis`), and
+    announcing a drop it then threw away whole would send the next investigation to the
+    wrong place.
+
+    The reply is behind it whole, as every other line in this file carries one.
+    """
+    logger.warning(
+        "BT reply named %s with no readable frase (note: %s); dropped it and read the rest "
+        "for session %s: %s",
+        kind.value,
+        note,
+        session,
+        raw,
+    )
+
+
+def _dropped(entries: list[Any], raw: str, about: str) -> None:
+    """A name the room retired left the reply, and the rest of it was read.
+
+    Said only once the reading has been accepted: a reply carrying the retired name beside
+    a malformed entry is refused, and announcing a drop it then threw away with everything
+    else would send the next investigation to the wrong place. Its own line rather than
+    `_refused`'s for the same reason, and the reply is behind it whole, as every refusal
+    carries one.
+    """
+    if not any(_is_the_retired_evidence_kind(entry) for entry in entries):
+        return
+    logger.warning(
+        "BT reply named %s, which is no finding; dropped it and read the rest (%s): %s",
+        _RETIRED_EVIDENCE_KIND,
+        about,
+        raw,
+    )
 
 
 def _session_of(segments: list[IRSegment]) -> str:
@@ -299,24 +551,20 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     telling-back and blessed the passage. A "silence" kind is folded into addition: a
     filled silence is something told that the passage does not tell.
 
-    A reply without ``evidence_sufficient`` is from a prompt version that predates the
-    field; it is read as sufficient, exactly what that prompt's replies always meant. When
-    the field is present it must agree with the findings one way: insufficient needs a
-    finding that names the limit, or nothing concrete reaches the Voice.
+    Whatever the reply says about how much evidence it had is not read: the flag that used
+    to gate the conferral is gone, and a reply that still carries it is read with the key
+    ignored. An entry naming the retired evidence kind is dropped and the rest of the reply
+    kept, because refusing a reply whole over a name the prompt itself stopped offering is
+    the ENG-719 failure with a different trigger — a team stopped three times by a round
+    with no verdict, for a reading the room could have used.
 
-    The other way it is allowed to disagree, and the disagreement is resolved rather than
-    refused. **A sufficient flag beside an ``insufficient_evidence`` finding is read as
-    insufficient, and every finding is kept.** The prompt defines that finding as the
-    statement that a real part of the scope could not be compared, naming the stretch;
-    the flag is that same statement summarised over the scope, with no information of its
-    own. When they disagree the flag is the side without evidence. The alternatives are
-    both worse: refusing the reply threw away a good ``meaning_change`` together with the
-    contradiction (ENG-719, the session that stopped a team three times), and letting the
-    flag win would have marked as checked a passage the analyst itself said stops at
-    verse 8. Whoever reads this as a contradiction to be refused: it was, and that is
-    what it cost. The analyst did break the contract its prompt writes, so the case is
-    logged with the reply — silence about a model's drift is how the next one goes
-    unnoticed too.
+    An addition or an unclear naming no chunk this reading has, or one outside it, is
+    dropped the same way (ENG-1145) — but a reply left with nothing at all once every one of
+    its findings dropped for that reason is not a clean reading: it is refused like a
+    malformed reply, through the same `_refused` this function already returns None from,
+    because a reply that named findings and lost every one of them to an unreadable frase is
+    the ENG-719 failure again — a good telling-back blessed on the strength of a reply that
+    said nothing usable.
     """
     session = _session_of(segments)
     text = raw.strip()
@@ -331,19 +579,18 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     if not isinstance(parsed, dict) or not isinstance(parsed.get("findings"), list):
         _refused("findings is not a list", raw, session)
         return None
-    sufficient_raw = parsed.get("evidence_sufficient", True)
-    if not isinstance(sufficient_raw, bool):
-        _refused("evidence_sufficient is not a boolean", raw, session)
-        return None
+
+    reported = parsed["findings"]
+    considered = [one for one in reported if not _is_the_retired_evidence_kind(one)]
 
     findings: list[Finding] = []
-    for entry in parsed["findings"]:
+    dropped_without_a_frase: list[tuple[FindingKind, str]] = []
+    for entry in considered:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
-        kind_raw = str(entry.get("kind", ""))
-        if kind_raw == "silence":
-            kind_raw = FindingKind.ADDITION.value
+        wire_name = str(entry.get("kind", ""))
+        kind_raw = _what_a_name_reads_as(wire_name)
         note = str(entry.get("note", "")).strip()
         if not note:
             _refused("a finding has an empty note", raw, session)
@@ -353,34 +600,39 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         except ValueError:
             _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
+        chunk = _chunk_named(entry.get("chunk"), segments)
+        if chunk is None and kind is not FindingKind.MISSING:
+            dropped_without_a_frase.append((kind, note))
+            continue
+        lands_on = _segment_pointed_at(
+            entry.get("chunk"),
+            segments,
+            kind=kind,
+            where=entry.get("where"),
+            raw_reply=raw,
+            session=session,
+        )
+        if kind is FindingKind.MISSING and chunk is None:
+            _landed_without_a_frase(raw, session)
         findings.append(
-            Finding(
-                kind=kind,
-                note=note[:1000],
-                segment_id=_segment_pointed_at(
-                    entry.get("chunk"),
-                    segments,
-                    kind=kind,
-                    where=entry.get("where"),
-                    raw_reply=raw,
-                    session=_session_of(segments),
-                ),
+            Finding.model_validate(
+                {
+                    "kind": wire_name,
+                    "note": note[:1000],
+                    "chunk": chunk,
+                    "segment_id": lands_on,
+                }
             )
         )
 
-    if not sufficient_raw and not any(f.kind in EVIDENCE_LIMIT_KINDS for f in findings):
-        _refused("evidence_sufficient is false and no finding names the limit", raw, session)
+    if considered and not findings:
+        _refused("every finding named no readable frase", raw, session)
         return None
-    if sufficient_raw and any(f.kind is FindingKind.INSUFFICIENT_EVIDENCE for f in findings):
-        logger.warning(
-            "BT analyst said evidence_sufficient is true beside an insufficient_evidence "
-            "finding for session %s; the finding wins and the reply is read as "
-            "insufficient: %s",
-            session,
-            raw,
-        )
-        sufficient_raw = False
-    return BtAnalysis(evidence_sufficient=sufficient_raw, findings=findings)
+
+    for kind, note in dropped_without_a_frase:
+        _dropped_without_a_frase(kind, note, raw, session)
+    _dropped(reported, raw, f"session {session}")
+    return BtAnalysis(findings=findings)
 
 
 def _log_accepted_reading(
@@ -415,6 +667,27 @@ def _log_accepted_reading(
 _VALID_WHERE = frozenset({"before", "inside", "after"})
 
 
+def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
+    """The frase the analyst named, as a position in the reading it was given, or None.
+
+    The validation `_segment_pointed_at` makes before it resolves an address, asked on its
+    own because the two answers are not the same one: a missing element placed after frase N
+    names frase N and resolves to the stretch after it, and one placed after the last frase
+    names that frase and resolves to no stretch at all.
+
+    Only an int or a numeral string is read; a float such as `2.0` is neither and names no
+    position, whole-valued or not — the contract asks for an int, and a reply answering with
+    a float is not naming a frase the parser accepts.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int | str):
+        return None
+    try:
+        position = int(raw)
+    except ValueError:
+        return None
+    return position if 1 <= position <= len(segments) else None
+
+
 def _segment_pointed_at(
     raw: Any,
     segments: list[IRSegment],
@@ -445,13 +718,8 @@ def _segment_pointed_at(
     `where` is read only when `kind` is `missing`: every other kind is a statement about the
     chunk itself, so a `where` alongside one is ignored without comment.
     """
-    if isinstance(raw, bool) or not isinstance(raw, int | str):
-        return None
-    try:
-        position = int(raw)
-    except ValueError:
-        return None
-    if position < 1 or position > len(segments):
+    position = _chunk_named(raw, segments)
+    if position is None:
         return None
 
     if kind is FindingKind.MISSING and where is not None:
@@ -499,18 +767,17 @@ async def analyse_telling_back(
         SEGMENTS=segments_block(segments, language_code),
     )
     try:
-        raw = await call_agent(
+        raw = await room_agent().analyst.call_agent(
+            role="analyst",
             system_prompt=system,
-            user_content="Compare o contado de volta com o mapa.",
-            temperature=0.0,
-            max_output_tokens=2000,
+            user_content="Compare a tradução com o mapa.",
+            ladder=analysis_ladder(cfg),
+            max_output_tokens=4096,
             settings=cfg,
         )
     except Exception as failure:
         logger.exception("BT analysis failed for %s", pericope_num)
-        raise UpstreamServiceError(
-            "a análise do contado de volta não pôde ser feita agora"
-        ) from failure
+        raise UpstreamServiceError("a análise da tradução não pôde ser feita agora") from failure
     analysis = _parse_analysis(raw, segments)
     if analysis is not None:
         _log_accepted_reading(
@@ -519,37 +786,9 @@ async def analyse_telling_back(
     return analysis
 
 
-class CorrectionCheck(BaseModel):
-    """One verification of one corrected stretch.
-
-    ``resolved`` and ``findings`` are independent on purpose: a correction can answer the
-    finding it was asked about and still drop an element only that stretch carried, and it can
-    leave the finding standing while breaking nothing. Collapsing them into one verdict would
-    make the room unable to tell the team which of the two happened.
-
-    ``findings`` is what the room decided, not a copy of what the reader wrote: the losses the
-    reader's own count implies are already in it, and the ones it said twice are in it once.
-    The count itself is not carried here — nothing downstream asks what was enumerated, only
-    what it means for this stretch, and a field nobody reads is one more thing to keep true.
-    """
-
-    resolved: bool
-    findings: list[Finding] = Field(default_factory=list)
-
-
 #: What the verification may report. Deliberately short of the analyst's list: `missing` here
-#: means *this stretch said it before and does not now*, never the analyst's global sense, and
-#: the kinds defined over the whole telling-back — `insufficient_evidence`, `reordered_event`,
-#: `wrong_relation` — cannot be judged from one stretch at all.
-CORRECTION_KINDS = frozenset(
-    {
-        FindingKind.MISSING,
-        FindingKind.ADDITION,
-        FindingKind.MEANING_CHANGE,
-        FindingKind.PRESERVATION_VIOLATION,
-        FindingKind.UNCLEAR,
-    }
-)
+#: means *this stretch said it before and does not now*, never the analyst's global sense.
+CORRECTION_KINDS = frozenset({FindingKind.MISSING, FindingKind.ADDITION, FindingKind.UNCLEAR})
 
 
 #: A word long enough to carry meaning rather than grammar. The dedupe below asks whether a
@@ -655,7 +894,7 @@ def _already_reported(element: str, reported: list[Finding]) -> bool:
     )
 
 
-def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
+def _parse_correction(raw: str, segment_id: str, chunk: int) -> CorrectionCheck | None:
     """The verification's reply, or None when it cannot be trusted at all.
 
     None is never "the correction was fine": a verification that did not happen must not be
@@ -663,9 +902,12 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
     the team is never asked about again. Read atomically for the same reason `_parse_analysis`
     is — one malformed entry among good ones would otherwise silently shrink the report.
 
-    Every finding is stamped with the corrected stretch's own address: the verification looked
-    at exactly one stretch, so there is nowhere else its findings could land, and a finding the
-    team cannot locate sends them back to the whole recording for no reason.
+    Every finding is stamped with the corrected stretch's own address, and with the frase that
+    stretch now holds: the verification looked at exactly one stretch, so there is nowhere else
+    its findings could land, and a finding the team cannot locate sends them back to the whole
+    recording for no reason. The frase is what lets a swap the mend itself introduced — a
+    clause dropped and an outside detail brought in, on the stretch just retold — reach the
+    team as one thing, the same as one the analyst raised.
 
     A loss is derived from the count rather than waited for. `carried` is the reader's
     enumeration of what the earlier telling of this stretch stated, entry by entry, and an
@@ -702,21 +944,32 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
         return None
 
     findings: list[Finding] = []
-    for entry in raw_findings:
+    for entry in [one for one in raw_findings if not _is_the_retired_evidence_kind(one)]:
         if not isinstance(entry, dict):
             return None
         note = str(entry.get("note", "")).strip()
         if not note:
             return None
+        wire_name = str(entry.get("kind", ""))
         try:
-            kind = FindingKind(str(entry.get("kind", "")))
+            kind = FindingKind(_what_a_name_reads_as(wire_name))
         except ValueError:
             logger.warning("BT correction returned an unknown finding kind: %s", entry)
             return None
         if kind not in CORRECTION_KINDS:
             logger.warning("BT correction returned a kind it cannot judge: %s", entry)
             return None
-        findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id))
+        findings.append(
+            Finding.model_validate(
+                {
+                    "kind": wire_name,
+                    "note": note[:1000],
+                    "segment_id": segment_id,
+                    "chunk": chunk,
+                    "raised_by_check": True,
+                }
+            )
+        )
 
     brought_back = _elements_brought_back(parsed.get("brought_back"))
     if brought_back:
@@ -726,22 +979,44 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
         lost = _elements_the_count_lost(parsed["carried"])
         reported = list(findings)
         findings.extend(
-            Finding(kind=FindingKind.MISSING, note=element[:1000], segment_id=segment_id)
+            Finding(
+                kind=FindingKind.MISSING,
+                note=element[:1000],
+                segment_id=segment_id,
+                chunk=chunk,
+                raised_by_check=True,
+            )
             for element in lost or []
             if not _already_reported(element, reported)
         )
+    _dropped(raw_findings, raw, f"segment {segment_id}")
     return CorrectionCheck(resolved=bool(parsed["resolved"]), findings=findings)
+
+
+@dataclass(frozen=True)
+class CorrectionToVerify:
+    """One retelling to check: what it answers, what it replaced, and where it now sits.
+
+    `findings` is everything this turn is about, which is one finding or the two halves of one
+    swap; `chunk` is the frase the corrected stretch holds in the reading as it stands, so a
+    finding the check raises on it can be half of a swap in its turn.
+    """
+
+    findings: list[Finding]
+    earlier: IRSegment
+    corrected: IRSegment
+    chunk: int
 
 
 def correction_to_verify(
     state: BackTranslationState,
     told: list[IRSegment],
     retired: list[IRSegment],
-) -> tuple[Finding, IRSegment, IRSegment] | None:
-    """The finding, the stretch it was raised on, and the stretch that replaced it.
+) -> CorrectionToVerify | None:
+    """What the retelling answers, the stretch it was raised on, and the stretch replacing it.
 
     One shape counts as a correction: the reading's own list of stretches, with exactly one
-    position now held by a different row, and that position is the one the current finding
+    position now held by a different row, and that position is the one the finding that leads
     names, and the row that stood there was superseded by the row standing there now.
 
     Everything else falls through to the full reading, which is the answer that is never wrong
@@ -749,10 +1024,11 @@ def correction_to_verify(
     without a rule of its own: a stretch divided changes the list's length; two corrections at
     once move two positions; a stretch retold that no finding pointed at moves a position that
     is not the finding's; a finding with no address names nothing to compare; a first reading
-    has no earlier list at all; and a mother-tongue re-recording leaves a stretch with nothing
-    told back, so the chain from the finding's stretch does not reach what stands there now.
+    has no earlier list at all; and a stretch cut in two leaves pieces with nothing told back, so
+    the chain from the finding's stretch does not reach what stands there now.
     """
-    finding = state.current_finding
+    answered = current_findings(state)
+    finding = answered[0] if answered else None
     before = state.analysed_segment_ids
     if finding is None or finding.segment_id is None or before is None:
         return None
@@ -774,7 +1050,7 @@ def correction_to_verify(
     corrected = told[position]
     if not (earlier.transcript or "").strip() or not (corrected.transcript or "").strip():
         return None
-    return finding, earlier, corrected
+    return CorrectionToVerify(answered, earlier, corrected, position + 1)
 
 
 def findings_after_correction(
@@ -790,33 +1066,56 @@ def findings_after_correction(
     at the row it was raised on, it would send the team to a version that no longer exists, and
     the screen that shows them where the error lives would have nothing to show.
 
+    A swap leaves and stays whole. One retelling was asked for and one answer came back about
+    it, so clearing the addition and leaving the missing element behind would raise that half
+    again next round and cost the team a second recording of the same scene — which is the
+    defect the pair exists to spare them.
+
     What the correction broke is not added on top of a finding that still stands. Asking the
     team for two things about one stretch in one turn is how a room stops being followable, and
     the next round raises it again if it is still true.
     """
+    answered = _the_current_swap(findings)
     if not check.resolved:
-        return [findings[0].model_copy(update={"segment_id": corrected.id}), *findings[1:]]
-    return [*check.findings, *findings[1:]]
+        return [
+            finding.model_copy(update={"segment_id": corrected.id}) if at in answered else finding
+            for at, finding in enumerate(findings)
+        ]
+    return [*check.findings, *(one for at, one in enumerate(findings) if at not in answered)]
 
 
 async def verify_correction(
     *,
-    finding: Finding,
+    findings: list[Finding],
     earlier: IRSegment,
     corrected: IRSegment,
+    chunk: int,
     scope: str,
     pericope_num: str,
     correction_prompt: str,
+    addresses: Addresses,
     session_language: str = "Portuguese",
     settings: Settings | None = None,
     session_id: str = "",
 ) -> CorrectionCheck | None:
-    """Ask whether one retold stretch answers the finding raised on it. Never voiced.
+    """Ask whether one retold stretch answers what was raised on it. Never voiced.
+
+    A swap goes in as the two lines it is, and one answer comes back for both: the retelling
+    mends it only when the addition is gone from it *and* the missing element is in it. Shown
+    only the addition, the check would pass a retelling that dropped the cause the team put in
+    and still never told what the story tells in its place.
 
     Only this stretch is shown. The analyst's reading stays whole because its own definition of
     a missing element is *one that appears in no chunk* — a statement about the set, which a
     single stretch cannot support. This asks a different question, about a finding that is
     already known, and that question fits in one stretch.
+
+    `addresses` is where each told stretch sits, the same one the Speaker is shown: the check
+    reads the finding the way the room voices it, and a check told no address while the voice
+    had one would be two readings of the same stretch in two different sentences. The frase
+    number travels with it and this reader cannot resolve it — no numbered telling reaches this
+    prompt — but it is the finding's own text and taking it out here would make one finding
+    read two ways.
 
     Returns None when the call or its reply failed, which is not the same as a correction that
     passed: the caller keeps the finding rather than dropping it on an outage.
@@ -827,22 +1126,23 @@ async def verify_correction(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=load_map(pericope_num).body,
-        FINDING=findings_block(finding),
+        FINDING=findings_block(findings, addresses),
         EARLIER_TELLING=earlier.transcript or "",
         NEW_TELLING=corrected.transcript or "",
     )
     try:
-        raw = await call_agent(
+        raw = await room_agent().analyst.call_agent(
+            role="correction check",
             system_prompt=system,
             user_content="Verifique a correção contra o achado.",
-            temperature=0.0,
-            max_output_tokens=1500,
+            ladder=analysis_ladder(cfg),
+            max_output_tokens=4096,
             settings=cfg,
         )
     except Exception:
         logger.exception("BT correction check failed for %s", pericope_num)
         return None
-    check = _parse_correction(raw, corrected.id)
+    check = _parse_correction(raw, corrected.id, chunk)
     if check is not None:
         _log_accepted_reading(
             session_id=session_id,
@@ -855,18 +1155,248 @@ async def verify_correction(
     return check
 
 
-def findings_block(finding: Finding | None) -> str:
-    """Exactly one finding reaches the Speaker; the rest wait for the next round."""
-    if finding is None:
-        return "(nenhum achado — o contado de volta está completo)"
-    return f"- {finding.kind}: {finding.note}"
+def _lands_on_a_frase(finding: Finding) -> bool:
+    """Whether a finding can be half of a swap: it names a frase and a stretch to record.
+
+    A missing element placed after everything told names the last frase and no stretch of its
+    own (ADR 0007): the team records what is still missing and goes back to the rehearsal,
+    erasing nothing. Joined to an addition on that frase, the turn would promise the two
+    microphones of a stretch that is not there, and ask for one fix for two different walks.
+    """
+    return finding.chunk is not None and points_at_a_stretch(finding)
+
+
+def _swaps(findings: list[Finding]) -> list[tuple[int, int]]:
+    """Where an addition and a missing element on one frase sit, the addition first.
+
+    Keyed on the frase the analyst numbered and not on the stretch each half resolved to: a
+    missing element placed *after* frase N sits at the start of stretch N+1, so the two
+    halves of one swap land on two different stretches while being one thing the team did.
+
+    Each half is spoken for once. Two additions on a frase that carries one missing element
+    are one swap and one addition left over, never two swaps over the same absence.
+    """
+    spoken_for: set[int] = set()
+    swaps: list[tuple[int, int]] = []
+    for at, finding in enumerate(findings):
+        if finding.kind is not FindingKind.ADDITION or not _lands_on_a_frase(finding):
+            continue
+        other = next(
+            (
+                index
+                for index, candidate in enumerate(findings)
+                if index not in spoken_for
+                and candidate.kind is FindingKind.MISSING
+                and _lands_on_a_frase(candidate)
+                and candidate.chunk == finding.chunk
+            ),
+            None,
+        )
+        if other is not None:
+            spoken_for.add(other)
+            swaps.append((at, other))
+    return swaps
+
+
+#: The **Priority**, as Marcia wrote it correcting the P02 example: *silêncio preenchido >
+#: outro acréscimo > falta > pouco claro*. A **Filled silence** is an addition whose flag is
+#: set, so the top tier is not a kind and cannot be keyed off this table alone.
+_PRIORITY = {FindingKind.ADDITION: 1, FindingKind.MISSING: 2, FindingKind.UNCLEAR: 3}
+_A_FILLED_SILENCE = 0
+
+
+def _tiers(findings: list[Finding]) -> list[int]:
+    """Where each finding sits in the **Priority**, each swap taking its addition's tier.
+
+    A swap is one thing the team did, and the addition is the half that names the stretch.
+    Read as two findings, a swap would sink below every lone addition and the team would be
+    sent elsewhere in the middle of one mistake.
+
+    The top tier asks the kind as well as the flag. A **Filled silence** is an addition and
+    nothing else, and the flag reaches this from a stored row: read off the flag alone, a
+    row that somehow carried it on a missing element would put a missing element above
+    every addition there is, which is a tier the Priority does not have.
+    """
+    tier_of = [
+        _A_FILLED_SILENCE
+        if finding.kind is FindingKind.ADDITION and finding.fills_silence
+        else _PRIORITY[finding.kind]
+        for finding in findings
+    ]
+    for addition, missing in _swaps(findings):
+        tier_of[missing] = tier_of[addition]
+    return tier_of
+
+
+def the_index_that_leads(findings: list[Finding]) -> int | None:
+    """Which finding this turn is about, before any swap is looked for.
+
+    A Correction check's findings first, because what a mend broke is about the stretch the
+    team just retold: sent elsewhere in the same breath, they answer a question about a part
+    they are not looking at, and the stretch they are working on stays open behind them.
+    That precedence used to be list position and nothing else, which is why it is a flag now
+    — the Priority applied over the whole list reads straight past a position.
+
+    The flag decides *who competes*, never who wins. One check answers about one stretch and
+    can still come back with more than one thing — it reports what it saw, and the room
+    derives a loss from the count on top of that — so the Priority rules inside its own reply
+    as it does anywhere else. It is suspended against findings the check did not raise, and
+    against nothing else.
+
+    Then the **Priority**, ties in the analyst's own order. It is over the tiers and says
+    nothing inside one, so reaching for a second key here — the frase, the stretch, the
+    length of the note — would be the room inventing a precedence Marcia never ruled.
+
+    At the pick and never at parse or storage. `state.findings` is what the packet, the
+    resume and the correction check all read, and a list reordered on the way in would carry
+    the Priority into every one of them and take a check's finding away from the front. Pure
+    over the list for the same reason: the fresh verdict, the stored-verdict replay and the
+    resume payload each recompute the pick, and three answers that could differ is a team
+    hearing about one frase while the screen rebuilds on another.
+
+    The one place that says which finding leads — a second expression of this would be a
+    second thing free to answer it.
+    """
+    if not findings:
+        return None
+    competing = [at for at, finding in enumerate(findings) if finding.raised_by_check] or range(
+        len(findings)
+    )
+    tier_of = _tiers(findings)
+    return min(competing, key=lambda at: (tier_of[at], at))
+
+
+def _the_current_swap(findings: list[Finding]) -> list[int]:
+    """Which of the findings this turn is about: the one that leads, and its other half.
+
+    The pick decides *whether* there is a swap. What this rule decides is the other half,
+    and which of the two leads.
+    """
+    leads = the_index_that_leads(findings)
+    if leads is None:
+        return []
+    for addition, missing in _swaps(findings):
+        if leads in (addition, missing):
+            return [addition, missing]
+    return [leads]
+
+
+def findings_after_a_part_is_recorded_again(
+    findings: list[Finding], retired_segment_ids: set[str]
+) -> list[Finding]:
+    """The findings that survive a **Part** being recorded again, in the order they were read.
+
+    A finding about a stretch the team has just recorded over is about audio nobody will hear
+    again: it names a frase of a reading that no longer exists, and left standing it would be
+    raised against a telling the team never made.
+
+    **A Swap leaves whole.** Its two halves are joined by the frase the analyst numbered, and a
+    missing element placed *after* that frase resolves to the *next* stretch — which is a slice
+    of the next part. Dropping only the half that sits on the part recorded again would leave
+    the other on its own, and the team would meet it the round after as a thing of its own.
+
+    A finding pointing at no stretch is untouched, because no part can take away what names
+    none: a **Missing without an address** says the team has not recorded something at all,
+    which one part recorded again neither answers nor makes untrue. It is never half of a swap
+    either — both halves must point at a stretch (ADR 0018) — so the rule above never reaches
+    for it.
+
+    Filtered rather than rebuilt, so what is left keeps the analyst's own order: `state.findings`
+    is what the packet, the resume and the correction check all read, and the **Priority** is
+    taken at the pick and never at storage.
+    """
+    leaving = {
+        at for at, finding in enumerate(findings) if finding.segment_id in retired_segment_ids
+    }
+    for addition, missing in _swaps(findings):
+        if addition in leaving or missing in leaving:
+            leaving |= {addition, missing}
+    return [finding for at, finding in enumerate(findings) if at not in leaving]
+
+
+def findings_on_stretches_that_count(
+    findings: list[Finding], counting: Iterable[str]
+) -> list[Finding]:
+    """What is left of the findings once whatever stopped counting takes its Swap with it.
+
+    A correction replaces a stretch and a part recorded again abandons one, and a finding still
+    addressed to either sends the team to a row that is no longer on their screen. The rule is
+    the one a part recorded again already follows, so the two cannot drift apart.
+    """
+    standing = set(counting)
+    gone = {
+        one.segment_id
+        for one in findings
+        if one.segment_id is not None and one.segment_id not in standing
+    }
+    return findings_after_a_part_is_recorded_again(findings, gone)
+
+
+def current_findings(state: BackTranslationState) -> list[Finding]:
+    """What the Speaker is allowed to voice this turn: one finding, or one swap of one frase.
+
+    An addition and a missing element on the same frase are one thing for the team — the
+    telling put something in and dropped what the story tells in its place — so they are one
+    thing to say, one fix to ask for and one retelling to check. Raised one at a time, the
+    team records that part again for the addition and, the round after, records the same part
+    again for the missing element.
+
+    The addition leads, whichever of the two the analyst listed first: it is the half that
+    names the stretch where the swap happened, so the closing, the request for the whole
+    stretch and the stretch the screen puts up all name the same one. Led by a missing
+    element placed after that frase, they would name the stretch after the swap instead.
+    """
+    return [state.findings[at] for at in _the_current_swap(state.findings)]
+
+
+def the_finding_that_leads(state: BackTranslationState) -> Finding | None:
+    """The half of this turn that carries its address, or None when there is nothing to say.
+
+    The one finding, or the addition of a swap. It is what the closing, the request for the
+    whole stretch and the stretch the screen puts up are all decided by, so that the three of
+    them name the same one.
+    """
+    leading = current_findings(state)
+    return leading[0] if leading else None
+
+
+def findings_remaining(findings: list[Finding]) -> int:
+    """How many things the team still has to act on, counted over the whole list.
+
+    A swap is one of them wherever its two halves sit: the count is what tells the team how
+    much of the round is still ahead of them, and a swap costs them one stop, not two.
+    """
+    return len(findings) - len(_swaps(findings))
+
+
+def findings_block(findings: list[Finding], addresses: Addresses) -> str:
+    """What reaches the Speaker this turn; the rest wait for the next round.
+
+    One line per finding, each carrying the address the team can hear, because the room is
+    wordless and the spoken name is the only address there is: *record that part again* over a
+    rehearsal of five parts asks a team to work out which one, and the cost of getting it wrong
+    is a re-recording of the wrong scene.
+
+    `addresses` is required and has no default. A caller with no takes in hand hands in an
+    empty `Addresses()` and says so, rather than being quietly answered the line as it read
+    before this rule: the address going missing for a caller nobody thought about is the defect
+    this whole slice exists to remove, and it has already been in front of a team once.
+    """
+    if not findings:
+        return "(nenhum achado — a tradução está completa)"
+    lines = []
+    for finding in findings:
+        address = addresses.of(finding.chunk, finding.segment_id)
+        at = f" [{address}]" if address else ""
+        lines.append(f"- {finding.kind}{at}: {finding.note}")
+    return "\n".join(lines)
 
 
 #: What every closing below promises except `CLOSING_CHECKED`: the process goes on. It used
 #: to be a static line in the prompt template itself, right under `{{CLOSING}}` and outside
 #: any branch — true of every verdict turn there was, until `CLOSING_CHECKED` gave the
-#: process an ending. Left there it would have sat right after "there is no next turn" and
-#: said the opposite in the same breath, so it now lives inside each closing that still has
+#: process an ending. Left there it would have promised another round of telling back beside
+#: the one step that closes the passage, so it now lives inside each closing that still has
 #: a next round instead, and not in the one that does not.
 _NEXT_ROUND = "After the team acts on this one, they will finish the telling-back again."
 
@@ -890,13 +1420,17 @@ CLOSING_PLAIN = (
 #: at all affirms and names the badge; both other closings explain themselves in terms of *this
 #: finding*, and there is none — `findings_block` is saying so in the same prompt.
 
-CLOSING_CHECKED = """- Say plainly that the passage is told and checked, then stop there. Do \
-not ask a question, do not invite them to answer anything, do not ask how the team feels, and \
-do not say goodbye. There is no next turn on this passage — the screen takes the team on from \
-here. Never a checklist, never a speech."""
+CLOSING_CHECKED = """- Say plainly that this passage is translated and checked. Then name \
+the one step that is left: invite the team to listen to their own recording once more, from \
+beginning to end, without stopping, and, if it sounds right to their ears, to approve it as \
+the team's final draft. That invitation is the only next step you name — no other gesture and \
+no other screen. Do not ask them to answer anything out loud, do not ask how the team feels, \
+and do not say goodbye. Call it the team's final draft and nothing more than that: what they \
+approve here is what OBT Refine works from. Never a checklist, never a speech."""
 #: The one turn with no finding that also has no next round: `state.checked` closes the
-#: passage for good, so a question here would ask for an answer nobody will ever read — and,
-#: unlike every other closing, this one may not carry `_NEXT_ROUND` either.
+#: passage for good. The step it names is the team's own — their last listening and their
+#: approval — and not another turn of this conversation, so, unlike every other closing,
+#: this one may not carry `_NEXT_ROUND` either.
 
 CLOSING_SPOKEN = (
     "- End with exactly one answerable question or invitation, and let them answer in words. "
@@ -911,7 +1445,7 @@ CLOSING_MISSING_TO_REHEARSAL = (
     "- End by handing the choice to the screen, not by asking for a spoken answer. The end of "
     "the story has not been told yet — nothing they recorded is wrong, and nothing they "
     "recorded will be lost. In one or two short sentences, tell them to record what is still "
-    "missing with the big microphone, and that when they finish they tap the green button to "
+    "missing with the circle, confirm it with the green check, and tap the wood disc to "
     "come back and check it. Do not offer to settle it later, do not ask them to choose "
     "between voices, and do not ask them to say anything out loud. "
     + _NEXT_ROUND
@@ -927,10 +1461,11 @@ def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
     `finding` is `None`: a turn with a finding is not the checked turn, whatever `checked`
     says, so the flag is read nowhere else in this function.
 
-    Chosen here rather than by the Speaker reading a branch, because the finding carries the
-    deciding fact and the prompt does not: `findings_block` sends kind and note, never the
-    address. A prompt that branched would be asking a model not to promise a choice the screen
-    will not offer; injecting one closing means the wrong instruction is never in front of it.
+    Chosen here rather than by the Speaker reading a branch, because which screen the team is
+    standing in front of is not something the findings block says: it carries the frase, the
+    part and the note, and none of the three tells a microphone from a rehearsal. A prompt that
+    branched would be asking a model not to promise a choice the screen will not offer;
+    injecting one closing means the wrong instruction is never in front of it.
 
     What counts as a stretch to hand over is `points_at_a_stretch`, and it is not written out
     a second time here: the room's request for the whole stretch turns on the same answer, and
@@ -943,8 +1478,15 @@ def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
     *"quer deixar para alinharmos mais na frente?"* came from. On a stretch, a missing element
     gets the same two microphones as every other finding there (decision of 2026-09-03,
     reversing ENG-710): the sibling closing that once named one microphone for it is gone.
-    What the screen offers the other kinds without a stretch is a product decision still open,
-    so they keep `CLOSING_SPOKEN` untouched.
+    What the screen offers the other kinds without a stretch was a product decision still
+    open; Henok closed it on 2026-09-25: `CLOSING_SPOKEN` stays. A fresh addition or unclear
+    can no longer reach here without a stretch at all — the parser drops one that names no
+    readable frase before it is ever a finding (ENG-1145), and refuses a reply that drops
+    every finding it named — so the only kind a fresh reply still hands this function
+    homeless is a missing. A row stored before ENG-1145 can still carry an addition or an
+    unclear with no stretch, and this function goes on answering that legacy shape exactly
+    as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed the two-microphone
+    screen even when it does have one.
 
     Returned with `{session_language}` still in it, for whoever fills the template to
     substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here
