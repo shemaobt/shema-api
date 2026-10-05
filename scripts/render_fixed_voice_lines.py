@@ -1,8 +1,9 @@
-"""Render the room's pre-approved lines to audio the app ships with it.
+"""Render the notices the app speaks before it can reach the room, to audio it ships with it.
 
-A fail-safe is the sentence the team hears when the model failed or the network did. Paying
-ElevenLabs for it at that moment is the worst possible time to need a network call, so these
-lines are synthesized once, here, and travel inside the app.
+Her fixed and process lines no longer travel inside the app: the room voices each one from
+the text it was deployed with (`GET /fixed-lines/{line}`), so a line she re-rules is heard on
+the next load. What stays in the bundle are the three notices the room has to say when it
+cannot reach the server at all, and those are rendered here.
 
 Every run is told where the app's bundle is; there is nothing here that could know it.
 
@@ -11,14 +12,13 @@ Every run is told where the app's bundle is; there is nothing here that could kn
     uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --check      # did it drift
     uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --language pt
 
-`--check` is the guard against silent freezing: edit a line in the authored prompt and the
-manifest no longer matches, so it reports the drift and exits non-zero until someone renders
-it again. It covers every language the room claims, because a line edited in one of them is
-as frozen as a line edited in any other. Re-rendering after a prompt edit is a person's job:
-nothing in the suite does it, and nothing in the suite reads the bundle.
+`--check` is the guard against silent freezing: edit a notice here and the manifest no
+longer matches, so it reports the drift and exits non-zero until someone renders it again.
+It covers every language the room claims. Re-rendering is a person's job: nothing in the
+suite does it, and nothing in the suite reads the bundle.
 
 One bundle per language, each rendered in that language's own voice. A team never hears two
-languages in one session, so a language whose lines are unwritten is not filled in from
+languages in one session, so a language whose notices are unwritten is not filled in from
 another one here — it is the claim in `ROOM_LANGUAGES` that has to wait.
 """
 
@@ -33,12 +33,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services.internalization_room.fail_safe import (
-    PROCESS_STEPS,
-    FailSafe,
-    process_line,
-    utterances,
-)
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.synthesize_facilitator_speech import (
     render_facilitator_speech,
@@ -105,36 +99,9 @@ STANDALONE: dict[str, dict[str, str]] = {
     },
 }
 
-#: The families that are spoken and never shipped. The supplement says so of each in bold —
-#: *"This one is spoken, not shipped."* — and the app names no H or I line, so rendering one
-#: would put a clip in the bundle that nothing plays and hold `--check` red forever.
-#:
-#: Both are said with the server answering normally and something else already being
-#: synthesized in the same request, which is what separates them from a fail-safe: a
-#: fail-safe has to work when the network is the thing that failed.
-NEVER_SHIPPED = frozenset({FailSafe.UNTOLD_STRETCH, FailSafe.STRETCH_TO_CORRECT})
-
 
 def catalogue(language_code: str) -> dict[str, str]:
-    """Every pre-approved line the app ships, by the name it plays it under.
-
-    Two sources, because the room speaks two kinds of fixed line and only one of them is a
-    failure. The process families are read off the step tables rather than listed again
-    here: a name written twice is a name that drifts, and it is the tables the accessor
-    answers from, so a step added there has to reach the bundle by the same act.
-    """
-    lines: dict[str, str] = {}
-    for kind in FailSafe:
-        if kind in NEVER_SHIPPED:
-            continue
-        for index, text in enumerate(utterances(kind, language_code)):
-            lines[f"{kind}{index}"] = text
-    for family, steps in PROCESS_STEPS.items():
-        for step in steps:
-            text, name = process_line(family, step, language_code)
-            lines[name] = text
-    lines.update(STANDALONE.get(language_code, {}))
-    return lines
+    return dict(STANDALONE.get(language_code, {}))
 
 
 class _NoCache:
@@ -162,11 +129,7 @@ def _bundle(out: Path, language_code: str) -> Path:
 
 
 def _clip_path(out: Path, language_code: str, name: str) -> Path:
-    """Standalone lines sit beside the fixed folder, where the app already looks for them."""
-    bundle = _bundle(out, language_code)
-    if name in STANDALONE.get(language_code, {}):
-        return bundle / f"{name}.mp3"
-    return bundle / "fixed" / f"{name}.mp3"
+    return _bundle(out, language_code) / f"{name}.mp3"
 
 
 def fingerprint(text: str) -> str:
@@ -198,7 +161,7 @@ def drift(out: Path, language_code: str) -> list[str]:
 
 async def render(out: Path, language_code: str, *, force: bool) -> None:
     bundle = _bundle(out, language_code)
-    (bundle / "fixed").mkdir(parents=True, exist_ok=True)
+    bundle.mkdir(parents=True, exist_ok=True)
     manifest = {} if force else read_manifest(out, language_code)
     for name, text in catalogue(language_code).items():
         clip = _clip_path(out, language_code, name)

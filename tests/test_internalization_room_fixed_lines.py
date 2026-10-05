@@ -7,7 +7,6 @@ silent freeze is this file.
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,42 +72,20 @@ def test_the_catalogue_covers_every_kind_the_room_claims_to_speak(spoken: str) -
     Medido com `localized` e não com `utterances`: `utterances` cai para o bloco inglês e
     por isso nunca volta vazio, o que a torna segura para falar e inútil como medida.
     """
-    catalogue = render.catalogue(spoken)
     for kind in FailSafe:
-        if kind in render.NEVER_SHIPPED:
+        if kind in (FailSafe.UNTOLD_STRETCH, FailSafe.STRETCH_TO_CORRECT):
             continue
         written = localized(kind, spoken)
         assert written, (
             f"a sala diz que fala {spoken!r} e a família {kind} não tem falas escritas nesse "
             "idioma — a equipe ouviria a falha em outra língua"
         )
-        for index in range(len(written)):
-            assert f"{kind}{index}" in catalogue
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
 def test_the_stretch_line_is_spoken_and_never_shipped(spoken: str) -> None:
     """O suplemento diz em negrito: *"This one is spoken, not shipped."*"""
     assert not any(name.startswith("H") for name in render.catalogue(spoken))
-
-
-def test_every_language_ships_the_same_lines_so_a_turn_in_one_is_a_turn_in_all() -> None:
-    """O servidor manda `fixed_line` por nome, e o app resolve o nome no pacote do idioma.
-
-    Só os nomes que o servidor pode mandar. As falas soltas não chegam por turno — o app as
-    toca sozinho — e o português é o único idioma sem `sem_conexao` escrito, porque o áudio
-    dele foi gravado antes deste script e a letra nunca foi anotada.
-    """
-    named = re.compile(r"^[A-Z]\d+$")
-    shipped = {
-        spoken: {name for name in render.catalogue(spoken) if named.match(name)}
-        for spoken in ROOM_LANGUAGES
-    }
-
-    assert len(set(map(frozenset, shipped.values()))) == 1, (
-        "um idioma ficou sem uma fala que outro tem; o nome chega do servidor no meio de um "
-        f"turno e o app não acha o arquivo, então a sala emudece: {shipped}"
-    )
 
 
 def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all() -> None:

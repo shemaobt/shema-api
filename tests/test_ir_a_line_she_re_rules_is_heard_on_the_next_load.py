@@ -369,3 +369,20 @@ async def test_a_tablet_with_a_credential_hears_its_line_voiced_with_the_read_le
     assert held == [False], (
         "a leitura da credencial abria a transação e a conexão ficava presa durante a síntese"
     )
+
+
+@pytest.mark.parametrize(
+    ("spoken", "notices"),
+    [
+        ("pt", {"gravacao_presa", "microfone"}),
+        ("en", {"sem_conexao", "gravacao_presa", "microfone"}),
+    ],
+)
+def test_the_app_bundle_is_rendered_with_its_notices_and_none_of_her_lines(
+    spoken: str, notices: set[str]
+) -> None:
+    import scripts.render_fixed_voice_lines as render
+
+    assert set(render.catalogue(spoken)) == notices, (
+        "as falas dela iam gravadas no app, e uma gravação velha tocava depois de ela mudar a letra"
+    )
