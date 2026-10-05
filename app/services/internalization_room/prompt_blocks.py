@@ -9,7 +9,7 @@ from app.services.internalization_room.canon.elements import (
     ElementKind,
     elements_for,
 )
-from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.canon.parse_map import load_book, load_map
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     current_scene,
@@ -82,6 +82,31 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
             f"  {kind}: {', '.join(by_kind[kind])}" for kind in ElementKind if kind in by_kind
         )
     return "\n".join([scene_line, "", covered_line, "", *remaining_lines])
+
+
+_EARLIER_GROUPS = (
+    ("approved", "Approved"),
+    ("started", "Started, not approved yet"),
+    ("not_worked", "Not worked yet"),
+)
+
+
+def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str] | None) -> str:
+    """Her EARLIER PASSAGES FOR THIS TEAM fact, verbatim (`src/turn/earlierPassages.ts`).
+
+    Each passage is named by the reference that heads its digest in THE STORY SO FAR. The fact
+    is complete or absent: a status missing for any earlier passage of the book renders no
+    line at all, as her app renders none, so a partial stamp never claims the rest unworked.
+    """
+    earlier = [m for m in load_book(book) if m.pericope_num < pericope_num]
+    if not earlier or not statuses or any(m.pericope_num not in statuses for m in earlier):
+        return ""
+    groups = [
+        f"{label}: {', '.join(m.reference for m in earlier if statuses[m.pericope_num] == status)}."
+        for status, label in _EARLIER_GROUPS
+        if any(statuses[m.pericope_num] == status for m in earlier)
+    ]
+    return f"EARLIER PASSAGES FOR THIS TEAM: {' '.join(groups)}"
 
 
 def meaning_map_block(pericope_num: str, book: str) -> str:

@@ -176,7 +176,9 @@ async def test_a_facilitator_reads_the_conversation_as_turns_in_order(
         ("team", SECOND_ANSWER),
     ]
     assert [t["role"] for t in turns[4:]] == ["guide", "room", "guide"]
-    assert turns[5]["text"] == "[A equipe falou na língua materna; sem transcrição]"
+    assert turns[5]["text"] == (
+        "[A equipe falou na língua materna; sem transcrição — nenhuma palavra chegou até você.]"
+    )
     assert all(t["at"] for t in turns)
     assert [t["at"] for t in turns] == sorted(t["at"] for t in turns)
 

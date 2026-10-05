@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -106,6 +107,7 @@ async def create_session(
     project_id: str | None = None,
     language: str | None = None,
     chosen: bool = False,
+    earlier_passages: Mapping[str, str] | None = None,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
@@ -162,6 +164,9 @@ async def create_session(
     the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
     a passage is the way back in. The end it names is the end of the walkable book, which is
     the only end a team can reach — a passage `require_walkable` refuses can never be closed.
+
+    ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
+    the session and never in its messages, so a session holding one has still not spoken.
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -177,6 +182,7 @@ async def create_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=spoken,
+        earlier_passages=earlier_passages,
     )
     await db.commit()
     await db.refresh(session)
@@ -374,6 +380,7 @@ async def _minted(
     after_panorama: bool,
     project_id: str | None,
     language: str,
+    earlier_passages: Mapping[str, str] | None = None,
 ) -> IRSession:
     """A new session on a resolved pericope, flushed and not yet committed."""
     panorama = is_panorama(pericope)
@@ -400,10 +407,17 @@ async def _minted(
         back_translation={},
         language=language,
         comprehension={},
+        earlier_passages=dict(earlier_passages) if earlier_passages else None,
     )
     db.add(session)
     await db.flush()
     return session
+
+
+async def stored_as_done(db: AsyncSession, session_id: str) -> bool:
+    """Whether the session is done as stored now, past the copy a request already holds."""
+    status = await db.scalar(select(IRSession.status).where(IRSession.id == session_id))
+    return status is IRSessionStatus.DONE
 
 
 async def get_session(db: AsyncSession, session_id: str) -> IRSession:
@@ -527,6 +541,7 @@ async def append_exchange(
     told_back: str = "",
     state: ComprehensionState | None = None,
     commit: bool = True,
+    scene_rehearsals: list[str] | None = None,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -559,15 +574,19 @@ async def append_exchange(
     keeps it: the turn would not have lifted that halt, so undoing the visit brings it back.
     The stamps are deliberately **not** cleared: who went and when is what the history is for,
     and a landing turn is no evidence they did not go.
+
+    ``scene_rehearsals`` is the scenes whose scene rehearsal had reached the Guide as of this
+    turn, kept on the Guide's entry, the one entry every turn has; an empty list is the fact
+    that none had, and ``None`` keeps nothing.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
     if told_back:
         stamp["told_back"] = True
-    if team_utterance:
-        messages.append({"role": "team", "text": team_utterance, **stamp})
     if outcome is not None and outcome.room_note:
         messages.append({"role": "room", "text": outcome.room_note, **stamp})
+    if team_utterance:
+        messages.append({"role": "team", "text": team_utterance, **stamp})
     guide: dict[str, Any] = {"role": "guide", "text": guide_response, **stamp}
     if outcome is not None:
         guide["outcome"] = _containment_of(outcome)
@@ -583,6 +602,8 @@ async def append_exchange(
                 verdict=outcome.verdict,
                 issues=outcome.issues,
             )
+    if scene_rehearsals is not None:
+        guide["scene_rehearsals"] = scene_rehearsals
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
     if state is not None:

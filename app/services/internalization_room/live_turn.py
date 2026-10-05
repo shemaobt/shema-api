@@ -92,6 +92,7 @@ async def run_comprehension_turn(
     outcome = await speak_back(
         mother_tongue=mother_tongue,
         take_ms=speech.take_ms,
+        interrupted=speech.interrupted,
         session=session,
         messages=messages,
         transcript=transcript,

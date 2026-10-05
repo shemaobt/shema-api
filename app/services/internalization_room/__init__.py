@@ -70,6 +70,7 @@ from app.services.internalization_room.sessions import (
     session_for_room_caller,
     session_is_done,
     sessions_waiting_on_a_person,
+    stored_as_done,
     unattend,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
@@ -140,6 +141,7 @@ __all__ = [
     "session_for_room_caller",
     "session_is_done",
     "sessions_waiting_on_a_person",
+    "stored_as_done",
     "synthesize_facilitator_speech",
     "the_finding_that_leads",
     "told_back",

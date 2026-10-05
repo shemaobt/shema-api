@@ -1,10 +1,10 @@
-"""The text seam's own turn, counted the way `test_ir_a_voiced_turn_commits_once.py` counts
+"""A Golden doors turn, counted the way `test_ir_a_voiced_turn_commits_once.py` counts
 the voiced one: at the engine, by every `commit` event that carried a write, never by reading
 the code back.
 
-The seam is `text_seam.py`'s door, not `sessions.py`'s — the voiced turn already proved the
+The door is `golden_doors.py`'s, not `sessions.py`'s — the voiced turn already proved the
 service layer lands a turn in one UPDATE (ENG-1021); what was still open here was whether the
-seam's own route asked for that UPDATE once or asked `_land` for two.
+door's own route asked for that UPDATE once or asked `_land` for two.
 """
 
 from __future__ import annotations
@@ -17,13 +17,19 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import text_seam
+from app.api.internalization_room import golden_doors
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from tests.room_harness import counting_commits
-from tests.text_seam_harness import GUIDE_LINE, RUNNER_KEY, TEAM_LINE, the_app, the_models_answer
-
-SEAM = "/api/internalization-room/text-seam"
+from tests.text_seam_harness import (
+    BEARER,
+    GOLDEN,
+    GUIDE_LINE,
+    RUNNER_KEY,
+    TEAM_LINE,
+    the_app,
+    the_models_answer,
+)
 
 
 async def _settled_later(**_: Any) -> None:
@@ -36,7 +42,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
     )
     the_models_answer(monkeypatch)
-    monkeypatch.setattr(text_seam, "settle_coverage", _settled_later)
+    monkeypatch.setattr(golden_doors, "settle_coverage", _settled_later)
 
     async def _never_voiced(text: str, **_: Any) -> None:
         raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")
@@ -46,7 +52,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     async with httpx.AsyncClient(
         transport=ASGITransport(app=the_app(db_session)),
         base_url="http://test",
-        headers={"X-Access-Code": RUNNER_KEY},
+        headers=BEARER,
     ) as c:
         yield c
 
@@ -59,19 +65,21 @@ def commits(test_engine) -> Iterator[list[object]]:
 
 async def _a_session(client: httpx.AsyncClient) -> str:
     created = await client.post(
-        f"{SEAM}/session", json={"pericopeId": "P01", "language": "Brazilian Portuguese"}
+        f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "Brazilian Portuguese"}
     )
     assert created.status_code == 200, created.text
     return created.json()["sessionId"]
 
 
-async def test_a_text_seam_opening_reaches_the_database_in_one_commit(
+async def test_a_golden_opening_reaches_the_database_in_one_commit(
     client: httpx.AsyncClient, commits: list[object]
 ) -> None:
     session_id = await _a_session(client)
     commits.clear()
 
-    kicked = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+    kicked = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
+    )
 
     assert kicked.status_code == 200, kicked.text
     assert len(commits) == 1, (
@@ -83,10 +91,12 @@ async def test_a_text_turn_reaches_the_database_in_one_commit_not_two(
     client: httpx.AsyncClient, db_session: AsyncSession, commits: list[object]
 ) -> None:
     session_id = await _a_session(client)
-    await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+    await client.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"})
     commits.clear()
 
-    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+    answered = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": TEAM_LINE}
+    )
 
     assert answered.status_code == 200, answered.text
     assert len(commits) == 1, (
