@@ -22,13 +22,9 @@ def an_upstream_listing_with_her_three_books_and_a_psalm(monkeypatch: pytest.Mon
     monkeypatch.setattr(canon, "_get", lambda url: listing)
 
 
-def test_her_thirty_seven_passages_are_listed_and_the_psalm_she_does_not_publish_is_not(
+def test_only_the_fourteen_passages_of_ruth_are_listed_and_the_other_books_are_not(
     an_upstream_listing_with_her_three_books_and_a_psalm: None,
 ) -> None:
     names = canon._listing("meaning-map", SHA)
 
-    assert len(names) == 37
-    assert sum(name.startswith("E") for name in names) == 18
-    assert sum(name.startswith("J") for name in names) == 5
-    assert sum(name.startswith("P") for name in names) == 14
-    assert "T13-Psalm-13.md" not in names
+    assert names == [f"P{n:02d}-Ruth-{n}.md" for n in range(1, 15)]

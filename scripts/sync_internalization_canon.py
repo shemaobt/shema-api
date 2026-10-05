@@ -29,7 +29,7 @@ from pathlib import Path
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 REPO = "MarciaSuzuki/tripod_compiler"
-BOOKS = ("Esther", "Jonah", "Ruth")
+BOOKS = ("Ruth",)
 VENDOR = Path(__file__).resolve().parents[1] / ("app/services/internalization_room/canon/vendor")
 PIN_FILE = VENDOR / "VENDOR_PIN"
 KINDS = {

@@ -23,14 +23,15 @@ HER_COMPILE = "5b5c8d2b3ae7632279c07017224f861ae369b0d7"
 RUTH = [f"P{n:02d}" for n in range(1, 15)]
 
 
-def test_the_room_names_her_compile_of_29_september_and_holds_her_thirty_seven_passages() -> None:
+def test_the_room_names_her_compile_of_29_september_and_holds_the_fourteen_passages_of_ruth() -> (
+    None
+):
     maps = sorted(path.name for path in MAPS_DIR.glob("*.md"))
     logs = sorted(path.name for path in LOGS_DIR.glob("*.md"))
 
     assert vendor_pin() == HER_COMPILE
-    assert len(maps) == 37
-    assert Counter(name[0] for name in maps) == {"E": 18, "J": 5, "P": 14}
-    assert len(logs) == 37
+    assert [name[:3] for name in maps] == RUTH
+    assert [name[:3] for name in logs] == RUTH
 
 
 def test_ruth_carries_ninety_nine_rules_of_what_not_to_decide_split_as_she_counts_them() -> None:
@@ -118,13 +119,6 @@ def test_the_ruth_panorama_lists_her_ninety_nine_rules() -> None:
     assert len(rule_lines) == 99
     assert Counter(line[3:6] for line in rule_lines)["P08"] == 10
     assert "14 passages, in story order)" in material
-
-
-def test_an_esther_panorama_opens_and_its_rules_part_reads_none_recorded() -> None:
-    material = build_book_material("Esther")
-
-    assert "(map-authored; 18 passages, in story order)" in material
-    assert material.endswith("\n\n- (none recorded)\n")
 
 
 @pytest.mark.parametrize("pericope", RUTH)
