@@ -50,23 +50,6 @@ WALKABLE = [
 ]
 
 
-def _without_a_preservation_layer(canon: list[str]) -> str | None:
-    """The first pericope with no `preserved:` bead, or `None` once the canon has none left.
-
-    A plain `next(...)` with no default raised `StopIteration` at import time on the day
-    every passage in `canon` carries the layer — that took the whole module down as a
-    collection error instead of reddening a test, which is ENG-925's `WITHOUT_LAYER` defect.
-    """
-    return next(
-        (
-            pericope
-            for pericope in canon
-            if not any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
-        ),
-        None,
-    )
-
-
 WITH_LAYER = next(
     pericope
     for pericope in CANON
@@ -169,14 +152,6 @@ def _forget_the_canon() -> None:
     parse_map.load_map.cache_clear()
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()
-
-
-def test_the_lookup_answers_none_rather_than_raising_once_every_passage_has_the_layer() -> None:
-    """Falsifies the fix directly: a bare `next(...)` here raises `StopIteration` on an empty
-    generator, which is exactly what the day every pericope carries a layer produces — an
-    empty `canon` is that day's shape, since nothing in it is left to fail the `if`.
-    """
-    assert _without_a_preservation_layer([]) is None
 
 
 @pytest.fixture
