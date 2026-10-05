@@ -327,3 +327,21 @@ async def test_a_line_that_is_not_in_her_file_is_never_voiced(
     assert elevenlabs.voiced == [], (
         "a rota falava a reserva, o suplemento nosso ou qualquer nome que o tablet mandasse"
     )
+
+
+async def test_a_line_whose_voice_cannot_be_made_answers_no_sound_at_all(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+) -> None:
+    async def down(url: str, **_: Any) -> SimpleNamespace:
+        return SimpleNamespace(status_code=503, content=b"", text="down")
+
+    monkeypatch.setattr(elevenlabs, "post", down)
+    async with room_client(db_session, monkeypatch) as client:
+        asked = await client.get(
+            f"{PREFIX}/fixed-lines/F2", params={"language": "pt"}, headers=THE_TABLET
+        )
+
+    assert asked.status_code == 502, asked.text
+    assert "audio_url" not in asked.json(), "sem voz, a sala devolvia um endereço mesmo assim"
