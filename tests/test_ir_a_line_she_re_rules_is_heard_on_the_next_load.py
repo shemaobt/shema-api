@@ -404,3 +404,20 @@ async def test_a_language_the_room_does_not_speak_is_refused_and_a_regional_one_
 
     assert refused.status_code == 400, refused.text
     assert regional == "voz:Deixa eu pensar um instante."
+
+
+def test_every_line_the_room_voices_is_there_in_both_languages() -> None:
+    def voiced(language: str) -> set[str]:
+        names = set()
+        for family in "ADEFPX":
+            position = 0
+            while fail_safe.her_line(f"{family}{position}", language) is not None:
+                names.add(f"{family}{position}")
+                position += 1
+        return names
+
+    assert voiced("pt"), "a sala não achava nenhuma fala no arquivo"
+    assert voiced("pt") == voiced("en"), (
+        "uma fala que faltava numa língua virava silêncio, e a equipe não distingue isso "
+        "de um tablet morto"
+    )
