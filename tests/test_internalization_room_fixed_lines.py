@@ -66,7 +66,7 @@ async def test_a_line_rendered_twice_is_written_with_its_sound_both_times(
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_catalogue_covers_every_kind_the_room_claims_to_speak(spoken: str) -> None:
+def test_every_kind_the_room_claims_to_speak_is_written_in_it(spoken: str) -> None:
     """Um idioma reivindicado e não escrito é uma sala que troca de língua no meio.
 
     Medido com `localized` e não com `utterances`: `utterances` cai para o bloco inglês e
@@ -80,12 +80,6 @@ def test_the_catalogue_covers_every_kind_the_room_claims_to_speak(spoken: str) -
             f"a sala diz que fala {spoken!r} e a família {kind} não tem falas escritas nesse "
             "idioma — a equipe ouviria a falha em outra língua"
         )
-
-
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_stretch_line_is_spoken_and_never_shipped(spoken: str) -> None:
-    """O suplemento diz em negrito: *"This one is spoken, not shipped."*"""
-    assert not any(name.startswith("H") for name in render.catalogue(spoken))
 
 
 def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all() -> None:

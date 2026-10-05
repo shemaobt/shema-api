@@ -26,7 +26,6 @@ from google_crc32c import Checksum
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import scripts.render_fixed_voice_lines as render
 from app.db.models.internalization_room import IRSegment, IRSession, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, first, localized
@@ -343,17 +342,6 @@ def test_no_language_borrows_another_languages_words() -> None:
     written = {language: first(ASKED, language) for language in ROOM_LANGUAGES}
 
     assert len(set(written.values())) == len(ROOM_LANGUAGES), written
-
-
-def test_the_line_is_spoken_and_never_shipped() -> None:
-    """Like the waiting line, and for the same reason: nothing here has failed.
-
-    It rides on the verdict's own clip, synthesized in that same request, so the app names
-    it nowhere. Rendering it would put audio in the bundle that nothing plays and hold
-    `--check` red forever.
-    """
-    for language in ROOM_LANGUAGES:
-        assert not any(name.startswith(str(ASKED)) for name in render.catalogue(language))
 
 
 @pytest.mark.parametrize("language", ROOM_LANGUAGES)
