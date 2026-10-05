@@ -1,9 +1,9 @@
-"""The pre-approved lines ship as audio inside the app, and must not drift from the prompt.
+"""Her lines are asked of the room by name; the app's bundle keeps only three notices.
 
-A fail-safe is what the team hears when the model failed or the network did. Synthesizing it
-at that moment asks the network for a favour precisely when the network is the problem — so
-these lines travel with the app. The cost of that is a frozen copy, and the guard against a
-silent freeze is this file.
+A fixed line is voiced by the room from the text it was deployed with, so a line she
+re-rules is heard on the next load and no frozen copy of it travels with the app. What the
+render script still bundles are the notices the room says when it cannot reach the server at
+all, and this file guards that they do not drift, alongside how the fail-safes rotate.
 """
 
 import json

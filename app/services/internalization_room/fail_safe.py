@@ -115,9 +115,10 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     answers two failures in a row with the identical sentence sounds like a machine stuck,
     which is the one impression the fail-safe exists to avoid.
 
-    The name is what the app plays: these lines are shipped as audio inside the app, so a
-    failure costs no synthesis and needs no network — which matters, because the network is
-    often what failed.
+    The name is what the app asks for: the tablet hands it back to `/fixed-lines/{line}`,
+    which voices the line from the text this server was deployed with, so a line she
+    re-rules is heard on the next load. Only the three notices said with no server at all
+    stay in the app's bundle.
 
     It takes a ``FailSafe`` and never a process family, so that a step cannot be handed to
     the one reader that rotates: ``choose("X", turn=7)`` would answer X-whole where the step
@@ -213,8 +214,8 @@ def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -
 
     The language resolution is ``choose``'s, unchanged — regional, then primary, then the
     authored English — and so is the shape of the answer, because the two consumers want
-    different halves of it: a step spoken by the server needs the text, and a step played
-    from the app's bundle needs the name.
+    different halves of it: a step spoken inside a server answer needs the text, and a step
+    the tablet asks the room for by name needs the name.
     """
     steps = PROCESS_STEPS.get(family)
     if steps is None or step not in steps:
