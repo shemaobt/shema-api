@@ -63,7 +63,7 @@ P01_ABSENCES = (
 #: The two headings the Validator's own prompt puts around the map slot
 #: (`prompts/validator_system_prompt.md:127,131`).
 MAP_SLOT = "## The Meaning Map (the only standard of truth)"
-NEXT_SLOT = "## Recent conversation"
+NEXT_SLOT = "## The drafted response to validate"
 
 
 #: Her operational sentence for the panorama's preservation header, quoted from
@@ -210,7 +210,6 @@ async def test_the_two_new_blocks_read_the_same_in_a_portuguese_and_an_english_s
 async def _verdict_systems(agent: FakeAgent) -> tuple[str, str]:
     await run_verdict_turn(
         findings_text="No que você me contou, Orfa não apareceu.",
-        closing="Vamos ouvir de novo, em {session_language}.",
         scope="P01",
         pericope_num="P01",
         messages=[],

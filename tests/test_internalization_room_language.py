@@ -234,16 +234,18 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
     prompt files, nothing here is templated per {{SESSION_LANGUAGE}}, so a Portuguese literal
     in any of them is Portuguese an English session hears too (ENG-822, item 3)."""
     from app.services.internalization_room.turn_instructions import (
-        NOT_THIS_TURN,
+        EARLIER_PASSAGES_HEADING,
         OPENING_INSTRUCTION,
         OPENING_MOVEMENT_INSTRUCTION,
+        TEAM_EVIDENCE_HEADING,
         VALIDATOR_USER_MESSAGE,
     )
 
     for value in (
         OPENING_INSTRUCTION,
         OPENING_MOVEMENT_INSTRUCTION,
-        NOT_THIS_TURN,
+        TEAM_EVIDENCE_HEADING,
+        EARLIER_PASSAGES_HEADING,
         VALIDATOR_USER_MESSAGE,
     ):
         assert not _PORTUGUESE_MARKER.search(value), value

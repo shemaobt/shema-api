@@ -364,7 +364,7 @@ async def test_a_session_opened_without_earlier_passages_hands_the_guide_no_such
     )
 
     assert opened.status_code == 200, opened.text
-    assert "EARLIER PASSAGES" not in agent.guide_systems[0]
+    assert "EARLIER PASSAGES FOR THIS TEAM:" not in agent.guide_systems[0]
 
 
 async def test_her_runner_plays_a_whole_golden_script_end_to_end_without_a_contract_error(

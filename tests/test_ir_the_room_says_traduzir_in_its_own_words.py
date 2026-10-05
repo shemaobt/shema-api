@@ -84,7 +84,6 @@ _EXPECTED_TRADUZIR_WORDS = {
     "a análise da tradução não pôde ser feita agora",
     "(nenhum achado — a tradução está completa)",
     "a leitura final da tradução não pôde ser feita agora",
-    "(the team has not spoken in this conversation; what they translated is in the block below)",
     CLOSING_CHECKED,
 }
 

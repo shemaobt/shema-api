@@ -22,9 +22,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.back_translation import (
-    CLOSING_MISSING_TO_REHEARSAL,
-    CLOSING_ON_SCREEN,
-    CLOSING_SPOKEN,
     FindingKind,
 )
 from app.services.internalization_room.retroverification import retroverification_file
@@ -107,11 +104,6 @@ async def test_an_addition_and_an_unclear_with_no_readable_frase_are_dropped(
     assert body["finding_segment_id"] is None, "sem frase legível, a falta não tem endereço"
     assert body["findings_remaining"] == 1
     assert body["checked"] is False
-
-    brief = room.briefs[-1]
-    assert CLOSING_MISSING_TO_REHEARSAL in brief
-    assert CLOSING_SPOKEN not in brief
-    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in brief
 
     assert (
         f"named addition with no readable frase (note: {ADDITION_WITH_NO_FRASE})" in caplog.text

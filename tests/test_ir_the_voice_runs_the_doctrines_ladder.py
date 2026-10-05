@@ -255,7 +255,6 @@ async def test_the_verdict_the_guide_speaks_on_a_telling_back_rides_its_map_in_o
     from app.services.internalization_room.back_translation import (
         Finding,
         FindingKind,
-        closing_block,
         findings_block,
     )
     from app.services.internalization_room.part_names import Addresses
@@ -271,7 +270,6 @@ async def test_the_verdict_the_guide_speaks_on_a_telling_back_rides_its_map_in_o
             session_language="Portuguese",
             language_code="pt",
             findings_text=findings_block([finding], Addresses()),
-            closing=closing_block(finding),
             scope=P,
             pericope_num=P,
             messages=[],

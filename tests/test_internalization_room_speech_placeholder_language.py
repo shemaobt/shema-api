@@ -94,14 +94,9 @@ def _patch_analyst_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
-async def test_the_validator_opens_the_session_in_english_whichever_language_it_is(
+async def test_the_validator_opening_carries_no_placeholder_in_any_language(
     monkeypatch: pytest.MonkeyPatch, language_code: str
 ) -> None:
-    """ENG-822 re-scoped this placeholder: the backend now composes it in English for every
-    session, and only {{SESSION_LANGUAGE}} carries what language the team hears — a `pt`
-    session must see the same English sentence an `en` one does, never its old Portuguese
-    translation.
-    """
     captured = _patch_validator_capture(monkeypatch)
 
     await run_turn(
@@ -118,9 +113,9 @@ async def test_the_validator_opens_the_session_in_english_whichever_language_it_
     )
 
     system = captured["system"]
-    assert _EXPECTED_VALIDATOR_OPENING["en"] in system
-    assert _EXPECTED_VALIDATOR_OPENING["pt"] not in system
-    assert _EXPECTED_VALIDATOR_OPENING["es"] not in system
+    assert "## WHAT THE TEAM JUST SAID" not in system, "na abertura ninguém falou ainda"
+    for placeholder in _EXPECTED_VALIDATOR_OPENING.values():
+        assert placeholder not in system
 
 
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)

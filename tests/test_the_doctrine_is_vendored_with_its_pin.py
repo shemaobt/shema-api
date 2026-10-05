@@ -22,6 +22,7 @@ import pytest
 
 from scripts import sync_doctrine
 from scripts.sync_doctrine import (
+    FREEZE_FILE,
     FROZEN,
     REPO_ROOT,
     VENDORED,
@@ -53,23 +54,6 @@ def test_every_vendored_artefact_is_in_the_repo_at_the_sha_the_pin_records() -> 
     )
 
     assert not drift(pin), f"a vendored artefact no longer matches the pin: {drift(pin)}"
-
-
-def test_her_guide_prompt_is_vendored_beside_ours_and_not_over_it() -> None:
-    """Ours stays where it is, and hers lands next to it, so the difference is one command.
-
-    Substituting hers for ours would throw away the work of every ticket that ported her
-    text — and would be an edit to a file §5.1 reserves to her either way. The two live in
-    the same directory at different paths; `diff` is the whole mechanism.
-    """
-    ours = REPO_ROOT / "app/services/internalization_room/prompts/guide_system_prompt.md"
-    hers = REPO_ROOT / "app/services/internalization_room/prompts/vendor/guide_system_prompt.md"
-
-    assert ours.exists(), "our Guide prompt was moved or replaced, which no ruling asked for"
-    assert hers.exists(), "her Guide prompt is not vendored, so the divergence cannot be read"
-    assert hers.read_text(encoding="utf-8") != ours.read_text(encoding="utf-8"), (
-        "hers and ours read identically, which means one of them was overwritten by the other"
-    )
 
 
 def _pinned(tmp_path: Path, commit: str, bodies: dict[str, str]) -> Pin:
@@ -192,3 +176,42 @@ def test_the_check_ci_runs_names_a_frozen_file_whose_bytes_moved(
 
     assert check() == 1
     assert f"edited: {judge}" in capsys.readouterr().err
+
+
+APPENDIX_A = {
+    "guide_system_prompt.md": "73940519b1967c777d0e0e822d6c944d44001f4a6797245f7dea806d47cf89d1",
+    "validator_system_prompt.md": (
+        "163853db0072f04fcecda919280522f5224e385f81f0d07329c3a5db7ddf2ae8"
+    ),
+    "classifier_system_prompt.md": (
+        "336e1ec1d4146f9d95dd55b34834bf76b2b4a85db5b50a41bb71aec7fe6ea407"
+    ),
+    "book_overview_system_prompt.md": (
+        "bba4cdbdd4c2ec2c675df4efa85a187693f3c980c57d1e9db6ea064a220f8fd3"
+    ),
+    "draft_check_system_prompt.md": (
+        "7bbdbd8a7be38f0f5a2a0356d9ea2c82c1c9154153fed9ca2dfce663862dcf74"
+    ),
+    "fail_safe_utterances.md": "f2c73db37abb34f03cd9999bdea0caadc9a13a908829774559227772c698fddb",
+    "backtranslation_analysis_system_prompt.md": (
+        "ae7659d7a8facd9f43d78fa4f4178164bc6a5611e22450fcc703f36d6e372f2b"
+    ),
+    "backtranslation_verdict_system_prompt.md": (
+        "d253996dbbb60316de61d99806f065cdaeca432dd0814a7e5256de75f2fb2332"
+    ),
+    "golden_judge_system_prompt.md": (
+        "394a36339a91ad7c3c1ab2da23d96a7b27a16a67e883b03efee1fa77f8b90dc1"
+    ),
+}
+
+
+def test_her_nine_prompt_files_are_stored_at_the_fingerprints_appendix_a_lists() -> None:
+    pinned = read_pin(FREEZE_FILE).digests
+
+    for name, hers in APPENDIX_A.items():
+        path = f"app/services/internalization_room/prompts/{name}"
+        assert FROZEN[f"prompts/{name}"] == path, f"{name}: o arquivo dela não está sob o pin"
+        assert pinned.get(path) == hers, f"{name}: o pin não registra a digital do apêndice A"
+        assert digest((REPO_ROOT / path).read_bytes()) == hers, (
+            f"{name}: os bytes guardados não são os do app congelado dela"
+        )

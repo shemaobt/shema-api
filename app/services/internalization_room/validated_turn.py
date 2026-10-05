@@ -14,11 +14,12 @@ from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
-    NOT_THIS_TURN,
+    EARLIER_PASSAGES_HEADING,
     OPENING_MOVEMENT_INSTRUCTION,
     SPEAK_THIS_TURN,
+    TEAM_EVIDENCE_HEADING,
     VALIDATOR_USER_MESSAGE,
-    _nobody_spoke_this_turn,
+    her_block,
     split_opening_movements,
 )
 from app.services.internalization_room.usage import (
@@ -81,36 +82,6 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
         )
         for message in messages
     ]
-
-
-#: How each stored role is quoted back into the Validator's evidence block. Anything else
-#: (the team's own words) falls through to "Team" below.
-_EVIDENCE_LABELS = {"guide": "Guide", "room": "Room"}
-
-
-def _conversation_as_evidence(messages: list[dict[str, Any]]) -> str:
-    """The whole session, quoted, for the Validator to check a recollection against.
-
-    The Guide hears every turn (no window), so it may say what the team told it three
-    scenes ago. The Validator's evidence rule refuses any such sentence it cannot find in a
-    record, and with the slot reading "not this turn" nothing could be found: a true
-    recollection of the team's own words died as an "epistemic" violation and the team heard
-    the pause line for asking what it had said. This is quoted evidence, never a window — it
-    is all of it, oldest first, and the doctrine forbids the window, not the record.
-
-    Takes the raw stored messages, not `Turn`s: a room note is stored as its own role
-    (`sessions.append_exchange`), and the API's two-role `Turn` has already folded it onto
-    the team's side by the time `_conversation_turns` is done with it. Quoting it back as
-    `Team:` would credit the team with words it never said in the session language — this
-    labels it `Room:` instead, the one thing the Guide's own prompt already knows to do with
-    a bracketed note but the Validator's prompt is never told.
-    """
-    if not messages:
-        return NOT_THIS_TURN
-    return "\n".join(
-        f"{_EVIDENCE_LABELS.get(str(message.get('role')), 'Team')}: {message.get('text', '')}"
-        for message in messages
-    )
 
 
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
@@ -279,21 +250,14 @@ async def _voiced_after_validation(
     opening_instruction: str = "",
     ask_for_movements: bool = False,
     telling_back: str = "",
-    finding: str = "",
-    ordered_closing: str = "",
     mother_tongue: bool = False,
     prepared_pericope: str | None = None,
+    earlier_passages: str = "",
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
-
-    `telling_back`, `finding` and `ordered_closing` are the verdict turn's own context — what
-    the team told back outside the conversation, what the analyst found, and the ending the
-    Speaker was ordered to write. Every other turn leaves them empty, and the Validator is told
-    in words that an empty block is a block that does not apply to this turn rather than
-    evidence being withheld, so nothing about a conversation turn changes.
 
     `mother_tongue` is the one case where `transcript` is not the team's own words in the
     session language — `turn.speech.speak_back` puts the app's own note there instead, so the
@@ -346,19 +310,14 @@ async def _voiced_after_validation(
             movements = []
 
         validator_system = render(
-            cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
+            cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
-            RECENT_CONVERSATION=_conversation_as_evidence(messages),
-            TEAM_UTTERANCE=(
-                NOT_THIS_TURN
-                if mother_tongue
-                else transcript or _nobody_spoke_this_turn(telling_back)
+            EARLIER_PASSAGES=her_block(EARLIER_PASSAGES_HEADING, earlier_passages),
+            TEAM_EVIDENCE=her_block(
+                TEAM_EVIDENCE_HEADING, "" if mother_tongue else transcript or telling_back
             ),
             DRAFTED_RESPONSE=draft,
-            TELLING_BACK=telling_back or NOT_THIS_TURN,
-            FINDING=finding or NOT_THIS_TURN,
-            ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
         )
         if not warmed_connection:
             warm_connection_in_background(

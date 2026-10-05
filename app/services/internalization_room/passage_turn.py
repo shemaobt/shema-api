@@ -67,13 +67,9 @@ async def run_turn(
         )
 
     map_block = meaning_map_block(pericope_num, book)
+    earlier = earlier_passages_line(pericope_num, book, earlier_passages)
     coverage_status = "\n\n".join(
-        block
-        for block in (
-            coverage_status_block(coverage_state, pericope_num),
-            earlier_passages_line(pericope_num, book, earlier_passages),
-        )
-        if block
+        block for block in (coverage_status_block(coverage_state, pericope_num), earlier) if block
     )
     return await _voiced_after_validation(
         speaker_system=render(
@@ -95,4 +91,5 @@ async def run_turn(
         ask_for_movements=ask_for_movements,
         mother_tongue=mother_tongue,
         prepared_pericope=prepared_pericope,
+        earlier_passages=earlier,
     )

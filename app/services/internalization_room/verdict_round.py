@@ -27,7 +27,6 @@ from app.services.internalization_room.back_translation import (
     Finding,
     VoicedVerdict,
     analyse_telling_back,
-    closing_block,
     correction_to_verify,
     current_findings,
     findings_after_correction,
@@ -180,7 +179,6 @@ async def check_the_telling_back(
     told_back = segments_block(told)
     outcome = await run_verdict_turn(
         findings_text=findings_block(current, addresses),
-        closing=closing_block(finding, checked=state.checked),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],

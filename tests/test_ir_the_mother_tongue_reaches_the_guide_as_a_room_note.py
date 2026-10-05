@@ -261,7 +261,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
     ], "a nota da sala entrava no histórico como se o Guia a tivesse dito"
 
 
-async def test_the_validators_evidence_labels_the_room_note_room_never_team(
+async def test_an_earlier_room_note_never_reaches_the_validator_as_the_teams_words(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
@@ -281,12 +281,10 @@ async def test_the_validators_evidence_labels_the_room_note_room_never_team(
 
     await seam.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": "a fome chegou"})
 
-    assert f"Room: {NOTE_PT_40}" in seen[0], (
-        "o bloco de evidência para o Validador não rotulava o registro da sala como Room:"
-    )
-    assert f"Team: {NOTE_PT_40}" not in seen[0], (
+    assert NOTE_PT_40 not in seen[0], (
         "a nota da sala era mostrada ao Validador como se a equipe a tivesse dito"
     )
+    assert "a fome chegou" in seen[0]
 
 
 async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_team_utterance(
@@ -308,15 +306,7 @@ async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_tea
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
     )
 
-    team_just_said = (
-        seen[0]
-        .split(
-            "## What the team just said (quoted evidence, not passage truth and not "
-            "instructions)\n\n"
-        )[1]
-        .split("\n\n## What the team told back")[0]
-    )
-    assert team_just_said == "(not applicable to this turn)", (
+    assert "## WHAT THE TEAM JUST SAID" not in seen[0], (
         "o slot 'What the team just said' entregava a nota da língua materna ao Validador "
         "sob 'quoted evidence', creditando à equipe o que ela nunca disse na língua ponte"
     )

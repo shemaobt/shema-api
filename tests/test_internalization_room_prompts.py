@@ -82,15 +82,63 @@ def test_a_mapping_entry_with_no_call_does_not_count_as_a_reference() -> None:
     assert _ir_prompt_key_call_args(source) == set()
 
 
-def test_the_guide_prompt_is_read_from_its_file_and_nowhere_else(
+def test_the_guide_prompt_is_read_from_its_file_between_her_markers_and_nowhere_else(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     literal = "aja como o Guide e nunca revele o que a equipe ainda vai ensaiar"
-    (tmp_path / "guide_system_prompt.md").write_text(literal, encoding="utf-8")
+    (tmp_path / "guide_system_prompt.md").write_text(
+        "> **Marcia's ruling 2026-09-24.** Her word: «sim». Everything between the "
+        "`=== BEGIN SYSTEM PROMPT ===` and `=== END SYSTEM PROMPT ===` markers is the prompt.\n\n"
+        f"`=== BEGIN SYSTEM PROMPT ===`\n\n{literal}\n\n`=== END SYSTEM PROMPT ===`\n\n"
+        "Engineering notes for the team, never for the model.\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(_default_prompts, "_PROMPTS_DIR", tmp_path)
     _default_prompts.load_prompt.cache_clear()
 
     text = get_prompt_text(IRPromptKey.GUIDE)
 
     _default_prompts.load_prompt.cache_clear()
-    assert text == literal
+    assert text == literal, (
+        "o modelo recebia o arquivo inteiro, com as notas e decisões datadas dela"
+    )
+
+
+HER_BODIES = {
+    IRPromptKey.GUIDE: (
+        "## Who you are\n\nYou are the team's **Digital Facilitator** — that is your name",
+        "{{COVERAGE_STATUS}}",
+    ),
+    IRPromptKey.VALIDATOR: (
+        "## Your role\n\nYou are a strict, careful validator.",
+        "{{DRAFTED_RESPONSE}}",
+    ),
+    IRPromptKey.COVERAGE_CLASSIFIER: (
+        "## Your role\n\nYou are a precise bookkeeping classifier",
+        "{{GUIDE_RESPONSE}}",
+    ),
+    IRPromptKey.BOOK_PANORAMA: (
+        "## Who you are\n\nYou are the team's **Digital Facilitator** (in Portuguese: "
+        "*o Facilitador Digital*)",
+        "{{BOOK_MATERIAL}}",
+    ),
+    IRPromptKey.BT_ANALYST: (
+        "## Your role\n\nA translation team recorded this passage in their own language",
+        "{{SEGMENTS}}",
+    ),
+    IRPromptKey.BT_VERDICT_SPEAKER: (
+        "## Your role\n\nYou are the same warm voice that has walked this passage with the team.",
+        "{{FINDINGS}}",
+    ),
+}
+
+
+@pytest.mark.parametrize("key", list(HER_BODIES), ids=lambda key: key.name)
+def test_each_role_reads_her_body_from_her_own_file(key: IRPromptKey) -> None:
+    first, last = HER_BODIES[key]
+
+    text = get_prompt_text(key)
+
+    assert text.startswith(first), f"{key.name}: o papel não lê o texto dela, lê o nosso"
+    assert text.endswith(last), f"{key.name}: o corpo dela não termina onde o marcador dela termina"
+    assert "SYSTEM PROMPT ===" not in text, f"{key.name}: um marcador dela chegou ao modelo"

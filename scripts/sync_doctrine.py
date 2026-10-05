@@ -45,18 +45,6 @@ BRANCH = "fia/pilot-2026-09"
 #: Her path in `Tripod-Internalization` → the path it is vendored to here.
 VENDORED = {
     "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
-    "prompts/guide_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/guide_system_prompt.md"
-    ),
-    "prompts/validator_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/validator_system_prompt.md"
-    ),
-    "prompts/classifier_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/classifier_system_prompt.md"
-    ),
-    "prompts/book_overview_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/book_overview_system_prompt.md"
-    ),
     "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
     "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
         "golden/reports/2026-09-03/J01-frame-before-elicit.md"
@@ -115,13 +103,23 @@ HER_BT_SCRIPTS = (
     "P02-regravar-frase-troca",
 )
 
+HER_PROMPTS = (
+    "backtranslation_analysis_system_prompt.md",
+    "backtranslation_verdict_system_prompt.md",
+    "book_overview_system_prompt.md",
+    "classifier_system_prompt.md",
+    "draft_check_system_prompt.md",
+    "fail_safe_utterances.md",
+    "golden_judge_system_prompt.md",
+    "guide_system_prompt.md",
+    "validator_system_prompt.md",
+)
+
 FROZEN = {
-    "prompts/fail_safe_utterances.md": (
-        "app/services/internalization_room/prompts/fail_safe_utterances.md"
-    ),
-    "prompts/golden_judge_system_prompt.md": (
-        "app/services/internalization_room/prompts/golden_judge_system_prompt.md"
-    ),
+    **{
+        f"prompts/{name}": f"app/services/internalization_room/prompts/{name}"
+        for name in HER_PROMPTS
+    },
     **{f"golden/sessions/{name}.json": f"golden/sessions/{name}.json" for name in HER_SESSIONS},
     **{f"golden/bt/{name}.json": f"golden/bt/{name}.json" for name in HER_BT_SCRIPTS},
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
