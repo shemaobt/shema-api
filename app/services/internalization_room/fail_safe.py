@@ -83,14 +83,23 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
 
 
 _VOICED: dict[str, FailSafe | ProcessFamily] = {
-    **{kind.value: kind for kind in FailSafe},
+    "A": FailSafe.UNREPAIRABLE,
+    "D": FailSafe.INAUDIBLE,
+    "E": FailSafe.HARD_STOP,
+    "F": FailSafe.INSTANT_ACK,
     "P": "P",
     "X": "X",
 }
+_NAMED = re.compile(r"([A-Z])(\d+)")
 
 
-def her_line(name: str, language_code: str) -> str:
-    return utterances(_VOICED[name[:1]], language_code)[int(name[1:])]
+def her_line(name: str, language_code: str) -> str | None:
+    named = _NAMED.fullmatch(name)
+    if named is None or named.group(1) not in _VOICED:
+        return None
+    lines = utterances(_VOICED[named.group(1)], language_code)
+    position = int(named.group(2))
+    return lines[position] if position < len(lines) else None
 
 
 def first(kind: FailSafe, language_code: str = FLOOR) -> str:

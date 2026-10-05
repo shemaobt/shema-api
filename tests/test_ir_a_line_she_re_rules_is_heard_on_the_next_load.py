@@ -309,3 +309,21 @@ async def test_the_two_stale_lines_are_heard_in_her_current_wording(
     assert spoken == f"voz:{her_words}", (
         "a aprovação falava do OBT Refine e a checagem pedia 'nada a acrescentar', gravadas no app"
     )
+
+
+@pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "N0", "Z0", "F4", "F", "Fx", "f0"])
+async def test_a_line_that_is_not_in_her_file_is_never_voiced(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    line: str,
+) -> None:
+    async with room_client(db_session, monkeypatch) as client:
+        asked = await client.get(
+            f"{PREFIX}/fixed-lines/{line}", params={"language": "pt"}, headers=THE_TABLET
+        )
+
+    assert asked.status_code == 404, asked.text
+    assert elevenlabs.voiced == [], (
+        "a rota falava a reserva, o suplemento nosso ou qualquer nome que o tablet mandasse"
+    )
