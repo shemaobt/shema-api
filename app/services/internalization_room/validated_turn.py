@@ -261,11 +261,10 @@ async def _voiced_after_validation(
 
     `mother_tongue` is the one case where `transcript` is not the team's own words in the
     session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. The Validator's `{{TEAM_UTTERANCE}}` is quoted
+    Guide has something to draft against. The Validator's `{{TEAM_EVIDENCE}}` is quoted
     evidence of what the team *said*, under a heading no prompt tells it to read as a fact
-    about the room rather than speech; this turn's note has not reached `messages` yet
-    either, so nothing in `RECENT_CONVERSATION` catches it. Left alone, the slot would credit
-    the team with a sentence in the session language it never spoke.
+    about the room rather than speech. Left alone, the slot would credit the team with a
+    sentence in the session language it never spoke.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
