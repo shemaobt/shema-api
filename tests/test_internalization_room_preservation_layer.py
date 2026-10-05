@@ -160,6 +160,7 @@ def a_passage_whose_survey_is_pending(
 
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
+    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
     _forget_the_canon()
     yield "Q01"
     _forget_the_canon()

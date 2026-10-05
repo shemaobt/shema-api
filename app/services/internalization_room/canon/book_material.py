@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon.parse_map import (
+    ROOM_BOOK,
     SURVEYED_STATUS,
     VENDOR,
     MeaningMap,
@@ -16,6 +17,8 @@ from app.services.internalization_room.canon.parse_map import (
 )
 
 LOGS_DIR = VENDOR / "compilation-log"
+
+SERVED_BOOKS = frozenset({ROOM_BOOK})
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
 _CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
@@ -167,6 +170,8 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
     """
     pericope = meaning_map.pericope_num
     book = meaning_map.book
+    if book not in SERVED_BOOKS:
+        return f"{pericope}: the {book} canon is not served in this release"
     if not any(rule.pericope == pericope for rule in preservation_rules(book)):
         return (
             f"{pericope}: no preservation layer in the {book} canon — the passage's "
@@ -223,6 +228,8 @@ def pericope_digest(meaning_map: MeaningMap) -> str:
 
 def build_book_material(book: str) -> str:
     """The Book Panorama's entire standard of truth, derived from vendored canon."""
+    if book not in SERVED_BOOKS:
+        raise ValidationError(f"the {book} canon is not served in this release")
     maps = load_book(book)
     rules = preservation_rules(book)
 
