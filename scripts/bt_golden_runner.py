@@ -225,7 +225,7 @@ def export(
 
 async def run(args: argparse.Namespace) -> int:
     codes = [await play_script(path, args) for path in scripts_to_play(args)]
-    return max(codes, default=0)
+    return max(codes)
 
 
 def scripts_to_play(args: argparse.Namespace) -> list[Path]:

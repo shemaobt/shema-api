@@ -44,9 +44,11 @@ def test_every_line_of_the_acceptance_bar_is_claimed_by_a_named_test() -> None:
     )
 
     pending = [fragment for fragment, tests in record.items() if tests == [PENDING]]
-    assert pending == ["the send-off is always", "the circle is alive at `done`"], (
-        f"a line of the bar went unheld without anyone recording it: {pending}"
-    )
+    assert pending == [
+        "the send-off is always",
+        "the first rehearsal is the first oral draft",
+        "the circle is alive at `done`",
+    ], f"a line of the bar went unheld without anyone recording it: {pending}"
 
 
 def test_a_line_she_adds_on_the_next_re_sync_is_not_silently_unprotected() -> None:

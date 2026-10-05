@@ -374,7 +374,9 @@ async def play(
             appStatus=[
                 fact
                 for fact in (
-                    scene_rehearsals_fact(scene_ids, carried[idx]) if carried[idx] else "",
+                    scene_rehearsals_fact(scene_ids, carried[idx])
+                    if carried[idx] is not None
+                    else "",
                     earlier,
                 )
                 if fact

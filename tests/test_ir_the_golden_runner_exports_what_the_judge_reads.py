@@ -267,3 +267,31 @@ async def test_a_run_judged_again_from_its_export_reads_the_same_app_status_line
     assert judge_transcript(result.played) == judge_transcript(played), (
         "rejulgar um relatório apagava as linhas APP STATUS que o juiz leu na primeira vez"
     )
+
+
+async def test_a_scene_list_that_is_still_empty_is_told_to_the_judge_as_none(
+    seam, tmp_path, monkeypatch
+) -> None:
+    the_models_answer(monkeypatch)
+    path = tmp_path / "P03-nothing-rehearsed-yet.json"
+    path.write_text(
+        json.dumps(
+            {
+                "name": "P03-nothing-rehearsed-yet",
+                "pericopeId": "P03",
+                "language": "Brazilian Portuguese",
+                "turns": [{"kickoff": True, "sceneRehearsals": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    script = load_script(path)
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
+
+    assert (
+        "APP STATUS (what the app told the guide this turn): SCENE REHEARSALS: parts whose "
+        "recorded and translated scene rehearsal has reached you: none. Parts with none: S1, "
+        "S2, S3.\n"
+    ) in judge_transcript(played), "uma lista vazia é o fato, nunca a ausência dele"
