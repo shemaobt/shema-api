@@ -225,19 +225,18 @@ def build_book_material(book: str) -> str:
     """The Book Panorama's entire standard of truth, derived from vendored canon."""
     maps = load_book(book)
     rules = preservation_rules(book)
-    if not rules:
-        raise ValidationError(f"no preservation rules found for {book!r}")
 
     header = (
         f"# THE BOOK OF {book.upper()} — passage digests "
         f"(map-authored; {len(maps)} passages, in story order)"
     )
     digests = "\n\n".join(pericope_digest(m) for m in maps)
-    notes = "\n".join(rule.render() for rule in rules)
+    notes = "\n".join(rule.render() for rule in rules) or "- (none recorded)"
     return (
         f"{header}\n\n{digests}\n\n"
         "## PRESERVATION NOTES — the book's withholdings "
         "(HARD CONSTRAINTS, union of all passages)\n"
+        "The team has not yet lived any passage: every one of these still lies ahead of them. "
         "The panorama must honor each — never state, pair, name, or attribute what a "
         f"passage withholds until its moment.\n\n{notes}\n"
     )

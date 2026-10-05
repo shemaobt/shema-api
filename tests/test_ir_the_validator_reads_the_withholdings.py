@@ -265,9 +265,9 @@ async def test_the_panorama_is_told_what_honouring_a_withholding_means(patch_age
         "os dois papéis leem o mesmo material do livro; a frase que governa o uso da lista "
         "não pode chegar só a um deles"
     )
-    assert LIVED_NOTHING not in speaker_system, (
-        "o panorama dela toca uma vez por livro; o nosso toca uma vez por passagem, e uma "
-        "equipe que chega em P05 andou P01-P04 e ouviria que não viveu nada"
+    assert LIVED_NOTHING in speaker_system and LIVED_NOTHING in validator_system, (
+        "o panorama toca uma vez por livro, antes da primeira passagem, e a frase dela "
+        "diz por que cada retenção ainda está à frente; sem ela as notas vinham sem o motivo"
     )
 
 
