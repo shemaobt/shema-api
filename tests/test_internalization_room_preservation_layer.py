@@ -195,6 +195,41 @@ async def test_a_passage_with_no_preservation_layer_does_not_open(
     assert "preservation" in said.lower()
 
 
+@pytest.fixture
+def a_finished_passage_whose_log_records_no_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    maps = tmp_path / "meaning-map"
+    logs = tmp_path / "compilation-log"
+    maps.mkdir()
+    logs.mkdir()
+    (maps / "Q01-Fable-1-1-2.md").write_text(
+        _PENDING_MAP.replace('sta-status: "pending"', 'sta-status: "complete"'),
+        encoding="utf-8",
+    )
+    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
+        '# Q01 — COMPILATION LOG\n\n{"high_risk_register_audit": []}\n', encoding="utf-8"
+    )
+
+    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
+    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
+    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
+    _forget_the_canon()
+    yield "Q01"
+    _forget_the_canon()
+
+
+async def test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer(
+    db_session: AsyncSession, a_finished_passage_whose_log_records_no_rule: str
+) -> None:
+    with pytest.raises(ValidationError) as refusal:
+        await create_session(db_session, pericope=a_finished_passage_whose_log_records_no_rule)
+
+    said = str(refusal.value)
+    assert a_finished_passage_whose_log_records_no_rule in said
+    assert "no preservation layer" in said
+
+
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
