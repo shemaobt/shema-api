@@ -1,0 +1,82 @@
+{
+  "name": "P10-earlier-passages-status",
+  "pericopeId": "P10",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's ruling 2026-09-24 (her word: «Sim, pode fazer com essa frase»): «Quando a voz falar de uma passagem que a equipe ainda não fez, ela não diz 'lembrem' nem 'na última parte'. Ela diz 'a história conta que…' e conta só o necessário, em poucas palavras.» The case (pilot, 24 Sept): the team did P08 (Ruth 3:1-5) in the morning, opened P09 (3:6-13) and heard only its opening, then chose P10 (3:14-18); in P10 the voice said 'Lembrem: na última parte, Rute passou a noite no lugar da debulha, aos pés de Boaz, e ele fez um juramento.' and later 'é a mesma pergunta que o homem fez pra Rute no escuro' - P09 events the team never worked. The fixture is the pilot's state that day: P01-P06 and P08 approved, P07 started (its scene 3 not whole yet), P09 not worked yet. The app tells the Guide so in EARLIER PASSAGES FOR THIS TEAM. Turn 0: the opening says where this passage sits in the book - P09 may be told, but only as 'a história conta que…', never with 'lembrem' / 'na última parte'. Turns 1 and 2: the team asks two questions whose answers reach back into P09 (why Ruth was lying at the man's feet; why the mother-in-law asks 'quem é você, minha filha?' - the P10 map itself says it repeats the man's question of 3:9 in the dark). The markers name what only P09 tells (the oath and its pledge, midnight, the wing asked for over 'a sua serva', the woman of worth, the nearer redeemer, the startle - also as 'acordou assustado', the words all four live replies of 2026-09-24 21:08 used -, the man's same question, and 'as mesmas palavras / a mesma coisa / a mesma pergunta' said beside the dark, the night or the threshing floor - the unframed recall of the 21:08:43 run, 'Essas são as mesmas palavras que Boaz falou pra Rute no escuro da eira') - never the threshing floor or 'aos pés', which P08 and P10 tell too, nor the wings of 2:12 (P06), nor 'tudo o que você disser eu farei' (P08 has it too), nor P10's own lines ('ainda no escuro' before dawn, the mother-in-law's 'quem é você, minha filha?', 'a sogra faz a mesma pergunta' with no word of the night). The two comparison markers and the startle's adjective are the builder's, pending Marcia's word. The team's two questions are the builder's fixtures, pending Marcia's word. SC-0089 (Marcia's rulings of 2026-09-29, afternoon, «(a), (a), sim — pode seguir com as recomendações», ruling (2) (a); P09 R19, P10 R14): the text never says that Boaz slept or woke — the startle marker above reads 'acordou assustado' only beside a recall frame; boaz_never_asleep, on every turn, fails any sleep or wake word said of Boaz (live 2026-09-29, turn 1: 'No meio da noite o homem acordou'; the 25-29 Sept runs: 'Boaz acordou assustado'). The team's questions say no sleep or wake word.",
+  "earlierPassages": {
+    "P01": "approved",
+    "P02": "approved",
+    "P03": "approved",
+    "P04": "approved",
+    "P05": "approved",
+    "P06": "approved",
+    "P07": "started",
+    "P08": "approved",
+    "P09": "not_worked"
+  },
+  "turns": [
+    {
+      "kickoff": true,
+      "expect": {
+        "no_fail_safe": true,
+        "no_recall_of_unworked": [
+          "(?<!\\p{L})jur(ou|ar|a|amento|amentos)(?!\\p{L})",
+          "(?<!\\p{L})(prometeu|prometera|prometendo|prometido|prometida|promessa|promessas)(?!\\p{L})|tão certo como",
+          "meia[- ]noite|meio da noite",
+          "sobre a (sua |tua )?serva(?!\\p{L})|(asa|aba|capa|manto)[^.?!]{0,12}sobre mim(?!\\p{L})",
+          "mulher de valor|mulher virtuosa|mulher digna",
+          "(resgatador|parente|remidor)[^.?!]{0,30}mais (próximo|perto|chegado)|mais (próximo|perto|chegado) (do )?que (eu|ele|Boaz)",
+          "(?<!\\p{L})(se assustou|assustou-se|assustad[oa]|estremeceu|tremeu|levou um susto|susto)(?!\\p{L})",
+          "mesma pergunta[^.?!]{0,60}(homem|Boaz)|(homem|Boaz)[^.?!]{0,60}mesma pergunta",
+          "mesm[ao]s? (perguntas?|palavras?|coisas?|frases?|falas?)(?!\\p{L})[^.?!]{0,60}((?<!\\p{L})(?<!ainda )no escuro|(?<!\\p{L})de noite|(?<!\\p{L})à noite|naquela noite|no meio da noite|na eira)",
+          "((?<!\\p{L})(?<!ainda )no escuro|(?<!\\p{L})de noite|(?<!\\p{L})à noite|naquela noite|no meio da noite|na eira)[^.?!]{0,60}mesm[ao]s? (perguntas?|palavras?|coisas?|frases?|falas?)(?!\\p{L})"
+        ],
+        "tells_as_story": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "moment_after": "F",
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Por que a Rute estava ali deitada aos pés do Boaz?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_recall_of_unworked": [
+          "(?<!\\p{L})jur(ou|ar|a|amento|amentos)(?!\\p{L})",
+          "(?<!\\p{L})(prometeu|prometera|prometendo|prometido|prometida|promessa|promessas)(?!\\p{L})|tão certo como",
+          "meia[- ]noite|meio da noite",
+          "sobre a (sua |tua )?serva(?!\\p{L})|(asa|aba|capa|manto)[^.?!]{0,12}sobre mim(?!\\p{L})",
+          "mulher de valor|mulher virtuosa|mulher digna",
+          "(resgatador|parente|remidor)[^.?!]{0,30}mais (próximo|perto|chegado)|mais (próximo|perto|chegado) (do )?que (eu|ele|Boaz)",
+          "(?<!\\p{L})(se assustou|assustou-se|assustad[oa]|estremeceu|tremeu|levou um susto|susto)(?!\\p{L})",
+          "mesma pergunta[^.?!]{0,60}(homem|Boaz)|(homem|Boaz)[^.?!]{0,60}mesma pergunta",
+          "mesm[ao]s? (perguntas?|palavras?|coisas?|frases?|falas?)(?!\\p{L})[^.?!]{0,60}((?<!\\p{L})(?<!ainda )no escuro|(?<!\\p{L})de noite|(?<!\\p{L})à noite|naquela noite|no meio da noite|na eira)",
+          "((?<!\\p{L})(?<!ainda )no escuro|(?<!\\p{L})de noite|(?<!\\p{L})à noite|naquela noite|no meio da noite|na eira)[^.?!]{0,60}mesm[ao]s? (perguntas?|palavras?|coisas?|frases?|falas?)(?!\\p{L})"
+        ],
+        "tells_as_story": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "E por que a sogra perguntou \"quem é você, minha filha?\"? Ela não conhecia a Rute?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_recall_of_unworked": [
+          "(?<!\\p{L})jur(ou|ar|a|amento|amentos)(?!\\p{L})",
+          "(?<!\\p{L})(prometeu|prometera|prometendo|prometido|prometida|promessa|promessas)(?!\\p{L})|tão certo como",
+          "meia[- ]noite|meio da noite",
+          "sobre a (sua |tua )?serva(?!\\p{L})|(asa|aba|capa|manto)[^.?!]{0,12}sobre mim(?!\\p{L})",
+          "mulher de valor|mulher virtuosa|mulher digna",
+          "(resgatador|parente|remidor)[^.?!]{0,30}mais (próximo|perto|chegado)|mais (próximo|perto|chegado) (do )?que (eu|ele|Boaz)",
+          "(?<!\\p{L})(se assustou|assustou-se|assustad[oa]|estremeceu|tremeu|levou um susto|susto)(?!\\p{L})",
+          "mesma pergunta[^.?!]{0,60}(homem|Boaz)|(homem|Boaz)[^.?!]{0,60}mesma pergunta",
+          "mesm[ao]s? (perguntas?|palavras?|coisas?|frases?|falas?)(?!\\p{L})[^.?!]{0,60}((?<!\\p{L})(?<!ainda )no escuro|(?<!\\p{L})de noite|(?<!\\p{L})à noite|naquela noite|no meio da noite|na eira)",
+          "((?<!\\p{L})(?<!ainda )no escuro|(?<!\\p{L})de noite|(?<!\\p{L})à noite|naquela noite|no meio da noite|na eira)[^.?!]{0,60}mesm[ao]s? (perguntas?|palavras?|coisas?|frases?|falas?)(?!\\p{L})"
+        ],
+        "tells_as_story": true,
+        "boaz_never_asleep": true
+      }
+    }
+  ]
+}

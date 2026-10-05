@@ -1,0 +1,39 @@
+{
+  "name": "P02-bondade-fiel",
+  "pericopeId": "P02",
+  "language": "Brazilian Portuguese",
+  "draft": { "clips": [ { "key": "S1", "durationMs": 20000 }, { "key": "S2", "durationMs": 25000 }, { "key": "S3", "durationMs": 45000 } ] },
+  "why": "Marcia's ruling 2026-09-14 (meaning, not form) in the retroverificação: the map names hesed (CB_0011, 'bondade fiel' — loyal, covenant kindness; the faithful goodness that does more than duty asks) and the team's Terena has no abstract noun for it. Frase 4 tells Naomi's blessing with hesed unfolded as 'seja bom com vocês e nunca abandone vocês, como vocês foram boas e nunca abandonaram os mortos e a mim' — NOT a finding (no addition, and above all no 'missing' for the noun). Frase 5 adds a cause the map does not give — 'elas foram boas com Noemi porque tinham medo de ficar sozinhas' — an addition on frase 5, quoted as the whole relation (D1); the voice names frase 5, asks whether it entered in the translation, never fills the map's marked silences (who told Naomi; God did not bring her home) and never asks for the noun (no_finding and spoken_must_not_match carry only noun-DEMAND vocabulary — 'substantivo', 'a palavra certa', 'falta … bondade' — because a legitimate addition note may contrast with the map's own wording, e.g. 'um silêncio que a passagem mantém sobre a bondade das noras', live 2026-09-15). Round 2 supersedes frase 5 with the faithful line → conferida, no findings of any kind. The other frases are the faithful telling of the 2026-09-07 experiment.",
+  "rounds": [
+    { "frases": [
+        { "clipKey": "S1", "coversFrom": 0, "coversTo": 10, "text": "Noemi ouviu, nos campos de Moabe, que o Senhor tinha visitado o seu povo e dado pão a eles. Então ela se levantou com as duas noras para voltar dos campos de Moabe." },
+        { "clipKey": "S1", "coversFrom": 10, "coversTo": 20, "text": "Ela saiu do lugar onde estava, com as duas noras, e as três foram andando pela estrada para voltar para a terra de Judá." },
+        { "clipKey": "S2", "coversFrom": 0, "coversTo": 8, "text": "No caminho, Noemi disse para as duas noras: vão, voltem cada uma para a casa da sua mãe." },
+        { "clipKey": "S2", "coversFrom": 8, "coversTo": 17, "text": "Que o Senhor seja bom com vocês e nunca abandone vocês, como vocês foram boas e nunca abandonaram os mortos e a mim. Que o Senhor dê a vocês descanso, cada uma na casa de um marido." },
+        { "clipKey": "S2", "coversFrom": 17, "coversTo": 25, "text": "Elas foram boas com Noemi porque tinham medo de ficar sozinhas. Ela beijou as duas, e elas choraram alto. E disseram: não, nós vamos voltar com a senhora para o seu povo." },
+        { "clipKey": "S3", "coversFrom": 0, "coversTo": 10, "text": "Noemi disse: voltem, minhas filhas. Por que vocês iriam comigo? Eu ainda tenho filhos dentro de mim para serem maridos de vocês?" },
+        { "clipKey": "S3", "coversFrom": 10, "coversTo": 25, "text": "Voltem, vão. Eu estou velha demais para ter marido. Mesmo se eu dissesse que tenho esperança, e tivesse marido esta noite e tivesse filhos, vocês iam esperar até eles crescerem? Iam ficar sem casar por causa deles?" },
+        { "clipKey": "S3", "coversFrom": 25, "coversTo": 33, "text": "Não, minhas filhas. Para mim é muito mais amargo do que para vocês, porque a mão do Senhor se voltou contra mim." },
+        { "clipKey": "S3", "coversFrom": 33, "coversTo": 45, "text": "Elas choraram alto de novo. Orfa beijou a sogra e voltou. Mas Rute se agarrou a Noemi." }
+      ],
+      "expect": {
+        "conferida": false,
+        "findings": [ { "kind": "addition", "note": "medo", "frase": 5 } ],
+        "no_finding": "substantivo|a palavra certa|classe de palavra|falt(a|ou)[^.]*bondade",
+        "no_kinds": ["missing"],
+        "spoken_names_frase": 5,
+        "spoken_asks_audio_or_explanation": true,
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)|substantivo|a palavra certa|falt(a|ou)[^.]*bondade|cadê a bondade"
+      } },
+    { "frases": [
+        { "clipKey": "S2", "coversFrom": 17, "coversTo": 25, "supersedes": 4, "text": "Ela beijou as duas, e elas choraram alto. E disseram: não, nós vamos voltar com a senhora para o seu povo." }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "no_kinds": ["missing", "addition"],
+        "spoken_matches": "aprov|ouvir",
+        "spoken_must_not_match": "quem (lhe |a )?contou|alguém (lhe |a )?contou|contaram (a|para) (ela|Noemi)|(Deus|o Senhor|YHWH) (a )?trouxe|trouxe (ela|Noemi)|substantivo|a palavra certa|falt(a|ou)[^.]*bondade|cadê a bondade"
+      } }
+  ]
+}

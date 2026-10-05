@@ -60,22 +60,6 @@ VENDORED = {
     "prompts/fail_safe_utterances.md": (
         "app/services/internalization_room/prompts/vendor/fail_safe_utterances.md"
     ),
-    "prompts/golden_judge_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/golden_judge_system_prompt.md"
-    ),
-    "golden/sessions/J01-frame-before-elicit.json": (
-        "golden/sessions/J01-frame-before-elicit.json"
-    ),
-    "golden/sessions/P01-opening-and-mother-tongue.json": (
-        "golden/sessions/P01-opening-and-mother-tongue.json"
-    ),
-    "golden/sessions/P01-retelling-gaps-and-additions.json": (
-        "golden/sessions/P01-retelling-gaps-and-additions.json"
-    ),
-    "golden/sessions/P01-spoilers-and-boundaries.json": (
-        "golden/sessions/P01-spoilers-and-boundaries.json"
-    ),
-    "golden/sessions/P01-understand-first.json": "golden/sessions/P01-understand-first.json",
     "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
     "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
         "golden/reports/2026-09-03/J01-frame-before-elicit.md"
@@ -92,10 +76,59 @@ VENDORED = {
     "golden/reports/2026-09-03/P01-understand-first.md": (
         "golden/reports/2026-09-03/P01-understand-first.md"
     ),
+}
+
+FREEZE_BRANCH = "main"
+
+HER_SESSIONS = (
+    "J01-frame-before-elicit",
+    "P01-ensaio-da-cena",
+    "P01-ensaio-final-send-off-a-small-gap",
+    "P01-ensaio-final-send-off-b-oral-scene",
+    "P01-ensaio-final-send-off-c-late-rehearsal",
+    "P01-fia-moments",
+    "P01-opening-and-mother-tongue",
+    "P01-part-opening-closing",
+    "P01-question-is-not-a-shelter",
+    "P01-retelling-gaps-and-additions",
+    "P01-small-gaps-choice",
+    "P01-spoilers-and-boundaries",
+    "P01-understand-first",
+    "P02-meaning-not-form",
+    "P03-accept-meaning-and-microphone",
+    "P08-resting-place",
+    "P09-threshing-floor-night",
+    "P10-earlier-passages-status",
+    "P10-sit-still",
+    "P11-the-gate",
+    "P12-the-blessing",
+    "P13-the-son",
+    "P14-the-generations",
+)
+HER_BT_SCRIPTS = (
+    "P01-frases",
+    "P01-regravar-frase-acrescimo",
+    "P01-regravar-frase-faltou",
+    "P02-agentes-trocados",
+    "P02-bondade-fiel",
+    "P02-causa-a-mais",
+    "P02-causa-trocada",
+    "P02-nuance-espera",
+    "P02-nuance-esta-noite",
+    "P02-regravar-frase-troca",
+)
+
+FROZEN = {
+    "prompts/golden_judge_system_prompt.md": (
+        "app/services/internalization_room/prompts/golden_judge_system_prompt.md"
+    ),
+    **{f"golden/sessions/{name}.json": f"golden/sessions/{name}.json" for name in HER_SESSIONS},
+    **{f"golden/bt/{name}.json": f"golden/bt/{name}.json" for name in HER_BT_SCRIPTS},
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
 }
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"
+FREEZE_FILE = REPO_ROOT / "docs/doctrine/FREEZE_PIN"
 RULINGS_DIR = REPO_ROOT / "docs/doctrine/rulings"
 SEAM_FILE = REPO_ROOT / "docs/doctrine/MODEL_SEAM"
 
@@ -173,13 +206,15 @@ def read_pin(pin_file: Path = PIN_FILE) -> Pin:
     )
 
 
-def write_pin(commit: str, digests: dict[str, str], pin_file: Path = PIN_FILE) -> None:
-    lines = [f"repo {REPO}", f"branch {BRANCH}", f"commit {commit}", ""]
+def write_pin(
+    commit: str, digests: dict[str, str], pin_file: Path = PIN_FILE, branch: str = BRANCH
+) -> None:
+    lines = [f"repo {REPO}", f"branch {branch}", f"commit {commit}", ""]
     lines += [f"{digests[path]}  {path}" for path in sorted(digests)]
     pin_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def drift(pin: Pin, root: Path = REPO_ROOT) -> list[str]:
+def drift(pin: Pin, root: Path = REPO_ROOT, vendored: dict[str, str] = VENDORED) -> list[str]:
     """Every vendored path whose bytes are not the ones the pin recorded.
 
     Walked over `VENDORED` rather than over the pin, because the pin is the thing being
@@ -187,7 +222,7 @@ def drift(pin: Pin, root: Path = REPO_ROOT) -> list[str]:
     silently stops being one, with the comparison green for having nothing left to compare.
     """
     drifted = []
-    for path in sorted(VENDORED.values()):
+    for path in sorted(vendored.values()):
         local = root / path
         if path not in pin.digests:
             drifted.append(f"unpinned: {path}")
@@ -429,7 +464,12 @@ def bar_faults(
     return faults
 
 
-def sync(source: Path) -> int:
+def sync(
+    source: Path,
+    vendored: dict[str, str] = VENDORED,
+    pin_file: Path = PIN_FILE,
+    branch: str = BRANCH,
+) -> int:
     commit = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
         capture_output=True,
@@ -437,7 +477,7 @@ def sync(source: Path) -> int:
         check=True,
     ).stdout.strip()
     digests: dict[str, str] = {}
-    for hers, ours in sorted(VENDORED.items()):
+    for hers, ours in sorted(vendored.items()):
         data = (source / hers).read_bytes()
         target = REPO_ROOT / ours
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -445,7 +485,7 @@ def sync(source: Path) -> int:
         target.write_bytes(data)
         digests[ours] = digest(data)
         print(f"  {ours}{f' ({moved})' if moved else ''}")
-    write_pin(commit, digests)
+    write_pin(commit, digests, pin_file, branch)
     print(f"pinned at {commit}")
     return 0
 
@@ -455,6 +495,15 @@ def check() -> int:
     faults = drift(pin)
     if faults:
         print(f"the vendored doctrine drifted from pin {pin.commit[:12]}:", file=sys.stderr)
+        for line in faults:
+            print(f"  {line}", file=sys.stderr)
+        print(NOT_A_FORK, file=sys.stderr)
+        return 1
+
+    freeze = read_pin(FREEZE_FILE)
+    faults = drift(freeze, vendored=FROZEN)
+    if faults:
+        print(f"her freeze drifted from pin {freeze.commit[:12]}:", file=sys.stderr)
         for line in faults:
             print(f"  {line}", file=sys.stderr)
         print(NOT_A_FORK, file=sys.stderr)
@@ -494,9 +543,12 @@ def main() -> int:
     group.add_argument("--sync", action="store_true")
     group.add_argument("--check", action="store_true")
     parser.add_argument("--from", dest="source", type=Path)
+    parser.add_argument("--freeze", action="store_true")
     args = parser.parse_args()
     if args.sync and args.source is None:
         parser.error("--sync needs --from <checkout of Tripod-Internalization>")
+    if args.sync and args.freeze:
+        return sync(args.source, FROZEN, FREEZE_FILE, FREEZE_BRANCH)
     return sync(args.source) if args.sync else check()
 
 

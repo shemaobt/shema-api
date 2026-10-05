@@ -18,11 +18,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from scripts import sync_doctrine
 from scripts.sync_doctrine import (
+    FROZEN,
     REPO_ROOT,
     VENDORED,
     Pin,
     Ruling,
+    check,
     digest,
     drift,
     read_pin,
@@ -165,3 +170,25 @@ def test_a_ruling_that_carries_no_sentence_of_hers_is_not_a_ruling(tmp_path: Pat
     assert faults == [
         "2026-09-09-the-budget-went-up: a ruling carries her sentence and where it is written"
     ], f"a ruling quoting nobody was counted as a ruling: {faults}"
+
+
+def test_one_character_changed_in_her_frozen_judge_is_named_by_the_check(tmp_path: Path) -> None:
+    pin = _pinned(tmp_path, "c" * 40, dict.fromkeys(FROZEN.values(), "hers\n"))
+    judge = "app/services/internalization_room/prompts/golden_judge_system_prompt.md"
+
+    (tmp_path / judge).write_text("hers!\n", encoding="utf-8")
+
+    assert drift(pin, root=tmp_path, vendored=FROZEN) == [f"edited: {judge}"]
+
+
+def test_the_check_ci_runs_names_a_frozen_file_whose_bytes_moved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    judge = "app/services/internalization_room/prompts/golden_judge_system_prompt.md"
+    frozen = {path: digest((REPO_ROOT / path).read_bytes()) for path in FROZEN.values()}
+    moved = tmp_path / "FREEZE_PIN"
+    write_pin("d" * 40, {**frozen, judge: digest(b"one character apart")}, moved)
+    monkeypatch.setattr(sync_doctrine, "FREEZE_FILE", moved)
+
+    assert check() == 1
+    assert f"edited: {judge}" in capsys.readouterr().err

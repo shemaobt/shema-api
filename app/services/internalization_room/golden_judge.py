@@ -22,7 +22,7 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.sessions import book_of
 
-HER_PROMPT = Path(__file__).parent / "prompts/vendor/golden_judge_system_prompt.md"
+HER_PROMPT = Path(__file__).parent / "prompts/golden_judge_system_prompt.md"
 
 #: Her request, verbatim (`src/golden/run.ts:132`): the transcript block follows two newlines on.
 JUDGE_NOW = "Judge this session now. Return only the JSON object."
