@@ -32,6 +32,101 @@ ACKS_AS_RULED = """
 - "Tá."
 """
 
+HER_PROCESS_LINES_AT_18FA7C4 = "\n\n".join(
+    f"### {family}.\n\n" + "\n".join(f'- "{line}"' for line in lines)
+    for family, lines in {
+        "P": (
+            (
+                "First let's listen to your whole recording, from beginning to end. For now, "
+                "just listen."
+            ),
+            (
+                "Now let's go back to the beginning. You will listen to your recording and, at "
+                "each sentence, pause to translate for me only what was said there. Tap the "
+                "circle to pause, translate, and tap again so the recording goes on. Don't add "
+                "anything and don't explain; it doesn't need to sound nice. Say in English "
+                "exactly what that sentence says. Pause wherever it helps you remember what was"
+                " said so you can translate it. When the whole recording has been translated, "
+                "tap 'done'."
+            ),
+            "There is still a part of the recording to listen to before I check.",
+            (
+                "Approved as the team's final draft. The next step is the external check: tap "
+                "the 'external check' button below and call in the listeners."
+            ),
+        ),
+        "P-pt": (
+            (
+                "Primeiro vamos ouvir a gravação de vocês inteira, do começo ao fim. Por "
+                "enquanto é só ouvir."
+            ),
+            (
+                "Agora vamos voltar ao começo. Vocês vão ouvir a gravação de vocês e, a cada "
+                "frase, pausar para me traduzir só o que foi dito ali. Toquem no círculo para "
+                "pausar, traduzam, e toquem de novo para a gravação seguir. Não acrescentem "
+                "nada e não expliquem; não precisa ficar bonito. Digam em português exatamente "
+                "o que aquela frase diz. Façam as pausas onde for melhor para vocês lembrarem "
+                "do que foi dito e traduzirem. Quando a gravação inteira estiver traduzida, "
+                "toquem em 'terminei'."
+            ),
+            "Ainda falta ouvir um trecho da gravação antes de eu conferir.",
+            (
+                "Aprovado como rascunho final da equipe. O próximo passo é a checagem externa: "
+                "toquem no botão 'checagem externa', aqui embaixo, e chamem os ouvintes."
+            ),
+        ),
+        "X": (
+            (
+                "Now it's the turn of those who didn't help translate. What you say here is "
+                "recorded, only for the team to hear afterwards. You will hear the whole "
+                "passage. Then I'll ask what you understood. There is no right answer: what you"
+                " understood is what matters."
+            ),
+            (
+                "Now tell me, in your own way, what you heard. It doesn't need to be perfect, "
+                "tell what you remember. Tap the circle to speak and tap again when you finish."
+            ),
+            (
+                "Did anything stay unclear? Would you like to comment on anything about the "
+                "whole passage? If so, tap the circle and speak, as many times as you want. If "
+                "not, tap 'continue'."
+            ),
+            (
+                "Now, listen to the sentences one by one. When you hear a sentence, if you "
+                "think it is good, tap the 'it's good' button. But if you think the sentence "
+                "needs to change in some way, or if you think it is not clear, tap the circle "
+                "again and make your comment."
+            ),
+            "Thank you for your help. What you said is kept for the team to hear.",
+        ),
+        "X-pt": (
+            (
+                "Agora é a vez de quem não ajudou a traduzir. O que vocês disserem aqui fica "
+                "gravado, só para a equipe ouvir depois. Vocês vão ouvir a passagem inteira. "
+                "Depois eu pergunto o que vocês entenderam. Não tem resposta certa: o que vocês"
+                " entenderam é o que importa."
+            ),
+            (
+                "Agora me contem, do jeito de vocês, o que vocês ouviram. Não precisa ser "
+                "perfeito, conte o que você se lembrar. Toquem no círculo para falar e toquem "
+                "de novo quando terminarem."
+            ),
+            (
+                "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem "
+                "inteira? Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, "
+                "toquem em 'continuar'."
+            ),
+            (
+                "Agora, escute as frases uma por uma. Quando ouvir uma frase, se achar que ela "
+                "está boa, clique no botão 'está boa'. Mas se achar que a frase precisa mudar "
+                "em alguma coisa, ou se achar que ela não está clara, clique novamente no "
+                "círculo e faça o seu comentário."
+            ),
+            "Agradecemos sua ajuda. O que vocês disseram fica guardado para a equipe ouvir.",
+        ),
+    }.items()
+)
+
 
 class Bucket:
     def __init__(self) -> None:
@@ -163,4 +258,54 @@ async def test_an_english_line_re_ruled_is_heard_new_in_english_and_portuguese_k
     assert english[1] == "voz:Let me think."
     assert still == portuguese == (portuguese[0], "voz:Deixa eu pensar um instante."), (
         "a mudança numa língua mexia na fala da outra"
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "language", "her_words"),
+    [
+        (
+            "P3",
+            "pt",
+            "Aprovado como rascunho final da equipe. O próximo passo é a checagem externa: "
+            "toquem no botão 'checagem externa', aqui embaixo, e chamem os ouvintes.",
+        ),
+        (
+            "P3",
+            "en",
+            "Approved as the team's final draft. The next step is the external check: tap the "
+            "'external check' button below and call in the listeners.",
+        ),
+        (
+            "X2",
+            "pt",
+            "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem inteira? "
+            "Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em "
+            "'continuar'.",
+        ),
+        (
+            "X2",
+            "en",
+            "Did anything stay unclear? Would you like to comment on anything about the whole "
+            "passage? If so, tap the circle and speak, as many times as you want. If not, tap "
+            "'continue'.",
+        ),
+    ],
+    ids=["P3-pt", "P3-en", "X2-pt", "X2-en"],
+)
+async def test_the_two_stale_lines_are_heard_in_her_current_wording(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+    line: str,
+    language: str,
+    her_words: str,
+) -> None:
+    deploy(HER_PROCESS_LINES_AT_18FA7C4)
+    async with room_client(db_session, monkeypatch) as client:
+        _, spoken = await heard(client, line, language)
+
+    assert spoken == f"voz:{her_words}", (
+        "a aprovação falava do OBT Refine e a checagem pedia 'nada a acrescentar', gravadas no app"
     )

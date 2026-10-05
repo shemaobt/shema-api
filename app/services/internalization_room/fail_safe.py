@@ -82,8 +82,15 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     return []
 
 
+_VOICED: dict[str, FailSafe | ProcessFamily] = {
+    **{kind.value: kind for kind in FailSafe},
+    "P": "P",
+    "X": "X",
+}
+
+
 def her_line(name: str, language_code: str) -> str:
-    return utterances(FailSafe(name[:1]), language_code)[int(name[1:])]
+    return utterances(_VOICED[name[:1]], language_code)[int(name[1:])]
 
 
 def first(kind: FailSafe, language_code: str = FLOOR) -> str:
