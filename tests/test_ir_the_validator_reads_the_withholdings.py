@@ -30,9 +30,10 @@ R6 = (
     "must not assign divine causation."
 )
 R10 = (
-    "The source text does not pair the wives with their husbands at 1:4. Pairing is "
-    "disclosed at 4:10. The MEANING_COORDINATES preserves the withholding via wife_taken: "
-    "B? in P9 marriage_components. Reconstructor must not infer or state the pairing here."
+    "The source text does not pair the wives with their husbands at 1:4. The Mahlon\u2013Ruth "
+    "pairing is said at 4:10; the text never says whose wife Orpah was. The "
+    "MEANING_COORDINATES preserves the withholding via wife_taken: B? in P9 "
+    "marriage_components. Reconstructor must not infer or state the pairing here."
 )
 
 #: Her heading and framing sentence, quoted from `src/turn/mapText.ts:102-104` in
@@ -264,9 +265,9 @@ async def test_the_panorama_is_told_what_honouring_a_withholding_means(patch_age
         "os dois papéis leem o mesmo material do livro; a frase que governa o uso da lista "
         "não pode chegar só a um deles"
     )
-    assert LIVED_NOTHING not in speaker_system, (
-        "o panorama dela toca uma vez por livro; o nosso toca uma vez por passagem, e uma "
-        "equipe que chega em P05 andou P01-P04 e ouviria que não viveu nada"
+    assert LIVED_NOTHING in speaker_system and LIVED_NOTHING in validator_system, (
+        "o panorama toca uma vez por livro, antes da primeira passagem, e a frase dela "
+        "diz por que cada retenção ainda está à frente; sem ela as notas vinham sem o motivo"
     )
 
 

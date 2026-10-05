@@ -104,6 +104,7 @@ def a_passage_whose_checklist_disagrees_with_its_survey(
 
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
+    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
     parse_map.load_map.cache_clear()
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()

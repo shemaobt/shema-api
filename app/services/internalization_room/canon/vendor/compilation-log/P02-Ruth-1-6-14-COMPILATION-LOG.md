@@ -60,7 +60,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     {
       "decision_id": "P02-D6",
       "decision": "Wife-pairing withholding from P01 carried forward at P5 prior-hesed clause.",
-      "description": "Naomi's 'as you have dealt with the dead and with me' at 1:8 references B2, B4, B5 collectively as 'the dead.' P01 P9 withheld the Mahlon-Ruth and Chilion-Orpah pairings (wife_taken: B?), with pairing disclosure deferred to 4:10. Source-text discipline at P02 maintains the withholding: prior_hesed_targets is encoded as the unordered collection [B2, B4, B5, B3] (the three deceased plus Naomi as the additional referent), with prior_hesed_targets_referential_form: THE_DEAD_AND_NAOMI. The reconstructor must not infer which daughter-in-law's hesed went to which dead husband."
+      "description": "Naomi's 'as you have dealt with the dead and with me' at 1:8 references B2, B4, B5 collectively as 'the dead.' P01 P9 withheld the Mahlon-Ruth and Chilion-Orpah pairings (wife_taken: B?). The Mahlon–Ruth pairing is said at 4:10; the text never says whose wife Orpah was. Source-text discipline at P02 maintains the withholding: prior_hesed_targets is encoded as the unordered collection [B2, B4, B5, B3] (the three deceased plus Naomi as the additional referent), with prior_hesed_targets_referential_form: THE_DEAD_AND_NAOMI. The reconstructor must not infer which daughter-in-law's hesed went to which dead husband."
     },
     {
       "decision_id": "P02-D7",
@@ -645,7 +645,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
       "id": "R5",
       "kind": "WITHHELD_PAIRING_PER_SOURCE_DISCIPLINE",
       "applies_to": "prior_hesed_targets on P5 (B2, B4, B5, B3) without husband-wife pairing",
-      "note": "Naomi's hesed-blessing grounding clause references the daughters' prior hesed 'toward the dead and toward me' without disclosing which daughter-in-law's hesed went to which deceased husband. Pairing remains withheld per P01-D2 carry-forward. Disclosure deferred to 4:10.",
+      "note": "Naomi's hesed-blessing grounding clause references the daughters' prior hesed 'toward the dead and toward me' without disclosing which daughter-in-law's hesed went to which deceased husband. Pairing remains withheld per P01-D2 carry-forward. The Mahlon–Ruth pairing is said at 4:10; the text never says whose wife Orpah was.",
       "required_in_audit": true,
       "do_not_decide": true,
       "source_in_meaning_map": "Section 3C Scene 2 Objects (TH_PRIOR_HESED_GROUNDING_CLAUSE); Section 4 Proposition 4"
@@ -795,7 +795,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     "PL_LAND_OF_JUDAH used as a working code pending formal PL-code assignment in BCD v0.4 (parallel to P01's PL_HA_ARETZ pattern).",
     "B31-People-of-YHWH newly registered at P02; the wiki page B31-People-of-YHWH will be created at write-back.",
     "Cross-pericope pair verification for FIG_0012 and FIG_0001 deferred pending later pericope compilations.",
-    "Wife pairings from P01 1:4 remain withheld; carried forward at P5 prior-hesed grounding clause. Disclosure deferred to 4:10 (P13 compilation).",
+    "Wife pairings from P01 1:4 remain withheld; carried forward at P5 prior-hesed grounding clause. The Mahlon–Ruth pairing is said at 4:10 (P12); the text never says whose wife Orpah was.",
     "Large number of bounded-open vocabulary additions (proposition_kinds, scene_kinds, role-in-scene values, object kinds) reflect this pericope's dialogue density. All will drift-warn against the canonical P01 seed — that is expected for the first dialogue-heavy pericope.",
     "Inter-proposition link from hearing (P1) to visiting (P2) encoded inside event_specific_slots as report_content_link because the inter_proposition_links schema is closed; pattern documented in P02-D10 for future dialogue compilations.",
     "Three working object_kinds added without first being registered as bounded-open enumerations (e.g., BLESSING_FORMULA, RHETORICAL_QUESTION_OF_DISSUASION). Future BCD work may consolidate these.",

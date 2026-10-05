@@ -43,7 +43,7 @@ def test_entities_without_a_wikilink_are_still_entities() -> None:
         for entity in s.beings + s.places + s.objects + s.times
     ]
 
-    assert len(entities) == 350
+    assert len(entities) == 340
     assert any(entity.code is None for entity in entities)
 
 
@@ -102,7 +102,7 @@ def test_only_do_not_decide_rules_reach_the_preservation_set() -> None:
     """P01 R1 is `required_in_audit` but not `do_not_decide` — a preference, not a constraint."""
     rules = preservation_rules("Ruth")
 
-    assert len(rules) == 39
+    assert len(rules) == 99
     assert not any(r.pericope == "P01" and r.rule_id == "R1" for r in rules)
 
 
