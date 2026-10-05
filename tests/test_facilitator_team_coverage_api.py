@@ -61,7 +61,7 @@ PILOT = {
     "P01": {"elements": 44, "scenes": [1, 2, 3, 4], "preserved": 3},
     "P02": {"elements": 39, "scenes": [1, 2, 3], "preserved": 4},
     "P05": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P14": {"elements": 14, "scenes": [1], "preserved": 0},
+    "P14": {"elements": 19, "scenes": [1], "preserved": 5},
 }
 
 #: The four Level-1 axes open every passage, and like a preservation rule they sit in no scene.

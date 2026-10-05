@@ -1614,13 +1614,53 @@
       "es": null,
       "pt": null
     },
-    "place:S1:PL_NAOMIS_DWELLING": {
-      "en": "Implied",
+    "preserved:R10": {
+      "en": "Boaz is «our kinsman», not yet «redeemer»",
       "es": null,
       "pt": null
     },
-    "place:S2:PL_NAOMIS_DWELLING": {
-      "en": "Implied",
+    "preserved:R11": {
+      "en": "Small textual points in 3:3–4 stay minor",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R2": {
+      "en": "Naomi gives no reason for any step",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "Ruth answers in one line, with no question",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R4": {
+      "en": "The resting place is the rest-word of 1:9",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R5": {
+      "en": "Wash, anoint, put on your garments, in order",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R6": {
+      "en": "Go in, uncover his feet, and lie down",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R7": {
+      "en": "Naomi's last words: he will tell you",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R8": {
+      "en": "Ruth's one line, all that you say I will do",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R9": {
+      "en": "Naomi her mother-in-law; Boaz our kinsman",
       "es": null,
       "pt": null
     },
@@ -1711,13 +1751,13 @@
       "es": null,
       "pt": null
     },
-    "being:S3:B9": {
-      "en": "Ruth",
+    "being:S3:B32": {
+      "en": "The young men",
       "es": null,
       "pt": null
     },
-    "being:S3:the-young-men": {
-      "en": "The young men",
+    "being:S3:B9": {
+      "en": "Ruth",
       "es": null,
       "pt": null
     },
@@ -1748,11 +1788,6 @@
     },
     "object:S3:CB_0001": {
       "en": "The word «redeemer»",
-      "es": null,
-      "pt": null
-    },
-    "object:S3:CB_0006": {
-      "en": "The words «gate of my people»",
       "es": null,
       "pt": null
     },
@@ -1791,8 +1826,58 @@
       "es": null,
       "pt": null
     },
-    "place:S3:PL7": {
-      "en": "The gate",
+    "preserved:R1": {
+      "en": "Ruth's «wing» is the word of 2:12",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R15": {
+      "en": "His promise keeps both turns, under oath",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R16": {
+      "en": "The uncovering carries no touch and no love",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R17": {
+      "en": "Scene 1 is told plainly, with no word said",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R18": {
+      "en": "The young men are not suitors",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R19": {
+      "en": "Boaz is never said to sleep or wake",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R2": {
+      "en": "Ruth names herself with a new servant word",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "A last hesed better than the first",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R4": {
+      "en": "Naomi's hesed word comes back at 3:10",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R7": {
+      "en": "A redeemer nearer than Boaz, still unnamed",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R9": {
+      "en": "It is Ruth who asks, and Boaz who answers",
       "es": null,
       "pt": null
     },
@@ -1928,8 +2013,43 @@
       "es": null,
       "pt": null
     },
-    "place:S2:PL_NAOMIS_DWELLING": {
-      "en": "Implied",
+    "preserved:R1": {
+      "en": "Boaz's words are heard only in Ruth's report",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R10": {
+      "en": "He goes into the town, as the map reads",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R14": {
+      "en": "Still no word of sleeping or waking",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R2": {
+      "en": "She leaves before she can be known",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R4": {
+      "en": "«Empty» is the word of Naomi's 1:21",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R5": {
+      "en": "Naomi asks the question Boaz asked",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R6": {
+      "en": "«Sit still», and «today» goes with finishing",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R9": {
+      "en": "Ruth tells all he did, and the six measures",
       "es": null,
       "pt": null
     },
@@ -2160,6 +2280,56 @@
       "es": null,
       "pt": null
     },
+    "preserved:R1": {
+      "en": "The field first, then Ruth, in that order",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R10": {
+      "en": "His promise is resolved, with no marriage yet",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R13": {
+      "en": "Small textual points at the gate stay minor",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R15": {
+      "en": "The nearness is kinship, never a queue",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R2": {
+      "en": "The nearer redeemer is never named",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "«I cannot», said twice, with no reason",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R4": {
+      "en": "He passes by with no chance and no God",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R5": {
+      "en": "The sandal: the custom, then the deed",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R6": {
+      "en": "Ruth and Naomi are not at the gate",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R7": {
+      "en": "Ruth is «the wife of the dead», unnamed",
+      "es": null,
+      "pt": null
+    },
     "scene:1": {
       "en": "The gate convened: the passer-by and the ten",
       "es": null,
@@ -2352,11 +2522,6 @@
       "es": null,
       "pt": null
     },
-    "object:S2:CB_0009": {
-      "en": "The name YHWH, invoked",
-      "es": null,
-      "pt": null
-    },
     "object:S2:CB_0010": {
       "en": "The house of Israel",
       "es": null,
@@ -2389,6 +2554,36 @@
     },
     "place:S2:PL_ISRAEL": {
       "en": "Israel",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R1": {
+      "en": "Ruth is first called Mahlon's wife",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R13": {
+      "en": "«Do worthily» carries the worth-word",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R2": {
+      "en": "To raise up the name of the dead",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "Ruth and Naomi do not speak at the gate",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R5": {
+      "en": "The gate's blessing, in its own order",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R6": {
+      "en": "The seed is asked for, not given",
       "es": null,
       "pt": null
     },
@@ -2499,11 +2694,6 @@
       "es": null,
       "pt": null
     },
-    "being:S3:the-child-the-child": {
-      "en": "The child",
-      "es": null,
-      "pt": null
-    },
     "context": {
       "en": "Where the passage stands in the story",
       "es": null,
@@ -2511,11 +2701,6 @@
     },
     "function": {
       "en": "What the passage is told for",
-      "es": null,
-      "pt": null
-    },
-    "object:S1:CB_0001": {
-      "en": "Implied in the marriage",
       "es": null,
       "pt": null
     },
@@ -2549,18 +2734,53 @@
       "es": null,
       "pt": null
     },
-    "place:S1:PL_NAOMIS_DWELLING": {
-      "en": "Implied",
-      "es": null,
-      "pt": null
-    },
     "place:S2:PL_ISRAEL": {
       "en": "In Israel",
       "es": null,
       "pt": null
     },
-    "place:S3:PL_NAOMIS_DWELLING": {
-      "en": "Implied",
+    "preserved:R1": {
+      "en": "The marriage, YHWH's gift, and the son",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R10": {
+      "en": "Only the women speak, and only to Naomi",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R13": {
+      "en": "The women's blessing does not answer the gate",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R2": {
+      "en": "The women's words to Naomi, in order",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "The redeemer is the child Ruth has borne",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R5": {
+      "en": "Naomi takes the child and becomes his nurse",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R7": {
+      "en": "The women name him Obed, father of Jesse",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R8": {
+      "en": "David is named and nothing more",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R9": {
+      "en": "The child is not counted as the dead's son",
       "es": null,
       "pt": null
     },
@@ -2645,6 +2865,31 @@
       "en": "The formula that opens the list",
       "es": "La fórmula que abre la lista",
       "pt": "A fórmula que abre a lista"
+    },
+    "preserved:R1": {
+      "en": "The ten names, each father of the next",
+      "es": "Los diez nombres, cada uno padre del siguiente",
+      "pt": "Os dez nomes, cada um pai do seguinte"
+    },
+    "preserved:R2": {
+      "en": "No woman is named in the list",
+      "es": "Ninguna mujer es nombrada en la lista",
+      "pt": "Nenhuma mulher é nomeada na lista"
+    },
+    "preserved:R4": {
+      "en": "The list stops at David, with no comment",
+      "es": "La lista termina en David, sin comentario",
+      "pt": "A lista termina em Davi, sem comentário"
+    },
+    "preserved:R5": {
+      "en": "The list does not name the dead",
+      "es": "La lista no nombra a los muertos",
+      "pt": "A lista não nomeia os mortos"
+    },
+    "preserved:R6": {
+      "en": "Perez, the name spoken at the gate",
+      "es": "Fares, el nombre dicho en la puerta",
+      "pt": "Perez, o nome dito na porta"
     },
     "scene:1": {
       "en": "The generations of Perez",

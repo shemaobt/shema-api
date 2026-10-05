@@ -30,9 +30,10 @@ R6 = (
     "must not assign divine causation."
 )
 R10 = (
-    "The source text does not pair the wives with their husbands at 1:4. Pairing is "
-    "disclosed at 4:10. The MEANING_COORDINATES preserves the withholding via wife_taken: "
-    "B? in P9 marriage_components. Reconstructor must not infer or state the pairing here."
+    "The source text does not pair the wives with their husbands at 1:4. The Mahlon\u2013Ruth "
+    "pairing is said at 4:10; the text never says whose wife Orpah was. The "
+    "MEANING_COORDINATES preserves the withholding via wife_taken: B? in P9 "
+    "marriage_components. Reconstructor must not infer or state the pairing here."
 )
 
 #: Her heading and framing sentence, quoted from `src/turn/mapText.ts:102-104` in
