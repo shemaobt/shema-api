@@ -82,6 +82,10 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     return []
 
 
+def her_line(name: str, language_code: str) -> str:
+    return utterances(FailSafe(name[:1]), language_code)[int(name[1:])]
+
+
 def first(kind: FailSafe, language_code: str = FLOOR) -> str:
     lines = utterances(kind, language_code)
     return lines[0] if lines else ""
