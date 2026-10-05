@@ -57,9 +57,6 @@ VENDORED = {
     "prompts/book_overview_system_prompt.md": (
         "app/services/internalization_room/prompts/vendor/book_overview_system_prompt.md"
     ),
-    "prompts/fail_safe_utterances.md": (
-        "app/services/internalization_room/prompts/vendor/fail_safe_utterances.md"
-    ),
     "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
     "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
         "golden/reports/2026-09-03/J01-frame-before-elicit.md"
@@ -119,6 +116,9 @@ HER_BT_SCRIPTS = (
 )
 
 FROZEN = {
+    "prompts/fail_safe_utterances.md": (
+        "app/services/internalization_room/prompts/fail_safe_utterances.md"
+    ),
     "prompts/golden_judge_system_prompt.md": (
         "app/services/internalization_room/prompts/golden_judge_system_prompt.md"
     ),

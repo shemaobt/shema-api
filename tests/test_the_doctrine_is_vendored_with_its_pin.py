@@ -101,7 +101,7 @@ def test_a_vendored_path_dropped_from_the_pin_is_still_a_vendored_path(tmp_path:
     faults = drift(pin, root=tmp_path)
 
     assert faults, "a pin naming one of six vendored files was accepted as a complete pin"
-    assert any("fail_safe_utterances.md" in fault for fault in faults), (
+    assert any("golden/reports/2026-09-03/README.md" in fault for fault in faults), (
         f"the check does not say which vendored artefacts the pin stopped naming: {faults}"
     )
 
