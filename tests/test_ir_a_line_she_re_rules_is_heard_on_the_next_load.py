@@ -106,3 +106,40 @@ async def test_a_re_ruled_acknowledgement_is_heard_in_its_new_words_on_the_next_
     assert after == "voz:Deixa eu pensar.", (
         "a linha ia gravada dentro do app e só mudava com uma versão nova na loja"
     )
+
+
+async def test_the_old_sound_is_never_answered_again_once_the_line_is_re_ruled(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+) -> None:
+    deploy(ACKS_AS_RULED)
+    async with room_client(db_session, monkeypatch) as client:
+        old, _ = await heard(client, "F2", "pt")
+        deploy(ACKS_AS_RULED.replace("Deixa eu pensar um instante.", "Deixa eu pensar."))
+        first = await heard(client, "F2", "pt")
+        second = await heard(client, "F2", "pt")
+
+    assert first == second == (first[0], "voz:Deixa eu pensar."), (
+        "o segundo pedido depois da mudança voltava a tocar a fala antiga"
+    )
+    assert old != first[0]
+
+
+async def test_a_line_whose_text_did_not_change_is_not_voiced_again(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+) -> None:
+    deploy(ACKS_AS_RULED)
+    async with room_client(db_session, monkeypatch) as client:
+        before = await heard(client, "F1", "pt")
+        deploy(ACKS_AS_RULED.replace("Deixa eu pensar um instante.", "Deixa eu pensar."))
+        after = await heard(client, "F1", "pt")
+
+    assert after == before == (before[0], "voz:Certo.")
+    assert elevenlabs.voiced == ["Certo."], (
+        "uma fala que ninguém mudou era sintetizada de novo a cada deploy"
+    )
