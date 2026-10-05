@@ -386,3 +386,21 @@ def test_the_app_bundle_is_rendered_with_its_notices_and_none_of_her_lines(
     assert set(render.catalogue(spoken)) == notices, (
         "as falas dela iam gravadas no app, e uma gravação velha tocava depois de ela mudar a letra"
     )
+
+
+async def test_a_language_the_room_does_not_speak_is_refused_and_a_regional_one_speaks_its_own(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+) -> None:
+    deploy(ACKS_AS_RULED)
+    async with room_client(db_session, monkeypatch) as client:
+        refused = await client.get(
+            f"{PREFIX}/fixed-lines/F2", params={"language": "xx"}, headers=THE_TABLET
+        )
+        assert elevenlabs.voiced == [], "uma língua que a sala não fala ganhava a fala em inglês"
+        _, regional = await heard(client, "F2", "pt-BR")
+
+    assert refused.status_code == 400, refused.text
+    assert regional == "voz:Deixa eu pensar um instante."
