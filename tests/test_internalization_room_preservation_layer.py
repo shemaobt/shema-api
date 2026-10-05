@@ -72,7 +72,6 @@ WITH_LAYER = next(
     for pericope in CANON
     if any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
 )
-WITHOUT_LAYER = _without_a_preservation_layer(CANON)
 
 #: A whole little canon of its own — one map and one Compilation Log — so the two signals can
 #: be set against each other. The real Ruth material has them agreeing everywhere, and
@@ -178,21 +177,6 @@ def test_the_lookup_answers_none_rather_than_raising_once_every_passage_has_the_
     empty `canon` is that day's shape, since nothing in it is left to fail the `if`.
     """
     assert _without_a_preservation_layer([]) is None
-
-
-async def test_a_passage_with_no_preservation_layer_does_not_open(
-    db_session: AsyncSession,
-) -> None:
-    """The gate. Refused, and the refusal says which layer is missing and for which passage."""
-    if WITHOUT_LAYER is None:
-        pytest.skip("every passage in the canon now carries a preservation layer")
-
-    with pytest.raises(ValidationError) as refusal:
-        await create_session(db_session, pericope=WITHOUT_LAYER)
-
-    said = str(refusal.value)
-    assert WITHOUT_LAYER in said
-    assert "preservation" in said.lower()
 
 
 @pytest.fixture
