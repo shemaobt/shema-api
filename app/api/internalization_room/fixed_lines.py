@@ -1,9 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import room_caller_dep
 from app.core.config import get_settings
+from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.models.internalization_room import FixedLineView
 from app.services import internalization_room as room
@@ -18,10 +20,15 @@ router = APIRouter()
     response_model=FixedLineView,
     dependencies=[room_caller_dep],
 )
-async def fixed_line(line: str, language: Annotated[str, Query(max_length=8)]) -> FixedLineView:
+async def fixed_line(
+    line: str,
+    language: Annotated[str, Query(max_length=8)],
+    db: AsyncSession = Depends(get_db),
+) -> FixedLineView:
     text = her_line(line, language)
     if text is None:
         raise NotFoundError(f"No line {line!r} is voiced from her file")
+    await db.commit()
     settings = get_settings()
     voiced, _ = await room.synthesize_facilitator_speech(text, language=language, settings=settings)
     return FixedLineView(audio_url=clip_url(voiced.key))

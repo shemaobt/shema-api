@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.services.internalization_room import fail_safe
 from app.services.platform import tts
-from tests.release_harness import KEY, PREFIX
+from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client
 
 THE_TABLET = {"X-Room-Key": KEY}
@@ -345,3 +345,27 @@ async def test_a_line_whose_voice_cannot_be_made_answers_no_sound_at_all(
 
     assert asked.status_code == 502, asked.text
     assert "audio_url" not in asked.json(), "sem voz, a sala devolvia um endereço mesmo assim"
+
+
+async def test_a_tablet_with_a_credential_hears_its_line_voiced_with_the_read_let_go(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.internalization_room import fixed_lines as route
+
+    _, credential = await a_claimed_device(db_session)
+    held: list[bool] = []
+
+    async def voices(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
+        held.append(db_session.in_transaction())
+        return SimpleNamespace(key="tts/linha.mp3"), False
+
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", voices)
+    async with room_client(db_session, monkeypatch) as client:
+        asked = await client.get(
+            f"{PREFIX}/fixed-lines/F2", params={"language": "pt"}, headers=team_headers(credential)
+        )
+
+    assert asked.status_code == 200, asked.text
+    assert held == [False], (
+        "a leitura da credencial abria a transação e a conexão ficava presa durante a síntese"
+    )
