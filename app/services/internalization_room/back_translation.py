@@ -44,6 +44,10 @@ def _is_the_retired_evidence_kind(entry: Any) -> bool:
     return isinstance(entry, dict) and entry.get("kind") == _RETIRED_EVIDENCE_KIND
 
 
+def _is_a_nuance(entry: Any) -> bool:
+    return isinstance(entry, dict) and entry.get("kind") == "nuance"
+
+
 def _without_the_retired_evidence_kind(data: Any) -> Any:
     """The findings of a stored row or a fresh reply, with the retired name taken out.
 
@@ -581,7 +585,9 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         return None
 
     reported = parsed["findings"]
-    considered = [one for one in reported if not _is_the_retired_evidence_kind(one)]
+    considered = [
+        one for one in reported if not _is_the_retired_evidence_kind(one) and not _is_a_nuance(one)
+    ]
 
     findings: list[Finding] = []
     dropped_without_a_frase: list[tuple[FindingKind, str]] = []
@@ -600,15 +606,16 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         except ValueError:
             _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
-        chunk = _chunk_named(entry.get("chunk"), segments)
+        frase = entry.get("frase", entry.get("chunk"))
+        chunk = _chunk_named(frase, segments)
         if chunk is None and kind is not FindingKind.MISSING:
             dropped_without_a_frase.append((kind, note))
             continue
         lands_on = _segment_pointed_at(
-            entry.get("chunk"),
+            frase,
             segments,
             kind=kind,
-            where=entry.get("where"),
+            where=entry.get("where", "after" if "frase" in entry else None),
             raw_reply=raw,
             session=session,
         )
