@@ -143,3 +143,24 @@ async def test_a_line_whose_text_did_not_change_is_not_voiced_again(
     assert elevenlabs.voiced == ["Certo."], (
         "uma fala que ninguém mudou era sintetizada de novo a cada deploy"
     )
+
+
+async def test_an_english_line_re_ruled_is_heard_new_in_english_and_portuguese_keeps_its_own(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+) -> None:
+    deploy(ACKS_AS_RULED)
+    async with room_client(db_session, monkeypatch) as client:
+        portuguese = await heard(client, "F2", "pt")
+        deploy(
+            ACKS_AS_RULED.replace("Mmm — let me think about that for a moment.", "Let me think.")
+        )
+        english = await heard(client, "F2", "en")
+        still = await heard(client, "F2", "pt")
+
+    assert english[1] == "voz:Let me think."
+    assert still == portuguese == (portuguese[0], "voz:Deixa eu pensar um instante."), (
+        "a mudança numa língua mexia na fala da outra"
+    )
