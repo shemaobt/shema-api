@@ -259,6 +259,9 @@ async def the_stored_verdicts_clip(session: IRSession, verdict: VoicedVerdict) -
 
     The verdict keeps its clip and not its words. The words are the guide's side of the
     conversation's last telling-back exchange, which `save_the_spoken_verdict` wrote with it.
+    A row written before that exchange carried its `told_back` stamp keeps no words this can
+    find, and is answered with its stored clip as before: one clip the tablet cannot play is a
+    lesser harm than a press that fails every time and never says `checked` again.
     """
     if not verdict.clip_key:
         return ""
@@ -270,4 +273,6 @@ async def the_stored_verdicts_clip(session: IRSession, verdict: VoicedVerdict) -
         ),
         "",
     )
+    if not said:
+        return verdict.clip_key
     return await in_a_voice_the_room_has(verdict.clip_key, said, language=session.language)

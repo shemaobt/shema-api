@@ -9,12 +9,13 @@ that closes on its own.
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform import tts
 from tests.release_harness import KEY, PREFIX, P
@@ -47,14 +48,17 @@ class Bucket:
 
 
 class ElevenLabs:
-    def __init__(self) -> None:
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
         self.spoken: list[str] = []
+        self.held_the_database: list[bool] = []
 
     async def get(self, *_: Any, **__: Any) -> SimpleNamespace:
         return SimpleNamespace(status_code=200, content=b"", text="")
 
     async def post(self, url: str, **_: Any) -> SimpleNamespace:
         self.spoken.append(url.rsplit("/", 1)[-1])
+        self.held_the_database.append(self.db.in_transaction())
         return SimpleNamespace(status_code=200, content=b"audio", text="")
 
 
@@ -66,8 +70,8 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> Bucket:
 
 
 @pytest.fixture()
-def elevenlabs(monkeypatch: pytest.MonkeyPatch) -> ElevenLabs:
-    voice = ElevenLabs()
+def elevenlabs(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> ElevenLabs:
+    voice = ElevenLabs(db_session)
     monkeypatch.setattr(tts, "_make_client", lambda: voice)
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     return voice
@@ -83,33 +87,69 @@ def _served_key(audio_url: str) -> str | None:
     return from_handle(audio_url.rsplit("/", 1)[-1], settings=get_settings())
 
 
+async def _a_verdict_voiced_in_the_retired_voice(
+    client: Any, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> tuple[str, dict[str, Any], httpx.Response]:
+    nothing_is_read_ahead(monkeypatch)
+    the_analyst_reads(monkeypatch)
+    the_room_agent_is(monkeypatch, turn=_speaker)
+    session, _ = await rehearsed_in_parts(db, 1)
+    report = await heard_every_part(db, session.id)
+    with monkeypatch.context() as before_the_deploy:
+        before_the_deploy.setattr(get_settings(), "internalization_room_voice_id", RETIRED_VOICE_ID)
+        first = await press_terminei(client, session.id, report=report)
+    assert first.status_code == 200, first.text[:300]
+    return session.id, report, first
+
+
 async def test_a_verdict_voiced_before_the_voice_changed_is_heard_again_in_marianas(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
     bucket: Bucket,
     elevenlabs: ElevenLabs,
 ) -> None:
-    nothing_is_read_ahead(monkeypatch)
-    the_analyst_reads(monkeypatch)
-    the_room_agent_is(monkeypatch, turn=_speaker)
-    session, _ = await rehearsed_in_parts(db_session, 1)
     async with room_client(db_session, monkeypatch) as client:
-        report = await heard_every_part(db_session, session.id)
-        with monkeypatch.context() as before_the_deploy:
-            before_the_deploy.setattr(
-                get_settings(), "internalization_room_voice_id", RETIRED_VOICE_ID
-            )
-            first = await press_terminei(client, session.id, report=report)
-        assert first.status_code == 200, first.text[:300]
+        session_id, report, _ = await _a_verdict_voiced_in_the_retired_voice(
+            client, db_session, monkeypatch
+        )
         assert elevenlabs.spoken == [RETIRED_VOICE_ID]
 
-        again = await press_terminei(client, session.id, report=report)
+        again = await press_terminei(client, session_id, report=report)
 
     assert again.status_code == 200, again.text[:300]
     served = _served_key(again.json()["audio_url"])
     assert served is not None, "the tablet was handed an address the voice route answers 404"
     assert served.startswith(f"tts/{MARIANA}/")
     assert served in bucket.objects
+    assert elevenlabs.held_the_database[-1] is False, (
+        "the line was voiced again while the request still held its database connection"
+    )
+
+
+async def test_a_verdict_whose_words_the_row_does_not_keep_is_answered_with_its_stored_clip(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    bucket: Bucket,
+    elevenlabs: ElevenLabs,
+) -> None:
+    """A telling-back line written before the `told_back` stamp carries a station or nothing."""
+    async with room_client(db_session, monkeypatch) as client:
+        session_id, report, first = await _a_verdict_voiced_in_the_retired_voice(
+            client, db_session, monkeypatch
+        )
+        written_before_the_stamp = await get_session(db_session, session_id)
+        written_before_the_stamp.messages = [
+            {key: value for key, value in message.items() if key != "told_back"}
+            | ({"station": "telling_back"} if message.get("told_back") else {})
+            for message in written_before_the_stamp.messages or []
+        ]
+        await db_session.commit()
+
+        again = await press_terminei(client, session_id, report=report)
+
+    assert again.status_code == 200, again.text[:300]
+    assert again.json()["audio_url"] == first.json()["audio_url"]
+    assert again.json()["checked"] == first.json()["checked"]
 
 
 async def test_an_opening_prepared_before_the_voice_changed_is_heard_in_marianas(
