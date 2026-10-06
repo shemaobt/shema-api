@@ -103,11 +103,15 @@ def team_headers(credential: str) -> dict[str, str]:
 
 
 async def a_claimed_device(
-    db: AsyncSession, *, email: str = "fac@example.com"
+    db: AsyncSession, *, email: str = "fac@example.com", language_name: str | None = None
 ) -> tuple[Project, str]:
-    """A device linked to a project, and the credential it calls the room with."""
+    """A device linked to a project, and the credential it calls the room with.
+
+    `language_name` is the team's mother tongue; two teams in one case need two emails, whose
+    first three letters make the language's code.
+    """
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await make_language(db, name=language_name or f"Lang {email}", code=email[:3])
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     minted = await create_device(db)
