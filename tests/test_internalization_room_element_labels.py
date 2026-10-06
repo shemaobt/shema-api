@@ -123,6 +123,13 @@ def test_a_bead_with_no_spanish_name_in_a_passage_that_has_some_is_not_a_hole(tm
     assert named["scene:1"].label_pt and named["scene:1"].label_en
 
 
+@pytest.mark.parametrize("name", ["ruth.json", "legend.json"])
+def test_the_shipped_catalogue_names_nothing_in_spanish(name):
+    written = json.loads((_shipped() / name).read_text(encoding="utf-8"))
+
+    assert _without_the_key(written, "es") == written
+
+
 def test_a_legend_with_no_spanish_anywhere_still_names_every_state_and_kind(tmp_path):
     named = legend(catalogue_dir=_stripped_of_spanish(tmp_path))
 
