@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.fail_safe import inaudible_ladder
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.run_turn import (
-    TurnOutcome,
-    run_turn,
-)
+from app.services.internalization_room.passage_turn import run_turn
+from app.services.internalization_room.validated_turn import TurnOutcome
 
 
 def mother_tongue_note(language_code: str, take_ms: float | None) -> str:
@@ -39,6 +38,72 @@ def interrupted_note(language_code: str) -> str:
     return "[The team interrupted your previous turn at this point.]"
 
 
+@dataclass(frozen=True)
+class ForTheGuide:
+    """What a heard take hands the Guide: the room's note, and the team's words behind it."""
+
+    note: str
+    words: str
+
+    @property
+    def spoken_to_the_guide(self) -> str:
+        return " ".join(part for part in (self.note, self.words) if part)
+
+    def kept_apart(self, outcome: TurnOutcome) -> TurnOutcome:
+        """The outcome with the room's note as the room's and only the team's words as theirs."""
+        if self.note:
+            return replace(outcome, transcript=self.words, room_note=self.note)
+        return outcome
+
+
+def what_the_guide_is_handed(
+    *,
+    language_code: str,
+    opening: bool,
+    words: str,
+    mother_tongue: bool,
+    take_ms: float | None,
+    interrupted: bool,
+) -> ForTheGuide | None:
+    """The one choice every spoken turn makes about a take: a miss, or the note and the words.
+
+    A take with no words that is not the mother tongue is a miss, whether or not it followed a
+    cut, and is answered with the ladder's line: nothing reaches the Guide. Any other take
+    reaches the Guide with the room's notes in front, and the words of a mother-tongue take
+    never travel.
+    """
+    if not opening and not mother_tongue and not words.strip():
+        return None
+    note = " ".join(
+        part
+        for part in (
+            interrupted_note(language_code) if interrupted else "",
+            mother_tongue_note(language_code, take_ms) if mother_tongue else "",
+        )
+        if part
+    )
+    return ForTheGuide(note=note, words="" if mother_tongue else words)
+
+
+def a_miss(messages: list[dict[str, Any]], language_code: str) -> TurnOutcome:
+    """The turn for a take that was a miss: the ladder's line, and nothing reaches the Guide."""
+    line, fixed = inaudible_ladder(messages, language_code)
+    return TurnOutcome(
+        speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed
+    )
+
+
+def stamped_with_what_was_heard(outcome: TurnOutcome, speech: HeardSpeech) -> TurnOutcome:
+    """The outcome keeping the language, its probability, the mother-tongue decision, the length."""
+    return replace(
+        outcome,
+        language=speech.language_code,
+        language_probability=speech.language_probability,
+        mother_tongue=speech.mother_tongue,
+        take_ms=speech.take_ms,
+    )
+
+
 async def speak_back(
     *,
     mother_tongue: bool,
@@ -47,7 +112,6 @@ async def speak_back(
     messages: list[dict[str, Any]],
     transcript: str,
     opening: bool,
-    empty: bool,
     book: str,
     guide_prompt: str,
     validator_prompt: str,
@@ -65,22 +129,18 @@ async def speak_back(
     A take with no words that is not the mother tongue is a miss, and draws the ladder's line
     whether or not it followed a cut: nothing reaches the Guide.
     """
-    if not opening and not mother_tongue and empty:
-        line, fixed = inaudible_ladder(messages, session.language)
-        return TurnOutcome(
-            speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed
-        )
-    words = "" if mother_tongue else transcript
-    note = " ".join(
-        part
-        for part in (
-            interrupted_note(session.language) if interrupted else "",
-            mother_tongue_note(session.language, take_ms) if mother_tongue else "",
-        )
-        if part
+    handed = what_the_guide_is_handed(
+        language_code=session.language,
+        opening=opening,
+        words=transcript,
+        mother_tongue=mother_tongue,
+        take_ms=take_ms,
+        interrupted=interrupted,
     )
+    if handed is None:
+        return a_miss(messages, session.language)
     outcome = await run_turn(
-        transcript=" ".join(part for part in (note, words) if part),
+        transcript=handed.spoken_to_the_guide,
         coverage_state=session.coverage_state or {},
         messages=messages,
         session_language=LANGUAGE_NAMES[session.language],
@@ -96,6 +156,4 @@ async def speak_back(
         mother_tongue=mother_tongue,
         earlier_passages=session.earlier_passages,
     )
-    if note:
-        return replace(outcome, transcript=words, room_note=note)
-    return outcome
+    return handed.kept_apart(outcome)

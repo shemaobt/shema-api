@@ -165,7 +165,7 @@ async def test_the_panorama_is_grounded_on_the_book_material(patch_agent) -> Non
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="",
+        speech=HeardSpeech(text=""),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -188,7 +188,7 @@ async def test_the_validator_judges_against_the_same_material(patch_agent) -> No
     await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="o que é esse livro?",
+        speech=HeardSpeech(text="o que é esse livro?"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -212,7 +212,7 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="   ",
+        speech=HeardSpeech(text="   "),
         messages=[{"role": "guide", "text": "vamos conhecer o livro"}],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -239,7 +239,7 @@ async def test_a_panorama_missing_the_team_again_still_hears_her_first_d_line(
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="   ",
+        speech=HeardSpeech(text="   "),
         messages=one_miss,
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -263,7 +263,7 @@ async def test_a_rejected_panorama_turn_is_never_voiced(patch_agent) -> None:
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="como termina?",
+        speech=HeardSpeech(text="como termina?"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -285,9 +285,9 @@ async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
     heard = ["pergunta dois", "pergunta três"]
     routed: list[str] = []
 
-    async def _panorama(*, transcript: str, **_: Any) -> TurnOutcome:
-        routed.append(transcript)
-        return TurnOutcome(speech=f"resposta {len(routed)}.", transcript=transcript)
+    async def _panorama(*, speech: HeardSpeech, **_: Any) -> TurnOutcome:
+        routed.append(speech.text)
+        return TurnOutcome(speech=f"resposta {len(routed)}.", transcript=speech.text)
 
     async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
         return HeardSpeech(text=heard.pop(0))
@@ -324,10 +324,10 @@ async def test_the_third_turn_still_carries_the_sessions_first_exchange(
     seen_messages: list[list[dict[str, Any]]] = []
 
     async def _panorama(
-        *, transcript: str, messages: list[dict[str, Any]], **_: Any
+        *, speech: HeardSpeech, messages: list[dict[str, Any]], **_: Any
     ) -> TurnOutcome:
         seen_messages.append(messages)
-        return TurnOutcome(speech=f"resposta {len(seen_messages)}.", transcript=transcript)
+        return TurnOutcome(speech=f"resposta {len(seen_messages)}.", transcript=speech.text)
 
     async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
         return HeardSpeech(text=heard.pop(0))
@@ -376,7 +376,7 @@ async def test_a_slow_panorama_turn_is_not_cut_short(patch_agent) -> None:
     outcome = await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="me contem mais",
+        speech=HeardSpeech(text="me contem mais"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -411,8 +411,8 @@ async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turn
     """A panorama never 'completes' — not at the opening, not five turns in."""
     from app.api.internalization_room import sessions as sessions_api
 
-    async def _panorama(*, transcript: str, **_: Any) -> TurnOutcome:
-        return TurnOutcome(speech="resposta.", transcript=transcript)
+    async def _panorama(*, speech: HeardSpeech, **_: Any) -> TurnOutcome:
+        return TurnOutcome(speech="resposta.", transcript=speech.text)
 
     async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
         return HeardSpeech(text="mais uma pergunta")
@@ -452,7 +452,7 @@ async def test_a_direct_question_about_who_ruth_marries_is_answered_from_a_promp
     await run_panorama_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="com quem Rute vai se casar?",
+        speech=HeardSpeech(text="com quem Rute vai se casar?"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,

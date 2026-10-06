@@ -40,7 +40,7 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
 from app.services.internalization_room.turn.scene_view import current_scene_id
-from app.services.internalization_room.turn.speech import speak_back
+from app.services.internalization_room.turn.speech import speak_back, stamped_with_what_was_heard
 from app.services.internalization_room.validated_turn import CutPoint
 
 
@@ -100,7 +100,6 @@ async def run_comprehension_turn(
         messages=messages,
         transcript=transcript,
         opening=opening,
-        empty=empty,
         book=book,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
@@ -109,11 +108,7 @@ async def run_comprehension_turn(
     )
     if not opening:
         outcome = replace(
-            outcome,
-            language=speech.language_code,
-            language_probability=speech.language_probability,
-            mother_tongue=mother_tongue,
-            take_ms=speech.take_ms,
+            stamped_with_what_was_heard(outcome, speech),
             interrupted=(
                 CutPoint(speech.interrupted_at_ms, speech.interrupted_of_ms)
                 if speech.interrupted

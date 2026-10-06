@@ -904,7 +904,6 @@ async def _draft_the_turn(
     bound_s: float,
 ) -> TurnResponse:
     team_id = session.project_id
-    transcript = speech_heard.text
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
         speech, audio_key = ready
@@ -937,7 +936,6 @@ async def _draft_the_turn(
             if is_panorama(session.pericope):
                 book = book_of(session.pericope)
                 outcome = await room.run_panorama_turn(
-                    transcript=transcript,
                     messages=session.messages or [],
                     session_language=LANGUAGE_NAMES[session.language],
                     language_code=session.language,
@@ -948,6 +946,7 @@ async def _draft_the_turn(
                     opening=opening,
                     settings=get_settings(),
                     session_id=session.id,
+                    speech=speech_heard,
                 )
             else:
                 turn = await room.run_comprehension_turn(

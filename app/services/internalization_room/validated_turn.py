@@ -76,7 +76,7 @@ class TurnOutcome:
     #: The transcriber's probability for that language.
     language_probability: float | None = None
     #: Whether the take counted as the mother tongue; ``None`` on a turn the room did not
-    #: hear — the opening, the Panorama, the telling-back verdict — whose record keeps none.
+    #: hear — the opening and the telling-back verdict — whose record keeps none.
     mother_tongue: bool | None = None
     #: The take's length as the note says it, in milliseconds: whole seconds for a measured
     #: take, which the twenty-second rule read before it was rounded.
