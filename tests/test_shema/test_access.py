@@ -139,21 +139,30 @@ def test_the_seeded_app_carries_the_url_password_reset_is_built_from() -> None:
     """``request_password_reset`` builds ``{app_url}/reset-password?token=…`` from this row.
 
     Pinned rather than merely well-formed: the failure a wrong value causes is silent, and
-    password recovery is the only thing it breaks. ``scripts/seed_apps_roles.py``'s docstring
-    records that this value is the convention rather than a hostname read off a deployment,
-    because there is no deployment to read.
+    password recovery is the only thing it breaks. BE-03 pinned a conventional hostname here
+    and it never got a DNS record; since OBT-567 the value is the Cloud Run address the PME
+    answers on, and ``tests/test_shema/test_pme_app_url.py`` holds the seed and the data
+    migration that corrects installed rows to the same value.
     """
     entry = next((row for row in SEED_APPS if row[0] == APP_KEY), None)
     assert entry is not None, f"{APP_KEY} missing from SEED_APPS"
 
     _key, name, app_url = entry
     assert name == "Shemá"
-    assert app_url == "https://shema.shemaywam.com"
+    assert app_url == "https://project-management-ecosystem-f7ssqjozfq-uc.a.run.app"
 
 
 def test_the_console_origin_is_allowed_by_cors() -> None:
-    """The other half of the same change. A seeded ``app_url`` the browser cannot call is
-    a link that opens a page whose first request fails."""
+    """The other half of BE-03's change. A seeded ``app_url`` the browser cannot call is a
+    link that opens a page whose first request fails.
+
+    Still the retired hostname, on purpose: ``cors_origins`` is ``app/core/config.py``, the
+    platform core, and OBT-567 changed the seed and the installed row without touching it.
+    The deployed PME never needed an entry here: its own nginx proxies ``/api`` to
+    ``$BACKEND_URL`` (``project-management-ecosystem/nginx.conf``), so the browser calls the
+    API on the PME's origin and CORS is never consulted — the deploy workflows set
+    ``CORS_ORIGINS`` without it and it works. Retiring this entry is the core's own change.
+    """
     from app.core.config import get_settings
 
     assert "https://shema.shemaywam.com" in get_settings().cors_origin_list

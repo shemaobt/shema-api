@@ -30,17 +30,18 @@ The label applies only to those two apps; every other app's ``admin`` keeps its 
 installations get the same row from ``20260927_shema08``, which writes the same key and label;
 ``tests/test_shema/test_admin_role.py`` holds the two to each other.
 
-**The Shemá ``app_url`` is the convention and not a reading**, and it is the one entry here
-that says so. ``docs/shema.md`` §10 item 3 asked BE-03 to read the console's hostname off the
-deployment; there is no deployment to read — the console is wave 1, it has no deploy
-workflow, no environment file beyond ``VITE_API_PROXY_TARGET``, and neither repository names
-a host. So this follows the eight rows above it, every one of which is the product's name
-lowercased with no separators under ``shemaywam.com``. Leaving it empty was the alternative
-and is worse: ``request_password_reset`` then builds the reset link from
-``http://localhost:5173`` in production, which is the silent failure this docstring opens
-with, while a hostname that is wrong but conventional fails visibly on the first click and is
-a one-row UPDATE to correct — which is exactly what the "only fills an empty ``app_url``"
-rule below already anticipates.
+**The Shemá ``app_url`` is read off the deployment, since 6/oct/2026.** BE-03 wrote
+``https://shema.shemaywam.com`` here as a convention — there was no deployment to read, so it
+followed the eight rows above it, the product's name lowercased under ``shemaywam.com`` — and
+its own docstring said a wrong value would fail on the first click and cost a one-row UPDATE.
+It did: the hostname never got a DNS record, and the PME's password-reset e-mail led nowhere
+(OBT-567). The value is now the Cloud Run address the PME answers on, by the user's decision
+of 6/oct/2026 that no ``shema.shemaywam.com`` is planned; ``20261006_shema567`` is the UPDATE
+for installations that already hold the old row. ``resource-request-form``'s row was checked
+in the same pass and stays: ``resourceform.shemaywam.com`` answers, mapped onto its Cloud Run
+service. What the corrected value does not do yet is finish password recovery: the PME has no
+``/reset-password`` route as of 6/oct/2026, so the link reaches a real host and no page until
+that screen exists over there.
 """
 
 import asyncio
@@ -61,7 +62,7 @@ SEED_APPS = [
     ("annotation-studio", "Annotation Studio", "https://annotationstudio.shemaywam.com"),
     ("sound-necklace", "Sound Necklace", "https://soundnecklace.shemaywam.com"),
     ("resource-request-form", "Resource Request Form", "https://resourceform.shemaywam.com"),
-    ("shema", "Shemá", "https://shema.shemaywam.com"),
+    ("shema", "Shemá", "https://project-management-ecosystem-f7ssqjozfq-uc.a.run.app"),
 ]
 
 DEFAULT_ROLES = [
