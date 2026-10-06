@@ -26,10 +26,11 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from app.core.served_books import SERVED_BOOKS
+
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 REPO = "MarciaSuzuki/tripod_compiler"
-BOOKS = ("Ruth",)
 VENDOR = Path(__file__).resolve().parents[1] / ("app/services/internalization_room/canon/vendor")
 PIN_FILE = VENDOR / "VENDOR_PIN"
 KINDS = {
@@ -64,7 +65,7 @@ def _listing(kind: str, sha: str) -> list[str]:
     url = f"https://api.github.com/repos/{REPO}/contents/{KINDS[kind]}?ref={sha}"
     names = [entry["name"] for entry in json.loads(_get(url))]
     if kind == "registry":
-        return sorted(n for n in names if n in {f"{b.lower()}.aliases.json" for b in BOOKS})
+        return sorted(n for n in names if n in {f"{b.lower()}.aliases.json" for b in SERVED_BOOKS})
     return sorted(names)
 
 
@@ -82,7 +83,7 @@ def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
         if missing:
             skipped.append(f"skipped {stem}: missing {', '.join(missing)}")
             continue
-        if stem.split("-")[1] not in BOOKS:
+        if stem.split("-")[1] not in SERVED_BOOKS:
             continue
         for kind in PASSAGE_SUFFIX:
             published[kind].append(stems[kind][stem])

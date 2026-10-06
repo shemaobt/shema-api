@@ -8,8 +8,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.core.exceptions import ValidationError
+from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.parse_map import (
-    ROOM_BOOK,
     SURVEYED_STATUS,
     VENDOR,
     MeaningMap,
@@ -17,8 +17,6 @@ from app.services.internalization_room.canon.parse_map import (
 )
 
 LOGS_DIR = VENDOR / "compilation-log"
-
-SERVED_BOOKS = frozenset({ROOM_BOOK})
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
 _CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
