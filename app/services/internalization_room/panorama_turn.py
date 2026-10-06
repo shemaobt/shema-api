@@ -18,7 +18,7 @@ from app.services.internalization_room.validated_turn import TurnOutcome, _voice
 
 async def run_panorama_turn(
     *,
-    transcript: str,
+    speech: HeardSpeech,
     messages: list[dict[str, Any]],
     panorama_prompt: str,
     validator_prompt: str,
@@ -30,7 +30,6 @@ async def run_panorama_turn(
     settings: Settings | None = None,
     session_id: str = "?",
     ask_for_movements: bool = False,
-    speech: HeardSpeech | None = None,
 ) -> TurnOutcome:
     """One exchange of a Book Panorama — the session before a book's first passage.
 
@@ -40,20 +39,18 @@ async def run_panorama_turn(
     ``speech`` is what the room heard of the take, and the take is read by the passage's rule
     (`turn.speech.what_the_guide_is_handed`): a short take with no words draws the ladder's
     line, and the mother tongue reaches the Guide as the room's note, apart from the team's
-    words, so the Validator never reads it as the team's own speech. Without it the transcript
-    is all the room knows. On every turn but the opening the outcome keeps the language, its
-    probability, the mother-tongue decision and the take's length; the cut point is not kept.
+    words, so the Validator never reads it as the team's own speech. On every turn but the
+    opening the outcome keeps the language, its probability, the mother-tongue decision and the
+    take's length; the cut point is not kept.
     """
     cfg = settings or get_settings()
-    heard = speech or HeardSpeech(text=transcript)
-
     handed = what_the_guide_is_handed(
         language_code=language_code,
         opening=opening,
-        words=transcript,
-        mother_tongue=heard.mother_tongue,
-        take_ms=heard.take_ms,
-        interrupted=heard.interrupted,
+        words=speech.text,
+        mother_tongue=speech.mother_tongue,
+        take_ms=speech.take_ms,
+        interrupted=speech.interrupted,
     )
     if handed is None:
         outcome = a_miss(messages, language_code)
@@ -77,9 +74,9 @@ async def run_panorama_turn(
                 settings=cfg,
                 session_id=session_id,
                 ask_for_movements=ask_for_movements,
-                mother_tongue=heard.mother_tongue,
+                mother_tongue=speech.mother_tongue,
             )
         )
-    if speech is not None and not opening:
+    if not opening:
         return stamped_with_what_was_heard(outcome, speech)
     return outcome
