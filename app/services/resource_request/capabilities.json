@@ -1,5 +1,5 @@
 {
-  "emitted_from": "4130614a1a707555f003a920b4ee3f8dbe2afea3",
+  "emitted_from": "7955b3fe9cc420975f47618ed63299e7ee0f748c",
   "capabilities": [
     "edit_requests",
     "view_evaluation",
@@ -53,6 +53,21 @@
       "name": {
         "pt": "Gestor dos Projetos",
         "en": "Projects Manager"
+      },
+      "can": [
+        "edit_requests",
+        "view_evaluation",
+        "manage_funds",
+        "move_board",
+        "allocate_funds",
+        "administer_funds"
+      ]
+    },
+    {
+      "id": "admin",
+      "name": {
+        "pt": "Admin",
+        "en": "Admin"
       },
       "can": [
         "edit_requests",
