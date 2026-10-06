@@ -65,7 +65,7 @@ def _listing(kind: str, sha: str) -> list[str]:
     names = [entry["name"] for entry in json.loads(_get(url))]
     if kind == "registry":
         return sorted(n for n in names if n in {f"{b.lower()}.aliases.json" for b in BOOKS})
-    return sorted(n for n in names if any(book in n for book in BOOKS))
+    return sorted(names)
 
 
 def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
@@ -81,6 +81,8 @@ def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
         missing = [kind for kind in PASSAGE_SUFFIX if stem not in stems[kind]]
         if missing:
             skipped.append(f"skipped {stem}: missing {', '.join(missing)}")
+            continue
+        if stem.split("-")[1] not in BOOKS:
             continue
         for kind in PASSAGE_SUFFIX:
             published[kind].append(stems[kind][stem])

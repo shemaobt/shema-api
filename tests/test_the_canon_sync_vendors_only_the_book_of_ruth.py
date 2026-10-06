@@ -1,30 +1,42 @@
 from __future__ import annotations
 
-import json
+from pathlib import Path
 
 import pytest
 
 import scripts.sync_internalization_canon as canon
-
-SHA = "5b5c8d2b3ae7632279c07017224f861ae369b0d7"
-
-UPSTREAM_MAPS = (
-    [f"E{n:02d}-Esther-{n}.md" for n in range(1, 19)]
-    + [f"J{n:02d}-Jonah-{n}.md" for n in range(1, 6)]
-    + [f"P{n:02d}-Ruth-{n}.md" for n in range(1, 15)]
-    + ["T13-Psalm-13.md"]
-)
+from tests.canon_sync_harness import SHA, Compiler, point_the_sync_at, what_is_vendored
 
 
 @pytest.fixture
-def an_upstream_listing_with_her_three_books_and_a_psalm(monkeypatch: pytest.MonkeyPatch) -> None:
-    listing = json.dumps([{"name": name} for name in UPSTREAM_MAPS]).encode()
-    monkeypatch.setattr(canon, "_get", lambda url: listing)
+def a_compiler_publishing_her_three_books() -> Compiler:
+    compiler = Compiler()
+    for book in ("esther", "jonah", "ruth"):
+        compiler.book(book)
+    for number in range(1, 19):
+        compiler.passage(f"E{number:02d}-Esther-{number}")
+    for number in range(1, 6):
+        compiler.passage(f"J{number:02d}-Jonah-{number}")
+    for number in range(1, 15):
+        compiler.passage(f"P{number:02d}-Ruth-{number}")
+    return compiler
 
 
-def test_only_the_fourteen_passages_of_ruth_are_listed_and_the_other_books_are_not(
-    an_upstream_listing_with_her_three_books_and_a_psalm: None,
+def test_only_the_fourteen_passages_of_ruth_and_her_names_are_vendored_and_the_other_books_are_not(
+    a_compiler_publishing_her_three_books: Compiler,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    names = canon._listing("meaning-map", SHA)
+    vendor = point_the_sync_at(monkeypatch, canon, a_compiler_publishing_her_three_books, tmp_path)
 
-    assert names == [f"P{n:02d}-Ruth-{n}.md" for n in range(1, 15)]
+    canon.sync(pin=SHA)
+
+    vendored = sorted(what_is_vendored(vendor))
+    assert len(vendored) == 14 * 3 + 1
+    assert [name for name in vendored if "Esther" in name or "Jonah" in name] == []
+    assert [name for name in vendored if name.startswith("registry/")] == [
+        "registry/ruth.aliases.json"
+    ]
+    assert [name for name in vendored if name.startswith("meaning-map/")] == [
+        f"meaning-map/P{number:02d}-Ruth-{number}.md" for number in range(1, 15)
+    ]
