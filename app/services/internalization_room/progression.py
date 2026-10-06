@@ -71,7 +71,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
@@ -190,7 +190,10 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
 
     **The status decides "done"**: nothing overwrites a ``done`` session. A halt on a closed
     passage is refused (`mark_needs_person`, ADR 0044) and a landing turn never moves a
-    session out of ``done``, so a team that finished a passage keeps it finished.
+    session out of ``done``, so a team that finished a passage keeps it finished. The one
+    exception is a row the old code wrote ``needs_person`` over ``done``, which ADR 0044
+    leaves alone with its ``ended_at`` set until the next lift restores ``done``: it still
+    counts, or the passage would reopen for a team that never returns.
 
     A retro take is a stretch told back to the room and is not the rehearsal, so the kind is
     part of the question.
@@ -212,7 +215,13 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
         .join(IRTake, IRTake.session_id == IRSession.id)
         .where(
             IRSession.project_id.in_(project_ids),
-            IRSession.status == IRSessionStatus.DONE,
+            or_(
+                IRSession.status == IRSessionStatus.DONE,
+                and_(
+                    IRSession.status == IRSessionStatus.NEEDS_PERSON,
+                    IRSession.ended_at.is_not(None),
+                ),
+            ),
             live(),
             IRTake.kind == IRTakeKind.ENSAIO,
         )

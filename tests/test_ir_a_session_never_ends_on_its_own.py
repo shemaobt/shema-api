@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.sessions import get_session
@@ -205,6 +205,25 @@ async def test_a_passage_counts_as_finished_from_the_sessions_done_status(
     async with per_request() as fresh:
         await fresh.execute(
             update(IRSession).where(IRSession.id == done["session_id"]).values(ended_at=None)
+        )
+        await fresh.commit()
+    db_session.expire_all()
+
+    assert await active_passage(db_session, project_id=team_id) == SECOND
+
+
+async def test_a_closed_passage_still_carrying_a_halt_stays_finished(
+    client, db_session, per_request
+) -> None:
+    """The row ADR 0044 leaves alone: the old code wrote `needs_person` over `done`."""
+    team, tablet = await a_claimed_device(db_session)
+    team_id = team.id
+    done = await a_finished_passage(client, per_request, tablet, FIRST)
+    async with per_request() as fresh:
+        await fresh.execute(
+            update(IRSession)
+            .where(IRSession.id == done["session_id"])
+            .values(status=IRSessionStatus.NEEDS_PERSON)
         )
         await fresh.commit()
     db_session.expire_all()
