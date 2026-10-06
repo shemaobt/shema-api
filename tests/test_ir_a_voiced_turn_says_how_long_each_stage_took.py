@@ -72,7 +72,7 @@ class _SlowModels:
 
     def _verdict(self) -> str:
         verdict = self.verdicts.pop(0) if len(self.verdicts) > 1 else self.verdicts[0]
-        issues = [{"problem": "unsupported_claim"}] if verdict == "fail" else []
+        issues = [{"problem": "unsupported_claim"}] if verdict == "regenerate" else []
         return json.dumps({"verdict": verdict, "issues": issues})
 
 
@@ -228,7 +228,7 @@ async def test_letting_the_read_go_before_a_live_opening_is_timed_on_its_own_too
 async def test_a_redrafted_turn_counts_every_draft_and_every_reading_not_only_the_last(
     client: httpx.AsyncClient, waiting_room: IRSession, models: _SlowModels
 ) -> None:
-    models.verdicts = ["fail", "pass"]
+    models.verdicts = ["regenerate", "pass"]
 
     answered = await _the_team_answers(client, waiting_room.id)
 
