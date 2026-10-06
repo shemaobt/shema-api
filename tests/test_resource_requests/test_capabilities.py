@@ -85,33 +85,26 @@ def _emitted_rows() -> dict[str, list[str]]:
 def test_the_map_is_the_emission_role_by_role() -> None:
     """The mirror, in the direction that catches a cell this repository invented.
 
-    The Admin's row is the one this side holds ahead of the emission (OBT-568): the server
-    decides the permission first and the frontend reflects it in its next emission, so the
-    frontend's rows are compared whole, and the Admin's is compared only once the emission
-    carries one — ``test_the_admins_row_is_the_gestors`` is what pins its value meanwhile.
+    The emission carries four rows and the map writes three: the Admin's is derived here
+    (``ADMIN_CAPABILITIES``, OBT-568) and compared to the emitted row directly, so an emission
+    that dropped the row or moved it off the Gestor's set fails rather than passing quietly.
     """
     emitted = _emitted_rows()
     written = {role: sorted(held) for role, held in ROLE_CAPABILITIES.items()}
 
-    assert {role: can for role, can in emitted.items() if role != ADMIN_ROLE} == written
-    if ADMIN_ROLE in emitted:
-        assert emitted[ADMIN_ROLE] == sorted(ADMIN_CAPABILITIES)
+    assert ADMIN_ROLE in emitted, "the emission lost the Admin's row"
+    assert emitted == {**written, ADMIN_ROLE: sorted(ADMIN_CAPABILITIES)}
 
 
 def test_the_map_is_the_emission_capability_by_capability() -> None:
     """The same fact read the other way, which is the direction a guard asks in.
 
-    Not redundant with the test above: ``CAPABILITY_ROLES`` is derived, and a derivation
-    that silently dropped a capability would leave the role table intact. The Admin is a
-    carrier of exactly the Gestor's capabilities (OBT-568), so the emitted carriers are
-    widened by it wherever the Gestor is one — and, once the emission carries the row itself,
-    the widening is a no-op and the comparison is exact.
+    Not redundant with the test above: ``CAPABILITY_ROLES`` is derived — over the frontend's
+    rows and the Admin's — and a derivation that silently dropped a capability or a carrier
+    would leave the role table intact.
     """
     emitted = {
-        capability: sorted(
-            {role["id"] for role in EMISSION["roles"] if capability in role["can"]}
-            | ({ADMIN_ROLE} if capability in ADMIN_CAPABILITIES else set())
-        )
+        capability: sorted(role["id"] for role in EMISSION["roles"] if capability in role["can"])
         for capability in EMISSION["capabilities"]
     }
     derived = {capability: sorted(roles) for capability, roles in CAPABILITY_ROLES.items()}

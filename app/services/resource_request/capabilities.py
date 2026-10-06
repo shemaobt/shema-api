@@ -105,9 +105,10 @@ says *the same level*, and a copied set would be a second place for the Gestor's
 without the Admin's following. What the Admin therefore does **not** hold is what the Gestor
 does not — ``edit_evaluation`` (GATE-02 D3) and ``assign_fund`` (GATE-01 D4) — and that is the
 whole of the issue's *out of scope*. The row stays out of ``ROLE_CAPABILITIES`` because that
-map is the mirror of the frontend's emission, which is the frontend's to write;
-``tests/test_resource_requests/test_capabilities.py`` admits the Admin's row as the one this
-side may hold ahead of the emission, and only while it equals the Gestor's. The platform admin
+map is the hand-written mirror of the frontend's rows, and this one is not hand-written: the
+emission carries the Admin's row too (its ``capabilities.ts`` lists him as a fourth role, with
+the Gestor's array), and ``tests/test_resource_requests/test_capabilities.py`` compares the
+emitted row to the derived one directly. The platform admin
 (``users.is_platform_admin``) is a different thing and is unchanged: it never reaches this
 table (``_deps.require_capability``).
 

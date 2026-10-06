@@ -629,10 +629,11 @@ board-wide reach (`_scope.reach`) all read the role by name, so an account holdi
 entered the form and reached no screen — measured on 6/oct/2026 on the deployed PME → form
 handoff. `capabilities.py` now carries `ADMIN_CAPABILITIES`, which **is** `ROLE_CAPABILITIES["gestor"]`
 (the same object), and derives `CAPABILITY_ROLES` over the frontend's rows plus that one. The
-row is deliberately **not** in `ROLE_CAPABILITIES`: that map is the mirror of the frontend's
-emission, which the frontend writes next (its `capabilities.ts` and `roleFromClaims`, the sibling
-issue in `resource-request-form`); `test_capabilities.py` admits the Admin's row as the one this
-side holds ahead of the emission, and only while it equals the Gestor's. What the Admin does not
+row is deliberately **not** in `ROLE_CAPABILITIES`: that map is the hand-written mirror of the
+frontend's rows, and this one is derived. The frontend lists the Admin as a fourth role with the
+Gestor's array (`capabilities.ts`, the sibling issue in `resource-request-form`), the emission
+re-vendored here carries that row, and `test_capabilities.py` compares it to the derived one
+directly — an emission that dropped it or moved it fails. What the Admin does not
 hold is exactly what the Gestor does not — `edit_evaluation` and `assign_fund` — and both are
 asserted with an account holding `admin` **alone**, never `is_platform_admin` (§5.5). The column
 above is the derived one drawn out, so the table reads whole.
