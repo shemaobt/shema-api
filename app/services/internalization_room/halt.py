@@ -70,6 +70,11 @@ def standing_warning_since(session: IRSession) -> datetime | None:
 
 
 def a_lift_restores() -> ColumnElement[IRSessionStatus]:
+    """What a lifted halt puts back: ``done`` where ``ended_at`` says the floor was met.
+
+    The status is ``needs_person`` here, so it cannot say whether the passage was closed;
+    ``ended_at``, written once with ``done``, can (ADR 0044).
+    """
     return case(
         (IRSession.ended_at.is_not(None), literal(IRSessionStatus.DONE, IRSession.status.type)),
         else_=literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),

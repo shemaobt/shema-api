@@ -196,15 +196,10 @@ class SessionBead(BaseModel):
 class TeamSessionResponse(BaseModel):
     """One card of the Desk's session history (RF-06).
 
-    **`state` has three values where RF-06 names two**, and that is deliberate. The third
-    arrived with the rule that decides when a conversation is over: a session nobody closed
-    is over, and calling it complete would be a lie a facilitator can check against the
-    necklace drawn beside it, where the beads are plainly unfinished.
-
-    It is also why the state crosses at all. With two values it was a function of `ended_at`
-    and serving it would have been a second record of one fact. With three, `complete` and
-    `abandoned` both carry an `ended_at` and no client can tell them apart — it is a fact the
-    collection cannot be made to yield, which is the shape that has to be served.
+    **`state` is `complete` or `in_progress`.** `abandoned` is part of the vocabulary and is
+    never emitted: nothing ends a session for being idle, so a session left for days reads
+    `in_progress`. `complete` is the session whose floor was met, and only it carries an
+    `ended_at`.
 
     `duration_minutes` travels for the rule this product keeps: the client does not compute.
     It cannot disagree with `ended_at` because both come out of one function on one pair of
