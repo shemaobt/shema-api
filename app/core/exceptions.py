@@ -203,8 +203,8 @@ class ValidationError(Exception):
 class NoWordsHeard(ValidationError):
     """The recognizer heard the take and found no words in it, which is not a refusal.
 
-    It carries the language the recognizer still reported, because a take with no words is
-    told apart from a missed one by its length, and the record keeps what was heard.
+    It carries the language the recognizer still reported, so the turn's record keeps what
+    the recognizer heard even when it wrote nothing down.
     """
 
     def __init__(

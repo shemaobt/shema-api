@@ -54,6 +54,10 @@ async def _probe_seconds(path: Path) -> float | None:
     The boundary is here and only here: a missing binary, a non-zero exit and unreadable
     output are all this process meeting the outside world, and each is reported as "no
     measurement" rather than raised at a caller with nothing to do about it.
+
+    A caller that stops waiting — the room bounds every take's measurement — takes the probe
+    down with it: killed and reaped before the cancellation goes on, so a probe stuck on a
+    truncated upload never outlives the wait it was given.
     """
     try:
         probe = await asyncio.create_subprocess_exec(
@@ -72,7 +76,12 @@ async def _probe_seconds(path: Path) -> float | None:
         logger.warning("%s is not installed: audio is stored without a duration", PROBE)
         return None
 
-    stdout, stderr = await probe.communicate()
+    try:
+        stdout, stderr = await probe.communicate()
+    except asyncio.CancelledError:
+        probe.kill()
+        await probe.wait()
+        raise
     if probe.returncode != 0:
         logger.warning("%s could not read the audio: %s", PROBE, stderr.decode()[:200])
         return None

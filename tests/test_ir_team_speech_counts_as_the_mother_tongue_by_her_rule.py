@@ -10,7 +10,9 @@ cannot give in time is an unknown length, never an error.
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -315,8 +317,12 @@ async def test_a_take_the_recognizer_refused_is_answered_with_d_1_and_never_coun
         "um STT mal configurado recusava todo take e cada take longo virava língua materna"
     )
     assert guide.guide_inputs == []
-    record = await _the_turns_record(db_session, session.id)
-    assert (record["language"], record["mother_tongue"]) == (None, False)
+    assert await _the_turns_record(db_session, session.id) == {
+        "language": None,
+        "language_probability": None,
+        "mother_tongue": False,
+        "take_ms": None,
+    }
 
 
 async def test_a_take_whose_only_content_is_pause_for_30_seconds_reaches_the_guide_as_the_mother_tongue_note_saying_30_seconds(  # noqa: E501
@@ -372,7 +378,7 @@ async def test_a_take_with_no_words_whose_probe_never_answers_is_answered_with_d
     guide: ScriptedAgent,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", 0.05, raising=False)
+    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", 0.05)
     session = await _an_open_session(db_session, tablet, guide)
     the_transcriber_hears_no_words(monkeypatch)
     the_probe_never_answers(monkeypatch)
@@ -384,6 +390,26 @@ async def test_a_take_with_no_words_whose_probe_never_answers_is_answered_with_d
 
     assert reply["fixed_line"] == "D0"
     assert guide.guide_inputs == []
+
+
+async def test_a_probe_that_never_answers_is_stopped_once_the_bound_has_passed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from app.services.platform import audio_duration
+
+    pid_file = tmp_path / "probe.pid"
+    hung_probe = tmp_path / "ffprobe"
+    hung_probe.write_text(f"#!/bin/sh\necho $$ > {pid_file}\nexec sleep 60\n")
+    hung_probe.chmod(0o755)
+    monkeypatch.setattr(audio_duration, "PROBE", str(hung_probe))
+    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", 0.5)
+    the_transcriber_hears_no_words(monkeypatch)
+
+    speech = await hearing.heard_speech(b"audio", language="pt", settings=settings())
+
+    assert speech.take_ms is None
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
 
 
 async def test_words_whose_take_the_probe_fails_on_still_reach_the_guide_as_words(
