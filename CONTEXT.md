@@ -18,7 +18,7 @@ The persona that says the back-translation verdict to the team, warmer than the 
 _Avoid_: voice (alternative internal name, and this server's word for the synthesized voice id — see Voice), spoken narrator, TTS, Falante
 
 **Voice** (`voice_id`):
-The synthesized voice a line is spoken with, one per language the Room speaks.
+The synthesized voice a line is spoken with: Mariana's for every language the Room speaks, unless a deployment configures an English voice.
 _Avoid_: Speaker (the persona spoken by it), narrator, Voz
 
 **Analyst**:
@@ -254,7 +254,7 @@ the Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
 
 **Opening a session**:
-A tablet asking the room for its team's session of a pericope and language: the latest one is returned whatever its state, and one is created only when none exists.
+A tablet asking the room for its team's session of a pericope and language: the latest live one is returned whatever its state, and one is created only when none exists. An archived session is never returned.
 _Avoid_: creating a session, starting a session, Abrir a passagem
 
 **Closed passage**:
@@ -266,7 +266,7 @@ The facilitator's act of giving a team a clean pericope: it creates an **Archive
 _Avoid_: reset, zero, clear, wipe
 
 **Archive** (`ir_archives`, `archive_id`):
-What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, which the room's doors then leave out. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADR 0047).
+What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052).
 _Avoid_: soft delete, trash, backup, Arquivo
 
 **Needs a person** (`needs_person`):
@@ -304,7 +304,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:
@@ -312,7 +312,7 @@ The number of a release within its pericope and project, from one, never reused.
 _Avoid_: revision, pass (the count of tellings of a stretch), v-number
 
 **Packet**:
-The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
+The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Blocker**:

@@ -673,7 +673,6 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
     return TurnResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
-        transcript="",
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
@@ -838,12 +837,12 @@ async def _answer_the_turn(
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
         speech, audio_key = ready
+        audio_key = await room.in_a_voice_the_room_has(audio_key, speech, language=session.language)
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
         await room.append_opening(db, session, guide_response=speech, commit=False)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
-            transcript="",
             peer_cue=outcome.peer_cue,
             coverage=coverage_view(session),
             done=False,
@@ -923,7 +922,6 @@ async def _answer_the_turn(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=outcome.fixed_line,
-        transcript=outcome.transcript,
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         degraded=outcome.degraded,

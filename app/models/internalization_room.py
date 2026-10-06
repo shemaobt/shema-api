@@ -334,10 +334,6 @@ class SegmentsResponse(BaseModel):
 
     session_id: str
     segments: list[SegmentView] = Field(default_factory=list)
-    #: False when audio was sent and nothing could be made out of it. The stretch is then left
-    #: exactly as it was — replacing a good explanation with an empty one over a transcriber
-    #: outage would lose the team's work to somebody else's failure.
-    captured: bool = True
     #: True on the one correction that made this stretch a hard stretch. The room asks for a
     #: person rather than refusing anything, and it is said here as well as on the telling-back
     #: route: a team that crosses still gets the stretches back, and would otherwise have no
@@ -404,7 +400,6 @@ class TurnResponse(BaseModel):
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
     mime_type: str = "audio/mpeg"
-    transcript: str
     peer_cue: bool = False
     used_fail_safe: bool = False
     degraded: bool = False

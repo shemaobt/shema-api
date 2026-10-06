@@ -227,7 +227,7 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     assert agent.systems == []
 
 
-async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
+async def test_a_panorama_missing_the_team_again_still_hears_her_first_d_line(
     patch_agent,
 ) -> None:
     agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
@@ -248,7 +248,7 @@ async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
         settings=_settings(),
     )
 
-    assert outcome.fixed_line == "D1", "duas mensagens guardadas davam D2 pela paridade"
+    assert outcome.fixed_line == "D0", "o app dela diz didntCatchThat(0) a cada falha"
     assert agent.systems == []
 
 
@@ -307,7 +307,6 @@ async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
     for turn in (second, third):
         body = turn.json()
         assert body["audio_url"].startswith(f"{PREFIX}/voice/")
-        assert body["transcript"]
 
 
 async def test_the_third_turn_still_carries_the_sessions_first_exchange(

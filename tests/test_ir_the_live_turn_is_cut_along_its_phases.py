@@ -98,7 +98,7 @@ async def test_the_first_miss_after_a_heard_conversation_draws_the_first_d_line(
     assert agent.calls == 0
 
 
-async def test_misses_in_a_row_walk_the_three_d_lines_in_order_and_stay_on_the_third(
+async def test_misses_in_a_row_each_hear_her_first_d_line(
     db_session: AsyncSession, agent: RecordingAgent
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
@@ -106,10 +106,7 @@ async def test_misses_in_a_row_walk_the_three_d_lines_in_order_and_stay_on_the_t
 
     spoken = [m["fixed_line"] for m in session.messages if m.get("role") == "guide"]
 
-    assert spoken == ["D0", "D1", "D2", "D2"], (
-        "a escada rodava com o tamanho da conversa: dois turnos por erro, então a segunda "
-        "falha pulava para D2 e a quarta voltava para D0"
-    )
+    assert spoken == ["D0", "D0", "D0", "D0"], "o app dela diz didntCatchThat(0) a cada falha"
 
 
 async def test_a_turn_the_room_heard_starts_the_d_ladder_over(

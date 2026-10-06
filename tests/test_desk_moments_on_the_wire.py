@@ -42,6 +42,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.opening_harness import desk_routes
 
 IR = "/api/internalization-room"
 APP_KEY = "internalization-room"
@@ -99,22 +100,7 @@ async def room_client(db_session: AsyncSession):
 
 @pytest.fixture()
 async def desk_client(db_session: AsyncSession):
-    from fastapi import FastAPI
-
-    from app.api.facilitator.teams import facilitator_teams_router
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
-
-    test_app = FastAPI()
-    test_app.include_router(facilitator_teams_router, prefix="/api/facilitator/teams")
-    register_exception_handlers(test_app)
-
-    async def _get_db():
-        yield db_session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with desk_routes(db_session) as c:
         yield c
 
 

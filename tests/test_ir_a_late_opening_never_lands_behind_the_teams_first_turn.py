@@ -21,6 +21,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
+from app.core.config import get_settings
 from app.core.room_enums import CoverageStatus
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state
@@ -204,7 +205,7 @@ async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_t
 
 
 PREPARED = "Vamos ficar nesta parte."
-PREPARED_KEY = "tts/voice/m/f/prepared.mp3"
+PREPARED_KEY = f"tts/{get_settings().internalization_room_voice_id}/m/f/prepared.mp3"
 
 
 @pytest.fixture()

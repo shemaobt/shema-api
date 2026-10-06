@@ -98,14 +98,12 @@ of these tiny pre-approved lines, then the thoughtful reply follows. Content-fre
 - "Mm-hm."
 - "Okay."
 - "Mmm — let me think about that for a moment."
-- "Right."
 
 ### F-pt. (Português brasileiro)
 
 - "Hmm."
 - "Certo."
 - "Deixa eu pensar um instante."
-- "Tá."
 
 ### P. Process lines — the telling-back (retroverificação por frases)
 Not a failure path — the *process* path (docs/RETROVERIFICACAO-POR-FRASES-SPEC.md §5). The app owns

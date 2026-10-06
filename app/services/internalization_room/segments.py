@@ -133,8 +133,7 @@ async def capture_segment(
     the **Part** again, which is an upload and not a version.
 
     What may be replaced at all — not a retired row, not one the team divided — is
-    `refuse_a_stretch_that_is_not_a_unit`, which the route that counts an unheard telling asks
-    the same question of.
+    `refuse_a_stretch_that_is_not_a_unit`.
 
     The retired row is stamped before the successor is inserted, not after. The two share a
     position, and the index that keeps one position to one current stretch is checked per
