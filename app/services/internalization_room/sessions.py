@@ -578,6 +578,11 @@ async def append_exchange(
     ``scene_rehearsals`` is the scenes whose scene rehearsal had reached the Guide as of this
     turn, kept on the Guide's entry, the one entry every turn has; an empty list is the fact
     that none had, and ``None`` keeps nothing.
+
+    What the room heard of the team's take — the language, its probability, the
+    mother-tongue decision and the take's length — goes on the Guide's entry too, because a
+    mother-tongue turn and a missed one write no team entry. Only a turn the room heard
+    carries them; the opening, the Panorama and the telling-back verdict write none.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
@@ -601,6 +606,13 @@ async def append_exchange(
                 draft=outcome.draft,
                 verdict=outcome.verdict,
                 issues=outcome.issues,
+            )
+        if outcome.mother_tongue is not None:
+            guide.update(
+                language=outcome.language,
+                language_probability=outcome.language_probability,
+                mother_tongue=outcome.mother_tongue,
+                take_ms=outcome.take_ms,
             )
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals

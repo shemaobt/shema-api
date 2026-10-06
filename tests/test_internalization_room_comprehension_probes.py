@@ -57,7 +57,6 @@ def test_a_voiced_turn_installs_the_next_probe() -> None:
             outcome="pass",
             prior_probe=None,
             next_probe=nxt,
-            transcript_uncertain=False,
             transcript_was_mother_tongue=False,
             transcript_empty=False,
         )
@@ -71,7 +70,6 @@ def test_a_fail_safe_never_binds_an_answer_to_an_unvoiced_prompt() -> None:
             outcome="fail_safe",
             prior_probe=_consent_probe("prior"),
             next_probe=_consent_probe("next"),
-            transcript_uncertain=False,
             transcript_was_mother_tongue=False,
             transcript_empty=False,
         )
@@ -84,14 +82,12 @@ def test_an_unheard_turn_keeps_the_prior_probe_for_the_answer_it_asks_for_again(
     for kwargs in (
         {"transcript_was_mother_tongue": True, "transcript_empty": False},
         {"transcript_was_mother_tongue": False, "transcript_empty": True},
-        {"transcript_uncertain": True, "transcript_empty": False},
     ):
         kept = select_probe_after_oral_turn(
             outcome="fail_safe",
             prior_probe=prior,
             next_probe=None,
             **{
-                "transcript_uncertain": False,
                 "transcript_was_mother_tongue": False,
                 "transcript_empty": False,
                 **kwargs,

@@ -57,7 +57,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "transcript": "a fome chegou",
         "opening": False,
         "empty": False,
-        "uncertain": False,
         "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
@@ -122,22 +121,18 @@ async def test_an_english_room_hands_the_guide_the_note_in_english(
     ], "a sala em inglês entregava a nota em português e o Guia misturava as línguas"
 
 
-async def test_only_a_take_in_another_language_is_measured_for_its_length(
+async def test_every_take_is_measured_for_its_length(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from types import SimpleNamespace
-
     from app.core.config import Settings
     from app.services.internalization_room import hearing
+    from app.services.translation_helper.transcribe_audio import TranscriptionResult
 
     heard_language = {"code": "und"}
 
-    async def _detailed(*_: object, **__: object) -> object:
-        return SimpleNamespace(
-            text=TERENA,
-            language_code=heard_language["code"],
-            language_probability=0.99,
-            transcript_confidence=0.9,
+    async def _detailed(*_: object, **__: object) -> TranscriptionResult:
+        return TranscriptionResult(
+            text=TERENA, language_code=heard_language["code"], language_probability=0.99
         )
 
     measured: list[bytes] = []
@@ -157,23 +152,20 @@ async def test_only_a_take_in_another_language_is_measured_for_its_length(
     assert in_their_own.take_ms == 41_000, (
         "a nota nunca dizia por quanto tempo a equipe falou: ninguém media o áudio"
     )
-    assert in_portuguese.take_ms is None
-    assert measured == [b"terena"], "um ffprobe rodava em cada turno, e não só no de língua materna"
+    assert in_portuguese.take_ms == 41_000, "um take em português ficava sem duração no registro"
+    assert measured == [b"terena", b"portugues"]
 
 
-async def test_words_the_room_could_not_make_out_draw_the_d_line_and_travel_no_further(
+async def test_a_take_with_no_words_draws_the_d_line_and_travels_no_further(
     db_session: AsyncSession, agent: FakeAgent
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
 
-    outcome = await _speak(session, uncertain=True, transcript="mmm ne")
+    outcome = await _speak(session, empty=True, transcript="")
 
     assert outcome.fixed_line == "D0"
     assert outcome.degraded is True
-    assert outcome.transcript == "", (
-        "o palpite do reconhecedor viajava dentro da linha que pedia para repetir e era "
-        "gravado como fala da equipe"
-    )
+    assert outcome.transcript == ""
     assert agent.guide_inputs == []
 
 

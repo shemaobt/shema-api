@@ -99,7 +99,6 @@ def test_a_team_speaking_the_sessions_own_language_is_never_heard_as_mother_tong
     )
 
     assert heard_it.mother_tongue is False
-    assert heard_it.reliable_bridge_speech is True
 
 
 def test_speech_outside_the_sessions_language_still_meets_the_boundary() -> None:
