@@ -1,11 +1,11 @@
 import asyncio
 import logging
-import math
 import re
 import uuid
 from collections import OrderedDict
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
-from typing import NamedTuple
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -249,7 +249,8 @@ async def _read_capped_audio(file: UploadFile) -> bytes:
     return audio_bytes
 
 
-class _Cut(NamedTuple):
+@dataclass(frozen=True)
+class _Cut:
     """The three multipart fields the tablet sends when the team cut the Guide short."""
 
     interrupted: bool
@@ -257,17 +258,20 @@ class _Cut(NamedTuple):
     of_ms: int | None
 
     @classmethod
-    def read(cls, interrupted: bool, at_ms: str | None, of_ms: str | None) -> "_Cut":
-        """The cut as the fields arrived; a position that is not a non-negative number is absent."""
-        return cls(interrupted, _position(at_ms), _position(of_ms))
+    def read(cls, interrupted: str | None, at_ms: str | None, of_ms: str | None) -> "_Cut":
+        """The cut as Marcia's route reads it: only "1" is a cut, and a position that is not a
+        non-negative decimal number is absent. Nothing here refuses a take.
+        """
+        return cls(interrupted == "1", _position(at_ms), _position(of_ms))
+
+
+_DECIMAL = re.compile(r"\s*(?:\d+\.?\d*|\.\d+)?\s*")
 
 
 def _position(raw: str | None) -> int | None:
-    try:
-        number = float(raw) if raw is not None else math.nan
-    except ValueError:
+    if raw is None or not _DECIMAL.fullmatch(raw):
         return None
-    return round(number) if math.isfinite(number) and number >= 0 else None
+    return int(Decimal(raw.strip() or "0").to_integral_value(ROUND_HALF_UP))
 
 
 async def _timed_stt(
@@ -716,7 +720,7 @@ async def take_turn(
     file: UploadFile | None = File(default=None),
     turn_id: str | None = Form(default=None, max_length=64),
     client_timing: str | None = Form(default=None),
-    interrupted: bool = Form(default=False),
+    interrupted: str | None = Form(default=None),
     interrupted_at_ms: str | None = Form(default=None),
     interrupted_of_ms: str | None = Form(default=None),
     project_id: str | None = device_project_dep,

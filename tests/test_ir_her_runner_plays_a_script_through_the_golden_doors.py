@@ -176,7 +176,7 @@ async def test_an_interrupted_turn_tells_the_guide_it_was_cut(client, monkeypatc
 
 
 async def test_an_interruption_with_no_words_is_answered_with_d_1_and_never_reaches_the_guide(
-    client, monkeypatch
+    client, db_session, monkeypatch
 ) -> None:
     session_id = await _an_open_session(client)
     agent = the_models_answer(monkeypatch)
@@ -188,10 +188,13 @@ async def test_an_interruption_with_no_words_is_answered_with_d_1_and_never_reac
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["outcome"] == "fail_safe"
+    assert (await _the_last_entry(db_session, session_id))["fixed_line"] == "D0"
     assert agent.guide_inputs == []
 
 
-async def test_an_interrupted_flag_alone_is_answered_with_d_1(client, monkeypatch) -> None:
+async def test_an_interrupted_flag_alone_is_answered_with_d_1(
+    client, db_session, monkeypatch
+) -> None:
     session_id = await _an_open_session(client)
     agent = the_models_answer(monkeypatch)
 
@@ -201,7 +204,15 @@ async def test_an_interrupted_flag_alone_is_answered_with_d_1(client, monkeypatc
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["outcome"] == "fail_safe"
+    assert (await _the_last_entry(db_session, session_id))["fixed_line"] == "D0"
     assert agent.guide_inputs == []
+
+
+async def _the_last_entry(db_session: AsyncSession, session_id: str) -> dict[str, Any]:
+    db_session.expire_all()
+    stored = await room.get_session(db_session, session_id)
+    last: dict[str, Any] = stored.messages[-1]
+    return last
 
 
 async def test_a_cut_in_in_the_mother_tongue_tells_the_guide_both_facts(

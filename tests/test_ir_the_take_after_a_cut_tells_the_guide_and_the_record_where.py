@@ -351,7 +351,38 @@ async def test_a_negative_cut_position_counts_as_absent_and_the_take_is_still_a_
     assert record["interrupted"] == {"at_ms": 0, "of_ms": None}
 
 
+@pytest.mark.parametrize(
+    ("at_ms", "of_ms", "kept"),
+    [
+        ("abc", "4200.6", {"at_ms": 0, "of_ms": 4201}),
+        ("4200.5", "", {"at_ms": 4201, "of_ms": 0}),
+        ("1_000", "1_000", {"at_ms": 0, "of_ms": None}),
+    ],
+)
 async def test_an_unreadable_cut_position_counts_as_absent_and_the_take_is_still_a_cut(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    voiced: Room,
+    monkeypatch: pytest.MonkeyPatch,
+    at_ms: str,
+    of_ms: str,
+    kept: dict[str, int | None],
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide, voiced)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "por", 0.95)
+    the_take_lasts(monkeypatch, 6_000)
+
+    await _the_team_sends_a_take(
+        tablet, session, interrupted="1", interrupted_at_ms=at_ms, interrupted_of_ms=of_ms
+    )
+
+    assert guide.guide_inputs == [f"{CUT} {PORTUGUESE}"]
+    record = await _the_turns_record(db_session, session.id)
+    assert record["interrupted"] == kept
+
+
+async def test_an_interrupted_flag_that_is_not_1_is_no_cut_and_the_take_is_still_answered(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     guide: ScriptedAgent,
@@ -362,10 +393,8 @@ async def test_an_unreadable_cut_position_counts_as_absent_and_the_take_is_still
     the_transcriber_hears(monkeypatch, PORTUGUESE, "por", 0.95)
     the_take_lasts(monkeypatch, 6_000)
 
-    await _the_team_sends_a_take(
-        tablet, session, interrupted="1", interrupted_at_ms="abc", interrupted_of_ms="4200.6"
-    )
+    await _the_team_sends_a_take(tablet, session, interrupted="abc", interrupted_at_ms="4200")
 
-    assert guide.guide_inputs == [f"{CUT} {PORTUGUESE}"]
+    assert guide.guide_inputs == [PORTUGUESE]
     record = await _the_turns_record(db_session, session.id)
-    assert record["interrupted"] == {"at_ms": 0, "of_ms": 4201}
+    assert "interrupted" not in record
