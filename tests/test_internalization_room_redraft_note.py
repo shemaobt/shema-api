@@ -1,9 +1,10 @@
+import dataclasses
 import re
 
 import pytest
 
 from app.services.internalization_room.coverage import initial_state
-from app.services.internalization_room.run_turn import _redraft_note, run_turn
+from app.services.internalization_room.run_turn import TurnOutcome, _redraft_note, run_turn
 from tests.turn_harness import (
     GUIDE,
     VALIDATOR,
@@ -121,8 +122,8 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-async def _portuguese_turn() -> None:
-    await run_turn(
+async def _portuguese_turn() -> TurnOutcome:
+    return await run_turn(
         session_language="Portuguese",
         language_code="pt",
         transcript="pergunta",
@@ -180,3 +181,33 @@ async def test_a_draft_blanked_for_leaving_the_language_gets_no_note_about_the_l
         "support: off_bridge_language. Redraft the same answer, as fully as the team's "
         "request deserves, using only what the map contains.)"
     )
+
+
+_SENT_BACK = {
+    "verdict": "regenerate",
+    "issues": [
+        {
+            "problem": "imported_knowledge",
+            "claim": "Rute era moabita",
+            "explanation": "The map never names her people.",
+        }
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    "verdicts",
+    [[_SENT_BACK, {"verdict": "pass", "issues": []}], [_SENT_BACK, _SENT_BACK, _SENT_BACK]],
+    ids=["redrafted-and-voiced", "sent-back-until-the-fail-safe"],
+)
+async def test_nothing_the_turn_keeps_carries_a_word_of_the_redraft_note(
+    patch_agent, verdicts: list[dict[str, object]]
+) -> None:
+    agent = patch_agent(FakeAgent(verdicts=verdicts))
+
+    outcome = await _portuguese_turn()
+
+    assert "internal redraft note" in agent.guide_inputs[1]
+    kept = str(dataclasses.asdict(outcome))
+    assert "internal redraft note" not in kept
+    assert "Redraft the same answer" not in kept
