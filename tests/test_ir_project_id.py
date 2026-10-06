@@ -305,14 +305,14 @@ async def test_the_take_route_carries_the_sessions_project(client, db_session, s
     opened = await client.post(
         f"{PREFIX}/sessions",
         headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
-        json={"pericope": "OV"},
+        json={"pericope": "P03"},
     )
     session_id = opened.json()["session_id"]
 
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
         headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
-        data={"kind": "ensaio", "scope": "OV"},
+        data={"kind": "ensaio", "scope": "P03"},
         files={"file": ("t.m4a", b"take", "audio/mp4")},
     )
 
@@ -340,13 +340,13 @@ async def test_the_back_translation_chunk_route_carries_the_sessions_project(
     opened = await client.post(
         f"{PREFIX}/sessions",
         headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
-        json={"pericope": "OV"},
+        json={"pericope": "P03"},
     )
     session_id = opened.json()["session_id"]
     rehearsal = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
         headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
-        data={"kind": "ensaio", "scope": "OV"},
+        data={"kind": "ensaio", "scope": "P03"},
         files={"file": ("t.m4a", b"ensaio", "audio/mp4")},
     )
 

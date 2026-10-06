@@ -44,6 +44,8 @@ from app.services.internalization_room.back_translation import (
     Finding,
     FindingKind,
 )
+from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.sessions import resolve_pericope
 from app.services.internalization_room.takes import (
     declare_rehearsal_parts,
     declared_parts_by_key,
@@ -92,6 +94,7 @@ async def declare_back_translation_session(
     keys = [clip.key for clip in payload.clips]
     if len(set(keys)) != len(keys):
         raise ValidationError("two clips share one key, and a part is addressed by its key")
+    refuse_a_panorama(resolve_pericope(payload.pericopeId))
     session = await room.create_session(
         db, pericope=payload.pericopeId, language=_language_code(payload.language)
     )
@@ -151,6 +154,7 @@ async def play_a_round(
     if not payload.frases:
         raise ValidationError("a round with no frases is not a round")
     session = await room.get_session(db, payload.sessionId)
+    refuse_a_panorama(session.pericope)
     started = time.monotonic()
     with _collecting_model_calls() as calls:
         parts = await declared_parts_by_key(db, session.id)

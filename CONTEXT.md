@@ -132,7 +132,7 @@ The necklace is the passage's coverage as the tablet draws it: her twelve beads 
 _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
-The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice.
+The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
 
 **Address**:

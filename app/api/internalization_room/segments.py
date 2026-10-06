@@ -17,6 +17,7 @@ from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
+from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
@@ -75,6 +76,7 @@ async def divide(
     Where it may fall is `divide_segment`'s to say.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
     segment = await segment_for_session(db, session.id, segment_id)
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
     nudge(session.project_id, "stretches")
@@ -122,6 +124,7 @@ async def replace(
     that is not a slice.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
