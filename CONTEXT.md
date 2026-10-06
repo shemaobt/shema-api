@@ -300,7 +300,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. The packet names it `internalize-<slug of the mother tongue>-<pericope>-v<version>` (ADR 0048), a name two teams can share; the row's own id stays a uuid. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:
@@ -308,7 +308,7 @@ The number of a release within its pericope and project, from one, never reused.
 _Avoid_: revision, pass (the count of tellings of a stretch), v-number
 
 **Packet**:
-The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
+The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Beside the hash, and outside it, it states the team's mother tongue, the language the room spoke to it and whether every rehearsal part is WAV. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Blocker**:

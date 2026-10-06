@@ -99,8 +99,9 @@ class IRSession(Base):
     #: passage in each language is worse than the whole of it in either.
     #:
     #: Not ``Project.language_id``. That column records the team's own language for the rest
-    #: of the platform and the room does not read it: the device decides, because the device
-    #: is what the facilitator set up in front of them.
+    #: of the platform and the room's speech does not read it: the device decides, because the
+    #: device is what the facilitator set up in front of them. The release reads it as the
+    #: mother tongue (ADR 0048).
     language: Mapped[str] = mapped_column(String(8), default="en", server_default="en")
     #: Declared with the ``server_default`` its own migration already writes. The model said
     #: only ``default=dict``, which is Python-side and never reaches the DDL, so a table built
