@@ -655,7 +655,6 @@ class InboxQuestionView(BaseModel):
     pericope: str
     element_label_pt: str | None
     element_label_en: str | None
-    element_label_es: str | None
     status: str
     heard_at: str | None
     audio_url: str

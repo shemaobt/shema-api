@@ -150,10 +150,10 @@ async def heard(
 
 
 def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -> InboxQuestionView:
-    """One card, with its bead named in the three languages the Desk offers.
+    """One card, with its bead named in the two languages the Desk offers.
 
     A hand raised on no bead, a key the catalogue does not have, and a pericope outside the
-    canon all arrive here as a miss, and all three leave the card with three nulls.
+    canon all arrive here as a miss, and all three leave the card with two nulls.
     """
     bead = named.get((question.pericope, question.element_key or ""))
     return InboxQuestionView(
@@ -164,7 +164,6 @@ def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -
         pericope=question.pericope,
         element_label_pt=bead.label_pt if bead else None,
         element_label_en=bead.label_en if bead else None,
-        element_label_es=bead.label_es if bead else None,
         status=str(question.status),
         heard_at=_moment(question.heard_at),
         audio_url=facilitator_audio_url(question.audio_key),
