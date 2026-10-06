@@ -94,7 +94,18 @@ def test_a_bare_figure_code_is_not_voiced() -> None:
 
 
 def test_a_scene_code_typed_into_a_reply_is_not_voiced() -> None:
-    assert speakable_text("Na cena T2, Rute fica.", "pt") == "Na cena, Rute fica."
+    assert speakable_text("Na cena S2, Rute fica.", "pt") == "Na cena, Rute fica."
+
+
+def test_a_scene_link_is_not_voiced() -> None:
+    assert speakable_text("Cena [[S1]] aqui.", "pt") == "Cena aqui."
+
+
+def test_a_scene_code_in_map_prose_is_not_voiced() -> None:
+    assert (
+        speakable_text("Effect on scene: named outright only at v.22 in S3.", "en")
+        == "Effect on scene: named outright only at v.22 in."
+    )
 
 
 def test_a_code_in_parentheses_leaves_no_empty_parentheses() -> None:

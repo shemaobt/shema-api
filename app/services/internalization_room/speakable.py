@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.services.internalization_room.canon.elements import scene_code
+
 _MAPS = Path(__file__).parent / "canon" / "vendor" / "meaning-map"
 
 #: The head of every link the vendored maps carry — the code before its slug. It is read off
@@ -47,7 +49,8 @@ if not (_NUMBERED and _NAMED):
         f"the maps in {_MAPS} carry no code of one shape: an empty prefix list would make the "
         "pattern read every number, or every capitalised word, as a code"
     )
-_CODE = rf"(?:(?:{_NUMBERED})_?[0-9]|(?:{_NAMED})_[A-Z])[A-Z0-9_]*"
+_SCENE = re.split(r"[^A-Z]", scene_code(1))[0]
+_CODE = rf"(?:(?:{_NUMBERED}|{_SCENE})_?[0-9]|(?:{_NAMED})_[A-Z])[A-Z0-9_]*"
 
 #: A link that begins with a code goes whole, slug included; so does a bare code with the slug
 #: hyphen-attached or a second code joined to it by a slash. `(?<!\w)` and `(?!\w)` keep the
