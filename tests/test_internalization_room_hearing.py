@@ -113,6 +113,17 @@ def test_speech_outside_the_sessions_language_still_meets_the_boundary() -> None
     assert heard_it.mother_tongue is True
 
 
+def test_spanish_is_no_bridge_language_even_for_a_row_still_stored_in_it() -> None:
+    heard_it = hearing.HeardSpeech(
+        text="una familia sale de Belén porque no hay pan",
+        bridge_language="es",
+        language_code="es",
+        language_probability=0.99,
+    )
+
+    assert heard_it.mother_tongue is True
+
+
 async def test_the_session_names_the_language_the_hearing_is_measured_against(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 _BRIDGE_LANGUAGE_CODES = {
     "pt": {"pt", "por"},
     "en": {"en", "eng"},
-    "es": {"es", "spa"},
 }
 
 _BRACKETED = re.compile(r"\[[^\]]{0,60}\]|[♪♫]")
