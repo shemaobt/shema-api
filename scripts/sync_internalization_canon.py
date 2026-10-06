@@ -34,7 +34,9 @@ VENDOR = Path(__file__).resolve().parents[1] / ("app/services/internalization_ro
 PIN_FILE = VENDOR / "VENDOR_PIN"
 KINDS = {
     "meaning-map": "fixtures/meaning-map",
+    "meaning-coordinates": "fixtures/meaning-coordinates",
     "compilation-log": "fixtures/compilation-log",
+    "registry": "_spec/registry",
 }
 
 
@@ -56,6 +58,8 @@ def _head_sha() -> str:
 def _listing(kind: str, sha: str) -> list[str]:
     url = f"https://api.github.com/repos/{REPO}/contents/{KINDS[kind]}?ref={sha}"
     names = [entry["name"] for entry in json.loads(_get(url))]
+    if kind == "registry":
+        return sorted(n for n in names if n in {f"{b.lower()}.aliases.json" for b in BOOKS})
     return sorted(n for n in names if any(book in n for book in BOOKS))
 
 
