@@ -354,7 +354,7 @@ A fact about the room the app hands the Guide in place of the team's words, brac
 _Avoid_: system message, prompt, instruction, Nota da sala
 
 **Earlier passages**:
-This team's status on each earlier passage of the book (approved, started, or not worked yet), kept on the session and handed to the Guide as a fact, complete or not at all.
+This team's status on each earlier passage of the book (approved, started, or not worked yet), stamped once when the session is created, kept on the session and handed to the Guide as a fact, complete or not at all.
 _Avoid_: history, progress, story so far (the digests of those passages, not the team's status on them), Passagens anteriores
 
 **Scene rehearsals**:

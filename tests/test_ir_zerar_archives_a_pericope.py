@@ -552,7 +552,7 @@ async def test_a_zerar_of_the_panorama_archives_only_the_panoramas_sessions(
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     worked = await the_tablet_opens(client, tablet, {"pericope": FIRST, "language": "pt"})
-    panorama = await the_tablet_opens(client, tablet, {"pericope": "OV", "chosen": True})
+    panorama = await the_tablet_opens(client, tablet, {"pericope": "OV"})
     assert panorama["pericope"] == f"OV-{ROOM_BOOK}"
 
     answered = await zerar(client, desk, team.id, f"OV-{ROOM_BOOK}")

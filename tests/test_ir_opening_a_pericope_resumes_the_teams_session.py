@@ -297,10 +297,11 @@ async def test_a_pericope_opened_before_the_panorama_keeps_the_panorama_heard_on
     entered = await the_tablet_opens(
         client, tablet, {"pericope": FIRST, "after_session": panorama["session_id"]}
     )
-    relaunched = await the_tablet_opens(client, tablet, {"pericope": "OV"})
+    another_language = await the_tablet_opens(client, tablet, {"pericope": "OV", "language": "pt"})
 
     assert entered["session_id"] == worked["session_id"]
-    assert relaunched["session_id"] == worked["session_id"]
+    assert is_panorama(another_language["pericope"])
+    assert prepared == [panorama["session_id"]]
 
 
 async def test_a_closed_pericopes_session_is_returned_as_it_stands(

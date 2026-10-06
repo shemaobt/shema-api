@@ -434,7 +434,6 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
-        chosen=payload.chosen,
         lifts=caller is not None,
     )
     if caller is not None:
