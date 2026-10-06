@@ -24,5 +24,7 @@ The same two rules sit in her repository, `Tripod-Internalization` on `fia/pilot
 rather than guessing at a form the pilot does not speak. This is a record of what was
 implemented, not a request to approve an invented form.
 
+The same module also removes every canon code from the text before it is voiced (ENG-1337), in every language and ahead of this substitution.
+
 The persisted transcript is untouched: only the text handed to the voice changes, so the
 facilitator view keeps the map's own wording.

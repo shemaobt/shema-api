@@ -119,6 +119,10 @@ _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
 _Avoid_: granularity, mode, shape, Granularidade
 
+**Canon code**:
+The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`), alone or inside a link in double square brackets. It is never voiced: the Room's Voice removes it, and the stored line keeps it.
+_Avoid_: id, tag, link, slug
+
 **Meaning Map**:
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
 _Avoid_: answer key, base text, Mapa de Sentido

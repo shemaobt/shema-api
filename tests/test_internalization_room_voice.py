@@ -374,3 +374,22 @@ async def test_after_an_hour_a_known_line_is_asked_of_the_bucket_again(
         "uma chave lembrada para sempre continuava sendo entregue mesmo que o objeto "
         "tivesse saído do bucket"
     )
+
+
+async def test_the_team_never_hears_a_canon_code_in_a_guide_line() -> None:
+    client = _client()
+
+    await synthesize_facilitator_speech(
+        "[[B3-Naomi]] Noemi ouve, e FIG_0013 volta.",
+        language="pt",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
+    )
+
+    spoken = client.post.await_args.kwargs["json"]["text"]
+    assert "[[" not in spoken
+    assert "]]" not in spoken
+    assert "B3" not in spoken
+    assert "FIG_0013" not in spoken
+    assert "Noemi ouve" in spoken
