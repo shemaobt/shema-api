@@ -80,10 +80,9 @@ async def test_the_link_lives_sixty_days(db_session, client, rrf_app, shema_app)
 async def test_admin_in_either_app_issues(
     db_session, client, rrf_app, shema_app, app_name: str
 ) -> None:
-    """The Admin of OBT-522 is one role seeded in both apps."""
+    """The Admin of OBT-522 is one role seeded in both apps — and both fixtures carry it, since
+    ``rrf_app`` reads ``seeded_roles`` (OBT-568); this test used to write the form's row itself."""
     app = {"rrf_app": rrf_app, "shema_app": shema_app}[app_name]
-    if app_name == "rrf_app":
-        await make_role(db_session, app.id, role_key="admin", label="Admin", is_system=True)
     user = await make_user(db_session, email=f"admin-{app_name}@links.test")
     await grant(db_session, user, app, "admin")
 
