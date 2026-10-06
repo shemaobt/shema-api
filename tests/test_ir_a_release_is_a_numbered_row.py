@@ -135,7 +135,7 @@ async def test_a_credentialed_team_that_approves_gets_version_one(client, db_ses
     stored = await releases_of(db_session, session.id)
     assert [row.version for row in stored] == [1]
     assert body["package_sha256"] == stored[0].package_sha256
-    assert body["release_id"] == stored[0].id
+    assert body["release_id"] == stored[0].packet["release_id"]
     assert stored[0].packet["release_id"] == body["release_id"]
     assert stored[0].packet["version"] == 1
     assert stored[0].packet["package_sha256"] == body["package_sha256"]
