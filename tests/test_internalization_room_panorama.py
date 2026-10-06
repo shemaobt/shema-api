@@ -407,13 +407,7 @@ def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workf
 
 def test_the_production_deploy_runs_one_instance() -> None:
     """The turn door's in-flight registry is per process (ADR 0050)."""
-    import yaml
-
-    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "deploy.yml"
-    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
-    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
-
-    assert "--max-instances=1" in deploy_step["run"].split()
+    assert "--max-instances=1" in deploy_command("deploy.yml")
 
 
 async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turns(
