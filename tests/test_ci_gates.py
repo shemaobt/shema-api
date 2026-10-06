@@ -158,6 +158,7 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 JOB_TIMEOUT_MINUTES = {
     ("test.yml", "test"): 12,
     ("checks.yml", "checks"): 10,
+    ("deploy.yml", "checks"): 10,
     ("migrations.yml", "migrations"): 7,
 }
 
@@ -260,6 +261,66 @@ def test_the_migrations_job_runs_the_migration_marked_tests_with_the_variable_cl
     assert "-u DATABASE_URL" in run or "unset DATABASE_URL" in run, (
         f"DATABASE_URL is not cleared before the migration-marked tests: {run}"
     )
+
+
+def _deploy_checks_steps() -> list[dict]:
+    return _workflow("deploy.yml")["jobs"]["checks"]["steps"]
+
+
+def _deploy_step_index_running(command: str) -> int:
+    return next(
+        i for i, step in enumerate(_deploy_checks_steps()) if command in step.get("run", "")
+    )
+
+
+def test_the_production_deploy_waits_for_the_checks_job() -> None:
+    """ENG-1337: a push to `main` and a dispatch by hand shipped with none of the three
+    guards, because `checks.yml` fires on a pull request and the deploy had no job of its own.
+    """
+    needs = _workflow("deploy.yml")["jobs"]["deploy"]["needs"]
+
+    assert "checks" in ([needs] if isinstance(needs, str) else needs)
+
+
+def test_the_deploy_checks_job_runs_the_three_guards_in_order() -> None:
+    guards = [command for command in CHECKS_COMMANDS_IN_ORDER if command.startswith("scripts/")]
+
+    positions = [_deploy_step_index_running(command) for command in guards]
+
+    assert len(guards) == 3
+    assert positions == sorted(positions)
+
+
+def test_the_deploy_canon_check_carries_the_token_its_api_calls_need() -> None:
+    step = _deploy_checks_steps()[
+        _deploy_step_index_running("scripts/sync_internalization_canon.py --check")
+    ]
+
+    assert step.get("env", {}).get("GITHUB_TOKEN"), f"{step.get('name')} has env {step.get('env')}"
+
+
+def test_the_deploy_checks_job_installs_the_locked_dependencies_before_a_guard() -> None:
+    assert _deploy_step_index_running("uv sync --frozen --group dev") < _deploy_step_index_running(
+        "scripts/check_doctrine.py"
+    )
+
+
+def test_the_deploy_runs_on_a_push_to_main_and_by_hand_both_through_the_checks() -> None:
+    workflow = _workflow("deploy.yml")
+    triggers = _triggers(workflow, "deploy.yml")
+
+    assert "main" in triggers["push"]["branches"]
+    assert "workflow_dispatch" in triggers
+    assert "if" not in workflow["jobs"]["checks"]
+    assert "if" not in workflow["jobs"]["deploy"]
+
+
+def test_production_runs_one_instance() -> None:
+    """The turn door's in-flight registry is per process (ADR 0050)."""
+    steps = _workflow("deploy.yml")["jobs"]["deploy"]["steps"]
+    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
+
+    assert "--max-instances=1" in deploy_step["run"].split()
 
 
 def _pyproject_pytest_markers() -> dict[str, str]:

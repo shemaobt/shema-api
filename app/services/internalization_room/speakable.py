@@ -17,21 +17,59 @@ its source are recorded in ``docs/divine-name-speakable-form.md``.
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+_MAPS = Path(__file__).parent / "canon" / "vendor" / "meaning-map"
+
+#: The head of every link the vendored maps carry — the code before its slug. It is read off
+#: the canon at import, so a pin that moves takes the guard with it; a hand-typed list would
+#: keep removing yesterday's codes and miss tomorrow's.
+_HEADS = frozenset(
+    head
+    for page in _MAPS.glob("*.md")
+    for head in re.findall(r"\[\[([A-Z]+[0-9_][A-Z0-9_]*)[-|\]]", page.read_text(encoding="utf-8"))
+)
+
+
+def _prefixes(shape: str) -> str:
+    letters = {re.split(r"[^A-Z]", head)[0] for head in _HEADS if re.match(shape, head)}
+    return "|".join(sorted(letters, key=lambda prefix: (-len(prefix), prefix)))
+
+
+#: A code is a prefix the canon really uses, then a number (`B3`, `CB_0008`, `PL5_BOAZ_PORTION`)
+#: or, for the families that carry none, an underscore and capitals (`PL_ISRAEL`, `TM_EVENING`).
+#: The generic shape — capitals joined to a number — is what `MP3`, `CO2` and `F1` also have,
+#: and they are words the team says.
+_NUMBERED = _prefixes(r"[A-Z]+_?[0-9]")
+_NAMED = _prefixes(r"[A-Z]+_[A-Z]")
+_CODE = rf"(?:(?:{_NUMBERED})_?[0-9]|(?:{_NAMED})_[A-Z])[A-Z0-9_]*"
+
+#: A link that begins with a code goes whole, slug included; so does a bare code with the slug
+#: hyphen-attached or a second code joined to it by a slash. `(?<!\w)` and `(?!\w)` keep the
+#: match off the middle of a word.
+_CANON_CODE = re.compile(
+    rf"\[\[{_CODE}(?:[-|][^\]]*)?\]\]|(?<!\w){_CODE}(?:-\w+|/{_CODE})*(?!\w)",
+)
+
+_SPACE = r"[ \t\u00a0]"
+
+#: What a removal can leave behind, and the order `_mend` applies it in: brackets that held only
+#: the code, then the dash pairs that framed it, then a mark stranded before a closing one, then
+#: the spaces. The order matters: the spaces are collapsed last, so the earlier steps can leave
+#: them for it.
+_EMPTY_BRACKETS = re.compile(
+    rf"\({_SPACE}*[,;/\u2013—-]*{_SPACE}*\)|\[{_SPACE}*[,;/\u2013—-]*{_SPACE}*\]"
+)
+_DASH = r"(?:[\u2013—]|(?<!\S)-(?!\S))"
+_DASH_PAIR = re.compile(rf"{_DASH}\s*{_DASH}")
+_DASH_BEFORE_CLOSE = re.compile(rf"{_SPACE}*[\u2013—]{_SPACE}*(?=[.,;:!?]|$)")
+_MARKS_BEFORE_COMMA = re.compile(rf"[,;:]{_SPACE}*,")
+_MARK_BEFORE_CLOSE = re.compile(rf"[,;:](?={_SPACE}*[.!?])|,(?={_SPACE}*[;:])")
+_SPACE_RUN = re.compile(rf"{_SPACE}{{2,}}")
+_SPACE_BEFORE_MARK = re.compile(rf"{_SPACE}+(?=[,.;:!?])")
+_EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,;\u2013—]+|[ \t\u00a0,;\u2013—]+$")
 
 _YHWH = re.compile(r"\bYHWH\b")
-
-_CODE = r"(?:[A-Z]+(?:_[A-Z0-9]+)+|[A-Z]+[0-9]+(?:_[A-Z0-9]+)*)"
-_CANON_CODE = re.compile(
-    rf"\[\[{_CODE}(?:[-|][^\]]*)?\]\]|(?<!\w){_CODE}(?:-\w+)*(?!\w)",
-)
-_EMPTY_BRACKETS = re.compile(r"\([\s,;/\u2013—-]*\)|\[[\s,;/\u2013—-]*\]")
-_DASH_PAIR = re.compile(r"[\u2013—]\s*[\u2013—]")
-_DASH_BEFORE_CLOSE = re.compile(r"\s*[\u2013—]\s*(?=[.,;:!?]|$)")
-_COMMAS = re.compile(r"[ \t]*,(?:[ \t]*,)+")
-_COMMA_BEFORE_CLOSE = re.compile(r",(?=[ \t]*[.;:!?])")
-_SPACE_RUN = re.compile(r"[ \t]{2,}")
-_SPACE_BEFORE_MARK = re.compile(r"[ \t]+(?=[,.;:!?])")
-_EDGE_DEBRIS = re.compile(r"^[\s,;\u2013—]+|[\s,;\u2013—]+$")
 
 _SPOKEN_FORM: dict[str, str] = {
     "pt": "Senhor Jeová",
@@ -39,26 +77,34 @@ _SPOKEN_FORM: dict[str, str] = {
 }
 
 
-def _without_canon_codes(text: str) -> str:
-    removed = _CANON_CODE.sub("", text)
-    if removed == text:
-        return text
+def _mend(line: str) -> str:
+    removed = _CANON_CODE.sub("", line)
+    if removed == line:
+        return line
     mended = _EMPTY_BRACKETS.sub("", removed)
     mended = _DASH_PAIR.sub(" ", mended)
     mended = _DASH_BEFORE_CLOSE.sub("", mended)
-    mended = _COMMAS.sub(",", mended)
-    mended = _COMMA_BEFORE_CLOSE.sub("", mended)
+    mended = _MARKS_BEFORE_COMMA.sub(", ", mended)
+    mended = _MARK_BEFORE_CLOSE.sub("", mended)
     mended = _SPACE_RUN.sub(" ", mended)
     mended = _SPACE_BEFORE_MARK.sub("", mended)
     return _EDGE_DEBRIS.sub("", mended)
+
+
+def _without_canon_codes(text: str) -> str:
+    """Remove every canon code and mend the seam, line by line.
+
+    A line with no code is returned as written, so a line the removal never touched keeps its
+    indentation and its spacing, in a text where another line did lose a code.
+    """
+    return "\n".join(_mend(line) for line in text.split("\n"))
 
 
 def speakable_text(text: str, language: str) -> str:
     """Remove the canon codes, then replace the tetragrammaton with its spoken form.
 
     A code is a bracketed link that begins with one, or a bare one with the slug attached to
-    it; it goes in every language and is never replaced by a word. A line with no code is
-    returned as written, so the seam is mended only where something was removed.
+    it; it goes in every language and is never replaced by a word.
 
     The divine-name table is Marcia's, not invented here: it exists only where her own rebuilt
     prompts already carry the rule in the same language. A language outside that table keeps
