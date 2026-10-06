@@ -13,6 +13,7 @@ from app.services.resource_request.attachment_download_url import (
 )
 from app.services.resource_request.cancel_request import cancel_request
 from app.services.resource_request.capabilities import (
+    ADMIN_CAPABILITIES,
     CAPABILITIES,
     CAPABILITY_ROLES,
     RETIRED_ROLES,
@@ -79,6 +80,7 @@ from app.services.resource_request.verify_request_link import (
 from app.services.resource_request.who_am_i import FormIdentity, who_am_i
 
 __all__ = [
+    "ADMIN_CAPABILITIES",
     "CAPABILITIES",
     "CAPABILITY_ROLES",
     "RESERVED_FUND_NAMES",

@@ -27,6 +27,10 @@ async def holds_capability(db: AsyncSession, user_id: str, app_key: str, capabil
     floor accumulates instead of being replaced, and one role read alone would be the wrong
     answer for the ordinary account rather than for an exotic one.
 
+    The Admin's grant answers through the same map: ``CAPABILITY_ROLES`` is derived over
+    the frontend's rows **and** ``ADMIN_CAPABILITIES`` (OBT-568), so ``admin`` is a carrier of
+    exactly what ``gestor`` carries, and nothing here reads the role by name.
+
     Two rules stand beside that and neither belongs in here. **``mesa`` and ``gestor`` are
     never granted to the same account, and nobody grants themselves** — ours (28/aug/2026)
     and not the client's words, applied where a grant is written; this function has to answer
