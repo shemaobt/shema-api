@@ -109,3 +109,13 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
         yield session
         await session.rollback()
+
+
+@pytest.fixture()
+def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
+    """Independent sessions onto the case's database, one per racing request.
+
+    One shared session would serialise the requests on one connection and one identity map,
+    and hide the race a case is about.
+    """
+    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)

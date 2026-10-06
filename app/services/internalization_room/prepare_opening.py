@@ -124,12 +124,18 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     passage entered after somebody changed that setting — and handing the line over anyway
     would have a team meet their passage's framing in a language the rest of the session does
     not speak.
+
+    A session the team has already spoken in is refused too. The open door returns the team's
+    resumed session (ADR 0045), and a line parked there is never read: only an opening takes
+    it, and that session has had its opening.
     """
     if not prepared.prepared_speech or not prepared.prepared_audio_key:
         return False
     if prepared.prepared_pericope is None or prepared.prepared_pericope != opening.pericope:
         return False
     if prepared.language != opening.language:
+        return False
+    if opening.messages:
         return False
     opening.prepared_speech = prepared.prepared_speech
     opening.prepared_audio_key = prepared.prepared_audio_key

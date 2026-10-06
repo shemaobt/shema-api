@@ -36,11 +36,11 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
-from app.services.internalization_room import halt
+from app.services.internalization_room import halt, opening_claim
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
-from app.services.internalization_room.hearing import HeardSpeech, heard_speech
+from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.nudge_channel import nudge
@@ -254,24 +254,6 @@ async def _timed_stt(
         return await heard_speech(
             audio_bytes, filename=filename, mime_type=mime_type, language=language
         )
-
-
-async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
-    """Stop a transcription started ahead of the session read and read its outcome.
-
-    A session the read could not find has nobody left to hear the transcript, so its task
-    is stopped rather than left to run to an answer nobody reads. `asyncio.wait` rather than
-    a plain `await`: this runs while unwinding from `get_session`'s own failure, and a plain
-    `await task` inside `except BaseException: pass` would also swallow a cancellation aimed
-    at this request itself, arriving at exactly this suspension point — `wait` never raises
-    the waited task's own exception into its caller, so only that task's outcome is being
-    read here, never the caller's. `task.exception()` marks a real failure as read without
-    raising it; skipped when the task ended up cancelled, since reading it then would raise.
-    """
-    task.cancel()
-    await asyncio.wait({task})
-    if not task.cancelled():
-        task.exception()
 
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
@@ -806,33 +788,65 @@ async def _answer_the_turn(
     try:
         with stage("db_read"):
             session = await room.session_for_room_caller(db, session_id, project_id)
-        team_id, halted = session.project_id, session.status is IRSessionStatus.NEEDS_PERSON
+        halted = session.status is IRSessionStatus.NEEDS_PERSON
         opening = file is None and not (session.messages or [])
         if not opening:
             with stage("db_let_go"):
                 await db.commit()
     except BaseException:
         if stt is not None:
-            await _cancelled(stt)
+            await stop_hearing(stt)
         raise
     _remember_language(session_id, session.language, project_id)
 
-    speech_heard = HeardSpeech()
-    if stt is not None:
-        speech_heard = await stt
-    elif file is not None:
+    if file is not None and stt is None:
         audio_bytes = await _read_capped_audio(file)
-        speech_heard = await _timed_stt(
-            audio_bytes,
-            filename=file.filename,
-            mime_type=file.content_type,
-            language=session.language,
+        stt = asyncio.create_task(
+            _timed_stt(
+                audio_bytes,
+                filename=file.filename,
+                mime_type=file.content_type,
+                language=session.language,
+            )
         )
-    transcript = speech_heard.text
-
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
 
+    return await opening_claim.answer_around_the_opening(
+        db,
+        session,
+        opening=opening,
+        turn_id=turn_id,
+        project_id=project_id,
+        hearing=stt,
+        deadline=deadline,
+        bound_s=bound_s,
+        draft=partial(
+            _draft_the_turn,
+            db,
+            session,
+            background=background,
+            opening=opening,
+            halted=halted,
+            bound_s=bound_s,
+        ),
+    )
+
+
+async def _draft_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    bound_s: float,
+) -> TurnResponse:
+    team_id = session.project_id
+    transcript = speech_heard.text
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
         speech, audio_key = ready

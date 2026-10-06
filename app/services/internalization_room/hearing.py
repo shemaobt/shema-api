@@ -207,3 +207,22 @@ async def _length_of(audio: bytes) -> int | None:
     except (TimeoutError, OSError) as failure:
         logger.warning("The take's length could not be read: %r", failure)
         return None
+
+
+async def stop_hearing(task: asyncio.Task[HeardSpeech]) -> None:
+    """Stop a transcription running ahead of its turn, and read its outcome.
+
+    A turn that fails before the transcript is wanted — the session read found nothing, or
+    the wait for the session's opening ended in an error — has nobody left to hear it, so its
+    task is stopped rather than left to run to an answer nobody reads. `asyncio.wait` rather
+    than a plain `await`: this runs while unwinding from another failure, and a plain
+    `await task` inside `except BaseException: pass` would also swallow a cancellation aimed
+    at this request itself, arriving at exactly this suspension point — `wait` never raises
+    the waited task's own exception into its caller, so only that task's outcome is being
+    read here, never the caller's. `task.exception()` marks a real failure as read without
+    raising it; skipped when the task ended up cancelled, since reading it then would raise.
+    """
+    task.cancel()
+    await asyncio.wait({task})
+    if not task.cancelled():
+        task.exception()

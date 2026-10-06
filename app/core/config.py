@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
     #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
     internalization_room_turn_bound_ms: int = 300_000
+    #: How long a team turn sent while the session's opening drafts waits for it, counted
+    #: from the claim (her ``KICKOFF_WAIT_MS``). The turn's own bound starts after the wait,
+    #: so a turn that waited and then ran long can still be cut by the deployment's ceiling.
+    internalization_room_opening_wait_ms: int = 90_000
     #: The language-detection probability under which a take heard in the session's own
     #: language counts as the mother tongue. A deployment's, never a session's: it is read on
     #: every take, so a change reaches the next turn heard. A probability, so a value outside
