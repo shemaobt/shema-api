@@ -35,9 +35,6 @@ logger = logging.getLogger(__name__)
 
 MAX_REDRAFTS = 2
 
-#: How many times one draft is put to the Validator before its reply is given up on.
-READINGS_OF_ONE_DRAFT = 2
-
 
 @dataclass
 class TurnOutcome:
@@ -278,13 +275,14 @@ async def _voiced_after_validation(
     as the family-A fail-safe: the next tap failed the same way, and the team heard the
     same canned line over and over with nothing to say a person was needed. The only
     fail-safe this engine still speaks is the designed one — a Validator that will not
-    settle after `MAX_REDRAFTS`, or one whose reply cannot be read twice over.
+    settle after `MAX_REDRAFTS`, or one whose reply is not a verdict.
 
-    A reply the room cannot read is not a verdict on the draft, so it costs a second
-    reading of the same draft and never a redraft: the Guide's words were not judged, and
-    sending them back to be rewritten spent the budget that keeps the Guide talking on a
-    fault that was the Validator's. Only when the second reading is unreadable too does the
-    family-A line answer, and the redrafts it reports are the ones actually spent.
+    The Validator reads each draft once, as in her app. A reply cut at its ceiling, one that
+    cannot be read, one with a verdict she never named, or a correction with nothing in it is
+    not a judgment of the draft and gets no second reading: the family-A line answers at once,
+    with no redraft spent, because the Guide's words were not judged and sending them back to
+    be rewritten would spend the budget that keeps the Guide talking on a fault that was the
+    Validator's.
     """
     started = time.monotonic()
     spend = open_ledger()
@@ -325,27 +323,22 @@ async def _voiced_after_validation(
                 settings=settings,
             )
             warmed_connection = True
-        for _reading in range(READINGS_OF_ONE_DRAFT):
-            try:
-                raw_verdict = await room_agent().turn.call_agent(
-                    role="validator",
-                    system_prompt=validator_system,
-                    user_content=VALIDATOR_USER_MESSAGE,
-                    max_output_tokens=8192,
-                    effort=None,
-                    fails_on_truncation=True,
-                    settings=settings,
-                )
-                verdict, refusal = _parse_verdict(raw_verdict)
-            except TruncatedReply as cut:
-                verdict, refusal, issues = {}, "reply cut at its ceiling", []
-                _refused(refusal, cut.reply, session_id, attempt + 1)
-                break
-            issues = _issues_as_dicts(verdict.get("issues"))
-            if refusal is None:
-                break
-            _refused(refusal, raw_verdict, session_id, attempt + 1)
+        try:
+            raw_verdict = await room_agent().turn.call_agent(
+                role="validator",
+                system_prompt=validator_system,
+                user_content=VALIDATOR_USER_MESSAGE,
+                max_output_tokens=8192,
+                effort=None,
+                fails_on_truncation=True,
+                settings=settings,
+            )
+            verdict, refusal = _parse_verdict(raw_verdict)
+        except TruncatedReply as cut:
+            raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
+        issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
+            _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
 
         speech = ""

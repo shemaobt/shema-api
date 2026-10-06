@@ -3,12 +3,11 @@
 The Validator is asked for a bare JSON object. When it answered with prose around the
 object, or with prose alone, the room read that as `regenerate`, spent a Guide redraft on
 a verdict nobody could read, and on the next unreadable reply spent the last one — a team
-that did nothing wrong heard the family-A line after three model round-trips. Her policy
-names this case as its own: the draft is validated again, and only when the second
-reading also fails does a fixed line answer, with the Guide's redrafts unspent.
+that did nothing wrong heard the family-A line after three model round-trips. Her app reads
+each draft once: a reply that is not a verdict is the fail-safe line at once, with the
+Guide's redrafts unspent and no second reading.
 """
 
-import json
 from typing import Any
 
 import pytest
@@ -64,32 +63,18 @@ async def _a_turn():
     )
 
 
-async def test_a_verdict_unreadable_twice_is_line_a_with_both_redrafts_unspent(
+async def test_a_verdict_unreadable_once_is_line_a_with_both_redrafts_unspent(
     patch_agent,
 ) -> None:
-    agent = patch_agent(ScriptedValidator([PROSE, PROSE]))
+    agent = patch_agent(ScriptedValidator([PROSE]))
 
     outcome = await _a_turn()
 
-    assert agent.calls == ["guide", "validator", "validator"]
+    assert agent.calls == ["guide", "validator"]
     assert outcome.redrafts == 0
     assert outcome.used_fail_safe is True
     assert outcome.fixed_line.startswith("A")
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-
-
-async def test_the_second_reading_judges_the_same_draft_and_its_verdict_stands(
-    patch_agent,
-) -> None:
-    agent = patch_agent(ScriptedValidator([PROSE, json.dumps(PASS)]))
-
-    outcome = await _a_turn()
-
-    assert agent.calls == ["guide", "validator", "validator"]
-    assert agent.judged[0] == agent.judged[1]
-    assert outcome.speech == "rascunho"
-    assert outcome.redrafts == 0
-    assert outcome.used_fail_safe is False
 
 
 def test_a_verdict_inside_a_code_fence_is_read() -> None:
@@ -140,7 +125,7 @@ async def test_a_firing_keeps_the_last_draft_and_the_verdict_that_refused_it(
 async def test_a_firing_on_an_unreadable_reply_keeps_the_draft_and_no_verdict(
     patch_agent,
 ) -> None:
-    patch_agent(ScriptedValidator([PROSE, PROSE]))
+    patch_agent(ScriptedValidator([PROSE]))
 
     outcome = await _a_turn()
 

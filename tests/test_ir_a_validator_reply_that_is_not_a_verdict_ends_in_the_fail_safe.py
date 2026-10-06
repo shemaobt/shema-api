@@ -134,3 +134,30 @@ async def test_a_validator_reply_cut_at_its_ceiling_is_the_fail_safe_and_is_not_
     assert len(messages.calls) == 2, (
         "um rascunho, uma leitura, e nenhuma reescrita a pedido do corte"
     )
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        pytest.param("desculpe, não consigo julgar isso", id="loose prose"),
+        pytest.param(json.dumps({"ok": True}), id="an object with no verdict"),
+        pytest.param(
+            json.dumps({"verdict": "correct", "corrected_response": "  ", "issues": []}),
+            id="a correction that is blank",
+        ),
+    ],
+)
+async def test_a_validator_reply_that_cannot_be_read_is_one_reading_and_the_fail_safe(
+    validator_replies, reply: str
+) -> None:
+    messages = validator_replies((reply, "end_turn"), (PASS, "end_turn"))
+
+    outcome = await _a_turn()
+
+    assert outcome.used_fail_safe is True
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    assert len(messages.validator_calls) == 1, (
+        "uma resposta ilegível do Validador era perguntada de novo, e a equipe só ouvia a linha "
+        "de segurança quando a segunda leitura também falhava; a leitura de um rascunho é uma"
+    )
+    assert len(messages.calls) == 2
