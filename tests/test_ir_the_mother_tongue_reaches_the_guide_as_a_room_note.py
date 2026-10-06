@@ -15,6 +15,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
+from tests.hearing_harness import a_golden_session
 from tests.text_seam_harness import (
     BEARER,
     GOLDEN,
@@ -195,20 +196,11 @@ async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield client
 
 
-async def _an_open_session(client: httpx.AsyncClient) -> str:
-    created = await client.post(
-        f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "Brazilian Portuguese"}
-    )
-    session_id = created.json()["sessionId"]
-    await client.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"})
-    return session_id
-
-
 async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team_said(
     seam: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
 
     answered = await seam.post(
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
@@ -230,7 +222,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
     await seam.post(
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
     )
@@ -257,7 +249,7 @@ async def test_the_validators_evidence_labels_the_room_note_room_never_team(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
     await seam.post(
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
     )
@@ -285,7 +277,7 @@ async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_tea
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
     seen: list[str] = []
 
     async def _listening(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:

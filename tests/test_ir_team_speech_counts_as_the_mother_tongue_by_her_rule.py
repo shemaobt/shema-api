@@ -3,23 +3,22 @@
 Three conditions and nothing else: another language heard, the session's language heard under
 the mother-tongue floor, or a take with no words lasting twenty seconds or more. Every other
 take reaches the Guide as the team's words, and a short take with no words draws the D line.
+A take the recognizer refused is a miss, never the mother tongue, and a length the probe
+cannot give in time is an unknown length, never an error.
 """
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator, Awaitable, Callable
-from pathlib import Path
+import asyncio
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+import pydantic
 import pytest
-from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import sessions as sessions_api
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRSession
 from app.services import internalization_room as room
 from app.services.internalization_room import hearing
@@ -30,18 +29,20 @@ from app.services.internalization_room.sessions import (
     create_session,
     save_comprehension,
 )
-from app.services.platform.tts import SynthesizedSpeech
-from app.services.translation_helper.transcribe_audio import TranscriptionResult
-from tests.release_harness import KEY, PREFIX
-from tests.room_harness import room_client
-from tests.text_seam_harness import (
-    BEARER,
-    GOLDEN,
-    RUNNER_KEY,
-    ScriptedAgent,
-    the_app,
-    the_models_answer,
+from tests.deploy_harness import deploy_env_vars
+from tests.hearing_harness import (
+    a_golden_session,
+    nothing_settles,
+    the_probe_fails,
+    the_probe_never_answers,
+    the_take_lasts,
+    the_transcriber_hears,
+    the_transcriber_hears_no_words,
+    the_transcriber_refuses,
 )
+from tests.release_harness import KEY, PREFIX
+from tests.room_harness import room_client, the_room_speaks
+from tests.text_seam_harness import GOLDEN, RUNNER_KEY, ScriptedAgent, the_models_answer
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_room_agent_is
 
 PORTUGUESE = "Noemi voltou para Belém com Rute no tempo da colheita"
@@ -57,61 +58,28 @@ def _note(seconds: int) -> str:
     )
 
 
-Transcriber = Callable[..., Awaitable[TranscriptionResult]]
-
-
-def _the_transcriber_hears(
-    text: str,
-    language_code: str | None,
-    language_probability: float | None,
-    transcript_confidence: float | None = None,
-) -> Transcriber:
-    async def _detailed(*_: Any, **__: Any) -> TranscriptionResult:
-        return TranscriptionResult(
-            text=text,
-            language_code=language_code,
-            language_probability=language_probability,
-            transcript_confidence=transcript_confidence,
-        )
-
-    return _detailed
-
-
-async def _the_transcriber_hears_nothing(*_: Any, **__: Any) -> TranscriptionResult:
-    raise ValidationError("Transcription returned empty text")
-
-
-def _the_take_lasts(ms: int | None) -> Callable[[bytes], Awaitable[int | None]]:
-    async def _measure(_: bytes) -> int | None:
-        return ms
-
-    return _measure
-
-
-async def _voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
-    clip = SynthesizedSpeech(
-        audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/t.mp3"
-    )
-    return clip, False
-
-
-async def _not_settled(**_: Any) -> None:
-    return None
+@pytest.fixture
+def guide(monkeypatch: pytest.MonkeyPatch) -> ScriptedAgent:
+    return the_models_answer(monkeypatch)
 
 
 @pytest.fixture
 async def tablet(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, guide: ScriptedAgent
 ) -> AsyncIterator[httpx.AsyncClient]:
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
-    monkeypatch.setattr(sessions_api, "settle_coverage", _not_settled)
+    the_room_speaks(monkeypatch)
+    the_room_agent_is(monkeypatch, turn=guide)
+    nothing_settles(monkeypatch)
     async with room_client(db_session, monkeypatch) as client:
         yield client
 
 
 @pytest.fixture
-def guide(monkeypatch: pytest.MonkeyPatch) -> ScriptedAgent:
-    return the_models_answer(monkeypatch)
+async def seam(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[httpx.AsyncClient]:
+    async with room_client(db_session, monkeypatch, runner_key=RUNNER_KEY) as client:
+        yield client
 
 
 async def _an_open_session(
@@ -124,16 +92,7 @@ async def _an_open_session(
     return session
 
 
-async def _the_team_sends_a_take(
-    tablet: httpx.AsyncClient,
-    session: IRSession,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    transcriber: Transcriber,
-    take_ms: int | None,
-) -> dict[str, Any]:
-    monkeypatch.setattr(hearing, "transcribe_audio_detailed", transcriber)
-    monkeypatch.setattr(hearing, "measure_ms", _the_take_lasts(take_ms))
+async def _the_team_sends_a_take(tablet: httpx.AsyncClient, session: IRSession) -> dict[str, Any]:
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session.id}/turns",
         headers={"X-Room-Key": KEY},
@@ -161,14 +120,10 @@ async def test_a_terena_take_the_transcriber_labels_as_spanish_at_0_7_reaches_th
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, TERENA_AS_SPANISH, "spa", 0.7)
+    the_take_lasts(monkeypatch, 40_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(TERENA_AS_SPANISH, "spa", 0.7),
-        take_ms=40_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [_note(40)], (
         "o Guia recebia o espanhol inventado pelo reconhecedor como palavras da equipe"
@@ -182,14 +137,10 @@ async def test_one_word_heard_as_another_language_at_a_low_probability_is_still_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, "pronto", "spa", 0.12)
+    the_take_lasts(monkeypatch, 3_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears("pronto", "spa", 0.12),
-        take_ms=3_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [_note(3)]
 
@@ -201,14 +152,10 @@ async def test_a_take_heard_as_portuguese_at_0_30_in_a_portuguese_session_reache
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, TERENA_AS_SPANISH, "pt", 0.30)
+    the_take_lasts(monkeypatch, 15_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(TERENA_AS_SPANISH, "pt", 0.30),
-        take_ms=15_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [_note(15)]
 
@@ -220,14 +167,10 @@ async def test_a_take_heard_as_portuguese_exactly_at_the_floor_reaches_the_guide
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.35)
+    the_take_lasts(monkeypatch, 15_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(PORTUGUESE, "pt", 0.35),
-        take_ms=15_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [PORTUGUESE]
 
@@ -239,14 +182,10 @@ async def test_clear_portuguese_at_0_9_reaches_the_guide_as_the_teams_words_and_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9)
+    the_take_lasts(monkeypatch, 12_000)
 
-    reply = await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(PORTUGUESE, "pt", 0.9),
-        take_ms=12_000,
-    )
+    reply = await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [PORTUGUESE]
     assert reply["fixed_line"] == ""
@@ -259,14 +198,10 @@ async def test_portuguese_the_transcriber_is_unsure_of_word_by_word_still_reache
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9, transcript_confidence=0.2)
+    the_take_lasts(monkeypatch, 12_000)
 
-    reply = await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(PORTUGUESE, "pt", 0.9, transcript_confidence=0.2),
-        take_ms=12_000,
-    )
+    reply = await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [PORTUGUESE], (
         "português claro com log-probabilidades baixas por palavra virava pedido para repetir"
@@ -281,16 +216,29 @@ async def test_words_with_no_detected_language_reach_the_guide_as_words(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, None, None)
+    the_take_lasts(monkeypatch, 12_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(PORTUGUESE, None, None),
-        take_ms=12_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [PORTUGUESE]
+
+
+async def test_portuguese_heard_with_a_region_written_with_an_underscore_reaches_the_guide_as_words(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt_BR", 0.9)
+    the_take_lasts(monkeypatch, 12_000)
+
+    await _the_team_sends_a_take(tablet, session)
+
+    assert guide.guide_inputs == [PORTUGUESE], (
+        "pt_BR não era lido como a língua da sessão e o português virava nota de língua materna"
+    )
 
 
 async def test_a_take_with_no_words_lasting_25_seconds_reaches_the_guide_as_the_mother_tongue_note_saying_25_seconds(  # noqa: E501
@@ -300,19 +248,75 @@ async def test_a_take_with_no_words_lasting_25_seconds_reaches_the_guide_as_the_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, 25_000)
 
-    reply = await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears_nothing,
-        take_ms=25_000,
-    )
+    reply = await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [_note(25)], (
         "dois minutos de ensaio sem palavras eram respondidos com o pedido para repetir"
     )
     assert reply["fixed_line"] == ""
+
+
+async def test_a_take_with_no_words_heard_as_english_at_0_65_keeps_that_language_in_its_record(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch, "eng", 0.65)
+    the_take_lasts(monkeypatch, 25_000)
+
+    await _the_team_sends_a_take(tablet, session)
+
+    assert guide.guide_inputs == [_note(25)]
+    assert await _the_turns_record(db_session, session.id) == {
+        "language": "eng",
+        "language_probability": 0.65,
+        "mother_tongue": True,
+        "take_ms": 25_000,
+    }, "o registro de um take sem palavras perdia a língua que o reconhecedor ouviu"
+
+
+async def test_the_recognizers_answer_with_no_words_still_names_the_language_it_heard() -> None:
+    from app.core.exceptions import NoWordsHeard
+    from app.services.translation_helper.transcribe_audio import transcribe_audio_detailed
+
+    def elevenlabs(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"text": "", "language_code": "eng", "language_probability": 0.65}
+        )
+
+    keyed = Settings(
+        database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="key", _env_file=None
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(elevenlabs)) as client:
+        with pytest.raises(NoWordsHeard) as heard:
+            await transcribe_audio_detailed(b"audio", settings=keyed, client=client)
+
+    assert (heard.value.language_code, heard.value.language_probability) == ("eng", 0.65)
+
+
+async def test_a_take_the_recognizer_refused_is_answered_with_d_1_and_never_counts_as_the_mother_tongue(  # noqa: E501
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_refuses(monkeypatch)
+    the_take_lasts(monkeypatch, 25_000)
+
+    reply = await _the_team_sends_a_take(tablet, session)
+
+    assert reply["fixed_line"] == "D0", (
+        "um STT mal configurado recusava todo take e cada take longo virava língua materna"
+    )
+    assert guide.guide_inputs == []
+    record = await _the_turns_record(db_session, session.id)
+    assert (record["language"], record["mother_tongue"]) == (None, False)
 
 
 async def test_a_take_whose_only_content_is_pause_for_30_seconds_reaches_the_guide_as_the_mother_tongue_note_saying_30_seconds(  # noqa: E501
@@ -322,14 +326,10 @@ async def test_a_take_whose_only_content_is_pause_for_30_seconds_reaches_the_gui
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, "[pause]", "pt", 0.9)
+    the_take_lasts(monkeypatch, 30_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears("[pause]", "pt", 0.9),
-        take_ms=30_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [_note(30)]
 
@@ -341,14 +341,10 @@ async def test_a_take_with_no_words_lasting_8_seconds_is_answered_with_d_1_and_t
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, 8_000)
 
-    reply = await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears_nothing,
-        take_ms=8_000,
-    )
+    reply = await _the_team_sends_a_take(tablet, session)
 
     assert reply["fixed_line"] == "D0"
     assert guide.guide_inputs == []
@@ -361,17 +357,48 @@ async def test_a_take_with_no_words_whose_length_cannot_be_measured_is_answered_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, None)
 
-    reply = await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears_nothing,
-        take_ms=None,
-    )
+    reply = await _the_team_sends_a_take(tablet, session)
 
     assert reply["fixed_line"] == "D0"
     assert guide.guide_inputs == []
+
+
+async def test_a_take_with_no_words_whose_probe_never_answers_is_answered_with_d_1(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", 0.05, raising=False)
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_probe_never_answers(monkeypatch)
+
+    try:
+        reply = await asyncio.wait_for(_the_team_sends_a_take(tablet, session), timeout=5)
+    except TimeoutError:
+        pytest.fail("um ffprobe travado segurava o turno até o teto de 300 s")
+
+    assert reply["fixed_line"] == "D0"
+    assert guide.guide_inputs == []
+
+
+async def test_words_whose_take_the_probe_fails_on_still_reach_the_guide_as_words(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9)
+    the_probe_fails(monkeypatch)
+
+    await _the_team_sends_a_take(tablet, session)
+
+    assert guide.guide_inputs == [PORTUGUESE], "uma falha do ffprobe virava erro 500 no turno"
 
 
 async def test_a_take_with_no_words_lasting_exactly_20_seconds_is_the_mother_tongue(
@@ -381,14 +408,10 @@ async def test_a_take_with_no_words_lasting_exactly_20_seconds_is_the_mother_ton
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, 20_000)
 
-    reply = await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears_nothing,
-        take_ms=20_000,
-    )
+    reply = await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [_note(20)]
     assert reply["fixed_line"] == ""
@@ -400,18 +423,15 @@ async def test_the_floor_raised_to_0_40_between_sessions_is_the_floor_the_next_s
     guide: ScriptedAgent,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    unsure_portuguese = _the_transcriber_hears(PORTUGUESE, "pt", 0.38)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.38)
+    the_take_lasts(monkeypatch, 12_000)
     before = await _an_open_session(db_session, tablet, guide)
-    await _the_team_sends_a_take(
-        tablet, before, monkeypatch, transcriber=unsure_portuguese, take_ms=12_000
-    )
+    await _the_team_sends_a_take(tablet, before)
     assert guide.guide_inputs == [PORTUGUESE]
 
     monkeypatch.setattr(get_settings(), "internalization_room_mother_tongue_floor", 0.40)
     after = await _an_open_session(db_session, tablet, guide)
-    await _the_team_sends_a_take(
-        tablet, after, monkeypatch, transcriber=unsure_portuguese, take_ms=12_000
-    )
+    await _the_team_sends_a_take(tablet, after)
 
     assert guide.guide_inputs == [_note(12)], (
         "o piso subiu na configuração e a sessão seguinte ainda ouvia pelo piso antigo"
@@ -430,18 +450,21 @@ def test_the_floor_is_read_from_the_environment_and_defaults_to_0_35(
     assert raised.internalization_room_mother_tongue_floor == 0.4
 
 
-def test_the_production_deploy_names_the_mother_tongue_floor_and_it_is_the_default() -> None:
-    import yaml
+@pytest.mark.parametrize("floor", ["1.5", "-0.1"])
+def test_a_floor_outside_zero_to_one_is_refused_at_boot(
+    monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    monkeypatch.setenv("INTERNALIZATION_ROOM_MOTHER_TONGUE_FLOOR", floor)
 
-    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "deploy.yml"
-    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
-    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
-    token = next(t for t in deploy_step["run"].split() if t.startswith("--update-env-vars="))
-    delimited = token.removeprefix("--update-env-vars=").strip('"')
-    pairs = dict(pair.split("=", 1) for pair in delimited.removeprefix("^|^").split("|"))
+    with pytest.raises(pydantic.ValidationError):
+        Settings(database_url="sqlite+aiosqlite:///./test.db", _env_file=None)
+
+
+def test_the_production_deploy_names_the_mother_tongue_floor_and_it_is_the_default() -> None:
+    deployed = deploy_env_vars("deploy.yml")
 
     default = Settings.model_fields["internalization_room_mother_tongue_floor"].default
-    assert float(pairs["INTERNALIZATION_ROOM_MOTHER_TONGUE_FLOOR"]) == default
+    assert float(deployed["INTERNALIZATION_ROOM_MOTHER_TONGUE_FLOOR"]) == default
 
 
 async def test_after_a_turn_in_words_the_stored_record_shows_the_language_its_probability_the_mother_tongue_decision_and_the_takes_length(  # noqa: E501
@@ -451,14 +474,10 @@ async def test_after_a_turn_in_words_the_stored_record_shows_the_language_its_pr
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9)
+    the_take_lasts(monkeypatch, 12_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(PORTUGUESE, "pt", 0.9),
-        take_ms=12_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert await _the_turns_record(db_session, session.id) == {
         "language": "pt",
@@ -477,14 +496,10 @@ async def test_after_a_mother_tongue_turn_the_stored_record_shows_the_language_i
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, TERENA_AS_SPANISH, "spa", 0.7)
+    the_take_lasts(monkeypatch, 40_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(TERENA_AS_SPANISH, "spa", 0.7),
-        take_ms=40_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert await _the_turns_record(db_session, session.id) == {
         "language": "spa",
@@ -501,14 +516,10 @@ async def test_after_a_turn_answered_with_d_1_the_stored_record_shows_no_languag
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, 8_000)
 
-    await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears_nothing,
-        take_ms=8_000,
-    )
+    await _the_team_sends_a_take(tablet, session)
 
     assert await _the_turns_record(db_session, session.id) == {
         "language": None,
@@ -518,28 +529,10 @@ async def test_after_a_turn_answered_with_d_1_the_stored_record_shows_no_languag
     }
 
 
-@pytest.fixture
-async def seam(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> AsyncIterator[httpx.AsyncClient]:
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
-    )
-    transport = ASGITransport(app=the_app(db_session))
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://test", headers=BEARER
-    ) as client:
-        yield client
-
-
 async def test_a_mother_tongue_note_from_the_golden_door_still_reaches_the_guide_as_the_note_and_its_record_says_mother_tongue(  # noqa: E501
     seam: httpx.AsyncClient, db_session: AsyncSession, guide: ScriptedAgent
 ) -> None:
-    created = await seam.post(
-        f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "Brazilian Portuguese"}
-    )
-    session_id = created.json()["sessionId"]
-    await seam.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"})
+    session_id = await a_golden_session(seam)
     guide.guide_inputs.clear()
 
     answered = await seam.post(
@@ -558,45 +551,18 @@ async def test_a_low_word_confidence_portuguese_answer_is_handed_to_the_coverage
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9, transcript_confidence=0.2)
+    the_take_lasts(monkeypatch, 12_000)
 
-    reply = await _the_team_sends_a_take(
-        tablet,
-        session,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(PORTUGUESE, "pt", 0.9, transcript_confidence=0.2),
-        take_ms=12_000,
-    )
+    reply = await _the_team_sends_a_take(tablet, session)
 
     assert reply["classification_pending"] is True, (
         "uma resposta em português com confiança baixa por palavra nunca chegava ao classificador"
     )
 
 
-class _ScriptedGuide:
-    """A Guide that says the lines the case wrote, one per turn, and a Validator that passes."""
-
-    def __init__(self) -> None:
-        self.lines: list[str] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return self.lines.pop(0)
-
-
-async def _a_heard_turn(
-    db_session: AsyncSession,
-    session: IRSession,
-    scripted: _ScriptedGuide,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    transcriber: Transcriber,
-    line: str,
-) -> None:
-    monkeypatch.setattr(hearing, "transcribe_audio_detailed", transcriber)
-    monkeypatch.setattr(hearing, "measure_ms", _the_take_lasts(4_000))
+async def _a_heard_turn(db_session: AsyncSession, session: IRSession) -> None:
     speech = await hearing.heard_speech(b"audio", language=session.language, settings=settings())
-    scripted.lines.append(line)
     turn = await run_comprehension_turn(
         db_session,
         session,
@@ -615,31 +581,17 @@ async def _a_heard_turn(
 async def test_a_teams_report_of_a_finished_rehearsal_heard_with_low_word_confidence_credits_the_scene_the_guide_invited(  # noqa: E501
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    scripted = _ScriptedGuide()
-    the_room_agent_is(monkeypatch, turn=scripted)
+    the_models_answer(monkeypatch, INVITATION, None, CONVERSATION, None)
+    the_take_lasts(monkeypatch, 4_000)
     session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
-    await _a_heard_turn(
-        db_session,
-        session,
-        scripted,
-        monkeypatch,
-        transcriber=_the_transcriber_hears("uma mulher volta para o seu povo", "pt", 0.9),
-        line=INVITATION,
-    )
+    the_transcriber_hears(monkeypatch, "uma mulher volta para o seu povo", "pt", 0.9)
+    await _a_heard_turn(db_session, session)
 
-    await _a_heard_turn(
-        db_session,
-        session,
-        scripted,
-        monkeypatch,
-        transcriber=_the_transcriber_hears(
-            "pronto, terminamos", "pt", 0.9, transcript_confidence=0.1
-        ),
-        line=CONVERSATION,
-    )
+    the_transcriber_hears(monkeypatch, "pronto, terminamos", "pt", 0.9, transcript_confidence=0.1)
+    await _a_heard_turn(db_session, session)
 
     assert comprehension_of(session).practiced_scene_ids == ["S1"], (
         "o relato de ensaio terminado ouvido com confiança baixa por palavra não creditava a cena"

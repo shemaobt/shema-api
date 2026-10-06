@@ -6,7 +6,12 @@ import math
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
+from app.core.exceptions import (
+    NoWordsHeard,
+    UpstreamServiceError,
+    ValidationError,
+    upstream_or_validation_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -161,13 +166,19 @@ async def transcribe_audio_detailed(
 
     payload = response.json()
     text = (payload.get("text") or "").strip()
-    if not text:
-        raise ValidationError("Transcription returned empty text")
+    language_code = payload.get("language_code") or None
     probability = payload.get("language_probability")
+    language_probability = float(probability) if isinstance(probability, (int, float)) else None
+    if not text:
+        raise NoWordsHeard(
+            "Transcription returned empty text",
+            language_code=language_code,
+            language_probability=language_probability,
+        )
     return TranscriptionResult(
         text=text,
-        language_code=payload.get("language_code") or None,
-        language_probability=float(probability) if isinstance(probability, (int, float)) else None,
+        language_code=language_code,
+        language_probability=language_probability,
         transcript_confidence=_transcript_confidence(payload.get("words") or []),
     )
 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import NoWordsHeard, ValidationError
 from app.services.internalization_room.languages import FLOOR
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
@@ -45,6 +46,11 @@ def spoken_words_only(text: str) -> str:
         return ""
     return re.sub(r"\s{2,}", " ", _BRACKETED.sub(" ", text)).strip()
 
+
+#: How long a take's length is waited for. The probe answers a phone's take in well under a
+#: second; one that has not answered by now is an unknown length, as one that failed is, and
+#: never holds the turn or fails it.
+MEASURING_BOUND_S = 3.0
 
 #: Her `LONG_WORDLESS_TAKE_MS`: a take with no words that runs this long is the team
 #: rehearsing in a language the transcriber cannot write, not a take the room missed.
@@ -97,7 +103,7 @@ class HeardSpeech(BaseModel):
     def mother_tongue(self) -> bool:
         if not self.text.strip():
             return self.measured_ms is not None and self.measured_ms >= LONG_WORDLESS_TAKE_MS
-        detected = (self.language_code or "").strip().lower().split("-")[0]
+        detected = re.split(r"[-_]", (self.language_code or "").strip().lower())[0]
         if not detected:
             return False
         spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language, _BRIDGE_LANGUAGE_CODES[FLOOR])
@@ -147,19 +153,28 @@ async def heard_speech(
     still left to detect what it actually heard, because the whole point of the measurement
     is to notice a team that has slipped out of the language the room is speaking.
 
-    Every take is measured, the one the transcriber refuses as empty included: a take with no
-    words is told apart from a long rehearsal only by its length, and the record keeps the
-    length of every turn.
+    Every take the recognizer heard is measured, the one it found no words in included: a
+    take with no words is told apart from a long rehearsal only by its length, and the record
+    keeps the length of every turn. A take the recognizer refused is a miss, as it always
+    was: it was never heard, so it is neither measured nor the mother tongue, and a
+    recognizer that refuses everything draws the D line rather than a room note on every
+    long take.
     """
     mother_tongue_floor = (settings or get_settings()).internalization_room_mother_tongue_floor
     try:
         result = await transcribe_audio_detailed(
             audio, filename=filename, mime_type=mime_type, settings=settings
         )
-    except ValidationError as failure:
-        logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
-        result = TranscriptionResult(text="")
-    measured = await measure_ms(audio)
+    except NoWordsHeard as nothing:
+        result = TranscriptionResult(
+            text="",
+            language_code=nothing.language_code,
+            language_probability=nothing.language_probability,
+        )
+    except ValidationError as refusal:
+        logger.info("The recognizer refused %d bytes of audio: %s", len(audio), refusal)
+        return HeardSpeech(bridge_language=language, mother_tongue_floor=mother_tongue_floor)
+    measured = await _length_of(audio)
     return HeardSpeech(
         text=spoken_words_only(result.text),
         bridge_language=language,
@@ -169,3 +184,11 @@ async def heard_speech(
         measured_ms=measured,
         mother_tongue_floor=mother_tongue_floor,
     )
+
+
+async def _length_of(audio: bytes) -> int | None:
+    try:
+        return await asyncio.wait_for(measure_ms(audio), MEASURING_BOUND_S)
+    except (TimeoutError, OSError) as failure:
+        logger.warning("The take's length could not be read: %r", failure)
+        return None
