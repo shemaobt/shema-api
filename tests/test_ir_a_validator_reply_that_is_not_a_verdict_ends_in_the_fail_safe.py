@@ -26,6 +26,7 @@ GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 P = "P03"
 PASS = json.dumps({"verdict": "pass", "issues": []})
+DRAFT = "Ensaiem essa parte entre vocês."
 
 
 def _settings() -> Settings:
@@ -47,6 +48,7 @@ class ScriptedValidator:
 
     def __init__(self, *replies: tuple[str, str]) -> None:
         self.replies = list(replies)
+        self.guide_stop_reason = "end_turn"
         self.calls: list[dict[str, Any]] = []
 
     @property
@@ -59,7 +61,7 @@ class ScriptedValidator:
             asked = len(self.validator_calls)
             text, stop_reason = self.replies[min(asked, len(self.replies)) - 1]
         else:
-            text, stop_reason = "Ensaiem essa parte entre vocês.", "end_turn"
+            text, stop_reason = DRAFT, self.guide_stop_reason
         return SimpleNamespace(
             content=[SimpleNamespace(type="text", text=text)] if text else [],
             stop_reason=stop_reason,
@@ -186,3 +188,22 @@ async def test_a_verdict_she_never_named_is_the_fail_safe_and_not_a_redraft(
         "quando o Validador nem chegou a julgar o rascunho"
     )
     assert len(messages.calls) == 2, "um rascunho e uma leitura, nada além disso"
+
+
+async def test_a_guide_draft_cut_at_its_ceiling_still_goes_to_the_validator_as_it_stands(
+    validator_replies,
+) -> None:
+    messages = validator_replies((PASS, "end_turn"))
+    messages.guide_stop_reason = "max_tokens"
+
+    outcome = await _a_turn()
+
+    assert outcome.used_fail_safe is False, (
+        "um rascunho cortado no teto virava linha de segurança antes de o Validador ver o que "
+        "havia; ele só é a linha de segurança quando não sobra texto nenhum"
+    )
+    assert outcome.speech == DRAFT
+    (validator,) = messages.validator_calls
+    assert DRAFT in "".join(block["text"] for block in validator["system"]), (
+        "o Validador julga o texto como ele ficou, cortado ou não"
+    )
