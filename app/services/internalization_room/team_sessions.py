@@ -79,11 +79,12 @@ def _still_going_first(cards: list[TeamSessionResponse]) -> list[TeamSessionResp
 
 async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
     """A session nobody entered (ENG-964) is not a room of the team and is not drawn:
-    `entered()` excludes it, the one predicate the team's last activity also reads.
+    `entered()` excludes it, the one predicate the team's last activity also reads. An archived
+    session is no longer the team's either (ADR 0047).
     """
     result = await db.execute(
         select(IRSession)
-        .where(IRSession.project_id == project_id, entered())
+        .where(IRSession.project_id == project_id, IRSession.archive_id.is_(None), entered())
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
     return result.scalars().all()

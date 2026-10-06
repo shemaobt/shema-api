@@ -247,6 +247,8 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     **Version** is per: a draft another conversation about this passage approved is a draft of
     this passage, and a list scoped to one session would hide it from the person reading the
     history. A session naming no project has none, which is the same answer the approval gives.
+    Only the releases of the session's own archive are the passage's here: a live session lists
+    the live drafts, and an archived one the drafts its Zerar archived with it (ADR 0047).
 
     The numbering is the session's own. A **Version** freezes the reading of the session it was
     built from, so the numbers come from the last release *this* session wrote and never from
@@ -279,11 +281,15 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     cut_in_two = await divided_segments(db, session.id)
     retired = await retired_segments(db, session.id)
     takes = await takes_of(db, session.id)
-    releases = (
-        await releases_of_passage(db, session.project_id, session.pericope)
-        if session.project_id
-        else []
-    )
+    releases = [
+        release
+        for release in (
+            await releases_of_passage(db, session.project_id, session.pericope)
+            if session.project_id
+            else []
+        )
+        if release.archive_id == session.archive_id
+    ]
     marks = (await hard_stretches_of(db, [session.id])).get(session.id, [])
 
     minted_here = [release for release in releases if release.session_id == session.id]

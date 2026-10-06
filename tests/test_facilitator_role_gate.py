@@ -82,6 +82,10 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("GET", "/api/internalization-room/facilitator/sessions"): {},
     ("POST", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
     ("DELETE", "/api/internalization-room/facilitator/sessions/{session_id}/attended"): {},
+    (
+        "POST",
+        "/api/internalization-room/facilitator/projects/{project_id}/passages/{pericope}/archive",
+    ): {},
 }
 
 _STREAMS = {("GET", "/api/facilitator/teams/{team_id}/nudges")}

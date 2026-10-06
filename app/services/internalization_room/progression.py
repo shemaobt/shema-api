@@ -207,6 +207,8 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
 
     A team with no finished passage is absent rather than present and empty, which is what
     the caller reads as "nothing closed yet".
+
+    An archived session finishes nothing: a Zerar'd closed passage is the team's again.
     """
     if not project_ids:
         return {}
@@ -216,6 +218,7 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
         .where(
             IRSession.project_id.in_(project_ids),
             IRSession.ended_at.is_not(None),
+            IRSession.archive_id.is_(None),
             IRTake.kind == IRTakeKind.ENSAIO,
         )
         .distinct()
