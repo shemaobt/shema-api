@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from unittest.mock import ANY
 
 import pytest
@@ -163,7 +162,7 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     session = await apply_coverage(db_session, session.id, whole)
 
     assert session.ended_at is not None
-    assert end_of(session, at=datetime.now(UTC)).state is SessionState.COMPLETE
+    assert end_of(session).state is SessionState.COMPLETE
 
 
 async def test_a_settle_that_does_not_close_the_session_stamps_nothing(

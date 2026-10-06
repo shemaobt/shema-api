@@ -290,7 +290,7 @@ The halt kind that only calls somebody over: the session goes on while it stands
 _Avoid_: needs a person, notice, alert, Aviso
 
 **Station**:
-The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. An abandoned session keeps the station it stopped in.
+The stop of the room a session is in, derived at read time for the Desk from what the session holds — conversation, rehearsal, telling back, findings, approved — never stored and never sent by the tablet. A session the team left keeps the station it stopped in.
 _Avoid_: stage, phase, status (the session's own three states), Estação
 
 **Conversation**:

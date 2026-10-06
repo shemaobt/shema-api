@@ -7,12 +7,12 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import ColumnElement, and_, case, delete, or_, select, update
-from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
+from app.db.insert_once import insert_once
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
     IRSession,
@@ -344,16 +344,16 @@ async def _latest_stored(
 
 async def _claim(db: AsyncSession, session: IRSession) -> str:
     """Point the key at this session unless another open already did, and say who holds it."""
-    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
-    await db.execute(
-        insert(IRTeamSession)
-        .values(
-            project_id=session.project_id,
-            pericope=session.pericope,
-            language=session.language,
-            session_id=session.id,
-        )
-        .on_conflict_do_nothing(index_elements=["project_id", "pericope", "language"])
+    await insert_once(
+        db,
+        IRTeamSession,
+        {
+            "project_id": session.project_id,
+            "pericope": session.pericope,
+            "language": session.language,
+            "session_id": session.id,
+        },
+        conflict_on=["project_id", "pericope", "language"],
     )
     held = await db.execute(
         select(IRTeamSession.session_id).where(
@@ -723,13 +723,12 @@ async def apply_coverage(
     blind overwrite let the older reading win and darkened a bead the team had already
     earned.
 
-    Closing is the one end this schema stamps (ENG-451). A session ends either because the
-    floor was met — an event, at an instant, written into ``ended_at`` here — or because
-    nobody came back to it, which is derived from its last activity at read time and left
-    unwritten, because the limit that decides it is not agreed with the room app. The
-    ``IN_PROGRESS`` guard is what keeps the stamp a single instant: the classifier goes on
-    settling whatever turns were already in flight when the floor was met, and a stamp on
-    every one of them would grow the conversation's length after the team had finished.
+    Closing is the one end this schema knows (ENG-451, ENG-1263): the floor was met, an event
+    at an instant, written into ``ended_at`` here while the status becomes ``done``. Nothing
+    else ends a session; an idle one is simply in progress. The ``IN_PROGRESS`` guard is what
+    keeps the stamp a single instant: the classifier goes on settling whatever turns were
+    already in flight when the floor was met, and a stamp on every one of them would grow the
+    conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
     kept = session.coverage_state or {}
