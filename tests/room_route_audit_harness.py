@@ -11,6 +11,10 @@ routes are found reaches every audit built on it.
 
 from __future__ import annotations
 
+import typing
+
+from pydantic import BaseModel
+
 
 def _dependency_calls(dependant) -> set:
     calls = {dependant.call}
@@ -54,3 +58,21 @@ def room_app_routes() -> list:
         ),
         key=lambda route: (route.path, sorted(route.methods)),
     )
+
+
+def models_in(annotation, seen: frozenset = frozenset()) -> set[type[BaseModel]]:
+    """Every model a body of this shape can carry, following nesting."""
+    if annotation in seen:
+        return set()
+    seen = seen | {annotation}
+
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        found = {annotation}
+        for field in annotation.model_fields.values():
+            found |= models_in(field.annotation, seen)
+        return found
+
+    found = set()
+    for arg in typing.get_args(annotation):
+        found |= models_in(arg, seen)
+    return found

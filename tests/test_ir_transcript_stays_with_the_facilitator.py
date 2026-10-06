@@ -19,31 +19,27 @@ mounted application, so a route that would break it fails this file on the day i
 * what a route can put in a body — every model reachable from the return type FastAPI
   resolved, read recursively.
 
-**On the word "transcript" appearing elsewhere.** `TurnResponse.transcript` is the team's own
-utterance in a turn of the conversation with the guide, transcribed so the guide can answer
-it, and it long predates this slice. It is not the question's transcript and this file does
-not touch it — the audit below asks whether a response *identifies a question and carries its
-transcript*, which is the shape the leak this issue names would actually take. That other
-field is a finding for the room's own line, reported and not fixed here.
+**On the word "transcript" appearing elsewhere.** `TurnResponse.transcript`, the team's own
+utterance in a turn of the conversation with the guide, is gone from the tablet's answer
+(ENG-1335); `test_ir_the_tablet_never_receives_the_teams_words.py` holds that over every door.
+This file keeps asking the narrower question about a *question's* transcript.
 """
 
 from __future__ import annotations
 
-import typing
 from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRSession
 from app.models.internalization_room import InboxQuestionView
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.voice_handles import to_handle
-from tests.room_route_audit_harness import room_app_routes
+from tests.room_route_audit_harness import models_in, room_app_routes
 
 #: How the facilitator's card spells the two fields that must never travel together to the
 #: room. Read off the card rather than typed here, so a rename that keeps the leak takes this
@@ -79,24 +75,6 @@ def question_routes_the_room_reaches() -> list:
     return [route for route in room_app_routes() if route.endpoint in mounted]
 
 
-def _models(annotation, seen: frozenset = frozenset()) -> set[type[BaseModel]]:
-    """Every model a body of this shape can carry, following nesting."""
-    if annotation in seen:
-        return set()
-    seen = seen | {annotation}
-
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        found = {annotation}
-        for field in annotation.model_fields.values():
-            found |= _models(field.annotation, seen)
-        return found
-
-    found = set()
-    for arg in typing.get_args(annotation):
-        found |= _models(arg, seen)
-    return found
-
-
 def _named(route) -> tuple[str, str]:
     return sorted(route.methods - {"HEAD", "OPTIONS"})[0], route.path
 
@@ -112,7 +90,7 @@ def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> 
     leaking = {
         _named(route): model.__name__
         for route in room_app_routes()
-        for model in _models(route.response_model)
+        for model in models_in(route.response_model)
         if {QUESTION_IDENTITY, TRANSCRIPT_FIELD} <= set(model.model_fields)
     }
 
