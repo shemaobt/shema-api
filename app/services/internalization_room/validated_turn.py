@@ -330,7 +330,8 @@ async def _voiced_after_validation(
                 role="validator",
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
-                max_output_tokens=4096,
+                max_output_tokens=8192,
+                effort=None,
                 settings=settings,
             )
             verdict, refusal = _parse_verdict(raw_verdict)

@@ -136,7 +136,7 @@ async def call_agent(
     conversation: Sequence[Turn] | None = None,
     ladder: list[str] | None = None,
     max_output_tokens: int = 2000,
-    effort: Effort = "high",
+    effort: Effort | None = "high",
     thinks: bool = True,
     schema: dict[str, Any] | None = None,
     timeout_ms: int | None = None,
@@ -180,9 +180,12 @@ async def call_agent(
     thinking: ThinkingConfigAdaptiveParam | ThinkingConfigDisabledParam = (
         adaptive if thinks else disabled
     )
-    output_config: OutputConfigParam = {"effort": effort}
+    output_config: OutputConfigParam = {}
+    if effort is not None:
+        output_config["effort"] = effort
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}
+    the_output_config: dict[str, Any] = {"output_config": output_config} if output_config else {}
     messages: list[MessageParam] = [
         {"role": turn["role"], "content": turn["text"]} for turn in conversation or ()
     ]
@@ -200,7 +203,7 @@ async def call_agent(
                             model=model,
                             max_tokens=max_output_tokens,
                             thinking=thinking,
-                            output_config=output_config,
+                            **the_output_config,
                             system=_system_blocks(
                                 system_prompt, ttl=_prefix_cache_ttl(role, settings)
                             ),
@@ -435,7 +438,7 @@ def _report_spend(
     role: str,
     rung_number: int,
     rungs: list[str],
-    effort: Effort,
+    effort: Effort | None,
     latency_ms: int,
 ) -> None:
     """What this call cost, which rung answered it, and how long the model took.
