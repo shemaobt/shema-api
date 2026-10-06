@@ -149,6 +149,19 @@ _MENDED = [
         "Rute (ver B3) chega.", "Rute (ver) chega.", id="no-space-before-a-closing-bracket"
     ),
     pytest.param("Quem, B3?, disse.", "Quem? disse.", id="question-then-comma"),
+    pytest.param(
+        "Ele disse \N{LEFT-POINTING DOUBLE ANGLE QUOTATION MARK}B3"
+        "\N{RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK} ontem.",
+        "Ele disse ontem.",
+        id="empty-guillemets",
+    ),
+    pytest.param(
+        "Ele disse \N{LEFT SINGLE QUOTATION MARK}B3\N{RIGHT SINGLE QUOTATION MARK} ontem.",
+        "Ele disse ontem.",
+        id="empty-single-curly-quotes",
+    ),
+    pytest.param("Veja o resto, etc., B3.", "Veja o resto, etc.", id="no-double-full-stop"),
+    pytest.param("Fim... B3 e mais.", "Fim... e mais.", id="an-ellipsis-is-kept"),
     pytest.param("Um texto: B3. Outro.", "Um texto. Outro.", id="colon-before-full-stop"),
     pytest.param("B3/B4 e B3-B4", "e", id="slash-and-hyphen-joined-codes"),
     pytest.param("Naomi, B3 ,Ruth", "Naomi, Ruth", id="space-after-the-comma-kept"),
@@ -272,6 +285,21 @@ def test_a_pin_with_no_vendored_map_fails_the_import_instead_of_deleting_every_n
 ) -> None:
     monkeypatch.setattr(Path, "glob", lambda self, pattern: iter(()))
     spec = importlib.util.spec_from_file_location("speakable_without_maps", speakable.__file__)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    with pytest.raises(RuntimeError):
+        spec.loader.exec_module(module)
+
+
+@pytest.mark.parametrize("heads", ["[[PL_ISRAEL]]", "[[B3-Naomi]]"])
+def test_a_pin_whose_maps_carry_only_one_shape_of_code_fails_the_import(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, heads: str
+) -> None:
+    page = tmp_path / "map.md"
+    page.write_text(f"{heads} um nome.", encoding="utf-8")
+    monkeypatch.setattr(Path, "glob", lambda self, pattern: iter([page]))
+    spec = importlib.util.spec_from_file_location("speakable_with_one_shape", speakable.__file__)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
 
