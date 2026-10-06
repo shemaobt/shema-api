@@ -609,16 +609,44 @@ one role*. The frontend's model is **eight** capabilities across four roles — 
 section was written, GATE-01 and GATE-02 moved it to seven, and BE-16 added the one the
 fourth role exists for:
 
-| Capability | `equipe` | `mesa` | `gestor` | `lider` | Settled by |
-|---|---|---|---|---|---|
-| `edit_requests` | ✅ | ✅ | ✅ | — | **GATE-02 D4** — *"a mesa pode alterar também"*; **which instance** each writes is BE-25's (§5.4.2), and it is no longer the mesa's |
-| `view_evaluation` | — | ✅ | ✅ | — | already decided |
-| `edit_evaluation` | — | ✅ | — | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
-| `manage_funds` | — | ✅ | ✅ | — | already decided |
-| `move_board` | — | ✅ | **✅** | — | **GATE-02 D3** — the cell that moved |
-| `assign_fund` | — | ✅ | — | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
-| `allocate_funds` | — | — | ✅ | — | **GATE-01 D6** — the first capability the mesa does not hold |
+| Capability | `equipe` | `mesa` | `gestor` | `admin` | `lider` | Settled by |
+|---|---|---|---|---|---|---|
+| `edit_requests` | ✅ | ✅ | ✅ | ✅ | — | **GATE-02 D4** — *"a mesa pode alterar também"*; **which instance** each writes is BE-25's (§5.4.2), and it is no longer the mesa's |
+| `view_evaluation` | — | ✅ | ✅ | ✅ | — | already decided |
+| `edit_evaluation` | — | ✅ | — | — | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
+| `manage_funds` | — | ✅ | ✅ | ✅ | — | already decided |
+| `move_board` | — | ✅ | **✅** | ✅ | — | **GATE-02 D3** — the cell that moved |
+| `assign_fund` | — | ✅ | — | — | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
+| `allocate_funds` | — | — | ✅ | ✅ | — | **GATE-01 D6** — the first capability the mesa does not hold |
 | ~~`endorse_request`~~ | — | — | — | ~~✅~~ | **GATE-02 D2** — the Líder's only verb (BE-16). **Retired by FE-49** (OBT-517, §5.4.6): the leader endorses by link, with no account, and the row and the column left the table |
+
+**The `admin` column is the `gestor` column, by derivation and not by a second set of cells**
+(OBT-568, Daniel, 6/oct/2026 — *"o admin deve ter o mesmo nível de permissão que o gestor no
+formulário"*; his decision, not the client's). The Admin of OBT-522 is one `admin` role seeded in
+both apps, and until that issue it held no capability here: the pen over any instance
+(`_editing.is_admin`, BE-25), the request links (`_links.require_link_admin`, BE-26) and the
+board-wide reach (`_scope.reach`) all read the role by name, so an account holding `admin` alone
+entered the form and reached no screen — measured on 6/oct/2026 on the deployed PME → form
+handoff. `capabilities.py` now carries `ADMIN_CAPABILITIES`, which **is** `ROLE_CAPABILITIES["gestor"]`
+(the same object), and derives `CAPABILITY_ROLES` over the frontend's rows plus that one. The
+row is deliberately **not** in `ROLE_CAPABILITIES`: that map is the mirror of the frontend's
+emission, which the frontend writes next (its `capabilities.ts` and `roleFromClaims`, the sibling
+issue in `resource-request-form`); `test_capabilities.py` admits the Admin's row as the one this
+side holds ahead of the emission, and only while it equals the Gestor's. What the Admin does not
+hold is exactly what the Gestor does not — `edit_evaluation` and `assign_fund` — and both are
+asserted with an account holding `admin` **alone**, never `is_platform_admin` (§5.5). The column
+above is the derived one drawn out, so the table reads whole.
+
+Two consequences ride on the derivation and neither is in the issue's text. **The Admin is a
+board watcher**: `_notices.board_watchers` lists whoever holds `manage_funds`, so an account
+holding `admin` alone now receives the arrival notice on both channels, exactly as the Gestor
+does (`test_a_chegada_avisa_tambem_o_admin`); `list_board_members` reads `edit_evaluation` and
+does not change — the Admin is not on the mesa's ata. And **`admin` + `mesa` on one account
+answers the whole table**, which is what `mesa` + `gestor` would answer — the pair our rule of
+28/aug/2026 keeps off one account (ours, not the client's; applied where a grant is written, in
+the PME). With the Admin's row the forbidden union reassembles through the Admin. The guard
+answers it correctly either way and the test pins the arithmetic, not the policy: whether an
+Admin may also sit on the mesa is the user's call, raised with this PR and not decided here.
 
 **Reading is not a row of this table and must not become one.** It rides on `edit_requests`,
 and which rows it reaches is `_scope.py`'s and not a capability at all (§6.2). Until BE-23 the
