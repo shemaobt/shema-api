@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import unicodedata
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -40,6 +42,8 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
+from app.db.models.language import Language
+from app.db.models.project import Project
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -69,7 +73,7 @@ from app.services.internalization_room.sessions import (
     comprehension_of,
     is_panorama,
 )
-from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.takes import current_parts, is_wav, takes_of
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
@@ -105,6 +109,49 @@ class InternalizationReleaseBlocked(ConflictError):
     def __init__(self, blockers: list[str]) -> None:
         self.blockers = blockers
         super().__init__("internalization release blocked: " + ", ".join(blockers))
+
+
+#: What a packet says about a rehearsal recorded entirely as WAV, and the one shape of it:
+#: the tablet records 16 kHz mono PCM, and a part that is WAV by content type is read as that.
+WAV_FORMAT: dict[str, Any] = {
+    "container": "wav",
+    "codec": "pcm_s16le",
+    "sample_rate": 16000,
+    "channels": 1,
+}
+
+
+async def _mother_tongue(db: AsyncSession, session: IRSession) -> str | None:
+    """The name of the language the session's team speaks, as the platform stores it.
+
+    Null when the session names no team or the team names no row, and never a default: the
+    tablet's sessions carry no foreign keys, and a guessed language would send a team's
+    recording to Refine labelled as somebody else's.
+    """
+    if session.project_id is None:
+        return None
+    return (
+        await db.execute(
+            select(Language.name)
+            .join(Project, Project.language_id == Language.id)
+            .where(Project.id == session.project_id)
+        )
+    ).scalar_one_or_none()
+
+
+def _slug(name: str | None) -> str:
+    """Marcia's slug: accents stripped, lower case, every run outside a-z0-9 one dash.
+
+    A name that leaves nothing, such as one with no Latin letters, is ``lrl``, as in her app.
+    """
+    decomposed = unicodedata.normalize("NFD", name or "")
+    stripped = "".join(c for c in decomposed if not "\u0300" <= c <= "\u036f")
+    return re.sub(r"[^a-z0-9]+", "-", stripped.lower()).strip("-") or "lrl"
+
+
+def release_name(language: str | None, pericope: str, version: int) -> str:
+    """What a release is called to Refine and to Marcia's check: language, passage, draft."""
+    return f"internalize-{_slug(language)}-{pericope.lower()}-v{version}"
 
 
 def _package_sha256(artifact: dict[str, Any]) -> str:
@@ -407,14 +454,15 @@ async def compose_internalization_release(
     restated, so what counts as words stays one sentence in one place: the analyst is numbered
     off that same list, and the two must not drift.
 
-    ``package_sha256`` is taken before ``created_at``, ``release_id``, ``version`` and
-    ``check`` are written into the returned dict, so the hash covers none of the four.
-    ``created_at`` records when this read happened and not what the session holds; the two
-    after it say which approval this content became; ``check`` is a view of that approval's
-    row, which is written later still and so is derived here with no version and no force
-    (ADR 0020). All four would move without the content moving, and two reads of an unchanged
-    session must carry one hash. A consumer verifying the fingerprint drops those four keys
-    and hashes the rest.
+    ``package_sha256`` is taken before ``created_at``, ``release_id``, ``version``, ``check``,
+    ``language``, ``session_language`` and ``audio_format`` are written into the returned
+    dict, so the hash covers none of the seven. ``created_at`` records when this read happened
+    and not what the session holds; the two after it say which approval this content became;
+    ``check`` is a view of that approval's row, which is written later still and so is derived
+    here with no version and no force (ADR 0020). The last three say whose rehearsal this is
+    and in what format it was recorded (ADR 0048). All seven would move without the content
+    moving, and two reads of an unchanged session must carry one hash. A consumer verifying
+    the fingerprint drops those seven keys and hashes the rest.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -534,11 +582,16 @@ async def compose_internalization_release(
     }
     artifact["package_sha256"] = _package_sha256(artifact)
     approved = await _release_of(db, session, artifact["package_sha256"])
-    artifact["release_id"] = approved.id if approved else None
+    artifact["release_id"] = approved.packet["release_id"] if approved else None
     artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     artifact["check"] = _check_block(
         telling_back, told, session.id, heard_complete=not unheard, version=None, forced=False
+    )
+    artifact["language"] = await _mother_tongue(db, session)
+    artifact["session_language"] = session.language
+    artifact["audio_format"] = (
+        WAV_FORMAT if parts and all(is_wav(p.content_type) for p in parts) else None
     )
     return artifact, blockers
 
@@ -744,7 +797,7 @@ async def approve_release(
     release_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
     forced = forced_by is not None
-    packet["release_id"] = release_id
+    packet["release_id"] = release_name(packet["language"], session.pericope, version)
     packet["version"] = version
     packet["check"]["version"] = version
     packet["check"]["forced"] = forced

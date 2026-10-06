@@ -22,7 +22,16 @@ AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
 LISTEN_MINUTES = 15
 
-FILENAMES = {IRTakeKind.ENSAIO: "tomada.m4a", IRTakeKind.RETRO: "trecho.m4a"}
+FILENAMES = {IRTakeKind.ENSAIO: "tomada", IRTakeKind.RETRO: "trecho"}
+
+
+def is_wav(content_type: str) -> bool:
+    """Marcia's rule for a WAV clip: the content type says ``wav``, in any case.
+
+    Read off the content type and never off the bytes, because that is what her app reads, and
+    the release's audio format and a take's file name must agree on what counts.
+    """
+    return "wav" in content_type.lower()
 
 
 class TakeStore(Protocol):
@@ -43,7 +52,7 @@ def _store(settings: Settings | None = None) -> TakeStore:
     return GcsPlatformStore(settings or get_settings())
 
 
-def storage_key(session_id: str, kind: IRTakeKind, sha256: str) -> str:
+def storage_key(session_id: str, kind: IRTakeKind, sha256: str, content_type: str) -> str:
     """Content-addressed, so a failed upload can only ever leave an orphan.
 
     A stable key would overwrite in place: a second attempt that dies halfway would leave the
@@ -52,8 +61,15 @@ def storage_key(session_id: str, kind: IRTakeKind, sha256: str) -> str:
 
     It also makes the whole path idempotent — the same bytes sent twice land on the same
     object and, by the unique constraint, the same row.
+
+    The last segment is the name the take downloads under, so it follows the content type: a
+    WAV take is ``.wav`` and anything else keeps the ``.m4a`` it always had.
     """
-    return f"internalization-room/takes/{session_id}/{kind.value}/{sha256}/{FILENAMES[kind]}"
+    extension = "wav" if is_wav(content_type) else "m4a"
+    return (
+        f"internalization-room/takes/{session_id}/{kind.value}/{sha256}/"
+        f"{FILENAMES[kind]}.{extension}"
+    )
 
 
 def _crc32c(audio: bytes) -> str:
@@ -92,7 +108,7 @@ async def store_take(
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
     digest = hashlib.sha256(audio).hexdigest()
-    key = storage_key(session_id, kind, digest)
+    key = storage_key(session_id, kind, digest, content_type)
 
     existing = await db.execute(
         select(IRTake).where(IRTake.session_id == session_id, IRTake.storage_key == key)
