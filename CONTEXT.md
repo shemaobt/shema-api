@@ -146,11 +146,11 @@ session's stretches.
 _Avoid_: child, split, subsegment, Trecho dividido
 
 **Element kind**:
-What a bead of the Meaning Map is. Six kinds sit in a scene of the passage — scene, being, place, object, time, absence; a preserved rule and the four Level-1 axes — arc, context, tone, function — belong to the passage and to none of its scenes.
+What an element of the Meaning Map is. Six kinds sit in a scene of the passage — scene, being, place, object, time, absence; a preserved rule and the four Level-1 axes — arc, context, tone, function — belong to the passage and to none of its scenes.
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
 _Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):
@@ -158,7 +158,7 @@ The scene a rehearsal invitation is about: the first scene of the passage still 
 _Avoid_: current scene, pointer, practised scene (the credit's result, not its target), Cena convidada
 
 **Coverage event** (`ir_coverage_events`):
-One recorded movement of a bead from one coverage state to the next.
+One recorded movement of an element from one coverage state to the next.
 _Avoid_: log, history, audit, Evento de cobertura
 
 ### Findings
