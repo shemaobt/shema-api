@@ -28,6 +28,18 @@ logger = logging.getLogger(__name__)
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
+class TruncatedReply(Exception):
+    """A reply the model cut at its ceiling, held with what it had written so far.
+
+    Raised only for a caller that asked for it: some replies are read whole or not at all, and
+    a verdict that stops at the ceiling is not one the room may act on.
+    """
+
+    def __init__(self, reply: str) -> None:
+        super().__init__("the reply was cut at its output ceiling")
+        self.reply = reply
+
+
 class Turn(TypedDict):
     """One thing that was said, on its way to the model as the turn it was.
 
@@ -138,6 +150,7 @@ async def call_agent(
     max_output_tokens: int = 2000,
     effort: Effort | None = "high",
     thinks: bool = True,
+    fails_on_truncation: bool = False,
     schema: dict[str, Any] | None = None,
     timeout_ms: int | None = None,
     settings: Settings | None = None,
@@ -265,7 +278,10 @@ async def call_agent(
             continue
         if not refused_above:
             _SETTLED[rungs[0]] = model
-        return _spoken_text(response)
+        spoken = _spoken_text(response)
+        if fails_on_truncation and response.stop_reason == "max_tokens":
+            raise TruncatedReply(spoken)
+        return spoken
     raise AssertionError("unreachable: the last rung either answers or raises")
 
 

@@ -8,7 +8,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.services.internalization_room.fail_safe import validation_ladder
-from app.services.internalization_room.llm import Turn, cache_break_before
+from app.services.internalization_room.llm import TruncatedReply, Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
@@ -326,15 +326,21 @@ async def _voiced_after_validation(
             )
             warmed_connection = True
         for _reading in range(READINGS_OF_ONE_DRAFT):
-            raw_verdict = await room_agent().turn.call_agent(
-                role="validator",
-                system_prompt=validator_system,
-                user_content=VALIDATOR_USER_MESSAGE,
-                max_output_tokens=8192,
-                effort=None,
-                settings=settings,
-            )
-            verdict, refusal = _parse_verdict(raw_verdict)
+            try:
+                raw_verdict = await room_agent().turn.call_agent(
+                    role="validator",
+                    system_prompt=validator_system,
+                    user_content=VALIDATOR_USER_MESSAGE,
+                    max_output_tokens=8192,
+                    effort=None,
+                    fails_on_truncation=True,
+                    settings=settings,
+                )
+                verdict, refusal = _parse_verdict(raw_verdict)
+            except TruncatedReply as cut:
+                verdict, refusal, issues = {}, "reply cut at its ceiling", []
+                _refused(refusal, cut.reply, session_id, attempt + 1)
+                break
             issues = _issues_as_dicts(verdict.get("issues"))
             if refusal is None:
                 break
