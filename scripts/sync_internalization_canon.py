@@ -103,6 +103,7 @@ def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
     published: dict[str, list[str]] = {kind: [] for kind in KINDS}
     for book, book_stems in complete.items():
         if book not in SERVED_BOOKS:
+            skipped.append(f"skipped book {book}: not served in this release")
             continue
         if book.lower() not in listed_books:
             skipped.append(
