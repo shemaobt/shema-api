@@ -53,8 +53,8 @@ async def synthesize_facilitator_speech(
     ElevenLabs is asked exactly what Marcia's frozen app asks it: the text and the model,
     with no tuning and no language hint, so the voice reads at its own defaults. The bucket
     key is content-addressed over text, voice, model and format but not language, and that is
-    right here: one voice speaking the same text in Portuguese and in English is sent the same
-    request, so the same bytes answer both.
+    right here: while English has no voice of its own, the same text in Portuguese and in
+    English is sent the same request, so the same bytes answer both.
 
     The model is pinned here rather than shared with the rest of the platform because it is
     the one her app speaks with.

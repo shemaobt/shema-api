@@ -119,8 +119,8 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
 def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
     """The D line for one more miss: always her first, however many came before it.
 
-    Her rule is ``didntCatchThat(0)``, one line for every miss. It keeps the conversation as
-    its argument because its callers read the same shape for every fail-safe they answer.
+    Her rule is ``didntCatchThat(0)``, one line for every miss, so the conversation it is
+    handed no longer decides which line is said.
     """
     return choose(FailSafe.INAUDIBLE, language_code)
 

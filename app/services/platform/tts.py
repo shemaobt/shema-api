@@ -145,8 +145,7 @@ async def synthesize_speech(
     without network and without GCS.
 
     The language reaches ElevenLabs as `language_code` unless `states_language` is false, for
-    a caller whose voice is meant to read the text the way Marcia's app has it read: with no
-    hint at all.
+    a caller that wants the voice to read the text with no hint at all.
 
     A hit is read through `fetch_clip`, which tries the in-process `_FRESH` cache before the
     bucket, and a miss seeds `_FRESH` with the bytes it just wrote — so a repeat request in the
