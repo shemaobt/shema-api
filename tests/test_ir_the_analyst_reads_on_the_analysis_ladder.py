@@ -40,15 +40,16 @@ def _settings(**overrides: Any) -> Settings:
 
 
 class RecordingMessages:
-    def __init__(self, reply: str):
+    def __init__(self, reply: str, stop_reason: str = "end_turn"):
         self.reply = reply
+        self.stop_reason = stop_reason
         self.calls: list[dict[str, Any]] = []
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
         return SimpleNamespace(
             content=[SimpleNamespace(type="text", text=self.reply)],
-            stop_reason="end_turn",
+            stop_reason=self.stop_reason,
             model=kwargs["model"],
             usage=SimpleNamespace(
                 input_tokens=10,
@@ -62,8 +63,8 @@ class RecordingMessages:
 
 @pytest.fixture
 def recording_client(monkeypatch: pytest.MonkeyPatch):
-    def _install(reply: str) -> RecordingMessages:
-        messages = RecordingMessages(reply)
+    def _install(reply: str, stop_reason: str = "end_turn") -> RecordingMessages:
+        messages = RecordingMessages(reply, stop_reason)
 
         def _build(**options: Any) -> SimpleNamespace:
             return SimpleNamespace(messages=messages, options=options)
@@ -171,6 +172,25 @@ async def test_the_analyst_has_room_for_2500_tokens_with_thinking_on_and_no_effo
     )
     assert "effort" not in call.get("output_config", {}), (
         "o analista era fixado em esforço alto onde a Marcia deixa o padrão do modelo"
+    )
+
+
+async def test_an_analyst_reply_cut_at_its_ceiling_gives_no_verdict_that_round(
+    recording_client,
+) -> None:
+    recording_client('{"evidence_sufficient": true, "findings": [', stop_reason="max_tokens")
+
+    analysis = await analyse_telling_back(
+        segments=[_segment(1, "A fome chegou e eles partiram.")],
+        scope="1-5",
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is None, (
+        "um corte no teto virava uma análise sem achados, e a equipe ouvia que o trabalho "
+        "estava conferido sem que o analista tivesse terminado de ler"
     )
 
 
