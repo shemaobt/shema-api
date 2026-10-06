@@ -5,10 +5,9 @@ retelling was counted toward the warning. A telling with no words is refused wit
 code and the name of the inaudible line, and counts nothing. The audio stays kept: no
 recording is ever lost.
 
-A real outage was never mistaken for silence here — the transcriber raises
-`UpstreamServiceError` for it, `heard` does not catch it, and it was already a 502. What the
-transcriber raises `ValidationError` for is the recording it could not read, which is the
-telling with no words.
+ENG-1226 reads an outage the same way: `heard` returns nothing for it, so it is refused too
+(ADR 0049). What the transcriber raises `ValidationError` for is the recording it could not
+read, which is the telling with no words.
 """
 
 from __future__ import annotations
@@ -148,7 +147,7 @@ async def test_a_first_telling_with_no_words_is_refused_and_is_no_stretch(
     body = refused.json()
     assert body["code"] == "WORDLESS_TELLING"
     assert body["detail"]
-    assert body["fixed_line"] == "D0"
+    assert "fixed_line" not in body
     assert await _segment_rows(db_session, session_id) == before
     assert await current(db_session, session_id) == []
 
@@ -192,7 +191,7 @@ async def test_the_recording_of_a_refused_telling_stays_kept(
     assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
 
 
-async def test_a_transcriber_outage_is_a_server_failure_that_counts_nothing(
+async def test_a_transcriber_outage_is_a_wordless_refusal_that_counts_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session_id = await _a_session(db_session)
@@ -205,8 +204,8 @@ async def test_a_transcriber_outage_is_a_server_failure_that_counts_nothing(
         client, session_id, take_id, 1, UpstreamServiceError("transcriber down"), again=True
     )
 
-    assert outage.status_code == 502, outage.text
-    assert outage.json()["code"] == "UPSTREAM_ERROR"
+    assert outage.status_code == 422, outage.text
+    assert outage.json()["code"] == "WORDLESS_TELLING"
     (after,) = await current(db_session, session_id)
     assert after.id == standing.id
     assert after.tellings == tellings
