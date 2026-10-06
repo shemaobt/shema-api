@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -22,6 +21,7 @@ from app.services.internalization_room.sessions import (
     resolve_pericope,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.deploy_harness import deploy_command
 from tests.turn_harness import the_room_agent_is
 
 PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
@@ -402,13 +402,7 @@ def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workf
     `--timeout=300` on the `gcloud run deploy` command each workflow runs, and a change to
     either is exactly what would move this ceiling without a line of `app/` ever noticing.
     """
-    import yaml
-
-    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / workflow
-    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
-    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
-
-    assert "--timeout=300" in deploy_step["run"].split()
+    assert "--timeout=300" in deploy_command(workflow)
 
 
 def test_the_production_deploy_runs_one_instance() -> None:

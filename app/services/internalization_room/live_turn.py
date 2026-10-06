@@ -19,7 +19,7 @@ before anything is asked of the team — frame first, elicit second.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,6 +64,10 @@ async def run_comprehension_turn(
     Only the session's very first line is told in two movements. A file-less POST on a session
     that has already spoken is a re-open, and repeating the panorama there would say the whole
     passage twice and pull the necklace apart again.
+
+    Every turn but the opening carries what the room heard on its outcome — the language, its
+    probability, the mother-tongue decision and the take's length — so the record keeps them.
+    The opening has no take, and an outcome that names none is one the room did not hear.
     """
     pericope = session.pericope
     book = load_map(pericope).book
@@ -75,16 +79,14 @@ async def run_comprehension_turn(
     prior_probe = state.active_probe
 
     transcript = speech.text
-    uncertain = speech.uncertain
     mother_tongue = speech.mother_tongue
     empty = not transcript.strip()
-    reliable = not uncertain and not mother_tongue
 
     practiced_now = scenes_practiced_by_the_report_the_guide_invited(
         prior_probe,
         last_guide,
         transcript,
-        reliable,
+        mother_tongue,
         state.invited_scene_id,
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
@@ -98,19 +100,25 @@ async def run_comprehension_turn(
         transcript=transcript,
         opening=opening,
         empty=empty,
-        uncertain=uncertain,
         book=book,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
         pericope=pericope,
         settings=settings,
     )
+    if not opening:
+        outcome = replace(
+            outcome,
+            language=speech.language_code,
+            language_probability=speech.language_probability,
+            mother_tongue=mother_tongue,
+            take_ms=speech.take_ms,
+        )
 
     final_probe = select_probe_after_oral_turn(
         outcome="fail_safe" if outcome.used_fail_safe else "pass",
         prior_probe=prior_probe,
         next_probe=None,
-        transcript_uncertain=uncertain,
         transcript_was_mother_tongue=mother_tongue,
         transcript_empty=empty,
     )

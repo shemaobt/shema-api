@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
     #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
     internalization_room_turn_bound_ms: int = 300_000
+    #: The language-detection probability under which a take heard in the session's own
+    #: language counts as the mother tongue. A deployment's, never a session's: it is read on
+    #: every take, so a change reaches the next turn heard. A probability, so a value outside
+    #: 0..1 is refused at boot rather than silently making every take, or none, the mother
+    #: tongue.
+    internalization_room_mother_tongue_floor: float = Field(default=0.35, ge=0, le=1)
     #: How long the Guide's and the Validator's prefix survives a rehearsal pause. Anthropic's
     #: default cache entry is 5 minutes; a team that steps away for the ensaio comes back to a
     #: cold prefix and pays its ~16k/~14k tokens again on the first turn back. Empty reverts to

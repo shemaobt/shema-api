@@ -48,7 +48,6 @@ async def speak_back(
     transcript: str,
     opening: bool,
     empty: bool,
-    uncertain: bool,
     book: str,
     guide_prompt: str,
     validator_prompt: str,
@@ -63,7 +62,7 @@ async def speak_back(
     from them, so the conversation keeps them as the room's entry and only the team's words
     are ever settled. Words the recognizer made of a mother-tongue take never travel.
     """
-    if not opening and not mother_tongue and not interrupted and (empty or uncertain):
+    if not opening and not mother_tongue and not interrupted and empty:
         line, fixed = inaudible_ladder(messages, session.language)
         return TurnOutcome(
             speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed

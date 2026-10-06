@@ -156,7 +156,7 @@ def test_a_fluent_retelling_alone_never_marks_the_scene_it_retold() -> None:
         "we are going to rehearse it now",
     ):
         assert (
-            scenes_practiced_by_the_report_the_guide_invited(None, _INVITATION, reply, True, "S1")
+            scenes_practiced_by_the_report_the_guide_invited(None, _INVITATION, reply, False, "S1")
             == []
         ), reply
     assert (
@@ -164,7 +164,7 @@ def test_a_fluent_retelling_alone_never_marks_the_scene_it_retold() -> None:
             None,
             INVITATION["en"],
             "A famine came and a family left Bethlehem to live in Moab",
-            True,
+            False,
             "S1",
         )
         == []
@@ -196,7 +196,7 @@ def test_a_portuguese_retelling_never_marks_the_scene_it_retold() -> None:
     content, which is the Guide's job alone (DOCTRINE.md §4)."""
     assert (
         scenes_practiced_by_the_report_the_guide_invited(
-            None, _INVITATION_PT, _TELLING_PT, True, "S1"
+            None, _INVITATION_PT, _TELLING_PT, False, "S1"
         )
         == []
     )
@@ -237,7 +237,7 @@ def test_a_telling_that_closes_on_a_confirmation_tag_still_marks_nothing() -> No
     """
     assert (
         scenes_practiced_by_the_report_the_guide_invited(
-            None, _INVITATION_FOR_THE_SECOND_SCENE, _TELLING_THAT_CLOSES_ON_A_TAG, True, "S2"
+            None, _INVITATION_FOR_THE_SECOND_SCENE, _TELLING_THAT_CLOSES_ON_A_TAG, False, "S2"
         )
         == []
     )
@@ -282,7 +282,7 @@ def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
         assert not guide_invited_mother_tongue_practice(question), question
         assert (
             scenes_practiced_by_the_report_the_guide_invited(
-                None, question, "estava sim, nós dissemos que ela voltou com Rute", True, "S1"
+                None, question, "estava sim, nós dissemos que ela voltou com Rute", False, "S1"
             )
             == []
         ), language
@@ -293,7 +293,7 @@ def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
             None,
             _INVITATION,
             "A famine came and a family left Bethlehem to live in Moab",
-            True,
+            False,
             "S1",
         )
         == []
