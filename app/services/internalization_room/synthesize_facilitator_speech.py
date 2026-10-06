@@ -44,9 +44,8 @@ async def synthesize_facilitator_speech(
     The language is the caller's, because it is the session's, because it is the tablet's.
     A caller that names none gets the floor, and so does a caller that names a language the
     room no longer claims: `es` left `ROOM_LANGUAGES` in shema-api#362, and a session row
-    persisted before that still passes it here on every turn. `voice_for` does not refuse
-    `es` — that voice entry is kept on purpose so a legacy row does not 500 — so a caller
-    is floored before the voice is chosen, not after. The voice follows the language rather
+    persisted before that still passes it here on every turn, so a caller is floored before
+    the voice is chosen, not after. The voice follows the language rather
     than being chosen alongside it: the app never picks how the facilitator sounds, only
     which language it sounds in.
 

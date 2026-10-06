@@ -2,7 +2,7 @@
 
 ``app/services/platform/voices.py`` makes the argument this module obeys: a voice "retains
 its unique characteristics *and accent* in any language it speaks", so one multilingual
-voice reading three languages sounds like a Brazilian reading English. The room's own key
+voice reading two languages sounds like a Brazilian reading English. The room's own key
 and tuning are separable from the platform's, so it keeps its own map rather than borrowing
 that one.
 
@@ -22,7 +22,6 @@ def room_voices(settings: Settings) -> dict[str, str]:
     return {
         "pt": settings.internalization_room_voice_id,
         "en": settings.internalization_room_voice_id_en,
-        "es": settings.internalization_room_voice_id_es,
     }
 
 
@@ -34,12 +33,10 @@ def voice_for(language: str, *, settings: Settings) -> str:
     any language it speaks, so a borrowed one does not make the room speak that language — it
     makes it speak that language wrongly, to a team that cannot tell us so.
 
-    Does **not** refuse ``es``, on purpose, even though it left ``ROOM_LANGUAGES`` in
-    shema-api#362: a session row persisted before that still carries ``language="es"``, and
-    refusing it here would 500 that row instead of floor it. The floor is
-    ``synthesize_facilitator_speech``'s job, applied before this is ever called — this
-    function only ever meets a language the room still claims, or one somebody handed it
-    directly without going through the floor, which is theirs to answer for.
+    The floor is ``synthesize_facilitator_speech``'s job, applied before this is ever
+    called — a session row persisted with ``language="es"`` before shema-api#362 is floored
+    there, so this function only ever meets a language the room still claims, or one somebody
+    handed it directly without going through the floor, which is theirs to answer for.
     """
     voice = room_voices(settings).get(language)
     if not voice:
