@@ -32,6 +32,7 @@ from app.services.resource_request import list_fund_options as options_service
 from app.services.resource_request._fund_choices import options_from
 from tests.resource_request_harness import (
     answers,
+    as_admin,
     as_gestor,
     as_mesa,
     as_team,
@@ -456,6 +457,25 @@ async def test_o_gestor_le_de_que_fundo_o_pedido_puxa(db_session, client, rrf_ap
 
     na_listagem = (await client.get(REQUESTS, headers=gestor)).json()
     assert next(linha for linha in na_listagem if linha["id"] == card)["fund_id"] == "linguas"
+
+
+async def test_o_admin_le_o_fundo_e_nao_o_atribui(db_session, client, rrf_app) -> None:
+    """OBT-568 (Daniel, 6/out/2026): o Admin tem o nível do Gestor — lê a etiqueta pelo
+    ``manage_funds`` e não escreve pelo ``assign_fund``, que a GATE-01 D4 deixou só com a mesa.
+    A conta tem ``admin`` sozinho, nunca ``is_platform_admin``, que todo guarda deixa passar."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    admin = await as_admin(db_session, rrf_app)
+    await make_fund(db_session, "linguas", "Shema Línguas")
+    card = await submitted(client, team)
+
+    recusado = await put_fund(client, admin, card, "linguas")
+    assert recusado.status_code == 403
+    assert "assign_fund" in recusado.json()["detail"]
+    assert (await client.get(f"{REQUESTS}/{card}", headers=admin)).json()["fund_id"] is None
+
+    assert (await put_fund(client, mesa, card, "linguas")).status_code == 200
+    assert (await client.get(f"{REQUESTS}/{card}", headers=admin)).json()["fund_id"] == "linguas"
 
 
 async def test_sem_fundo_a_mesa_le_nulo_e_a_equipe_nao_le_chave_nenhuma(

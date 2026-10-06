@@ -32,6 +32,7 @@ from app.services.resource_request.notify_decision import DECISION_COPY
 from tests.baker import make_user
 from tests.resource_request_harness import (
     REQUESTS,
+    as_admin,
     as_gestor,
     as_mesa,
     as_team,
@@ -248,6 +249,22 @@ async def test_a_chegada_avisa_a_mesa_e_os_gestores_e_nao_a_equipe(
         assert [row.event_type for row in rows] == ["rr_request_submitted"]
     assert sorted(letter["to"] for letter in posted) == ["gestor@rr.test", "mesa@rr.test"]
     assert await notices(db_session, await user_id_of(db_session, "equipe@rr.test")) == []
+
+
+async def test_a_chegada_avisa_tambem_o_admin(db_session, client, rrf_app, posted) -> None:
+    """Efeito da OBT-568 que a issue não enuncia e que fica dito aqui: ``board_watchers`` lê
+    quem tem ``manage_funds``, e o Admin passou a tê-lo com o resto da linha do Gestor — então
+    uma conta só ``admin`` recebe a chegada nos dois canais, como o Gestor. ``list_board_members``
+    (``edit_evaluation``) não muda: o Admin não está na ata da mesa."""
+    team = await as_team(db_session, rrf_app)
+    await as_admin(db_session, rrf_app)
+    posted.clear()
+
+    await submitted_request(client, team)
+
+    rows = await notices(db_session, await user_id_of(db_session, "admin@rr.test"))
+    assert [row.event_type for row in rows] == ["rr_request_submitted"]
+    assert [letter["to"] for letter in posted] == ["admin@rr.test"]
 
 
 async def test_um_rascunho_ainda_em_edicao_nao_avisa_a_mesa(

@@ -23,6 +23,7 @@ import pytest
 from app.api.resource_requests._deps import APP_KEY
 from app.services.authorization import list_roles
 from app.services.resource_request import (
+    ADMIN_CAPABILITIES,
     CAPABILITIES,
     CAPABILITY_ROLES,
     RETIRED_ROLES,
@@ -30,7 +31,8 @@ from app.services.resource_request import (
     ROLES,
     holds_capability,
 )
-from scripts.seed_apps_roles import APP_ROLES_OVERRIDE
+from app.services.shema._scope import ADMIN_ROLE
+from scripts.seed_apps_roles import seeded_roles
 from tests.baker import make_app, make_role, make_user, make_user_app_role
 from tests.test_resource_requests.conftest import (
     CAP_PROBES,
@@ -76,27 +78,55 @@ def test_the_emission_is_whole() -> None:
     )
 
 
+def _emitted_rows() -> dict[str, list[str]]:
+    return {role["id"]: sorted(role["can"]) for role in EMISSION["roles"]}
+
+
 def test_the_map_is_the_emission_role_by_role() -> None:
-    """The mirror, in the direction that catches a cell this repository invented."""
-    emitted = {role["id"]: sorted(role["can"]) for role in EMISSION["roles"]}
+    """The mirror, in the direction that catches a cell this repository invented.
+
+    The Admin's row is the one this side holds ahead of the emission (OBT-568): the server
+    decides the permission first and the frontend reflects it in its next emission, so the
+    frontend's rows are compared whole, and the Admin's is compared only once the emission
+    carries one — ``test_the_admins_row_is_the_gestors`` is what pins its value meanwhile.
+    """
+    emitted = _emitted_rows()
     written = {role: sorted(held) for role, held in ROLE_CAPABILITIES.items()}
 
-    assert written == emitted
+    assert {role: can for role, can in emitted.items() if role != ADMIN_ROLE} == written
+    if ADMIN_ROLE in emitted:
+        assert emitted[ADMIN_ROLE] == sorted(ADMIN_CAPABILITIES)
 
 
 def test_the_map_is_the_emission_capability_by_capability() -> None:
     """The same fact read the other way, which is the direction a guard asks in.
 
     Not redundant with the test above: ``CAPABILITY_ROLES`` is derived, and a derivation
-    that silently dropped a capability would leave the role table intact.
+    that silently dropped a capability would leave the role table intact. The Admin is a
+    carrier of exactly the Gestor's capabilities (OBT-568), so the emitted carriers are
+    widened by it wherever the Gestor is one — and, once the emission carries the row itself,
+    the widening is a no-op and the comparison is exact.
     """
     emitted = {
-        capability: sorted(role["id"] for role in EMISSION["roles"] if capability in role["can"])
+        capability: sorted(
+            {role["id"] for role in EMISSION["roles"] if capability in role["can"]}
+            | ({ADMIN_ROLE} if capability in ADMIN_CAPABILITIES else set())
+        )
         for capability in EMISSION["capabilities"]
     }
     derived = {capability: sorted(roles) for capability, roles in CAPABILITY_ROLES.items()}
 
     assert derived == emitted
+
+
+def test_the_admins_row_is_the_gestors() -> None:
+    """OBT-568 (Daniel, 6/oct/2026): *"o admin deve ter o mesmo nível de permissão que o
+    gestor no formulário"*. Identity and not equality: a copy of the set would let the two rows
+    drift apart on the day one of them moved, and the decision is *the same level*."""
+    assert ADMIN_CAPABILITIES is ROLE_CAPABILITIES["gestor"]
+    assert ADMIN_ROLE not in ROLE_CAPABILITIES, "the mirror of the emission stays the frontend's"
+    assert "edit_evaluation" not in ADMIN_CAPABILITIES
+    assert "assign_fund" not in ADMIN_CAPABILITIES
 
 
 def test_the_roles_are_the_ones_this_app_seeds() -> None:
@@ -105,7 +135,9 @@ def test_the_roles_are_the_ones_this_app_seeds() -> None:
     The seed also carries the retired ones (FE-49, OBT-517): a row existing installations
     have, holding no capability here.
     """
-    assert sorted(ROLES + RETIRED_ROLES) == sorted(APP_ROLES_OVERRIDE[APP_KEY])
+    seeded = [key for key, _ in seeded_roles(APP_KEY)]
+
+    assert sorted((*ROLES, *RETIRED_ROLES, ADMIN_ROLE)) == sorted(seeded)
     assert not set(ROLES) & set(RETIRED_ROLES)
     assert sorted(ROLE_CAPABILITIES) == sorted(ROLES)
 
@@ -134,6 +166,73 @@ async def test_the_guard_answers_the_table(
     assert res.status_code == expected, (
         f"{role} · {capability}: got {res.status_code}, table says {expected}"
     )
+
+
+@pytest.mark.parametrize("capability", CAPABILITIES)
+async def test_the_guard_answers_the_gestors_row_for_the_admin(
+    db_session, client, rrf_app, capability: str
+) -> None:
+    """The Admin's row through HTTP, one cell per case — the same sweep as the table's,
+    against ``ADMIN_CAPABILITIES`` instead of a row of the frontend's (OBT-568).
+
+    The account holds ``admin`` **alone** and is not a platform admin, so a 403 here is the
+    guard refusing and not a short-circuit admitting; the two negative cells are
+    ``edit_evaluation`` and ``assign_fund``, which the Gestor does not hold either.
+    """
+    user = await make_user(db_session, email=f"admin-{capability}@rrf.test")
+    await grant(db_session, user, rrf_app, ADMIN_ROLE)
+
+    res = await client.get(CAP_PROBES[capability], headers=await auth_header(db_session, user))
+
+    expected = 200 if capability in ADMIN_CAPABILITIES else 403
+    assert res.status_code == expected, (
+        f"admin · {capability}: got {res.status_code}, the Gestor's row says {expected}"
+    )
+
+
+async def test_the_admin_and_the_gestor_answer_alike_on_every_cell(
+    db_session, client, rrf_app
+) -> None:
+    """The DoD's own sentence — *exatamente as capacidades do Gestor* — measured end to end
+    rather than read off the table: two accounts, one grant each, the same answer on all eight."""
+    admin = await make_user(db_session, email="admin-alike@rrf.test")
+    gestor = await make_user(db_session, email="gestor-alike@rrf.test")
+    await grant(db_session, admin, rrf_app, ADMIN_ROLE)
+    await grant(db_session, gestor, rrf_app, "gestor")
+    admin_headers = await auth_header(db_session, admin)
+    gestor_headers = await auth_header(db_session, gestor)
+
+    for capability in CAPABILITIES:
+        as_admin = (await client.get(CAP_PROBES[capability], headers=admin_headers)).status_code
+        as_gestor = (await client.get(CAP_PROBES[capability], headers=gestor_headers)).status_code
+
+        assert as_admin == as_gestor, f"{capability}: admin {as_admin}, gestor {as_gestor}"
+
+
+async def test_an_admin_who_also_sits_on_the_mesa_answers_by_the_union(
+    db_session, client, rrf_app
+) -> None:
+    """``admin`` + ``mesa`` is the pair the Admin's row makes possible, and the one that tells
+    the union apart: the mesa brings ``edit_evaluation`` and ``assign_fund``, the Admin brings
+    ``allocate_funds`` and ``administer_funds``, and only an answer over both says 200 to all.
+
+    What it pins is the arithmetic, not the policy. This union is what ``mesa`` + ``gestor``
+    would answer — the pair our rule of 28/aug/2026 keeps off one account, applied where a
+    grant is written — and with the Admin's row it reassembles through the Admin. Whether an
+    Admin may also sit on the mesa is the user's decision, raised with OBT-568's PR; the guard
+    has to answer correctly whether or not that pair is ever granted.
+    """
+    user = await make_user(db_session, email="admin-mesa@rrf.test")
+    await grant(db_session, user, rrf_app, ADMIN_ROLE)
+    await grant(db_session, user, rrf_app, "mesa")
+    headers = await auth_header(db_session, user)
+
+    union = ADMIN_CAPABILITIES | ROLE_CAPABILITIES["mesa"]
+    assert union == set(CAPABILITIES), "the pair covers the table, or the loop proves less"
+    for capability in CAPABILITIES:
+        res = await client.get(CAP_PROBES[capability], headers=headers)
+
+        assert res.status_code == 200, f"admin+mesa lost {capability}"
 
 
 async def test_a_team_token_reaches_no_evaluation_and_no_fund(db_session, client, rrf_app) -> None:
