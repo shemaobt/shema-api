@@ -223,15 +223,28 @@ OBT-522's Admin, one role seeded in this app and in `resource-request-form` unde
 `role_key` is `String(100)` free text scoped per app (`uq_roles_app_role_key`), so nothing
 in the platform objects.
 
-~~**`app_url` is Open · BE-03.**~~ **Answered: `https://shema.shemaywam.com`, in `SEED_APPS`
-and in `cors_origins`, both by BE-03.** `seed_apps_roles.py`'s docstring records that the
-column is not decoration — `request_password_reset` builds `{app_url}/reset-password?token=…`
-from it, and a wrong value breaks password recovery silently. The hostname is named nowhere
-in either repository, and *"read it off the deployment"* turned out to have nothing to read:
-the console is wave 1, with no deploy workflow and no environment file beyond
-`VITE_API_PROXY_TARGET`. So it follows the eight rows already in `SEED_APPS` — the product's
-name, lowercased, no separators. §10 item 3 carries why the conventional value beats an empty
-one.
+~~**`app_url` is Open · BE-03.**~~ ~~**Answered: `https://shema.shemaywam.com`, in `SEED_APPS`
+and in `cors_origins`, both by BE-03.**~~ **Corrected by OBT-567 (6/oct/2026): `app_url` is
+`https://project-management-ecosystem-f7ssqjozfq-uc.a.run.app`**, the Cloud Run address the
+PME answers on. `seed_apps_roles.py`'s docstring records that the column is not decoration —
+`request_password_reset` builds `{app_url}/reset-password?token=…` from it, `send_invite` builds
+`/convite?token=…`, the intercessor's exit builds `/leave/<token>` and the intake link reads the
+same row, so a wrong value breaks every letter the PME sends, silently. BE-03 had nothing to read off a deployment and followed the
+eight conventional rows in `SEED_APPS`; the hostname never got a DNS record, and the
+reset e-mail led nowhere. The user decided on 6/oct/2026 that `shema.shemaywam.com` is not a
+planned domain, so the seed carries the deployed address and `20261006_shema567` is the
+one-row UPDATE BE-03's docstring had anticipated, guarded by the old value so a row someone
+already corrected by hand is left alone. `cors_origins` still lists the old hostname: it is
+the platform core's, and the deployed PME never needed an entry — its nginx proxies `/api` to
+`$BACKEND_URL`, so the browser calls the API on the PME's own origin and CORS is not consulted.
+Invites, leave links and intake links are whole again — `convite` and `leave/:token` are routes
+the PME has. **What this does not restore is password recovery itself**: the PME (`origin/main`
+on 6/oct/2026) has no `/reset-password` route and no *forgot password* screen, so that link now
+points at a host that exists and a page that does not — the token lands on the catch-all
+behind the session gate. That screen is the PME's (`project-management-ecosystem`); no issue
+owns it yet, and whether it comes before anything else is the user's call. This issue fixes
+the half the server owns.
+§10 item 3 has the history.
 
 ### 2.4 What it shares — **Decided**
 
@@ -2375,7 +2388,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 |---|---|---|
 | 1 | ~~Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each.~~ **Answered by BE-02, in opposite directions, because the pairs are not the same shape.** `team` and `ywamBase` are **one column**: they are one concept in two languages, identical on all 127 records, and collapsing removes the drift instead of policing it. `sensitivity` and `sensitive_country` **stay two**, with the boolean authoritative: the text is a free-text export column that agrees with the flag by accident of the data, so collapsing would delete evidence. **BE-16 departs from one half-sentence of that answer:** BE-02 expected the import to *derive the flag from the text*, and it does not — §9.5's client list is where the flag comes from, and the export's text and boolean may only **raise** it. The columns and their ownership are unchanged; what changed is that the export is never read as permission. | ~~BE-02~~ **closed**, amended by BE-16 |
 | 2 | ~~Whether `region_key` is stored as a maintained derived column or computed per query.~~ **Answered by BE-02: stored, maintained, indexed — and deliberately not a generated column,** because the derivation is a lookup over 25 country strings kept in Python and expressing it in DDL would be a second copy of a map whose whole value is that there is one. | ~~BE-02~~ **closed** |
-| 3 | ~~The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry.~~ **Answered by BE-03: `https://shema.shemaywam.com`, and the same value added to `cors_origins`.** There was no deployment to read — the console is wave 1, with no deploy workflow, no environment file beyond `VITE_API_PROXY_TARGET`, and no host named in either repository — so this follows the eight rows already in `SEED_APPS`, every one of them the product's name lowercased with no separators. Leaving it empty was the alternative and is worse: `request_password_reset` then builds the reset link from `http://localhost:5173` in production, which is the silent failure §2.3 warns about, while a conventional hostname that turns out wrong fails on the first click and is a one-row UPDATE to correct. | ~~BE-03~~ **closed** |
+| 3 | ~~The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry.~~ ~~**Answered by BE-03: `https://shema.shemaywam.com`, and the same value added to `cors_origins`.**~~ **Superseded by OBT-567 (6/oct/2026): the hostname never got a DNS record, and the seed and the installed row now carry `https://project-management-ecosystem-f7ssqjozfq-uc.a.run.app` — the Cloud Run address the PME answers on — by the user's decision that no `shema.shemaywam.com` is planned; `20261006_shema567` is the UPDATE, guarded by the old value. `cors_origins` was left to the core (the deployed PME proxies `/api` through its own nginx, so CORS never applied to it). The PME still has no `/reset-password` route, so the link reaches a real host and no page — the PME's screen, not this module's.** BE-03's reasoning, kept as history: there was no deployment to read — the console is wave 1, with no deploy workflow, no environment file beyond `VITE_API_PROXY_TARGET`, and no host named in either repository — so this follows the eight rows already in `SEED_APPS`, every one of them the product's name lowercased with no separators. Leaving it empty was the alternative and is worse: `request_password_reset` then builds the reset link from `http://localhost:5173` in production, which is the silent failure §2.3 warns about, while a conventional hostname that turns out wrong fails on the first click and is a one-row UPDATE to correct. | ~~BE-03~~ **closed** |
 | 4 | ~~Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3).~~ **Answered by BE-03: yes**, and generalised to one rule — the seat is read when the role has one, the scope names exactly one region and the seat is filled; everything else falls back. §6.3 carries the argument. | ~~BE-03~~ **closed** |
 | 5 | ~~Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3).~~ **Answered by BE-13: the network is BE-13's**, because INT-10 is blocked by OBT-402 and not by OBT-398 and OBT-402's whole Context section is about that table. The frozen paths did not move. §1.3 C3 carries the argument. | ~~BE-09 / BE-13~~ **closed** |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
