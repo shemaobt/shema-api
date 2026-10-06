@@ -120,7 +120,7 @@ Whether the rehearsal reaching Refine was told whole or in parts, read off the c
 _Avoid_: granularity, mode, shape, Granularidade
 
 **Canon code**:
-The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the synthesis of the facilitator's speech removes it from the text before the Voice speaks it, and the stored line keeps it.
+The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the room removes it from the text before the Voice speaks it, and the stored line keeps it.
 _Avoid_: id, tag, link, slug
 
 **Meaning Map**:
