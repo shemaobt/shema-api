@@ -200,6 +200,25 @@ class ValidationError(Exception):
     pass
 
 
+class NoWordsHeard(ValidationError):
+    """The recognizer heard the take and found no words in it, which is not a refusal.
+
+    It carries the language the recognizer still reported, so the turn's record keeps what
+    the recognizer heard even when it wrote nothing down.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        language_code: str | None = None,
+        language_probability: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.language_code = language_code
+        self.language_probability = language_probability
+
+
 class StretchNoLongerCounts(ValidationError):
     """A stretch that was replaced, or whose Part was recorded again, was addressed anyway.
 
