@@ -112,7 +112,7 @@ async def test_the_names_are_the_catalogues_own_words(client, db_session):
     absence = _served(response.json(), "element_kind")["absence"]
     assert absence["label_pt"] == "Ausência significativa"
     assert absence["label_en"] == "Significant absence"
-    assert absence["label_es"] == "Ausencia significativa"
+    assert "label_es" not in absence
 
 
 async def test_the_route_reads_the_catalogue_rather_than_a_copy_of_its_own(
@@ -217,7 +217,7 @@ async def test_a_state_added_to_the_enum_and_the_catalogue_needs_no_edit_here(
     assert set(served) == {status.value for status in WithPartiallyEngaged}
     assert served["partially_engaged"]["label_pt"] == "Retomado"
     assert served["partially_engaged"]["label_en"] == "Taken up"
-    assert served["partially_engaged"]["label_es"] == "Retomado"
+    assert "label_es" not in served["partially_engaged"]
 
 
 async def test_the_legend_arrives_in_the_order_the_enums_declare(client, db_session):

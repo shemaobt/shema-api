@@ -14,18 +14,16 @@ class LabelledElement(BaseModel):
     `key` is unique only within its pericope: `scene:1` is a different scene in every
     passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
 
-    The three languages are named fields because that is the shape the Desk was promised, so
-    a fourth costs a field here as well as a catalogue entry — three files, not every call
+    The two languages are named fields because that is the shape the Desk was promised, so
+    a third costs a field here as well as a catalogue entry — three files, not every call
     site. `extra="forbid"` is what makes that cost visible: the loader builds this by
     spreading `LANGUAGES`, and pydantic drops an unknown keyword by default, so without it a
-    fourth language would be demanded of the catalogue and then thrown away in silence.
+    third language would be demanded of the catalogue and then thrown away in silence.
 
-    **`label_pt` and `label_es` are nullable and `label_en` is not**, which is the shape that
-    promise actually names: the Desk's own `CoverageLabels` is
-    `{ pt: string | null, en: string, es: string | null }`, because English comes almost free
-    from the canon and the other two are translation work. This model cited that promise and
-    contradicted its text, and nobody had noticed because the four translated passages are
-    complete in all three. The canon serves fourteen and D-03 walks every team through them.
+    **`label_pt` is nullable and `label_en` is not**, which is the shape that promise actually
+    names: the Desk's own `CoverageLabels` is `{ pt: string | null, en: string }`, because
+    English comes almost free from the canon and Portuguese is translation work. The canon
+    serves fourteen and D-03 walks every team through them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -35,15 +33,14 @@ class LabelledElement(BaseModel):
     scene: int | None = None
     label_pt: str | None
     label_en: str
-    label_es: str | None
 
 
 class CoverageLegend(BaseModel):
     """The names of the coverage states and the element kinds, once per response.
 
-    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose three
+    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose two
     fields the Desk was promised by name, nothing was promised about this shape — so here a
-    fourth language is a catalogue change and nothing else.
+    third language is a catalogue change and nothing else.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -62,7 +59,7 @@ class LegendName(BaseModel):
     walking the enum, so an enum type would re-refuse what is true by construction: it can
     only reject what the loader has just accepted.
 
-    **The three labels are not nullable, and `LabelledElement`'s are** — the two shapes
+    **The two labels are not nullable, and `LabelledElement`'s Portuguese is** — the two shapes
     disagree on purpose. A bead of a passage nobody has translated falls back to the canon,
     which is English and nothing else, so `label_pt` there is legitimately absent. A legend
     has no such fallback: `legend()` raises `ElementLabelsBroken` on a name missing in any
@@ -75,7 +72,6 @@ class LegendName(BaseModel):
     value: str
     label_pt: str
     label_en: str
-    label_es: str
 
 
 class CoverageLegendResponse(BaseModel):
@@ -87,14 +83,14 @@ class CoverageLegendResponse(BaseModel):
     hand the client an arrangement to make a second time, and ENG-462 is the record of what
     that costs.
 
-    The three languages are named fields rather than a map keyed by language, because that is
-    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`
-    / `label_es`. A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would
-    be two shapes for one thing on one screen. `CoverageLegend` — the loader's own answer —
-    keeps the map, because that is the catalogue's shape and a fourth language there costs a
-    catalogue entry and nothing else.
+    The two languages are named fields rather than a map keyed by language, because that is
+    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`.
+    A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would be two shapes
+    for one thing on one screen. `CoverageLegend` — the loader's own answer — keeps the map,
+    because that is the catalogue's shape and a third language there costs a catalogue entry
+    and nothing else.
 
-    ENG-449's coverage response repeats the same three fields and is what this legend is read
+    ENG-449's coverage response repeats the same two fields and is what this legend is read
     beside. It is named by its issue and not by its model, deliberately: a class name is a
     reference `grep` promises to resolve, so one naming a branch that has not merged is a
     reference that lies. An issue number promises nothing and therefore cannot.
