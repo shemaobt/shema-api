@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.takes import declare_rehearsal_parts
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import KEY, PREFIX, TABLET
 from tests.room_harness import (
@@ -78,7 +79,7 @@ async def _count(db: AsyncSession, model: type, **where: str) -> int:
 
 def _refused(response: httpx.Response) -> None:
     assert response.status_code == 400, response.text
-    assert response.json()["code"] == CODE
+    assert response.json()["code"] == CODE, response.text
 
 
 async def test_a_take_sent_under_a_panorama_is_refused_and_nothing_is_stored(
@@ -178,6 +179,7 @@ async def test_a_text_seam_round_on_a_panorama_session_is_refused_and_captures_n
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     session = await _a_panorama(db_session)
+    await declare_rehearsal_parts(db_session, session, ["S1"])
 
     refused = await client.post(
         f"{SEAM}/round",
