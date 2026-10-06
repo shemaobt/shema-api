@@ -307,7 +307,6 @@ async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
     for turn in (second, third):
         body = turn.json()
         assert body["audio_url"].startswith(f"{PREFIX}/voice/")
-        assert body["transcript"]
 
 
 async def test_the_third_turn_still_carries_the_sessions_first_exchange(

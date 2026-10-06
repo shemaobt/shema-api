@@ -404,7 +404,6 @@ class TurnResponse(BaseModel):
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
     mime_type: str = "audio/mpeg"
-    transcript: str
     peer_cue: bool = False
     used_fail_safe: bool = False
     degraded: bool = False

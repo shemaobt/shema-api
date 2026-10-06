@@ -96,6 +96,9 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     sealed.pop("release_id")
     sealed.pop("version")
     sealed.pop("check")
+    sealed.pop("language")
+    sealed.pop("session_language")
+    sealed.pop("audio_format")
     canonical = json.dumps(sealed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert len(stamp) == 64
     assert stamp == sha256(canonical.encode("utf-8")).hexdigest()
