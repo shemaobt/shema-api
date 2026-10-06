@@ -171,6 +171,10 @@ async def call_agent(
     unavailable, and stepping down on a busy minute would quietly finish the session on a
     weaker model than it started. Everything else that is not a retry of its own — a bad
     request, a rejected key — rises on the first attempt.
+
+    A refusal is asked again once, on the next rung, for that call alone: a second refusal
+    stands as the empty reply and the caller takes its own fail-safe path, and on the last
+    rung there is no next one to ask. Nothing is settled on, so the next call starts at the top.
     """
     settings = settings or get_settings()
     rungs = ladder or voice_ladder(settings)
@@ -250,7 +254,7 @@ async def call_agent(
             latency_ms=round((time.monotonic() - started) * 1000),
         )
         _report_unfinished(response, max_output_tokens)
-        if _refused_outright(response) and model != rungs[-1]:
+        if _refused_outright(response) and model != rungs[-1] and not refused_above:
             logger.warning(
                 "%s refused this request outright; the room asks %s instead",
                 model,

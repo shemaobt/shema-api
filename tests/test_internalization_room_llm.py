@@ -250,6 +250,41 @@ async def test_a_rung_that_refuses_outright_hands_the_request_to_the_next(
     )
 
 
+class RefusingRungs:
+    """Rungs that turn every request away at the door, and the ones that still answer."""
+
+    def __init__(self, *refusing: str) -> None:
+        self.refusing = refusing
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if kwargs["model"] in self.refusing:
+            reply = _reply("", stop_reason="refusal")
+            reply.content = []
+            return reply
+        return _reply("ok")
+
+
+async def test_a_refusal_is_rerun_once_and_a_second_refusal_stands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingRungs("claude-fable-5-1", "claude-opus-5")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"], (
+        "uma recusa seguida de outra descia a escada inteira, e um terceiro modelo, menor, "
+        "podia rascunhar o que a equipe ouve; a segunda recusa agora fica de pé"
+    )
+    assert text == "", "a segunda recusa chega ao chamador como resposta vazia, e é ele quem decide"
+
+
 class FlakyMessages:
     """A rung that fails a scripted number of times, in order, before it answers."""
 
