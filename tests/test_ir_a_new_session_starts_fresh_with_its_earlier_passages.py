@@ -26,7 +26,12 @@ from app.db.models.project import Project
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.sessions import apply_coverage, get_session, is_panorama
+from app.services.internalization_room.sessions import (
+    apply_coverage,
+    create_session,
+    get_session,
+    is_panorama,
+)
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     PREFIX,
@@ -333,6 +338,23 @@ async def test_the_first_passage_of_a_book_and_the_panorama_carry_no_earlier_pas
         "P01": "not_worked",
         "P02": "approved",
     }, "o controle: a sala carimba as passagens anteriores de uma passagem que as tem"
+
+
+async def test_the_golden_doors_earlier_passages_win_over_the_rooms_own_reading(
+    client, db_session, per_request
+) -> None:
+    """Her runner's stamp is taken at its word. The Golden door names no team, so a stamp that
+    disagrees with a team's rows is handed to the service the door calls: P02 is started in the
+    rows and not worked in the stamp."""
+    team, tablet = await a_claimed_device(db_session)
+    await entered(client, tablet, "P02", language="pt")
+    handed = {"P01": "approved", "P02": "not_worked", "P03": "not_worked"}
+
+    session = await create_session(
+        db_session, pericope="P04", project_id=team.id, earlier_passages=handed
+    )
+
+    assert await stored_stamp(per_request, session.id) == handed
 
 
 # -------------------------------------------------------------------------- the open door

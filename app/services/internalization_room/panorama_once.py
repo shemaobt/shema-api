@@ -1,6 +1,6 @@
 """Whether a team has already heard the book's panorama and gone on into the book.
 
-The app asks for `"OV"` at every launch, and the server honoured it every time without
+The app asked for `"OV"` at every launch, and the server honoured it every time without
 looking at anything: a team reopening the tablet on the passage they were working heard the
 whole panorama again before reaching their own passage. The server never inserts a panorama
 on its own, so the decision belongs where the request lands. Since ENG-1237 the open door
@@ -48,7 +48,7 @@ from app.services.internalization_room.canon.parse_map import load_book
 def _heard_key(project_id: str, book: str) -> tuple[ColumnElement[bool], ...]:
     """What "once" is scoped to: the team and the book, read as an ``in_`` over the book's
     passages, because the row that records a hearing names the passage the team went on
-    into and not the book. The book comes from the caller: `book_of` lives in `sessions`.
+    into and not the book. The book comes from the caller.
     """
     return (
         IRSession.project_id == project_id,

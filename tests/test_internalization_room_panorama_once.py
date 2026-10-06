@@ -140,18 +140,59 @@ async def the_app_posts(client, headers: dict[str, str], body: dict[str, Any]) -
     return created.json()
 
 
-async def test_a_second_panorama_spends_no_prepared_opening(
+async def test_a_team_already_inside_the_book_is_written_no_opening_for_a_new_panorama(
     client, db_session: AsyncSession, prepared: list[str]
 ) -> None:
     """The first panorama writes the passage's opening ahead, because the team is about to
-    enter it. A team already inside the book opening the panorama again is there for the
-    book's shape, so no opening is written for it."""
+    enter it. A team that heard it and went on, opening a panorama of its own again in another
+    language, is there for the book's shape, so no opening is written for it."""
     team = await a_team(db_session, name="Sem abertura à toa")
     tablet = await a_tablet_of(db_session, team)
     launched = await the_app_posts(client, tablet, {"pericope": "OV"})
     await the_app_posts(client, tablet, {"after_session": launched["session_id"]})
 
-    asked = await the_app_posts(client, tablet, {"pericope": "OV"})
+    again = await the_app_posts(client, tablet, {"pericope": "OV", "language": "pt"})
 
-    assert room.is_panorama(asked["pericope"])
+    assert room.is_panorama(again["pericope"])
+    assert again["session_id"] != launched["session_id"]
     assert prepared == [launched["session_id"]]
+
+
+async def test_another_teams_hearing_does_not_count_for_this_one(
+    client, db_session: AsyncSession, prepared: list[str]
+) -> None:
+    """The key is the team's: two teams in the same installation each have it written."""
+    heard = await a_tablet_of(db_session, await a_team(db_session, name="Ouviu"))
+    fresh = await a_tablet_of(db_session, await a_team(db_session, name="Nunca ouviu"))
+    launched = await the_app_posts(client, heard, {"pericope": "OV"})
+    await the_app_posts(client, heard, {"after_session": launched["session_id"]})
+
+    first = await the_app_posts(client, fresh, {"pericope": "OV"})
+
+    assert prepared == [launched["session_id"], first["session_id"]]
+
+
+async def test_a_panorama_opened_but_never_followed_into_the_passage_is_not_heard(
+    client, db_session: AsyncSession, prepared: list[str]
+) -> None:
+    """A panorama session opened and abandoned is a request, not a hearing: the team's next
+    new panorama still has its opening written ahead."""
+    tablet = await a_tablet_of(db_session, await a_team(db_session, name="Caiu no meio"))
+    abandoned = await the_app_posts(client, tablet, {"pericope": "OV"})
+
+    again = await the_app_posts(client, tablet, {"pericope": "OV", "language": "pt"})
+
+    assert prepared == [abandoned["session_id"], again["session_id"]]
+
+
+async def test_a_tablet_that_never_said_whose_it_is_has_every_opening_written(
+    client, prepared: list[str]
+) -> None:
+    """No team, no history: nothing can have been heard."""
+    shared = {"X-Room-Key": ROOM_KEY}
+    launched = await the_app_posts(client, shared, {"pericope": "OV"})
+    await the_app_posts(client, shared, {"after_session": launched["session_id"]})
+
+    again = await the_app_posts(client, shared, {"pericope": "OV"})
+
+    assert prepared == [launched["session_id"], again["session_id"]]
