@@ -36,6 +36,7 @@ ENGLISH = "Naomi went back to Bethlehem with Ruth at the harvest"
 AN_ENGLISH_LINE = "Welcome. Tell me what you remember about this book."
 TERENA_AS_SPANISH = "koeti yoko vitukeovo enepone itukovo"
 D0 = "D0"
+INTERRUPTION = "[A equipe interrompeu a sua fala anterior neste ponto.]"
 
 
 def _note(seconds: int) -> str:
@@ -90,10 +91,13 @@ async def _an_open_panorama(
     return session
 
 
-async def _the_team_sends_a_take(tablet: httpx.AsyncClient, session: IRSession) -> dict[str, Any]:
+async def _the_team_sends_a_take(
+    tablet: httpx.AsyncClient, session: IRSession, **form: str
+) -> dict[str, Any]:
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session.id}/turns",
         headers={"X-Room-Key": KEY},
+        data=form,
         files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )
     assert answered.status_code == 200, answered.text
@@ -107,7 +111,7 @@ async def _the_conversation(db_session: AsyncSession, session_id: str) -> list[d
     return list(stored.messages)
 
 
-async def test_a_3_second_take_with_no_words_in_a_panorama_is_answered_with_d_1_and_the_guide_is_not_called(  # noqa: E501
+async def test_a_3_second_take_with_no_words_in_a_panorama_is_answered_with_her_first_d_line_and_the_guide_is_not_called(  # noqa: E501
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     guide: ScriptedAgent,
@@ -123,7 +127,7 @@ async def test_a_3_second_take_with_no_words_in_a_panorama_is_answered_with_d_1_
     assert guide.guide_inputs == []
 
 
-async def test_three_3_second_takes_with_no_words_in_a_row_in_a_panorama_each_hear_d_1(
+async def test_three_3_second_takes_with_no_words_in_a_row_in_a_panorama_each_hear_her_first_d_line(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     guide: ScriptedAgent,
@@ -282,3 +286,29 @@ async def test_a_panorama_turns_record_keeps_the_language_its_probability_the_mo
         key: guide_entry.get(key, "absent")
         for key in ("language", "language_probability", "mother_tongue", "take_ms")
     } == {"language": "es", "language_probability": 0.7, "mother_tongue": True, "take_ms": 40_000}
+
+
+async def test_a_panorama_take_that_cut_the_guide_short_reaches_the_guide_and_the_validator_behind_the_interruption_note(  # noqa: E501
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = RecordingValidator()
+    the_room_agent_is(monkeypatch, turn=models)
+    session = await _an_open_panorama(db_session, tablet, models)
+    before = len(await _the_conversation(db_session, session.id))
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.9)
+    the_take_lasts(monkeypatch, 12_000)
+    models.validator_systems.clear()
+
+    await _the_team_sends_a_take(tablet, session, interrupted="1")
+
+    assert models.guide_inputs == [f"{INTERRUPTION} {PORTUGUESE}"]
+    assert len(models.validator_systems) == 1
+    assert f"{INTERRUPTION} {PORTUGUESE}" in models.validator_systems[0]
+    written = (await _the_conversation(db_session, session.id))[before:]
+    assert [(entry["role"], entry["text"]) for entry in written] == [
+        ("room", INTERRUPTION),
+        ("team", PORTUGUESE),
+        ("guide", GUIDE_LINE),
+    ]
