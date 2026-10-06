@@ -18,6 +18,13 @@ import pytest
 REPO = "MarciaSuzuki/tripod_compiler"
 SHA = "5b5c8d2b3ae7632279c07017224f861ae369b0d7"
 
+DIRECTORIES = (
+    "fixtures/meaning-map",
+    "fixtures/meaning-coordinates",
+    "fixtures/compilation-log",
+    "_spec/registry",
+)
+
 _CONTENTS = re.compile(
     rf"^https://api\.github\.com/repos/{REPO}/contents/(?P<path>.+)\?ref=(?P<sha>\w+)$"
 )
@@ -60,7 +67,7 @@ class Compiler:
         if found := _CONTENTS.match(url):
             prefix = found["path"].rstrip("/") + "/"
             names = [path[len(prefix) :] for path in self.files if path.startswith(prefix)]
-            if not names:
+            if not names and found["path"] not in DIRECTORIES:
                 raise _not_found(url)
             return json.dumps([{"name": name} for name in names if "/" not in name]).encode()
         if found := _RAW.match(url):

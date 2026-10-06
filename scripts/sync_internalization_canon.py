@@ -122,6 +122,9 @@ def sync(pin: str | None = None) -> int:
     published, skipped = _published(sha)
     for line in skipped:
         print(line, file=sys.stderr)
+    if not published["meaning-map"]:
+        print(f"nothing consumable at pin {sha} — refusing to empty the canon", file=sys.stderr)
+        return 1
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
