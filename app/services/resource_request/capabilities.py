@@ -92,9 +92,33 @@ follows it. **The role row stays seeded** (``RETIRED_ROLES``): existing installa
 ``20260930_rr12`` revoked every grant on it, and deleting a row other tables point at is not a
 side effect of retiring a capability.
 
+**The Admin holds exactly the Gestor's set, and the row is derived rather than written**
+(OBT-568, Daniel, 6/oct/2026: *"o admin deve ter o mesmo nível de permissão que o gestor no
+formulário"* — his decision, not the client's). The Admin of OBT-522 is one ``admin`` role
+seeded in both apps (``scripts/seed_apps_roles.py``), and until this issue it carried no
+capability here at all: the pen over any instance (``_editing.is_admin``, BE-25), the request
+links (``_links.require_link_admin``, BE-26) and the board-wide reach (``_scope.reach``, which
+counts any grant beyond ``equipe``) all read the role directly, and none of them went through
+this table — so an account holding ``admin`` alone entered the form and reached no screen.
+``ADMIN_CAPABILITIES`` **is** ``ROLE_CAPABILITIES["gestor"]``, the same object: the decision
+says *the same level*, and a copied set would be a second place for the Gestor's row to move
+without the Admin's following. What the Admin therefore does **not** hold is what the Gestor
+does not — ``edit_evaluation`` (GATE-02 D3) and ``assign_fund`` (GATE-01 D4) — and that is the
+whole of the issue's *out of scope*. And since the Admin's row is the Gestor's, ``admin`` and
+``mesa`` exclude each other at grant time as ``gestor`` and ``mesa`` do (Daniel, 6/oct/2026;
+``resource_request_access/_rules.py``). The row stays out of ``ROLE_CAPABILITIES`` because that
+map is the hand-written mirror of the frontend's rows, and this one is not hand-written: the
+emission carries the Admin's row too (its ``capabilities.ts`` lists him as a fourth role, with
+the Gestor's array), and ``tests/test_resource_requests/test_capabilities.py`` compares the
+emitted row to the derived one directly. The platform admin
+(``users.is_platform_admin``) is a different thing and is unchanged: it never reaches this
+table (``_deps.require_capability``).
+
 Reading is not a row of this table and must not become one (``_scope.py`` §5.3 reasoning):
 it rides on ``edit_requests``, and which rows it reaches is decided in ``_scope.py``.
 """
+
+from app.services.shema._scope import ADMIN_ROLE
 
 #: The eight ids of the frontend's ``CAPABILITIES``, in its order. ``grant_access`` left with
 #: the form's access screen (FE-56, OBT-549): roles are granted in the PME now.
@@ -142,9 +166,15 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
     ),
 }
 
+#: The Admin's row (OBT-568): the Gestor's set, the same object — never a copy.
+ADMIN_CAPABILITIES: frozenset[str] = ROLE_CAPABILITIES["gestor"]
+
+#: Every row the guard reads: the frontend's three plus the Admin's derived one.
+HELD_CAPABILITIES: dict[str, frozenset[str]] = {**ROLE_CAPABILITIES, ADMIN_ROLE: ADMIN_CAPABILITIES}
+
 #: The inversion, derived: the roles that hold each capability. Every capability appears,
 #: so a guard on one nobody holds refuses everyone instead of raising a KeyError.
 CAPABILITY_ROLES: dict[str, frozenset[str]] = {
-    capability: frozenset(role for role, held in ROLE_CAPABILITIES.items() if capability in held)
+    capability: frozenset(role for role, held in HELD_CAPABILITIES.items() if capability in held)
     for capability in CAPABILITIES
 }

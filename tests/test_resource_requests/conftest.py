@@ -87,7 +87,10 @@ def _clear_role_cache():
 
 @pytest.fixture()
 async def rrf_app(db_session):
-    """The app registry row plus its four roles — what ``seed_apps_roles.py`` writes.
+    """The app registry row plus the roles ``seed_apps_roles.py`` writes for it — its own
+    four and the platform's ``admin`` (OBT-522), read off ``seeded_roles`` rather than listed
+    here, so the fixture cannot fall behind the seed again: it listed four by hand and the
+    Admin's row was missing until OBT-568 needed to grant it.
 
     ``auto_approve`` is off because ``20260928_rr08`` turns it back off: the form has no
     login since the 22/sep meeting, and the team is a project's members in the PME (GATE-04,
@@ -98,12 +101,7 @@ async def rrf_app(db_session):
         db_session, app_key=APP_KEY, name="Resource Request Form", auto_approve=False
     )
 
-    for role_key, label in (
-        ("equipe", "Equipe"),
-        ("mesa", "Mesa"),
-        ("gestor", "Gestor"),
-        ("lider", "Líder de Base"),
-    ):
+    for role_key, label in seeded_roles(APP_KEY):
         await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
 
     return app

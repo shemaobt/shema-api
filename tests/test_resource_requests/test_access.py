@@ -19,7 +19,8 @@ from app.services.access_request import create_access_request
 from app.services.access_request._default_roles import default_role_for
 from app.services.authorization import list_roles
 from app.services.resource_request import RETIRED_ROLES
-from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS
+from app.services.shema._scope import ADMIN_ROLE
+from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS, seeded_roles
 from tests.baker import grant_app_role, make_app, make_user
 from tests.test_resource_requests.conftest import (
     FRONTEND_ROLE_IDS,
@@ -56,8 +57,18 @@ def test_the_seeded_roles_are_the_frontends_role_ids_plus_the_retired() -> None:
 
     The seed also carries the roles the frontend retired (``RETIRED_ROLES``, FE-49, OBT-517):
     installations have those rows, their grants were revoked, and nothing grants them again.
+    And it carries the platform's ``admin`` (OBT-522) through ``PLATFORM_ADMIN_APPS`` rather
+    than through the override, which is why that id is taken out of the first comparison: the
+    frontend lists it since OBT-568 (the Admin holds the Gestor's capabilities), and the seed
+    as a whole has to name exactly the emission's roles plus the retired one.
     """
-    assert APP_ROLES_OVERRIDE[APP_KEY] == [*FRONTEND_ROLE_IDS, *RETIRED_ROLES]
+    assert APP_ROLES_OVERRIDE[APP_KEY] == [
+        *(role for role in FRONTEND_ROLE_IDS if role != ADMIN_ROLE),
+        *RETIRED_ROLES,
+    ]
+    assert sorted(key for key, _ in seeded_roles(APP_KEY)) == sorted(
+        {*FRONTEND_ROLE_IDS, *RETIRED_ROLES}
+    )
 
 
 def test_seed_apps_has_no_duplicate_keys() -> None:
@@ -195,4 +206,4 @@ async def test_my_roles_is_empty_for_an_account_with_no_grant(db_session, client
 
 async def test_the_seeded_roles_are_all_grantable(db_session, rrf_app) -> None:
     result = await db_session.execute(select(Role.role_key).where(Role.app_id == rrf_app.id))
-    assert sorted(result.scalars().all()) == sorted([*FRONTEND_ROLE_IDS, *RETIRED_ROLES])
+    assert sorted(result.scalars().all()) == sorted({*FRONTEND_ROLE_IDS, *RETIRED_ROLES})

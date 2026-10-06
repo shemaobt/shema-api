@@ -153,6 +153,14 @@ async def as_gestor(db_session, rrf_app, email: str = "gestor@rr.test") -> dict[
     return await auth_header(db_session, user)
 
 
+async def as_admin(db_session, rrf_app, email: str = "admin@rr.test") -> dict[str, str]:
+    """The Admin of OBT-522 holding ``admin`` **alone** — never ``is_platform_admin``, which
+    every guard waves through and would make a refusal test pass for the wrong reason."""
+    user = await make_user(db_session, email=email)
+    await grant(db_session, user, rrf_app, "admin")
+    return await auth_header(db_session, user)
+
+
 async def submitted_request(client, headers) -> dict:
     created = await create(client, headers)
     res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)

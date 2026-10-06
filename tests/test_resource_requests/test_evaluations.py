@@ -36,6 +36,7 @@ from app.utils import resource_request_vocabularies as v
 from tests.baker import make_user
 from tests.resource_request_harness import (
     REQUESTS,
+    as_admin,
     as_gestor,
     as_mesa,
     as_team,
@@ -75,6 +76,23 @@ async def test_the_gestor_reads_and_does_not_write(db_session, client, rrf_app) 
 
     assert read.status_code == 200
     assert write.status_code == 403
+
+
+async def test_the_admin_reads_and_does_not_write(db_session, client, rrf_app) -> None:
+    """OBT-568 (Daniel, 6/oct/2026): the Admin holds the Gestor's level, and the Gestor *"nem
+    pontua nem decide"*. ``admin`` alone — a platform admin would pass for the wrong reason."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    admin = await as_admin(db_session, rrf_app)
+    created = await submitted_request(client, team)
+    assert (await put_evaluation(client, mesa, created["id"])).status_code == 200
+
+    read = await client.get(f"{REQUESTS}/{created['id']}/evaluation", headers=admin)
+    write = await put_evaluation(client, admin, created["id"], comments="do admin")
+
+    assert read.status_code == 200
+    assert write.status_code == 403
+    assert "edit_evaluation" in write.json()["detail"]
 
 
 # ——— the save ————————————————————————————————————————————————————————————————————
