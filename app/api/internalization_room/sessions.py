@@ -36,7 +36,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
-from app.services.internalization_room import halt
+from app.services.internalization_room import halt, opening_claim
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
@@ -807,7 +807,7 @@ async def _answer_the_turn(
     try:
         with stage("db_read"):
             session = await room.session_for_room_caller(db, session_id, project_id)
-        team_id, halted = session.project_id, session.status is IRSessionStatus.NEEDS_PERSON
+        halted = session.status is IRSessionStatus.NEEDS_PERSON
         opening = file is None and not (session.messages or [])
         if not opening:
             with stage("db_let_go"):
@@ -818,22 +818,72 @@ async def _answer_the_turn(
         raise
     _remember_language(session_id, session.language, project_id)
 
-    speech_heard = HeardSpeech()
-    if stt is not None:
-        speech_heard = await stt
-    elif file is not None:
+    if file is not None and stt is None:
         audio_bytes = await _read_capped_audio(file)
-        speech_heard = await _timed_stt(
-            audio_bytes,
-            filename=file.filename,
-            mime_type=file.content_type,
-            language=session.language,
+        stt = asyncio.create_task(
+            _timed_stt(
+                audio_bytes,
+                filename=file.filename,
+                mime_type=file.content_type,
+                language=session.language,
+            )
         )
-    transcript = speech_heard.text
+    drafting_since = opening_claim.drafting_since(session)
+    if stt is not None and drafting_since is not None:
+        try:
+            with stage("opening_wait"):
+                await opening_claim.wait_for_the_opening(db, session, project_id, drafting_since)
+        except BaseException:
+            await _cancelled(stt)
+            raise
+        deadline = asyncio.get_running_loop().time() + bound_s
+    speech_heard = await stt if stt is not None else HeardSpeech()
 
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
 
+    claimed_as = None
+    if opening:
+        claimed_as = turn_id or str(uuid.uuid4())
+        if not await opening_claim.claim(db, session.id, claimed_as):
+            joined = await opening_claim.joined(
+                db, session.id, turn_id=turn_id, project_id=project_id, until=deadline
+            )
+            if joined is None:
+                raise UpstreamServiceError("a abertura desta sessão não chegou")
+            return joined
+    try:
+        return await _draft_the_turn(
+            db,
+            session,
+            background=background,
+            turn_id=claimed_as or turn_id,
+            opening=opening,
+            halted=halted,
+            speech_heard=speech_heard,
+            deadline=deadline,
+            bound_s=bound_s,
+        )
+    except BaseException:
+        if claimed_as is not None:
+            await opening_claim.release(db, session.id, claimed_as)
+        raise
+
+
+async def _draft_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    bound_s: float,
+) -> TurnResponse:
+    team_id = session.project_id
+    transcript = speech_heard.text
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
         speech, audio_key = ready

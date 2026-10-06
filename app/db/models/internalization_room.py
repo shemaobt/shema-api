@@ -171,6 +171,16 @@ class IRSession(Base):
     #: room's doors that pick or list a team's work read live rows only; the facilitator's
     #: by-id doors still read a stamped one, because the work stays for the consultant.
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The turn id under which the request drafting this session's opening will store its
+    #: answer, null until an opening is claimed (ADR 0053). Written once by a conditional
+    #: update while no live claim stands, so two tablets with different turn ids draft one
+    #: opening between them, whichever instance each request reached.
+    opening_claim_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: When the opening was claimed. A claim older than the turn bound plus thirty seconds
+    #: belongs to a request that can no longer be running, and the next request takes it over.
+    opening_claimed_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
 
 
 class IRTeamSession(Base):
