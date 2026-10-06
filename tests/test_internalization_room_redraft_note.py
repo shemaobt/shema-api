@@ -154,6 +154,14 @@ def test_an_issue_with_no_explanation_lists_as_its_problem_and_claim_alone() -> 
 _UNNAMED_PROBLEM_ISSUE = [{"claim": "Rute era moabita"}]
 
 
+def test_an_issue_with_no_claim_lists_as_its_problem_alone() -> None:
+    assert _redraft_note([{"problem": "invented_detail"}]) == (
+        "(internal redraft note — the previous draft carried something the map does not "
+        "support: invented_detail. Redraft the same answer, as fully as the team's request "
+        "deserves, using only what the map contains.)"
+    )
+
+
 def test_an_issue_missing_its_problem_key_falls_back_to_the_english_word() -> None:
     note = _redraft_note(_UNNAMED_PROBLEM_ISSUE)
 
