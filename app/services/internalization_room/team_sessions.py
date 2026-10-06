@@ -29,6 +29,7 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, as_utc, end_of
 
 
@@ -79,11 +80,12 @@ def _still_going_first(cards: list[TeamSessionResponse]) -> list[TeamSessionResp
 
 async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
     """A session nobody entered (ENG-964) is not a room of the team and is not drawn:
-    `entered()` excludes it, the one predicate the team's last activity also reads.
+    `entered()` excludes it, the one predicate the team's last activity also reads. An archived
+    session is no longer the team's either (ADR 0047).
     """
     result = await db.execute(
         select(IRSession)
-        .where(IRSession.project_id == project_id, entered())
+        .where(IRSession.project_id == project_id, live(), entered())
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
     return result.scalars().all()

@@ -14,6 +14,7 @@ from app.services.internalization_room.coverage import (
     is_panorama,
     ranks,
 )
+from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import as_utc
 
 _RANK_OF = ranks()
@@ -105,6 +106,10 @@ async def necklace_with_touches(
     then routed the array it does produce through a table holding two of its three statuses
     (ENG-615), so a bead the team worked on the Guide's terms was logged and thrown away.
     Both are fixed. This answers the events that were written, which is all it ever claimed.
+
+    Live events only, and on live sessions only (ADR 0047): a settle still running when a
+    Zerar landed writes an unstamped bead on an archived session, and the session's own stamp
+    is what keeps that bead out of the next session's necklace.
     """
     standing = func.row_number().over(
         partition_by=IRCoverageEvent.element_key,
@@ -122,9 +127,12 @@ async def necklace_with_touches(
             IRCoverageEvent.status,
             standing.label("standing"),
         )
+        .join(IRSession, IRSession.id == IRCoverageEvent.session_id)
         .where(
             IRCoverageEvent.project_id == project_id,
             IRCoverageEvent.pericope == pericope,
+            live(IRCoverageEvent),
+            live(),
         )
         .subquery()
     )
