@@ -37,7 +37,13 @@ from app.services.internalization_room.sessions import (
 from app.services.internalization_room.turn_dedup import remember_turn
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
-from tests.opening_harness import a_scripted_room, the_tablet_opens, the_team_says
+from tests.opening_harness import (
+    a_scripted_room,
+    ask_for_the_opening,
+    rivals,
+    the_tablet_opens,
+    the_team_says,
+)
 from tests.release_harness import KEY, PREFIX, P, a_claimed_device
 from tests.room_harness import room_client
 from tests.tablet_turn_harness import the_room_opens
@@ -108,7 +114,7 @@ class _Voice:
 
 @pytest.fixture()
 def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    return rivals(test_engine)
 
 
 @pytest.fixture()
@@ -130,14 +136,6 @@ def voice(monkeypatch: pytest.MonkeyPatch) -> _Voice:
 def _guide(monkeypatch: pytest.MonkeyPatch, guide: _Guide) -> _Guide:
     the_room_agent_is(monkeypatch, turn=guide)
     return guide
-
-
-async def _ask_for_the_opening(client, session_id: str, turn_id: str | None):
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
-        data={"turn_id": turn_id} if turn_id else {},
-    )
 
 
 async def _speak(client, session_id: str, turn_id: str):
@@ -181,9 +179,9 @@ async def test_two_no_audio_requests_with_different_turn_ids_on_a_new_session_dr
         room_client(one, monkeypatch) as first_tablet,
         room_client(two, monkeypatch) as second_tablet,
     ):
-        first = asyncio.create_task(_ask_for_the_opening(first_tablet, session.id, "tablet-a"))
+        first = asyncio.create_task(ask_for_the_opening(first_tablet, session.id, "tablet-a"))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
-        second = asyncio.create_task(_ask_for_the_opening(second_tablet, session.id, "tablet-b"))
+        second = asyncio.create_task(ask_for_the_opening(second_tablet, session.id, "tablet-b"))
         await asyncio.wait({second}, timeout=1)
         assert not second.done(), second.result().text[:300]
         guide.answer.set()
@@ -213,9 +211,9 @@ async def test_a_request_for_the_opening_without_a_turn_id_joins_the_opening_ano
         room_client(one, monkeypatch) as first_tablet,
         room_client(two, monkeypatch) as second_tablet,
     ):
-        first = asyncio.create_task(_ask_for_the_opening(first_tablet, session.id, "tablet-a"))
+        first = asyncio.create_task(ask_for_the_opening(first_tablet, session.id, "tablet-a"))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
-        second = asyncio.create_task(_ask_for_the_opening(second_tablet, session.id, None))
+        second = asyncio.create_task(ask_for_the_opening(second_tablet, session.id, None))
         await asyncio.wait({second}, timeout=1)
         assert not second.done(), second.result().text[:300]
         guide.answer.set()
@@ -239,13 +237,13 @@ async def test_a_team_turn_sent_while_the_opening_drafts_is_answered_after_the_o
         room_client(one, monkeypatch) as opening_tablet,
         room_client(two, monkeypatch) as speaking_tablet,
     ):
-        opening = asyncio.create_task(_ask_for_the_opening(opening_tablet, session.id, "abre"))
+        opening = asyncio.create_task(ask_for_the_opening(opening_tablet, session.id, "abre"))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
         team = asyncio.create_task(_speak(speaking_tablet, session.id, "fala"))
         await asyncio.wait({team}, timeout=0.5)
         assert not team.done(), "o turno da equipe foi respondido antes da abertura"
         guide.answer.set()
-        opened, spoken = await asyncio.wait_for(asyncio.gather(opening, team), timeout=10)
+        opened, spoken = await asyncio.wait_for(asyncio.gather(opening, team), timeout=20)
 
     assert opened.status_code == 200, opened.text[:300]
     assert spoken.status_code == 200, spoken.text[:300]
@@ -269,7 +267,7 @@ async def test_a_team_turn_waits_for_the_opening_no_longer_than_the_opening_wait
         room_client(one, monkeypatch) as opening_tablet,
         room_client(two, monkeypatch) as speaking_tablet,
     ):
-        opening = asyncio.create_task(_ask_for_the_opening(opening_tablet, session.id, "abre"))
+        opening = asyncio.create_task(ask_for_the_opening(opening_tablet, session.id, "abre"))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
         try:
             spoken = await asyncio.wait_for(_speak(speaking_tablet, session.id, "fala"), timeout=5)
@@ -291,11 +289,14 @@ async def test_a_team_turn_waits_for_the_opening_no_longer_than_the_opening_wait
 async def test_a_team_turns_own_bound_starts_after_its_wait_for_the_opening(
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
+    """The wait ends between 2 s and 3 s into a 4 s bound, so a bound counted from the turn's
+    arrival leaves it at most 2 s, and a bound counted after the wait leaves it 4 s: a reply
+    taking 3 s fits only the second, by a whole second either way."""
+    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 4000)
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
-    guide.opening_takes = 1.2
-    guide.reply_takes = 1.0
+    guide.opening_takes = 2.0
+    guide.reply_takes = 3.0
 
     async with (
         rival_factory() as one,
@@ -303,10 +304,10 @@ async def test_a_team_turns_own_bound_starts_after_its_wait_for_the_opening(
         room_client(one, monkeypatch) as opening_tablet,
         room_client(two, monkeypatch) as speaking_tablet,
     ):
-        opening = asyncio.create_task(_ask_for_the_opening(opening_tablet, session.id, "abre"))
+        opening = asyncio.create_task(ask_for_the_opening(opening_tablet, session.id, "abre"))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
         team = asyncio.create_task(_speak(speaking_tablet, session.id, "fala"))
-        opened, spoken = await asyncio.wait_for(asyncio.gather(opening, team), timeout=10)
+        opened, spoken = await asyncio.wait_for(asyncio.gather(opening, team), timeout=20)
 
     assert opened.status_code == 200, opened.text[:300]
     assert spoken.status_code == 200, (
@@ -329,9 +330,9 @@ async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_
         room_client(two, monkeypatch) as waiting_tablet,
         room_client(three, monkeypatch) as next_tablet,
     ):
-        failing = asyncio.create_task(_ask_for_the_opening(failing_tablet, session.id, "abre"))
+        failing = asyncio.create_task(ask_for_the_opening(failing_tablet, session.id, "abre"))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
-        waiting = asyncio.create_task(_ask_for_the_opening(waiting_tablet, session.id, "espera"))
+        waiting = asyncio.create_task(ask_for_the_opening(waiting_tablet, session.id, "espera"))
         await asyncio.wait({waiting}, timeout=1)
         assert not waiting.done(), waiting.result().text[:300]
         guide.answer.set()
@@ -346,7 +347,7 @@ async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_
         assert remembered == [], "um pedido que nao foi respondido deixou uma resposta guardada"
 
         again = await asyncio.wait_for(
-            _ask_for_the_opening(next_tablet, session.id, "de-novo"), timeout=10
+            ask_for_the_opening(next_tablet, session.id, "de-novo"), timeout=10
         )
 
     assert again.status_code == 200, again.text[:300]
@@ -369,7 +370,7 @@ async def test_an_opening_claimed_by_a_request_on_another_instance_is_waited_for
     ).model_dump(mode="json")
 
     async with rival_factory() as one, room_client(one, monkeypatch) as tablet:
-        asking = asyncio.create_task(_ask_for_the_opening(tablet, session.id, "deste-tablet"))
+        asking = asyncio.create_task(ask_for_the_opening(tablet, session.id, "deste-tablet"))
         await asyncio.wait({asking}, timeout=1)
         assert not asking.done(), asking.result().text[:300]
         async with rival_factory() as other_instance:
@@ -399,7 +400,7 @@ async def test_a_claim_left_by_a_holder_that_died_is_taken_over(
 
     async with rival_factory() as one, room_client(one, monkeypatch) as tablet:
         answered = await asyncio.wait_for(
-            _ask_for_the_opening(tablet, session.id, "assume"), timeout=10
+            ask_for_the_opening(tablet, session.id, "assume"), timeout=10
         )
 
     assert answered.status_code == 200, answered.text[:300]
@@ -424,7 +425,7 @@ async def test_claiming_the_opening_does_not_count_as_the_teams_activity(
     await _claim_on_the_row(rival_factory, session.id, "morreu", died_at)
 
     async with rival_factory() as one, room_client(one, monkeypatch) as tablet:
-        asking = asyncio.create_task(_ask_for_the_opening(tablet, session.id, "assume"))
+        asking = asyncio.create_task(ask_for_the_opening(tablet, session.id, "assume"))
         await asyncio.wait_for(guide.thinking.wait(), timeout=5)
         async with rival_factory() as fresh:
             claimed = await get_session(fresh, session.id)
@@ -480,13 +481,13 @@ async def test_a_no_audio_request_with_a_new_turn_id_on_a_session_with_messages_
     guide.answer.set()
 
     async with rival_factory() as one, room_client(one, monkeypatch) as tablet:
-        opened = await _ask_for_the_opening(tablet, session.id, "abre")
+        opened = await ask_for_the_opening(tablet, session.id, "abre")
         assert opened.status_code == 200, opened.text[:300]
         spoken = await _speak(tablet, session.id, "fala")
         assert spoken.status_code == 200, spoken.text[:300]
         asked, conversation = guide.asked, await _conversation(rival_factory, session.id)
 
-        again = await _ask_for_the_opening(tablet, session.id, "volta")
+        again = await ask_for_the_opening(tablet, session.id, "volta")
 
     assert again.status_code == 200, again.text[:300]
     assert again.json()["audio_url"] == clip_url(_clip_of(REPLY))
@@ -511,13 +512,13 @@ async def test_an_opening_that_fails_after_it_was_written_leaves_the_claim_free(
         failing.setattr(sessions_api, "remember_turn", the_store_is_down)
         async with rival_factory() as one, room_client(one, monkeypatch) as tablet:
             failed = await asyncio.wait_for(
-                _ask_for_the_opening(tablet, session.id, "abre"), timeout=20
+                ask_for_the_opening(tablet, session.id, "abre"), timeout=20
             )
     assert failed.status_code == 502, failed.text[:300]
 
     async with rival_factory() as two, room_client(two, monkeypatch) as tablet:
         again = await asyncio.wait_for(
-            _ask_for_the_opening(tablet, session.id, "de-novo"), timeout=20
+            ask_for_the_opening(tablet, session.id, "de-novo"), timeout=20
         )
 
     assert again.status_code == 200, again.text[:300]

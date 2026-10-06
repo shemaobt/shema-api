@@ -20,81 +20,154 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import ColumnElement, Update, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
+from app.core.exceptions import UpstreamServiceError
+from app.core.stage_clock import stage
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import TurnResponse
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.turn_dedup import answered_turn, remember_turn
 
 #: How often a waiting request looks for the claimed answer (her ``KICKOFF_POLL_MS``).
-LOOK_EVERY_S = 1.0
+_LOOK_EVERY_S = 1.0
 #: How much longer than the turn bound a claim outlives the request that took it.
 _OUTLIVES_THE_BOUND = timedelta(seconds=30)
 
 
-def _dead_before() -> datetime:
-    bound = timedelta(milliseconds=get_settings().internalization_room_turn_bound_ms)
-    return datetime.now(UTC) - bound - _OUTLIVES_THE_BOUND
+class Draft(Protocol):
+    """The turn's own work: the Guide, the voice and the landing, under the bound it is given."""
+
+    def __call__(
+        self, *, speech_heard: HeardSpeech, turn_id: str | None, deadline: float
+    ) -> Awaitable[TurnResponse]: ...
 
 
-async def claim(db: AsyncSession, session_id: str, turn_id: str) -> bool:
-    """Claim this session's opening under `turn_id`, committed alone; False when it stands claimed.
+async def answer_around_the_opening(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    opening: bool,
+    turn_id: str | None,
+    project_id: str | None,
+    hearing: asyncio.Task[HeardSpeech] | None,
+    deadline: float,
+    draft: Draft,
+) -> TurnResponse:
+    """Answer this turn with the session's opening drafted once, whoever asks for it.
 
-    The claim is not the team's activity, so `updated_at` is written its own value and
-    `version` is left alone: the Desk reads the one, and `_land` guards the conversation with
-    the other.
+    An opening is claimed before `draft` runs, under the turn id its answer will be stored
+    by (`turn_id`, or one minted for a tablet that sent none). A request that finds the
+    opening claimed drafts nothing: it answers the holder's stored answer under its own
+    `turn_id`, or a turn that did not answer when the claim is released first or `deadline`
+    passes. A holder that ends without an opening releases its claim.
+
+    A team turn (`hearing` is its transcription, still running) on a session whose opening is
+    drafting waits for it first, and its own bound starts after that wait, as `deadline`.
     """
-    claimed = await db.execute(
+    since = _drafting_since(session)
+    if hearing is not None and since is not None:
+        try:
+            with stage("opening_wait"):
+                await _wait_for_the_opening(db, session, project_id, since)
+        except BaseException:
+            hearing.cancel()
+            await asyncio.wait({hearing})
+            if not hearing.cancelled():
+                hearing.exception()
+            raise
+        deadline = asyncio.get_running_loop().time() + _bound().total_seconds()
+    speech_heard = await hearing if hearing is not None else HeardSpeech()
+    if not opening:
+        return await draft(speech_heard=speech_heard, turn_id=turn_id, deadline=deadline)
+
+    session_id, claimed_as = session.id, turn_id or str(uuid.uuid4())
+    if not await _claim(db, session_id, claimed_as):
+        joined = await _joined(
+            db, session_id, turn_id=turn_id, project_id=project_id, until=deadline
+        )
+        if joined is None:
+            raise UpstreamServiceError("a abertura desta sessão não chegou")
+        return joined
+    try:
+        return await draft(speech_heard=speech_heard, turn_id=claimed_as, deadline=deadline)
+    except BaseException:
+        await db.rollback()
+        await _release(session_id, claimed_as)
+        raise
+
+
+def _bound() -> timedelta:
+    return timedelta(milliseconds=get_settings().internalization_room_turn_bound_ms)
+
+
+def _oldest_live_claim() -> datetime:
+    """The claim time before which a claim belongs to a request that can no longer be running."""
+    return datetime.now(UTC) - _bound() - _OUTLIVES_THE_BOUND
+
+
+def _set_claim(*where: ColumnElement[bool], turn_id: str | None, at: datetime | None) -> Update:
+    """The one write of the claim's two columns, which never counts as the team's activity.
+
+    `updated_at` is written its own value and `version` is left alone: the Desk reads the one,
+    and `_land` guards the conversation with the other.
+    """
+    return (
         update(IRSession)
-        .where(
+        .where(*where)
+        .values(
+            opening_claim_turn_id=turn_id, opening_claimed_at=at, updated_at=IRSession.updated_at
+        )
+        .execution_options(synchronize_session=False)
+    )
+
+
+async def _claim(db: AsyncSession, session_id: str, turn_id: str) -> bool:
+    """Claim the opening under `turn_id`, committed alone; False when it stands claimed."""
+    claimed = await db.execute(
+        _set_claim(
             IRSession.id == session_id,
             or_(
                 IRSession.opening_claim_turn_id.is_(None),
-                IRSession.opening_claimed_at < _dead_before(),
+                IRSession.opening_claimed_at < _oldest_live_claim(),
             ),
+            turn_id=turn_id,
+            at=datetime.now(UTC),
         )
-        .values(
-            opening_claim_turn_id=turn_id,
-            opening_claimed_at=datetime.now(UTC),
-            updated_at=IRSession.updated_at,
-        )
-        .execution_options(synchronize_session=False)
     )
     await db.commit()
     return bool(claimed.rowcount == 1)
 
 
-async def release(db: AsyncSession, session_id: str, turn_id: str) -> None:
-    """Free the claim this holder took, when it ends without an opening.
+async def _release(session_id: str, turn_id: str) -> None:
+    """Free the claim this holder took, once its own work is rolled back.
 
     Guarded on the holder's own turn id, so a holder that outlived its claim never clears the
     claim of the request that took it over (ADR 0043's rule). On a session of its own, because
-    the holder's may be the very thing that failed — and only after the holder's own work is
-    rolled back: a failure after the opening was written but before it was committed leaves
-    the holder holding the session's row, and the release would wait on it for good.
+    the holder's may be the very thing that failed — and only after the holder rolled back: a
+    failure after the opening was written but before it was committed leaves the holder
+    holding the session's row, and the release would wait on it for good.
     """
-    await db.rollback()
     async with AsyncSessionLocal() as own:
         await own.execute(
-            update(IRSession)
-            .where(IRSession.id == session_id, IRSession.opening_claim_turn_id == turn_id)
-            .values(
-                opening_claim_turn_id=None,
-                opening_claimed_at=None,
-                updated_at=IRSession.updated_at,
+            _set_claim(
+                IRSession.id == session_id,
+                IRSession.opening_claim_turn_id == turn_id,
+                turn_id=None,
+                at=None,
             )
-            .execution_options(synchronize_session=False)
         )
         await own.commit()
 
 
-def drafting_since(session: IRSession) -> datetime | None:
+def _drafting_since(session: IRSession) -> datetime | None:
     """When the opening drafting on this session right now was claimed, read off the loaded row.
 
     None when nothing drafts: the team has spoken, nothing was claimed, or the claim is dead.
@@ -102,10 +175,10 @@ def drafting_since(session: IRSession) -> datetime | None:
     claimed_at = session.opening_claimed_at
     if session.messages or session.opening_claim_turn_id is None or claimed_at is None:
         return None
-    return claimed_at if claimed_at >= _dead_before() else None
+    return claimed_at if claimed_at >= _oldest_live_claim() else None
 
 
-async def claimed_answer(
+async def _claimed_answer(
     session_id: str, project_id: str | None, *, until: float
 ) -> dict[str, Any] | None:
     """The answer stored under the claim, or None once the claim is gone or `until` passes.
@@ -122,10 +195,10 @@ async def claimed_answer(
         left = until - loop.time()
         if stored is not None or holder is None or left <= 0:
             return stored
-        await asyncio.sleep(min(LOOK_EVERY_S, left))
+        await asyncio.sleep(min(_LOOK_EVERY_S, left))
 
 
-async def joined(
+async def _joined(
     db: AsyncSession,
     session_id: str,
     *,
@@ -139,7 +212,7 @@ async def joined(
     None when the claim was released without an opening or `until` passed first: nothing is
     written then, and the next request claims anew.
     """
-    stored = await claimed_answer(session_id, project_id, until=until)
+    stored = await _claimed_answer(session_id, project_id, until=until)
     if stored is None:
         return None
     reply = TurnResponse(**{**stored, "turn_id": turn_id or str(uuid.uuid4())})
@@ -151,7 +224,7 @@ async def joined(
     return reply
 
 
-async def wait_for_the_opening(
+async def _wait_for_the_opening(
     db: AsyncSession, session: IRSession, project_id: str | None, since: datetime
 ) -> None:
     """Hold a team turn until the opening drafting on its session lands, at most the wait.
@@ -162,6 +235,6 @@ async def wait_for_the_opening(
     """
     wait = timedelta(milliseconds=get_settings().internalization_room_opening_wait_ms)
     left = (since + wait - datetime.now(UTC)).total_seconds()
-    await claimed_answer(session.id, project_id, until=asyncio.get_running_loop().time() + left)
+    await _claimed_answer(session.id, project_id, until=asyncio.get_running_loop().time() + left)
     await db.refresh(session)
     await db.commit()

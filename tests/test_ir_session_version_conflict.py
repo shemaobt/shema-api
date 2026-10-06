@@ -21,6 +21,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
+from tests.opening_harness import rivals
 
 P = "P01"
 
@@ -28,7 +29,7 @@ P = "P01"
 @pytest.fixture()
 def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
     """A second, independent connection onto the same database as ``db_session``."""
-    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    return rivals(test_engine)
 
 
 async def test_a_turn_that_lands_second_does_not_erase_the_first_turns_message(

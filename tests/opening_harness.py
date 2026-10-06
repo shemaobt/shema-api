@@ -17,19 +17,39 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.enums import ProjectRole
 from app.db.models.project import Project
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.hearing import HeardSpeech
 from tests.baker import make_project_user_access, make_user
-from tests.release_harness import PREFIX, team_headers
+from tests.release_harness import KEY, PREFIX, team_headers
 from tests.tablet_turn_harness import the_team_says as a_turn_is_said
 from tests.tablet_turn_harness import the_turn_is_scripted
 
 GUIDE_OPENING = "Vamos ouvir a historia de Rute. O que voces ja sabem dela?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
+
+
+def rivals(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Independent sessions onto the case's database, one per racing request.
+
+    One shared session would serialise the requests on one connection and one identity map,
+    and hide the race a case is about.
+    """
+    return async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+
+async def ask_for_the_opening(
+    client: httpx.AsyncClient, session_id: str, turn_id: str | None = "abertura"
+) -> httpx.Response:
+    """A turn with no recording on the room's key, under `turn_id` or under none."""
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        headers={"X-Room-Key": KEY},
+        data={"turn_id": turn_id} if turn_id else {},
+    )
 
 
 class Script:

@@ -828,46 +828,27 @@ async def _answer_the_turn(
                 language=session.language,
             )
         )
-    drafting_since = opening_claim.drafting_since(session)
-    if stt is not None and drafting_since is not None:
-        try:
-            with stage("opening_wait"):
-                await opening_claim.wait_for_the_opening(db, session, project_id, drafting_since)
-        except BaseException:
-            await _cancelled(stt)
-            raise
-        deadline = asyncio.get_running_loop().time() + bound_s
-    speech_heard = await stt if stt is not None else HeardSpeech()
-
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
 
-    claimed_as = None
-    if opening:
-        claimed_as = turn_id or str(uuid.uuid4())
-        if not await opening_claim.claim(db, session.id, claimed_as):
-            joined = await opening_claim.joined(
-                db, session.id, turn_id=turn_id, project_id=project_id, until=deadline
-            )
-            if joined is None:
-                raise UpstreamServiceError("a abertura desta sessão não chegou")
-            return joined
-    try:
-        return await _draft_the_turn(
+    return await opening_claim.answer_around_the_opening(
+        db,
+        session,
+        opening=opening,
+        turn_id=turn_id,
+        project_id=project_id,
+        hearing=stt,
+        deadline=deadline,
+        draft=partial(
+            _draft_the_turn,
             db,
             session,
             background=background,
-            turn_id=claimed_as or turn_id,
             opening=opening,
             halted=halted,
-            speech_heard=speech_heard,
-            deadline=deadline,
             bound_s=bound_s,
-        )
-    except BaseException:
-        if claimed_as is not None:
-            await opening_claim.release(db, session.id, claimed_as)
-        raise
+        ),
+    )
 
 
 async def _draft_the_turn(

@@ -27,6 +27,7 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
 from tests.baker import fully_supported_comprehension
+from tests.opening_harness import rivals
 from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 from tests.turn_harness import the_room_agent_is
@@ -57,7 +58,7 @@ def models() -> _Models:
 
 @pytest.fixture()
 def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    return rivals(test_engine)
 
 
 class _Voice:
