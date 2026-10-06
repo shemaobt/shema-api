@@ -154,24 +154,12 @@ def test_a_leftover_manifest_entry_for_the_gone_invitation_shows_up_as_drift(
     ), f"um manifesto com a linha do convite deveria acusar o órfão, e não acusou: {complaints}"
 
 
-def test_a_language_the_room_does_not_claim_keeps_its_draft_and_reaches_no_mouth() -> None:
-    """The Spanish supplement stays for the day she offers the language, and only for that.
+def test_the_room_keeps_no_fail_safe_draft_for_a_language_it_does_not_speak() -> None:
+    on_disk = {path.name for path in _PROMPTS_DIR.glob("_fail_safe_*_supplement.md")}
 
-    Reading it was never a decision anybody took: the loader globbed the directory, so a
-    draft dropped beside the authored file was spoken by whatever asked for its language.
-    """
-    draft = (_PROMPTS_DIR / "_fail_safe_es_supplement.md").read_text(encoding="utf-8")
-    reachable = {kind: localized(kind, "es") for kind in FailSafe if localized(kind, "es")}
-
-    assert "STATUS: DRAFT — awaiting validation." in draft
-    assert reachable == {}, (
-        "o suplemento em espanhol é rascunho e diz de si mesmo que nada ali foi aprovado "
-        f"para ser dito a uma equipe, e mesmo assim a sala o falava: {reachable}"
-    )
-    assert "-es." not in fail_safe_utterances(), (
-        "o texto concatenado ainda carrega blocos em espanhol, então basta alguém pedir a "
-        "língua para a sala falar rascunho"
-    )
+    assert on_disk == {"_fail_safe_pt_supplement.md"}
+    assert {kind: localized(kind, "es") for kind in FailSafe if localized(kind, "es")} == {}
+    assert "-es." not in fail_safe_utterances()
 
 
 def test_a_repeated_failure_does_not_repeat_the_same_sentence() -> None:
