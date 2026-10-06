@@ -948,6 +948,7 @@ async def _draft_the_turn(
                     opening=opening,
                     settings=get_settings(),
                     session_id=session.id,
+                    speech=speech_heard,
                 )
             else:
                 turn = await room.run_comprehension_turn(

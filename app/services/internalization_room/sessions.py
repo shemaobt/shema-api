@@ -596,7 +596,7 @@ async def append_exchange(
     What the room heard of the team's take — the language, its probability, the
     mother-tongue decision and the take's length — goes on the Guide's entry too, because a
     mother-tongue turn and a missed one write no team entry. Only a turn the room heard
-    carries them; the opening, the Panorama and the telling-back verdict write none.
+    carries them; the opening and the telling-back verdict write none.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
