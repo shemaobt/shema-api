@@ -104,7 +104,9 @@ this table — so an account holding ``admin`` alone entered the form and reache
 says *the same level*, and a copied set would be a second place for the Gestor's row to move
 without the Admin's following. What the Admin therefore does **not** hold is what the Gestor
 does not — ``edit_evaluation`` (GATE-02 D3) and ``assign_fund`` (GATE-01 D4) — and that is the
-whole of the issue's *out of scope*. The row stays out of ``ROLE_CAPABILITIES`` because that
+whole of the issue's *out of scope*. And since the Admin's row is the Gestor's, ``admin`` and
+``mesa`` exclude each other at grant time as ``gestor`` and ``mesa`` do (Daniel, 6/oct/2026;
+``resource_request_access/_rules.py``). The row stays out of ``ROLE_CAPABILITIES`` because that
 map is the hand-written mirror of the frontend's rows, and this one is not hand-written: the
 emission carries the Admin's row too (its ``capabilities.ts`` lists him as a fourth role, with
 the Gestor's array), and ``tests/test_resource_requests/test_capabilities.py`` compares the

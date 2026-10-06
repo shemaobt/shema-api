@@ -210,10 +210,11 @@ async def test_an_admin_who_also_sits_on_the_mesa_answers_by_the_union(
     ``allocate_funds`` and ``administer_funds``, and only an answer over both says 200 to all.
 
     What it pins is the arithmetic, not the policy. This union is what ``mesa`` + ``gestor``
-    would answer — the pair our rule of 28/aug/2026 keeps off one account, applied where a
-    grant is written — and with the Admin's row it reassembles through the Admin. Whether an
-    Admin may also sit on the mesa is the user's decision, raised with OBT-568's PR; the guard
-    has to answer correctly whether or not that pair is ever granted.
+    would answer, and **the pair is forbidden at grant time since OBT-568** (Daniel,
+    6/oct/2026: an account cannot be Admin and mesa, as it cannot be Gestor and mesa —
+    ``resource_request_access/_rules.py``, ``test_admin_mesa_exclusive.py``). The rows are
+    written here directly, past that rule, for the same reason the mesa + gestor test below
+    writes its forbidden pair: the guard has to answer correctly whether or not the rule holds.
     """
     user = await make_user(db_session, email="admin-mesa@rrf.test")
     await grant(db_session, user, rrf_app, ADMIN_ROLE)

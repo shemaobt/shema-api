@@ -10,6 +10,14 @@ seats and the client's model has a person on one side of the table at a time;
 time — both at naming and at invite acceptance — because acceptance can happen
 long after the invite was written, against a user whose roles have changed.
 
+**``admin`` and ``mesa`` exclude each other too, since OBT-568** (Daniel, 6/oct/2026, in the
+issue's comments: an account cannot be Admin and mesa, as it cannot be Gestor and mesa). The
+Admin holds the Gestor's capabilities in the form (``resource_request/capabilities.py``), so
+an Admin on the mesa would be the mesa + Gestor union by another name. ``admin`` + ``gestor``
+stays allowed — it is the shape the Admin's own account has. The ``admin`` grant writes both
+apps, and the check runs per app: under ``shema`` there is no ``mesa`` role to collide with
+and the rule is silent; under the form it refuses.
+
 **Naming the ``admin`` role is the PME's concern now.** The form's naming and
 invite-issuing doors refused an ``admin`` to anyone but an installation admin
 (``assert_role_grantable``, OBT-523); both doors left with FE-56, and so did that
@@ -29,30 +37,32 @@ from app.core.exceptions import ConflictError
 from app.db.models.auth import UserAppRole
 from app.services.authorization.get_role import get_role
 
-MUTUALLY_EXCLUSIVE: dict[str, str] = {"mesa": "gestor", "gestor": "mesa"}
+#: Each role and the roles it cannot sit beside, symmetric by construction below.
+MUTUALLY_EXCLUSIVE: dict[str, tuple[str, ...]] = {
+    "mesa": ("gestor", "admin"),
+    "gestor": ("mesa",),
+    "admin": ("mesa",),
+}
 
 
 async def assert_role_compatible(
     db: AsyncSession, user_id: str, app_id: str, role_key: str
 ) -> None:
     """Refuse a grant whose exclusive counterpart the user already holds."""
-    counterpart = MUTUALLY_EXCLUSIVE.get(role_key)
-    if not counterpart:
-        return
+    for counterpart in MUTUALLY_EXCLUSIVE.get(role_key, ()):
+        other_role = await get_role(db, app_id, counterpart)
+        if not other_role:
+            continue
 
-    other_role = await get_role(db, app_id, counterpart)
-    if not other_role:
-        return
-
-    stmt = select(UserAppRole.id).where(
-        UserAppRole.user_id == user_id,
-        UserAppRole.app_id == app_id,
-        UserAppRole.role_id == other_role.id,
-        UserAppRole.revoked_at.is_(None),
-    )
-    held = (await db.execute(stmt)).scalar_one_or_none()
-    if held:
-        raise ConflictError(
-            f"'{role_key}' and '{counterpart}' are mutually exclusive: "
-            f"revoke '{counterpart}' before granting '{role_key}'."
+        stmt = select(UserAppRole.id).where(
+            UserAppRole.user_id == user_id,
+            UserAppRole.app_id == app_id,
+            UserAppRole.role_id == other_role.id,
+            UserAppRole.revoked_at.is_(None),
         )
+        held = (await db.execute(stmt)).scalar_one_or_none()
+        if held:
+            raise ConflictError(
+                f"'{role_key}' and '{counterpart}' are mutually exclusive: "
+                f"revoke '{counterpart}' before granting '{role_key}'."
+            )

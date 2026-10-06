@@ -645,9 +645,14 @@ does (`test_a_chegada_avisa_tambem_o_admin`); `list_board_members` reads `edit_e
 does not change — the Admin is not on the mesa's ata. And **`admin` + `mesa` on one account
 answers the whole table**, which is what `mesa` + `gestor` would answer — the pair our rule of
 28/aug/2026 keeps off one account (ours, not the client's; applied where a grant is written, in
-the PME). With the Admin's row the forbidden union reassembles through the Admin. The guard
-answers it correctly either way and the test pins the arithmetic, not the policy: whether an
-Admin may also sit on the mesa is the user's call, raised with this PR and not decided here.
+the PME). With the Admin's row the forbidden union would reassemble through the Admin, and
+**Daniel decided on 6/oct/2026 that it does not**: an account cannot be Admin and mesa, as it
+cannot be Gestor and mesa. `resource_request_access/_rules.py` — the one owner of the
+mesa/Gestor rule, which the PME's `grant_role` and the invite acceptance both call — now keeps
+`admin` and `mesa` apart in both directions (`test_admin_mesa_exclusive.py`); `admin` + `gestor`
+stays allowed, being the Admin's own account shape. The union test in `test_capabilities.py`
+writes the pair past the rule on purpose, as the mesa + gestor one does: the guard answers the
+arithmetic whether or not the rule holds.
 
 **Reading is not a row of this table and must not become one.** It rides on `edit_requests`,
 and which rows it reaches is `_scope.py`'s and not a capability at all (§6.2). Until BE-23 the
