@@ -1,9 +1,9 @@
-"""``INSERT … ON CONFLICT DO NOTHING``, which SQLAlchemy ships once per dialect and not once.
+"""``INSERT … ON CONFLICT DO NOTHING`` on whichever dialect the session is bound to.
 
-``on_conflict_do_nothing`` lives on ``postgresql.insert`` and on ``sqlite.insert`` and on no
-common statement, and production runs one engine where the suite runs the other. The three
-doors that insert-or-find a row (the team's session key, the idempotency key, the turn's
-answer) dispatch on the bind's dialect here, once.
+SQLAlchemy ships ``on_conflict_do_nothing`` on ``postgresql.insert`` and on ``sqlite.insert``
+and on no common statement, and production runs one engine where the suite runs the other.
+The helper inserts a row unless one already holds the conflict key, says whether it did, and
+never commits: the transaction stays the caller's.
 """
 
 from __future__ import annotations

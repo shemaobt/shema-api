@@ -140,7 +140,7 @@ async def a_session(
     project_id: str | None,
     pericope: str = P,
     opened_at: datetime | None = None,
-    last_activity: datetime | None = None,
+    updated_at: datetime | None = None,
     ready_to_close: bool = False,
     entered: bool = True,
 ):
@@ -162,9 +162,9 @@ async def a_session(
         session = await room.append_exchange(db, session, team_utterance="oi", guide_response="ok")
     if opened_at is not None:
         session.created_at = opened_at
-    if last_activity is not None:
-        session.updated_at = last_activity
-    if opened_at is not None or last_activity is not None:
+    if updated_at is not None:
+        session.updated_at = updated_at
+    if opened_at is not None or updated_at is not None:
         await db.commit()
         await db.refresh(session)
     return session
@@ -209,7 +209,7 @@ async def test_the_conversation_still_going_leads_however_old_it_is(client, db_s
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
-        last_activity=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     await db_session.commit()
 
@@ -232,7 +232,7 @@ async def test_a_conversation_days_old_still_leads_when_it_is_the_live_one(clien
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 7, 1, 9, 0, tzinfo=UTC),
-        last_activity=datetime.now(UTC) - timedelta(days=30),
+        updated_at=datetime.now(UTC) - timedelta(days=30),
     )
     await db_session.commit()
 
@@ -255,13 +255,13 @@ async def test_two_conversations_still_going_lead_in_the_order_they_opened(clien
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
-        last_activity=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     newer = await a_session(
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 8, 15, 9, 0, tzinfo=UTC),
-        last_activity=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     await db_session.commit()
 
@@ -432,7 +432,7 @@ async def test_the_desk_never_calls_a_session_abandoned_however_long_it_sat(
         db_session,
         project_id=project.id,
         opened_at=datetime.now(UTC) - idle - timedelta(minutes=47),
-        last_activity=datetime.now(UTC) - idle,
+        updated_at=datetime.now(UTC) - idle,
     )
 
     [card] = await read_history(client, project.id, headers)

@@ -42,14 +42,14 @@ class SessionEnd:
 def end_of(session: IRSession) -> SessionEnd:
     """The one place a session's end, state and length are decided."""
     if session.ended_at is not None:
-        return _over(session, as_utc(session.ended_at), SessionState.COMPLETE)
+        return _complete(session, as_utc(session.ended_at))
     return SessionEnd(ended_at=None, state=SessionState.IN_PROGRESS, duration_minutes=None)
 
 
-def _over(session: IRSession, ended_at: datetime, state: SessionState) -> SessionEnd:
+def _complete(session: IRSession, ended_at: datetime) -> SessionEnd:
     return SessionEnd(
         ended_at=ended_at,
-        state=state,
+        state=SessionState.COMPLETE,
         duration_minutes=_minutes(as_utc(session.created_at), ended_at),
     )
 
