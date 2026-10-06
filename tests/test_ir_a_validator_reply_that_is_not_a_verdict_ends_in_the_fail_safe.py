@@ -161,3 +161,28 @@ async def test_a_validator_reply_that_cannot_be_read_is_one_reading_and_the_fail
         "de segurança quando a segunda leitura também falhava; a leitura de um rascunho é uma"
     )
     assert len(messages.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        pytest.param("approve", id="a word she never named"),
+        pytest.param(None, id="no value at all"),
+        pytest.param(["pass"], id="a list where a word belongs"),
+    ],
+)
+async def test_a_verdict_she_never_named_is_the_fail_safe_and_not_a_redraft(
+    validator_replies, verdict: Any
+) -> None:
+    reply = json.dumps({"verdict": verdict, "issues": []})
+    messages = validator_replies((reply, "end_turn"), (PASS, "end_turn"))
+
+    outcome = await _a_turn()
+
+    assert outcome.used_fail_safe is True
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    assert outcome.redrafts == 0, (
+        "um veredito desconhecido era tratado como regenerate e gastava reescritas do Guia, "
+        "quando o Validador nem chegou a julgar o rascunho"
+    )
+    assert len(messages.calls) == 2, "um rascunho e uma leitura, nada além disso"
