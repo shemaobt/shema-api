@@ -311,7 +311,7 @@ async def test_the_two_stale_lines_are_heard_in_her_current_wording(
     )
 
 
-@pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "N0", "Z0", "F4", "F", "Fx", "f0"])
+@pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "N0", "Z0", "F3", "F", "Fx", "f0"])
 async def test_a_line_that_is_not_in_her_file_is_never_voiced(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
