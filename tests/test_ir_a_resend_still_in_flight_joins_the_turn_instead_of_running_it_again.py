@@ -19,14 +19,14 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
 from app.db.models.internalization_room import IRTurn
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
-from tests.opening_harness import ask_for_the_opening, rivals
+from tests.opening_harness import ask_for_the_opening
 from tests.release_harness import P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
@@ -62,11 +62,6 @@ class _CountingVoice:
             audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key=VOICED_AS
         )
         return entry, False
-
-
-@pytest.fixture()
-def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return rivals(test_engine)
 
 
 async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer_alike(

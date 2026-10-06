@@ -40,7 +40,7 @@ from app.services.internalization_room import halt, opening_claim
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
-from app.services.internalization_room.hearing import HeardSpeech, heard_speech
+from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.nudge_channel import nudge
@@ -254,24 +254,6 @@ async def _timed_stt(
         return await heard_speech(
             audio_bytes, filename=filename, mime_type=mime_type, language=language
         )
-
-
-async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
-    """Stop a transcription started ahead of the session read and read its outcome.
-
-    A session the read could not find has nobody left to hear the transcript, so its task
-    is stopped rather than left to run to an answer nobody reads. `asyncio.wait` rather than
-    a plain `await`: this runs while unwinding from `get_session`'s own failure, and a plain
-    `await task` inside `except BaseException: pass` would also swallow a cancellation aimed
-    at this request itself, arriving at exactly this suspension point — `wait` never raises
-    the waited task's own exception into its caller, so only that task's outcome is being
-    read here, never the caller's. `task.exception()` marks a real failure as read without
-    raising it; skipped when the task ended up cancelled, since reading it then would raise.
-    """
-    task.cancel()
-    await asyncio.wait({task})
-    if not task.cancelled():
-        task.exception()
 
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
@@ -814,7 +796,7 @@ async def _answer_the_turn(
                 await db.commit()
     except BaseException:
         if stt is not None:
-            await _cancelled(stt)
+            await stop_hearing(stt)
         raise
     _remember_language(session_id, session.language, project_id)
 
@@ -839,6 +821,7 @@ async def _answer_the_turn(
         project_id=project_id,
         hearing=stt,
         deadline=deadline,
+        bound_s=bound_s,
         draft=partial(
             _draft_the_turn,
             db,

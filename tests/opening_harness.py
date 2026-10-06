@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.enums import ProjectRole
 from app.db.models.project import Project
@@ -30,15 +30,6 @@ from tests.tablet_turn_harness import the_turn_is_scripted
 
 GUIDE_OPENING = "Vamos ouvir a historia de Rute. O que voces ja sabem dela?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
-
-
-def rivals(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    """Independent sessions onto the case's database, one per racing request.
-
-    One shared session would serialise the requests on one connection and one identity map,
-    and hide the race a case is about.
-    """
-    return async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
 async def ask_for_the_opening(

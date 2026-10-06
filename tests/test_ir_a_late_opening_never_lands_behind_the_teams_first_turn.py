@@ -35,7 +35,7 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
-from tests.opening_harness import ask_for_the_opening, rivals
+from tests.opening_harness import ask_for_the_opening
 from tests.release_harness import P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
@@ -44,11 +44,6 @@ OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
 TEAM_ANSWER = "Noemi voltou para Belem com Rute no tempo da colheita"
 TEAM_TURN_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 SESSIONS_LOGGER = "app.services.internalization_room.sessions"
-
-
-@pytest.fixture()
-def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return rivals(test_engine)
 
 
 async def test_an_opening_on_a_session_where_nobody_has_spoken_is_its_first_line(

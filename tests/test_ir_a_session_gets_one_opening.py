@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
@@ -40,7 +40,6 @@ from app.services.platform.tts import SynthesizedSpeech
 from tests.opening_harness import (
     a_scripted_room,
     ask_for_the_opening,
-    rivals,
     the_tablet_opens,
     the_team_says,
 )
@@ -110,11 +109,6 @@ class _Voice:
             audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key=_clip_of(text)
         )
         return entry, False
-
-
-@pytest.fixture()
-def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return rivals(test_engine)
 
 
 @pytest.fixture()
@@ -318,6 +312,7 @@ async def test_a_team_turns_own_bound_starts_after_its_wait_for_the_opening(
 async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_request_drafts_the_opening(  # noqa: E501
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
     session = await create_session(db_session, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide(lines=(OPENING, OPENING)))
     guide.opening_fails = True

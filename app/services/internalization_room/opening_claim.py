@@ -33,7 +33,7 @@ from app.core.exceptions import UpstreamServiceError
 from app.core.stage_clock import stage
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import TurnResponse
-from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.hearing import HeardSpeech, stop_hearing
 from app.services.internalization_room.turn_dedup import answered_turn, remember_turn
 
 #: How often a waiting request looks for the claimed answer (her ``KICKOFF_POLL_MS``).
@@ -59,6 +59,7 @@ async def answer_around_the_opening(
     project_id: str | None,
     hearing: asyncio.Task[HeardSpeech] | None,
     deadline: float,
+    bound_s: float,
     draft: Draft,
 ) -> TurnResponse:
     """Answer this turn with the session's opening drafted once, whoever asks for it.
@@ -70,26 +71,24 @@ async def answer_around_the_opening(
     passes. A holder that ends without an opening releases its claim.
 
     A team turn (`hearing` is its transcription, still running) on a session whose opening is
-    drafting waits for it first, and its own bound starts after that wait, as `deadline`.
+    drafting waits for it first, and its own bound (`bound_s`) starts after that wait, as
+    `deadline`. The same bound dates a claim: one older than it and thirty seconds more is dead.
     """
-    since = _drafting_since(session)
+    since = _drafting_since(session, bound_s)
     if hearing is not None and since is not None:
         try:
             with stage("opening_wait"):
                 await _wait_for_the_opening(db, session, project_id, since)
         except BaseException:
-            hearing.cancel()
-            await asyncio.wait({hearing})
-            if not hearing.cancelled():
-                hearing.exception()
+            await stop_hearing(hearing)
             raise
-        deadline = asyncio.get_running_loop().time() + _bound().total_seconds()
+        deadline = asyncio.get_running_loop().time() + bound_s
     speech_heard = await hearing if hearing is not None else HeardSpeech()
     if not opening:
         return await draft(speech_heard=speech_heard, turn_id=turn_id, deadline=deadline)
 
     session_id, claimed_as = session.id, turn_id or str(uuid.uuid4())
-    if not await _claim(db, session_id, claimed_as):
+    if not await _claim(db, session_id, claimed_as, bound_s):
         joined = await _joined(
             db, session_id, turn_id=turn_id, project_id=project_id, until=deadline
         )
@@ -104,13 +103,9 @@ async def answer_around_the_opening(
         raise
 
 
-def _bound() -> timedelta:
-    return timedelta(milliseconds=get_settings().internalization_room_turn_bound_ms)
-
-
-def _oldest_live_claim() -> datetime:
+def _oldest_live_claim(bound_s: float) -> datetime:
     """The claim time before which a claim belongs to a request that can no longer be running."""
-    return datetime.now(UTC) - _bound() - _OUTLIVES_THE_BOUND
+    return datetime.now(UTC) - timedelta(seconds=bound_s) - _OUTLIVES_THE_BOUND
 
 
 def _set_claim(*where: ColumnElement[bool], turn_id: str | None, at: datetime | None) -> Update:
@@ -129,14 +124,14 @@ def _set_claim(*where: ColumnElement[bool], turn_id: str | None, at: datetime | 
     )
 
 
-async def _claim(db: AsyncSession, session_id: str, turn_id: str) -> bool:
+async def _claim(db: AsyncSession, session_id: str, turn_id: str, bound_s: float) -> bool:
     """Claim the opening under `turn_id`, committed alone; False when it stands claimed."""
     claimed = await db.execute(
         _set_claim(
             IRSession.id == session_id,
             or_(
                 IRSession.opening_claim_turn_id.is_(None),
-                IRSession.opening_claimed_at < _oldest_live_claim(),
+                IRSession.opening_claimed_at < _oldest_live_claim(bound_s),
             ),
             turn_id=turn_id,
             at=datetime.now(UTC),
@@ -167,7 +162,7 @@ async def _release(session_id: str, turn_id: str) -> None:
         await own.commit()
 
 
-def _drafting_since(session: IRSession) -> datetime | None:
+def _drafting_since(session: IRSession, bound_s: float) -> datetime | None:
     """When the opening drafting on this session right now was claimed, read off the loaded row.
 
     None when nothing drafts: the team has spoken, nothing was claimed, or the claim is dead.
@@ -175,7 +170,7 @@ def _drafting_since(session: IRSession) -> datetime | None:
     claimed_at = session.opening_claimed_at
     if session.messages or session.opening_claim_turn_id is None or claimed_at is None:
         return None
-    return claimed_at if claimed_at >= _oldest_live_claim() else None
+    return claimed_at if claimed_at >= _oldest_live_claim(bound_s) else None
 
 
 async def _claimed_answer(
