@@ -79,6 +79,10 @@ _Avoid_: recording, audio, clip, scope (a part is named by its number, and the t
 The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
 _Avoid_: native, L1, Língua materna
 
+**Mother-tongue floor** (`internalization_room_mother_tongue_floor`):
+The language-detection probability under which a take heard in the session's language counts as the mother tongue: 0.35 by default, a deployment setting, never a session's. A take in another language, or one with no words that lasts twenty seconds or more, is the mother tongue whatever the probability (ENG-1193).
+_Avoid_: confidence threshold, STT_SAME_LANGUAGE_MIN_PROB (her name), uncertain
+
 **Bridge language**:
 The language the team tells back in, and which the analyst reads.
 _Avoid_: L2, Portuguese, Língua-ponte
@@ -252,6 +256,14 @@ _Avoid_: creating a session, starting a session, Abrir a passagem
 **Closed passage**:
 A session whose passage was closed: done, with its end stamped. It never blocks again, though a warning may still stand on it.
 _Avoid_: finished session, ended room, Passagem fechada
+
+**Zerar**:
+The facilitator's act of giving a team a clean pericope: it creates an **Archive** and the team's next open mints a new session. Marcia's word; the door is `archive`.
+_Avoid_: reset, zero, clear, wipe
+
+**Archive** (`ir_archives`, `archive_id`):
+What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, which the room's doors then leave out. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADR 0047).
+_Avoid_: soft delete, trash, backup, Arquivo
 
 **Needs a person** (`needs_person`):
 A blocking halt, not an end: it travels beside the status, never inside it.
