@@ -144,7 +144,6 @@ def _portrait(pericope: str, standing: dict[str, str]) -> list[SessionBead]:
             kind=element.kind,
             label_pt=element.label_pt,
             label_en=element.label_en,
-            label_es=element.label_es,
             status=standing.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value),
         )
         for element in labelled_elements(pericope)

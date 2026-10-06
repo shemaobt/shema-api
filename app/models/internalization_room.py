@@ -188,7 +188,6 @@ class SessionBead(BaseModel):
     kind: ElementKind
     label_pt: str | None
     label_en: str
-    label_es: str | None
     status: str
 
 

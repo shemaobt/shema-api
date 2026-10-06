@@ -532,7 +532,7 @@ async def test_a_bead_names_itself_in_every_language_the_desk_offers(client, db_
     [card] = await read_history(client, project.id, headers)
     bead = card["coverage"][0]
 
-    assert set(bead) == {"key", "kind", "label_pt", "label_en", "label_es", "status"}
+    assert set(bead) == {"key", "kind", "label_pt", "label_en", "status"}
     assert bead["label_en"]
     assert bead["kind"] == "arc"
 
