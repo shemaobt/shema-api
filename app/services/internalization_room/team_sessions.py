@@ -29,6 +29,7 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, as_utc, end_of
 
 
@@ -84,7 +85,7 @@ async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
     """
     result = await db.execute(
         select(IRSession)
-        .where(IRSession.project_id == project_id, IRSession.archive_id.is_(None), entered())
+        .where(IRSession.project_id == project_id, live(), entered())
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
     return result.scalars().all()

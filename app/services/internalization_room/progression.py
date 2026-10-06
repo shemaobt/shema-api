@@ -80,6 +80,7 @@ from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import PericopePosition, PericopeStanding
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+from app.services.internalization_room.live import live
 
 #: The passages a team has a finished session on. A passage they never opened, and one they
 #: worked without finishing, are both simply absent — there is no third answer to give.
@@ -218,7 +219,7 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
         .where(
             IRSession.project_id.in_(project_ids),
             IRSession.ended_at.is_not(None),
-            IRSession.archive_id.is_(None),
+            live(),
             IRTake.kind == IRTakeKind.ENSAIO,
         )
         .distinct()

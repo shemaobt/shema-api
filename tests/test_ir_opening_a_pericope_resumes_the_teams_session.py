@@ -11,7 +11,6 @@ and the Desk does not list a session nobody entered.
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
 import uuid
 from datetime import UTC, datetime
@@ -23,12 +22,9 @@ from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.internalization_room import sessions as sessions_api
-from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import (
     append_exchange,
     attend,
@@ -36,23 +32,26 @@ from app.services.internalization_room.sessions import (
     is_panorama,
 )
 from app.services.internalization_room.voice_handles import clip_url
-from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     having_finished_the_passage,
     make_app,
-    make_project_user_access,
     make_role,
-    make_user,
     open_ir_session,
+)
+from tests.opening_harness import (
+    GUIDE_LINE,
+    GUIDE_OPENING,
+    Script,
+    a_scripted_room,
+    another_tablet_of,
+    the_tablet_opens,
+    the_team_says,
 )
 from tests.release_harness import KEY, PREFIX, P, a_claimed_device, at_the_desk, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
 from tests.text_seam_harness import RUNNER_KEY
-from tests.turn_harness import the_room_agent_is
 
 FIRST = load_book(ROOM_BOOK)[0].pericope_num
-GUIDE_OPENING = "Vamos ouvir a historia de Rute. O que voces ja sabem dela?"
-GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 ANSWERS = (
     "Noemi voltou para Belem com Rute",
     "Rute disse que ia junto com ela",
@@ -60,39 +59,9 @@ ANSWERS = (
 )
 
 
-class _Script:
-    def __init__(self) -> None:
-        self.said = ""
-
-
 @pytest.fixture()
-def script(monkeypatch: pytest.MonkeyPatch) -> _Script:
-    scripted = _Script()
-
-    async def heard(*_: Any, **__: Any) -> HeardSpeech:
-        return HeardSpeech(text=scripted.said)
-
-    async def model(*, system_prompt: str, **_: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return GUIDE_OPENING if not scripted.said else GUIDE_LINE
-
-    async def voice(text: str, **_: Any):
-        return (
-            SynthesizedSpeech(
-                audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/x.mp3"
-            ),
-            False,
-        )
-
-    async def settled(**_: Any) -> None:
-        return None
-
-    monkeypatch.setattr(sessions_api, "heard_speech", heard)
-    the_room_agent_is(monkeypatch, turn=model)
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
-    monkeypatch.setattr(sessions_api, "settle_coverage", settled)
-    return scripted
+def script(monkeypatch: pytest.MonkeyPatch) -> Script:
+    return a_scripted_room(monkeypatch)
 
 
 @pytest.fixture()
@@ -128,25 +97,6 @@ async def room_app(db_session: AsyncSession):
     return app
 
 
-async def another_tablet_of(db: AsyncSession, team: Project) -> str:
-    """A tablet a facilitator of this team claimed, and the credential it calls with."""
-    user = await make_user(db, email=f"fac-{uuid.uuid4()}@example.com")
-    await make_project_user_access(db, team.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=team.id
-    )
-    return claimed.credential
-
-
-async def the_tablet_opens(
-    client: httpx.AsyncClient, credential: str, body: dict[str, Any]
-) -> dict[str, Any]:
-    opened = await client.post(f"{PREFIX}/sessions", headers=team_headers(credential), json=body)
-    assert opened.status_code == 200, opened.text[:300]
-    return opened.json()
-
-
 async def the_room_opens(client: httpx.AsyncClient, credential: str, session_id: str) -> None:
     spoken = await client.post(
         f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
@@ -154,21 +104,8 @@ async def the_room_opens(client: httpx.AsyncClient, credential: str, session_id:
     assert spoken.status_code == 200, spoken.text[:300]
 
 
-async def the_team_says(
-    client: httpx.AsyncClient, script: _Script, credential: str, session_id: str, said: str
-) -> None:
-    script.said = said
-    response = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers=team_headers(credential),
-        data={"turn_id": str(uuid.uuid4())},
-        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
-    )
-    assert response.status_code == 200, response.text[:300]
-
-
 async def three_turns_on(
-    client: httpx.AsyncClient, script: _Script, credential: str, session_id: str
+    client: httpx.AsyncClient, script: Script, credential: str, session_id: str
 ) -> None:
     await the_room_opens(client, credential, session_id)
     for said in ANSWERS:

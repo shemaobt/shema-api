@@ -17,12 +17,9 @@ from typing import Any
 
 import httpx
 import pytest
-from httpx import ASGITransport
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.internalization_room import sessions as sessions_api
-from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
     IRCoverageEvent,
     IRQuestion,
@@ -34,23 +31,27 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.db.models.project import Project
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
     get_session,
 )
-from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     having_finished_the_passage,
     make_app,
-    make_project_user_access,
     make_role,
-    make_user,
+)
+from tests.opening_harness import (
+    GUIDE_LINE,
+    Script,
+    a_scripted_room,
+    another_tablet_of,
+    desk_routes,
+    the_tablet_opens,
+    the_team_speaks,
 )
 from tests.release_harness import (
     PREFIX,
@@ -62,56 +63,23 @@ from tests.release_harness import (
     desk_retro,
     ensaio_take,
     ready_session,
+    reported_playback,
     team_headers,
     team_release,
+    told_back_with_an_open_finding,
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
-from tests.turn_harness import the_room_agent_is
 
 FIRST = load_book(ROOM_BOOK)[0].pericope_num
-GUIDE_OPENING = "Vamos ouvir a historia de Rute. O que voces ja sabem dela?"
-GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 NOTHING_LIVE = "P05"
 
 #: The five tables a Zerar stamps, each read by the session its rows hang off.
 STAMPED = ("ir_sessions", "ir_takes", "ir_segments", "ir_coverage_events", "ir_releases")
 
 
-class _Script:
-    def __init__(self) -> None:
-        self.said = ""
-        self.asked = 0
-
-
 @pytest.fixture()
-def script(monkeypatch: pytest.MonkeyPatch) -> _Script:
-    scripted = _Script()
-
-    async def heard(*_: Any, **__: Any) -> HeardSpeech:
-        return HeardSpeech(text=scripted.said)
-
-    async def model(*, system_prompt: str, **_: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        scripted.asked += 1
-        return GUIDE_OPENING if not scripted.said else GUIDE_LINE
-
-    async def voice(text: str, **_: Any):
-        return (
-            SynthesizedSpeech(
-                audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/x.mp3"
-            ),
-            False,
-        )
-
-    async def settled(**_: Any) -> None:
-        return None
-
-    monkeypatch.setattr(sessions_api, "heard_speech", heard)
-    the_room_agent_is(monkeypatch, turn=model)
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
-    monkeypatch.setattr(sessions_api, "settle_coverage", settled)
-    return scripted
+def script(monkeypatch: pytest.MonkeyPatch) -> Script:
+    return a_scripted_room(monkeypatch)
 
 
 @pytest.fixture()
@@ -132,26 +100,8 @@ async def client(db_session: AsyncSession, per_request, bucket, monkeypatch: pyt
 
 
 @pytest.fixture()
-async def desk_client(per_request):
-    """The Desk's team routes, beside the room's, over the same database."""
-    from fastapi import FastAPI
-
-    from app.api.facilitator.teams import facilitator_teams_router
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
-
-    desk_app = FastAPI()
-    desk_app.include_router(facilitator_teams_router, prefix="/api/facilitator/teams")
-    register_exception_handlers(desk_app)
-
-    async def _get_db():
-        async with per_request() as session:
-            yield session
-
-    desk_app.dependency_overrides[get_db] = _get_db
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=desk_app), base_url="http://test"
-    ) as c:
+async def desk_client(db_session: AsyncSession, per_request):
+    async with desk_routes(db_session, per_request=per_request) as c:
         yield c
 
 
@@ -174,41 +124,11 @@ async def zerar(
     return answered.json()
 
 
-async def another_tablet_of(db: AsyncSession, team: Project) -> str:
-    user = await make_user(db, email=f"fac-{uuid.uuid4()}@example.com")
-    await make_project_user_access(db, team.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=team.id
-    )
-    return claimed.credential
-
-
-async def the_tablet_opens(
-    client: httpx.AsyncClient, credential: str, body: dict[str, Any]
-) -> dict[str, Any]:
-    opened = await client.post(f"{PREFIX}/sessions", headers=team_headers(credential), json=body)
-    assert opened.status_code == 200, opened.text[:300]
-    return opened.json()
-
-
 async def the_first_turn(
     client: httpx.AsyncClient, credential: str, session_id: str
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
-    )
-
-
-async def the_team_says(
-    client: httpx.AsyncClient, script: _Script, credential: str, session_id: str, said: str
-) -> httpx.Response:
-    script.said = said
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers=team_headers(credential),
-        data={"turn_id": str(uuid.uuid4())},
-        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
 
 
@@ -396,14 +316,35 @@ async def test_a_turn_on_an_archived_session_is_answered_as_the_session_gone(
     assert (await the_first_turn(client, tablet, opened["session_id"])).status_code == 200
     await zerar(client, desk, team.id, P)
     said_before = await guide_lines(per_request, opened["session_id"])
-    asked_before = script.asked
 
-    spoken = await the_team_says(client, script, tablet, opened["session_id"], "E depois?")
+    spoken = await the_team_speaks(client, script, tablet, opened["session_id"], "E depois?")
 
     assert gone(spoken, opened["session_id"]) == await what_an_unknown_session_gets(client, tablet)
     assert spoken.status_code == 404
     assert await guide_lines(per_request, opened["session_id"]) == said_before
-    assert script.asked == asked_before
+
+
+async def test_a_turn_in_flight_when_the_zerar_lands_is_refused_and_writes_nothing(
+    client, db_session, per_request, room_app, script
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+    assert (await the_first_turn(client, tablet, opened["session_id"])).status_code == 200
+    said_before = await guide_lines(per_request, opened["session_id"])
+
+    async def the_zerar_lands() -> None:
+        await zerar(client, desk, team.id, P)
+
+    script.meanwhile = the_zerar_lands
+
+    spoken = await the_team_speaks(client, script, tablet, opened["session_id"], "E depois?")
+
+    assert script.meanwhile is None, "the Zerar never landed inside the turn"
+    assert await stamps(per_request, "ir_sessions", [opened["session_id"]]) != {None}
+    assert gone(spoken, opened["session_id"]) == await what_an_unknown_session_gets(client, tablet)
+    assert spoken.status_code == 404
+    assert await guide_lines(per_request, opened["session_id"]) == said_before
 
 
 async def test_the_state_read_and_a_take_upload_on_an_archived_session_are_answered_as_the_session_gone(  # noqa: E501
@@ -716,13 +657,18 @@ async def test_the_retroverification_file_of_a_new_session_lists_no_archived_dra
 
 
 async def test_a_release_forced_on_an_archived_session_stays_in_its_own_archives_file(
-    client, db_session, room_app
+    client, db_session, per_request, room_app
 ) -> None:
-    team, _tablet = await a_claimed_device(db_session)
+    team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     archived = await ready_session(db_session, project_id=team.id)
+    first = await client.post(team_release(archived.id), headers=team_headers(tablet))
+    assert first.status_code == 200, first.text[:300]
     await zerar(client, desk, team.id, P)
     after = await ready_session(db_session, project_id=team.id)
+    async with per_request() as fresh:
+        stored = await get_session(fresh, archived.id)
+        await reported_playback(fresh, stored, await told_back_with_an_open_finding(fresh, stored))
 
     forced = await client.post(desk_release(archived.id), headers=desk, json={"force": True})
 
@@ -730,9 +676,7 @@ async def test_a_release_forced_on_an_archived_session_stays_in_its_own_archives
     new_file = await client.get(desk_retro(after.id), headers=desk)
     archived_file = await client.get(desk_retro(archived.id), headers=desk)
     assert new_file.json()["releases"] == []
-    assert [release["version"] for release in archived_file.json()["releases"]] == [
-        forced.json()["version"]
-    ]
+    assert [release["version"] for release in archived_file.json()["releases"]] == [1, 2]
 
 
 async def test_a_zerard_closed_passage_is_the_teams_passage_again(

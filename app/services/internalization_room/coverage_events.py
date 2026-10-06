@@ -14,6 +14,7 @@ from app.services.internalization_room.coverage import (
     is_panorama,
     ranks,
 )
+from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import as_utc
 
 _RANK_OF = ranks()
@@ -130,8 +131,8 @@ async def necklace_with_touches(
         .where(
             IRCoverageEvent.project_id == project_id,
             IRCoverageEvent.pericope == pericope,
-            IRCoverageEvent.archive_id.is_(None),
-            IRSession.archive_id.is_(None),
+            live(IRCoverageEvent),
+            live(),
         )
         .subquery()
     )

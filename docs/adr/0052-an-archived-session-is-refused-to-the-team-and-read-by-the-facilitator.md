@@ -12,8 +12,11 @@ Desk's session history, the facilitator's waiting list, the necklace a new sessi
 the finished passages, and the retroverification file's release list, which keeps the
 releases of the session's own archive). The per-session reads of takes and stretches stay
 unfiltered, and so do the facilitator's by-id doors. The team's doors refuse an archived
-session where they resolve it, with the same 404 an unknown session gets, which ADR 0051 reads
-as the session gone.
+session where they resolve it, with the same 404 an unknown session gets, which the tablet reads
+as the session gone and returns to the Choice (ADR 0051 of the internalization-room repository,
+ENG-1185). A turn that resolved its session while it was live and lands after the Zerar is
+refused the same way: the Zerar moves the session's version, and the turn's compare-and-swap,
+finding the row archived, answers the session gone and writes nothing.
 
 A per-session read of a live session can hold no archived row, because a row is stamped only
 with its session; filtering there would protect nothing and would hide the archived work from

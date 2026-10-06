@@ -25,6 +25,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room_archive import ArchivedSession, KeptPart
+from app.services.internalization_room.live import live
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
 from app.services.project.facilitates_project import facilitates_project
@@ -44,7 +45,11 @@ async def archive_pericope(
     once never stamp a row twice and the second finds nothing. A row hanging off a session
     belongs to that session's archive, so the four tables below are stamped by the sessions
     just stamped and never by pericope. ``updated_at`` is written back as it was: an archive
-    is not the team's activity, and the snapshot keeps the session as it stood.
+    is not the team's activity, and the snapshot keeps the session as it stood. ``version``
+    moves, so a turn still in flight on a stamped session cannot land on it.
+
+    The pointers deleted are the ones naming a stamped session, so a pointer another open
+    claims for a new session while this runs is never the one deleted.
 
     Nothing live is not a conflict: nothing is written, not even the archive row, and the
     caller says so in a field.
@@ -58,9 +63,13 @@ async def archive_pericope(
             .where(
                 IRSession.project_id == project_id,
                 IRSession.pericope == pericope,
-                IRSession.archive_id.is_(None),
+                live(),
             )
-            .values(archive_id=archive_id, updated_at=IRSession.updated_at)
+            .values(
+                archive_id=archive_id,
+                updated_at=IRSession.updated_at,
+                version=IRSession.version + 1,
+            )
             .returning(IRSession.id)
             .execution_options(synchronize_session=False)
         )
@@ -70,7 +79,7 @@ async def archive_pericope(
     for model in _HANGING_OFF_A_SESSION:
         await db.execute(
             update(model)
-            .where(model.session_id.in_(stamped), model.archive_id.is_(None))
+            .where(model.session_id.in_(stamped), live(model))
             .values(archive_id=archive_id)
             .execution_options(synchronize_session=False)
         )
@@ -84,7 +93,9 @@ async def archive_pericope(
     db.add(archive)
     await db.execute(
         delete(IRTeamSession).where(
-            IRTeamSession.project_id == project_id, IRTeamSession.pericope == pericope
+            IRTeamSession.project_id == project_id,
+            IRTeamSession.pericope == pericope,
+            IRTeamSession.session_id.in_(stamped),
         )
     )
     await db.commit()

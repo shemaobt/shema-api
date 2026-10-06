@@ -50,6 +50,7 @@ from app.services.internalization_room.coverage_events import (
 )
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.languages import floor, normalize
+from app.services.internalization_room.live import live
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
@@ -294,9 +295,7 @@ async def _pointed(
     )
     if claimed is None:
         return None
-    session = await db.scalar(
-        select(IRSession).where(IRSession.id == claimed, IRSession.archive_id.is_(None))
-    )
+    session = await db.scalar(select(IRSession).where(IRSession.id == claimed, live()))
     if session is None:
         await db.execute(
             delete(IRTeamSession).where(
@@ -330,7 +329,7 @@ async def _latest_stored(
             IRSession.project_id == project_id,
             IRSession.pericope == pericope,
             IRSession.language == language,
-            IRSession.archive_id.is_(None),
+            live(),
         )
         .order_by(
             case((entered(), 1), else_=0).desc(),
@@ -487,7 +486,7 @@ async def get_session_for_room_caller(
     Somebody else's session *is* refused as not found, with the message
     `get_session_for_facilitator` gives, because unowned is nobody's but owned is somebody's.
     """
-    session = await _live(db, session_id)
+    session = await _the_live_session(db, session_id)
     if session.project_id is not None and session.project_id != project_id:
         raise NotFoundError(_no_such_session(session_id))
     return session
@@ -508,10 +507,10 @@ async def session_for_room_caller(
     """
     if project_id is not None:
         return await get_session_for_room_caller(db, session_id, project_id)
-    return await _live(db, session_id)
+    return await _the_live_session(db, session_id)
 
 
-async def _live(db: AsyncSession, session_id: str) -> IRSession:
+async def _the_live_session(db: AsyncSession, session_id: str) -> IRSession:
     """The session, refused as gone once a Zerar archived it, with the unknown session's own
     words: the tablet reads that as the session gone and returns to the Choice (ADR 0047).
     """
@@ -534,6 +533,10 @@ async def _land(
     still what this ``session`` was read at, and the loser gets a raised conflict instead of
     a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
     sound necklace's own document, generalised to whichever columns the caller is writing.
+
+    A Zerar is a write too, and moves ``version``: a turn that resolved the session while it was
+    live and lands after the Zerar finds nothing to land on, and is answered as the session
+    gone, with the unknown session's words, rather than as another turn's conflict (ADR 0052).
     """
     await db.flush()
     stmt = (
@@ -551,6 +554,10 @@ async def _land(
         .execution_options(synchronize_session=False)
     )
     landed = (await db.execute(stmt)).one_or_none()
+    if landed is None and await db.scalar(
+        select(IRSession.archive_id).where(IRSession.id == session.id)
+    ):
+        raise NotFoundError(_no_such_session(session.id))
     if landed is None:
         # Nothing matched, so nothing is pending: leave the transaction to the caller's
         # teardown rather than rolling back a session shared with the rest of the request,
@@ -875,7 +882,7 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
                 IRSession.status.in_((IRSessionStatus.NEEDS_PERSON, IRSessionStatus.DONE)),
                 halt.a_warning_stands(),
             ),
-            IRSession.archive_id.is_(None),
+            live(),
             confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
         )
         .order_by(IRSession.updated_at.desc())

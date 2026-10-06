@@ -250,7 +250,7 @@ the Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
 
 **Opening a session**:
-A tablet asking the room for its team's session of a pericope and language: the latest one is returned whatever its state, and one is created only when none exists.
+A tablet asking the room for its team's session of a pericope and language: the latest live one is returned whatever its state, and one is created only when none exists. An archived session is never returned.
 _Avoid_: creating a session, starting a session, Abrir a passagem
 
 **Closed passage**:
@@ -262,7 +262,7 @@ The facilitator's act of giving a team a clean pericope: it creates an **Archive
 _Avoid_: reset, zero, clear, wipe
 
 **Archive** (`ir_archives`, `archive_id`):
-What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, which the room's doors then leave out. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADR 0047).
+What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052).
 _Avoid_: soft delete, trash, backup, Arquivo
 
 **Needs a person** (`needs_person`):
