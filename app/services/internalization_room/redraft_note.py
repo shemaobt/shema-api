@@ -10,7 +10,7 @@ _REDRAFT_NOTE = (
 
 
 def _listed(issue: dict[str, Any]) -> str:
-    line: str = issue.get("problem", "problem")
+    line = str(issue.get("problem") or "problem")
     if issue.get("claim"):
         line += f": {issue['claim']}"
     if issue.get("explanation"):

@@ -106,6 +106,19 @@ def test_an_issue_missing_its_problem_key_falls_back_to_the_english_word() -> No
     assert "problem: Rute era moabita" in note
 
 
+def test_a_row_the_validator_wrote_with_nulls_is_listed_and_never_raises() -> None:
+    issues = [
+        {"problem": None, "claim": "Rute era moabita", "explanation": None},
+        {"problem": "invented_detail", "claim": None, "explanation": None},
+    ]
+
+    assert _redraft_note(issues) == (
+        "(internal redraft note — the previous draft carried something the map does not "
+        "support: problem: Rute era moabita; invented_detail. Redraft the same answer, as "
+        "fully as the team's request deserves, using only what the map contains.)"
+    )
+
+
 _SAY_LESS = re.compile(r"say less|saying less|dizendo menos|diga menos", re.I)
 
 
