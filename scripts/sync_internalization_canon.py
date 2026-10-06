@@ -39,6 +39,7 @@ KINDS = {
     "compilation-log": "fixtures/compilation-log",
     "registry": "_spec/registry",
 }
+ALIASES_KEY = re.compile(r"registry/(\w+)\.aliases\.json")
 PASSAGE_SUFFIX = {
     "meaning-map": ".md",
     "meaning-coordinates": "-MEANING-COORDINATES.md",
@@ -63,30 +64,43 @@ def _head_sha() -> str:
 
 def _listing(kind: str, sha: str) -> list[str]:
     url = f"https://api.github.com/repos/{REPO}/contents/{KINDS[kind]}?ref={sha}"
-    names = [entry["name"] for entry in json.loads(_get(url))]
-    if kind == "registry":
-        return sorted(n for n in names if n in {f"{b.lower()}.aliases.json" for b in SERVED_BOOKS})
-    return sorted(names)
+    return sorted(entry["name"] for entry in json.loads(_get(url)))
+
+
+def _listed_books(sha: str) -> set[str]:
+    url = f"https://raw.githubusercontent.com/{REPO}/{sha}/_spec/pins.json"
+    sources = json.loads(_get(url))["sources"]
+    return {found[1] for key in sources if (found := ALIASES_KEY.fullmatch(key))}
 
 
 def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
     listed = {kind: _listing(kind, sha) for kind in KINDS}
+    listed_books = _listed_books(sha)
     stems = {
         kind: {name.removesuffix(suffix): name for name in listed[kind]}
         for kind, suffix in PASSAGE_SUFFIX.items()
     }
-    published = {kind: [] for kind in KINDS}
-    published["registry"] = listed["registry"]
+    complete: dict[str, list[str]] = {}
     skipped: list[str] = []
     for stem in sorted(set().union(*stems.values())):
         missing = [kind for kind in PASSAGE_SUFFIX if stem not in stems[kind]]
         if missing:
             skipped.append(f"skipped {stem}: missing {', '.join(missing)}")
             continue
-        if stem.split("-")[1] not in SERVED_BOOKS:
+        complete.setdefault(stem.split("-")[1], []).append(stem)
+    published: dict[str, list[str]] = {kind: [] for kind in KINDS}
+    for book, book_stems in complete.items():
+        if book not in SERVED_BOOKS:
             continue
-        for kind in PASSAGE_SUFFIX:
-            published[kind].append(stems[kind][stem])
+        if book.lower() not in listed_books:
+            skipped.append(
+                f"skipped book {book}: its aliases list is not listed by the compiler at the pin"
+            )
+            continue
+        for stem in book_stems:
+            for kind in PASSAGE_SUFFIX:
+                published[kind].append(stems[kind][stem])
+        published["registry"].append(f"{book.lower()}.aliases.json")
     return published, skipped
 
 
