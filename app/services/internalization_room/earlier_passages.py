@@ -18,19 +18,16 @@ passage's release and sessions out of the reading together (ADR 0047).
 from __future__ import annotations
 
 from itertools import takewhile
-from typing import get_args
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.room_enums import EarlierPassageStatus
 from app.db.models.internalization_room import IRRelease, IRSession
-from app.models.internalization_room_golden_doors import EarlierPassageStatus
 from app.services.internalization_room.canon.parse_map import load_book, load_map
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
-
-APPROVED, STARTED, NOT_WORKED = get_args(EarlierPassageStatus)
 
 
 async def earlier_passages(
@@ -66,10 +63,15 @@ async def earlier_passages(
             )
         )
     )
-    return {
-        passage: APPROVED if passage in approved else STARTED if passage in started else NOT_WORKED
-        for passage in earlier
-    }
+    return {passage: _status(passage, approved, started) for passage in earlier}
+
+
+def _status(passage: str, approved: set[str], started: set[str]) -> EarlierPassageStatus:
+    if passage in approved:
+        return EarlierPassageStatus.APPROVED
+    if passage in started:
+        return EarlierPassageStatus.STARTED
+    return EarlierPassageStatus.NOT_WORKED
 
 
 __all__ = ["earlier_passages"]
