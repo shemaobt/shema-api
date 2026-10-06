@@ -19,7 +19,6 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hard_stretches import (
     capture_and_note_a_hard_stretch,
-    count_an_empty_telling,
     hard_stretches_of,
     note_a_hard_stretch,
 )
@@ -103,7 +102,6 @@ __all__ = [
     "closing_block",
     "comprehension_of",
     "correction_to_verify",
-    "count_an_empty_telling",
     "create_session",
     "current_findings",
     "current_segments",

@@ -1,9 +1,12 @@
 ---
-status: accepted
+status: superseded in part by ADR 0049: an outage is now the same refusal, and the replace route no longer counts
 date: 2026-09-30
 ---
 
 # A telling with no words is refused at the chunk door and is never a stretch
+
+**Superseded in part by [ADR 0049](0049-a-telling-is-transcribed-in-the-bridge-language-and-refused-when-nothing-comes.md)**
+on 6 October 2026: an outage is now the same refusal, and the replace route no longer counts.
 
 The chunk door answered 200 `captured: false` when the transcript came back empty, and an empty
 **retelling** was counted toward the warning on the stretch being retold (ENG-706). The reason

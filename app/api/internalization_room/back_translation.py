@@ -65,11 +65,13 @@ async def add_chunk(
     A retelling of a slice no stretch currently covers is a first telling: the untold stretch
     the room leads the team to arrives with the flag on and nothing to replace.
 
-    **A telling with no words is refused, not counted.** A transcript that is empty, or only
-    what the transcriber wrote about the audio, answers 422 `WORDLESS_TELLING` with the name of
-    the inaudible line: no stretch, no count toward the warning, and the recording stays kept.
-    A transcriber that is down is not that — it raises `UpstreamServiceError` and answers 502,
-    which the tablet sends again.
+    The telling is transcribed in the session's bridge language, within `TRANSCRIBER_BOUND_SECONDS`.
+
+    **A telling with no words is refused, not counted.** A transcript that is empty or only what
+    the transcriber wrote about the audio, a transcriber that fails and one that does not answer
+    in time all answer 422 `WORDLESS_TELLING` with no spoken line: no stretch, no count toward
+    the warning, and the recording stays kept. The tablet shows its own line and the team tells
+    it again.
 
     `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
     slice inside **that file** — where the team let it play and where they stopped it. All
@@ -115,10 +117,14 @@ async def add_chunk(
     )
     await db.commit()
 
-    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+    text = await heard(
+        audio_bytes,
+        language=session.language,
+        filename=file.filename,
+        mime_type=file.content_type,
+    )
     if not text.strip():
-        _, line = choose(FailSafe.INAUDIBLE, session.language, turn=len(session.messages or []))
-        raise WordlessTelling(line)
+        raise WordlessTelling()
     warned = await room.capture_and_note_a_hard_stretch(
         db,
         session,
