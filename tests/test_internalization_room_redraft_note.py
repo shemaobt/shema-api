@@ -2,7 +2,7 @@
 
 The bug (ENG-714): the note is what tells a Guide whose draft did not pass what to fix, and
 every branch of it was hardcoded in Portuguese regardless of which language the session
-speaks. A session in English or Spanish would receive redraft instructions in a language the
+speaks. A session in English would receive redraft instructions in a language the
 Guide never opted into.
 """
 
@@ -33,15 +33,9 @@ _EXPECTED_OFF_BRIDGE = {
         "map is in English: carry its meaning into the session's language instead of "
         "quoting it."
     ),
-    "es": (
-        "La respuesta anterior salió del idioma de la sesión y por eso no pudo hablarse. "
-        "Rehaz el turno completo en {language}, sin ninguna frase en otro idioma. El "
-        "mapa está en inglés: lleva su sentido al idioma de la sesión en lugar de "
-        "citarlo."
-    ),
 }
 
-_AUTONYM = {"pt": "português", "en": "English", "es": "español"}
+_AUTONYM = {"pt": "português", "en": "English"}
 
 
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
@@ -55,7 +49,6 @@ def test_the_off_bridge_note_names_the_session_language_in_itself(language_code:
 _EXPECTED_NO_ISSUES = {
     "pt": "A resposta anterior não passou na conferência. Refaça.",
     "en": "The previous response did not pass review. Redo it.",
-    "es": "La respuesta anterior no pasó la revisión. Rehazla.",
 }
 
 
@@ -76,10 +69,6 @@ _EXPECTED_DESCRIBED = {
     "en": (
         "The previous response was rejected against the map. Issues raised — "
         "{described}. Redo the turn without those claims."
-    ),
-    "es": (
-        "La respuesta anterior fue rechazada frente al mapa. Problemas señalados — "
-        "{described}. Rehaz el turno sin esas afirmaciones."
     ),
 }
 
@@ -113,6 +102,30 @@ def test_every_redraft_note_covers_every_language_the_room_claims_to_speak(
         f"a sala diz que fala {language_code!r} e a nota de redraft {kind!r} não tem "
         "texto escrito nesse idioma"
     )
+
+
+@pytest.mark.parametrize(
+    ("issues", "expected"),
+    [
+        (
+            _OFF_BRIDGE_ISSUES,
+            _EXPECTED_OFF_BRIDGE["en"].format(language="English"),
+        ),
+        ([], _EXPECTED_NO_ISSUES["en"]),
+        (
+            _DESCRIBED_ISSUES,
+            _EXPECTED_DESCRIBED["en"].format(described="imported_knowledge: Rute era moabita"),
+        ),
+        (
+            [{"claim": "Rute era moabita"}],
+            _EXPECTED_DESCRIBED["en"].format(described="problem: Rute era moabita"),
+        ),
+    ],
+)
+def test_a_session_still_stored_in_spanish_is_told_in_the_floors_language(
+    issues: list[dict[str, str]], expected: str
+) -> None:
+    assert _redraft_note(issues, "es") == expected
 
 
 _UNNAMED_PROBLEM_ISSUE = [{"claim": "Rute era moabita"}]

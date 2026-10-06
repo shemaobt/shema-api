@@ -17,25 +17,18 @@ _OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
         "map is in English: carry its meaning into the session's language instead of "
         "quoting it."
     ),
-    "es": (
-        "La respuesta anterior salió del idioma de la sesión y por eso no pudo hablarse. "
-        "Rehaz el turno completo en {language}, sin ninguna frase en otro idioma. El "
-        "mapa está en inglés: lleva su sentido al idioma de la sesión en lugar de "
-        "citarlo."
-    ),
 }
 
-_LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "es": "español", "pt": "português"}
+_LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "pt": "português"}
 
 #: What an issue with no "problem" key names itself as, in the session's own language — the
 #: same table the note built around it already uses. Left unkeyed, this defaulted to the
 #: Portuguese word regardless of which language's note it was substituted into.
-_UNNAMED_PROBLEM: dict[str, str] = {"pt": "problema", "en": "problem", "es": "problema"}
+_UNNAMED_PROBLEM: dict[str, str] = {"pt": "problema", "en": "problem"}
 
 _NO_ISSUES_NOTE: dict[str, str] = {
     "pt": "A resposta anterior não passou na conferência. Refaça.",
     "en": "The previous response did not pass review. Redo it.",
-    "es": "La respuesta anterior no pasó la revisión. Rehazla.",
 }
 
 _DESCRIBED_ISSUES_NOTE: dict[str, str] = {
@@ -46,10 +39,6 @@ _DESCRIBED_ISSUES_NOTE: dict[str, str] = {
     "en": (
         "The previous response was rejected against the map. Issues raised — "
         "{described}. Redo the turn without those claims."
-    ),
-    "es": (
-        "La respuesta anterior fue rechazada frente al mapa. Problemas señalados — "
-        "{described}. Rehaz el turno sin esas afirmaciones."
     ),
 }
 
