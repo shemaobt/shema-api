@@ -130,6 +130,27 @@ def test_a_session_still_stored_in_spanish_is_told_in_the_floors_language(
     assert _redraft_note(issues, "es") == expected
 
 
+def test_an_issue_with_no_explanation_lists_as_its_problem_and_claim_alone() -> None:
+    issues = [
+        {
+            "claim": "vocês acrescentaram que ele deu a sandália pro Boaz",
+            "problem": "invented_absence",
+            "explanation": (
+                "R5 accepts the team's telling 'deu pro Boaz': it is correct, not an addition."
+            ),
+        },
+        {"claim": "segunda frase", "problem": "overstated_certainty"},
+    ]
+
+    assert _redraft_note(issues) == (
+        "(internal redraft note — the previous draft carried something the map does not "
+        "support: invented_absence: vocês acrescentaram que ele deu a sandália pro Boaz — R5 "
+        "accepts the team's telling 'deu pro Boaz': it is correct, not an addition.; "
+        "overstated_certainty: segunda frase. Redraft the same answer, as fully as the "
+        "team's request deserves, using only what the map contains.)"
+    )
+
+
 _UNNAMED_PROBLEM_ISSUE = [{"claim": "Rute era moabita"}]
 
 

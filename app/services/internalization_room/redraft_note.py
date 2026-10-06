@@ -28,18 +28,18 @@ _REDRAFT_NOTE = (
 )
 
 
+def _listed(issue: dict[str, Any]) -> str:
+    line = f"{issue.get('problem', 'problem')}: {issue.get('claim', '')}"
+    if issue.get("explanation"):
+        line += f" — {issue['explanation']}"
+    return line
+
+
 def _redraft_note(issues: list[dict[str, Any]], language_code: str = FLOOR) -> str:
     """What to tell a Guide whose draft did not pass, written in the session's own language."""
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
         template = _OFF_BRIDGE_LANGUAGE_NOTE.get(language_code, _OFF_BRIDGE_LANGUAGE_NOTE[FLOOR])
         autonym = _LANGUAGE_AUTONYMS.get(language_code, _LANGUAGE_AUTONYMS[FLOOR])
         return template.format(language=autonym)
-    described = (
-        "; ".join(
-            f"{issue.get('problem', 'problem')}: {issue.get('claim', '')} — "
-            f"{issue.get('explanation', '')}"
-            for issue in issues
-        )
-        or "ungrounded content"
-    )
+    described = "; ".join(_listed(issue) for issue in issues) or "ungrounded content"
     return _REDRAFT_NOTE.format(issues=described)
