@@ -10,7 +10,7 @@ import httpx
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.speakable import speakable_text
-from app.services.internalization_room.voices import voice_for
+from app.services.internalization_room.voices import room_voices, voice_for
 from app.services.platform.tts import (
     SpeechKey,
     SpeechStore,
@@ -75,6 +75,23 @@ async def synthesize_facilitator_speech(
     if len(_VOICED_HERE) > _VOICED_HERE_KEPT:
         _VOICED_HERE.popitem(last=False)
     return speech, speech.cached
+
+
+async def in_a_voice_the_room_has(key: str, text: str, *, language: str | None) -> str:
+    """A clip the room stored earlier, as a key in a voice the room still speaks in.
+
+    A clip handed back from a row — a verdict the team presses `terminei` to hear again, an
+    opening prepared ahead — was minted under the voice of its day. The voice route serves
+    only the voices the room has now, so a clip minted under a voice it has since dropped
+    would answer 404, and every reply the team hears is meant to be in the room's voice. Such a
+    clip is voiced again from its words, bought once and cached like any other line; one the
+    room can still serve is handed back untouched.
+    """
+    prefix, _, rest = key.partition("/")
+    if prefix != "tts" or rest.split("/", 1)[0] in room_voices(get_settings()).values():
+        return key
+    speech, _ = await synthesize_facilitator_speech(text, language=language)
+    return speech.key
 
 
 async def render_facilitator_speech(

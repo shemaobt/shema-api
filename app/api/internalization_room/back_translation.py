@@ -345,9 +345,10 @@ async def _finished(
 
     if state.already_analysed(told) and state.verdict is not None:
         finding = room.the_finding_that_leads(state)
+        clip = await room.the_stored_verdicts_clip(session, state.verdict)
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
+            audio_url=clip_url(clip) if clip else "",
             fixed_line=state.verdict.fixed_line,
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
