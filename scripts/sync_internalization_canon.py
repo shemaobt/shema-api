@@ -97,6 +97,11 @@ def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
                 f"skipped book {book}: its aliases list is not listed by the compiler at the pin"
             )
             continue
+        if f"{book.lower()}.aliases.json" not in listed["registry"]:
+            skipped.append(
+                f"skipped book {book}: its aliases list is not in the registry at the pin"
+            )
+            continue
         for stem in book_stems:
             for kind in PASSAGE_SUFFIX:
                 published[kind].append(stems[kind][stem])
