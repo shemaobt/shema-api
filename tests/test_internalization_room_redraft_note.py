@@ -12,7 +12,6 @@ import pytest
 
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import (
-    _NO_ISSUES_NOTE,
     _OFF_BRIDGE_LANGUAGE_NOTE,
     _redraft_note,
 )
@@ -45,17 +44,12 @@ def test_the_off_bridge_note_names_the_session_language_in_itself(language_code:
     assert note == expected
 
 
-_EXPECTED_NO_ISSUES = {
-    "pt": "A resposta anterior não passou na conferência. Refaça.",
-    "en": "The previous response did not pass review. Redo it.",
-}
-
-
-@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
-def test_the_no_issues_note_is_written_in_the_sessions_language(language_code: str) -> None:
-    note = _redraft_note([], language_code)
-
-    assert note == _EXPECTED_NO_ISSUES[language_code]
+def test_a_send_back_with_no_issue_named_carries_ungrounded_content() -> None:
+    assert _redraft_note([]) == (
+        "(internal redraft note — the previous draft carried something the map does not "
+        "support: ungrounded content. Redraft the same answer, as fully as the team's "
+        "request deserves, using only what the map contains.)"
+    )
 
 
 _FIVE_ISSUES = [
@@ -104,7 +98,6 @@ def test_a_draft_sent_back_with_five_issues_lists_all_five_with_their_reasons() 
 
 _REDRAFT_NOTE_DICTS = {
     "off_bridge_language": _OFF_BRIDGE_LANGUAGE_NOTE,
-    "no_issues": _NO_ISSUES_NOTE,
 }
 
 
@@ -129,7 +122,6 @@ def test_every_redraft_note_covers_every_language_the_room_claims_to_speak(
             _OFF_BRIDGE_ISSUES,
             _EXPECTED_OFF_BRIDGE["en"].format(language="English"),
         ),
-        ([], _EXPECTED_NO_ISSUES["en"]),
     ],
 )
 def test_a_session_still_stored_in_spanish_is_told_in_the_floors_language(

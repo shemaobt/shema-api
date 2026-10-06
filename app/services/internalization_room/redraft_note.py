@@ -21,11 +21,6 @@ _OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
 
 _LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "pt": "português"}
 
-_NO_ISSUES_NOTE: dict[str, str] = {
-    "pt": "A resposta anterior não passou na conferência. Refaça.",
-    "en": "The previous response did not pass review. Redo it.",
-}
-
 _REDRAFT_NOTE = (
     "(internal redraft note — the previous draft carried something the map does not support: "
     "{issues}. Redraft the same answer, as fully as the team's request deserves, using only "
@@ -39,11 +34,12 @@ def _redraft_note(issues: list[dict[str, Any]], language_code: str = FLOOR) -> s
         template = _OFF_BRIDGE_LANGUAGE_NOTE.get(language_code, _OFF_BRIDGE_LANGUAGE_NOTE[FLOOR])
         autonym = _LANGUAGE_AUTONYMS.get(language_code, _LANGUAGE_AUTONYMS[FLOOR])
         return template.format(language=autonym)
-    if not issues:
-        return _NO_ISSUES_NOTE.get(language_code, _NO_ISSUES_NOTE[FLOOR])
-    described = "; ".join(
-        f"{issue.get('problem', 'problem')}: {issue.get('claim', '')} — "
-        f"{issue.get('explanation', '')}"
-        for issue in issues
+    described = (
+        "; ".join(
+            f"{issue.get('problem', 'problem')}: {issue.get('claim', '')} — "
+            f"{issue.get('explanation', '')}"
+            for issue in issues
+        )
+        or "ungrounded content"
     )
     return _REDRAFT_NOTE.format(issues=described)
