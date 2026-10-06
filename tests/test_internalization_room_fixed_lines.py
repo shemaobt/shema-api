@@ -162,6 +162,10 @@ def test_the_room_keeps_no_fail_safe_draft_for_a_language_it_does_not_speak() ->
     assert "-es." not in fail_safe_utterances()
 
 
+def test_the_app_side_lines_are_written_only_for_the_languages_the_room_speaks() -> None:
+    assert set(render.STANDALONE) == set(ROOM_LANGUAGES)
+
+
 def test_a_repeated_failure_does_not_repeat_the_same_sentence() -> None:
     """The authored file asks for variation; a room stuck on one line sounds like a machine."""
     spoken = [choose(FailSafe.INAUDIBLE, "pt", turn=turn) for turn in range(3)]

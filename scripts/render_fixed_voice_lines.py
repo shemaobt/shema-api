@@ -86,23 +86,6 @@ STANDALONE: dict[str, dict[str, str]] = {
             "Until then I cannot carry on."
         ),
     },
-    "es": {
-        "sem_conexao": (
-            "No puedo llegar a la sala en este momento. "
-            "No es nada que ustedes hayan hecho — simplemente no hay conexión. "
-            "Podemos esperar un momento e intentarlo de nuevo."
-        ),
-        "gravacao_presa": (
-            "Hay una grabación de ustedes que todavía no he podido guardar. "
-            "No se perdió, está aquí conmigo. "
-            "Pídanle a alguien que le eche un vistazo cuando pueda."
-        ),
-        "microfone": (
-            "Necesito oírlos para trabajar, y el micrófono está apagado para mí. "
-            "Pídanle a alguien que permita el micrófono en los ajustes de esta tableta. "
-            "Mientras tanto no puedo seguir."
-        ),
-    },
 }
 
 #: The families that are spoken and never shipped. The supplement says so of each in bold —
