@@ -100,6 +100,10 @@ class HeardSpeech(BaseModel):
     mother_tongue_floor: float = Field(default_factory=_mother_tongue_floor)
     #: The team cut the Guide's previous reply short to say this.
     interrupted: bool = False
+    #: Where in the cut reply the team spoke, and how long that reply was; ``0`` and ``None``
+    #: when the tablet sent no position. Meaningful only when ``interrupted``.
+    interrupted_at_ms: int = 0
+    interrupted_of_ms: int | None = None
 
     @property
     def mother_tongue(self) -> bool:

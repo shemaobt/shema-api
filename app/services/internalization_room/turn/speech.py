@@ -61,8 +61,11 @@ async def speak_back(
     are handed to the Guide in front of the team's words, and come back as the room's, apart
     from them, so the conversation keeps them as the room's entry and only the team's words
     are ever settled. Words the recognizer made of a mother-tongue take never travel.
+
+    A take with no words that is not the mother tongue is a miss, and draws the ladder's line
+    whether or not it followed a cut: nothing reaches the Guide.
     """
-    if not opening and not mother_tongue and not interrupted and empty:
+    if not opening and not mother_tongue and empty:
         line, fixed = inaudible_ladder(messages, session.language)
         return TurnOutcome(
             speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed

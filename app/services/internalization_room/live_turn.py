@@ -41,6 +41,7 @@ from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
 from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.turn.speech import speak_back
+from app.services.internalization_room.validated_turn import CutPoint
 
 
 @dataclass
@@ -113,6 +114,11 @@ async def run_comprehension_turn(
             language_probability=speech.language_probability,
             mother_tongue=mother_tongue,
             take_ms=speech.take_ms,
+            interrupted=(
+                CutPoint(speech.interrupted_at_ms, speech.interrupted_of_ms)
+                if speech.interrupted
+                else None
+            ),
         )
 
     final_probe = select_probe_after_oral_turn(

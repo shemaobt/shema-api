@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -562,6 +563,9 @@ async def append_exchange(
     answered — so a session read back later never has to infer any of it. A turn that
     arrives with no outcome, the prepared opening, is written as it always was.
 
+    A take that followed a cut keeps where the cut fell on this turn's guide entry, beside the
+    hearing facts; the entry of the reply that was cut is never touched.
+
     In the telling-back round nobody speaks into the conversation, so no team turn is
     appended; what the team said there is the telling-back itself, and `told_back` is what
     the record keeps as the team's words when that round fires. It has no scene: the
@@ -624,6 +628,8 @@ async def append_exchange(
                 mother_tongue=outcome.mother_tongue,
                 take_ms=outcome.take_ms,
             )
+        if outcome.interrupted is not None:
+            guide["interrupted"] = asdict(outcome.interrupted)
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
     messages.append(guide)
