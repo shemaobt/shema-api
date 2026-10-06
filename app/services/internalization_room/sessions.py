@@ -57,7 +57,7 @@ from app.services.internalization_room.segments import (
     retire_the_segments_of,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
-from app.services.internalization_room.validated_turn import TurnOutcome
+from app.services.internalization_room.validated_turn import TurnOutcome, _the_validators_words
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
@@ -548,6 +548,7 @@ async def append_exchange(
     team_utterance: str,
     guide_response: str,
     outcome: TurnOutcome | None = None,
+    attempts: list[dict[str, Any]] | None = None,
     scene: str | None = None,
     told_back: str = "",
     state: ComprehensionState | None = None,
@@ -559,9 +560,10 @@ async def append_exchange(
     The guide message says whether the draft passed, was mended, or gave way to a fixed
     line, and how many redrafts it cost. When a fixed line spoke, the message also keeps
     what her fail-safe spec asks of every firing — the pericope, the scene, the team's
-    words, the Guide's draft, the Validator's verdict and issues, and which family
-    answered — so a session read back later never has to infer any of it. A turn that
-    arrives with no outcome, the prepared opening, is written as it always was.
+    words, the Guide's draft, the Validator's verdict, its issues as text (problem, claim and
+    explanation, nothing else a reply carried) and which family answered — so a session read
+    back later never has to infer any of it. A turn that arrives with no outcome, the prepared
+    opening, is written as it always was.
 
     A take that followed a cut keeps where the cut fell on this turn's guide entry, beside the
     hearing facts; the entry of the reply that was cut is never touched.
@@ -619,7 +621,7 @@ async def append_exchange(
                 team_utterance=team_utterance or told_back,
                 draft=outcome.draft,
                 verdict=outcome.verdict,
-                issues=outcome.issues,
+                issues=_the_validators_words(outcome.issues),
             )
         if outcome.mother_tongue is not None:
             guide.update(
@@ -630,6 +632,9 @@ async def append_exchange(
             )
         if outcome.interrupted is not None:
             guide["interrupted"] = asdict(outcome.interrupted)
+    kept = attempts or (outcome.attempts if outcome is not None else [])
+    if kept:
+        guide["attempts"] = kept
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
     messages.append(guide)
@@ -750,6 +755,7 @@ async def append_opening(
     *,
     guide_response: str,
     outcome: TurnOutcome | None = None,
+    attempts: list[dict[str, Any]] | None = None,
     scene: str | None = None,
     state: ComprehensionState | None = None,
     commit: bool = True,
@@ -778,6 +784,7 @@ async def append_opening(
         team_utterance="",
         guide_response=guide_response,
         outcome=outcome,
+        attempts=attempts,
         scene=scene,
         state=state,
         commit=commit,

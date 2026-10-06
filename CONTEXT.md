@@ -269,6 +269,14 @@ _Avoid_: lease, lock, kickoff lease
 A turn that carries the team's recording: what they said goes in, the Guide's next line comes out. A team turn sent while the **Opening** is being drafted waits for it.
 _Avoid_: audio turn, retell turn
 
+**Attempt**:
+One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Visit.
+_Avoid_: try, round, redraft (the count of drafts after the first), Tentativa
+
+**Attempt note**:
+What the room itself says about an attempt when something in it went wrong: the Validator's reply could not be read, or the words to be spoken strayed from the bridge language. Written by the room, never by the Validator, and absent on an ordinary attempt. Not a **Room note**, which is handed to the Guide.
+_Avoid_: Validator's note, comment, Nota da tentativa
+
 **Closed passage**:
 A session whose passage was closed: done, with its end stamped. It never blocks again, though a warning may still stand on it.
 _Avoid_: finished session, ended room, Passagem fechada
