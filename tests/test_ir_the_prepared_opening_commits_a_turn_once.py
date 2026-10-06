@@ -16,6 +16,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import get_settings
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import clip_url
 from tests.release_harness import KEY, PREFIX
@@ -23,6 +24,7 @@ from tests.room_harness import counting_commits, room_client
 
 P = "P03"
 PREPARED = "Vamos ficar nesta parte."
+PREPARED_KEY = f"tts/{get_settings().internalization_room_voice_id}/m/f/prepared.mp3"
 
 
 @pytest.fixture()
@@ -59,7 +61,7 @@ async def _a_session_with_a_line_ready(db_session: AsyncSession) -> str:
     session = await create_session(db_session, language="pt", pericope=P)
     parked = await get_session(db_session, session.id)
     parked.prepared_speech = PREPARED
-    parked.prepared_audio_key = "tts/voice/m/f/prepared.mp3"
+    parked.prepared_audio_key = PREPARED_KEY
     parked.prepared_pericope = P
     await db_session.commit()
     return session.id
@@ -137,7 +139,7 @@ async def test_two_requests_racing_the_same_prepared_opening_both_hear_it_and_it
     )
 
     assert lost.status_code == 200, lost.text[:300]
-    assert lost.json()["audio_url"] == clip_url("tts/voice/m/f/prepared.mp3")
+    assert lost.json()["audio_url"] == clip_url(PREPARED_KEY)
     db_session.expire_all()
     written = await get_session(db_session, session_id)
     assert [message["text"] for message in written.messages] == [PREPARED], (

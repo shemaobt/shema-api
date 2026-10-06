@@ -262,7 +262,9 @@ async def finish(
     and a spoken synthesis every time and wrote the room into the conversation as having spoken
     twice — a false record of the room in front of the team, which outlives the bill. The reply
     is byte-for-byte the first one: the app is not told which press it made, because a second
-    shape would be a contract change to say something no caller asked about.
+    shape would be a contract change to say something no caller asked about. The one exception
+    is a verdict voiced in a voice the room no longer has: its words are voiced again in the
+    room's voice, so the clip's address changes and the rest of the reply does not.
 
     What counts as the same question is `already_analysed`, the record the analyst was already
     guarded by — one signal, so the four steps of a press can never disagree about whether the
@@ -345,9 +347,12 @@ async def _finished(
 
     if state.already_analysed(told) and state.verdict is not None:
         finding = room.the_finding_that_leads(state)
+        with stage("db_let_go"):
+            await db.commit()
+        clip = await room.the_stored_verdicts_clip(session, state.verdict)
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
+            audio_url=clip_url(clip) if clip else "",
             fixed_line=state.verdict.fixed_line,
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
