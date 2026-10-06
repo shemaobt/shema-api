@@ -4,10 +4,12 @@ Idempotent by design: every entry is looked up before it is written, so this run
 against a database that already holds some or all of it.
 
 ``app_url`` is not decoration. ``request_password_reset`` looks the row up by ``app_key``
-and builds the reset email as ``{app_url}/reset-password?token=…``, so a wrong value
-breaks password recovery and nothing else, silently. The loop below only fills an
-``app_url`` that is empty, which means correcting one already written is an UPDATE on the
-row rather than a re-run of this script.
+and builds the reset email as ``{app_url}/reset-password?token=…``; the PME's invites
+(``/convite?token=…``), leave links (``/leave/<token>``) and intake links read the same
+``shema`` row, and the form's endorsement and request links read its own. A wrong value
+breaks every one of those letters, silently. The loop below only fills an ``app_url`` that
+is empty, which means correcting one already written is an UPDATE on the row rather than a
+re-run of this script.
 
 ``APP_ROLES_OVERRIDE`` carries the apps whose roles are not ``DEFAULT_ROLES``. For
 ``resource-request-form`` the keys are the role ids of the frontend's ``capabilities.ts``
@@ -34,14 +36,16 @@ installations get the same row from ``20260927_shema08``, which writes the same 
 ``https://shema.shemaywam.com`` here as a convention — there was no deployment to read, so it
 followed the eight rows above it, the product's name lowercased under ``shemaywam.com`` — and
 its own docstring said a wrong value would fail on the first click and cost a one-row UPDATE.
-It did: the hostname never got a DNS record, and the PME's password-reset e-mail led nowhere
-(OBT-567). The value is now the Cloud Run address the PME answers on, by the user's decision
-of 6/oct/2026 that no ``shema.shemaywam.com`` is planned; ``20261006_shema567`` is the UPDATE
+It did: the hostname never got a DNS record, and every letter the PME builds from the row —
+invites, leave links, intake links, the password reset — led nowhere (OBT-567). The value is
+now the Cloud Run address the PME answers on, by the user's decision of 6/oct/2026 that no
+``shema.shemaywam.com`` is planned; ``20261006_shema567`` is the UPDATE
 for installations that already hold the old row. ``resource-request-form``'s row was checked
 in the same pass and stays: ``resourceform.shemaywam.com`` answers, mapped onto its Cloud Run
-service. What the corrected value does not do yet is finish password recovery: the PME has no
-``/reset-password`` route as of 6/oct/2026, so the link reaches a real host and no page until
-that screen exists over there.
+service. The invite, leave and intake links land on routes the PME has (``convite``,
+``leave/:token``); what the corrected value does not do yet is finish password recovery: the
+PME has no ``/reset-password`` route as of 6/oct/2026, so that one link reaches a real host and
+no page until the screen exists over there.
 """
 
 import asyncio

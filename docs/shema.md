@@ -227,8 +227,9 @@ in the platform objects.
 and in `cors_origins`, both by BE-03.**~~ **Corrected by OBT-567 (6/oct/2026): `app_url` is
 `https://project-management-ecosystem-f7ssqjozfq-uc.a.run.app`**, the Cloud Run address the
 PME answers on. `seed_apps_roles.py`'s docstring records that the column is not decoration —
-`request_password_reset` builds `{app_url}/reset-password?token=…` from it, and a wrong value
-breaks password recovery silently. BE-03 had nothing to read off a deployment and followed the
+`request_password_reset` builds `{app_url}/reset-password?token=…` from it, `send_invite` builds
+`/convite?token=…`, the intercessor's exit builds `/leave/<token>` and the intake link reads the
+same row, so a wrong value breaks every letter the PME sends, silently. BE-03 had nothing to read off a deployment and followed the
 eight conventional rows in `SEED_APPS`; the hostname never got a DNS record, and the
 reset e-mail led nowhere. The user decided on 6/oct/2026 that `shema.shemaywam.com` is not a
 planned domain, so the seed carries the deployed address and `20261006_shema567` is the
@@ -236,8 +237,9 @@ one-row UPDATE BE-03's docstring had anticipated, guarded by the old value so a 
 already corrected by hand is left alone. `cors_origins` still lists the old hostname: it is
 the platform core's, and the deployed PME never needed an entry — its nginx proxies `/api` to
 `$BACKEND_URL`, so the browser calls the API on the PME's own origin and CORS is not consulted.
-**What this does not restore is password recovery itself**: the PME (`origin/main` on
-6/oct/2026) has no `/reset-password` route and no *forgot password* screen, so the link now
+Invites, leave links and intake links are whole again — `convite` and `leave/:token` are routes
+the PME has. **What this does not restore is password recovery itself**: the PME (`origin/main`
+on 6/oct/2026) has no `/reset-password` route and no *forgot password* screen, so that link now
 points at a host that exists and a page that does not — the token lands on the catch-all
 behind the session gate. That screen is the PME's (`project-management-ecosystem`); no issue
 owns it yet, and whether it comes before anything else is the user's call. This issue fixes

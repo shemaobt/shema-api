@@ -138,11 +138,13 @@ def test_the_form_seats_the_session_names_are_the_forms_own() -> None:
 def test_the_seeded_app_carries_the_url_password_reset_is_built_from() -> None:
     """``request_password_reset`` builds ``{app_url}/reset-password?token=…`` from this row.
 
-    Pinned rather than merely well-formed: the failure a wrong value causes is silent, and
-    password recovery is the only thing it breaks. BE-03 pinned a conventional hostname here
-    and it never got a DNS record; since OBT-567 the value is the Cloud Run address the PME
-    answers on, and ``tests/test_shema/test_pme_app_url.py`` holds the seed and the data
-    migration that corrects installed rows to the same value.
+    Pinned rather than merely well-formed: the failure a wrong value causes is silent, and it
+    breaks every letter built from this row — the password reset, the invite
+    (``send_invite``, ``/convite?token=…``), the intercessor's leave link (``/leave/<token>``)
+    and the intake link — none of which says so until somebody clicks. BE-03 pinned a
+    conventional hostname here and it never got a DNS record; since OBT-567 the value is the
+    Cloud Run address the PME answers on, and ``tests/test_shema/test_pme_app_url.py`` holds
+    the seed and the data migration that corrects installed rows to the same value.
     """
     entry = next((row for row in SEED_APPS if row[0] == APP_KEY), None)
     assert entry is not None, f"{APP_KEY} missing from SEED_APPS"
