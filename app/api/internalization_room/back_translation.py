@@ -15,6 +15,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
+from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
@@ -80,6 +81,7 @@ async def add_chunk(
     it; a slice with no file to be a slice of would be the same defect under another name.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
@@ -280,6 +282,7 @@ async def finish(
     """
     with stopwatch("[bt-timing]", session_id):
         session = await room.session_for_room_caller(db, session_id, project_id)
+        refuse_a_panorama(session.pericope)
         verdict = await _finished(session, payload, db)
     nudge(session.project_id, "verdict")
     return verdict

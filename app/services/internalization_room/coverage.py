@@ -6,6 +6,7 @@ from enum import StrEnum
 #: Re-exported so `_RANK` below reads beside the values it ranks. Defined in `core`
 #: because `app/models` needs it too — see `app/core/room_enums.py`.
 from app.core import room_enums
+from app.core.exceptions import PanoramaRecordsNothing
 from app.core.room_enums import CoverageStatus
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import CoverageView
@@ -30,6 +31,16 @@ def is_panorama(pericope: str) -> bool:
     reconstruction cannot import the session service without a cycle.
     """
     return pericope.startswith(PANORAMA_PREFIX)
+
+
+def refuse_a_panorama(pericope: str) -> None:
+    """A panorama is spoken, never recorded, told back or checked, so each door that would is
+    refused here with one code, before anything is read, stored or transcribed.
+
+    The release doors do not call it: their answers for a panorama are ENG-954's contract.
+    """
+    if is_panorama(pericope):
+        raise PanoramaRecordsNothing("a panorama records nothing")
 
 
 _RANK = {
