@@ -113,6 +113,11 @@ async def run_comprehension_turn(
             language_probability=speech.language_probability,
             mother_tongue=mother_tongue,
             take_ms=speech.take_ms,
+            interrupted=(
+                {"at_ms": speech.interrupted_at_ms, "of_ms": speech.interrupted_of_ms}
+                if speech.interrupted
+                else None
+            ),
         )
 
     final_probe = select_probe_after_oral_turn(

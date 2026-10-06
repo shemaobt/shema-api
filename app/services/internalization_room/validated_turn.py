@@ -73,6 +73,8 @@ class TurnOutcome:
     #: The take's length as the note says it, in milliseconds: whole seconds for a measured
     #: take, which the twenty-second rule read before it was rounded.
     take_ms: float | None = None
+    #: Where the team cut the Guide's previous reply short to say this, when they did.
+    interrupted: dict[str, int | None] | None = None
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
