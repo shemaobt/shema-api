@@ -445,7 +445,6 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
 _NOTHING_TOLD_BACK_YET: dict[str, str] = {
     "pt": "(a equipe ainda não traduziu nada)",
     "en": "(the team has not translated anything yet)",
-    "es": "(el equipo aún no ha traducido nada)",
 }
 
 

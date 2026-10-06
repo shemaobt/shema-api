@@ -63,9 +63,9 @@ _FORBIDDEN = (
     r"|contaron de vuelta|contado nada de vuelta|contou nada de volta|told (anything )?back"
 )
 
-#: Nine sentences across seven renderings: one three-language dict (pt/en/es), five
+#: Eight sentences across seven renderings: one two-language dict (pt/en), five
 #: single-language strings — four Portuguese, one English — and the ordered closing of the
-#: checked turn: 3 + 1 + 1 + 1 + 1 + 1 + 1.
+#: checked turn: 2 + 1 + 1 + 1 + 1 + 1 + 1.
 #: `turn_instructions.py`'s told-back rendering was one of the three-language dicts too
 #: (pt/en/es) until ENG-822 collapsed it to the single English sentence every session now
 #: reads — the backend composes it in English on every session, and only
@@ -79,7 +79,6 @@ _FORBIDDEN = (
 _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
-    "(el equipo aún no ha traducido nada)",
     "Compare a tradução com o mapa.",
     "a análise da tradução não pôde ser feita agora",
     "(nenhum achado — a tradução está completa)",

@@ -49,7 +49,6 @@ _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
 _EXPECTED_NOTHING_TOLD_BACK = {
     "pt": "(a equipe ainda não traduziu nada)",
     "en": "(the team has not translated anything yet)",
-    "es": "(el equipo aún no ha traducido nada)",
 }
 
 
@@ -165,8 +164,9 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
             assert sentence not in system
 
 
+@pytest.mark.parametrize(("named", "code"), [("French", "fr"), ("Spanish", "es")])
 async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, named: str, code: str
 ) -> None:
     captured = _patch_analyst_capture(monkeypatch)
 
@@ -175,8 +175,8 @@ async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        session_language="French",
-        language_code="fr",
+        session_language=named,
+        language_code=code,
         settings=_settings(),
     )
 
