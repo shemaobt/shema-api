@@ -7,7 +7,7 @@ import re
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NoWordsHeard, ValidationError
+from app.core.exceptions import NoWordsHeard, UpstreamServiceError, ValidationError
 from app.services.internalization_room.languages import FLOOR
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
@@ -17,6 +17,8 @@ from app.services.translation_helper.transcribe_audio import (
 )
 
 logger = logging.getLogger(__name__)
+
+TRANSCRIBER_BOUND_SECONDS = 15
 
 _BRIDGE_LANGUAGE_CODES = {
     "pt": {"pt", "por"},
@@ -116,27 +118,40 @@ class HeardSpeech(BaseModel):
 async def heard(
     audio: bytes,
     *,
+    language: str,
     filename: str | None = None,
     mime_type: str | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """What the team said, or an empty string when the room could not make it out.
+    """What the team said in `language`, or an empty string when nothing could be made out.
 
-    Not hearing someone is an ordinary moment in a room, not a client error. The transcriber
-    raises for silence, for a clipped recording and for a file the encoder mangled — and a
-    raise becomes a 4xx, which the app can only render as a network failure. The team is then
-    told the internet is down because someone spoke too far from the microphone.
-
-    Empty is the answer the turn already knows how to handle: it speaks the pre-approved
-    *"não consegui ouvir direito — podem repetir?"*, which is why that line was written.
+    The transcriber is told the session's bridge language instead of guessing it, which is what
+    turned a Portuguese telling into phonetic Spanish, and it is given `TRANSCRIBER_BOUND_SECONDS`
+    to answer. Silence, a recording it could not read, an outage and a late answer all read the
+    same here: nothing made out. The doors refuse that telling and the tablet shows the line
+    that asks for it again; no spoken line is chosen in its place. A defect of ours is not
+    swallowed.
     """
     try:
-        return spoken_words_only(
-            await transcribe_audio(audio, filename=filename, mime_type=mime_type, settings=settings)
+        async with asyncio.timeout(TRANSCRIBER_BOUND_SECONDS):
+            return spoken_words_only(
+                await transcribe_audio(
+                    audio,
+                    filename=filename,
+                    mime_type=mime_type,
+                    settings=settings,
+                    language=language,
+                )
+            )
+    except (ValidationError, UpstreamServiceError) as failure:
+        logger.warning("Nothing made out of %d bytes of audio: %s", len(audio), failure)
+    except TimeoutError:
+        logger.warning(
+            "Nothing made out of %d bytes of audio: no answer in %s s",
+            len(audio),
+            TRANSCRIBER_BOUND_SECONDS,
         )
-    except ValidationError as failure:
-        logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
-        return ""
+    return ""
 
 
 async def heard_speech(

@@ -10,7 +10,7 @@ import httpx
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.speakable import speakable_text
-from app.services.internalization_room.voices import voice_for
+from app.services.internalization_room.voices import room_voices, voice_for
 from app.services.platform.tts import (
     SpeechKey,
     SpeechStore,
@@ -50,16 +50,14 @@ async def synthesize_facilitator_speech(
     than being chosen alongside it: the app never picks how the facilitator sounds, only
     which language it sounds in.
 
-    That the voice moves with the language is also what keeps the cache honest. The bucket
-    key is content-addressed over text, voice, model, format and tuning but not language, so
-    one voice speaking two languages would serve the first language's bytes for the second's
-    request. A voice per language puts the language in the key without changing its shape,
-    and every clip already bought stays addressable.
+    ElevenLabs is asked exactly what Marcia's frozen app asks it: the text and the model,
+    with no tuning and no language hint, so the voice reads at its own defaults. The bucket
+    key is content-addressed over text, voice, model and format but not language, and that is
+    right here: while English has no voice of its own, the same text in Portuguese and in
+    English is sent the same request, so the same bytes answer both.
 
-    The model is pinned here rather than shared with the rest of the platform because only
-    the turbo and flash families honour `language_code`; `eleven_multilingual_v2` detects
-    the language from the text, which lets an English word from the map drag a whole
-    sentence out of Portuguese.
+    The model is pinned here rather than shared with the rest of the platform because it is
+    the one her app speaks with.
 
     The room carries its own ElevenLabs key so its spend and its rate limit are separable
     from the rest of the platform's; an empty setting falls back to the shared one, which
@@ -77,6 +75,23 @@ async def synthesize_facilitator_speech(
     if len(_VOICED_HERE) > _VOICED_HERE_KEPT:
         _VOICED_HERE.popitem(last=False)
     return speech, speech.cached
+
+
+async def in_a_voice_the_room_has(key: str, text: str, *, language: str | None) -> str:
+    """A clip the room stored earlier, as a key in a voice the room still speaks in.
+
+    A clip handed back from a row — a verdict the team presses `terminei` to hear again, an
+    opening prepared ahead — was minted under the voice of its day. The voice route serves
+    only the voices the room has now, so a clip minted under a voice it has since dropped
+    would answer 404, and every reply the team hears is meant to be in the room's voice. Such a
+    clip is voiced again from its words, bought once and cached like any other line; one the
+    room can still serve is handed back untouched.
+    """
+    prefix, _, rest = key.partition("/")
+    if prefix != "tts" or rest.split("/", 1)[0] in room_voices(get_settings()).values():
+        return key
+    speech, _ = await synthesize_facilitator_speech(text, language=language)
+    return speech.key
 
 
 async def render_facilitator_speech(
@@ -101,13 +116,7 @@ def _in_the_rooms_voice(
         language=spoken,
         voice_id=voice_for(spoken, settings=cfg),
         model=cfg.internalization_room_tts_model,
-        voice_settings={
-            "stability": cfg.internalization_room_voice_stability,
-            "similarity_boost": cfg.internalization_room_voice_similarity,
-            "style": cfg.internalization_room_voice_style,
-            "use_speaker_boost": True,
-            "speed": cfg.internalization_room_voice_speed,
-        },
+        states_language=False,
         api_key=cfg.internalization_room_elevenlabs_api_key or None,
         settings=cfg,
     )

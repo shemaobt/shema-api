@@ -227,15 +227,14 @@ class StretchNoLongerCounts(ValidationError):
 
 
 class WordlessTelling(ValidationError):
-    """A telling was transcribed and holds no words, so it is no stretch and counts nothing.
+    """A telling holds no words the room could make out, so it is no stretch and counts nothing.
 
-    Carries the name of the inaudible line the room says in its place, chosen by whoever
-    refuses, because the handler has no session to choose it from.
+    Silence, a failed transcriber and one that did not answer in time are the same refusal. The
+    room says nothing in its place: the tablet shows its own line and asks for the telling again.
     """
 
-    def __init__(self, fixed_line: str) -> None:
+    def __init__(self) -> None:
         super().__init__("The telling has no words in it")
-        self.fixed_line = fixed_line
 
 
 class IdempotencyKeyReused(ValidationError):
@@ -426,10 +425,7 @@ async def handle_stretch_no_longer_counts(
 async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            **_error_body(str(exc), ERROR_CODE_WORDLESS_TELLING),
-            "fixed_line": exc.fixed_line,
-        },
+        content=_error_body(str(exc), ERROR_CODE_WORDLESS_TELLING),
     )
 
 

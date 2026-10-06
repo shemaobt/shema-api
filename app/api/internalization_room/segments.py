@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
-from app.core.exceptions import ValidationError
+from app.core.exceptions import ValidationError, WordlessTelling
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
@@ -106,12 +106,13 @@ async def replace(
     call that omits it is the app's own bug, refused by this signature before any service runs.
 
     The bytes are stored before anything is asked of them, as on the telling-back route: a
-    transcriber that times out must not take the recording with it. And when nothing could be
-    made out, **the stretch is not replaced at all** — swapping a good explanation for an empty
-    one over a transcriber hiccup would lose the team's work to somebody else's outage. It is
-    still one more telling of that stretch, counted on the row that is standing, because there is
-    no new row to count on: an outage that came free would let a team correcting one stretch
-    tell it forever without the room ever offering them a person.
+    transcriber that times out must not take the recording with it. The Correction is transcribed
+    in the session's bridge language, within `TRANSCRIBER_BOUND_SECONDS`. And when nothing could
+    be made out — no words, a failed transcriber or a late one — it answers 422
+    `WORDLESS_TELLING` with no spoken line and **the stretch is not replaced at all**: swapping a
+    good explanation for an empty one over a transcriber hiccup would lose the team's work to
+    somebody else's outage. Nothing is counted either; the tablet shows its own line and the
+    team tells it again.
 
     What is *not* stored first is a request that cannot succeed. A slice that is not this
     stretch's is refused by `capture_segment` either way, but only after the recording had been
@@ -145,17 +146,14 @@ async def replace(
     )
     await db.commit()
 
-    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
-
+    text = await heard(
+        audio_bytes,
+        language=session.language,
+        filename=file.filename,
+        mime_type=file.content_type,
+    )
     if not text.strip():
-        crossed = await room.count_an_empty_telling(db, session, segment)
-        nudge_stretches(session.project_id, warned=crossed)
-        return SegmentsResponse(
-            session_id=session.id,
-            segments=await _units(db, session.id),
-            captured=False,
-            needs_person=crossed,
-        )
+        raise WordlessTelling()
 
     crossed = await room.capture_and_note_a_hard_stretch(
         db,

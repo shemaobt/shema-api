@@ -18,7 +18,7 @@ The persona that says the back-translation verdict to the team, warmer than the 
 _Avoid_: voice (alternative internal name, and this server's word for the synthesized voice id — see Voice), spoken narrator, TTS, Falante
 
 **Voice** (`voice_id`):
-The synthesized voice a line is spoken with, one per language the Room speaks.
+The synthesized voice a line is spoken with: Mariana's for every language the Room speaks, unless a deployment configures an English voice.
 _Avoid_: Speaker (the persona spoken by it), narrator, Voz
 
 **Analyst**:
