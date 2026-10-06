@@ -19,7 +19,37 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run the doctrine guard
+        run: uv run python scripts/check_doctrine.py
+
+      - name: Nothing of Marcia's moved without her word
+        run: uv run python scripts/sync_doctrine.py --check
+
+      - name: Run the canon drift check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/sync_internalization_canon.py --check
+
   deploy:
+    needs: checks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -85,6 +115,7 @@ jobs:
             --concurrency=80 \
             --timeout=300 \
             --no-cpu-throttling \
+            --max-instances=1 \
             --min-instances=1 \
             --update-env-vars="^|^GCS_PLATFORM_BUCKET=tripod-platform|GCS_OC_BUCKET=tripod-image-uploads|EMAIL_PROVIDER=microsoft_graph|AZURE_TENANT_ID=5864d665-2933-42ba-9e2c-7212795b1b1a|AZURE_CLIENT_ID=9b01b5d1-7fed-4f24-a282-5cb72c5b266d|CORS_ORIGINS=http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com" \
             --set-secrets="DATABASE_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_neon_database_url:latest,JWT_SECRET_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_jwt_secret:latest,GOOGLE_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_api_key:latest,GOOGLE_MAPS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_maps_api_key:latest,QDRANT_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_url:latest,QDRANT_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_api_key:latest,GCS_BUCKET_NAME=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_gcs_bucket_name:latest,INNGEST_EVENT_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_event_key:latest,INNGEST_SIGNING_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_signing_key:latest,ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_elevenlabs_api_key:latest,PH_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_ph_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_api_key:latest,AZURE_CLIENT_SECRET=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_azure_client_secret:latest,ANTHROPIC_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_anthropic_api_key:latest,ANTHROPIC_WORKSPACE_ID=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_anthropic_workspace_id:latest,INTERNALIZATION_ROOM_CLIP_SIGNING_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_clip_signing_key:latest"
