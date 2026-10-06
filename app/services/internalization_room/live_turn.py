@@ -100,7 +100,6 @@ async def run_comprehension_turn(
         messages=messages,
         transcript=transcript,
         opening=opening,
-        empty=empty,
         book=book,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,

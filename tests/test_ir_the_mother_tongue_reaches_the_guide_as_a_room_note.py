@@ -57,7 +57,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "messages": [{"role": "guide", "text": "Ensaiem a cena na língua de vocês."}],
         "transcript": "a fome chegou",
         "opening": False,
-        "empty": False,
         "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
@@ -162,7 +161,7 @@ async def test_a_take_with_no_words_draws_the_d_line_and_travels_no_further(
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
 
-    outcome = await _speak(session, empty=True, transcript="")
+    outcome = await _speak(session, transcript="")
 
     assert outcome.fixed_line == "D0"
     assert outcome.degraded is True

@@ -112,7 +112,6 @@ async def speak_back(
     messages: list[dict[str, Any]],
     transcript: str,
     opening: bool,
-    empty: bool,
     book: str,
     guide_prompt: str,
     validator_prompt: str,
