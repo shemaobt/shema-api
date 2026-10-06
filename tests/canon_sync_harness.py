@@ -1,10 +1,3 @@
-"""A compiler repository the canon sync can be pointed at, served through the one network door.
-
-Every file the sync reads lives in a dict keyed by its path at the pin; the directory listings the
-contents API would give and the raw bytes are both answered from it, so a test states what the
-compiler holds and nothing about how the sync asks for it.
-"""
-
 from __future__ import annotations
 
 import json

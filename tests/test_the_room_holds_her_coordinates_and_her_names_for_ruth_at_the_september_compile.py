@@ -1,10 +1,3 @@
-"""The copy held two of the three artifacts of each passage and no names list. At her compile of
-29 September it holds, for Ruth, each passage's Meaning Map, Meaning Coordinates and Compilation
-Log and the book's aliases list: 43 files, the share of her 114 that belongs to the one book
-served today. The checksums are the ones her own `VENDOR_MANIFEST.json` records at the same pin
-(ENG-1201).
-"""
-
 from __future__ import annotations
 
 import hashlib

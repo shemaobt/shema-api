@@ -1,11 +1,3 @@
-"""A passage reaches the room only when its map, its Meaning Coordinates and its Compilation Log
-all exist at her pin. One missing was vendored anyway, and the room would have served a passage
-without the absences the Validator must protect (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

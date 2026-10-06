@@ -1,12 +1,3 @@
-"""A book reaches the room only when its names list is published at her pin, and the compiler
-says which books those are in `_spec/pins.json`. The sync took every book with passages, so a
-book whose aliases list the compiler does not list would have arrived with no names for its
-beings (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,11 +1,3 @@
-"""`--pin <sha>` took any 40-hex string, so a commit from an unmerged branch of the compiler, one
-she has not published, could become the canon the room reads. Production canon comes through the
-compiler's main line only, and a commit off it is refused before anything is written (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

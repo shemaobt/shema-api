@@ -1,12 +1,3 @@
-"""The compiler can list a book's aliases list in `_spec/pins.json` while the file itself is not
-in `_spec/registry/` at the pin. A book is published only when the list exists there, so such a
-book is skipped whole and the skip is said aloud, not left to a missing file the room trips on
-later (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

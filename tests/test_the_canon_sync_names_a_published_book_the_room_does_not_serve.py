@@ -1,11 +1,3 @@
-"""Only the book of Ruth is served today (João, 5 October), and the lock holds in the sync: a book
-the compiler publishes in full is not vendored. It was left out without a word, so a published
-Jonah and a Jonah that never arrived looked the same from the sync's output (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

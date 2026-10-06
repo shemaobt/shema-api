@@ -1,7 +1,3 @@
-"""The sync kept its own list of books beside the room's `SERVED_BOOKS`, so serving a second book
-meant two edits and a sync that could vendor a book the room refuses, or the reverse (ENG-1201).
-"""
-
 from __future__ import annotations
 
 import scripts.sync_internalization_canon as canon

@@ -1,11 +1,3 @@
-"""`--check` is the one thing in CI that notices the vendored canon moving away from its pin. It
-read two kinds of file; once the sync brings the Coordinates and the aliases lists too, a hand
-edit to one of those would pass CI green (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

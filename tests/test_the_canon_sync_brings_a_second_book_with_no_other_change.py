@@ -1,11 +1,3 @@
-"""Jonah and Esther, when she sends them through the compiler with an SC and a pin, arrive with no
-change to a fixed list of books. Today the only edit that serves a book is naming it in
-`SERVED_BOOKS`; nothing else in the sync knows a book by name (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

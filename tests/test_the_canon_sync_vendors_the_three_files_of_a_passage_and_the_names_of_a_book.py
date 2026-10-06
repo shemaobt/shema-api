@@ -1,11 +1,3 @@
-"""The canon sync took the map and the Compilation Log of each passage and nothing else, so
-what her app draws from the Meaning Coordinates and from the book's aliases list reached ours
-missing or rebuilt from the prose (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

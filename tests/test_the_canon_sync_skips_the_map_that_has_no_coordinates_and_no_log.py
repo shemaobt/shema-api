@@ -1,11 +1,3 @@
-"""At her freeze pin the compiler holds the Psalm 13 map and neither its Coordinates nor its Log.
-The listing kept only the names that carried a served book, so that map was dropped without a
-word: a passage that never made it in was indistinguishable from one nobody sent (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

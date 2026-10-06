@@ -1,11 +1,3 @@
-"""A book that stops being published at a new pin must not leave its aliases list behind: the
-registry is fail-closed, and a names list with no passages beside it is a book the copy no longer
-vouches for (ENG-1201).
-
-Never runs against the real vendor: the compiler is `tests/canon_sync_harness.Compiler`, answered
-through `_get`, and `VENDOR`/`PIN_FILE` are redirected into `tmp_path`.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
