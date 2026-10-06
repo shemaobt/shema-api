@@ -106,8 +106,8 @@ async def replace(
     call that omits it is the app's own bug, refused by this signature before any service runs.
 
     The bytes are stored before anything is asked of them, as on the telling-back route: a
-    transcriber that times out must not take the recording with it. The Correction is recognized
-    in the session's bridge language, within `RECOGNIZER_BOUND_SECONDS`. And when nothing could
+    transcriber that times out must not take the recording with it. The Correction is transcribed
+    in the session's bridge language, within `TRANSCRIBER_BOUND_SECONDS`. And when nothing could
     be made out — no words, a failed transcriber or a late one — it answers 422
     `WORDLESS_TELLING` with no spoken line and **the stretch is not replaced at all**: swapping a
     good explanation for an empty one over a transcriber hiccup would lose the team's work to

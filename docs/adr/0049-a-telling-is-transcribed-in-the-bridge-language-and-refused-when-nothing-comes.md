@@ -3,7 +3,7 @@ status: accepted
 date: 2026-10-06
 ---
 
-# A telling is recognized in the bridge language within fifteen seconds, and refused when nothing comes
+# A telling is transcribed in the bridge language within fifteen seconds, and refused when nothing comes
 
 **Supersedes in part [ADR 0040](0040-a-telling-with-no-words-is-refused-and-is-never-a-stretch.md).**
 Its refusal of a telling with no words stands, and so does keeping the retro take. Two of its
@@ -12,15 +12,15 @@ empty re-recording still counts in place".
 
 The two telling doors, the chunk door and the replace door, let the transcriber guess the
 language, so a Portuguese telling came back as phonetic Spanish, and let it take up to two
-minutes. Her own app has always sent the session's language and stopped waiting after fifteen
+minutes. Marcia's app (at 18fa7c4) has always sent the session's language and stopped waiting after fifteen
 seconds, and answered "nothing heard" for any failure.
 
 Decided:
 
-- **The bridge language is sent, never guessed.** Both doors recognize a telling in the
+- **The bridge language is sent, never guessed.** Both doors transcribe a telling in the
   session's `language` (`pt` or `en`), sent to the transcriber as `language_code`. A caller
   that passes no language, such as the translation helper, still detects, unchanged.
-- **The recognizer gets fifteen seconds.** The bound lives in `heard`, the only hearing the
+- **The transcriber gets fifteen seconds.** The bound lives in `heard`, the only hearing the
   two doors use.
 - **No words, a failure and the bound read the same.** An empty or annotation-only transcript,
   a transcriber failure (an outage, a 5xx, an unreachable host, a missing key) and a late answer

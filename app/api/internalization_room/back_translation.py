@@ -65,7 +65,7 @@ async def add_chunk(
     A retelling of a slice no stretch currently covers is a first telling: the untold stretch
     the room leads the team to arrives with the flag on and nothing to replace.
 
-    The telling is recognized in the session's bridge language, within `RECOGNIZER_BOUND_SECONDS`.
+    The telling is transcribed in the session's bridge language, within `TRANSCRIBER_BOUND_SECONDS`.
 
     **A telling with no words is refused, not counted.** A transcript that is empty or only what
     the transcriber wrote about the audio, a transcriber that fails and one that does not answer

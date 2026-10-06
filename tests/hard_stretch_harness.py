@@ -24,6 +24,7 @@ from app.db.models.internalization_room import (
     IRHardStretch,
     IRSegment,
     IRSession,
+    IRTake,
     IRTakeKind,
 )
 from app.models.internalization_room import PlayedTake
@@ -93,9 +94,11 @@ class Facilitator:
         self.headers = headers
 
 
-async def a_session(db: AsyncSession, *, team_id: str | None = None) -> str:
+async def a_session(
+    db: AsyncSession, *, team_id: str | None = None, language: str | None = None
+) -> str:
     """A session, named by its id: the reads below expire the identity map."""
-    session = await room.create_session(db, pericope=P, project_id=team_id)
+    session = await room.create_session(db, pericope=P, project_id=team_id, language=language)
     return str(session.id)
 
 
@@ -128,14 +131,17 @@ async def tell(
     *,
     again: bool = False,
     saying: str | None = None,
+    queued: bool = True,
 ) -> httpx.Response:
     """Tell stretch `stretch` (1-based) back, as a first telling or as one more.
 
     `saying=None` is the transcriber coming back with nothing, which is the shape of an
-    outage and the case Marcia named by name.
+    outage and the case Marcia named by name. `queued=False` is for a client whose transcriber
+    is played at the provider, so nothing is queued on it.
     """
     starts, ends = SLICES[stretch - 1]
-    client.said.append(saying if saying is not None else "")  # type: ignore[attr-defined]
+    if queued:
+        client.said.append(saying if saying is not None else "")  # type: ignore[attr-defined]
     data = {"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)}
     if again:
         data["retelling"] = "true"
@@ -144,6 +150,25 @@ async def tell(
         headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
         data=data,
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+
+async def correct(
+    client: httpx.AsyncClient,
+    session_id: str,
+    segment_id: str,
+    take_id: str,
+    *,
+    stretch: int = 1,
+    audio: bytes = AUDIO,
+) -> httpx.Response:
+    """Send one **Correction** of the stretch over slice `stretch` (1-based) to the replace door."""
+    starts, ends = SLICES[stretch - 1]
+    return await client.post(
+        f"{IR}/sessions/{session_id}/segments/{segment_id}/replace",
+        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        data={"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)},
+        files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
 
 
@@ -167,6 +192,13 @@ async def current(db: AsyncSession, session_id: str) -> list[IRSegment]:
         .where(IRSegment.session_id == session_id, IRSegment.superseded_at.is_(None))
         .order_by(IRSegment.ordinal)
         .execution_options(**FROM_THE_DATABASE)
+    )
+    return list(result.scalars().all())
+
+
+async def retro_takes(db: AsyncSession, session_id: str) -> list[IRTake]:
+    result = await db.execute(
+        select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO)
     )
     return list(result.scalars().all())
 

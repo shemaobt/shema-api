@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UpstreamServiceError, ValidationError
-from app.db.models.internalization_room import IRSegment, IRSessionStatus, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRSessionStatus
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from tests.hard_stretch_harness import (
     AUDIO,
@@ -31,6 +31,7 @@ from tests.hard_stretch_harness import (
     SLICES,
     current,
     marks,
+    retro_takes,
     row,
     told,
 )
@@ -119,13 +120,6 @@ async def _segment_rows(db: AsyncSession, session_id: str) -> list[str]:
     return list(result.scalars().all())
 
 
-async def _retro_takes(db: AsyncSession, session_id: str) -> list[IRTake]:
-    result = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO)
-    )
-    return list(result.scalars().all())
-
-
 @pytest.mark.parametrize(
     "heard",
     [
@@ -187,7 +181,7 @@ async def test_the_recording_of_a_refused_telling_stays_kept(
     refused = await _tell(client, session_id, take_id, 1, "")
 
     assert refused.status_code == 422
-    assert len(await _retro_takes(db_session, session_id)) == 1
+    assert len(await retro_takes(db_session, session_id)) == 1
     assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
 
 

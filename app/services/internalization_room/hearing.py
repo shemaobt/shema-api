@@ -17,7 +17,7 @@ from app.services.translation_helper.transcribe_audio import (
 
 logger = logging.getLogger(__name__)
 
-RECOGNIZER_BOUND_SECONDS = 15
+TRANSCRIBER_BOUND_SECONDS = 15
 
 _BRIDGE_LANGUAGE_CODES = {
     "pt": {"pt", "por"},
@@ -112,14 +112,14 @@ async def heard(
     """What the team said in `language`, or an empty string when nothing could be made out.
 
     The transcriber is told the session's bridge language instead of guessing it, which is what
-    turned a Portuguese telling into phonetic Spanish, and it is given `RECOGNIZER_BOUND_SECONDS`
+    turned a Portuguese telling into phonetic Spanish, and it is given `TRANSCRIBER_BOUND_SECONDS`
     to answer. Silence, a recording it could not read, an outage and a late answer all read the
     same here: nothing made out. The doors refuse that telling and the tablet shows the line
     that asks for it again; no spoken line is chosen in its place. A defect of ours is not
     swallowed.
     """
     try:
-        async with asyncio.timeout(RECOGNIZER_BOUND_SECONDS):
+        async with asyncio.timeout(TRANSCRIBER_BOUND_SECONDS):
             return spoken_words_only(
                 await transcribe_audio(
                     audio,
@@ -135,7 +135,7 @@ async def heard(
         logger.warning(
             "Nothing made out of %d bytes of audio: no answer in %s s",
             len(audio),
-            RECOGNIZER_BOUND_SECONDS,
+            TRANSCRIBER_BOUND_SECONDS,
         )
     return ""
 
