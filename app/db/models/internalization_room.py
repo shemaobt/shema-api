@@ -83,12 +83,10 @@ class IRSession(Base):
     #: ``ir_takes``: the room tables carry ids across an app boundary and have never
     #: constrained them.
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    #: When the conversation ended, stamped only where an end actually happened — the
-    #: completion floor closing the session. A session nobody closed is not stamped here:
-    #: its end is derived from its last activity at read time, because the idle limit that
-    #: decides it is a proposal shared with the room app (ENG-435) and not yet agreed, and a
-    #: number nobody has agreed must not be frozen into rows. ``session_end.end_of`` is the
-    #: whole of the rule.
+    #: The moment the completion floor was met, written once when the status becomes
+    #: ``done``. It says "the floor was met at", not that the session is closed: nothing ends
+    #: a session for being idle, and a session without it is in progress however long it sat.
+    #: ``session_end.end_of`` reads it for the Desk's card.
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
@@ -99,8 +97,9 @@ class IRSession(Base):
     #: passage in each language is worse than the whole of it in either.
     #:
     #: Not ``Project.language_id``. That column records the team's own language for the rest
-    #: of the platform and the room does not read it: the device decides, because the device
-    #: is what the facilitator set up in front of them.
+    #: of the platform and the room's speech does not read it: the device decides, because the
+    #: device is what the facilitator set up in front of them. The release reads it as the
+    #: mother tongue (ADR 0048).
     language: Mapped[str] = mapped_column(String(8), default="en", server_default="en")
     #: Declared with the ``server_default`` its own migration already writes. The model said
     #: only ``default=dict``, which is Python-side and never reaches the DDL, so a table built
@@ -108,8 +107,9 @@ class IRSession(Base):
     #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
     comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
-    #: This team's status on each earlier passage of the book, by pericope id, as her runner
-    #: opened the session with it; null when nobody said.
+    #: This team's status on each earlier passage of the book, by pericope id, stamped once
+    #: when the session is created: read by the room, or handed in by her runner. Null on a
+    #: book's first passage, on a Panorama and for a caller with no team.
     earlier_passages: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
     #: every halt and cleared by none: it outlives the halt on purpose, so that a halt lifted
@@ -166,6 +166,20 @@ class IRSession(Base):
     #: such guard — its merge is monotonic by rank (`coverage.furthest`) and cannot regress
     #: under the same race.
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    #: The **Archive** a Zerar stamped this row with, null while it is live (ADR 0047). The
+    #: room's doors that pick or list a team's work read live rows only; the facilitator's
+    #: by-id doors still read a stamped one, because the work stays for the consultant.
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: The turn id under which the request drafting this session's opening will store its
+    #: answer, null until an opening is claimed (ADR 0053). Written once by a conditional
+    #: update while no live claim stands, so two tablets with different turn ids draft one
+    #: opening between them, whichever instance each request reached.
+    opening_claim_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: When the opening was claimed. A claim older than the turn bound plus thirty seconds
+    #: belongs to a request that can no longer be running, and the next request takes it over.
+    opening_claimed_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
 
 
 class IRTeamSession(Base):
@@ -188,6 +202,31 @@ class IRTeamSession(Base):
     pericope: Mapped[str] = mapped_column(String(120), primary_key=True)
     language: Mapped[str] = mapped_column(String(8), primary_key=True)
     session_id: Mapped[str] = mapped_column(String(36), index=True)
+
+
+class IRArchive(Base):
+    """What one Zerar of a team's pericope left behind, every language at once (ADR 0047).
+
+    The work itself does not move: its rows carry this row's id in ``archive_id``. Copying it
+    into archive tables and prefixes, as her file stores do, was rejected because a copy then
+    delete on GCS is not atomic, so nothing here can be half-moved or written over.
+
+    ``snapshot`` is each stamped session as it stood, taken in the same transaction as the
+    stamp, so the consultant reads what the team had and not what a later read assembles.
+    """
+
+    __tablename__ = "ir_archives"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(String(36))
+    pericope: Mapped[str] = mapped_column(String(120))
+    #: Stamped by the application, for the reason ``IRCoverageEvent.at`` gives.
+    archived_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    #: The facilitator who called Zerar, by user id, the way ``IRSession.attended_by`` keeps one.
+    archived_by: Mapped[str] = mapped_column(String(36))
+    snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
 
 
 class IRCoverageEvent(Base):
@@ -246,6 +285,8 @@ class IRCoverageEvent(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRQuestionStatus(enum.StrEnum):
@@ -367,6 +408,8 @@ class IRTake(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRTurn(Base):
@@ -478,9 +521,8 @@ class IRSegment(Base):
     #: contract to change in the same diff that redefines the address.
     pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     #: How many times the team has told this stretch, counting every version of it: the row a
-    #: telling supersedes hands its count on, and a re-recording nobody could make out is counted
-    #: here in place, because it captured no row of its own. A telling with no words is refused
-    #: at the chunk door and is not counted. At `RETELLS_BEFORE_A_WARNING` the
+    #: telling supersedes hands its count on. A telling with no words is refused on either door
+    #: and counts nothing. At `RETELLS_BEFORE_A_WARNING` the
     #: stretch is a hard stretch and `ir_hard_stretches` keeps the fact.
     tellings: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     bridge_take_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -492,6 +534,8 @@ class IRSegment(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRRelease(Base):
@@ -552,6 +596,8 @@ class IRRelease(Base):
     #: rather than counted or pointed at: the session goes on changing afterwards, and nothing
     #: else could answer later what this facilitator actually overruled.
     forced_open_findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class IRHardStretch(Base):

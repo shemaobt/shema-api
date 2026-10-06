@@ -46,6 +46,9 @@ from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.segments import told_back as stretches_told_back
 from app.services.internalization_room.sessions import append_exchange, save_back_translation
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    in_a_voice_the_room_has,
+)
 from app.services.internalization_room.takes import current_parts
 from app.services.internalization_room.validated_turn import TurnOutcome
 from app.services.internalization_room.verdict_turn import run_verdict_turn
@@ -249,3 +252,27 @@ async def save_the_spoken_verdict(
     )
     await save_back_translation(db, session, state)
     return session
+
+
+async def the_stored_verdicts_clip(session: IRSession, verdict: VoicedVerdict) -> str:
+    """The clip a repeat press hands back: the stored one, in a voice the room still has.
+
+    The verdict keeps its clip and not its words. The words are the guide's side of the
+    conversation's last telling-back exchange, which `save_the_spoken_verdict` wrote with it.
+    A row written before that exchange carried its `told_back` stamp keeps no words this can
+    find, and is answered with its stored clip as before: one clip the tablet cannot play is a
+    lesser harm than a press that fails every time and never says `checked` again.
+    """
+    if not verdict.clip_key:
+        return ""
+    said = next(
+        (
+            message.get("text", "")
+            for message in reversed(session.messages or [])
+            if message.get("role") == "guide" and message.get("told_back")
+        ),
+        "",
+    )
+    if not said:
+        return verdict.clip_key
+    return await in_a_voice_the_room_has(verdict.clip_key, said, language=session.language)

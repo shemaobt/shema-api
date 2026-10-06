@@ -15,6 +15,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
+from tests.hearing_harness import a_golden_session
 from tests.text_seam_harness import (
     BEARER,
     GOLDEN,
@@ -56,8 +57,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "messages": [{"role": "guide", "text": "Ensaiem a cena na língua de vocês."}],
         "transcript": "a fome chegou",
         "opening": False,
-        "empty": False,
-        "uncertain": False,
         "book": load_map(P).book,
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
@@ -122,22 +121,18 @@ async def test_an_english_room_hands_the_guide_the_note_in_english(
     ], "a sala em inglês entregava a nota em português e o Guia misturava as línguas"
 
 
-async def test_only_a_take_in_another_language_is_measured_for_its_length(
+async def test_every_take_is_measured_for_its_length(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from types import SimpleNamespace
-
     from app.core.config import Settings
     from app.services.internalization_room import hearing
+    from app.services.translation_helper.transcribe_audio import TranscriptionResult
 
     heard_language = {"code": "und"}
 
-    async def _detailed(*_: object, **__: object) -> object:
-        return SimpleNamespace(
-            text=TERENA,
-            language_code=heard_language["code"],
-            language_probability=0.99,
-            transcript_confidence=0.9,
+    async def _detailed(*_: object, **__: object) -> TranscriptionResult:
+        return TranscriptionResult(
+            text=TERENA, language_code=heard_language["code"], language_probability=0.99
         )
 
     measured: list[bytes] = []
@@ -157,23 +152,20 @@ async def test_only_a_take_in_another_language_is_measured_for_its_length(
     assert in_their_own.take_ms == 41_000, (
         "a nota nunca dizia por quanto tempo a equipe falou: ninguém media o áudio"
     )
-    assert in_portuguese.take_ms is None
-    assert measured == [b"terena"], "um ffprobe rodava em cada turno, e não só no de língua materna"
+    assert in_portuguese.take_ms == 41_000, "um take em português ficava sem duração no registro"
+    assert measured == [b"terena", b"portugues"]
 
 
-async def test_words_the_room_could_not_make_out_draw_the_d_line_and_travel_no_further(
+async def test_a_take_with_no_words_draws_the_d_line_and_travels_no_further(
     db_session: AsyncSession, agent: FakeAgent
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
 
-    outcome = await _speak(session, uncertain=True, transcript="mmm ne")
+    outcome = await _speak(session, transcript="")
 
     assert outcome.fixed_line == "D0"
     assert outcome.degraded is True
-    assert outcome.transcript == "", (
-        "o palpite do reconhecedor viajava dentro da linha que pedia para repetir e era "
-        "gravado como fala da equipe"
-    )
+    assert outcome.transcript == ""
     assert agent.guide_inputs == []
 
 
@@ -203,20 +195,11 @@ async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield client
 
 
-async def _an_open_session(client: httpx.AsyncClient) -> str:
-    created = await client.post(
-        f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "Brazilian Portuguese"}
-    )
-    session_id = created.json()["sessionId"]
-    await client.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"})
-    return session_id
-
-
 async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team_said(
     seam: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
 
     answered = await seam.post(
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
@@ -238,7 +221,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
     await seam.post(
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
     )
@@ -265,7 +248,7 @@ async def test_the_validators_evidence_labels_the_room_note_room_never_team(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
     await seam.post(
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
     )
@@ -293,7 +276,7 @@ async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_tea
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
-    session_id = await _an_open_session(seam)
+    session_id = await a_golden_session(seam)
     seen: list[str] = []
 
     async def _listening(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:

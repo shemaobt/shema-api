@@ -2,9 +2,10 @@ import asyncio
 import sys
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -17,7 +18,36 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.sessions import is_panorama, session_is_done
+from app.services.internalization_room.sessions import (
+    apply_coverage,
+    is_panorama,
+    save_comprehension,
+    session_is_done,
+)
+
+
+async def advance(db: AsyncSession, session: IRSession) -> None:
+    ledger = [
+        EvidenceObservation(
+            id=f"dev-{index}",
+            unit_id=checkpoint.id,
+            probe_id=f"dev-probe-{index}",
+            method=EvidenceMethod.MICRO_TELLBACK,
+            result=EvidenceResult.DEMONSTRATED,
+            note="atalho de desenvolvimento — nao e evidencia de campo",
+        )
+        for index, checkpoint in enumerate(checkpoints_for(session.pericope))
+    ]
+    state = ComprehensionState(
+        ledger=list(ledger),
+        practiced_scene_ids=scene_ids_for(session.pericope),
+    )
+    await save_comprehension(db, session, state)
+    await apply_coverage(
+        db,
+        session.id,
+        dict.fromkeys(element_keys(session.pericope), CoverageStatus.ENGAGED.value),
+    )
 
 
 async def main() -> None:
@@ -34,30 +64,12 @@ async def main() -> None:
             print("nenhuma sessao de passagem encontrada")
             return
 
-        session.coverage_state = dict.fromkeys(
-            element_keys(session.pericope), CoverageStatus.ENGAGED.value
-        )
-        ledger = [
-            EvidenceObservation(
-                id=f"dev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"dev-probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-                note="atalho de desenvolvimento — nao e evidencia de campo",
-            )
-            for index, checkpoint in enumerate(checkpoints_for(session.pericope))
-        ]
-        session.comprehension = ComprehensionState(
-            ledger=list(ledger),
-            practiced_scene_ids=scene_ids_for(session.pericope),
-        ).model_dump(mode="json")
-        session.status = IRSessionStatus.DONE
-        await db.commit()
+        await advance(db, session)
 
         print(f"sessao {session.id}")
         print(f"pericope {session.pericope}")
         print(f"done: {session_is_done(session)} | status: {session.status.value}")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

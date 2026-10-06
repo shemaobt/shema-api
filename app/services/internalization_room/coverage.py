@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from enum import StrEnum
 
 #: Re-exported so `_RANK` below reads beside the values it ranks. Defined in `core`
 #: because `app/models` needs it too — see `app/core/room_enums.py`.
 from app.core import room_enums
+from app.core.exceptions import PanoramaRecordsNothing
 from app.core.room_enums import CoverageStatus
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import CoverageView
@@ -30,6 +32,19 @@ def is_panorama(pericope: str) -> bool:
     reconstruction cannot import the session service without a cycle.
     """
     return pericope.startswith(PANORAMA_PREFIX)
+
+
+def refuse_a_panorama(pericope: str) -> None:
+    """A panorama is spoken, never recorded, told back or checked, so the seven doors that
+    record, tell back or check are refused here with one code, before anything is read, stored
+    or transcribed.
+
+    The conversation's turns door does not call it: the panorama is a conversation, and the
+    team's voice is transcribed there. The release doors do not either: their answers for a
+    panorama are ENG-954's contract.
+    """
+    if is_panorama(pericope):
+        raise PanoramaRecordsNothing("a panorama records nothing")
 
 
 _RANK = {
@@ -146,13 +161,24 @@ def counts(state: dict[str, str]) -> dict[str, int]:
     return {"engaged": engaged, "surfaced": surfaced, "total": len(state)}
 
 
+#: Her necklace has 12 beads whatever the passage's number of elements (`beadsTotal`,
+#: `app/api/session/route.ts`).
+BEADS_TOTAL = 12
+
+
 def coverage_view(session: IRSession) -> CoverageView:
+    """The coverage answer, with her 12 beads filled as `beadsFilled` fills them
+    (`src/session/types.ts`): `engaged` over the elements, 0 read as 1, times 12, rounded half
+    up as `Math.round` rounds and never half to even as Python's `round` does.
+    """
     numbers = counts(session.coverage_state or {})
     return CoverageView(
         engaged=numbers["engaged"],
         surfaced=numbers["surfaced"],
         total=numbers["total"],
         absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+        beads_total=BEADS_TOTAL,
+        beads_filled=math.floor(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL + 0.5),
     )
 
 

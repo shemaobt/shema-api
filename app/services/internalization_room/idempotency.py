@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from sqlalchemy import delete, update
-from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import IdempotencyKeyInFlight, IdempotencyKeyReused
+from app.db.insert_once import insert_once
 from app.db.models.internalization_room import IRIdempotencyKey
 from app.services.internalization_room.sessions import session_for_room_caller
 
@@ -100,20 +100,20 @@ async def _forget(db: AsyncSession, row: IRIdempotencyKey) -> None:
 
 
 async def _first(db: AsyncSession, held: Claim, request_hash: str, now: datetime) -> bool:
-    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
-    inserted = await db.execute(
-        insert(IRIdempotencyKey)
-        .values(
-            key=held.key,
-            route=held.route,
-            request_hash=request_hash,
-            claim=held.token,
-            claimed_at=now,
-        )
-        .on_conflict_do_nothing(index_elements=["key", "route"])
+    inserted = await insert_once(
+        db,
+        IRIdempotencyKey,
+        {
+            "key": held.key,
+            "route": held.route,
+            "request_hash": request_hash,
+            "claim": held.token,
+            "claimed_at": now,
+        },
+        conflict_on=["key", "route"],
     )
     await db.commit()
-    return bool(inserted.rowcount)  # type: ignore[attr-defined]
+    return inserted
 
 
 async def _the_answer_to(

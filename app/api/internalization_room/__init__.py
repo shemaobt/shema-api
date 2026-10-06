@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.internalization_room import (
+    archives,
     attended,
     back_translation,
     conversation,
@@ -38,6 +39,7 @@ for _sub in (
     attended,
     golden_doors,
     text_seam_back_translation,
+    archives,
 ):
     for route in _sub.router.routes:
         router.routes.append(route)

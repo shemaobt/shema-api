@@ -17,7 +17,6 @@ the start is normalised here beside it.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +28,7 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, as_utc, end_of
 
 
@@ -51,8 +51,7 @@ async def list_team_sessions(db: AsyncSession, project_id: str) -> list[TeamSess
     """
     sessions = await _history_of(db, project_id)
     portraits = await necklaces_of(db, sessions)
-    now = datetime.now(UTC)
-    cards = [_card(session, portraits[session.id], at=now) for session in sessions]
+    cards = [_card(session, portraits[session.id]) for session in sessions]
     return _still_going_first(cards)
 
 
@@ -60,37 +59,35 @@ def _still_going_first(cards: list[TeamSessionResponse]) -> list[TeamSessionResp
     """Lift the live conversations to the head, leaving the rest as they came.
 
     **Sorted here and not in the statement, because the state is not a column.** `end_of`
-    decides it from `ended_at`, the last activity and an idle limit nobody has agreed to yet;
-    writing that predicate into SQL would be a second place deciding when a conversation is
-    over, and the two would part company the day the limit moves. This is still the server
-    ordering — what the rule forbids is the *client* arranging what it was handed.
+    decides it from `ended_at`; writing that predicate into SQL would be a second place
+    deciding when a conversation is over. This is still the server ordering — what the rule
+    forbids is the *client* arranging what it was handed.
 
     The sort is stable and the key is a boolean, so within each group the statement's
     `created_at desc, id desc` survives untouched.
 
-    **`in_progress` and nothing else leads, and that had to be decided rather than inherited.**
-    RF-06's sentence was written when a session was open or finished; there are three states
-    now. An abandoned conversation carries no end anybody stamped, so it reads open-ish — but
-    it is over, and it is the one thing in the column the facilitator can do nothing with.
-    Leading with it would put that where the live conversation is supposed to be.
+    **`in_progress` leads however long it sat.** Nothing ends a session for being idle, so
+    a conversation left for days is still the live one, the one thing in the column the
+    facilitator can still act on.
     """
     return sorted(cards, key=lambda card: card.state is not SessionState.IN_PROGRESS)
 
 
 async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
     """A session nobody entered (ENG-964) is not a room of the team and is not drawn:
-    `entered()` excludes it, the one predicate the team's last activity also reads.
+    `entered()` excludes it, the one predicate the team's last activity also reads. An archived
+    session is no longer the team's either (ADR 0047).
     """
     result = await db.execute(
         select(IRSession)
-        .where(IRSession.project_id == project_id, entered())
+        .where(IRSession.project_id == project_id, live(), entered())
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
     return result.scalars().all()
 
 
-def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> TeamSessionResponse:
-    end = end_of(session, at=at)
+def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
+    end = end_of(session)
     return TeamSessionResponse(
         session_id=session.id,
         pericope=session.pericope,
@@ -114,13 +111,7 @@ def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> Team
 
 
 def _needs_person(session: IRSession, *, state: SessionState) -> bool:
-    """Halted and still open — a halt that outlived the conversation is not "waiting".
-
-    `session.status` alone is not enough: a halt leaves the row only when a turn lands
-    (`sessions.append_exchange`) or a facilitator says they went (`sessions.attend`), and a
-    team that never returns and nobody visits keeps that status long after the idle rule has
-    declared the conversation over. The Desk's own `state` is what says whether the room is
-    still open.
+    """Halted and not complete — a halt on a passage the team already finished is not "waiting".
 
     `last_halt` beside it is the other half and is deliberately not gated on `state`: it is
     the kind of the last halt there was, not a claim that anything is waiting.

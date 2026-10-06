@@ -115,6 +115,11 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     answers two failures in a row with the identical sentence sounds like a machine stuck,
     which is the one impression the fail-safe exists to avoid.
 
+    The inaudible family is the exception and never rotates. Her app answers every miss with
+    ``didntCatchThat(0)`` — in the conversation, on a telling-back with nothing told, and in
+    the check rounds — so every "couldn't hear" is her first D line, whatever ``turn`` says.
+    The other two D lines stay in her file and are simply never chosen.
+
     The name is what the app asks for: the tablet hands it back to `/fixed-lines/{line}`,
     which voices the line from the text this server was deployed with, so a line she
     re-rules is heard on the next load. Only the three notices said with no server at all
@@ -128,30 +133,17 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     lines = utterances(kind, language_code)
     if not lines:
         return "", ""
-    index = turn % len(lines)
+    index = 0 if kind is FailSafe.INAUDIBLE else turn % len(lines)
     return lines[index], f"{kind}{index}"
 
 
 def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
-    """The D line for one more miss, read off how many the room is already answering.
+    """The D line for one more miss: always her first, however many came before it.
 
-    The ladder used to be indexed by the length of the conversation, so the very first miss
-    could draw the third line and a team heard perfectly for twenty turns met whichever line
-    the count landed on. It walks the run of misses now — the trailing guide turns that
-    answered with a D line — and any turn the room did hear starts it over.
-
-    It stays on the last line rather than wrapping: a fourth miss re-opening with the first
-    line would ask again as if for the first time, and her rule is one D per evidence asked.
+    Her rule is ``didntCatchThat(0)``, one line for every miss, so the conversation it is
+    handed no longer decides which line is said.
     """
-    misses = 0
-    for message in reversed(messages):
-        if message.get("role") != "guide":
-            continue
-        if message.get("category") != str(FailSafe.INAUDIBLE):
-            break
-        misses += 1
-    last = len(utterances(FailSafe.INAUDIBLE, language_code)) - 1
-    return choose(FailSafe.INAUDIBLE, language_code, turn=min(misses, last))
+    return choose(FailSafe.INAUDIBLE, language_code)
 
 
 #: Consecutive validation fail-safes before the room stops re-asking and pauses out loud.
