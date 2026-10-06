@@ -132,11 +132,11 @@ class ElementCoverage(BaseModel):
     at the end of the necklace, the rules that must not be lost, which belong to the passage
     rather than to any one of its scenes.
 
-    `label_pt` and `label_es` are nullable and `label_en` is not, which is `LabelledElement`'s
-    shape carried through unchanged. A passage nobody has translated is served from the canon
-    with the other two absent, and a bead here must be able to say so: narrowing them to `str`
-    would mean this route could only ever answer the four translated passages, while D-03
-    walks every team through all fourteen.
+    `label_pt` is nullable and `label_en` is not, which is `LabelledElement`'s shape carried
+    through unchanged. A passage nobody has translated is served from the canon with
+    Portuguese absent, and a bead here must be able to say so: narrowing it to `str` would
+    mean this route could only ever answer the four translated passages, while D-03 walks
+    every team through all fourteen.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -144,7 +144,6 @@ class ElementCoverage(BaseModel):
     key: str
     label_pt: str | None
     label_en: str
-    label_es: str | None
     kind: ElementKind
     scene: str | None = None
     #: The enum and not the string it serialises to, so the Desk reads the closed set of four

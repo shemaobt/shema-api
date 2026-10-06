@@ -239,7 +239,7 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
 
     assert len(body) == PILOT["P02"]["elements"]
     for element in body:
-        for language in ("pt", "en", "es"):
+        for language in ("pt", "en"):
             named = element[f"label_{language}"]
             assert named.strip()
             assert named != element["key"]
@@ -452,7 +452,6 @@ async def test_no_aggregate_reaches_the_facilitator(client, db_session: AsyncSes
         "key",
         "label_pt",
         "label_en",
-        "label_es",
         "kind",
         "scene",
         "status",
@@ -559,7 +558,7 @@ async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     body = response.json()
     assert body, "a passagem sem catalogo respondeu vazia em vez de vir do canon"
     assert all(bead["label_en"] for bead in body)
-    assert all(bead["label_pt"] is None and bead["label_es"] is None for bead in body)
+    assert all(bead["label_pt"] is None for bead in body)
 
 
 async def test_a_pericope_outside_the_book_is_refused(client, db_session: AsyncSession) -> None:
