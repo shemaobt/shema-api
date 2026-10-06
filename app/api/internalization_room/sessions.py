@@ -259,12 +259,16 @@ class _Cut:
 
     @classmethod
     def read(cls, interrupted: str | None, at_ms: str | None, of_ms: str | None) -> "_Cut":
-        """The cut as Marcia's route reads it: only "1" is a cut, and a position that is not a
-        non-negative decimal number is absent. Nothing here refuses a take.
+        """The cut as the tablet sent it: the house's truthy words are a cut, anything else is
+        not, and a position that is not a non-negative decimal number is absent. Nothing here
+        refuses a take.
         """
-        return cls(interrupted == "1", _position(at_ms), _position(of_ms))
+        return cls(
+            (interrupted or "").strip().lower() in _TRUTHY, _position(at_ms), _position(of_ms)
+        )
 
 
+_TRUTHY = frozenset({"1", "true", "t", "yes", "y", "on"})
 _DECIMAL = re.compile(r"\s*(?:\d+\.?\d*|\.\d+)?\s*")
 
 

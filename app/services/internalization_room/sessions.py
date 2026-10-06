@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -628,7 +629,7 @@ async def append_exchange(
                 take_ms=outcome.take_ms,
             )
         if outcome.interrupted is not None:
-            guide["interrupted"] = outcome.interrupted
+            guide["interrupted"] = asdict(outcome.interrupted)
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
     messages.append(guide)

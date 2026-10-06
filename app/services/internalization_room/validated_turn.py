@@ -38,6 +38,14 @@ MAX_REDRAFTS = 2
 READINGS_OF_ONE_DRAFT = 2
 
 
+@dataclass(frozen=True)
+class CutPoint:
+    """Where the team cut the Guide's previous reply short, and how long that reply was."""
+
+    at_ms: int
+    of_ms: int | None
+
+
 @dataclass
 class TurnOutcome:
     speech: str
@@ -74,7 +82,7 @@ class TurnOutcome:
     #: take, which the twenty-second rule read before it was rounded.
     take_ms: float | None = None
     #: Where the team cut the Guide's previous reply short to say this, when they did.
-    interrupted: dict[str, int | None] | None = None
+    interrupted: CutPoint | None = None
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:

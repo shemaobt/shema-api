@@ -382,7 +382,25 @@ async def test_an_unreadable_cut_position_counts_as_absent_and_the_take_is_still
     assert record["interrupted"] == kept
 
 
-async def test_an_interrupted_flag_that_is_not_1_is_no_cut_and_the_take_is_still_answered(
+async def test_the_houses_truthy_words_for_the_interrupted_flag_are_a_cut(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    voiced: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide, voiced)
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "por", 0.95)
+    the_take_lasts(monkeypatch, 6_000)
+
+    await _the_team_sends_a_take(tablet, session, interrupted="True")
+
+    assert guide.guide_inputs == [f"{CUT} {PORTUGUESE}"]
+    record = await _the_turns_record(db_session, session.id)
+    assert record["interrupted"] == {"at_ms": 0, "of_ms": None}
+
+
+async def test_an_interrupted_flag_that_is_not_a_truthy_word_is_no_cut_and_the_take_is_still_answered(  # noqa: E501
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     guide: ScriptedAgent,
