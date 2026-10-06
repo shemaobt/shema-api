@@ -37,7 +37,7 @@ class Compiler:
         self.sha = sha
         self.files: dict[str, bytes] = {}
         self.listed: list[str] = []
-        self.relation = "identical"
+        self.relation: str | None = "identical"
         self.requests: list[str] = []
 
     def passage(
@@ -63,6 +63,8 @@ class Compiler:
     def get(self, url: str) -> bytes:
         self.requests.append(url)
         if found := _COMPARE.match(url):
+            if self.relation is None:
+                raise _not_found(url)
             return json.dumps({"status": self.relation}).encode()
         if found := _CONTENTS.match(url):
             prefix = found["path"].rstrip("/") + "/"

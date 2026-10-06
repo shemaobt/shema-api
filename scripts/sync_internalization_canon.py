@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -60,6 +61,17 @@ def _get(url: str) -> bytes:
 def _head_sha() -> str:
     payload = json.loads(_get(f"https://api.github.com/repos/{REPO}/commits/main"))
     return payload["sha"]
+
+
+def _on_main_line(sha: str) -> bool:
+    url = f"https://api.github.com/repos/{REPO}/compare/{sha}...main"
+    try:
+        status = json.loads(_get(url))["status"]
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        return False
+    return status in ("identical", "ahead")
 
 
 def _listing(kind: str, sha: str) -> list[str]:
@@ -118,6 +130,9 @@ def _digest(data: bytes) -> str:
 
 
 def sync(pin: str | None = None) -> int:
+    if pin and not _on_main_line(pin):
+        print(f"pin {pin} is not on the compiler's main line — refusing", file=sys.stderr)
+        return 1
     sha = pin if pin else _head_sha()
     published, skipped = _published(sha)
     for line in skipped:
