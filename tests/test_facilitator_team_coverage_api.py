@@ -546,8 +546,8 @@ async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     This route refused it until ENG-442 landed. It does not any more, and the reason is worth
     keeping: the canon serves all fourteen of Ruth, D-03 walks every team through them, and
     refusing ten of the fourteen would have taken the whole necklace down for a passage the
-    team is genuinely working on. English comes almost free from the canon; Portuguese and
-    Spanish are absent rather than filled in with it, which is what stops a sentence a
+    team is genuinely working on. English comes almost free from the canon; Portuguese is
+    absent rather than filled in with it, which is what stops a sentence a
     facilitator does not read arriving under the name of their own language.
     """
     _user, project, headers = await a_facilitator(db_session, email="b7@x.com")

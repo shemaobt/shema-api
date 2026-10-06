@@ -9,15 +9,15 @@ never anything a person was meant to see.
 rendered straight onto the card. Serving both would put a field on every response that its
 only consumer never reads.
 
-**Three languages and not one.** The room negotiates the language it *speaks* — on the
+**Two languages and not one.** The room negotiates the language it *speaks* — on the
 session, and on the wheel that precedes any session — but never the language it *labels* in:
 a bead's name is read by a facilitator at the Desk, and the Desk is not the tablet whose
-locale the room obeys. `LabelledElement` and the coverage legend both serve `pt`/`en`/`es` as
+locale the room obeys. `LabelledElement` and the coverage legend both serve `pt`/`en` as
 named fields and let the client choose, and serving a single label here would tie a
 facilitator's reading to a team's listening.
 
 The catalogue now holds all fourteen passages, and only four of them — P01, P02, P05, P14 —
-are translated. The other ten carry English and two nulls, so **that is the shape most teams
+are translated. The other ten carry English and a null Portuguese, so **that is the shape most teams
 will see**, and it gets a case of its own rather than being left to the pilot's four.
 """
 
@@ -182,7 +182,7 @@ async def test_the_raw_key_reaches_no_served_field(client, db_session):
 async def test_a_passage_outside_the_pilot_serves_english_and_no_portuguese(client, db_session):
     """Ten of the fourteen look like this, so this is what most teams will see.
 
-    The pilot's four are complete in all three languages, which means a suite that only ever
+    The pilot's four are complete in both languages, which means a suite that only ever
     asked about them would be green on a resolver that could not produce a null at all.
     """
     team = await a_team(db_session, name="Equipe das dez")

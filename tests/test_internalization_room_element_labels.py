@@ -488,7 +488,7 @@ def test_a_passage_translated_into_the_catalogue_is_read_from_it_without_a_secon
     exists to prevent, and nothing anywhere would go red.
 
     So the catalogue is asked directly. This takes a passage back out of a copy of it, puts it
-    in again with three languages, and requires that the loader find it with no other change.
+    in again with both languages, and requires that the loader find it with no other change.
 
     It used to pick a passage the shipped catalogue did not have. **There is no longer one** —
     all fourteen are in it since the ten were written — so the passage is removed first. That
@@ -574,7 +574,7 @@ def test_the_permission_does_not_reach_english(tmp_path):
 def test_a_key_the_catalogue_names_with_nothing_at_all_is_still_our_file_being_wrong(
     tmp_path,
 ):
-    """An entry present and empty in all three is a holed file, not an untranslated passage.
+    """An entry present and empty in both is a holed file, not an untranslated passage.
 
     The difference is the whole point of the permission: *absent Portuguese* is a passage
     waiting for a translator, and *absent everything* is our own file. Only one of the two is

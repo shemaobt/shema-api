@@ -232,7 +232,7 @@ def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str 
     being wrong — the difference between the two is the whole of the permission, and only one
     goes through.
 
-    An entry empty in all three is caught by the English refusal above and never reaches the
+    An entry empty in both is caught by the English refusal above and never reaches the
     rest of this function: `labelled_elements` evaluates `label_en` before it spreads the other
     languages, so by the time this is asked about Portuguese the English of the same entry is
     known to be there. A separate refusal for "nothing in any language" was written here and

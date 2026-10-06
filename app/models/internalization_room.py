@@ -594,16 +594,16 @@ class InboxQuestionView(BaseModel):
     ``element_key`` nor ``elementKey`` appears anywhere, so serving both would put a field on
     every card that its only consumer never reads.
 
-    **Three languages rather than one**, which is the same shape ``LabelledElement`` and the
+    **Two languages rather than one**, which is the same shape ``LabelledElement`` and the
     coverage legend take. The room negotiates a language for what it *says* — named on the
     session, and on the wheel that precedes any session — but not for what it *labels*: a
     bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
-    all three are served and the client picks, as it already does everywhere else.
+    both are served and the client picks, as it already does everywhere else.
 
     **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
     passages and four of them are translated, so on the other ten every bead carries English
-    and two nulls. A Desk reading ``pt`` first has to have somewhere to fall back to, and that
-    choice is the client's — this response does not make it, exactly as ``LabelledElement``
+    and a null Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
+    and that choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 
     **Nothing reads this yet, and there is no window where something reads it wrong.** The
