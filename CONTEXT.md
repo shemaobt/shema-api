@@ -123,9 +123,9 @@ _Avoid_: granularity, mode, shape, Granularidade
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
 _Avoid_: answer key, base text, Mapa de Sentido
 
-**Necklace** and **bead** (`element`):
-The coverage of the passage seen as a string of beads, each bead an element of the Map that travels through not encountered, surfaced, partially engaged and engaged.
-_Avoid_: progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
+**Necklace**, **bead** and **element**:
+The necklace is the passage's coverage as the tablet draws it: her twelve beads (`beads_total`), whatever the passage's number of elements, of which `beads_filled` are lit, the elements engaged over all the elements times twelve, rounded half up. Underneath, each **element** of the Map travels through not encountered, surfaced, partially engaged and engaged. A **bead** is one of the twelve; an **element** is one of the Map's.
+_Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice.
