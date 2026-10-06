@@ -21,26 +21,16 @@ _OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
 
 _LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "pt": "português"}
 
-#: What an issue with no "problem" key names itself as, in the session's own language — the
-#: same table the note built around it already uses. Left unkeyed, this defaulted to the
-#: Portuguese word regardless of which language's note it was substituted into.
-_UNNAMED_PROBLEM: dict[str, str] = {"pt": "problema", "en": "problem"}
-
 _NO_ISSUES_NOTE: dict[str, str] = {
     "pt": "A resposta anterior não passou na conferência. Refaça.",
     "en": "The previous response did not pass review. Redo it.",
 }
 
-_DESCRIBED_ISSUES_NOTE: dict[str, str] = {
-    "pt": (
-        "A resposta anterior foi rejeitada na conferência contra o mapa. Problemas "
-        "apontados — {described}. Refaça o turno sem essas afirmações."
-    ),
-    "en": (
-        "The previous response was rejected against the map. Issues raised — "
-        "{described}. Redo the turn without those claims."
-    ),
-}
+_REDRAFT_NOTE = (
+    "(internal redraft note — the previous draft carried something the map does not support: "
+    "{issues}. Redraft the same answer, as fully as the team's request deserves, using only "
+    "what the map contains.)"
+)
 
 
 def _redraft_note(issues: list[dict[str, Any]], language_code: str = FLOOR) -> str:
@@ -51,10 +41,9 @@ def _redraft_note(issues: list[dict[str, Any]], language_code: str = FLOOR) -> s
         return template.format(language=autonym)
     if not issues:
         return _NO_ISSUES_NOTE.get(language_code, _NO_ISSUES_NOTE[FLOOR])
-    unnamed = _UNNAMED_PROBLEM.get(language_code, _UNNAMED_PROBLEM[FLOOR])
     described = "; ".join(
-        f"{issue.get('problem', unnamed)}: {issue.get('claim', '')}".strip(": ")
-        for issue in issues[:3]
+        f"{issue.get('problem', 'problem')}: {issue.get('claim', '')} — "
+        f"{issue.get('explanation', '')}"
+        for issue in issues
     )
-    template = _DESCRIBED_ISSUES_NOTE.get(language_code, _DESCRIBED_ISSUES_NOTE[FLOOR])
-    return template.format(described=described)
+    return _REDRAFT_NOTE.format(issues=described)

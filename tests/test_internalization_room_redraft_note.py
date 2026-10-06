@@ -12,7 +12,6 @@ import pytest
 
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import (
-    _DESCRIBED_ISSUES_NOTE,
     _NO_ISSUES_NOTE,
     _OFF_BRIDGE_LANGUAGE_NOTE,
     _redraft_note,
@@ -59,34 +58,53 @@ def test_the_no_issues_note_is_written_in_the_sessions_language(language_code: s
     assert note == _EXPECTED_NO_ISSUES[language_code]
 
 
-_DESCRIBED_ISSUES = [{"problem": "imported_knowledge", "claim": "Rute era moabita"}]
+_FIVE_ISSUES = [
+    {
+        "problem": "invented_detail",
+        "claim": "Noemi chorava na estrada",
+        "explanation": "The map records no tears on the road.",
+    },
+    {
+        "problem": "imported_knowledge",
+        "claim": "Moabe ficava além do Jordão",
+        "explanation": "The map gives no geography beyond Moab.",
+    },
+    {
+        "problem": "softened_absence",
+        "claim": "ninguém sabe por que ela voltou",
+        "explanation": "The map marks the reason as deliberately absent.",
+    },
+    {
+        "problem": "overstated_certainty",
+        "claim": "Rute decidiu na mesma hora",
+        "explanation": "The map leaves the moment of decision open.",
+    },
+    {
+        "problem": "scrambled_structure",
+        "claim": "primeiro a colheita, depois a despedida",
+        "explanation": "The map orders the farewell before the harvest.",
+    },
+]
 
-_EXPECTED_DESCRIBED = {
-    "pt": (
-        "A resposta anterior foi rejeitada na conferência contra o mapa. Problemas "
-        "apontados — {described}. Refaça o turno sem essas afirmações."
-    ),
-    "en": (
-        "The previous response was rejected against the map. Issues raised — "
-        "{described}. Redo the turn without those claims."
-    ),
-}
+_HER_NOTE_FOR_FIVE_ISSUES = (
+    "(internal redraft note — the previous draft carried something the map does not "
+    "support: invented_detail: Noemi chorava na estrada — The map records no tears on the "
+    "road.; imported_knowledge: Moabe ficava além do Jordão — The map gives no geography "
+    "beyond Moab.; softened_absence: ninguém sabe por que ela voltou — The map marks the "
+    "reason as deliberately absent.; overstated_certainty: Rute decidiu na mesma hora — The "
+    "map leaves the moment of decision open.; scrambled_structure: primeiro a colheita, "
+    "depois a despedida — The map orders the farewell before the harvest.. Redraft the same "
+    "answer, as fully as the team's request deserves, using only what the map contains.)"
+)
 
 
-@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
-def test_the_described_issues_note_is_written_in_the_sessions_language(language_code: str) -> None:
-    note = _redraft_note(_DESCRIBED_ISSUES, language_code)
-
-    expected = _EXPECTED_DESCRIBED[language_code].format(
-        described="imported_knowledge: Rute era moabita"
-    )
-    assert note == expected
+def test_a_draft_sent_back_with_five_issues_lists_all_five_with_their_reasons() -> None:
+    assert _redraft_note(_FIVE_ISSUES) == _HER_NOTE_FOR_FIVE_ISSUES
 
 
 _REDRAFT_NOTE_DICTS = {
     "off_bridge_language": _OFF_BRIDGE_LANGUAGE_NOTE,
     "no_issues": _NO_ISSUES_NOTE,
-    "described_issues": _DESCRIBED_ISSUES_NOTE,
 }
 
 
@@ -112,14 +130,6 @@ def test_every_redraft_note_covers_every_language_the_room_claims_to_speak(
             _EXPECTED_OFF_BRIDGE["en"].format(language="English"),
         ),
         ([], _EXPECTED_NO_ISSUES["en"]),
-        (
-            _DESCRIBED_ISSUES,
-            _EXPECTED_DESCRIBED["en"].format(described="imported_knowledge: Rute era moabita"),
-        ),
-        (
-            [{"claim": "Rute era moabita"}],
-            _EXPECTED_DESCRIBED["en"].format(described="problem: Rute era moabita"),
-        ),
     ],
 )
 def test_a_session_still_stored_in_spanish_is_told_in_the_floors_language(
@@ -131,17 +141,10 @@ def test_a_session_still_stored_in_spanish_is_told_in_the_floors_language(
 _UNNAMED_PROBLEM_ISSUE = [{"claim": "Rute era moabita"}]
 
 
-@pytest.mark.parametrize(("language_code", "label"), [("en", "problem"), ("pt", "problema")])
-def test_an_issue_missing_its_problem_key_falls_back_in_the_sessions_language(
-    language_code: str, label: str
-) -> None:
-    """ENG-822, item 5: the fallback used to be the bare Portuguese word "problema" no matter
-    which language's note it landed inside, so an English session's note could read
-    "problema: Rute era moabita" — Portuguese inside an otherwise-English sentence.
-    """
-    note = _redraft_note(_UNNAMED_PROBLEM_ISSUE, language_code)
+def test_an_issue_missing_its_problem_key_falls_back_to_the_english_word() -> None:
+    note = _redraft_note(_UNNAMED_PROBLEM_ISSUE)
 
-    assert f"{label}: Rute era moabita" in note
+    assert "problem: Rute era moabita" in note
 
 
 _SAY_LESS = re.compile(r"say less|saying less|dizendo menos|diga menos", re.I)
