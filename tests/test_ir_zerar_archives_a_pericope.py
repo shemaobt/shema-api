@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -57,8 +57,10 @@ from tests.release_harness import (
     P,
     a_claimed_device,
     at_the_desk,
+    desk_release,
     desk_release_at,
     desk_retro,
+    ensaio_take,
     ready_session,
     team_headers,
     team_release,
@@ -346,7 +348,17 @@ async def test_the_archives_snapshot_holds_each_session_as_it_stood(
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     approved = await a_worked_and_approved_passage(client, db_session, per_request, team, tablet)
-    spoken = await the_tablet_opens(client, tablet, {"pericope": P, "language": "en"})
+    recorded_again = ensaio_take(
+        approved.id,
+        sha256="b" * 64,
+        project_id=team.id,
+        created_at=datetime.now(UTC) + timedelta(minutes=1),
+    )
+    db_session.add(recorded_again)
+    await db_session.commit()
+    spoken = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+    assert spoken["session_id"] != approved.id
+    kept = {approved.id: [{"part": None, "take_id": recorded_again.id}], spoken["session_id"]: []}
     stood: dict[str, dict[str, Any]] = {}
     async with per_request() as fresh:
         for session_id in (approved.id, spoken["session_id"]):
@@ -356,18 +368,11 @@ async def test_the_archives_snapshot_holds_each_session_as_it_stood(
                 .where(IRRelease.session_id == session_id)
                 .order_by(IRRelease.version)
             )
-            takes = await client.get(
-                f"{PREFIX}/facilitator/sessions/{session_id}/takes", headers=desk
-            )
             stood[session_id] = {
                 "status": session.status.value,
                 "coverage": session.coverage_state,
                 "turns": sum(1 for line in session.messages or [] if line["role"] == "guide"),
-                "kept_takes": [
-                    {"part": take["ordinal"], "take_id": take["take_id"]}
-                    for take in takes.json()["takes"]
-                    if take["kind"] == "ensaio"
-                ],
+                "kept_takes": kept[session_id],
                 "release_versions": list(versions),
             }
 
@@ -379,7 +384,6 @@ async def test_the_archives_snapshot_holds_each_session_as_it_stood(
     }
     assert snapshot == stood
     assert stood[approved.id]["turns"] == 1
-    assert len(stood[approved.id]["kept_takes"]) == 1
     assert stood[approved.id]["release_versions"] == [1]
 
 
@@ -709,6 +713,26 @@ async def test_the_retroverification_file_of_a_new_session_lists_no_archived_dra
     assert unapproved.json()["releases"] == []
     assert approved.status_code == 200, approved.text[:300]
     assert [release["version"] for release in listed.json()["releases"]] == [2]
+
+
+async def test_a_release_forced_on_an_archived_session_stays_in_its_own_archives_file(
+    client, db_session, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    archived = await ready_session(db_session, project_id=team.id)
+    await zerar(client, desk, team.id, P)
+    after = await ready_session(db_session, project_id=team.id)
+
+    forced = await client.post(desk_release(archived.id), headers=desk, json={"force": True})
+
+    assert forced.status_code == 200, forced.text[:300]
+    new_file = await client.get(desk_retro(after.id), headers=desk)
+    archived_file = await client.get(desk_retro(archived.id), headers=desk)
+    assert new_file.json()["releases"] == []
+    assert [release["version"] for release in archived_file.json()["releases"]] == [
+        forced.json()["version"]
+    ]
 
 
 async def test_a_zerard_closed_passage_is_the_teams_passage_again(

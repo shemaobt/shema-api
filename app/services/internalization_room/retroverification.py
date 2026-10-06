@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
@@ -240,6 +241,26 @@ def _notices(
     return said
 
 
+async def _of_the_same_archive(
+    db: AsyncSession, session: IRSession, releases: list[IRRelease]
+) -> list[IRRelease]:
+    """The releases minted on a session of this session's archive, live with live.
+
+    Read off the session that minted each one and not off the release's own stamp: a release
+    minted after its session's Zerar, by a facilitator's force or an approval that raced it,
+    was not there to be stamped, and belongs to its session's archive all the same.
+    """
+    minted_on = await db.execute(
+        select(IRSession.id, IRSession.archive_id).where(
+            IRSession.id.in_({release.session_id for release in releases})
+        )
+    )
+    archived = dict(minted_on.tuples().all())
+    return [
+        release for release in releases if archived.get(release.session_id) == session.archive_id
+    ]
+
+
 async def retroverification_file(db: AsyncSession, session: IRSession) -> RetroverificationFile:
     """The whole record of one session's check, assembled from the rows the room wrote.
 
@@ -248,7 +269,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     this passage, and a list scoped to one session would hide it from the person reading the
     history. A session naming no project has none, which is the same answer the approval gives.
     Only the releases of the session's own archive are the passage's here: a live session lists
-    the live drafts, and an archived one the drafts its Zerar archived with it (ADR 0047).
+    the live drafts, and an archived one the drafts of its own archive (ADR 0047).
 
     The numbering is the session's own. A **Version** freezes the reading of the session it was
     built from, so the numbers come from the last release *this* session wrote and never from
@@ -281,15 +302,12 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     cut_in_two = await divided_segments(db, session.id)
     retired = await retired_segments(db, session.id)
     takes = await takes_of(db, session.id)
-    releases = [
-        release
-        for release in (
-            await releases_of_passage(db, session.project_id, session.pericope)
-            if session.project_id
-            else []
-        )
-        if release.archive_id == session.archive_id
-    ]
+    releases = (
+        await releases_of_passage(db, session.project_id, session.pericope)
+        if session.project_id
+        else []
+    )
+    releases = await _of_the_same_archive(db, session, releases)
     marks = (await hard_stretches_of(db, [session.id])).get(session.id, [])
 
     minted_here = [release for release in releases if release.session_id == session.id]

@@ -9,7 +9,6 @@ next open mints a new session.
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +24,7 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTeamSession,
 )
+from app.models.internalization_room_archive import ArchivedSession, KeptPart
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
 from app.services.project.facilitates_project import facilitates_project
@@ -79,7 +79,7 @@ async def archive_pericope(
         project_id=project_id,
         pericope=pericope,
         archived_by=user.id,
-        snapshot=await _as_they_stood(db, stamped),
+        snapshot=[entry.model_dump() for entry in await _as_they_stood(db, stamped)],
     )
     db.add(archive)
     await db.execute(
@@ -91,7 +91,7 @@ async def archive_pericope(
     return archive
 
 
-async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[dict[str, Any]]:
+async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[ArchivedSession]:
     """Each session's dossier: ``turns`` counts the guide's lines, her ``turnCount``.
 
     ``kept_takes`` are the parts the team had kept, the newest rehearsal under each part number
@@ -101,7 +101,7 @@ async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[dict[
     """
     kept = {
         session_id: [
-            {"part": take.ordinal, "take_id": take.id}
+            KeptPart(part=take.ordinal, take_id=take.id)
             for take in current_parts(await takes_of(db, session_id))
         ]
         for session_id in session_ids
@@ -121,16 +121,16 @@ async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[dict[
     for session_id, version in minted.all():
         versions.setdefault(session_id, []).append(version)
     return [
-        {
-            "session_id": session.id,
-            "language": session.language,
-            "status": session.status.value,
-            "coverage": session.coverage_state,
-            "turns": sum(1 for line in session.messages or [] if line.get("role") == "guide"),
-            "kept_takes": kept[session.id],
-            "release_versions": versions.get(session.id, []),
-            "created_at": as_utc(session.created_at).isoformat(),
-            "updated_at": as_utc(session.updated_at).isoformat(),
-        }
+        ArchivedSession(
+            session_id=session.id,
+            language=session.language,
+            status=session.status.value,
+            coverage=session.coverage_state,
+            turns=sum(1 for line in session.messages or [] if line.get("role") == "guide"),
+            kept_takes=kept[session.id],
+            release_versions=versions.get(session.id, []),
+            created_at=as_utc(session.created_at).isoformat(),
+            updated_at=as_utc(session.updated_at).isoformat(),
+        )
         for session in sessions
     ]
