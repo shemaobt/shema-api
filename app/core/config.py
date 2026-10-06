@@ -87,22 +87,17 @@ class Settings(BaseSettings):
     internalization_room_runner_key: str = ""
     #: The room bills its own voice. Empty falls back to the shared key.
     internalization_room_elevenlabs_api_key: str = ""
-    #: The room's Portuguese voice. One native voice per language it speaks, never one
-    #: multilingual voice for all of them: a voice keeps its accent in any language, and a
-    #: Brazilian-cloned voice reading English is the failure ``platform/voices.py`` argues
-    #: against at length.
-    internalization_room_voice_id: str = "83Nae6GFQiNslSbuzmE7"
-    internalization_room_voice_id_en: str = "x52Gqgso2pdbdr7KngsJ"
+    #: The room's voice is Mariana's, chosen on 2026-09-21, because Marcia's frozen app is the
+    #: bar for what the team hears and it speaks every line in her. English is voiced by
+    #: ``_en`` when a deployment configures one and by her otherwise.
+    internalization_room_voice_id: str = "tZ2oxQJXfOrGrN7iKnta"
+    internalization_room_voice_id_en: str = ""
     internalization_room_voice_id_es: str = "fYypSok4m8xKqKsDwS7O"
     #: What a caller that names no language gets. Not "the language the room speaks" any
     #: more — the app names that on the session, because it is the tablet that knows which
     #: language the team in front of it reads its own settings in.
     internalization_room_default_language: str = "en"
     internalization_room_tts_model: str = "eleven_turbo_v2_5"
-    internalization_room_voice_stability: float = 0.45
-    internalization_room_voice_similarity: float = 0.85
-    internalization_room_voice_style: float = 0.10
-    internalization_room_voice_speed: float = 0.96
 
     gcs_bucket_name: str = ""
     # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it

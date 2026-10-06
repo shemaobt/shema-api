@@ -50,16 +50,14 @@ async def synthesize_facilitator_speech(
     than being chosen alongside it: the app never picks how the facilitator sounds, only
     which language it sounds in.
 
-    That the voice moves with the language is also what keeps the cache honest. The bucket
-    key is content-addressed over text, voice, model, format and tuning but not language, so
-    one voice speaking two languages would serve the first language's bytes for the second's
-    request. A voice per language puts the language in the key without changing its shape,
-    and every clip already bought stays addressable.
+    ElevenLabs is asked exactly what Marcia's frozen app asks it: the text and the model,
+    with no tuning and no language hint, so the voice reads at its own defaults. The bucket
+    key is content-addressed over text, voice, model and format but not language, and that is
+    right here: one voice speaking the same text in Portuguese and in English is sent the same
+    request, so the same bytes answer both.
 
-    The model is pinned here rather than shared with the rest of the platform because only
-    the turbo and flash families honour `language_code`; `eleven_multilingual_v2` detects
-    the language from the text, which lets an English word from the map drag a whole
-    sentence out of Portuguese.
+    The model is pinned here rather than shared with the rest of the platform because it is
+    the one her app speaks with.
 
     The room carries its own ElevenLabs key so its spend and its rate limit are separable
     from the rest of the platform's; an empty setting falls back to the shared one, which
@@ -101,13 +99,7 @@ def _in_the_rooms_voice(
         language=spoken,
         voice_id=voice_for(spoken, settings=cfg),
         model=cfg.internalization_room_tts_model,
-        voice_settings={
-            "stability": cfg.internalization_room_voice_stability,
-            "similarity_boost": cfg.internalization_room_voice_similarity,
-            "style": cfg.internalization_room_voice_style,
-            "use_speaker_boost": True,
-            "speed": cfg.internalization_room_voice_speed,
-        },
+        states_language=False,
         api_key=cfg.internalization_room_elevenlabs_api_key or None,
         settings=cfg,
     )

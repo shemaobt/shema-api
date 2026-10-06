@@ -133,6 +133,7 @@ async def synthesize_speech(
     voice_id: str | None = None,
     model: str | None = None,
     voice_settings: Mapping[str, float | bool] | None = None,
+    states_language: bool = True,
     api_key: str | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
@@ -142,6 +143,10 @@ async def synthesize_speech(
 
     `settings`, `client` and `store` are injectable — that is what makes the service testable
     without network and without GCS.
+
+    The language reaches ElevenLabs as `language_code` unless `states_language` is false, for
+    a caller whose voice is meant to read the text the way Marcia's app has it read: with no
+    hint at all.
 
     A hit is read through `fetch_clip`, which tries the in-process `_FRESH` cache before the
     bucket, and a miss seeds `_FRESH` with the bytes it just wrote — so a repeat request in the
@@ -155,6 +160,7 @@ async def synthesize_speech(
         voice_id=voice_id,
         model=model,
         voice_settings=voice_settings,
+        states_language=states_language,
         api_key=api_key,
         settings=settings,
         client=client,
@@ -185,6 +191,7 @@ async def synthesize_speech_key(
     voice_id: str | None = None,
     model: str | None = None,
     voice_settings: Mapping[str, float | bool] | None = None,
+    states_language: bool = True,
     api_key: str | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
@@ -197,6 +204,7 @@ async def synthesize_speech_key(
         voice_id=voice_id,
         model=model,
         voice_settings=voice_settings,
+        states_language=states_language,
         api_key=api_key,
         settings=settings,
         client=client,
@@ -248,6 +256,7 @@ def _addressed(
     voice_id: str | None,
     model: str | None,
     voice_settings: Mapping[str, float | bool] | None,
+    states_language: bool,
     api_key: str | None,
     settings: Settings | None,
     client: httpx.AsyncClient | None,
@@ -280,6 +289,7 @@ def _addressed(
         language=language,
         model=chosen_model,
         voice_settings=voice_settings,
+        states_language=states_language,
         cfg=cfg,
         client=client,
         api_key=credential,
@@ -331,13 +341,12 @@ async def _synthesize(
     client: httpx.AsyncClient | None,
     model: str,
     voice_settings: Mapping[str, float | bool] | None = None,
+    states_language: bool = True,
     api_key: str | None = None,
 ) -> bytes:
-    body: dict[str, object] = {
-        "text": text,
-        "model_id": model,
-        "language_code": language_hint(language),
-    }
+    body: dict[str, object] = {"text": text, "model_id": model}
+    if states_language:
+        body["language_code"] = language_hint(language)
     if voice_settings:
         body["voice_settings"] = dict(voice_settings)
 
