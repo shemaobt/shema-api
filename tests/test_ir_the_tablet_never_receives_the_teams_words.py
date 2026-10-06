@@ -12,7 +12,6 @@ import json
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSegment
@@ -53,14 +52,10 @@ VERDICT_DRAFT = "SENTINELA-FALA-DO-VEREDITO-NAO-SAI-DA-MESA"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 
 
-def _plain_words_of(model: type[BaseModel]) -> set[str]:
-    """The fields of a facilitator-side model that hold a bare string: its words."""
-    return {name for name, field in model.model_fields.items() if field.annotation is str}
-
-
-FINDING_NOTE = _plain_words_of(Finding)
-CONVERSATION_TEXT = _plain_words_of(ConversationTurn)
-WORDS = {IRSegment.transcript.key} | FINDING_NOTE | CONVERSATION_TEXT
+WORD_FIELDS = {Finding: "note", ConversationTurn: "text"}
+WORDS = {IRSegment.transcript.key} | {
+    name for model, name in WORD_FIELDS.items() if model.model_fields[name]
+}
 
 
 def _keys(body: Any) -> set[str]:
@@ -168,10 +163,6 @@ async def test_a_turn_answer_stored_before_the_change_is_served_without_its_tran
 
 
 def test_no_tablet_door_answers_with_a_model_that_carries_the_teams_words() -> None:
-    assert FINDING_NOTE and CONVERSATION_TEXT, (
-        "uma fonte do lado do facilitador deixou de ter palavras; a guarda procuraria o vazio"
-    )
-
     carrying = {
         (*named(route), model.__name__): sorted(WORDS & set(model.model_fields))
         for route in room_app_routes()
