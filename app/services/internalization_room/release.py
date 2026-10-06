@@ -794,7 +794,7 @@ async def approve_release(
 
     _judge(blockers, FORCEABLE_BLOCKERS if forced_by else frozenset())
 
-    release_id = str(uuid.uuid4())
+    row_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
     forced = forced_by is not None
     packet["release_id"] = release_name(packet["language"], session.pericope, version)
@@ -803,7 +803,7 @@ async def approve_release(
     packet["check"]["forced"] = forced
     packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
     release = IRRelease(
-        id=release_id,
+        id=row_id,
         session_id=session.id,
         project_id=session.project_id,
         pericope=session.pericope,

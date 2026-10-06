@@ -60,7 +60,9 @@ def storage_key(session_id: str, kind: IRTakeKind, sha256: str, content_type: st
     so. Addressed by its own hash, a broken upload is an object nothing points at.
 
     It also makes the whole path idempotent — the same bytes sent twice land on the same
-    object and, by the unique constraint, the same row.
+    object and, by the unique constraint, the same row. The content type only names the file a
+    take is first stored under: the same bytes sent again under another one are the same take,
+    found by their hash, so a retry never moves the packet's take or mints a version.
 
     The last segment is the name the take downloads under, so it follows the content type: a
     WAV take is ``.wav`` and anything else keeps the ``.m4a`` it always had.
@@ -111,7 +113,9 @@ async def store_take(
     key = storage_key(session_id, kind, digest, content_type)
 
     existing = await db.execute(
-        select(IRTake).where(IRTake.session_id == session_id, IRTake.storage_key == key)
+        select(IRTake).where(
+            IRTake.session_id == session_id, IRTake.kind == kind, IRTake.sha256 == digest
+        )
     )
     already = existing.scalar_one_or_none()
     if already is not None:
