@@ -76,3 +76,8 @@ def models_in(annotation, seen: frozenset = frozenset()) -> set[type[BaseModel]]
     for arg in typing.get_args(annotation):
         found |= models_in(arg, seen)
     return found
+
+
+def named(route) -> tuple[str, str]:
+    """The route's verb and path, the way a report names it."""
+    return sorted(route.methods - {"HEAD", "OPTIONS"})[0], route.path

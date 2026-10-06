@@ -39,7 +39,7 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRS
 from app.models.internalization_room import InboxQuestionView
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.voice_handles import to_handle
-from tests.room_route_audit_harness import models_in, room_app_routes
+from tests.room_route_audit_harness import models_in, named, room_app_routes
 
 #: How the facilitator's card spells the two fields that must never travel together to the
 #: room. Read off the card rather than typed here, so a rename that keeps the leak takes this
@@ -75,10 +75,6 @@ def question_routes_the_room_reaches() -> list:
     return [route for route in room_app_routes() if route.endpoint in mounted]
 
 
-def _named(route) -> tuple[str, str]:
-    return sorted(route.methods - {"HEAD", "OPTIONS"})[0], route.path
-
-
 def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> None:
     """The structural half, over every route the tablet can call.
 
@@ -88,7 +84,7 @@ def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> 
     question the team asked.
     """
     leaking = {
-        _named(route): model.__name__
+        named(route): model.__name__
         for route in room_app_routes()
         for model in models_in(route.response_model)
         if {QUESTION_IDENTITY, TRANSCRIPT_FIELD} <= set(model.model_fields)
@@ -102,7 +98,7 @@ def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> 
 
 def test_every_question_route_the_room_reaches_is_exercised() -> None:
     """Nothing escapes the sentinel by being added after this file was written."""
-    reachable = {_named(route) for route in question_routes_the_room_reaches()}
+    reachable = {named(route) for route in question_routes_the_room_reaches()}
 
     assert reachable == set(EXERCISED), (
         "as rotas de pergunta que a sala alcanca mudaram; a garantia so vale sobre as que "

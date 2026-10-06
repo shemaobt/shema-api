@@ -11,11 +11,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
 import pytest
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.internalization_room import sessions as sessions_api
 from app.db.models.internalization_room import IRSegment
 from app.models.internalization_room import ConversationTurn
 from app.services.internalization_room.back_translation import Finding
@@ -23,7 +22,6 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn_dedup import remember_turn
-from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
@@ -39,21 +37,30 @@ from tests.room_harness import (
     press_terminei,
     rehearsed_in_parts,
     room_client,
+    stored_telling_back,
     the_analyst_is_scripted,
     the_bucket_is_in_memory,
     the_room_speaks,
     upload_a_part,
 )
-from tests.room_route_audit_harness import models_in, room_app_routes
-from tests.turn_harness import the_room_agent_is, the_speaker_answers
+from tests.room_route_audit_harness import models_in, named, room_app_routes
+from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
+from tests.turn_harness import the_speaker_answers
 
 SENTINEL = "SENTINELA-A-FALA-DA-EQUIPE-NAO-SAI-DA-MESA"
-FINDING_NOTE = "SENTINELA-NOTA-DO-ANALISTA-NAO-SAI-DA-MESA"
+FINDING_NOTE_SAID = "SENTINELA-NOTA-DO-ANALISTA-NAO-SAI-DA-MESA"
 VERDICT_DRAFT = "SENTINELA-FALA-DO-VEREDITO-NAO-SAI-DA-MESA"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 
-TRANSCRIPT, NOTE, TEXT = IRSegment.transcript.key, "note", "text"
-WORDS = {TRANSCRIPT, NOTE, TEXT}
+
+def _plain_words_of(model: type[BaseModel]) -> set[str]:
+    """The fields of a facilitator-side model that hold a bare string: its words."""
+    return {name for name, field in model.model_fields.items() if field.annotation is str}
+
+
+FINDING_NOTE = _plain_words_of(Finding)
+CONVERSATION_TEXT = _plain_words_of(ConversationTurn)
+WORDS = {IRSegment.transcript.key} | FINDING_NOTE | CONVERSATION_TEXT
 
 
 def _keys(body: Any) -> set[str]:
@@ -65,33 +72,16 @@ def _keys(body: Any) -> set[str]:
 
 
 @pytest.fixture()
-def said(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    heard_now = [SENTINEL]
-
+def said(monkeypatch: pytest.MonkeyPatch) -> None:
     async def heard(*_: Any, **__: Any) -> HeardSpeech:
-        return HeardSpeech(text=heard_now[0])
+        return HeardSpeech(text=SENTINEL)
 
     async def model(*, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return GUIDE_LINE
 
-    async def voice(text: str, **_: Any):
-        return (
-            SynthesizedSpeech(
-                audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/x.mp3"
-            ),
-            False,
-        )
-
-    async def settled(**_: Any) -> None:
-        return None
-
-    monkeypatch.setattr(sessions_api, "heard_speech", heard)
-    the_room_agent_is(monkeypatch, turn=model)
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
-    monkeypatch.setattr(sessions_api, "settle_coverage", settled)
-    return heard_now
+    the_turn_is_scripted(monkeypatch, heard=heard, model=model)
 
 
 @pytest.fixture()
@@ -111,36 +101,13 @@ async def room_app(db_session: AsyncSession):
     return app
 
 
-async def _the_team_says(
-    client: httpx.AsyncClient, credential: str, session_id: str, turn_id: str
-) -> httpx.Response:
-    response = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers=team_headers(credential),
-        data={"turn_id": turn_id},
-        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
-    )
-    assert response.status_code == 200, response.text[:300]
-    return response
-
-
-async def _audio_less(
-    client: httpx.AsyncClient, credential: str, session_id: str
-) -> httpx.Response:
-    response = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
-    )
-    assert response.status_code == 200, response.text[:300]
-    return response
-
-
 async def test_a_spoken_turns_answer_to_the_tablet_carries_no_transcript(
     client, db_session, said
 ) -> None:
     project, credential = await a_claimed_device(db_session)
     session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
 
-    answered = await _the_team_says(client, credential, session.id, "turno-1")
+    answered = await the_team_says(client, credential, session.id, "turno-1")
 
     assert "transcript" not in answered.json()
     assert SENTINEL not in answered.text
@@ -152,7 +119,7 @@ async def test_the_same_turn_read_by_the_facilitator_still_shows_the_teams_words
     project, credential = await a_claimed_device(db_session)
     session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
-    await _the_team_says(client, credential, session.id, "turno-1")
+    await the_team_says(client, credential, session.id, "turno-1")
 
     read = await client.get(
         f"{PREFIX}/facilitator/sessions/{session.id}/conversation", headers=desk
@@ -201,14 +168,12 @@ async def test_a_turn_answer_stored_before_the_change_is_served_without_its_tran
 
 
 def test_no_tablet_door_answers_with_a_model_that_carries_the_teams_words() -> None:
-    assert NOTE in Finding.model_fields and TEXT in ConversationTurn.model_fields, (
-        "uma fonte do lado do facilitador mudou de nome; a guarda procuraria o que nao existe"
+    assert FINDING_NOTE and CONVERSATION_TEXT, (
+        "uma fonte do lado do facilitador deixou de ter palavras; a guarda procuraria o vazio"
     )
 
     carrying = {
-        (sorted(route.methods)[0], route.path, model.__name__): sorted(
-            WORDS & set(model.model_fields)
-        )
+        (*named(route), model.__name__): sorted(WORDS & set(model.model_fields))
         for route in room_app_routes()
         for model in models_in(route.response_model)
         if WORDS & set(model.model_fields)
@@ -218,7 +183,7 @@ def test_no_tablet_door_answers_with_a_model_that_carries_the_teams_words() -> N
 
 
 def test_the_guard_walks_the_turn_door_and_the_verdict_door() -> None:
-    walked = {(sorted(r.methods)[0], r.path) for r in room_app_routes()}
+    walked = {named(route) for route in room_app_routes()}
 
     assert ("POST", f"{PREFIX}/sessions/{{session_id}}/turns") in walked
     assert ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/finish") in walked
@@ -230,8 +195,8 @@ async def test_the_opening_and_the_say_it_again_answers_carry_no_transcript(
     project, credential = await a_claimed_device(db_session)
     session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
 
-    opening = await _audio_less(client, credential, session.id)
-    again = await _audio_less(client, credential, session.id)
+    opening = await the_room_opens(client, credential, session.id)
+    again = await the_room_opens(client, credential, session.id)
 
     assert "transcript" not in opening.json()
     assert "transcript" not in again.json()
@@ -252,12 +217,16 @@ async def test_the_verdicts_answer_to_the_tablet_carries_no_telling_note_or_verd
     the_speaker_answers(monkeypatch, VERDICT_DRAFT)
     analyst = the_analyst_is_scripted(monkeypatch)
     session, _parts = await rehearsed_in_parts(db_session, 1)
-    analyst.readings = [{"findings": [{"kind": "addition", "note": FINDING_NOTE, "chunk": 1}]}]
+    analyst.readings = [{"findings": [{"kind": "addition", "note": FINDING_NOTE_SAID, "chunk": 1}]}]
 
     answered = await press_terminei(
         client, session.id, report=await heard_every_part(db_session, session.id)
     )
 
     assert answered.status_code == 200, answered.text
-    for sentinel in ("parte 0 contada de volta", FINDING_NOTE, VERDICT_DRAFT):
+    await db_session.refresh(session)
+    stored = await stored_telling_back(db_session, session)
+    assert [finding.note for finding in stored.findings] == [FINDING_NOTE_SAID]
+    assert any(VERDICT_DRAFT in line.get("text", "") for line in session.messages or [])
+    for sentinel in ("parte 0 contada de volta", FINDING_NOTE_SAID, VERDICT_DRAFT):
         assert sentinel not in answered.text
