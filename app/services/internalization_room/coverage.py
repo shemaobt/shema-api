@@ -34,10 +34,13 @@ def is_panorama(pericope: str) -> bool:
 
 
 def refuse_a_panorama(pericope: str) -> None:
-    """A panorama is spoken, never recorded, told back or checked, so each door that would is
-    refused here with one code, before anything is read, stored or transcribed.
+    """A panorama is spoken, never recorded, told back or checked, so the seven doors that
+    record, tell back or check are refused here with one code, before anything is read, stored
+    or transcribed.
 
-    The release doors do not call it: their answers for a panorama are ENG-954's contract.
+    The conversation's turns door does not call it: the panorama is a conversation, and the
+    team's voice is transcribed there. The release doors do not either: their answers for a
+    panorama are ENG-954's contract.
     """
     if is_panorama(pericope):
         raise PanoramaRecordsNothing("a panorama records nothing")

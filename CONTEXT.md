@@ -128,7 +128,7 @@ The coverage of the passage seen as a string of beads, each bead an element of t
 _Avoid_: progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
-The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. Nothing is recorded, told back or checked in a panorama, and every door that would is refused with one code.
+The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
 
 **Address**:
