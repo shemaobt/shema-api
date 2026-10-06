@@ -285,6 +285,62 @@ async def test_a_refusal_is_rerun_once_and_a_second_refusal_stands(
     assert text == "", "a segunda recusa chega ao chamador como resposta vazia, e é ele quem decide"
 
 
+async def test_a_refusal_on_the_last_rung_has_no_next_model_to_be_rerun_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OnlyTheLastRungIsOpen:
+        def __init__(self) -> None:
+            self.asked: list[str] = []
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            self.asked.append(kwargs["model"])
+            if kwargs["model"] != "claude-opus-4-8":
+                raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+            reply = _reply("", stop_reason="refusal")
+            reply.content = []
+            return reply
+
+    messages = _OnlyTheLastRungIsOpen()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5", "claude-opus-4-8"], (
+        "a última rung recusou e a sala procurou uma seguinte que não existe, em vez de "
+        "devolver a recusa ao chamador"
+    )
+    assert text == ""
+
+
+async def test_a_refusal_that_stood_does_not_move_the_next_call_off_the_top_rung(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingRungs("claude-fable-5-1", "claude-opus-5")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+    await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == [
+        "claude-fable-5-1",
+        "claude-opus-5",
+        "claude-fable-5-1",
+        "claude-opus-5",
+    ], (
+        "uma recusa é sobre este pedido, não sobre a chave: a rung que recusou voltava a ser "
+        "a primeira a ser perguntada no pedido seguinte, e a segunda não ficava fixada"
+    )
+    assert llm._SETTLED == {}
+
+
 class FlakyMessages:
     """A rung that fails a scripted number of times, in order, before it answers."""
 
