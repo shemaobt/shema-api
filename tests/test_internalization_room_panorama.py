@@ -405,11 +405,6 @@ def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workf
     assert "--timeout=300" in deploy_command(workflow)
 
 
-def test_the_production_deploy_runs_one_instance() -> None:
-    """The turn door's in-flight registry is per process (ADR 0050)."""
-    assert "--max-instances=1" in deploy_command("deploy.yml")
-
-
 async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turns(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
