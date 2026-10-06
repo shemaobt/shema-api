@@ -4,10 +4,7 @@ from app.services.internalization_room.panorama_turn import run_panorama_turn
 from app.services.internalization_room.passage_turn import run_turn
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.prompt_blocks import coverage_status_block
-from app.services.internalization_room.redraft_note import (
-    _OFF_BRIDGE_LANGUAGE_NOTE,
-    _redraft_note,
-)
+from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.turn_instructions import (
     OPENING_MOVEMENT_MARK,
     split_opening_movements,
@@ -18,7 +15,6 @@ from app.services.internalization_room.verdict_turn import run_verdict_turn
 __all__ = [
     "MAX_REDRAFTS",
     "OPENING_MOVEMENT_MARK",
-    "_OFF_BRIDGE_LANGUAGE_NOTE",
     "TurnOutcome",
     "_redraft_note",
     "coverage_status_block",

@@ -378,7 +378,7 @@ async def _voiced_after_validation(
                 prepared_pericope,
             )
 
-        redraft_note = _redraft_note(issues, language_code)
+        redraft_note = _redraft_note(issues)
     logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
 
     speech, line = validation_ladder(messages, language_code)
