@@ -32,7 +32,11 @@ def vendor_with_a_file_upstream_no_longer_has(
     monkeypatch.setattr(
         canon,
         "_listing",
-        lambda kind, sha: ["P01-Ruth-1-1-5.md"] if kind == "meaning-map" else [],
+        lambda kind, sha: {
+            "meaning-map": ["P01-Ruth-1-1-5.md"],
+            "meaning-coordinates": ["P01-Ruth-1-1-5-MEANING-COORDINATES.md"],
+            "compilation-log": ["P01-Ruth-1-1-5-COMPILATION-LOG.md"],
+        }.get(kind, []),
     )
     monkeypatch.setattr(canon, "_raw", lambda kind, sha, name: b"fresh-upstream-bytes")
     return vendor

@@ -38,6 +38,11 @@ KINDS = {
     "compilation-log": "fixtures/compilation-log",
     "registry": "_spec/registry",
 }
+PASSAGE_SUFFIX = {
+    "meaning-map": ".md",
+    "meaning-coordinates": "-MEANING-COORDINATES.md",
+    "compilation-log": "-COMPILATION-LOG.md",
+}
 
 
 def _get(url: str) -> bytes:
@@ -63,6 +68,25 @@ def _listing(kind: str, sha: str) -> list[str]:
     return sorted(n for n in names if any(book in n for book in BOOKS))
 
 
+def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
+    listed = {kind: _listing(kind, sha) for kind in KINDS}
+    stems = {
+        kind: {name.removesuffix(suffix): name for name in listed[kind]}
+        for kind, suffix in PASSAGE_SUFFIX.items()
+    }
+    published = {kind: [] for kind in KINDS}
+    published["registry"] = listed["registry"]
+    skipped: list[str] = []
+    for stem in sorted(set().union(*stems.values())):
+        missing = [kind for kind in PASSAGE_SUFFIX if stem not in stems[kind]]
+        if missing:
+            skipped.append(f"skipped {stem}: missing {', '.join(missing)}")
+            continue
+        for kind in PASSAGE_SUFFIX:
+            published[kind].append(stems[kind][stem])
+    return published, skipped
+
+
 def _raw(kind: str, sha: str, name: str) -> bytes:
     return _get(f"https://raw.githubusercontent.com/{REPO}/{sha}/{KINDS[kind]}/{name}")
 
@@ -73,10 +97,13 @@ def _digest(data: bytes) -> str:
 
 def sync(pin: str | None = None) -> int:
     sha = pin if pin else _head_sha()
+    published, skipped = _published(sha)
+    for line in skipped:
+        print(line, file=sys.stderr)
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
-        names = _listing(kind, sha)
+        names = published[kind]
         for name in names:
             (target / name).write_bytes(_raw(kind, sha, name))
             print(f"  {kind}/{name}")
@@ -95,8 +122,9 @@ def check() -> int:
         return 1
     sha = PIN_FILE.read_text().strip()
     drifted: list[str] = []
+    published, _ = _published(sha)
     for kind in KINDS:
-        names = _listing(kind, sha)
+        names = published[kind]
         for name in names:
             local = VENDOR / kind / name
             upstream = _raw(kind, sha, name)
