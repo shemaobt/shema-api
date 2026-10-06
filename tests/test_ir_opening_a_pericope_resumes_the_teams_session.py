@@ -49,6 +49,7 @@ from tests.opening_harness import (
 )
 from tests.release_harness import KEY, PREFIX, P, a_claimed_device, at_the_desk, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
+from tests.tablet_turn_harness import the_room_opens
 from tests.text_seam_harness import RUNNER_KEY
 
 FIRST = load_book(ROOM_BOOK)[0].pericope_num
@@ -95,13 +96,6 @@ async def room_app(db_session: AsyncSession):
     app = await make_app(db_session, app_key="internalization-room", name="Internalization Room")
     await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
     return app
-
-
-async def the_room_opens(client: httpx.AsyncClient, credential: str, session_id: str) -> None:
-    spoken = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
-    )
-    assert spoken.status_code == 200, spoken.text[:300]
 
 
 async def three_turns_on(

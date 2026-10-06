@@ -19,15 +19,14 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.internalization_room import sessions as sessions_api
 from app.core.enums import ProjectRole
 from app.db.models.project import Project
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import make_project_user_access, make_user
 from tests.release_harness import PREFIX, team_headers
-from tests.turn_harness import the_room_agent_is
+from tests.tablet_turn_harness import the_team_says as a_turn_is_said
+from tests.tablet_turn_harness import the_turn_is_scripted
 
 GUIDE_OPENING = "Vamos ouvir a historia de Rute. O que voces ja sabem dela?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
@@ -59,21 +58,7 @@ def a_scripted_room(monkeypatch: pytest.MonkeyPatch) -> Script:
             await racing()
         return GUIDE_OPENING if not scripted.said else GUIDE_LINE
 
-    async def voice(text: str, **_: Any):
-        return (
-            SynthesizedSpeech(
-                audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/x.mp3"
-            ),
-            False,
-        )
-
-    async def settled(**_: Any) -> None:
-        return None
-
-    monkeypatch.setattr(sessions_api, "heard_speech", heard)
-    the_room_agent_is(monkeypatch, turn=model)
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
-    monkeypatch.setattr(sessions_api, "settle_coverage", settled)
+    the_turn_is_scripted(monkeypatch, heard=heard, model=model)
     return scripted
 
 
@@ -111,8 +96,8 @@ async def the_team_speaks(
 async def the_team_says(
     client: httpx.AsyncClient, script: Script, credential: str, session_id: str, said: str
 ) -> None:
-    response = await the_team_speaks(client, script, credential, session_id, said)
-    assert response.status_code == 200, response.text[:300]
+    script.said = said
+    await a_turn_is_said(client, credential, session_id, str(uuid.uuid4()))
 
 
 @asynccontextmanager

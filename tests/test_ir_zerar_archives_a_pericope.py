@@ -69,6 +69,7 @@ from tests.release_harness import (
     told_back_with_an_open_finding,
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
+from tests.tablet_turn_harness import the_room_opens
 
 FIRST = load_book(ROOM_BOOK)[0].pericope_num
 NOTHING_LIVE = "P05"
@@ -122,14 +123,6 @@ async def zerar(
     answered = await client.post(zerar_url(team_id, pericope), headers=desk)
     assert answered.status_code == 200, answered.text[:300]
     return answered.json()
-
-
-async def the_first_turn(
-    client: httpx.AsyncClient, credential: str, session_id: str
-) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
-    )
 
 
 async def a_retro_take_uploaded(
@@ -313,7 +306,7 @@ async def test_a_turn_on_an_archived_session_is_answered_as_the_session_gone(
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
-    assert (await the_first_turn(client, tablet, opened["session_id"])).status_code == 200
+    await the_room_opens(client, tablet, opened["session_id"])
     await zerar(client, desk, team.id, P)
     said_before = await guide_lines(per_request, opened["session_id"])
 
@@ -330,7 +323,7 @@ async def test_a_turn_in_flight_when_the_zerar_lands_is_refused_and_writes_nothi
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
-    assert (await the_first_turn(client, tablet, opened["session_id"])).status_code == 200
+    await the_room_opens(client, tablet, opened["session_id"])
     said_before = await guide_lines(per_request, opened["session_id"])
 
     async def the_zerar_lands() -> None:
@@ -372,16 +365,15 @@ async def test_the_next_open_after_a_zerar_mints_a_new_session_and_the_voice_ope
     team, tablet = await a_claimed_device(db_session)
     desk, _ = await at_the_desk(db_session, room_app, team)
     opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
-    assert (await the_first_turn(client, tablet, opened["session_id"])).status_code == 200
+    await the_room_opens(client, tablet, opened["session_id"])
     the_opening = await guide_lines(per_request, opened["session_id"])
     assert len(the_opening) == 1
     await zerar(client, desk, team.id, P)
 
     reopened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
-    first_turn = await the_first_turn(client, tablet, reopened["session_id"])
+    await the_room_opens(client, tablet, reopened["session_id"])
 
     assert reopened["session_id"] != opened["session_id"]
-    assert first_turn.status_code == 200, first_turn.text[:300]
     assert await guide_lines(per_request, reopened["session_id"]) == the_opening
 
 
