@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from enum import StrEnum
 
@@ -146,13 +147,24 @@ def counts(state: dict[str, str]) -> dict[str, int]:
     return {"engaged": engaged, "surfaced": surfaced, "total": len(state)}
 
 
+#: Her necklace has 12 beads whatever the passage's number of elements (`beadsTotal`,
+#: `app/api/session/route.ts`).
+BEADS_TOTAL = 12
+
+
 def coverage_view(session: IRSession) -> CoverageView:
+    """The coverage answer, with her 12 beads filled as `beadsFilled` fills them
+    (`src/session/types.ts`): `engaged` over the elements, 0 read as 1, times 12, rounded half
+    up as `Math.round` rounds and never half to even as Python's `round` does.
+    """
     numbers = counts(session.coverage_state or {})
     return CoverageView(
         engaged=numbers["engaged"],
         surfaced=numbers["surfaced"],
         total=numbers["total"],
         absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+        beads_total=BEADS_TOTAL,
+        beads_filled=math.floor(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL + 0.5),
     )
 
 

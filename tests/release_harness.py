@@ -182,7 +182,7 @@ async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi v
 async def checked_telling_back(db: AsyncSession, session: IRSession) -> BackTranslationState:
     told = await one_stretch(db, session)
     return BackTranslationState(
-        scope=P,
+        scope=session.pericope,
         findings=[],
         checked=True,
         analysed_segment_ids=[told.id],
@@ -232,6 +232,7 @@ async def never_analysed_telling_back(db: AsyncSession, session: IRSession) -> B
 def ensaio_take(
     session_id: str,
     *,
+    pericope: str = P,
     scope: str = "passagem-inteira",
     pass_number: int | None = None,
     ordinal: int | None = None,
@@ -249,7 +250,7 @@ def ensaio_take(
         session_id=session_id,
         project_id=project_id,
         device_id="tablet-1",
-        pericope=P,
+        pericope=pericope,
         kind=IRTakeKind.ENSAIO,
         scope=scope,
         pass_number=pass_number,
@@ -335,6 +336,7 @@ async def reported_playback(
 async def rehearsed_session(
     db: AsyncSession,
     *,
+    pericope: str = P,
     project_id: str | None = None,
     language: str | None = None,
     ordinal: int | None = None,
@@ -354,10 +356,14 @@ async def rehearsed_session(
     in one go. A case about recording that part again names one, because the verb for *this
     part again* reads the number and nothing else (ADR 0023).
     """
-    session = await create_session(db, pericope=P, project_id=project_id, language=language)
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
-    take = ensaio_take(session.id, ordinal=ordinal, project_id=session.project_id)
+    session = await create_session(db, pericope=pericope, project_id=project_id, language=language)
+    session.coverage_state = merge(
+        initial_state(pericope), pericope_num=pericope, engaged=element_keys(pericope)
+    )
+    await save_comprehension(db, session, supported_comprehension(pericope, **comprehension_kwargs))
+    take = ensaio_take(
+        session.id, pericope=pericope, ordinal=ordinal, project_id=session.project_id
+    )
     db.add(take)
     await db.commit()
     return session, take
@@ -366,6 +372,7 @@ async def rehearsed_session(
 async def ready_session(
     db: AsyncSession,
     *,
+    pericope: str = P,
     project_id: str | None = None,
     ordinal: int | None = None,
     tell: Callable[[AsyncSession, IRSession], Awaitable[BackTranslationState]] | None = None,
@@ -386,7 +393,7 @@ async def ready_session(
     rebuilding it, which is the only part of this that ever differs.
     """
     session, _take = await rehearsed_session(
-        db, project_id=project_id, ordinal=ordinal, **comprehension_kwargs
+        db, pericope=pericope, project_id=project_id, ordinal=ordinal, **comprehension_kwargs
     )
     await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session

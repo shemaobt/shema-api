@@ -127,9 +127,9 @@ _Avoid_: id, tag, link, slug
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
 _Avoid_: answer key, base text, Mapa de Sentido
 
-**Necklace** and **bead** (`element`):
-The coverage of the passage seen as a string of beads, each bead an element of the Map that travels through not encountered, surfaced, partially engaged and engaged.
-_Avoid_: progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
+**Necklace**, **bead** and **element**:
+The necklace is the passage's coverage as the tablet draws it: her twelve beads (`beads_total`), whatever the passage's number of elements, of which `beads_filled` are lit, the elements engaged over all the elements times twelve, rounded half up. Underneath, each **element** of the Map travels through not encountered, surfaced, partially engaged and engaged. A **bead** is one of the twelve; an **element** is one of the Map's.
+_Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
 **Panorama**:
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice.
@@ -150,11 +150,11 @@ session's stretches.
 _Avoid_: child, split, subsegment, Trecho dividido
 
 **Element kind**:
-What a bead of the Meaning Map is. Six kinds sit in a scene of the passage — scene, being, place, object, time, absence; a preserved rule and the four Level-1 axes — arc, context, tone, function — belong to the passage and to none of its scenes.
+What an element of the Meaning Map is. Six kinds sit in a scene of the passage — scene, being, place, object, time, absence; a preserved rule and the four Level-1 axes — arc, context, tone, function — belong to the passage and to none of its scenes.
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
 _Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):
@@ -162,7 +162,7 @@ The scene a rehearsal invitation is about: the first scene of the passage still 
 _Avoid_: current scene, pointer, practised scene (the credit's result, not its target), Cena convidada
 
 **Coverage event** (`ir_coverage_events`):
-One recorded movement of a bead from one coverage state to the next.
+One recorded movement of an element from one coverage state to the next.
 _Avoid_: log, history, audit, Evento de cobertura
 
 ### Findings
@@ -358,7 +358,7 @@ A fact about the room the app hands the Guide in place of the team's words, brac
 _Avoid_: system message, prompt, instruction, Nota da sala
 
 **Earlier passages**:
-This team's status on each earlier passage of the book (approved, started, or not worked yet), kept on the session and handed to the Guide as a fact, complete or not at all.
+This team's status on each earlier passage of the book (approved, started, or not worked yet), stamped once when the session is created, kept on the session and handed to the Guide as a fact, complete or not at all.
 _Avoid_: history, progress, story so far (the digests of those passages, not the team's status on them), Passagens anteriores
 
 **Scene rehearsals**:

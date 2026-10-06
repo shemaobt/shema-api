@@ -107,8 +107,9 @@ class IRSession(Base):
     #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
     comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
-    #: This team's status on each earlier passage of the book, by pericope id, as her runner
-    #: opened the session with it; null when nobody said.
+    #: This team's status on each earlier passage of the book, by pericope id, stamped once
+    #: when the session is created: read by the room, or handed in by her runner. Null on a
+    #: book's first passage, on a Panorama and for a caller with no team.
     earlier_passages: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
     #: every halt and cleared by none: it outlives the halt on purpose, so that a halt lifted
