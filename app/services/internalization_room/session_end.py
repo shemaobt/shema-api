@@ -15,8 +15,9 @@ per-turn timestamp, so the data to sum working intervals does not exist. The hon
 that a break taken *inside* a session inflates it — two hours of work around a two-hour
 lunch reads four. Per-turn timestamps are what would fix that, and nothing asks for them.
 
-The end, the state and the length are answered together, out of one function, because they are one fact:
-an end, a state and a length that could be computed apart are three things to keep in step.
+The end, the state and the length are answered together, out of one function, because they
+are one fact: an end, a state and a length that could be computed apart are three things to
+keep in step.
 """
 
 from __future__ import annotations
