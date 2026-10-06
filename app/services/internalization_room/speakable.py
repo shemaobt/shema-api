@@ -29,6 +29,11 @@ _HEADS = frozenset(
     for page in _MAPS.glob("*.md")
     for head in re.findall(r"\[\[([A-Z]+[0-9_][A-Z0-9_]*)[-|\]]", page.read_text(encoding="utf-8"))
 )
+if not _HEADS:
+    raise RuntimeError(
+        f"no canon code found in {_MAPS}: with no prefix to match, the pattern would read "
+        "every number as a code"
+    )
 
 
 def _prefixes(shape: str) -> str:
@@ -53,20 +58,22 @@ _CANON_CODE = re.compile(
 
 _SPACE = r"[ \t\u00a0]"
 
-#: What a removal can leave behind, and the order `_mend` applies it in: brackets that held only
-#: the code, then the dash pairs that framed it, then a mark stranded before a closing one, then
-#: the spaces. The order matters: the spaces are collapsed last, so the earlier steps can leave
-#: them for it.
+#: What a removal can leave behind, and the order `_mend` applies it in: brackets and quotes that
+#: held only the code, then the dash pairs that framed it, then a chain of marks cut down to one
+#: (a weak mark before a strong one goes, then a weak mark after `!` or `?`), then the spaces.
+#: The order matters: the spaces are collapsed last, so the earlier steps can leave them for it.
 _EMPTY_BRACKETS = re.compile(
     rf"\({_SPACE}*[,;/\u2013—-]*{_SPACE}*\)|\[{_SPACE}*[,;/\u2013—-]*{_SPACE}*\]"
 )
+_EMPTY_QUOTES = re.compile(rf"\"{_SPACE}*\"|\u201c{_SPACE}*\u201d")
 _DASH = r"(?:[\u2013—]|(?<!\S)-(?!\S))"
 _DASH_PAIR = re.compile(rf"{_DASH}\s*{_DASH}")
 _DASH_BEFORE_CLOSE = re.compile(rf"{_SPACE}*[\u2013—]{_SPACE}*(?=[.,;:!?]|$)")
 _MARKS_BEFORE_COMMA = re.compile(rf"[,;:]{_SPACE}*,")
 _MARK_BEFORE_CLOSE = re.compile(rf"[,;:](?={_SPACE}*[.!?])|,(?={_SPACE}*[;:])")
+_MARK_AFTER_STRONG = re.compile(rf"(?<=[!?]){_SPACE}*[,;:]")
 _SPACE_RUN = re.compile(rf"{_SPACE}{{2,}}")
-_SPACE_BEFORE_MARK = re.compile(rf"{_SPACE}+(?=[,.;:!?])")
+_SPACE_BEFORE_MARK = re.compile(rf"{_SPACE}+(?=[,.;:!?)\]])")
 _EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,;\u2013—]+|[ \t\u00a0,;\u2013—]+$")
 
 _YHWH = re.compile(r"\bYHWH\b")
@@ -82,10 +89,12 @@ def _mend(line: str) -> str:
     if removed == line:
         return line
     mended = _EMPTY_BRACKETS.sub("", removed)
+    mended = _EMPTY_QUOTES.sub("", mended)
     mended = _DASH_PAIR.sub(" ", mended)
     mended = _DASH_BEFORE_CLOSE.sub("", mended)
     mended = _MARKS_BEFORE_COMMA.sub(", ", mended)
     mended = _MARK_BEFORE_CLOSE.sub("", mended)
+    mended = _MARK_AFTER_STRONG.sub("", mended)
     mended = _SPACE_RUN.sub(" ", mended)
     mended = _SPACE_BEFORE_MARK.sub("", mended)
     return _EDGE_DEBRIS.sub("", mended)

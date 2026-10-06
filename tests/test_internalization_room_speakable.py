@@ -14,12 +14,14 @@ be a parametrize. A word that only looks like a code (`MP3`, `CO2`) is spoken.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 from pathlib import Path
 
 import pytest
 
+from app.services.internalization_room import speakable
 from app.services.internalization_room.speakable import speakable_text
 
 _PT_CASES = [
@@ -136,7 +138,17 @@ _MENDED = [
     pytest.param("Rute vê Boaz, B13.", "Rute vê Boaz.", id="comma-before-full-stop"),
     pytest.param("Rute vê Boaz — B13.", "Rute vê Boaz.", id="dash-before-full-stop"),
     pytest.param("Ela disse: B3, e saiu.", "Ela disse, e saiu.", id="colon-then-comma"),
-    pytest.param("Ela, B3!, volta.", "Ela!, volta.", id="comma-bang-comma"),
+    pytest.param("Ela, B3!, volta.", "Ela! volta.", id="comma-bang-comma"),
+    pytest.param('Ele disse "B3" ontem.', "Ele disse ontem.", id="empty-straight-quotes"),
+    pytest.param(
+        "Ele disse \N{LEFT DOUBLE QUOTATION MARK}B3\N{RIGHT DOUBLE QUOTATION MARK} ontem.",
+        "Ele disse ontem.",
+        id="empty-curly-quotes",
+    ),
+    pytest.param(
+        "Rute (ver B3) chega.", "Rute (ver) chega.", id="no-space-before-a-closing-bracket"
+    ),
+    pytest.param("Quem, B3?, disse.", "Quem? disse.", id="question-then-comma"),
     pytest.param("Um texto: B3. Outro.", "Um texto. Outro.", id="colon-before-full-stop"),
     pytest.param("B3/B4 e B3-B4", "e", id="slash-and-hyphen-joined-codes"),
     pytest.param("Naomi, B3 ,Ruth", "Naomi, Ruth", id="space-after-the-comma-kept"),
@@ -253,3 +265,15 @@ def test_a_bare_code_whose_slug_is_the_divine_name_is_removed_before_the_name_is
 
 def test_a_language_outside_the_table_still_loses_its_codes() -> None:
     assert speakable_text("[[B9-Ruth]] Rut habló.", "es") == "Rut habló."
+
+
+def test_a_pin_with_no_vendored_map_fails_the_import_instead_of_deleting_every_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Path, "glob", lambda self, pattern: iter(()))
+    spec = importlib.util.spec_from_file_location("speakable_without_maps", speakable.__file__)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    with pytest.raises(RuntimeError):
+        spec.loader.exec_module(module)
