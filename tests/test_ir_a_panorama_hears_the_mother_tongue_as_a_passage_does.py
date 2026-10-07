@@ -227,7 +227,7 @@ async def test_english_speech_in_an_english_panorama_reaches_the_guide_as_the_te
     assert english.guide_inputs == [ENGLISH]
 
 
-async def test_a_panorama_mother_tongue_turn_hands_the_validator_her_note_never_the_recognizers_words(  # noqa: E501
+async def test_a_panorama_mother_tongue_turn_hands_the_validator_her_note_not_the_words(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
