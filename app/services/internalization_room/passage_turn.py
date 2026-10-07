@@ -32,7 +32,6 @@ async def run_turn(
     settings: Settings | None = None,
     session_id: str = "?",
     ask_for_movements: bool = False,
-    mother_tongue: bool = False,
     prepared_pericope: str | None = None,
     earlier_passages: dict[str, str] | None = None,
 ) -> TurnOutcome:
@@ -40,10 +39,8 @@ async def run_turn(
 
     `opening` is the session's first turn, where the Guide speaks before the team has.
     The coverage block is the whole of what the app tells the Guide, and the Validator is
-    handed none of it — it judges the draft against the map and the team's own words.
-
-    `mother_tongue` marks a `transcript` that is not the team's words but the app's own note
-    about an unrecorded rehearsal (`turn.speech.speak_back`) — see `_voiced_after_validation`.
+    handed none of it — it judges the draft against the map and the team's own words, or, on
+    a take in the mother tongue, the room's note that stands for them.
 
     `prepared_pericope` names this call as `prepare_opening`'s own background run, so the
     `[llm-turn]` line can say which pericope it wrote ahead for. It is set nowhere else:
@@ -89,7 +86,6 @@ async def run_turn(
         settings=cfg,
         session_id=session_id,
         ask_for_movements=ask_for_movements,
-        mother_tongue=mother_tongue,
         prepared_pericope=prepared_pericope,
         earlier_passages=earlier,
     )
