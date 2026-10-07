@@ -91,6 +91,7 @@ _VOICED: dict[str, FailSafe | ProcessFamily] = {
     "X": "X",
     "N": "N",
 }
+_KEPT_UNSPOKEN = {("N", 3)}
 _NAMED = re.compile(r"([A-Z])(\d+)")
 
 
@@ -98,8 +99,10 @@ def her_line(name: str, language_code: str) -> str | None:
     named = _NAMED.fullmatch(name)
     if named is None or named.group(1) not in _VOICED:
         return None
-    lines = utterances(_VOICED[named.group(1)], language_code)
     position = int(named.group(2))
+    if (named.group(1), position) in _KEPT_UNSPOKEN:
+        return None
+    lines = utterances(_VOICED[named.group(1)], language_code)
     return lines[position] if position < len(lines) else None
 
 
