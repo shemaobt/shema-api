@@ -196,15 +196,10 @@ class SessionBead(BaseModel):
 class TeamSessionResponse(BaseModel):
     """One card of the Desk's session history (RF-06).
 
-    **`state` has three values where RF-06 names two**, and that is deliberate. The third
-    arrived with the rule that decides when a conversation is over: a session nobody closed
-    is over, and calling it complete would be a lie a facilitator can check against the
-    necklace drawn beside it, where the beads are plainly unfinished.
-
-    It is also why the state crosses at all. With two values it was a function of `ended_at`
-    and serving it would have been a second record of one fact. With three, `complete` and
-    `abandoned` both carry an `ended_at` and no client can tell them apart — it is a fact the
-    collection cannot be made to yield, which is the shape that has to be served.
+    **`state` is `complete` or `in_progress`.** `abandoned` is part of the vocabulary and is
+    never emitted: nothing ends a session for being idle, so a session left for days reads
+    `in_progress`. `complete` is the session whose floor was met, and only it carries an
+    `ended_at`.
 
     `duration_minutes` travels for the rule this product keeps: the client does not compute.
     It cannot disagree with `ended_at` because both come out of one function on one pair of
@@ -254,6 +249,10 @@ class CoverageView(BaseModel):
     surfaced: int
     total: int
     absence_index: int
+    #: Her necklace's beads, 12 whatever the passage's number of elements.
+    beads_total: int
+    #: How many of the 12 the team has filled: `engaged` in proportion, rounded half up.
+    beads_filled: int
 
 
 class CoverageFrame(BaseModel):
@@ -279,11 +278,6 @@ class CreateSessionRequest(BaseModel):
     #: whether to play the panorama again — so naming it for any other session would mark that
     #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
-    #: Whether the team chose this session themselves — the panorama's spoke on the wheel —
-    #: rather than the app asking for the panorama at launch. A launch request for a book
-    #: the team has heard is answered with the passage they stand on; a request they chose
-    #: opens the panorama again. Nothing stores it: the next launch reads the rows as before.
-    chosen: bool = False
     #: Which language the room should speak to this team, read by the app off the tablet.
     #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
     #: a language the room does not speak is refused rather than quietly answered in another.
@@ -334,10 +328,6 @@ class SegmentsResponse(BaseModel):
 
     session_id: str
     segments: list[SegmentView] = Field(default_factory=list)
-    #: False when audio was sent and nothing could be made out of it. The stretch is then left
-    #: exactly as it was — replacing a good explanation with an empty one over a transcriber
-    #: outage would lose the team's work to somebody else's failure.
-    captured: bool = True
     #: True on the one correction that made this stretch a hard stretch. The room asks for a
     #: person rather than refusing anything, and it is said here as well as on the telling-back
     #: route: a team that crosses still gets the stretches back, and would otherwise have no
@@ -404,7 +394,6 @@ class TurnResponse(BaseModel):
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
     mime_type: str = "audio/mpeg"
-    transcript: str
     peer_cue: bool = False
     used_fail_safe: bool = False
     degraded: bool = False

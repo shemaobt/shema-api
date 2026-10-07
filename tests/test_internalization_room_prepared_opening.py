@@ -8,6 +8,7 @@ be written before it is asked for. Doing that turns a five-second wait into none
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.prepare_opening import hand_over, take_prepared
 
@@ -162,7 +163,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             mime_type="audio/mpeg",
             etag="e",
             cached=False,
-            key=f"tts/voice/m/f/{abs(hash(text))}.mp3",
+            key=f"tts/{get_settings().internalization_room_voice_id}/m/f/{abs(hash(text))}.mp3",
         ), False
 
     async def _nothing(*_: Any, **__: Any) -> None:
@@ -198,7 +199,9 @@ async def _park_the_prepared_line(db_session: AsyncSession, session_id: str) -> 
 
     panorama = await get_session(db_session, session_id)
     panorama.prepared_speech = PREPARED
-    panorama.prepared_audio_key = "tts/voice/m/f/prepared.mp3"
+    panorama.prepared_audio_key = (
+        f"tts/{get_settings().internalization_room_voice_id}/m/f/prepared.mp3"
+    )
     panorama.prepared_pericope = "P01"
     await db_session.commit()
 

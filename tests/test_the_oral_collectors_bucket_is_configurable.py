@@ -35,6 +35,7 @@ from app.services.oral_collector.gcs_utils import (
     upload_gcs_blob,
 )
 from app.services.storage.upload import upload_image
+from tests.deploy_harness import deploy_env_vars
 from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET
 
 APP = Path(__file__).resolve().parent.parent / "app"
@@ -126,30 +127,9 @@ def _point_the_bucket_at(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setattr(get_settings(), "gcs_oc_bucket", name)
 
 
-def _deploy_env_vars(workflow: str) -> dict[str, str]:
-    """The plain variables a deploy workflow tells its Cloud Run service to run with.
-
-    They travel in one token of the `gcloud run deploy` command, and `^|^` names `|` as the
-    separator because `CORS_ORIGINS` is itself a comma-separated list. Reading the token
-    rather than the whole command is what makes this a statement about the service's
-    environment and not about a string appearing somewhere in a shell script.
-    """
-    import yaml
-
-    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / workflow
-    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
-    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
-    token = next(
-        word for word in deploy_step["run"].split() if word.startswith("--update-env-vars=")
-    )
-    body = token.split("=", 1)[1].strip('"')
-    assert body.startswith("^|^"), f"{workflow} no longer names its own separator"
-    return dict(pair.split("=", 1) for pair in body[3:].split("|"))
-
-
 def test_the_staging_deploy_names_its_own_bucket() -> None:
     """Nothing else points the staging service anywhere: this line is the whole mechanism."""
-    staging = _deploy_env_vars("deploy-staging.yml")
+    staging = deploy_env_vars("deploy-staging.yml")
 
     assert staging.get("GCS_OC_BUCKET") == "tripod-image-uploads-staging"
 
@@ -160,7 +140,7 @@ def test_the_production_deploy_names_its_bucket_and_it_is_the_default() -> None:
     away from redirecting production. Naming it here and tying it to the default is what
     keeps the two places from drifting apart in silence.
     """
-    deployed = _deploy_env_vars("deploy.yml")
+    deployed = deploy_env_vars("deploy.yml")
 
     assert deployed["GCS_OC_BUCKET"] == "tripod-image-uploads"
     assert deployed["GCS_OC_BUCKET"] == Settings.model_fields["gcs_oc_bucket"].default

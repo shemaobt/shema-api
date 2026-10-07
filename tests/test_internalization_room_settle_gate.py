@@ -200,47 +200,20 @@ async def test_an_opening_the_room_could_not_phrase_hands_over_nothing(
     )
 
 
-async def test_a_transcript_the_hearing_does_not_trust_hands_over_nothing(
-    room: _Room, passage: str
-) -> None:
-    """Words the room is about to ask the team to repeat are not words to credit beads to.
-
-    `uncertain` exists to under-count and nothing else — an uncertain transcript is repeated,
-    never judged as misunderstanding (`HeardSpeech`). It reaches the gate looking like an
-    answer, because the inaudible outcome carries the transcript forward while the team hears
-    a request to say it again. Coverage only moves forward and feeds the Guide's next prompt,
-    so a bead settled on a word the hearing distrusts cannot be taken back.
-    """
-    room.outcome = TurnOutcome(
-        speech=INAUDIBLE, transcript=TEAM, used_fail_safe=True, degraded=True
-    )
-    room.heard = HeardSpeech(text=TEAM, transcript_confidence=0.2)
-
-    await _the_team_answers(room, passage)
-
-    assert room.settled == [], (
-        "a cobertura era creditada em cima de palavras que o próprio STT marcou como "
-        "não confiáveis, enquanto a equipe ouvia um pedido para repetir"
-    )
-
-
 async def test_an_answer_left_in_another_language_hands_over_nothing(
     room: _Room, passage: str
 ) -> None:
     """The room asked for the session's language back; it did not take the answer up.
 
-    Mother-tongue speech is not distrusted the way an uncertain transcript is — it is heard
-    perfectly well and left unengaged, and the team hears the off-bridge fixed line rather
-    than a reply. Settling it would credit beads read against a meaning map in one language
-    from an utterance in another, on a turn the room declined, and coverage does not come
-    back down.
+    Mother-tongue speech is heard perfectly well and left unengaged, and the team hears the
+    off-bridge fixed line rather than a reply. Settling it would credit beads read against a
+    meaning map in one language from an utterance in another, on a turn the room declined,
+    and coverage does not come back down.
     """
     room.outcome = TurnOutcome(
         speech=OFF_BRIDGE, transcript=TEAM, used_fail_safe=True, fixed_line="off_bridge"
     )
-    room.heard = HeardSpeech(
-        text=TEAM, language_code="ter", language_probability=0.99, transcript_confidence=0.9
-    )
+    room.heard = HeardSpeech(text=TEAM, language_code="ter", language_probability=0.99)
 
     await _the_team_answers(room, passage)
 

@@ -205,7 +205,7 @@ def scenes_practiced_by_the_report_the_guide_invited(
     prior_probe: ActiveProbe | None,
     previous_guide_utterance: str,
     team_utterance: str,
-    reliable_bridge_speech: bool,
+    mother_tongue: bool,
     invited_scene: str | None,
 ) -> list[str]:
     """The scene the invitation named, when the team's own report of a finished rehearsal
@@ -241,7 +241,7 @@ def scenes_practiced_by_the_report_the_guide_invited(
         return []
     if invited_scene is None:
         return []
-    reported = reliable_bridge_speech and confirms_completed_mother_tongue_practice(
+    reported = not mother_tongue and confirms_completed_mother_tongue_practice(
         previous_guide_utterance, team_utterance
     )
     if not reported:

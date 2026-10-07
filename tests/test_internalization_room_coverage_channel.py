@@ -117,7 +117,14 @@ async def test_a_published_frame_reaches_the_open_channel_as_one_coverage_event(
             CoverageFrame(
                 turn_id="turn-9",
                 status="settled",
-                coverage=CoverageView(engaged=2, surfaced=3, total=20, absence_index=6),
+                coverage=CoverageView(
+                    engaged=2,
+                    surfaced=3,
+                    total=20,
+                    absence_index=6,
+                    beads_total=12,
+                    beads_filled=1,
+                ),
             ),
         )
 
@@ -127,7 +134,14 @@ async def test_a_published_frame_reaches_the_open_channel_as_one_coverage_event(
     assert json.loads(data.removeprefix("data: ")) == {
         "turn_id": "turn-9",
         "status": "settled",
-        "coverage": {"engaged": 2, "surfaced": 3, "total": 20, "absence_index": 6},
+        "coverage": {
+            "engaged": 2,
+            "surfaced": 3,
+            "total": 20,
+            "absence_index": 6,
+            "beads_total": 12,
+            "beads_filled": 1,
+        },
     }, (
         "a cobertura assentava no servidor e o app só a via adivinhando trinta segundos "
         "e perguntando uma vez"

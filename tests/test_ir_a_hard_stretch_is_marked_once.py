@@ -600,11 +600,7 @@ async def test_a_count_left_past_the_number_by_a_lost_mark_is_recovered(
 async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_counts(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """A retry that lands on a retired row must not spend a telling on it.
-
-    The captured branch is refused by `capture_segment`; counting had no such guard, so an
-    unheard retry counted on a row nothing can ever replace — and could mark it hard.
-    """
+    """A retry that lands on a retired row must not spend a telling on it."""
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 1)
@@ -623,8 +619,8 @@ async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_coun
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
 
-    assert refused.status_code == 400, refused.text
-    assert refused.json()["code"] == "STRETCH_NO_LONGER_COUNTS"
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "WORDLESS_TELLING"
     assert [one.tellings for one in await _current(db_session, session_id)] == [2], (
         "a tentativa recusada não pode contar na linha que está de pé"
     )
@@ -658,7 +654,8 @@ async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
 
-    assert refused.status_code == 400, refused.text
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "WORDLESS_TELLING"
     db_session.expire_all()
     stood = await _current(db_session, session_id)
     assert [one.tellings for one in stood] == [1, 1, 1], "nem o pai nem os pedaços contaram"
@@ -740,36 +737,6 @@ async def test_an_empty_retelling_is_refused_and_counts_nothing(
     assert len(standing) == 1, "uma tentativa que não foi entendida não vira trecho"
     assert standing[0].tellings == 1
     assert await _marks(db_session, session_id) == []
-
-
-async def test_an_empty_re_recording_counts_in_place(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """The same rule on the route the team corrects by."""
-    session_id = await _a_session(db_session)
-    take_id = await _rehearse(client, session_id)
-    await _told(client, session_id, take_id, 1)
-    stretch = (await _units(client, session_id))[0]
-
-    for _ in range(2):
-        client.said.append("")  # type: ignore[attr-defined]
-        answered = await client.post(
-            f"{IR}/sessions/{session_id}/segments/{stretch['segment_id']}/replace",
-            headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-            data={
-                "take_id": stretch["take_id"],
-                "starts_ms": str(stretch["starts_ms"]),
-                "ends_ms": str(stretch["ends_ms"]),
-            },
-            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-        )
-        assert answered.status_code == 200, answered.text
-        assert answered.json()["captured"] is False
-
-    assert answered.json()["needs_person"] is True
-    standing = await _current(db_session, session_id)
-    assert [one.tellings for one in standing] == [RETELLS_BEFORE_A_WARNING]
-    assert len(await _marks(db_session, session_id)) == 1
 
 
 # ---------------------------------------------------------------------------

@@ -345,6 +345,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (owner.project.id, absent),
         },
         {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/projects/{owner.project.id}/passages/P05/archive", {}),
+            "absent": (f"{IR}/facilitator/projects/{absent}/passages/P05/archive", {}),
+            "ids": (owner.project.id, absent),
+        },
+        {
             "method": "GET",
             "owned": (f"{IR}/facilitator/questions", {"params": {"team_id": owner.project.id}}),
             "absent": (f"{IR}/facilitator/questions", {"params": {"team_id": absent}}),
@@ -498,6 +504,7 @@ REFUSING_TEMPLATES = {
     ("GET", f"{IR}/facilitator/takes/{{take_id}}/audio"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
     ("DELETE", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
+    ("POST", f"{IR}/facilitator/projects/{{project_id}}/passages/{{pericope}}/archive"),
 }
 
 #: Routes that name no resource and cannot refuse: they answer with a list, and the scoping
