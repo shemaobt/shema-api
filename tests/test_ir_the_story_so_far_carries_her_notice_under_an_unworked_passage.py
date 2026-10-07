@@ -10,12 +10,15 @@ import json
 from typing import Any
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey
+from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
+from app.services.internalization_room import prepare_opening as prepare_opening_module
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.run_turn import run_turn
+from tests.release_harness import a_claimed_device
 from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -123,4 +126,38 @@ async def test_a_stamp_missing_an_earlier_passage_puts_no_notice_anywhere(
 
     assert NOTICE not in recording.guide[0] and NOTICE not in recording.validator[0], (
         "um carimbo incompleto marcava avisos que a linha das passagens anteriores calava"
+    )
+
+
+def _session(id: str, pericope: str, project_id: str, messages: list[dict[str, str]]) -> IRSession:
+    return IRSession(
+        id=id,
+        pericope=pericope,
+        project_id=project_id,
+        status=IRSessionStatus.IN_PROGRESS,
+        messages=messages,
+        coverage_state={},
+        kept_takes={},
+        back_translation={},
+        language="pt",
+    )
+
+
+async def test_an_opening_written_on_the_panorama_reads_her_notice_under_the_unworked_passage(
+    db_session: AsyncSession, recording: _Recording, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    team, _ = await a_claimed_device(db_session)
+    db_session.add(_session("p01", "P01", team.id, [{"role": "team", "text": "a fome"}]))
+    db_session.add(_session("panorama-1", "OV-Ruth", team.id, []))
+    await db_session.commit()
+
+    async def voices(text: str, **_: Any) -> tuple[Any, bool]:
+        return (type("Voiced", (), {"key": "abertura-1"})(), False)
+
+    monkeypatch.setattr(prepare_opening_module, "synthesize_facilitator_speech", voices)
+
+    await prepare_opening_module.prepare_opening("panorama-1", pericope=P)
+
+    assert f"{P02_HEADING}\n{NOTICE}\n" in recording.guide[0], (
+        "a abertura escrita no panorama contava a passagem que a equipe nunca fez sem o aviso"
     )
