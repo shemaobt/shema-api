@@ -742,3 +742,38 @@ def test_a_second_event_loop_builds_its_own_client_rather_than_borrowing_one(
         "um cliente preso a um loop fechado era entregue a outro, e a conexão dele não "
         "responde fora do loop que a abriu"
     )
+
+
+def _usage_line(caplog: pytest.LogCaptureFixture) -> str:
+    (line,) = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[llm-usage]")]
+    return line
+
+
+async def test_a_call_with_no_effort_set_names_no_effort_in_its_usage_line(
+    fake_client, caplog: pytest.LogCaptureFixture
+) -> None:
+    fake_client(_reply("ok"))
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(
+            system_prompt="s", user_content="u", effort=None, role="validator", settings=_settings()
+        )
+
+    assert _usage_line(caplog).startswith(
+        "[llm-usage] validator answered on claude-fable-5-1 (rung 1 of 3) in "
+    ), "the line read 'at None effort' for every call that runs at the model's own setting"
+
+
+async def test_a_call_with_an_effort_set_still_names_it_in_its_usage_line(
+    fake_client, caplog: pytest.LogCaptureFixture
+) -> None:
+    fake_client(_reply("ok"))
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(
+            system_prompt="s", user_content="u", effort="high", role="guide", settings=_settings()
+        )
+
+    assert _usage_line(caplog).startswith(
+        "[llm-usage] guide answered on claude-fable-5-1 (rung 1 of 3) at high effort in "
+    )

@@ -500,13 +500,13 @@ def _report_spend(
         cache_read_tokens=cache_read,
     )
     logger.info(
-        "[llm-usage] %s answered on %s (rung %s of %s) at %s effort in %s ms, US$ %s: "
+        "[llm-usage] %s answered on %s (rung %s of %s)%s in %s ms, US$ %s: "
         "in=%s cache_read=%s cache_write=%s cache_write_5m=%s cache_write_1h=%s out=%s%s",
         role,
         model,
         rung_number,
         len(rungs),
-        effort,
+        f" at {effort} effort" if effort else "",
         latency_ms,
         cost,
         usage.input_tokens,
