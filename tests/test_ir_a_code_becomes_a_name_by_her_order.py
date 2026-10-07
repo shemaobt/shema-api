@@ -9,6 +9,7 @@ from app.services.internalization_room.prompt_blocks import coverage_status_bloc
 
 NAMES_LOGGER = "app.services.internalization_room.canon.names"
 UNRESOLVED = "(unresolved — needs grounded wording)"
+UNNAMED = "someone the text leaves unnamed here"
 
 
 def _labels(pericope: str) -> dict[str, str]:
@@ -94,3 +95,13 @@ def test_the_cloak_of_ruth_3_15_is_the_cloak_in_that_passage_alone() -> None:
         "em 3:15 o texto diz mitpachat, o manto, e o Guia lia o 'Your Garments' do 3:3"
     )
     assert _labels("P08")["object:S1:O13"] == "Your Garments"
+
+
+def test_the_unnamed_husband_of_ruth_2_11_is_given_no_name_and_no_description() -> None:
+    labels = _labels("P06")
+
+    assert labels["being:S2:ruth-s-deceased-husband-your-hus"] == UNNAMED, (
+        "o Guia lia 'Ruth's deceased husband', uma descrição que o texto não dá"
+    )
+    assert labels["being:S2:ruth-s-father-and-mother-your-fa"] == UNNAMED
+    assert "deceased husband" not in coverage_status_block({}, "P06")

@@ -13,6 +13,7 @@ REGISTRY_DIR = VENDOR / "registry"
 COORDINATES_DIR = VENDOR / "meaning-coordinates"
 
 UNRESOLVED_LABEL = "(unresolved — needs grounded wording)"
+WITHHELD_BEING_LABEL = "someone the text leaves unnamed here"
 
 _STRIPPED = "STRIPPED_TO_"
 _SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman"}
@@ -77,12 +78,12 @@ def thing_name(meaning_map: MeaningMap, code: str) -> str:
     return _PASSAGE_LABEL.get((meaning_map.pericope_num, code)) or name_of(meaning_map, code)
 
 
-def being_names(meaning_map: MeaningMap, scene: Scene) -> list[str | None]:
+def being_names(meaning_map: MeaningMap, scene: Scene) -> list[str]:
     entries = _beings_by_scene(meaning_map.pericope_num).get(scene.number, [])
-    names: list[str | None] = []
+    names: list[str] = []
     for being in scene.beings:
         if being.code is None:
-            names.append(None)
+            names.append(WITHHELD_BEING_LABEL)
             continue
         form = next(
             (entry.get("referential_form") for entry in entries if entry["being_id"] == being.code),
