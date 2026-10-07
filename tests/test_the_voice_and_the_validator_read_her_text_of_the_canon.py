@@ -19,6 +19,13 @@ SCENE_1_SILENCE = (
     "- S1 (1:1-2): Narrator never says YHWH sent the famine or drove the family out; the book "
     "opens with no word of God acting."
 )
+STORY_SO_FAR_OPENS = (
+    "---\n\n# THE STORY SO FAR (earlier passages of this book — map-authored)\n"
+    "Digests of this book's earlier passages, extracted verbatim from their own Meaning Maps. "
+    "Grounded material: it may be used to answer the team's questions about the story so far "
+    "and to situate the current passage in the book. Nothing beyond these passages and the "
+    "current map exists.\n\n**Ruth 1:1"
+)
 
 
 class FakeAgent:
@@ -90,3 +97,12 @@ async def test_the_first_scenes_silence_reaches_the_validator_as_her_coordinates
 
     assert SCENE_1_SILENCE in validator
     assert "- S1 (v.1\u20132):" not in validator
+
+
+async def test_the_story_so_far_opens_with_her_separator_and_header_and_never_names_the_passage(
+    agent: FakeAgent,
+) -> None:
+    guide, validator = await _guide_and_validator(agent, "P03")
+
+    assert STORY_SO_FAR_OPENS in guide
+    assert STORY_SO_FAR_OPENS in validator

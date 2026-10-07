@@ -285,8 +285,9 @@ def story_so_far(book: str, current_pericope: str) -> str:
         return ""
     digests = "\n\n".join(pericope_digest(m) for m in earlier)
     return (
-        f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n"
-        "Grounded material: it may be used to answer the team's questions about the story "
+        "---\n\n# THE STORY SO FAR (earlier passages of this book — map-authored)\n"
+        "Digests of this book's earlier passages, extracted verbatim from their own Meaning "
+        "Maps. Grounded material: it may be used to answer the team's questions about the story "
         "so far and to situate the current passage in the book. Nothing beyond these "
         f"passages and the current map exists.\n\n{digests}\n"
     )
