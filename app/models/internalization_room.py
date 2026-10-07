@@ -427,6 +427,10 @@ class BookPassagesResponse(BaseModel):
     passages: list[PassageView]
 
 
+class FixedLineView(BaseModel):
+    audio_url: str
+
+
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
     #: How many stretches the passage has after this call, not how many recordings the team

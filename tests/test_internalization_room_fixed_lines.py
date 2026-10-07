@@ -1,13 +1,12 @@
-"""The pre-approved lines ship as audio inside the app, and must not drift from the prompt.
+"""Her lines are asked of the room by name; the app's bundle keeps only three notices.
 
-A fail-safe is what the team hears when the model failed or the network did. Synthesizing it
-at that moment asks the network for a favour precisely when the network is the problem — so
-these lines travel with the app. The cost of that is a frozen copy, and the guard against a
-silent freeze is this file.
+A fixed line is voiced by the room from the text it was deployed with, so a line she
+re-rules is heard on the next load and no frozen copy of it travels with the app. What the
+render script still bundles are the notices the room says when it cannot reach the server at
+all, and this file guards that they do not drift, alongside how the fail-safes rotate.
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -67,48 +66,20 @@ async def test_a_line_rendered_twice_is_written_with_its_sound_both_times(
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_catalogue_covers_every_kind_the_room_claims_to_speak(spoken: str) -> None:
+def test_every_kind_the_room_claims_to_speak_is_written_in_it(spoken: str) -> None:
     """Um idioma reivindicado e não escrito é uma sala que troca de língua no meio.
 
     Medido com `localized` e não com `utterances`: `utterances` cai para o bloco inglês e
     por isso nunca volta vazio, o que a torna segura para falar e inútil como medida.
     """
-    catalogue = render.catalogue(spoken)
     for kind in FailSafe:
-        if kind in render.NEVER_SHIPPED:
+        if kind in (FailSafe.UNTOLD_STRETCH, FailSafe.STRETCH_TO_CORRECT):
             continue
         written = localized(kind, spoken)
         assert written, (
             f"a sala diz que fala {spoken!r} e a família {kind} não tem falas escritas nesse "
             "idioma — a equipe ouviria a falha em outra língua"
         )
-        for index in range(len(written)):
-            assert f"{kind}{index}" in catalogue
-
-
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_stretch_line_is_spoken_and_never_shipped(spoken: str) -> None:
-    """O suplemento diz em negrito: *"This one is spoken, not shipped."*"""
-    assert not any(name.startswith("H") for name in render.catalogue(spoken))
-
-
-def test_every_language_ships_the_same_lines_so_a_turn_in_one_is_a_turn_in_all() -> None:
-    """O servidor manda `fixed_line` por nome, e o app resolve o nome no pacote do idioma.
-
-    Só os nomes que o servidor pode mandar. As falas soltas não chegam por turno — o app as
-    toca sozinho — e o português é o único idioma sem `sem_conexao` escrito, porque o áudio
-    dele foi gravado antes deste script e a letra nunca foi anotada.
-    """
-    named = re.compile(r"^[A-Z]\d+$")
-    shipped = {
-        spoken: {name for name in render.catalogue(spoken) if named.match(name)}
-        for spoken in ROOM_LANGUAGES
-    }
-
-    assert len(set(map(frozenset, shipped.values()))) == 1, (
-        "um idioma ficou sem uma fala que outro tem; o nome chega do servidor no meio de um "
-        f"turno e o app não acha o arquivo, então a sala emudece: {shipped}"
-    )
 
 
 def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all() -> None:

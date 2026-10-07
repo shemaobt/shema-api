@@ -20,7 +20,7 @@ class FailSafe(enum.StrEnum):
     STRETCH_TO_CORRECT = "I"
 
 
-ProcessFamily = Literal["P", "X"]
+ProcessFamily = Literal["P", "X", "N"]
 
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
@@ -82,6 +82,30 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     return []
 
 
+_VOICED: dict[str, FailSafe | ProcessFamily] = {
+    "A": FailSafe.UNREPAIRABLE,
+    "D": FailSafe.INAUDIBLE,
+    "E": FailSafe.HARD_STOP,
+    "F": FailSafe.INSTANT_ACK,
+    "P": "P",
+    "X": "X",
+    "N": "N",
+}
+_KEPT_UNSPOKEN = {("N", 3)}
+_NAMED = re.compile(r"([A-Z])(\d+)")
+
+
+def her_line(name: str, language_code: str) -> str | None:
+    named = _NAMED.fullmatch(name)
+    if named is None or named.group(1) not in _VOICED:
+        return None
+    position = int(named.group(2))
+    if (named.group(1), position) in _KEPT_UNSPOKEN:
+        return None
+    lines = utterances(_VOICED[named.group(1)], language_code)
+    return lines[position] if position < len(lines) else None
+
+
 def first(kind: FailSafe, language_code: str = FLOOR) -> str:
     lines = utterances(kind, language_code)
     return lines[0] if lines else ""
@@ -100,9 +124,10 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     the check rounds — so every "couldn't hear" is her first D line, whatever ``turn`` says.
     The other two D lines stay in her file and are simply never chosen.
 
-    The name is what the app plays: these lines are shipped as audio inside the app, so a
-    failure costs no synthesis and needs no network — which matters, because the network is
-    often what failed.
+    The name is what the app asks for: the tablet hands it back to `/fixed-lines/{line}`,
+    which voices the line from the text this server was deployed with, so a line she
+    re-rules is heard on the next load. Only the three notices said with no server at all
+    stay in the app's bundle.
 
     It takes a ``FailSafe`` and never a process family, so that a step cannot be handed to
     the one reader that rotates: ``choose("X", turn=7)`` would answer X-whole where the step
@@ -185,8 +210,8 @@ def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -
 
     The language resolution is ``choose``'s, unchanged — regional, then primary, then the
     authored English — and so is the shape of the answer, because the two consumers want
-    different halves of it: a step spoken by the server needs the text, and a step played
-    from the app's bundle needs the name.
+    different halves of it: a step spoken inside a server answer needs the text, and a step
+    the tablet asks the room for by name needs the name.
     """
     steps = PROCESS_STEPS.get(family)
     if steps is None or step not in steps:

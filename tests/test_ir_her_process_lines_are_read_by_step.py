@@ -16,14 +16,11 @@ moves every line after it, and a step nobody asserted is a step that would move 
 """
 
 import importlib
-import json
 import sys
-from pathlib import Path
 from typing import Any, NamedTuple
 
 import pytest
 
-import scripts.render_fixed_voice_lines as render
 from app.services.internalization_room import llm
 from app.services.internalization_room.fail_safe import (
     PROCESS_STEPS,
@@ -33,7 +30,6 @@ from app.services.internalization_room.fail_safe import (
     first,
     localized,
     process_line,
-    utterances,
 )
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.room_agent import room_agent
@@ -259,50 +255,6 @@ def test_every_language_the_room_claims_has_her_process_lines_written(spoken: st
             f"the room claims {spoken!r} and family {family} has {len(written)} lines written "
             f"in it, not {len(PROCESS_STEPS[family])} — a step would be spoken in another language"
         )
-
-
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_catalogue_lists_the_process_lines_as_never_rendered(
-    tmp_path: Path, spoken: str
-) -> None:
-    """The bundle has no clip for a step yet, and only the catalogue can say so.
-
-    The render script iterated the fail-safe families alone, so the nine process clips were
-    invisible to `--check`: a person could edit one of her lines and the guard would stay
-    green over audio that no longer says it.
-    """
-    catalogue = render.catalogue(spoken)
-    process_names = {line.name for line in HER_PROCESS_LINES}
-    shipped_fail_safes = {
-        f"{kind}{index}"
-        for kind in FailSafe
-        if kind not in render.NEVER_SHIPPED
-        for index in range(len(utterances(kind, spoken)))
-    }
-
-    for line in HER_PROCESS_LINES:
-        assert catalogue[line.name] == line.written(spoken)
-
-    assert set(catalogue) == (
-        shipped_fail_safes | set(render.STANDALONE.get(spoken, {})) | process_names
-    ), "the catalogue gained a name that is neither a shipped fail-safe nor one of her steps"
-
-    rendered = {
-        name: render.fingerprint(text)
-        for name, text in catalogue.items()
-        if name not in process_names
-    }
-    for name in rendered:
-        clip = render._clip_path(tmp_path, spoken, name)
-        clip.parent.mkdir(parents=True, exist_ok=True)
-        clip.write_bytes(b"")
-    manifest = render._bundle(tmp_path, spoken) / render.MANIFEST
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    manifest.write_text(json.dumps(rendered), encoding="utf-8")
-
-    complaints = render.drift(tmp_path, spoken)
-
-    assert set(complaints) == {f"{spoken}/{name}: never rendered" for name in process_names}
 
 
 def test_no_model_is_reachable_from_a_process_line(monkeypatch: pytest.MonkeyPatch) -> None:
