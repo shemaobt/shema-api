@@ -141,3 +141,31 @@ async def test_an_english_panorama_opens_on_her_english_panorama_note(
         "[The session has just begun. The team opened the Book Panorama of Ruth and is at the "
         "table, ready to talk. Speak first.]"
     ], "um Panorama em inglês ouvia a nota em português"
+
+
+async def test_the_validator_reads_her_opening_note_as_what_the_team_side_said(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = ListeningAgent()
+    the_room_agent_is(monkeypatch, turn=agent)
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(),
+        opening=True,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert (
+        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+        "The drafted response answers this. Referring to these words is not a claim about the "
+        "passage.\n\n"
+        "[A sessão acabou de começar. A equipe abriu a passagem P03 e está à mesa, pronta para "
+        "começar. Fale primeiro.]"
+    ) in agent.validator_systems[0], (
+        "o Validator julgava a abertura sem saber que a sessão tinha acabado de começar"
+    )

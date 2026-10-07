@@ -308,7 +308,8 @@ async def _voiced_after_validation(
             MEANING_MAP=standard_of_truth,
             EARLIER_PASSAGES=her_block(EARLIER_PASSAGES_HEADING, earlier_passages),
             TEAM_EVIDENCE=her_block(
-                TEAM_EVIDENCE_HEADING, "" if mother_tongue else transcript or telling_back
+                TEAM_EVIDENCE_HEADING,
+                "" if mother_tongue else transcript or telling_back or opening_instruction,
             ),
             DRAFTED_RESPONSE=draft,
         )
