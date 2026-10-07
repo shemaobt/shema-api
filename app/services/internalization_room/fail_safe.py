@@ -20,7 +20,7 @@ class FailSafe(enum.StrEnum):
     STRETCH_TO_CORRECT = "I"
 
 
-ProcessFamily = Literal["P", "X"]
+ProcessFamily = Literal["P", "X", "N"]
 
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
@@ -89,6 +89,7 @@ _VOICED: dict[str, FailSafe | ProcessFamily] = {
     "F": FailSafe.INSTANT_ACK,
     "P": "P",
     "X": "X",
+    "N": "N",
 }
 _NAMED = re.compile(r"([A-Z])(\d+)")
 

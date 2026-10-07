@@ -32,9 +32,16 @@ ACKS_AS_RULED = """
 - "Tá."
 """
 
-HER_PROCESS_LINES_AT_18FA7C4 = "\n\n".join(
-    f"### {family}.\n\n" + "\n".join(f'- "{line}"' for line in lines)
-    for family, lines in {
+
+def her_file(blocks: dict[str, tuple[str, ...]]) -> str:
+    return "\n\n".join(
+        f"### {family}.\n\n" + "\n".join(f'- "{line}"' for line in lines)
+        for family, lines in blocks.items()
+    )
+
+
+HER_PROCESS_LINES_AT_18FA7C4 = her_file(
+    {
         "P": (
             (
                 "First let's listen to your whole recording, from beginning to end. For now, "
@@ -124,8 +131,65 @@ HER_PROCESS_LINES_AT_18FA7C4 = "\n\n".join(
             ),
             "Agradecemos sua ajuda. O que vocês disseram fica guardado para a equipe ouvir.",
         ),
-    }.items()
+    }
 )
+
+HER_ENSAIO_FINAL_AT_18FA7C4 = {
+    "N": (
+        (
+            "I put together the scene rehearsals you already recorded and translated. Now let's"
+            " listen to the whole passage, from beginning to end. For now, just listen."
+        ),
+        ("We heard it all. Now I will check the translations you already made for me. One moment."),
+        (
+            "One stretch of the recording has no translation yet. Listen to that stretch. If "
+            "something was said there, tap the circle to pause and translate for me only what "
+            "was said. When you finish, tap 'done'."
+        ),
+        (
+            "Listen to the sentence as it is now. Then record that sentence again, whole, from "
+            "its beginning to its end, in your language. Never just a piece of it. Tap the "
+            "circle to record and tap again when you finish."
+        ),
+        (
+            "The new sentence is in place. Listen to how it came out. Then tap the circle and "
+            "translate that sentence for me."
+        ),
+        "The sentence you re-recorded still needs to be translated.",
+        "Listen to the sentence as it is now.",
+        (
+            "Now record that sentence again, whole, in your language. Never just a piece of it."
+            " Tap the circle to record and tap again when you finish."
+        ),
+    ),
+    "N-pt": (
+        (
+            "Juntei os ensaios das cenas que vocês já gravaram e traduziram. Agora vamos ouvir "
+            "a passagem inteira, do começo ao fim. Por enquanto é só ouvir."
+        ),
+        "Ouvimos tudo. Agora vou conferir as traduções que vocês já me fizeram. Um momento.",
+        (
+            "Um trecho da gravação ainda não tem tradução. Ouçam esse trecho. Se alguma coisa "
+            "foi dita ali, toquem no círculo para pausar e traduzam pra mim só o que foi dito. "
+            "Quando terminarem, toquem em 'terminei'."
+        ),
+        (
+            "Ouçam a frase como está agora. Depois gravem essa frase de novo, inteira, do "
+            "começo ao fim dela, na língua de vocês. Nunca só um pedaço. Toquem no círculo para"
+            " gravar e toquem de novo quando terminarem."
+        ),
+        (
+            "A frase nova já está no lugar. Ouçam como ficou. Depois toquem no círculo e "
+            "traduzam essa frase pra mim."
+        ),
+        "Ainda falta traduzir a frase que vocês regravaram.",
+        "Ouçam a frase como está agora.",
+        (
+            "Agora gravem essa frase de novo, inteira, na língua de vocês. Nunca só um pedaço. "
+            "Toquem no círculo para gravar e toquem de novo quando terminarem."
+        ),
+    ),
+}
 
 
 class Bucket:
@@ -311,7 +375,28 @@ async def test_the_two_stale_lines_are_heard_in_her_current_wording(
     )
 
 
-@pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "N0", "Z0", "F3", "F", "Fx", "f0"])
+@pytest.mark.parametrize(("language", "block"), [("pt", "N-pt"), ("en", "N")])
+async def test_the_ensaio_final_is_heard_in_her_words_at_every_step_she_speaks(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+    language: str,
+    block: str,
+) -> None:
+    deploy(her_file(HER_ENSAIO_FINAL_AT_18FA7C4))
+    async with room_client(db_session, monkeypatch) as client:
+        spoken = [
+            (await heard(client, f"N{position}", language))[1] for position in (0, 1, 2, 4, 5, 6, 7)
+        ]
+
+    hers = HER_ENSAIO_FINAL_AT_18FA7C4[block]
+    assert spoken == [f"voz:{line}" for line in hers[:3] + hers[4:]], (
+        "o ensaio final não tinha fala nenhuma: a sala respondia 404 a toda linha N"
+    )
+
+
+@pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "Z0", "F3", "F", "Fx", "f0"])
 async def test_a_line_that_is_not_in_her_file_is_never_voiced(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
