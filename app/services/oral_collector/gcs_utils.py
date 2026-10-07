@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import contextlib
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -95,6 +96,38 @@ async def copy_gcs_blob(source_name: str, dest_name: str) -> None:
         bucket.copy_blob(source_blob, bucket, dest_name)
 
     await asyncio.to_thread(_blocking)
+
+
+async def uploaded_object_refusal(
+    blob_name: str,
+    *,
+    expected_size_bytes: int,
+    expected_md5_hash: str | None,
+    expected_crc32c: str | None,
+) -> str | None:
+    def _blocking() -> str | None:
+        client = storage.Client(project=GCS_OC_PROJECT)
+        blob = client.bucket(gcs_oc_bucket()).blob(blob_name)
+
+        if not blob.exists():
+            return "The uploaded audio is not in the bucket"
+
+        blob.reload()
+        actual_size = blob.size or 0
+        if expected_size_bytes > 0 and actual_size != expected_size_bytes:
+            return f"Size mismatch: expected {expected_size_bytes}, got {actual_size}"
+
+        if expected_md5_hash and blob.md5_hash:
+            gcs_md5_hex = base64.b64decode(blob.md5_hash).hex()
+            if gcs_md5_hex != expected_md5_hash.lower():
+                return f"MD5 mismatch: client={expected_md5_hash}, gcs={gcs_md5_hex}"
+
+        if expected_crc32c and blob.crc32c != expected_crc32c:
+            return f"CRC32C mismatch: client={expected_crc32c}, gcs={blob.crc32c}"
+
+        return None
+
+    return await asyncio.to_thread(_blocking)
 
 
 async def delete_gcs_object(bucket_name: str, blob_name: str) -> None:

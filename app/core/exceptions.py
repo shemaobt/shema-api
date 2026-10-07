@@ -330,6 +330,10 @@ class SecondaryClassificationConflictError(ValidationError):
         )
 
 
+class UploadNotConfirmed(ValidationError):
+    pass
+
+
 class SegmentClassificationConflictError(ValidationError):
     def __init__(self, segment_index: int) -> None:
         super().__init__(

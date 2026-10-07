@@ -418,6 +418,11 @@ The property of a transcript that carries what was said without cleanup, complet
 summary.
 _Avoid_: literal, raw, Literal
 
+**Pending object** (`pending_blob_name`):
+The Oral Collector object name handed out for an upload of a recording that confirm-upload
+has not yet accepted.
+_Avoid_: staged blob, temporary upload, draft audio
+
 **App** (`apps`):
 One application this server serves, holding the roles that access to it is granted through.
 _Avoid_: product, tenant, client, Aplicativo
