@@ -62,9 +62,14 @@ OPENING_INSTRUCTION = (
 
 
 def opening_note(pericope_num: str, language_code: str) -> str:
+    if language_code == "pt":
+        return (
+            f"[A sessão acabou de começar. A equipe abriu a passagem {pericope_num} e está à "
+            "mesa, pronta para começar. Fale primeiro.]"
+        )
     return (
-        f"[A sessão acabou de começar. A equipe abriu a passagem {pericope_num} e está à mesa, "
-        "pronta para começar. Fale primeiro.]"
+        f"[The session has just begun. The team opened passage {pericope_num} and is at the "
+        "table, ready to begin. Speak first.]"
     )
 
 

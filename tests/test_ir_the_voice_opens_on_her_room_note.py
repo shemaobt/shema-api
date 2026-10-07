@@ -26,7 +26,11 @@ def _settings() -> Settings:
 class ListeningAgent:
     """Hears what each role is handed, drafts one line and passes it."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        draft: str = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira.",
+    ) -> None:
+        self.draft = draft
         self.guide_turns: list[str] = []
         self.validator_systems: list[str] = []
 
@@ -35,7 +39,7 @@ class ListeningAgent:
             self.validator_systems.append(system_prompt)
             return json.dumps({"verdict": "pass", "issues": []})
         self.guide_turns.append(user_content)
-        return "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira."
+        return self.draft
 
 
 async def test_a_portuguese_passage_opens_on_her_note_and_nothing_of_ours(
@@ -59,3 +63,28 @@ async def test_a_portuguese_passage_opens_on_her_note_and_nothing_of_ours(
         "[A sessão acabou de começar. A equipe abriu a passagem P03 e está à mesa, "
         "pronta para começar. Fale primeiro.]"
     ], "o Guide abria com o nosso roteiro em inglês, pedindo que abrisse a primeira cena"
+
+
+async def test_an_english_passage_opens_on_her_english_note(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = ListeningAgent(
+        "Let's begin with Familiarization. First I will tell you the whole passage."
+    )
+    the_room_agent_is(monkeypatch, turn=agent)
+    session = await create_session(db_session, language="en", pericope=P)
+
+    await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(),
+        opening=True,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert agent.guide_turns == [
+        "[The session has just begun. The team opened passage P03 and is at the table, "
+        "ready to begin. Speak first.]"
+    ], "uma sessão em inglês ouvia a nota em português"
