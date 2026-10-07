@@ -87,3 +87,10 @@ def test_a_reserved_or_retired_mark_on_the_entry_or_its_key_skips_it(
     labels = _ruth_1_with_famine_written_as(f"[[{code}-Old-Thing]] — רָעָב / famine")
 
     assert labels[f"object:S1:{code}"] == "famine"
+
+
+def test_the_cloak_of_ruth_3_15_is_the_cloak_in_that_passage_alone() -> None:
+    assert _labels("P10")["object:S1:O13"] == "The Cloak", (
+        "em 3:15 o texto diz mitpachat, o manto, e o Guia lia o 'Your Garments' do 3:3"
+    )
+    assert _labels("P08")["object:S1:O13"] == "Your Garments"

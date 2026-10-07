@@ -16,6 +16,7 @@ UNRESOLVED_LABEL = "(unresolved — needs grounded wording)"
 
 _STRIPPED = "STRIPPED_TO_"
 _SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman"}
+_PASSAGE_LABEL = {("P10", "O13"): "The Cloak"}
 _DEFINITION = re.compile(r"^\[\[([A-Z][A-Z0-9_]*?)-[^\]\n]*\]\][ \t]*—[ \t]*([^\n]+)$", re.M)
 _NAMED_LINK = re.compile(r"\[\[[^\]\n]*\]\][ \t]+(?=[^\W\d_])")
 _FLAG_NOTE = re.compile(r"^active at\b", re.I)
@@ -70,6 +71,10 @@ def name_of(meaning_map: MeaningMap, code: str) -> str:
         code,
     )
     return UNRESOLVED_LABEL
+
+
+def thing_name(meaning_map: MeaningMap, code: str) -> str:
+    return _PASSAGE_LABEL.get((meaning_map.pericope_num, code)) or name_of(meaning_map, code)
 
 
 def being_names(meaning_map: MeaningMap, scene: Scene) -> list[str | None]:

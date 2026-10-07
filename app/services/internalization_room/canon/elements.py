@@ -14,7 +14,7 @@ from app.services.internalization_room.canon.book_material import (
     PreservationRule,
     preservation_rules,
 )
-from app.services.internalization_room.canon.names import being_names, name_of
+from app.services.internalization_room.canon.names import being_names, thing_name
 from app.services.internalization_room.canon.parse_map import Entity, MeaningMap, load_map
 
 
@@ -89,7 +89,7 @@ def _label(entity: Entity) -> str:
 
 
 def _thing_names(meaning_map: MeaningMap, entities: list[Entity]) -> list[str | None]:
-    return [entity.code and name_of(meaning_map, entity.code) for entity in entities]
+    return [entity.code and thing_name(meaning_map, entity.code) for entity in entities]
 
 
 def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Element]:
