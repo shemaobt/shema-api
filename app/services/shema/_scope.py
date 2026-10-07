@@ -81,9 +81,9 @@ from app.services import authorization_service
 
 logger = logging.getLogger(__name__)
 
-#: The role whose reach is every region. It is the one key of the four with no seat in the
-#: org chart (FE-44 §5.3 gives the chart three roles *per region*), which is the same fact
-#: read from the other side: it is not a regional role, so it is not regionally scoped.
+#: The three seats the org chart holds *per region* (FE-44 §5.3) — regional roles, scoped by
+#: their rows in ``shema_user_regions``, grouped in :data:`REGIONAL_ROLES` just below. The
+#: unscoped fourth key that used to be documented here left with OBT-572.
 COORDINATOR_ROLE = "coordinator"
 OBT_LAB_ROLE = "obtLab"
 RESOURCE_CIRCLE_ROLE = "resourceCircle"
