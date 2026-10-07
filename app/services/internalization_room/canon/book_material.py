@@ -246,9 +246,9 @@ def require_walkable(meaning_map: MeaningMap) -> None:
 
 
 def pericope_digest(meaning_map: MeaningMap) -> str:
-    """One passage, verbatim from its map — reference, title, arc prose, scene titles.
+    """One passage from its map — reference, title, arc prose, scene titles, links as codes alone.
 
-    Nothing here is freshly written. If a digest needs a line the map does not supply, that is
+    No word here is freshly written. If a digest needs a line the map does not supply, that is
     a map problem for the project, not a gap for this app to fill.
     """
     scenes = "; ".join(scene.title for scene in meaning_map.scenes)
