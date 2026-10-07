@@ -173,13 +173,24 @@ def sync(pin: str | None = None) -> int:
     if not published["meaning-map"]:
         print(f"nothing consumable at pin {sha} — refusing to empty the canon", file=sys.stderr)
         return 1
+    fetched = {kind: {name: _raw(kind, sha, name) for name in published[kind]} for kind in KINDS}
+    recorded = json.loads(_file("_spec/pins.json", sha))["sources"]
+    for name, data in fetched["registry"].items():
+        if _digest(data) != recorded[f"registry/{name}"]["sha256"]:
+            book = name.removesuffix(".aliases.json")
+            print(
+                f"the {book} names list is not the one pins.json records at pin {sha} — "
+                "refusing to vendor it",
+                file=sys.stderr,
+            )
+            return 1
     files = []
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
         names = published[kind]
         for name in names:
-            data = _raw(kind, sha, name)
+            data = fetched[kind][name]
             (target / name).write_bytes(data)
             files.append({"path": f"{kind}/{name}", "sha256": _digest(data)})
             print(f"  {kind}/{name}")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -35,6 +36,7 @@ class Compiler:
         self.relation: str | None = "identical"
         self.committed = "2026-09-29T21:14:03Z"
         self.requests: list[str] = []
+        self.fingerprints: dict[str, str] = {}
 
     def passage(
         self, stem: str, *, coordinates: bool = True, log: bool = True, map: bool = True
@@ -80,10 +82,17 @@ class Compiler:
             return self.files[found["path"]]
         raise _not_found(url)
 
+    def _fingerprint_of(self, name: str) -> str:
+        names_list = self.files.get(f"_spec/registry/{name}.aliases.json")
+        return hashlib.sha256(names_list).hexdigest() if names_list is not None else "0"
+
     def _pins(self) -> dict[str, Any]:
         return {
             "sources": {
-                f"registry/{name}.aliases.json": {"version": "aliases-0.1.6", "sha256": "0"}
+                f"registry/{name}.aliases.json": {
+                    "version": "aliases-0.1.6",
+                    "sha256": self.fingerprints.get(name, self._fingerprint_of(name)),
+                }
                 for name in self.listed
             }
         }
