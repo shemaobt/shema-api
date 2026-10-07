@@ -29,6 +29,7 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.db.models.project import Project
+from app.models.device import ClaimedDevice
 from app.models.internalization_room import PlayedTake
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.back_translation import (
@@ -110,15 +111,29 @@ async def a_claimed_device(
     `language_name` is the team's mother tongue; two teams in one case need two emails, whose
     first three letters make the language's code.
     """
+    project, _facilitator, [tablet] = await claimed_tablets_of_one_team(
+        db, email=email, language_name=language_name, tablets=1
+    )
+    return project, tablet.credential
+
+
+async def claimed_tablets_of_one_team(
+    db: AsyncSession, *, email: str, tablets: int, language_name: str | None = None
+) -> tuple[Project, User, list[ClaimedDevice]]:
+    """A team, the facilitator who claimed its tablets, and that many tablets claimed to it."""
     user = await make_user(db, email=email)
     language = await make_language(db, name=language_name or f"Lang {email}", code=email[:3])
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=project.id
-    )
-    return project, claimed.credential
+    claimed = []
+    for _ in range(tablets):
+        minted = await create_device(db)
+        claimed.append(
+            await claim_device_as_facilitator(
+                db, user=user, code=minted.claim_code, project_id=project.id
+            )
+        )
+    return project, user, claimed
 
 
 async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:

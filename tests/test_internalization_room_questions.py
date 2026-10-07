@@ -18,8 +18,8 @@ from app.core.enums import ProjectRole
 from app.core.exceptions import NothingToHear, ReplyMovedOn, ValidationError
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRCoverageEvent, IRQuestion, IRQuestionStatus
+from app.models.device import ClaimedDevice
 from app.services.auth.issue_tokens import issue_tokens
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.voice_handles import team_audio_url
@@ -30,12 +30,10 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
-from tests.release_harness import a_claimed_device
+from tests.release_harness import a_claimed_device, claimed_tablets_of_one_team
 
 DEVICE = "tablet-da-equipe-1"
 OTHER_DEVICE = "tablet-de-outra-equipe"
-TABLET_B = "tablet-da-equipe-2"
-TABLET_OF_ANOTHER_TEAM = "tablet-da-equipe-vizinha"
 OV = "OV-Ruth"
 QUESTIONS = "/api/internalization-room/questions"
 FACILITATOR_QUESTIONS = "/api/internalization-room/facilitator/questions"
@@ -584,35 +582,31 @@ class _TeamWithTwoTablets:
     tablet_a: dict[str, str]
     tablet_b: dict[str, str]
 
+    @property
+    def asking_device(self) -> str:
+        return self.tablet_a["X-Room-Device"]
 
-def _tablet(device: str, credential: str) -> dict[str, str]:
-    return {"X-Room-Device": device, "X-Device-Credential": credential}
+
+def _tablet(claimed: ClaimedDevice) -> dict[str, str]:
+    return {"X-Room-Device": claimed.device.id, "X-Device-Credential": claimed.credential}
 
 
 async def _a_team_with_two_tablets(db: AsyncSession, *, email: str) -> _TeamWithTwoTablets:
-    facilitator = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
-    team = await make_project(db, language.id, name=f"Team {email}")
-    await make_project_user_access(db, team.id, facilitator.id, role=ProjectRole.FACILITATOR)
-    credentials = []
-    for _ in range(2):
-        minted = await create_device(db)
-        claimed = await claim_device_as_facilitator(
-            db, user=facilitator, code=minted.claim_code, project_id=team.id
-        )
-        credentials.append(claimed.credential)
+    team, facilitator, [a, b] = await claimed_tablets_of_one_team(db, email=email, tablets=2)
     return _TeamWithTwoTablets(
-        team_id=team.id,
-        facilitator=facilitator,
-        tablet_a=_tablet(DEVICE, credentials[0]),
-        tablet_b=_tablet(TABLET_B, credentials[1]),
+        team_id=team.id, facilitator=facilitator, tablet_a=_tablet(a), tablet_b=_tablet(b)
     )
 
 
+async def _a_tablet_of_another_team(db: AsyncSession, *, email: str) -> dict[str, str]:
+    _team, _facilitator, [tablet] = await claimed_tablets_of_one_team(db, email=email, tablets=1)
+    return _tablet(tablet)
+
+
 async def _a_reply_to_a_question_asked_on(
-    db: AsyncSession, *, device: str, project_id: str | None
+    db: AsyncSession, *, device: str, project_id: str | None, store: MemoryStore | None = None
 ) -> IRQuestion:
-    store = MemoryStore()
+    store = store or MemoryStore()
     question = await _raise(db, store, device=device, project_id=project_id)
     return await service.answer_with_voice(
         db, question, audio=b"resposta da facilitadora", answered_by="fac", store=store
@@ -640,7 +634,7 @@ async def test_a_reply_to_a_question_asked_on_tablet_a_is_listed_on_tablet_b_of_
 ) -> None:
     team = await _a_team_with_two_tablets(db_session, email="equipe-lista@example.com")
     reply = await _a_reply_to_a_question_asked_on(
-        db_session, device=DEVICE, project_id=team.team_id
+        db_session, device=team.asking_device, project_id=team.team_id
     )
 
     assert await _listed_on(room_client, team.tablet_b) == [reply.id], (
@@ -654,7 +648,7 @@ async def test_a_reply_played_to_the_end_on_tablet_b_is_no_longer_unheard_on_tab
 ) -> None:
     team = await _a_team_with_two_tablets(db_session, email="equipe-ouviu@example.com")
     reply = await _a_reply_to_a_question_asked_on(
-        db_session, device=DEVICE, project_id=team.team_id
+        db_session, device=team.asking_device, project_id=team.team_id
     )
 
     heard = await _played_to_the_end_on(room_client, team.tablet_b, reply)
@@ -670,10 +664,12 @@ async def test_a_tablet_of_another_team_never_lists_the_reply(
     db_session: AsyncSession, room_client: httpx.AsyncClient
 ) -> None:
     team = await _a_team_with_two_tablets(db_session, email="equipe-dona@example.com")
-    _neighbour, credential = await a_claimed_device(db_session, email="vizinha-lista@example.com")
-    await _a_reply_to_a_question_asked_on(db_session, device=DEVICE, project_id=team.team_id)
+    neighbour = await _a_tablet_of_another_team(db_session, email="vizinha-lista@example.com")
+    await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=team.team_id
+    )
 
-    assert await _listed_on(room_client, _tablet(TABLET_OF_ANOTHER_TEAM, credential)) == [], (
+    assert await _listed_on(room_client, neighbour) == [], (
         "a resposta é da equipe que perguntou; um tablet de outra equipe nunca a vê"
     )
 
@@ -682,14 +678,12 @@ async def test_a_tablet_of_another_team_cannot_mark_the_reply_heard(
     db_session: AsyncSession, room_client: httpx.AsyncClient
 ) -> None:
     team = await _a_team_with_two_tablets(db_session, email="equipe-marca@example.com")
-    _neighbour, credential = await a_claimed_device(db_session, email="vizinha-marca@example.com")
+    neighbour = await _a_tablet_of_another_team(db_session, email="vizinha-marca@example.com")
     reply = await _a_reply_to_a_question_asked_on(
-        db_session, device=DEVICE, project_id=team.team_id
+        db_session, device=team.asking_device, project_id=team.team_id
     )
 
-    refused = await _played_to_the_end_on(
-        room_client, _tablet(TABLET_OF_ANOTHER_TEAM, credential), reply
-    )
+    refused = await _played_to_the_end_on(room_client, neighbour, reply)
 
     assert refused.status_code == 404, refused.text[:300]
     assert await _listed_on(room_client, team.tablet_a) == [reply.id], (
@@ -698,17 +692,25 @@ async def test_a_tablet_of_another_team_cannot_mark_the_reply_heard(
 
 
 async def test_a_reply_nobody_marked_heard_stays_listed_on_both_tablets_of_the_team(
-    db_session: AsyncSession, room_client: httpx.AsyncClient
+    db_session: AsyncSession, room_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    store = MemoryStore()
+    monkeypatch.setattr(service, "_store", lambda *a, **kw: store)
     team = await _a_team_with_two_tablets(db_session, email="equipe-metade@example.com")
     reply = await _a_reply_to_a_question_asked_on(
-        db_session, device=DEVICE, project_id=team.team_id
+        db_session, device=team.asking_device, project_id=team.team_id, store=store
     )
-    await _listed_on(room_client, team.tablet_b)
 
-    assert await _listed_on(room_client, team.tablet_a) == [reply.id]
+    played = await room_client.get(
+        team_audio_url(reply.reply_audio_key or ""), headers=team.tablet_b
+    )
+
+    assert played.status_code == 200, played.text[:300]
+    assert await _listed_on(room_client, team.tablet_a) == [reply.id], (
+        "o tablet B tocou a resposta e parou sem marcar ouvida; o tablet A segue com ela"
+    )
     assert await _listed_on(room_client, team.tablet_b) == [reply.id], (
-        "tocada pela metade e parada, a resposta segue não ouvida nos dois tablets"
+        "o tablet B tocou a resposta e parou sem marcar ouvida; ela segue na lista dele"
     )
 
 
@@ -719,7 +721,7 @@ async def test_the_desk_shows_a_reply_heard_on_another_tablet_as_heard_by_the_te
     await grant_facilitator_app_role(db_session, team.facilitator.id)
     access, _refresh = await issue_tokens(db_session, team.facilitator)
     reply = await _a_reply_to_a_question_asked_on(
-        db_session, device=DEVICE, project_id=team.team_id
+        db_session, device=team.asking_device, project_id=team.team_id
     )
     heard = await _played_to_the_end_on(room_client, team.tablet_b, reply)
     assert heard.status_code == 200, heard.text[:300]
@@ -743,7 +745,7 @@ async def test_a_reply_already_heard_on_the_asking_tablet_stays_heard_for_the_wh
 ) -> None:
     team = await _a_team_with_two_tablets(db_session, email="equipe-antiga@example.com")
     reply = await _a_reply_to_a_question_asked_on(
-        db_session, device=DEVICE, project_id=team.team_id
+        db_session, device=team.asking_device, project_id=team.team_id
     )
     await service.mark_heard(db_session, reply)
 
@@ -751,7 +753,7 @@ async def test_a_reply_already_heard_on_the_asking_tablet_stays_heard_for_the_wh
         "uma resposta já ouvida no tablet que perguntou continua ouvida para a equipe inteira"
     )
     assert await _listed_on(room_client, team.tablet_a) == [], (
-        "a marca guardada antes de a resposta ser da equipe não muda"
+        "a marca de ouvida do tablet que perguntou vale também para ele"
     )
 
 
@@ -759,7 +761,9 @@ async def test_a_question_with_no_team_stays_with_the_tablet_that_asked(
     db_session: AsyncSession, room_client: httpx.AsyncClient
 ) -> None:
     team = await _a_team_with_two_tablets(db_session, email="equipe-sem-time@example.com")
-    reply = await _a_reply_to_a_question_asked_on(db_session, device=DEVICE, project_id=None)
+    reply = await _a_reply_to_a_question_asked_on(
+        db_session, device=team.asking_device, project_id=None
+    )
 
     assert await _listed_on(room_client, team.tablet_b) == [], (
         "uma pergunta sem equipe não é de equipe nenhuma; só o tablet que perguntou a recebe"
@@ -776,12 +780,12 @@ async def test_a_caller_with_no_team_lists_only_the_replies_to_its_own_devices_q
 ) -> None:
     team = await _a_team_with_two_tablets(db_session, email="equipe-chave@example.com")
     reply = await _a_reply_to_a_question_asked_on(
-        db_session, device=DEVICE, project_id=team.team_id
+        db_session, device=team.asking_device, project_id=team.team_id
     )
 
-    assert await _listed_on(room_client, {"X-Room-Device": TABLET_B}) == [], (
+    assert await _listed_on(room_client, {"X-Room-Device": team.tablet_b["X-Room-Device"]}) == [], (
         "a chave compartilhada não nomeia equipe; a fila dela segue por aparelho"
     )
-    assert await _listed_on(room_client, {"X-Room-Device": DEVICE}) == [reply.id], (
+    assert await _listed_on(room_client, {"X-Room-Device": team.asking_device}) == [reply.id], (
         "pela chave compartilhada, o aparelho que perguntou segue recebendo a resposta"
     )

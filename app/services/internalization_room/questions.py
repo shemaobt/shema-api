@@ -198,7 +198,7 @@ def _reached_by_tablet(*, device_id: str, project_id: str | None) -> ColumnEleme
 async def get_question_this_tablet_reaches(
     db: AsyncSession, question_id: str, *, device_id: str, project_id: str | None
 ) -> IRQuestion:
-    """The question, if this tablet reaches it on the rule ``replies_for`` lists by."""
+    """The question, if it is this tablet's team's or, naming no team, this tablet's own."""
     question = (
         await db.execute(
             select(IRQuestion).where(
@@ -534,8 +534,9 @@ async def replies_for(
 ) -> list[IRQuestion]:
     """Answers the team has not heard yet, from any session it ever held.
 
-    A facilitator may answer hours later, when that passage is long closed. Scoping the
-    reply to its session would drop it silently.
+    A caller with no team lists by its device alone. A facilitator may answer hours later,
+    when that passage is long closed. Scoping the reply to its session would drop it
+    silently.
     """
     result = await db.execute(
         select(IRQuestion)
