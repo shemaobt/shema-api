@@ -672,3 +672,19 @@ async def test_the_served_order_is_the_canons_bead_order(client, db_session: Asy
     body = (await client.get(coverage_url(project.id, "P01"), headers=headers)).json()
 
     assert [element["key"] for element in body] == element_keys("P01")
+
+
+# ------------------------------------------------------- behaviour 9: no name the text withholds
+
+
+async def test_the_woman_of_ruth_1_5_reaches_the_desk_with_no_name_beside_her(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b10woman@x.com")
+
+    body = by_key((await client.get(coverage_url(project.id, "P01"), headers=headers)).json())
+
+    assert body["being:S4:B3"]["label_en"] == "The woman"
+    assert body["being:S4:B3"]["label_pt"] == "A mulher", (
+        "a conta da cena 4 dizia «A mulher (Noemi)», devolvendo o nome que o texto tira em 1:5"
+    )
