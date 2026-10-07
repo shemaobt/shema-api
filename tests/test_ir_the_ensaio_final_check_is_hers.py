@@ -123,3 +123,29 @@ async def test_the_analyst_is_asked_with_her_closing_request_not_ours(client, an
     assert [call["user_content"] for call in analyst.asked] == [
         "Analyze the telling-back now. Return only the JSON object."
     ], "o analista era chamado com o nosso «Compare a tradução com o mapa.»"
+
+
+HER_KICKOFF = (
+    "(The team heard their whole recording, told it back frase by frase, and tapped "
+    "'terminei'. Speak the verdict now.)"
+)
+
+
+async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validator_reads_it(
+    client, speaker
+) -> None:
+    first = await _a_round(client, TELLING)
+    retold = {**TELLING[2], "supersedes": 2}
+
+    await _a_round(client, [retold], session_id=first["sessionId"])
+
+    later = speaker.drafts[-1]
+    assert later["user_content"] == HER_KICKOFF, "o veredito abria com o nosso «Speak this turn.»"
+    assert not later.get("conversation"), (
+        "o veredito era redigido com a conversa inteira; o dela não tem histórico"
+    )
+    assert (
+        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+        "The drafted response answers this. Referring to these words is not a claim about the "
+        f"passage.\n\n{HER_KICKOFF}"
+    ) in speaker.validations[-1], "o Validador não lia o pontapé dela como o que a equipe disse"

@@ -15,7 +15,6 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
-    SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
     TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
@@ -146,14 +145,8 @@ def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
     conversation, not a heading inside the question. The instructions that ride per turn —
     the opening's note — stay in that last message, which is where an
     instruction is read as this turn's and not as something said earlier.
-
-    A turn with neither — the back-translation verdict — asks for its speech in the session's
-    own language rather than sending nothing: the API refuses an empty user message, and that
-    400 would reach the team as a fail-safe line.
     """
-    if utterance:
-        return utterance
-    return opening_instruction or SPEAK_THIS_TURN
+    return utterance or opening_instruction
 
 
 async def _draft(
@@ -267,6 +260,7 @@ async def _voiced_after_validation(
     mother_tongue: bool = False,
     prepared_pericope: str | None = None,
     earlier_passages: str = "",
+    with_history: bool = True,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -308,7 +302,7 @@ async def _voiced_after_validation(
     """
     started = time.monotonic()
     spend = open_ledger()
-    conversation = _conversation_turns(messages)
+    conversation = _conversation_turns(messages) if with_history else []
     redraft_note = ""
     issues: list[dict[str, Any]] = []
     warmed_connection = False
