@@ -26,17 +26,14 @@ from app.services.internalization_room.coverage import (
 
 
 def _short_label(element: Element, scenes: dict[int, str]) -> str:
-    """A label the Guide can say: a scene by its verses, a silence by its scene, a rule by
-    its number, and everything else by the map's own line for it — in the scene it is in,
-    because the team saying "Naomi" in scene 1 does not answer for her in scene 3."""
+    """A label the Guide can say, as her `shortLabel`: a scene by its verses, a silence by
+    its scene, a rule by its number, and everything else by its display name alone."""
     if element.kind is ElementKind.SCENE and element.scene is not None:
         return scenes[element.scene]
     if element.kind is ElementKind.ABSENCE:
         return f"absence @ S{element.scene}"
     if element.kind is ElementKind.PRESERVED and element.rule_id is not None:
         return element.rule_id
-    if element.scene is not None:
-        return f"{element.label} @ S{element.scene}"
     return element.label
 
 

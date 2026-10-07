@@ -51,9 +51,9 @@ def _engaged(*keys: str) -> dict[str, str]:
 SCENE_ONE_DONE_SCENE_TWO_OPEN = """\
 LEDGER (the app's notes — information only; you decide what comes next)
 
-WORKED WITH BY THE TEAM (engaged): S1 (v.1–2); Elimelech @ S1; Naomi @ S1; Mahlon @ S1; Chilion @ S1; \
-Judges @ S1; Ephrathites @ S1; Bethlehem @ S1; Fields of Moab @ S1; the land of Judah @ S1; \
-Famine @ S1; sojourning @ S1; In the Days When the Judges Judged @ S1; absence @ S1; S2 (v.3)
+WORKED WITH BY THE TEAM (engaged): S1 (v.1–2); Elimelech; Naomi; Mahlon; Chilion; Judges; \
+Ephrathites; Bethlehem; Fields of Moab; the land of Judah; Famine; sojourning; \
+In the Days When the Judges Judged; absence @ S1; S2 (v.3)
 
 NOT YET TOUCHED (still deserve a visit before the session ends):
   arc: Level-1 arc
@@ -61,21 +61,16 @@ NOT YET TOUCHED (still deserve a visit before the session ends):
   tone: Level-1 tone
   function: Level-1 function
   scene: S3 (v.4), S4 (v.5)
-  being: Elimelech @ S2, Naomi @ S2, Mahlon @ S2, Chilion @ S2, Mahlon @ S3, Chilion @ S3, \
-Women of Moab @ S3, Orpah @ S3, Ruth @ S3, Naomi @ S3, Mahlon @ S4, Chilion @ S4, the woman @ S4
-  place: Fields of Moab @ S2, Fields of Moab @ S3, Fields of Moab @ S4
-  object: about ten years @ S3
+  being: Elimelech, Naomi, Mahlon, Chilion, Mahlon, Chilion, Women of Moab, Orpah, Ruth, \
+Naomi, Mahlon, Chilion, the woman
+  place: Fields of Moab, Fields of Moab, Fields of Moab
+  object: about ten years
   significant_absence: absence @ S2, absence @ S3, absence @ S4
   preserved_element: R3, R5, R10"""
 
 
 def test_the_block_is_her_three_parts_in_labels_the_guide_can_say() -> None:
-    """Scene 2 is where the team is, scene 1 is behind them, and nothing is a key.
-
-    A person the map names in four scenes is four beads, and the label says which: the
-    team saying "Naomi" in scene 1 does not answer for her in scene 3, so COVERED and
-    REMAINING never name the same thing.
-    """
+    """Scene 1 is behind the team, scene 2 is begun, and nothing is a key."""
     state = _engaged(*_scene_keys(1), "scene:2")
 
     assert coverage_status_block(state, P) == SCENE_ONE_DONE_SCENE_TWO_OPEN, (

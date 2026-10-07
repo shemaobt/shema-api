@@ -119,3 +119,18 @@ def test_a_map_visited_to_its_last_element_says_so_under_her_heading() -> None:
         "NOT YET TOUCHED (still deserve a visit before the session ends):",
         "  (nothing — everything in the map has been visited)",
     ], "o fim do ledger dizia REMAINING: none, e só quando tudo estava engajado"
+
+
+def test_a_being_is_named_by_its_display_name_with_no_scene_marker() -> None:
+    lines = coverage_status_block(initial_state(P), P).splitlines()
+    named = {
+        kind: line.split(": ", 1)[1].split(", ")
+        for line in lines
+        for kind in ("being", "place", "object", "time")
+        if line.startswith(f"  {kind}: ")
+    }
+
+    assert {"Naomi", "the woman", "Ruth"} <= set(named["being"])
+    assert [name for names in named.values() for name in names if " @ S" in name] == [], (
+        "cada nome levava '@ S<n>' atrás, um marcador de cena que o ledger dela não tem"
+    )
