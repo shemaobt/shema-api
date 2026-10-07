@@ -688,3 +688,15 @@ async def test_the_woman_of_ruth_1_5_reaches_the_desk_with_no_name_beside_her(
     assert body["being:S4:B3"]["label_pt"] == "A mulher", (
         "a conta da cena 4 dizia «A mulher (Noemi)», devolvendo o nome que o texto tira em 1:5"
     )
+
+
+async def test_the_unnamed_husband_of_ruth_2_11_reaches_the_desk_unnamed(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b10husband@x.com")
+
+    body = by_key((await client.get(coverage_url(project.id, "P06"), headers=headers)).json())
+
+    assert body["being:S2:ruth-s-deceased-husband-your-hus"]["label_en"] == (
+        "Someone the text leaves unnamed here"
+    ), "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"
