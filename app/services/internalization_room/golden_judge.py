@@ -11,23 +11,21 @@ session played.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room._default_prompts import prompt_body
 from app.services.internalization_room.llm import cache_break_at_end, voice_ladder
 from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.sessions import book_of
 
-HER_PROMPT = Path(__file__).parent / "prompts/vendor/golden_judge_system_prompt.md"
+HER_PROMPT = Path(__file__).parent / "prompts/golden_judge_system_prompt.md"
 
 #: Her request, verbatim (`src/golden/run.ts:132`): the transcript block follows two newlines on.
 JUDGE_NOW = "Judge this session now. Return only the JSON object."
-
-_MARKER = re.compile(r"^`?=== (BEGIN|END) SYSTEM PROMPT ===`?\s*$", re.M)
 
 #: An integer and no more: the API's structured output refuses `minimum`/`maximum` on one, and
 #: the 0-to-4 range is what the prompt asks for and what `passes` reads.
@@ -77,16 +75,6 @@ _VERDICT: dict[str, Any] = {
 }
 
 
-def _prompt_body(text: str) -> str:
-    """What sits between her standalone marker lines; the notes outside them are for a reader.
-
-    The markers are matched as whole lines, the way her `extractPromptBody` matches them,
-    because the notes above the body mention the markers inline.
-    """
-    begin, end = _MARKER.finditer(text)
-    return text[begin.end() : end.start()].strip()
-
-
 async def judge_session(
     *, pericope: str, language: str, transcript: str, settings: Settings | None = None
 ) -> dict[str, Any]:
@@ -104,7 +92,7 @@ async def judge_session(
     cfg = settings or get_settings()
     system = cache_break_at_end(
         render(
-            _prompt_body(HER_PROMPT.read_text(encoding="utf-8")),
+            prompt_body(HER_PROMPT.read_text(encoding="utf-8")),
             MEANING_MAP=validator_map_block(pericope, book_of(pericope)),
             SESSION_LANGUAGE=language,
         )

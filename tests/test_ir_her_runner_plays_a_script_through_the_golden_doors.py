@@ -315,6 +315,20 @@ async def test_the_openings_transcript_is_what_the_guide_received(client, monkey
     )
 
 
+async def test_the_opening_hands_the_guide_the_note_her_runner_sends(client) -> None:
+    session_id = await _a_session(client)
+    kickoff = HER_P01["turns"][0]
+
+    opened = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": kickoff["roomNote"]}
+    )
+
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["transcript"] == kickoff["noteText"], (
+        "o juiz dela lia o nosso roteiro em inglês no lugar da nota que o runner dela manda"
+    )
+
+
 async def test_a_mother_tongue_turn_of_a_fractional_length_is_answered_with_her_note(
     client, monkeypatch
 ) -> None:
@@ -376,7 +390,7 @@ async def test_a_session_opened_without_earlier_passages_hands_the_guide_no_such
     )
 
     assert opened.status_code == 200, opened.text
-    assert "EARLIER PASSAGES" not in agent.guide_systems[0]
+    assert "EARLIER PASSAGES FOR THIS TEAM:" not in agent.guide_systems[0]
 
 
 async def test_her_runner_plays_a_whole_golden_script_end_to_end_without_a_contract_error(

@@ -1,3 +1,5 @@
+`=== BEGIN SYSTEM PROMPT ===`
+
 ## Task
 
 A translation team recorded this passage in their own language — a language no one here can
@@ -152,3 +154,5 @@ with `{ "resolved": true, "findings": [] }` beside it.
 ## What the team told back now
 
 {{NEW_TELLING}}
+
+`=== END SYSTEM PROMPT ===`

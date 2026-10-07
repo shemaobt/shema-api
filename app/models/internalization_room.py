@@ -14,18 +14,16 @@ class LabelledElement(BaseModel):
     `key` is unique only within its pericope: `scene:1` is a different scene in every
     passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
 
-    The three languages are named fields because that is the shape the Desk was promised, so
-    a fourth costs a field here as well as a catalogue entry — three files, not every call
+    The two languages are named fields because that is the shape the Desk was promised, so
+    a third costs a field here as well as a catalogue entry — three files, not every call
     site. `extra="forbid"` is what makes that cost visible: the loader builds this by
     spreading `LANGUAGES`, and pydantic drops an unknown keyword by default, so without it a
-    fourth language would be demanded of the catalogue and then thrown away in silence.
+    third language would be demanded of the catalogue and then thrown away in silence.
 
-    **`label_pt` and `label_es` are nullable and `label_en` is not**, which is the shape that
-    promise actually names: the Desk's own `CoverageLabels` is
-    `{ pt: string | null, en: string, es: string | null }`, because English comes almost free
-    from the canon and the other two are translation work. This model cited that promise and
-    contradicted its text, and nobody had noticed because the four translated passages are
-    complete in all three. The canon serves fourteen and D-03 walks every team through them.
+    **`label_pt` is nullable and `label_en` is not**, which is the shape that promise actually
+    names: the Desk's own `CoverageLabels` is `{ pt: string | null, en: string }`, because
+    English comes almost free from the canon and Portuguese is translation work. The canon
+    serves fourteen and D-03 walks every team through them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -35,15 +33,14 @@ class LabelledElement(BaseModel):
     scene: int | None = None
     label_pt: str | None
     label_en: str
-    label_es: str | None
 
 
 class CoverageLegend(BaseModel):
     """The names of the coverage states and the element kinds, once per response.
 
-    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose three
+    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose two
     fields the Desk was promised by name, nothing was promised about this shape — so here a
-    fourth language is a catalogue change and nothing else.
+    third language is a catalogue change and nothing else.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -62,7 +59,7 @@ class LegendName(BaseModel):
     walking the enum, so an enum type would re-refuse what is true by construction: it can
     only reject what the loader has just accepted.
 
-    **The three labels are not nullable, and `LabelledElement`'s are** — the two shapes
+    **The two labels are not nullable, and `LabelledElement`'s Portuguese is** — the two shapes
     disagree on purpose. A bead of a passage nobody has translated falls back to the canon,
     which is English and nothing else, so `label_pt` there is legitimately absent. A legend
     has no such fallback: `legend()` raises `ElementLabelsBroken` on a name missing in any
@@ -75,7 +72,6 @@ class LegendName(BaseModel):
     value: str
     label_pt: str
     label_en: str
-    label_es: str
 
 
 class CoverageLegendResponse(BaseModel):
@@ -87,14 +83,14 @@ class CoverageLegendResponse(BaseModel):
     hand the client an arrangement to make a second time, and ENG-462 is the record of what
     that costs.
 
-    The three languages are named fields rather than a map keyed by language, because that is
-    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`
-    / `label_es`. A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would
-    be two shapes for one thing on one screen. `CoverageLegend` — the loader's own answer —
-    keeps the map, because that is the catalogue's shape and a fourth language there costs a
-    catalogue entry and nothing else.
+    The two languages are named fields rather than a map keyed by language, because that is
+    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`.
+    A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would be two shapes
+    for one thing on one screen. `CoverageLegend` — the loader's own answer — keeps the map,
+    because that is the catalogue's shape and a third language there costs a catalogue entry
+    and nothing else.
 
-    ENG-449's coverage response repeats the same three fields and is what this legend is read
+    ENG-449's coverage response repeats the same two fields and is what this legend is read
     beside. It is named by its issue and not by its model, deliberately: a class name is a
     reference `grep` promises to resolve, so one naming a branch that has not merged is a
     reference that lies. An issue number promises nothing and therefore cannot.
@@ -132,11 +128,11 @@ class ElementCoverage(BaseModel):
     at the end of the necklace, the rules that must not be lost, which belong to the passage
     rather than to any one of its scenes.
 
-    `label_pt` and `label_es` are nullable and `label_en` is not, which is `LabelledElement`'s
-    shape carried through unchanged. A passage nobody has translated is served from the canon
-    with the other two absent, and a bead here must be able to say so: narrowing them to `str`
-    would mean this route could only ever answer the four translated passages, while D-03
-    walks every team through all fourteen.
+    `label_pt` is nullable and `label_en` is not, which is `LabelledElement`'s shape carried
+    through unchanged. A passage nobody has translated is served from the canon with
+    Portuguese absent, and a bead here must be able to say so: narrowing it to `str` would
+    mean this route could only ever answer the four translated passages, while D-03 walks
+    every team through all fourteen.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -144,7 +140,6 @@ class ElementCoverage(BaseModel):
     key: str
     label_pt: str | None
     label_en: str
-    label_es: str | None
     kind: ElementKind
     scene: str | None = None
     #: The enum and not the string it serialises to, so the Desk reads the closed set of four
@@ -189,7 +184,6 @@ class SessionBead(BaseModel):
     kind: ElementKind
     label_pt: str | None
     label_en: str
-    label_es: str | None
     status: str
 
 
@@ -596,16 +590,16 @@ class InboxQuestionView(BaseModel):
     ``element_key`` nor ``elementKey`` appears anywhere, so serving both would put a field on
     every card that its only consumer never reads.
 
-    **Three languages rather than one**, which is the same shape ``LabelledElement`` and the
+    **Two languages rather than one**, which is the same shape ``LabelledElement`` and the
     coverage legend take. The room negotiates a language for what it *says* — named on the
     session, and on the wheel that precedes any session — but not for what it *labels*: a
     bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
-    all three are served and the client picks, as it already does everywhere else.
+    both are served and the client picks, as it already does everywhere else.
 
     **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
     passages and four of them are translated, so on the other ten every bead carries English
-    and two nulls. A Desk reading ``pt`` first has to have somewhere to fall back to, and that
-    choice is the client's — this response does not make it, exactly as ``LabelledElement``
+    and a null Portuguese. A Desk reading ``pt`` first has to have somewhere to fall back to,
+    and that choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 
     **Nothing reads this yet, and there is no window where something reads it wrong.** The
@@ -653,7 +647,6 @@ class InboxQuestionView(BaseModel):
     pericope: str
     element_label_pt: str | None
     element_label_en: str | None
-    element_label_es: str | None
     status: str
     heard_at: str | None
     audio_url: str

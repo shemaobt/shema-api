@@ -1,0 +1,136 @@
+{
+  "name": "P09-threshing-floor-night",
+  "pericopeId": "P09",
+  "language": "Brazilian Portuguese",
+  "why": "Marcia's rulings of 2026-09-26/27 on P09 (Ruth 3:6-13), vendored with SC-0086 (compiler 1262844): the high-risk register (10 do_not_decide — R1 the wing, R2 the change of servant word, R3 which the first kindness was, R4 whose hesed at 2:20 stays open, R7 the nearer redeemer unnamed, R9 the request comes from Ruth, R15 which redeemer acts, R16 the night, R17 the wordless scene 1, R18 the young men) and the map corrections (scenes 2-3 CONSULTATIVE, no whispering; Boaz 'lies down at the end of the grain heap', never asleep; B19 'The Nearer Redeemer', never a name-like label). The judge reads them in the map; the keys below are the mechanical half. The fixture is the pilot team's state: P01-P08 approved except P07 started (its scene 3 not whole yet); P09 is today's passage. Turn 0: the kickoff is the Familiarization (F1, the whole passage, the scenes by number, F3 as the last words) — the voice tells the night without a verdict (neither that something happened nor that nothing did), never 'enquanto ele dorme' / 'dormindo' / 'acorda assustado' (he lies down; R19), no 'sussurro', Ruth's line keeps 'asa' ('estenda a sua asa sobre a sua serva'), Boaz's answer as a yes bound to the order of redeemers with both branches (never 'ele não disse sim', never 'vai casar com certeza'), the young men never 'pretendentes', no 'transferência de autoridade', the nearer redeemer never 'Fulano' nor named, and no pointer to the gate scene (4:1-8) — the story stops at 'deite-se até de manhã'. Turn 1: in the Familiarization the team offers two readings and asks one question (team_reading_stays_theirs — readings offered in conversation, not a telling): 'nothing happened between them, it was only talk' (the voice does not confirm it, nor its opposite — R16), 'the first kindness was staying with Naomi' (the voice does not confirm it and names no first kindness of its own: Boaz does not say which the first was, R3 — the judge reads it; in a telling it would be an addition, named warmly), and 'did Boaz say yes or not?' (a yes bound to the order of redeemers, both branches, no verdict on the morning, nothing of the gate — R15); answering that Boaz said yes (bound to the order of redeemers) is not the team's reading confirmed, and recalling 1:8 or 2:11 as the story's own words, never as Boaz's meaning, is allowed (R3) — the voice's shape for the yes is 'A história conta que ele disse: tudo o que você disser eu farei…' (never 'a história confirma', which the mechanical check reads as a confirmation); F4 as the last words, no scene opened. Turn 2: 'Estamos prontos.' opens scene 1 — I1 cena 1 and her closing; scene 1 has no word spoken, Boaz lies down (never sleeps, never wakes: R19), nothing of Ruth's intent or the risk. Turn 3: 'Vamos pro ensaio.' — A1 before the fence. Turn 4: a whole scene rehearsal of scene 1 (S1) in other words — accepted (meaning, not form). Turn 5: the team asks for scene 2 with a question about the servant word — the voice answers from the map (two different words, shifchah at 2:13 and amah here; the story does not say what the change means — never 'subiu de posição', never a marriage status) and ends with the closing's last two sentences (I2). Turn 6: 'Entendemos. Vamos pro ensaio.' — A2 before the fence. Turn 7: a scene rehearsal of scene 2 (S2) that says 'ela pediu que ele casasse com ela' instead of the wing — the wing is offered back as a missing detail of her line ('estenda a sua asa sobre a sua serva'), warmly, not as an error, and the fenced block again (a first imperfect telling: no choice offer). The team's lines are the builder's fixtures, pending Marcia's word. SC-0089 (Marcia's rulings of 2026-09-29, afternoon, «(a), (a), sim — pode seguir com as recomendações», ruling (2) (a), her word covering this approved passage; vendored at the compiler branch tip 0dfe225): R19, an 11th do_not_decide — the text never says that Boaz slept or woke: he lies down at the end of the grain heap (3:7), at half of the night the man trembles and twists (3:8); for the voice only, never to be said: that he fell asleep, was sleeping or woke up ('dormiu', 'dormindo', 'acordou', 'acordou assustado' — live 2026-09-29, turn 1: 'ele acorda assustado'). Mechanical since then: boaz_never_asleep on every turn (a dorm- / adormec- / 'sono' / acord- form said of Boaz; never 'de acordo'); no team line says a sleep or wake word, so every hit is the voice's own. An unasked denial ('a história não diz se ele dormiu') is item 16's, the judge's.",
+  "earlierPassages": {
+    "P01": "approved",
+    "P02": "approved",
+    "P03": "approved",
+    "P04": "approved",
+    "P05": "approved",
+    "P06": "approved",
+    "P07": "started",
+    "P08": "approved"
+  },
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "moment_after": "F",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Chamou a atenção da gente essa noite na eira. A gente acha que entre eles não aconteceu nada, foi só conversa. E a gente entendeu que a primeira bondade da Rute foi ter ficado com a Noemi. Mas no fim o Boaz disse sim pra ela ou não?",
+      "expect": {
+        "no_fail_safe": true,
+        "team_reading_stays_theirs": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "familiarization_tail": true,
+        "moment_after": "F",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "no_outside_knowledge": true,
+        "moment_after": "I1",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Rute desceu pra eira e fez tudo o que a sogra tinha mandado.",
+          "O Boaz comeu e bebeu, o coração dele ficou alegre, e ele foi se deitar no fim do monte de grão.",
+          "Ela chegou devagarinho, descobriu o lugar dos pés dele e se deitou ali."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": [
+        "S1"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Pode abrir a segunda cena pra gente? Quando você contou tudo, a gente ouviu a Rute se chamar de serva. É a mesma palavra de quando ela falou com o Boaz no campo?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "moment_after": "I2",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 2,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A2",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "No meio da noite o homem levou um susto, se virou, e tinha uma mulher deitada aos pés dele.",
+          "Ele perguntou: quem é você? Ela respondeu: eu sou Rute, sua serva.",
+          "Ela pediu que ele casasse com ela, porque ele é resgatador."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": [
+        "S1",
+        "S2"
+      ],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A2",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    }
+  ]
+}

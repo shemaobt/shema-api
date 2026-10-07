@@ -402,11 +402,7 @@ async def test_a_card_with_nothing_but_audio_still_reaches_the_desk(
     answer = await desk_client.get(INBOX, headers=await auth_header(db_session, facilitator))
 
     (card,) = answer.json()["questions"]
-    assert (card["element_label_pt"], card["element_label_en"], card["element_label_es"]) == (
-        None,
-        None,
-        None,
-    )
+    assert (card["element_label_pt"], card["element_label_en"]) == (None, None)
     assert card["transcript"] is None
     assert card["duration_ms"] is None
     assert card["audio_url"] == facilitator_audio_url(question.audio_key), (

@@ -25,6 +25,12 @@ ProcessFamily = Literal["P", "X", "N"]
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
 
+#: The instant acknowledgements her app ever plays, in either language: it fetches the F lines
+#: with ``i < 3`` (``app/page.tsx:279`` at her freeze). Her file, kept byte for byte, carries a
+#: fourth in each block, «Right.» and «Tá.», that the team could never hear from her, so the
+#: room reads no further than she does — the ruling of 2026-10-06.
+ACKNOWLEDGEMENTS_SHE_PLAYS = 3
+
 
 @lru_cache(maxsize=1)
 def _sections() -> dict[tuple[str, str | None], list[str]]:
@@ -34,7 +40,10 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     for index, mark in enumerate(marks):
         end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
         body = text[mark.end() : end]
-        parsed[(mark.group(1), mark.group(3))] = _BULLET.findall(body)
+        lines = _BULLET.findall(body)
+        if mark.group(1) == FailSafe.INSTANT_ACK:
+            lines = lines[:ACKNOWLEDGEMENTS_SHE_PLAYS]
+        parsed[(mark.group(1), mark.group(3))] = lines
     return parsed
 
 

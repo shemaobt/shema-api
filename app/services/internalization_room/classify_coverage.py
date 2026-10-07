@@ -258,6 +258,7 @@ async def classify_coverage(
                 user_content="Classify this exchange now. Return only the JSON object.",
                 ladder=classifier_ladder(cfg),
                 max_output_tokens=6000,
+                effort=None,
                 thinks=True,
                 schema=_DECISIONS,
                 settings=cfg,

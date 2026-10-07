@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from functools import cache, lru_cache
 from pathlib import Path
 
@@ -29,9 +30,22 @@ _META: dict[IRPromptKey, str] = {
 }
 
 
+_MARKER = re.compile(r"^`?=== (BEGIN|END) SYSTEM PROMPT ===`?\s*$", re.M)
+
+
+def prompt_body(text: str) -> str:
+    """What sits between her standalone marker lines; the notes outside them are for a reader.
+
+    The markers are matched as whole lines, the way her `extractPromptBody` matches them,
+    because the notes above the body mention the markers inline.
+    """
+    begin, end = _MARKER.finditer(text)
+    return text[begin.end() : end.start()].strip()
+
+
 @cache
 def load_prompt(key: IRPromptKey) -> str:
-    return (_PROMPTS_DIR / _FILES[key]).read_text(encoding="utf-8")
+    return prompt_body((_PROMPTS_DIR / _FILES[key]).read_text(encoding="utf-8"))
 
 
 @lru_cache(maxsize=1)

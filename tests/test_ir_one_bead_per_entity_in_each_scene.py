@@ -30,8 +30,8 @@ def test_scene_four_of_ruth_1_has_the_woman_in_it() -> None:
         "onde o mapa a chama de 'a mulher' — não tinha ninguém no colar"
     )
     assert beings["being:S4:B3"].scene == 4
-    assert beings["being:S4:B3"].label == 'הָאִשָּה (נָעֳמִי) / "the woman" (Naomi)'
-    assert beings["being:S1:B3"].label == "נָעֳמִי / Naomi"
+    assert beings["being:S4:B3"].label == "the woman"
+    assert beings["being:S1:B3"].label == "Naomi"
 
 
 def test_ruth_1_strings_twenty_nine_entity_beads_across_its_four_scenes() -> None:

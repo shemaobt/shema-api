@@ -26,7 +26,7 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 
 P = "P03"
-_VENDOR = Path("app/services/internalization_room/prompts/vendor")
+_FROZEN = Path("app/services/internalization_room/prompts")
 
 
 def test_a_fresh_session_has_encountered_nothing() -> None:
@@ -359,9 +359,9 @@ def test_the_classifier_prompt_is_her_three_status_text() -> None:
     `=== END SYSTEM PROMPT ===`, so a word of ours creeping back in is a diff against her
     file, not a judgment call.
     """
-    vendored = (_VENDOR / "classifier_system_prompt.md").read_text(encoding="utf-8")
-    hers = vendored.split("`=== BEGIN SYSTEM PROMPT ===`", 1)[1]
-    hers = hers.split("`=== END SYSTEM PROMPT ===`", 1)[0].strip("\n") + "\n"
+    frozen = (_FROZEN / "classifier_system_prompt.md").read_text(encoding="utf-8")
+    hers = frozen.split("`=== BEGIN SYSTEM PROMPT ===`", 1)[1]
+    hers = hers.split("`=== END SYSTEM PROMPT ===`", 1)[0].strip()
 
     assert default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"] == hers
 

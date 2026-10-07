@@ -37,6 +37,8 @@ import httpx
 
 from scripts.bt_golden_checks import check_round
 
+BT_DIR = Path(__file__).resolve().parent.parent / "golden/bt"
+
 
 @dataclass
 class Clip:
@@ -222,13 +224,22 @@ def export(
 
 
 async def run(args: argparse.Namespace) -> int:
+    codes = [await play_script(path, args) for path in scripts_to_play(args)]
+    return max(codes)
+
+
+def scripts_to_play(args: argparse.Namespace) -> list[Path]:
+    return [Path(args.script)] if args.script else sorted(BT_DIR.glob("*.json"))
+
+
+async def play_script(path: Path, args: argparse.Namespace) -> int:
     """Play her script through one room and answer with what a CI should do about it.
 
     The one catch in this file, and it is the boundary: the room refusing is not her bar
     failing, and the rounds already paid for in model calls have to reach the report before
     that becomes an exit code.
     """
-    script = load_script(Path(args.script))
+    script = load_script(path)
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"X-Access-Code": args.access_code} if args.access_code else {}
     print(f"▶ {script.name} ({script.pericopeId}, {script.language}) → {base_url}")
@@ -268,7 +279,7 @@ def _refused(stopped: httpx.HTTPStatusError) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--script", required=True)
+    parser.add_argument("--script", default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
     try:

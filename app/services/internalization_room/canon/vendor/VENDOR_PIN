@@ -1,1 +1,6 @@
-7372ec0e9d3a64e6864d4f1d2619dd5e21900ad2
+source_repo:      MarciaSuzuki/tripod_compiler
+pin_commit:       5b5c8d2b3ae7632279c07017224f861ae369b0d7
+pin_ref:          main
+pin_committed:    2026-09-30
+vendored_on:      2026-10-07
+published_books:  Ruth (P01-P14) = 14 pericopes

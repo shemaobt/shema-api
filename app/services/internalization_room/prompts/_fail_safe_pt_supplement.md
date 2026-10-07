@@ -104,3 +104,23 @@ warn about.
 ### I-pt. (Português brasileiro)
 
 - "Preciso que vocês me traduzam esta parte inteira de novo — o que já tinham traduzido, e também o que faltou."
+
+## B-pt, C-pt and E-pt — back from the authored file
+
+Her file at the freeze (18fa7c4) carries no B-pt, C-pt or E-pt, and it is now kept byte for
+byte, so the three reserve lines she confirmed on 2026-09-21 (ENG-833, item A1) live here again,
+verbatim.
+
+### B-pt. (Português brasileiro)
+
+- "Boa pergunta. Isso a passagem não conta — ela fica no que está bem aqui na nossa frente. Vamos ficar com o que ela está mostrando."
+- "A passagem fica quieta sobre isso. Vamos olhar o que ela conta nesta parte."
+
+### C-pt. (Português brasileiro)
+
+- "Essa pergunta é importante, e é bem do tipo de levar ao facilitador de vocês — alguém que pode ir mais longe do que esta passagem vai sozinha."
+- "Isso merece uma resposta de verdade, e vai além do que esta passagem conta. Vamos guardar para levar ao facilitador de vocês, e seguir por aqui."
+
+### E-pt. (Português brasileiro)
+
+- "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de vocês, e a gente retoma isso junto."

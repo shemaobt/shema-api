@@ -111,7 +111,6 @@ async def test_a_turn_nobody_spoke_in_still_ends_on_a_user_message(
     """The verdict turn: the API refuses a request that ends on the Guide's own last speech."""
     await run_verdict_turn(
         findings_text="(nenhum achado)",
-        closing="\nPeça o próximo trecho.",
         scope=P,
         pericope_num=P,
         messages=_exchanges(5),

@@ -646,8 +646,8 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
     {
       "id": "R5",
       "kind": "CROSS_PERICOPE_PAIRING_FIRST_OCCURRENCE",
-      "applies_to": "FIG_0015 Vayyiqer-Miqreha opens at P05 v.3; cross-pericope close at P11 4:1 (parallel chance-providence construction at the gate scene)",
-      "note": "REQUIRED keep-image. The vayyiqer-miqreha construction recurs at P11 4:1 in a parallel structural moment (Boaz arrives at the gate and 'behold' the nearer redeemer is passing by — chance-providence framing at the gate parallels the chance-providence framing at the field). Reconstructor must preserve the construction at both occurrences so the cross-pericope echo lands.",
+      "applies_to": "FIG_0015 Vayyiqer-Miqreha opens at P05 v.3 (P5); paired with P11 4:1 in the canon record only — 4:1 does not repeat the words of 2:3 (P11 R4)",
+      "note": "Canon-record link only (corrected under SC-0087, P11 R4). 4:1 does not repeat the vayyiqer-miqreh words of 2:3: at 4:1 the text says only 'and behold, the redeemer of whom Boaz had spoken was passing by' (FIG_0160). FIG_0015 is not flagged at 4:1, and the link is not part of P11's telling. The keep-image at 2:3 is R4, unchanged.",
       "required_in_audit": true,
       "carries_forward_to": "P11_compilation_log",
       "source_in_meaning_map": "Section 5B Figure Flags (FIG_0015 cross-pericope pair)"
@@ -745,9 +745,9 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
       {
         "fig_id": "FIG_0015",
         "opens_at": "P05 P5 (2:3)",
-        "closes_at": "P11 (4:1) — parallel vayyiqer construction at the gate scene",
+        "closes_at": "P11 (4:1) — canon-record link only; 4:1 does not repeat the words of 2:3 (it has only 'and behold', FIG_0160)",
         "verification_status": "DEFERRED",
-        "note": "REQUIRED keep-image. The vayyiqer-miqreha construction recurs at P11 4:1 in a parallel structural moment. Cross-pericope pair verification deferred until P11 compilation."
+        "note": "Canon-record link only (SC-0087, P11 R4): 4:1 does not repeat the vayyiqer-miqreh words of 2:3, and FIG_0015 is not flagged at 4:1. The keep-image at 2:3 is R4, unchanged. The pair is verified at P11's register (P11 R4 and its pairs table)."
       },
       {
         "fig_id": "FIG_0088",
@@ -831,7 +831,7 @@ This page renders the COMPILATION-LOG JSON as a wiki-addressable artifact. The c
         "opens_at": "P03 P4 (1:17b)",
         "closes_at": "P03 P4 — single-occurrence at P03; cross-canonical recurrences outside Ruth",
         "verification_status": "VERIFIED",
-        "note": "P03 self-curse oath formula; cross-pericope pair with 3:13 (Boaz's oath) DEFERRED. No P05 activity."
+        "note": "P03 self-curse oath formula; single occurrence in Ruth. No P05 activity."
       }
     ]
   },

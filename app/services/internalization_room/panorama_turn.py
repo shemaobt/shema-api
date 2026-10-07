@@ -12,7 +12,7 @@ from app.services.internalization_room.turn.speech import (
     stamped_with_what_was_heard,
     what_the_guide_is_handed,
 )
-from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
+from app.services.internalization_room.turn_instructions import panorama_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
@@ -70,7 +70,7 @@ async def run_panorama_turn(
                 session_language=session_language,
                 language_code=language_code,
                 opening=opening,
-                opening_instruction=OPENING_INSTRUCTION,
+                opening_instruction=panorama_note(book, language_code),
                 settings=cfg,
                 session_id=session_id,
                 ask_for_movements=ask_for_movements,

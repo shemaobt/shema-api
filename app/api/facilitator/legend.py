@@ -25,7 +25,7 @@ facilitator_legend_router = APIRouter()
 
 @facilitator_legend_router.get("", response_model=CoverageLegendResponse)
 async def read_coverage_legend_route(user: FacilitatorUser) -> CoverageLegendResponse:
-    """Every coverage state and every element kind, named in the three languages.
+    """Every coverage state and every element kind, named in the two languages.
 
     There is no team and no passage in the signature, and there is nothing to scope on: the
     answer is the canon's vocabulary and names nothing about the installation. It is still
@@ -48,7 +48,7 @@ async def read_coverage_legend_route(user: FacilitatorUser) -> CoverageLegendRes
 def _named(value: str, texts: dict[str, str]) -> LegendName:
     """Spread from `LANGUAGES`, never from three names written out here.
 
-    A fourth language is then a catalogue entry and a field on `LegendName`, and this line is
+    A third language is then a catalogue entry and a field on `LegendName`, and this line is
     not a third place to remember. A guarantee that enumerates the languages it covers is not
     a guarantee about the languages that exist.
     """

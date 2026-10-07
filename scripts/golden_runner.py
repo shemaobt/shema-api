@@ -59,7 +59,12 @@ from typing import Any
 import httpx
 
 from app.api.internalization_room.text_seam import _collecting_model_calls
+from app.services.internalization_room.canon.book_material import vendor_pin
+from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
+from app.services.internalization_room.prompt_blocks import earlier_passages_line
+from app.services.internalization_room.sessions import book_of
+from app.services.internalization_room.turn_instructions import opening_note
 from scripts.golden_checks import mechanical_checks
 from scripts.sync_doctrine import read_pin
 
@@ -73,6 +78,8 @@ class ScriptTurn:
     kickoff: bool = False
     motherTongue: int | None = None
     interrupted: bool = False
+    rehearsal: list[str] | None = None
+    sceneRehearsals: list[str] | None = None
     expect: dict[str, Any] = field(default_factory=dict)
 
 
@@ -82,6 +89,7 @@ class Script:
     pericopeId: str
     language: str
     turns: list[ScriptTurn]
+    earlierPassages: dict[str, str] | None = None
 
 
 @dataclass
@@ -128,6 +136,7 @@ class Played:
     turnMs: int = 0
     usage: list[Usage] = field(default_factory=list)
     mechanical: list[str] = field(default_factory=list)
+    appStatus: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -193,28 +202,18 @@ def load_script(path: Path) -> Script:
                 kickoff=bool(turn.get("kickoff")),
                 motherTongue=turn.get("motherTongue"),
                 interrupted=bool(turn.get("interrupted")),
+                rehearsal=turn["rehearsal"]["pieces"] if "rehearsal" in turn else None,
+                sceneRehearsals=turn.get("sceneRehearsals"),
                 expect=turn.get("expect", {}),
             )
             for turn in raw["turns"]
         ],
+        earlierPassages=raw.get("earlierPassages"),
     )
 
 
 def _portuguese(language: str) -> bool:
     return re.search("portugu", language, re.I) is not None
-
-
-def opening_note(pericope_id: str, language: str) -> str:
-    """Her server-owned opening note, so both exports read the same turn 0."""
-    if _portuguese(language):
-        return (
-            f"[A sessão acabou de começar. A equipe abriu a passagem {pericope_id} e está à "
-            "mesa, pronta para começar. Fale primeiro.]"
-        )
-    return (
-        f"[The session has just begun. The team opened passage {pericope_id} and is at the "
-        "table, ready to begin. Speak first.]"
-    )
 
 
 def mother_tongue_note(language: str, seconds: int) -> str:
@@ -229,13 +228,64 @@ def mother_tongue_note(language: str, seconds: int) -> str:
     )
 
 
+def rehearsal_team_text(language: str, transcripts: list[str]) -> str:
+    pieces = [piece.strip() for piece in transcripts if piece.strip()]
+    if len(pieces) == 1:
+        note = (
+            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena. Segue a "
+            "tradução:]"
+            if _portuguese(language)
+            else "[The team rehearsed this scene in their own language and translated the scene "
+            "rehearsal. The translation follows:]"
+        )
+    elif _portuguese(language):
+        note = (
+            "[A equipe ensaiou esta cena na língua materna e traduziu o ensaio da cena frase por "
+            f"frase ({len(pieces)} frases). Segue a tradução, na ordem:]"
+        )
+    else:
+        note = (
+            "[The team rehearsed this scene in their own language and translated the scene "
+            f"rehearsal phrase by phrase ({len(pieces)} phrases). The translation follows, in "
+            "order:]"
+        )
+    return f"{note} {' '.join(pieces)}"
+
+
+def carried_scene_rehearsals(script: Script) -> list[list[str] | None]:
+    current: list[str] | None = None
+    carried = []
+    for turn in script.turns:
+        if turn.sceneRehearsals is not None:
+            current = list(turn.sceneRehearsals)
+        carried.append(current)
+    return carried
+
+
+def scene_rehearsals_fact(scene_ids: list[str], sent: list[str]) -> str:
+    def listed(ids: list[str]) -> str:
+        return ", ".join(ids) if ids else "none"
+
+    reached = [scene for scene in scene_ids if scene in sent]
+    missing = [scene for scene in scene_ids if scene not in sent]
+    return (
+        "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
+        f"{listed(reached)}. Parts with none: {listed(missing)}."
+    )
+
+
 def interrupted_note(language: str) -> str:
     if _portuguese(language):
         return "[A equipe interrompeu a sua fala anterior neste ponto.]"
     return "[The team interrupted your previous turn at this point.]"
 
 
-def request_for(turn: ScriptTurn, script: Script, session_id: str) -> tuple[dict[str, Any], str]:
+def request_for(
+    turn: ScriptTurn,
+    script: Script,
+    session_id: str,
+    scene_rehearsals: list[str] | None = None,
+) -> tuple[dict[str, Any], str]:
     """The request her `turnRequest` builds for one scripted turn, and the team side she expects.
 
     The team side is what her runner hands the judge when the room sends no transcript: the
@@ -244,11 +294,14 @@ def request_for(turn: ScriptTurn, script: Script, session_id: str) -> tuple[dict
     body: dict[str, Any] = {"sessionId": session_id}
     said = ""
     if turn.kickoff:
-        said = opening_note(script.pericopeId, script.language)
+        said = opening_note(script.pericopeId, "pt" if _portuguese(script.language) else "en")
         body.update(roomNote="session_start", noteText=said)
     elif turn.motherTongue:
         said = mother_tongue_note(script.language, turn.motherTongue)
         body.update(roomNote="mother_tongue", seconds=turn.motherTongue, noteText=said)
+    elif turn.rehearsal is not None:
+        said = rehearsal_team_text(script.language, turn.rehearsal)
+        body["teamText"] = said
     elif turn.team:
         said = turn.team
         body["teamText"] = said
@@ -258,14 +311,17 @@ def request_for(turn: ScriptTurn, script: Script, session_id: str) -> tuple[dict
         body["teamText"] = ""
     if turn.interrupted:
         body["interrupted"] = True
+    if scene_rehearsals is not None:
+        body["sceneRehearsals"] = scene_rehearsals
     cut = interrupted_note(script.language) if turn.interrupted else ""
     return body, " ".join(part for part in (cut, said) if part)
 
 
 async def open_session(script: Script, client: httpx.AsyncClient) -> str:
-    opened = await client.post(
-        "golden/session", json={"pericopeId": script.pericopeId, "language": script.language}
-    )
+    body: dict[str, Any] = {"pericopeId": script.pericopeId, "language": script.language}
+    if script.earlierPassages:
+        body["earlierPassages"] = script.earlierPassages
+    opened = await client.post("golden/session", json=body)
     opened.raise_for_status()
     return str(opened.json()["sessionId"])
 
@@ -285,8 +341,13 @@ async def play(
     run's transcript down with the error.
     """
     previous_guide = played[-1].guide if played else ""
+    carried = carried_scene_rehearsals(script)
+    scene_ids = scene_ids_for(script.pericopeId)
+    earlier = earlier_passages_line(
+        script.pericopeId, book_of(script.pericopeId), script.earlierPassages
+    )
     for idx, turn in enumerate(script.turns[:turns]):
-        body, expected = request_for(turn, script, session_id)
+        body, expected = request_for(turn, script, session_id, carried[idx])
         started = time.monotonic()
         answered = await client.post("golden/turn", json=body)
         answered.raise_for_status()
@@ -299,6 +360,16 @@ async def play(
             interrupted=turn.interrupted,
             turnMs=int(reply.get("latencyMs") or round((time.monotonic() - started) * 1000)),
             usage=[Usage.from_wire(call) for call in reply.get("usage") or []],
+            appStatus=[
+                fact
+                for fact in (
+                    scene_rehearsals_fact(scene_ids, carried[idx])
+                    if carried[idx] is not None
+                    else "",
+                    earlier,
+                )
+                if fact
+            ],
         )
         line.mechanical = mechanical_checks(
             guide=line.guide,
@@ -332,7 +403,12 @@ def usage_line(call: Usage) -> str:
 def judge_transcript(played: list[Played]) -> str:
     """The transcript block, spelled exactly as her runner hands it to the judge."""
     return "\n\n".join(
-        f"[turn {turn.idx}]\nTEAM: {turn.team}\nGUIDE ({turn.outcome}): {turn.guide}"
+        f"[turn {turn.idx}]\n"
+        + "".join(
+            f"APP STATUS (what the app told the guide this turn): {fact}\n"
+            for fact in turn.appStatus
+        )
+        + f"TEAM: {turn.team}\nGUIDE ({turn.outcome}): {turn.guide}"
         for turn in played
     )
 
@@ -466,8 +542,7 @@ def _refusal(refused: httpx.HTTPStatusError) -> str:
 
 
 def _pins() -> str:
-    canon = (REPO_ROOT / "app/services/internalization_room/canon/vendor/VENDOR_PIN").read_text()
-    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{canon.strip()[:7]}`"
+    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{vendor_pin()[:7]}`"
 
 
 def _tip() -> str:
@@ -607,6 +682,7 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
             interrupted=turn["interrupted"],
             turnMs=turn["turnMs"],
             mechanical=turn["mechanical"],
+            appStatus=turn.get("appStatus", []),
         )
         for turn in raw["turns"]
     ]

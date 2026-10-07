@@ -98,8 +98,14 @@ HER_PROCESS_LINES: tuple[HerLine, ...] = (
         family="P",
         step="approved",
         name="P3",
-        english=("Approved as the team's final draft. It goes to OBT Refine."),
-        portuguese=("Aprovado como rascunho final da equipe. Ele vai para o OBT Refine."),
+        english=(
+            "Approved as the team's final draft. The next step is the external check: tap the "
+            "'external check' button below and call in the listeners."
+        ),
+        portuguese=(
+            "Aprovado como rascunho final da equipe. O próximo passo é a checagem externa: "
+            "toquem no botão 'checagem externa', aqui embaixo, e chamem os ouvintes."
+        ),
     ),
     HerLine(
         family="X",
@@ -139,12 +145,12 @@ HER_PROCESS_LINES: tuple[HerLine, ...] = (
         english=(
             "Did anything stay unclear? Would you like to comment on anything about the whole "
             "passage? If so, tap the circle and speak, as many times as you want. If not, tap "
-            "'nothing to add'."
+            "'continue'."
         ),
         portuguese=(
             "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem inteira?"
-            " Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em 'nada "
-            "a acrescentar'."
+            " Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em "
+            "'continuar'."
         ),
     ),
     HerLine(

@@ -50,29 +50,11 @@ WALKABLE = [
 ]
 
 
-def _without_a_preservation_layer(canon: list[str]) -> str | None:
-    """The first pericope with no `preserved:` bead, or `None` once the canon has none left.
-
-    A plain `next(...)` with no default raised `StopIteration` at import time on the day
-    every passage in `canon` carries the layer — that took the whole module down as a
-    collection error instead of reddening a test, which is ENG-925's `WITHOUT_LAYER` defect.
-    """
-    return next(
-        (
-            pericope
-            for pericope in canon
-            if not any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
-        ),
-        None,
-    )
-
-
 WITH_LAYER = next(
     pericope
     for pericope in CANON
     if any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
 )
-WITHOUT_LAYER = _without_a_preservation_layer(CANON)
 
 #: A whole little canon of its own — one map and one Compilation Log — so the two signals can
 #: be set against each other. The real Ruth material has them agreeing everywhere, and
@@ -160,6 +142,7 @@ def a_passage_whose_survey_is_pending(
 
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
+    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
     _forget_the_canon()
     yield "Q01"
     _forget_the_canon()
@@ -171,27 +154,39 @@ def _forget_the_canon() -> None:
     book_material.preservation_rules.cache_clear()
 
 
-def test_the_lookup_answers_none_rather_than_raising_once_every_passage_has_the_layer() -> None:
-    """Falsifies the fix directly: a bare `next(...)` here raises `StopIteration` on an empty
-    generator, which is exactly what the day every pericope carries a layer produces — an
-    empty `canon` is that day's shape, since nothing in it is left to fail the `if`.
-    """
-    assert _without_a_preservation_layer([]) is None
+@pytest.fixture
+def a_finished_passage_whose_log_records_no_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    maps = tmp_path / "meaning-map"
+    logs = tmp_path / "compilation-log"
+    maps.mkdir()
+    logs.mkdir()
+    (maps / "Q01-Fable-1-1-2.md").write_text(
+        _PENDING_MAP.replace('sta-status: "pending"', 'sta-status: "complete"'),
+        encoding="utf-8",
+    )
+    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
+        '# Q01 — COMPILATION LOG\n\n{"high_risk_register_audit": []}\n', encoding="utf-8"
+    )
+
+    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
+    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
+    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
+    _forget_the_canon()
+    yield "Q01"
+    _forget_the_canon()
 
 
-async def test_a_passage_with_no_preservation_layer_does_not_open(
-    db_session: AsyncSession,
+async def test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer(
+    db_session: AsyncSession, a_finished_passage_whose_log_records_no_rule: str
 ) -> None:
-    """The gate. Refused, and the refusal says which layer is missing and for which passage."""
-    if WITHOUT_LAYER is None:
-        pytest.skip("every passage in the canon now carries a preservation layer")
-
     with pytest.raises(ValidationError) as refusal:
-        await create_session(db_session, pericope=WITHOUT_LAYER)
+        await create_session(db_session, pericope=a_finished_passage_whose_log_records_no_rule)
 
     said = str(refusal.value)
-    assert WITHOUT_LAYER in said
-    assert "preservation" in said.lower()
+    assert a_finished_passage_whose_log_records_no_rule in said
+    assert "no preservation layer" in said
 
 
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
@@ -239,26 +234,13 @@ async def test_a_map_whose_survey_is_pending_is_not_consumable_canon(
     assert a_passage_whose_survey_is_pending in str(refusal.value)
 
 
-def test_the_book_opens_as_far_as_ruth_2_17_23_and_no_further() -> None:
-    """Where the boundary actually falls, named by the reference and not by a pericope id.
-
-    The rule test above derives both of its sides from the same canon, so it holds whichever
-    passages carry a layer and says nothing about which ones do. The project wrote the seventh
-    passage's withholdings on 31 August and the vendored copy predated them, so the wheel
-    closed at 2:16: a team that finished the field was told the book had nothing left in it,
-    with seven passages still in the folder.
-    """
+def test_the_book_opens_from_ruth_1_1_to_ruth_4_22_with_no_hole_in_the_middle() -> None:
     maps = load_book(ROOM_BOOK)
     opens = [m.pericope_num for m in maps if not book_material.unwalkable(m)]
-    ends_at = next(m.pericope_num for m in maps if m.reference == "Ruth 2:17-23")
+    ends_at = next(m.pericope_num for m in maps if m.reference == "Ruth 4:18-22")
 
-    assert opens == CANON[: CANON.index(ends_at) + 1], (
-        f"o livro que se caminha vai de Rute 1:1 a 2:23, sem buraco no meio — abriram {opens}"
-    )
-
-    refusals = [book_material.unwalkable(m) for m in maps if m.pericope_num not in opens]
-    assert all(reason and "no preservation layer" in reason for reason in refusals), (
-        f"a recusa tem que nomear a camada que falta, e alguma recusou por outra coisa: {refusals}"
+    assert opens == CANON[: CANON.index(ends_at) + 1] == CANON, (
+        f"o livro que se caminha vai de Rute 1:1 a 4:22, sem buraco no meio — abriram {opens}"
     )
 
 
