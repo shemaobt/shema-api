@@ -230,6 +230,26 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     return merged
 
 
+def refuse_circle_writes(readership: Readership, *, user: User, operation: str) -> None:
+    """Refuse the Resource Circle every write of a project — a 403, after the scope's own 404.
+
+    OBT-571, Daniel, 7/oct/2026: Karina's *"só não podem editar"* is read whole — the Circle
+    reads the truth and writes nothing, on no project route, not even the fields the ``other``
+    reader edits in its own scope, and not a need's description on any project. It comes
+    **after** ``visible_projects`` on the save so a project outside the caller's reach is still
+    the existence-hiding 404, and the 403 is about the caller's own grant, which conceals nothing.
+    """
+    if not readership.edits_no_project:
+        return
+    logger.warning(
+        "shema authorization refused: the Resource Circle reads a project and does not edit it",
+        extra={"shema_operation": operation, "shema_user_id": user.id},
+    )
+    raise AuthorizationError(
+        "The Resource Circle reads a project and does not edit it; writing is the coordination's"
+    )
+
+
 def _refuse_impossible_dates(merged: dict[str, Any]) -> None:
     """The cross-record half of *sane ranges* — the half a request model cannot see.
 
@@ -395,6 +415,7 @@ async def save_project(
     ).scalar_one_or_none()
     if project is None:
         raise refuse_out_of_scope(scope, user=user, operation="save_project", project_id=project_id)
+    refuse_circle_writes(readership, user=user, operation="save_project")
 
     payload = _as_the_reader_may_write(project, payload, readership, user=user)
     refuse_prayer_decisions(
@@ -545,6 +566,7 @@ async def create_project(
     The trail's first rows are written here too: a create is a record arriving from nothing,
     and a trail that started only at the first edit could not say who filed it.
     """
+    refuse_circle_writes(readership, user=user, operation="create_project")
     if not is_minted_id(payload.id):
         raise ValidationError(MINTED_ID_REQUIRED)
 

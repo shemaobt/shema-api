@@ -1133,14 +1133,20 @@ sensitive project in its own scope exactly as the coordination does — the plac
 contacts, the reason, the real language name, the free text, the needs' descriptions, the
 history's notes, the count of withheld projects and the `sensitive` facet — and the health on
 the ficha, the card, the health tab, the filter, the order and the file it exports
-(`_health_audience.HEALTH_READERS`). What it does **not** gain is a write: `readAs` is a third
-value because the console asks it two questions at once — *is this the truth?* and *may I edit
-the place and the flag?* — and this is the first reader whose answers differ. `Readership.truth`
-carries where a caller reads the truth apart from where it coordinates, so every write path
-(`unwritable_fields`, `refuse_unread_health_writes` — now gated on the **audience**, `import`,
-the ETEN ledger, the meetings' log, filing an assessment) keeps asking the coordination and the
-audience and refuses the Circle as before; `tests/test_shema/test_resource_circle_reads.py` holds
-a 403 per write route. A `trusted` payload is refused as an import, because it is still not the
+(`_health_audience.HEALTH_READERS`). **And it writes nothing** — Daniel, 7/oct/2026, reading
+Karina's *só não podem editar* whole: no project write on any route, not even the fields the
+`other` reader edits in its own scope, nor a need's description on any project. Until then the
+Circle saved and created records as any Shemá role did in its scope; `save_project.refuse_circle_writes`
+now refuses both (`Readership.edits_no_project`, read off the `trusted` field — a Circle who also
+coordinates is coordination and edits; one who is also OBT Lab is refused too, the stricter
+reading). The refusal comes **after** the scope's own 404, so a project out of reach still hides.
+`readAs` is a third value because the console asks it two questions at once — *is this the
+truth?* and *may I edit the place and the flag?* — and this is the first reader whose answers
+differ. `Readership.trusted` carries where a caller reads the truth apart from where it
+coordinates, so every other write path (`refuse_unread_health_writes` — now gated on the
+**audience**, `import`, the ETEN ledger, the meetings' log, filing an assessment) keeps asking
+the coordination and the audience; `tests/test_shema/test_resource_circle_reads.py` holds a 403
+per write route, the save and the create included. A `trusted` payload is refused as an import, because it is still not the
 whole record: a prayer request kept in coordination is `""` to the Circle
 (`_consent.PRAYER_AUDIENCE` did not move). The meetings' pastoral log did not move either — the
 issue names the ficha, the card, the health tab, the filter and the order, and a debriefing is

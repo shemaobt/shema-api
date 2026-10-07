@@ -640,7 +640,7 @@ async def _stored(db_session, project_id: str) -> ShemaProject:
 
 
 @pytest.mark.parametrize("field", list(PLACE_WRITES))
-@pytest.mark.parametrize("role", ["obtLab", "resourceCircle"])
+@pytest.mark.parametrize("role", ["obtLab"])
 async def test_a_role_that_is_not_coordination_may_not_write_the_place_or_the_flag(
     client, db_session, shema_app, cleared, role, field
 ) -> None:

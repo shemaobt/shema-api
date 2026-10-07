@@ -478,6 +478,18 @@ class Readership(NamedTuple):
         return self.trusted is not None and (self.trusted.global_ or bool(self.trusted.regions))
 
     @property
+    def edits_no_project(self) -> bool:
+        """Whether this caller is the Resource Circle without coordination — who writes **no**
+        project at all (Daniel, 7/oct/2026, on OBT-571: Karina's *só não podem editar* means no
+        write, on no route, not even the fields the ``other`` reader edits in its own scope).
+
+        Read off :attr:`trusted`, which :func:`readership` sets exactly for that account — a
+        Circle who also coordinates is coordination and edits; one who is also OBT Lab is
+        refused too, the stricter of the two readings and the one the sentence supports.
+        """
+        return self.trusted is not None
+
+    @property
     def collection_reader(self) -> ShemaReader:
         """The reader a collection-level announcement is addressed to."""
         if self.coordinates_anything:

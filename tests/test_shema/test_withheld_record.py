@@ -537,12 +537,13 @@ async def test_coordination_is_told_every_field_that_moved(
     assert body["changedBy"] == who
 
 
-@pytest.mark.parametrize(("role", "told"), [("resourceCircle", False), ("obtLab", True)])
+@pytest.mark.parametrize(("role", "told"), [("obtLab", True)])
 async def test_a_conflict_names_a_prayer_request_only_to_its_audience(
     client, db_session, shema_app, cleared, role, told
 ) -> None:
-    """On a cleared record, a prayer request kept in coordination is ``""`` to the Resource
-    Circle and the text to the OBT Lab (BE-09) — and so is the fact that it moved."""
+    """On a cleared record, a prayer request kept in coordination is the text to the OBT Lab
+    (BE-09) — and so is the fact that it moved. (It was ``""`` to the Resource Circle, which no
+    longer saves at all since OBT-571, so it meets no conflict to be told anything in.)"""
     await _coordinator_saves(
         client, db_session, shema_app, CLEARED_ID, {"prayerRequests": "um pedido da equipe"}
     )
@@ -553,13 +554,13 @@ async def test_a_conflict_names_a_prayer_request_only_to_its_audience(
     assert ("prayerRequests" in res.json()["changedFields"]) is told
 
 
-@pytest.mark.parametrize(("role", "told"), [("resourceCircle", True), ("obtLab", True)])
+@pytest.mark.parametrize(("role", "told"), [("obtLab", True)])
 async def test_a_conflict_names_the_pastoral_follow_up_only_to_the_health_readers(
     client, db_session, shema_app, cleared, role, told
 ) -> None:
-    """The OBT Lab reads a team's health and is told; so is the Resource Circle since OBT-571
-    (it read the follow-up empty under OBT-553, and the fact that it moved was not its either).
-    Parametrised so the day a reader leaves the list the row says ``False`` again."""
+    """The OBT Lab reads a team's health and is told. (The Resource Circle read the follow-up
+    empty under OBT-553; since OBT-571 it reads it — and saves nothing, so it meets no conflict.)
+    Parametrised so a reader who leaves the list says ``False`` here."""
     who = await _coordinator_saves(
         client, db_session, shema_app, CLEARED_ID, {"pastoralInterventionName": "Pr. Joao"}
     )

@@ -599,28 +599,30 @@ async def test_the_resource_circle_may_not_write_a_request_it_cannot_read(
     client, db_session, circle, body
 ) -> None:
     """Não dá para editar o que não se vê: overwriting a text read as ``""``, or publishing it
-    unseen. Refused by name, before the version is compared, and nothing moves."""
+    unseen. Since Daniel's decision of 7/oct/2026 (OBT-571) the Circle writes nothing at all, so
+    the refusal is the Circle's own, before the version is compared, and nothing moves."""
     project = await seed(db_session, "uva-vale", text=KEPT)
 
     response = await patch(client, circle, project.id, body)
 
     assert response.status_code == 403
-    assert next(iter(body)) in response.text
+    assert "Resource Circle reads a project and does not edit it" in response.text
     await db_session.refresh(project)
     assert project.prayer_requests == KEPT and project.prayer_visibility is None
     assert project.version == 1
 
 
-async def test_the_resource_circle_still_writes_the_rest_of_the_record(
+async def test_the_resource_circle_no_longer_writes_the_rest_of_the_record(
     client, db_session, circle
 ) -> None:
+    """It did until OBT-571; Daniel (7/oct/2026) read Karina's *só não podem editar* whole."""
     project = await seed(db_session, "vento-vale", text=KEPT)
 
     response = await patch(client, circle, project.id, {"statusComments": "visita marcada"})
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 403, response.text
     await db_session.refresh(project)
-    assert project.prayer_requests == KEPT
+    assert project.prayer_requests == KEPT and project.version == 1
 
 
 @pytest.mark.parametrize(
@@ -637,7 +639,8 @@ async def test_the_resource_circle_may_not_decide_what_a_need_shares(
 ) -> None:
     """A need's ``prayerShared`` is an authorization like the project's visibility: the role that
     shares with the network does not decide it, in either direction, on a need it raises or on
-    one that exists. Nothing is written and nothing reaches the wall or the Pulse."""
+    one that exists — and since OBT-571 (Daniel, 7/oct/2026) writes no need at all, so the
+    refusal is the Circle's own. Nothing is written and nothing reaches the wall or the Pulse."""
     project = await seed(db_session, "vime-vale")
     existing = None
     if shared is not None:
@@ -647,7 +650,7 @@ async def test_the_resource_circle_may_not_decide_what_a_need_shares(
     response = await patch(client, circle, project.id, {"needsItems": [row]})
 
     assert response.status_code == 403, response.text
-    assert "prayerShared" in response.text
+    assert "Resource Circle reads a project and does not edit it" in response.text
     stored = (await db_session.execute(select(ShemaNeed))).scalars().all()
     assert [(item.id, item.prayer_shared) for item in stored] == (
         [] if existing is None else [(existing.id, shared)]
@@ -659,11 +662,9 @@ async def test_the_resource_circle_may_not_decide_what_a_need_shares(
         assert KEPT_NEED not in await pulse(client, circle)
 
 
-async def test_the_resource_circle_still_works_the_needs_it_does_not_share(
-    client, db_session, circle
-) -> None:
-    """The needs are the Resource Circle's own work: the console re-sends the whole row, flag
-    included, and a row whose flag does not move is not a decision about it."""
+async def test_the_resource_circle_no_longer_works_the_needs(client, db_session, circle) -> None:
+    """The needs were the Resource Circle's own work until OBT-571; Daniel (7/oct/2026) closed
+    the Circle's every write, the needs included. The row and the wall stay as they were."""
     project = await seed(db_session, "vime-serra")
     row = await need(db_session, project, SHARED_NEED, shared=True)
 
@@ -684,9 +685,9 @@ async def test_the_resource_circle_still_works_the_needs_it_does_not_share(
         },
     )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 403, response.text
     await db_session.refresh(row)
-    assert row.prayer_shared is True and row.status.value == "in-progress"
+    assert row.prayer_shared is True and row.status.value != "in-progress"
     assert texts(await wall(client, circle)) == {SHARED_NEED}
 
 
@@ -706,18 +707,18 @@ async def test_the_resource_circle_may_not_keep_a_share_on_a_text_it_rewrote(
     )
 
     assert response.status_code == 403, response.text
-    assert "prayerShared" in response.text
+    assert "Resource Circle reads a project and does not edit it" in response.text
     await db_session.refresh(row)
     assert (row.description, row.prayer_shared) == (SHARED_NEED, True)
     assert texts(await wall(client, circle)) == {SHARED_NEED}
     assert KEPT_NEED not in await pulse(client, circle)
 
 
-async def test_a_need_the_resource_circle_rewrites_leaves_the_wall(
+async def test_a_need_the_resource_circle_tries_to_rewrite_stays_on_the_wall(
     client, db_session, circle
 ) -> None:
-    """Without the flag the rewrite is the Resource Circle's to make, and the rule withdraws the
-    authorization it was not given — the refusal above is of the restatement, not of the text."""
+    """Until OBT-571 the rewrite was the Circle's to make and withdrew the share; since Daniel's
+    decision of 7/oct/2026 the Circle writes no need, so the text and the share stay."""
     project = await seed(db_session, "vime-lago")
     row = await need(db_session, project, SHARED_NEED, shared=True)
 
@@ -725,10 +726,10 @@ async def test_a_need_the_resource_circle_rewrites_leaves_the_wall(
         client, circle, project.id, {"needsItems": [{"id": row.id, "description": KEPT_NEED}]}
     )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 403, response.text
     await db_session.refresh(row)
-    assert (row.description, row.prayer_shared) == (KEPT_NEED, False)
-    assert await wall(client, circle) == []
+    assert (row.description, row.prayer_shared) == (SHARED_NEED, True)
+    assert texts(await wall(client, circle)) == {SHARED_NEED}
 
 
 @pytest.mark.parametrize(
@@ -752,21 +753,19 @@ async def test_the_resource_circle_may_not_authorize_on_a_create_either(
     response = await client.post(PROJECTS, json=payload, headers=circle)
 
     assert response.status_code == 403, response.text
-    assert "prayerVisibility" in response.text or "prayerShared" in response.text
+    assert "Resource Circle reads a project and does not edit it" in response.text
     await db_session.rollback()
     assert (await db_session.execute(select(ShemaProject))).scalars().all() == []
 
 
-async def test_the_resource_circle_still_creates_a_record_with_its_request_kept(
-    client, db_session, circle
-) -> None:
-    """The console's create sends every field it holds, the empty request among them."""
+async def test_the_resource_circle_no_longer_creates_a_record(client, db_session, circle) -> None:
+    """It did until OBT-571 — the console's create sends every field it holds — and since
+    Daniel's decision of 7/oct/2026 it is refused as every other write of the Circle's."""
     response = await client.post(
         PROJECTS, json={**CREATE, "prayerRequests": KEPT, "needsItems": []}, headers=circle
     )
 
-    assert response.status_code == 201, response.text
-    assert response.json()["prayerVisibility"] is None
+    assert response.status_code == 403, response.text
     assert await wall(client, circle) == []
 
 

@@ -322,8 +322,8 @@ async def test_the_resource_circle_may_not_write_the_pastoral_follow_up_it_reads
     client, assessed, circle, body
 ) -> None:
     """*Só não podem editar* (OBT-571): the circle reads the team's follow-up now and is refused
-    the write all the same — the gate is the audience, not the reading. Refused by name, and the
-    record does not move."""
+    the write all the same — since Daniel's decision of 7/oct/2026, every project write of the
+    Circle's is refused before any field is looked at. The record does not move."""
     version = await _version(client, circle, assessed)
 
     response = await client.patch(
@@ -331,7 +331,7 @@ async def test_the_resource_circle_may_not_write_the_pastoral_follow_up_it_reads
     )
 
     assert response.status_code == 403
-    assert next(iter(body)) in response.text
+    assert "Resource Circle reads a project and does not edit it" in response.text
     assert await _version(client, circle, assessed) == version
 
 

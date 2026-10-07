@@ -8,9 +8,11 @@ redacted** (his decision; she listed the roles without naming it).
 Three things are held here. The Circle, on a withheld project in its own scope, reads what the
 coordination reads — the place, the base, the contacts, the reason, the real language name, the
 four free-text fields, the needs' descriptions, the history's notes and the health — as a
-``trusted`` reader, and is told how many were withheld. The Circle gains no write: every write
-route it did not hold answers 403 to an account holding ``resourceCircle`` alone, and the fields
-coordination writes are refused on the save. And the OBT Lab reads exactly what it read before.
+``trusted`` reader, and is told how many were withheld. The Circle **writes nothing** — Daniel,
+7/oct/2026: Karina's *só não podem editar* means no project write on any route, not even the
+fields the ``other`` reader edits in its own scope, nor a need's description on any project —
+so every write route answers 403 to an account holding ``resourceCircle`` alone, the save and the
+create included. And the OBT Lab reads exactly what it read before.
 
 No account here is an installation admin: they pass every guard, and a refusal asserted with one
 would pass for the wrong reason.
@@ -36,6 +38,8 @@ from app.db.models.shema_need import ShemaNeed
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 
 PROJECTS = f"{PREFIX}/projects"
+#: The Circle's own refusal, on every project write (Daniel, 7/oct/2026).
+SENTENCE = "Resource Circle reads a project and does not edit it"
 HERE = ShemaRegionKey.SOUTH_AMERICA
 ELSEWHERE = ShemaRegionKey.AFRICA
 WITHHELD_ID = "lingua-sigilosa"
@@ -310,7 +314,7 @@ async def test_the_circle_reads_the_truth_and_may_not_write_it(
     )
 
     assert response.status_code == 403, response.text
-    assert field in response.json()["detail"]
+    assert SENTENCE in response.json()["detail"]
     row = (
         await db_session.execute(
             select(ShemaProject)
@@ -319,6 +323,103 @@ async def test_the_circle_reads_the_truth_and_may_not_write_it(
         )
     ).scalar_one()
     assert (row.version, row.location, row.team, row.notes) == (1, PLACE, BASE, NOTES)
+
+
+OTHER_WRITES = {
+    "translatedUnits": {"translatedUnits": 3},
+    "statusComments": {"statusComments": "um comentario"},
+    "needsItems": {
+        "needsItems": [
+            {"category": "equipment", "urgency": "medium", "description": "outro gravador"}
+        ]
+    },
+}
+
+
+@pytest.mark.parametrize("field", list(OTHER_WRITES))
+@pytest.mark.parametrize("project_id", [CLEARED_ID, WITHHELD_ID], ids=["cleared", "withheld"])
+async def test_the_circle_may_not_write_what_other_readers_write_either(
+    client, db_session, cleared, withheld, circle, project_id, field
+) -> None:
+    """Daniel, 7/oct/2026: the Circle loses the ``PATCH`` whole — the progress a mentor types,
+    a status comment, a need's description — on a cleared project in its own scope as on a
+    withheld one. Before this decision the Circle wrote these as any ``other`` reader did."""
+    response = await client.patch(
+        f"{PROJECTS}/{project_id}", json=OTHER_WRITES[field], headers={**circle, "If-Match": '"1"'}
+    )
+
+    assert response.status_code == 403, response.text
+    assert SENTENCE in response.json()["detail"]
+    row = (
+        await db_session.execute(
+            select(ShemaProject)
+            .where(ShemaProject.id == project_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    assert (row.version, row.translated_units, row.status_comments) == (1, 0, STATUS)
+
+
+async def test_the_circle_may_not_create_a_project(client, circle) -> None:
+    """The create was the Circle's as any Shemá role's in its scope; it is not since 7/oct/2026."""
+    response = await client.post(
+        PROJECTS,
+        json={
+            "id": "9b6d6d4c-4f7e-5a3e-9d0a-1c2e3f4a5b6c",
+            "languageName": "Lingua Nova",
+            "bridgeLanguage": "Portugues",
+            "team": "JOCUM Nova",
+            "objective": ["NT"],
+            "location": "Brasil, Vale Novo",
+        },
+        headers=circle,
+    )
+
+    assert response.status_code == 403, response.text
+    assert SENTENCE in response.json()["detail"]
+
+
+async def test_a_project_outside_the_circles_scope_is_still_not_found(
+    client, db_session, shema_app, withheld
+) -> None:
+    """The refusal comes after the scope: out of reach is the existence-hiding 404, as for
+    everybody, and never a 403 that would say the project exists."""
+    elsewhere = await _headers(db_session, shema_app, "resourceCircle", regions=(ELSEWHERE,))
+
+    response = await client.patch(
+        f"{PROJECTS}/{WITHHELD_ID}",
+        json={"translatedUnits": 3},
+        headers={**elsewhere, "If-Match": '"1"'},
+    )
+
+    assert response.status_code == 404
+    assert _leaks(response.text) == []
+
+
+async def test_a_circle_who_also_mentors_is_refused_too(
+    client, db_session, shema_app, cleared
+) -> None:
+    """The stricter reading, stated: an account holding ``resourceCircle`` and ``obtLab`` reads
+    as ``trusted`` and writes nothing — the Circle's grant is what Karina's sentence is about,
+    and a second regional role beside it does not give the writes back."""
+    from tests.test_shema.conftest import grant
+
+    user = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="circle-lab@circulo.test",
+        role_key="resourceCircle",
+        regions=[HERE],
+    )
+    await grant(db_session, user, shema_app, "obtLab")
+
+    response = await client.patch(
+        f"{PROJECTS}/{CLEARED_ID}",
+        json={"translatedUnits": 3},
+        headers={**(await auth_header(db_session, user)), "If-Match": '"1"'},
+    )
+
+    assert response.status_code == 403
 
 
 @pytest.mark.parametrize(
