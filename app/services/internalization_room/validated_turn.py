@@ -254,10 +254,15 @@ async def _voiced_after_validation(
 
     `mother_tongue` is the one case where `transcript` is not the team's own words in the
     session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. The Validator's `{{TEAM_EVIDENCE}}` is quoted
-    evidence of what the team *said*, under a heading no prompt tells it to read as a fact
-    about the room rather than speech. Left alone, the slot would credit the team with a
-    sentence in the session language it never spoke.
+    Guide has something to draft against. That note stays out of the Validator's
+    `{{TEAM_EVIDENCE}}`, which is quoted evidence of what the team *said*, under a heading no
+    prompt tells it to read as a fact about the room rather than speech. Let in, the slot
+    would credit the team with a sentence in the session language it never spoke.
+
+    The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
+    the kickoff's team text — and her turn loop hands that text to the Validator as what the
+    team said, so with no team words and no telling-back the note handed to the Guide stands
+    in the slot.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
