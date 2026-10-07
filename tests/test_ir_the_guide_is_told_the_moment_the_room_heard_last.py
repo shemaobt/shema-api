@@ -80,3 +80,17 @@ async def test_the_turn_after_scene_two_opened_tells_the_guide_its_internalizati
     assert recording.guide[0].endswith(
         f"\n\nMOMENT: Internalization of part 2 of 4 {EM} the part is open."
     ), "o Guia continuava ouvindo Familiarização depois de abrir a cena 2"
+
+
+def _left_at(moment: dict[str, Any]) -> list[dict[str, Any]]:
+    return [{"role": "guide", "text": "", "moment": {"after": moment}}]
+
+
+async def test_after_her_familiarization_closing_the_guide_hears_it_has_been_said(
+    recording: _Recording,
+) -> None:
+    await _turn(_left_at({"at": "familiarization", "closed": True}))
+
+    assert recording.guide[0].endswith(
+        f"\n\nMOMENT: Familiarization {EM} its closing has been said; no part has been opened yet."
+    ), "o Guia não sabia que o fechamento da Familiarização já tinha sido dito"
