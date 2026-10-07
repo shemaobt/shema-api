@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room import golden_judge
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
     Finding,
@@ -18,6 +19,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.canon import parse_map
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
+from tests.text_seam_harness import the_judge_answers
 from tests.turn_harness import (
     GUIDE,
     SPEAKER,
@@ -239,3 +241,15 @@ async def test_the_voiced_verdicts_speaker_reads_the_validators_whole_material(
     )
 
     _reads_her_validator_material(agent.systems[0])
+
+
+async def test_the_golden_judge_reads_the_same_material_the_validator_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P03", language="Brazilian Portuguese", transcript="[turn 0]\nTEAM: Oi."
+    )
+
+    _reads_her_validator_material(judge.asked[0]["system_prompt"])
