@@ -143,7 +143,11 @@ def _digest(data: bytes) -> str:
 
 def sync(pin: str | None = None) -> int:
     if pin and not _on_main_line(pin):
-        print(f"pin {pin} is not on the compiler's main line — refusing", file=sys.stderr)
+        print(
+            f"pin {pin} is not on the compiler's main line — "
+            "refusing to vendor an unpublished commit",
+            file=sys.stderr,
+        )
         return 1
     sha = pin if pin else _head_sha()
     published, skipped = _published(sha)
