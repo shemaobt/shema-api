@@ -195,7 +195,7 @@ def sync(pin: str | None = None) -> int:
             files.append({"path": f"{kind}/{name}", "sha256": _digest(data)})
             print(f"  {kind}/{name}")
         for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
-            if existing not in names:
+            if existing not in names and f"{kind}/{existing}" != PROVENANCE:
                 (target / existing).unlink()
                 print(f"  removed {kind}/{existing}")
     record = {
