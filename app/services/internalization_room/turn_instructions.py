@@ -60,13 +60,12 @@ OPENING_INSTRUCTION = (
     "waits until they show they have the part."
 )
 
-OPENING_MOVEMENT_INSTRUCTION = (
-    "Write this opening in two movements, separated by a line containing only "
-    f"{OPENING_MOVEMENT_MARK} and nothing else. Before the line: the whole of the "
-    "passage, its arc and its tone. After the line: open the first scene and "
-    "stay in it with the team; the invitation to rehearse does not close the "
-    "opening. Do not write the mark anywhere else, and do not comment on it."
-)
+
+def opening_note(pericope_num: str, language_code: str) -> str:
+    return (
+        f"[A sessão acabou de começar. A equipe abriu a passagem {pericope_num} e está à mesa, "
+        "pronta para começar. Fale primeiro.]"
+    )
 
 
 VALIDATOR_USER_MESSAGE = "Validate the drafted response now. Return only the JSON object."

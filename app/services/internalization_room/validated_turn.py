@@ -15,7 +15,6 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
-    OPENING_MOVEMENT_INSTRUCTION,
     SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
     VALIDATOR_USER_MESSAGE,
@@ -119,12 +118,12 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
     )
 
 
-def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements: bool) -> str:
+def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
     """The Speaker's last user turn, behind everything already said.
 
     What the team just said is that turn, on its own: the exchange it answers is the
     conversation, not a heading inside the question. The instructions that ride per turn —
-    the opening, the two-movement mark — stay in that last message, which is where an
+    the opening's note — stay in that last message, which is where an
     instruction is read as this turn's and not as something said earlier.
 
     A turn with neither — the back-translation verdict — asks for its speech in the session's
@@ -133,10 +132,7 @@ def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements
     """
     if utterance:
         return utterance
-    instruction = opening_instruction or SPEAK_THIS_TURN
-    if ask_for_movements:
-        return f"{instruction} {OPENING_MOVEMENT_INSTRUCTION}"
-    return instruction
+    return opening_instruction or SPEAK_THIS_TURN
 
 
 async def _draft(
@@ -291,7 +287,7 @@ async def _voiced_after_validation(
     issues: list[dict[str, Any]] = []
     warmed_connection = False
 
-    turn = _the_guides_turn("" if opening else transcript, opening_instruction, ask_for_movements)
+    turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
     for attempt in range(MAX_REDRAFTS + 1):
         draft, movements = split_opening_movements(

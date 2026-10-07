@@ -236,14 +236,12 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
     from app.services.internalization_room.turn_instructions import (
         EARLIER_PASSAGES_HEADING,
         OPENING_INSTRUCTION,
-        OPENING_MOVEMENT_INSTRUCTION,
         TEAM_EVIDENCE_HEADING,
         VALIDATOR_USER_MESSAGE,
     )
 
     for value in (
         OPENING_INSTRUCTION,
-        OPENING_MOVEMENT_INSTRUCTION,
         TEAM_EVIDENCE_HEADING,
         EARLIER_PASSAGES_HEADING,
         VALIDATOR_USER_MESSAGE,
