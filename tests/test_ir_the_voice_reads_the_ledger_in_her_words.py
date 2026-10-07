@@ -146,3 +146,16 @@ def test_a_name_the_map_gives_in_several_scenes_is_listed_once() -> None:
     ) in untouched, "Naomi vinha três vezes na mesma linha"
     assert "  place: Bethlehem, Fields of Moab, the land of Judah" in untouched
     assert naomi_twice[2] == "WORKED WITH BY THE TEAM (engaged): Naomi"
+
+
+def test_a_bead_stored_at_the_retired_partial_status_is_read_as_raised() -> None:
+    state = {**initial_state(P), "preserved:R5": "partially_engaged"}
+
+    lines = coverage_status_block(state, P).splitlines()
+
+    assert lines[4:7] == [
+        "RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:",
+        "  preserved_element: R5",
+        "",
+    ], "uma conta guardada como partially_engaged caía em NOT YET TOUCHED, como intocada"
+    assert lines[-1] == "  preserved_element: R3, R10"

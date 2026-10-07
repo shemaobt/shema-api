@@ -65,12 +65,12 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
     raised = [
         element
         for element in elements_for(pericope_num)
-        if merged.get(element.key) == CoverageStatus.SURFACED
+        if merged.get(element.key) in (CoverageStatus.SURFACED, CoverageStatus.PARTIALLY_ENGAGED)
     ]
     untouched = [
         element
         for element in elements_for(pericope_num)
-        if merged.get(element.key) not in (CoverageStatus.ENGAGED, CoverageStatus.SURFACED)
+        if merged.get(element.key) == CoverageStatus.NOT_ENCOUNTERED
     ]
     lines = [_LEDGER, "", covered_line, ""]
     if raised:
