@@ -21,6 +21,7 @@ from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import analysis_ladder
 from app.services.internalization_room.part_names import Addresses
+from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 
@@ -769,7 +770,7 @@ async def analyse_telling_back(
         analyst_prompt,
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
-        MEANING_MAP=load_map(pericope_num).body,
+        MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
         SEGMENTS=segments_block(segments, language_code),
     )
     try:

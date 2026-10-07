@@ -7,9 +7,20 @@ from typing import Any
 
 import pytest
 
+from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.back_translation import analyse_telling_back
 from app.services.internalization_room.canon import parse_map
 from app.services.internalization_room.run_turn import run_turn
-from tests.turn_harness import GUIDE, VALIDATOR, settings, the_room_agent_is
+from tests.turn_harness import (
+    GUIDE,
+    VALIDATOR,
+    settings,
+    the_room_agent_is,
+    told_stretches,
+)
+
+ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 
 NAOMI_DEFINED = "[[B3]] — נָעֳמִי / Naomi"
 LAND_DEFINED = "[[PL_LAND_OF_JUDAH]] — הָאָרֶץ / the land"
@@ -31,6 +42,20 @@ STORY_SO_FAR_OPENS = (
 )
 
 NAOMI_IN_THE_DIGEST = "narrows down, loss by loss, to [[B3]] Naomi, alone in a foreign land"
+
+P03_FIRST_RULE = "- R1 (VOW_AND_BINDING_BEYOND_DEATH): First oath-scene in the pilot."
+P03_LAST_SILENCE = (
+    "- S3 (1:18): Narrator tells us Naomi sees and stops speaking, but nothing of what is going "
+    "on inside her. No agreement, no blessing, no further word from Naomi in this passage. We "
+    "are let into Ruth's resolve, but not into how Naomi takes it."
+)
+
+
+def _reads_her_validator_material(system: str) -> None:
+    assert NAOMI_DEFINED in system
+    assert P03_FIRST_RULE in system
+    assert P03_LAST_SILENCE in system
+    assert STORY_SO_FAR_OPENS in system
 
 
 class FakeAgent:
@@ -140,3 +165,25 @@ async def test_an_earlier_digest_with_a_slugged_link_reaches_both_roles_as_its_c
 
     assert NAOMI_IN_THE_DIGEST in guide
     assert NAOMI_IN_THE_DIGEST in validator
+
+
+async def test_the_ensaio_final_analyst_reads_the_validators_whole_material(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    systems: list[str] = []
+
+    async def analyst(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        systems.append(system_prompt)
+        return json.dumps({"findings": []})
+
+    the_room_agent_is(monkeypatch, analyst=analyst)
+
+    await analyse_telling_back(
+        segments=told_stretches(),
+        scope="P03",
+        pericope_num="P03",
+        analyst_prompt=ANALYST,
+        settings=settings(),
+    )
+
+    _reads_her_validator_material(systems[0])
