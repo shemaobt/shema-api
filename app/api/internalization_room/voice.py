@@ -152,6 +152,17 @@ async def clip(
     holds; the app always resumes with `If-Range`, and the write-once put that leaves one
     rendering per key is ENG-996's.
 
+    A miss on an address that names its session is voiced from that session's store rather
+    than answered 404. A turn is stored before its voice is made, so the address it hands
+    out can name a clip that was never made — the speech engine failed after the reply was
+    kept — and a 404 there left the team with a reply it could never hear and no way to ask
+    for it again short of speaking again. Her audio route does the same: it voices the
+    stored text when the tablet asks. The session, not the handle, decides what may be
+    voiced, because a handle is only a content key and anyone holding a room credential can
+    mint one for any words: only a guide line stored in that session, read through the
+    caller's own project, is spoken, so a forged key or another team's session answers 404
+    and never reaches the speech engine.
+
     The device check runs beside the read, not before it — the two are independent, and a
     tablet that is still welcome pays for whichever one is slower, not their sum. But the
     gate always answers first: a handle that does not decode to this room's own voice
