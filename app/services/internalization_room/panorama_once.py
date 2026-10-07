@@ -1,13 +1,12 @@
 """Whether a team has already heard the book's panorama and gone on into the book.
 
-The app asks for `"OV"` at every launch, and the server honoured it every time without
+The app asked for `"OV"` at every launch, and the server honoured it every time without
 looking at anything: a team reopening the tablet on the passage they were working heard the
 whole panorama again before reaching their own passage. The server never inserts a panorama
-on its own, so the decision belongs where the request lands — one question, asked before
-the request is honoured. `create_session` asks it to decide what the launch is answered
-with; the session route asks it again, after the session exists, to decide whether an
-opening is written ahead for a panorama. Both only read, and neither writes anything the
-other could then read differently.
+on its own, so the decision belongs where the request lands. Since ENG-1237 the open door
+opens the pericope it is asked for, the panorama included, and no longer asks this; the
+session route asks it, after the session exists, to decide whether an opening is written
+ahead for a panorama. It only reads.
 
 **Derived, never stored** — `progression`'s rule, and the same one. There is no "seen"
 column, counter or event, and there should not be one: a flag would be a second opinion
@@ -28,12 +27,9 @@ hearing, and the next launch plays it again. Nothing else can tell the two apart
 replaying to a team that heard it beats skipping it for a team that did not.
 
 **Once per book.** The panorama is the book's, and once per passage played the same thing
-fourteen times through Ruth: a tablet with no mark asked at every launch, and a team that
-had gone on into the first passage and finished it sat through the whole book again on the
-way to the second. The rule is `_heard_key` below, and nothing else keys on the passage.
-What stops a team from hearing it *again on purpose* is not this module: the open door,
-`open_session`, asks it only for the app's automatic launch request, never for a request the
-team chose, which is answered with the team's own Panorama session (ADR 0045).
+fourteen times through Ruth. The rule is `_heard_key` below, and nothing else keys on the
+passage. A team asking for the panorama again is answered with its own Panorama session
+(ADR 0045).
 
 **Two tablets of one team** asking in the same moment are returned one Panorama session,
 because the open door creates a team's session of a pericope once (ADR 0045), and only the
@@ -52,9 +48,7 @@ from app.services.internalization_room.canon.parse_map import load_book
 def _heard_key(project_id: str, book: str) -> tuple[ColumnElement[bool], ...]:
     """What "once" is scoped to: the team and the book, read as an ``in_`` over the book's
     passages, because the row that records a hearing names the passage the team went on
-    into and not the book. The book comes from the caller: `book_of` lives in `sessions`,
-    which imports this module. `create_session` still resolves where the team stands,
-    because a team standing on no passage is still given the panorama.
+    into and not the book. The book comes from the caller.
     """
     return (
         IRSession.project_id == project_id,

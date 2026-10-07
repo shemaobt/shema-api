@@ -17,6 +17,7 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.models.internalization_room import TakeResponse, TakesResponse
 from app.services import internalization_room as room
+from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.takes import (
     listen_url,
@@ -89,6 +90,7 @@ async def keep_take(
     it as well — and what follows from a part arriving is the room's question, not storage's.
     """
     session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
     take_kind = _kind(kind)
     take = await store_take(
         db,

@@ -76,15 +76,15 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     heard: list[str] = []
 
     async def _panorama(**handed: Any) -> TurnOutcome:
-        heard.append(str(handed["transcript"]))
+        heard.append(handed["speech"].text)
         return TurnOutcome(
             speech=GUIDE_OPENING if handed["opening"] else GUIDE_REPLY,
-            transcript=str(handed["transcript"]),
+            transcript=handed["speech"].text,
             used_fail_safe=False,
         )
 
     async def _heard_speech(*_: Any, **__: Any) -> HeardSpeech:
-        return HeardSpeech(text=THE_TEAM_ANSWERS, language_code="pt", transcript_confidence=0.99)
+        return HeardSpeech(text=THE_TEAM_ANSWERS, language_code="pt")
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         said.append(text)

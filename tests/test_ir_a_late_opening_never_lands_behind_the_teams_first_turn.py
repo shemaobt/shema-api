@@ -21,6 +21,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
+from app.core.config import get_settings
 from app.core.room_enums import CoverageStatus
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state
@@ -34,7 +35,8 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.opening_harness import ask_for_the_opening
+from tests.release_harness import P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
 
@@ -42,11 +44,6 @@ OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
 TEAM_ANSWER = "Noemi voltou para Belem com Rute no tempo da colheita"
 TEAM_TURN_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 SESSIONS_LOGGER = "app.services.internalization_room.sessions"
-
-
-@pytest.fixture()
-def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
 
 
 async def test_an_opening_on_a_session_where_nobody_has_spoken_is_its_first_line(
@@ -142,14 +139,6 @@ async def client(db_session, monkeypatch):
         yield c
 
 
-async def _ask_for_the_opening(client, session_id: str):
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
-        data={"turn_id": "abertura"},
-    )
-
-
 async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_teams_turn(
     client, db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -158,11 +147,11 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     the_room_agent_is(monkeypatch, turn=_TeamSpeaksWhileTheGuideThinks(rival_factory, session.id))
 
-    late = await _ask_for_the_opening(client, session.id)
+    late = await ask_for_the_opening(client, session.id)
     assert late.status_code == 200, late.text[:300]
     assert late.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING))
 
-    again = await _ask_for_the_opening(client, session.id)
+    again = await ask_for_the_opening(client, session.id)
     assert again.status_code == 200, again.text[:300]
     assert again.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING)), (
         "o reenvio da abertura era respondido pelo _say_it_again com a fala do turno da equipe"
@@ -194,7 +183,7 @@ async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_t
         monkeypatch, turn=_TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id)
     )
 
-    late = await _ask_for_the_opening(client, session.id)
+    late = await ask_for_the_opening(client, session.id)
 
     assert late.status_code == 200, late.text[:300]
     assert late.json()["coverage"]["engaged"] == 1, (
@@ -204,7 +193,7 @@ async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_t
 
 
 PREPARED = "Vamos ficar nesta parte."
-PREPARED_KEY = "tts/voice/m/f/prepared.mp3"
+PREPARED_KEY = f"tts/{get_settings().internalization_room_voice_id}/m/f/prepared.mp3"
 
 
 @pytest.fixture()
@@ -243,7 +232,7 @@ async def test_a_prepared_opening_handed_over_after_the_teams_first_turn_is_drop
     monkeypatch.setattr(sessions_api, "take_prepared", take_prepared_after_the_team_spoke)
 
     with caplog.at_level(logging.WARNING, logger=SESSIONS_LOGGER):
-        late = await _ask_for_the_opening(per_request_client, session.id)
+        late = await ask_for_the_opening(per_request_client, session.id)
 
     assert late.status_code == 200, late.text[:300]
     assert late.json()["audio_url"] == clip_url(PREPARED_KEY)
@@ -256,7 +245,7 @@ async def test_a_prepared_opening_handed_over_after_the_teams_first_turn_is_drop
         "descartada em silêncio, nada dizia que a abertura preparada chegou tarde"
     )
 
-    again = await _ask_for_the_opening(per_request_client, session.id)
+    again = await ask_for_the_opening(per_request_client, session.id)
     assert again.status_code == 200, again.text[:300]
     assert again.json()["audio_url"] == clip_url(PREPARED_KEY), (
         "o 409 não guardava a resposta, e o reenvio caía no _say_it_again com a fala da equipe"

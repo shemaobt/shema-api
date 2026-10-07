@@ -25,6 +25,12 @@ ProcessFamily = Literal["P", "X"]
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
 
+#: The instant acknowledgements her app ever plays, in either language: it fetches the F lines
+#: with ``i < 3`` (``app/page.tsx:279`` at her freeze). Her file, kept byte for byte, carries a
+#: fourth in each block, «Right.» and «Tá.», that the team could never hear from her, so the
+#: room reads no further than she does — the ruling of 2026-10-06.
+ACKNOWLEDGEMENTS_SHE_PLAYS = 3
+
 
 @lru_cache(maxsize=1)
 def _sections() -> dict[tuple[str, str | None], list[str]]:
@@ -34,7 +40,10 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     for index, mark in enumerate(marks):
         end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
         body = text[mark.end() : end]
-        parsed[(mark.group(1), mark.group(3))] = _BULLET.findall(body)
+        lines = _BULLET.findall(body)
+        if mark.group(1) == FailSafe.INSTANT_ACK:
+            lines = lines[:ACKNOWLEDGEMENTS_SHE_PLAYS]
+        parsed[(mark.group(1), mark.group(3))] = lines
     return parsed
 
 
@@ -95,6 +104,11 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     answers two failures in a row with the identical sentence sounds like a machine stuck,
     which is the one impression the fail-safe exists to avoid.
 
+    The inaudible family is the exception and never rotates. Her app answers every miss with
+    ``didntCatchThat(0)`` — in the conversation, on a telling-back with nothing told, and in
+    the check rounds — so every "couldn't hear" is her first D line, whatever ``turn`` says.
+    The other two D lines stay in her file and are simply never chosen.
+
     The name is what the app plays: these lines are shipped as audio inside the app, so a
     failure costs no synthesis and needs no network — which matters, because the network is
     often what failed.
@@ -107,30 +121,17 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     lines = utterances(kind, language_code)
     if not lines:
         return "", ""
-    index = turn % len(lines)
+    index = 0 if kind is FailSafe.INAUDIBLE else turn % len(lines)
     return lines[index], f"{kind}{index}"
 
 
 def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
-    """The D line for one more miss, read off how many the room is already answering.
+    """The D line for one more miss: always her first, however many came before it.
 
-    The ladder used to be indexed by the length of the conversation, so the very first miss
-    could draw the third line and a team heard perfectly for twenty turns met whichever line
-    the count landed on. It walks the run of misses now — the trailing guide turns that
-    answered with a D line — and any turn the room did hear starts it over.
-
-    It stays on the last line rather than wrapping: a fourth miss re-opening with the first
-    line would ask again as if for the first time, and her rule is one D per evidence asked.
+    Her rule is ``didntCatchThat(0)``, one line for every miss, so the conversation it is
+    handed no longer decides which line is said.
     """
-    misses = 0
-    for message in reversed(messages):
-        if message.get("role") != "guide":
-            continue
-        if message.get("category") != str(FailSafe.INAUDIBLE):
-            break
-        misses += 1
-    last = len(utterances(FailSafe.INAUDIBLE, language_code)) - 1
-    return choose(FailSafe.INAUDIBLE, language_code, turn=min(misses, last))
+    return choose(FailSafe.INAUDIBLE, language_code)
 
 
 #: Consecutive validation fail-safes before the room stops re-asking and pauses out loud.

@@ -12,7 +12,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
-from app.core.exceptions import ConflictError, UpstreamServiceError
+from app.core.exceptions import ConflictError
 from app.services.internalization_room import idempotency
 from tests.hard_stretch_harness import (
     AUDIO,
@@ -197,9 +197,17 @@ async def test_one_stretch_per_key(client: httpx.AsyncClient, db_session: AsyncS
     assert len(await _current(db_session, session_id)) == 1
 
 
-@pytest.mark.parametrize("heard", ["o trecho 1 corrigido", ""], ids=["heard", "empty"])
+@pytest.mark.parametrize(
+    ("heard", "status", "tellings"),
+    [("o trecho 1 corrigido", 200, 2), ("", 422, 1)],
+    ids=["heard", "empty"],
+)
 async def test_one_correction_per_key(
-    client: httpx.AsyncClient, db_session: AsyncSession, heard: str
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    heard: str,
+    status: int,
+    tellings: int,
 ) -> None:
     session_id, take_id = await _a_rehearsed_session(db_session, client)
     await _told(client, session_id, take_id)
@@ -209,11 +217,11 @@ async def test_one_correction_per_key(
     first = await _replace(client, session_id, take_id, stretch.id, 1, key="uma-correcao")
     again = await _replace(client, session_id, take_id, stretch.id, 1, key="uma-correcao")
 
-    assert first.status_code == 200, first.text
+    assert first.status_code == status, first.text
     assert again.status_code == first.status_code
     assert again.json() == first.json()
     [standing] = await _current(db_session, session_id)
-    assert standing.tellings == 2
+    assert standing.tellings == tellings
 
 
 async def test_a_key_reused_with_another_body_is_refused(
@@ -284,7 +292,6 @@ async def test_a_key_older_than_a_day_is_a_new_request(
 @pytest.mark.parametrize(
     ("unsettled", "status"),
     [
-        pytest.param(lambda: UpstreamServiceError("transcriber down"), 502, id="502"),
         pytest.param(lambda: HTTPException(status_code=429, detail="slow down"), 429, id="429"),
         pytest.param(lambda: ConflictError("written by another turn"), 409, id="409"),
     ],

@@ -3,6 +3,8 @@ import logging
 import re
 import uuid
 from collections import OrderedDict
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
@@ -36,11 +38,11 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
-from app.services.internalization_room import halt
+from app.services.internalization_room import halt, opening_claim
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
-from app.services.internalization_room.hearing import HeardSpeech, heard_speech
+from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.nudge_channel import nudge
@@ -247,31 +249,62 @@ async def _read_capped_audio(file: UploadFile) -> bytes:
     return audio_bytes
 
 
-async def _timed_stt(
-    audio_bytes: bytes, *, filename: str | None, mime_type: str | None, language: str
-) -> HeardSpeech:
-    with stage("stt"):
-        return await heard_speech(
-            audio_bytes, filename=filename, mime_type=mime_type, language=language
+@dataclass(frozen=True)
+class _Cut:
+    """The three multipart fields the tablet sends when the team cut the Guide short."""
+
+    interrupted: bool
+    at_ms: int | None
+    of_ms: int | None
+
+    @classmethod
+    def read(cls, interrupted: str | None, at_ms: str | None, of_ms: str | None) -> "_Cut":
+        """The cut as the tablet sent it: the house's truthy words are a cut, anything else is
+        not, and a position that is not a non-negative decimal number is absent. Nothing here
+        refuses a take.
+        """
+        return cls(
+            (interrupted or "").strip().lower() in _TRUTHY, _position(at_ms), _position(of_ms)
         )
 
 
-async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
-    """Stop a transcription started ahead of the session read and read its outcome.
+_TRUTHY = frozenset({"1", "true", "t", "yes", "y", "on"})
+_DECIMAL = re.compile(r"\s*(?:\d+\.?\d*|\.\d+)?\s*")
 
-    A session the read could not find has nobody left to hear the transcript, so its task
-    is stopped rather than left to run to an answer nobody reads. `asyncio.wait` rather than
-    a plain `await`: this runs while unwinding from `get_session`'s own failure, and a plain
-    `await task` inside `except BaseException: pass` would also swallow a cancellation aimed
-    at this request itself, arriving at exactly this suspension point — `wait` never raises
-    the waited task's own exception into its caller, so only that task's outcome is being
-    read here, never the caller's. `task.exception()` marks a real failure as read without
-    raising it; skipped when the task ended up cancelled, since reading it then would raise.
+
+def _position(raw: str | None) -> int | None:
+    if raw is None or not _DECIMAL.fullmatch(raw):
+        return None
+    return int(Decimal(raw.strip() or "0").to_integral_value(ROUND_HALF_UP))
+
+
+async def _timed_stt(
+    audio_bytes: bytes,
+    *,
+    filename: str | None,
+    mime_type: str | None,
+    language: str,
+    cut: _Cut,
+) -> HeardSpeech:
+    """What the recognizer heard of the take, stamped with where the team cut the Guide short.
+
+    The cut rides the take on every path, including a take the recognizer refused or found no
+    words in. A position that is negative or unreadable counts as absent, as in Marcia's route:
+    the cut stays a cut and the take is never refused over it.
     """
-    task.cancel()
-    await asyncio.wait({task})
-    if not task.cancelled():
-        task.exception()
+    with stage("stt"):
+        heard = await heard_speech(
+            audio_bytes, filename=filename, mime_type=mime_type, language=language
+        )
+    if not cut.interrupted:
+        return heard
+    return heard.model_copy(
+        update={
+            "interrupted": True,
+            "interrupted_at_ms": cut.at_ms or 0,
+            "interrupted_of_ms": cut.of_ms,
+        }
+    )
 
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
@@ -306,11 +339,11 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
 
     A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
     said nothing, so what the team said decides rather than the state the room's own turn
-    ended in. What the team said still has to be speech the room took up, which is what
-    `reliable_bridge_speech` means: an uncertain transcript travels forward inside the very
-    fail-safe asking the team to repeat it, and mother-tongue speech inside the one asking
-    for the session's language back. Neither is an answer the room engaged with, and coverage
-    only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
+    ended in. What the team said still has to be in the session's language: a take heard as
+    the mother tongue is a rehearsal the Guide is told about, not an answer to read beads
+    from, and coverage only moves forward and feeds the Guide's next prompt, so a bead
+    settled on it never comes back down. Words the transcriber was unsure of are still the
+    team's answer: the room takes them up, so the classifier reads them too.
 
     The opening used to earn an exception here by being an opening the Guide actually wrote,
     reaching `surfaced` on beads the team had not spoken a word toward. Coverage is
@@ -319,7 +352,7 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
     empty transcript is worth settling any more, opening or not.
     """
     if outcome.transcript.strip():
-        return speech_heard.reliable_bridge_speech
+        return not speech_heard.mother_tongue
     return False
 
 
@@ -434,7 +467,6 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
-        chosen=payload.chosen,
         lifts=caller is not None,
     )
     if caller is not None:
@@ -673,7 +705,6 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
     return TurnResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
-        transcript="",
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
@@ -693,6 +724,9 @@ async def take_turn(
     file: UploadFile | None = File(default=None),
     turn_id: str | None = Form(default=None, max_length=64),
     client_timing: str | None = Form(default=None),
+    interrupted: str | None = Form(default=None),
+    interrupted_at_ms: str | None = Form(default=None),
+    interrupted_of_ms: str | None = Form(default=None),
     project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
@@ -723,6 +757,7 @@ async def take_turn(
         file=file,
         turn_id=turn_id,
         project_id=project_id,
+        cut=_Cut.read(interrupted, interrupted_at_ms, interrupted_of_ms),
     )
     with stopwatch("[turn-timing]", session_id) as clock:
         if turn_id:
@@ -781,6 +816,7 @@ async def _answer_the_turn(
     file: UploadFile | None,
     turn_id: str | None,
     project_id: str | None,
+    cut: _Cut,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
@@ -802,48 +838,81 @@ async def _answer_the_turn(
                     filename=file.filename,
                     mime_type=file.content_type,
                     language=known[0],
+                    cut=cut,
                 )
             )
 
     try:
         with stage("db_read"):
             session = await room.session_for_room_caller(db, session_id, project_id)
-        team_id, halted = session.project_id, session.status is IRSessionStatus.NEEDS_PERSON
+        halted = session.status is IRSessionStatus.NEEDS_PERSON
         opening = file is None and not (session.messages or [])
         if not opening:
             with stage("db_let_go"):
                 await db.commit()
     except BaseException:
         if stt is not None:
-            await _cancelled(stt)
+            await stop_hearing(stt)
         raise
     _remember_language(session_id, session.language, project_id)
 
-    speech_heard = HeardSpeech()
-    if stt is not None:
-        speech_heard = await stt
-    elif file is not None:
+    if file is not None and stt is None:
         audio_bytes = await _read_capped_audio(file)
-        speech_heard = await _timed_stt(
-            audio_bytes,
-            filename=file.filename,
-            mime_type=file.content_type,
-            language=session.language,
+        stt = asyncio.create_task(
+            _timed_stt(
+                audio_bytes,
+                filename=file.filename,
+                mime_type=file.content_type,
+                language=session.language,
+                cut=cut,
+            )
         )
-    transcript = speech_heard.text
-
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id)
 
+    return await opening_claim.answer_around_the_opening(
+        db,
+        session,
+        opening=opening,
+        turn_id=turn_id,
+        project_id=project_id,
+        hearing=stt,
+        deadline=deadline,
+        bound_s=bound_s,
+        draft=partial(
+            _draft_the_turn,
+            db,
+            session,
+            background=background,
+            opening=opening,
+            halted=halted,
+            bound_s=bound_s,
+        ),
+    )
+
+
+async def _draft_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    background: BackgroundTasks,
+    turn_id: str | None,
+    opening: bool,
+    halted: bool,
+    speech_heard: HeardSpeech,
+    deadline: float,
+    bound_s: float,
+) -> TurnResponse:
+    team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
         speech, audio_key = ready
+        audio_key = await room.in_a_voice_the_room_has(audio_key, speech, language=session.language)
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
         await room.append_opening(db, session, guide_response=speech, commit=False)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
-            transcript="",
             peer_cue=outcome.peer_cue,
             coverage=coverage_view(session),
             done=False,
@@ -867,7 +936,6 @@ async def _answer_the_turn(
             if is_panorama(session.pericope):
                 book = book_of(session.pericope)
                 outcome = await room.run_panorama_turn(
-                    transcript=transcript,
                     messages=session.messages or [],
                     session_language=LANGUAGE_NAMES[session.language],
                     language_code=session.language,
@@ -878,6 +946,7 @@ async def _answer_the_turn(
                     opening=opening,
                     settings=get_settings(),
                     session_id=session.id,
+                    speech=speech_heard,
                 )
             else:
                 turn = await room.run_comprehension_turn(
@@ -923,7 +992,6 @@ async def _answer_the_turn(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=outcome.fixed_line,
-        transcript=outcome.transcript,
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         degraded=outcome.degraded,

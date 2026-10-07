@@ -18,10 +18,8 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session
-from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
@@ -30,7 +28,6 @@ from tests.release_harness import (
     a_claimed_device,
     at_the_desk,
     ready_session,
-    team_headers,
 )
 from tests.room_harness import (
     heard_every_part,
@@ -39,7 +36,7 @@ from tests.room_harness import (
     the_bucket_is_in_memory,
     the_room_speaks,
 )
-from tests.turn_harness import the_room_agent_is
+from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
 
 GUIDE_OPENING = "Vamos ouvir a historia de Rute. O que voces ja sabem dela?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
@@ -70,21 +67,7 @@ def script(monkeypatch: pytest.MonkeyPatch) -> _Script:
             return json.dumps({"verdict": verdict, "issues": []})
         return GUIDE_OPENING if not scripted.said else GUIDE_LINE
 
-    async def voice(text: str, **_: Any):
-        return (
-            SynthesizedSpeech(
-                audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/x.mp3"
-            ),
-            False,
-        )
-
-    async def settled(**_: Any) -> None:
-        return None
-
-    monkeypatch.setattr(sessions_api, "heard_speech", heard)
-    the_room_agent_is(monkeypatch, turn=model)
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
-    monkeypatch.setattr(sessions_api, "settle_coverage", settled)
+    the_turn_is_scripted(monkeypatch, heard=heard, model=model)
     return scripted
 
 
@@ -108,29 +91,6 @@ def _conversation_of(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/conversation"
 
 
-async def _the_team_says(
-    client: httpx.AsyncClient, credential: str, session_id: str, turn_id: str
-) -> httpx.Response:
-    response = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns",
-        headers=team_headers(credential),
-        data={"turn_id": turn_id},
-        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
-    )
-    assert response.status_code == 200, response.text[:300]
-    return response
-
-
-async def _the_room_opens(
-    client: httpx.AsyncClient, credential: str, session_id: str
-) -> httpx.Response:
-    response = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
-    )
-    assert response.status_code == 200, response.text[:300]
-    return response
-
-
 async def _a_conversation(
     client: httpx.AsyncClient, db: AsyncSession, room_app, script: _Script
 ) -> tuple[str, dict[str, str], str]:
@@ -139,19 +99,19 @@ async def _a_conversation(
     session = await create_session(db, language="pt", pericope=P, project_id=project.id)
     desk, _facilitator = await at_the_desk(db, room_app, project)
 
-    await _the_room_opens(client, credential, session.id)
+    await the_room_opens(client, credential, session.id)
 
     script.said = FIRST_ANSWER
-    await _the_team_says(client, credential, session.id, "turno-1")
+    await the_team_says(client, credential, session.id, "turno-1")
 
     script.said = SECOND_ANSWER
     script.fail_safe = True
-    await _the_team_says(client, credential, session.id, "turno-2")
+    await the_team_says(client, credential, session.id, "turno-2")
     script.fail_safe = False
 
     script.said = THIRD_ANSWER
     script.mother_tongue = True
-    await _the_team_says(client, credential, session.id, "turno-3")
+    await the_team_says(client, credential, session.id, "turno-3")
     script.mother_tongue = False
     return session.id, desk, credential
 
@@ -209,8 +169,8 @@ async def test_a_turn_the_tablet_resent_is_not_doubled(
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
     script.said = FIRST_ANSWER
 
-    await _the_team_says(client, credential, session.id, "turno-1")
-    await _the_team_says(client, credential, session.id, "turno-1")
+    await the_team_says(client, credential, session.id, "turno-1")
+    await the_team_says(client, credential, session.id, "turno-1")
 
     turns = await _turns(client, session.id, desk)
     assert [(t["role"], t["text"]) for t in turns] == [
