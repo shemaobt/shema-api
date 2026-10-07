@@ -14,6 +14,7 @@ from app.core.exceptions import NotFoundError
 from app.services.internalization_room.questions import AUDIO_MIME
 from app.services.internalization_room.sessions import session_for_room_caller
 from app.services.internalization_room.synthesize_facilitator_speech import (
+    facilitator_speech_key,
     synthesize_facilitator_speech,
     voiced_here,
 )
@@ -197,6 +198,7 @@ async def clip(
     if audio is None and session is not None:
         audio = await _the_stored_line_voiced(
             db,
+            key=key,
             session_id=session,
             project_id=caller.project_id if caller else None,
             store=GcsPlatformStore(cfg),
@@ -263,21 +265,22 @@ async def clip(
 
 
 async def _the_stored_line_voiced(
-    db: AsyncSession, *, session_id: str, project_id: str | None, store: SpeechStore
+    db: AsyncSession, *, key: str, session_id: str, project_id: str | None, store: SpeechStore
 ) -> bytes | None:
     stored = await session_for_room_caller(db, session_id, project_id)
     line = next(
         (
-            message.get("text", "")
+            message["text"]
             for message in reversed(stored.messages or [])
             if message.get("role") == "guide"
+            and facilitator_speech_key(message.get("text", ""), language=stored.language) == key
         ),
         "",
     )
     if not line:
         return None
-    speech, _ = await synthesize_facilitator_speech(line, language=stored.language)
-    return await fetch_clip(speech.key, store=store)
+    await synthesize_facilitator_speech(line, language=stored.language)
+    return await fetch_clip(key, store=store)
 
 
 def _media_type(key: str) -> str:

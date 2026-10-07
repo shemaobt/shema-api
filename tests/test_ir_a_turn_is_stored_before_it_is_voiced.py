@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.platform import tts
 from tests.baker import make_app, make_role
 from tests.release_harness import APP_KEY, PREFIX, P, a_claimed_device, at_the_desk, team_headers
@@ -198,3 +199,39 @@ async def test_the_address_of_a_reply_whose_voice_failed_makes_its_sound_once_th
     assert heard.content == f"som de {GUIDE_LINE}".encode(), (
         "o endereço da resposta guardada nunca fazia o som que tinha falhado"
     )
+
+
+async def test_an_address_for_words_the_session_never_stored_makes_no_sound(
+    client: httpx.AsyncClient, room: tuple[str, str, dict[str, str]], elevenlabs: _Elevenlabs
+) -> None:
+    from app.services.internalization_room.voice_handles import clip_url
+
+    session_id, credential, _desk = room
+    forged = clip_url(
+        facilitator_speech_key("Uma frase que a sala nunca guardou.", language="pt"),
+        session_id=session_id,
+    )
+
+    heard = await client.get(forged, headers=team_headers(credential))
+
+    assert heard.status_code == 404, heard.text[:300]
+    assert elevenlabs.calls == [], "o endereço fazia soar uma fala que a sessão não guardou"
+
+
+async def test_an_address_of_another_teams_session_makes_no_sound(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    room: tuple[str, str, dict[str, str]],
+    elevenlabs: _Elevenlabs,
+) -> None:
+    session_id, credential, _desk = room
+    elevenlabs.down = True
+    answered = await _the_team_answers(client, credential, session_id)
+    elevenlabs.down = False
+    elevenlabs.calls.clear()
+    _stranger_project, stranger = await a_claimed_device(db_session, email="out@example.com")
+
+    heard = await client.get(answered.json()["audio_url"], headers=team_headers(stranger))
+
+    assert heard.status_code == 404, heard.text[:300]
+    assert elevenlabs.calls == [], "outra equipe fazia soar a resposta guardada desta sessão"
