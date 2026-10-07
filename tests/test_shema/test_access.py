@@ -88,17 +88,18 @@ def test_the_app_key_is_named_once_in_the_module() -> None:
     assert offenders == [], f"app key duplicated outside _deps.py: {offenders}"
 
 
-def test_the_seeded_roles_are_the_four_shema_roles_and_the_admin() -> None:
+def test_the_seeded_roles_are_the_three_shema_roles_and_the_admin() -> None:
     """The four personas FE-44 drew the console for, verbatim and camelCase (``docs/shema.md``
     §2.3), plus OBT-522's ``admin`` — which is seeded as one entry for two apps rather than as
     a fifth key in the override.
 
-    Asserted against ``ROLE_KEYS`` rather than against four literals typed here, because a
-    second copy of a four-key vocabulary is the defect the single tuple exists to prevent —
+    Asserted against ``ROLE_KEYS`` rather than against literals typed here, because a second
+    copy of the vocabulary is the defect the single tuple exists to prevent (the fourth key,
+    the Global Strategist's, left with OBT-572) —
     a test that restates it would go green while the guard and the seed drifted apart.
     """
     assert APP_ROLES_OVERRIDE[APP_KEY] == list(ROLE_KEYS)
-    assert ROLE_KEYS == ("globalStrategist", "coordinator", "obtLab", "resourceCircle")
+    assert ROLE_KEYS == ("coordinator", "obtLab", "resourceCircle")
     assert [key for key, _label in seeded_roles(APP_KEY)] == list(SHEMA_APP_ROLES)
 
 
@@ -107,7 +108,6 @@ def test_the_session_vocabulary_is_the_frontends_in_precedence_order() -> None:
     same order — the console refuses a session carrying any key outside it, so a key added
     here and not there locks people out, and the order is the ``role`` the console renders."""
     assert ROLE_PRECEDENCE == (
-        "globalStrategist",
         "coordinator",
         "obtLab",
         "resourceCircle",
@@ -183,18 +183,18 @@ def test_an_approved_access_request_grants_a_role_this_app_has() -> None:
     assert default_role_for(APP_KEY) in APP_ROLES_OVERRIDE[APP_KEY]
 
 
-def test_the_default_role_on_approval_is_not_the_unscoped_one() -> None:
+def test_the_default_role_on_approval_is_a_regional_one() -> None:
     """The floor an approval hands out must be a **regional** role.
 
-    ``globalStrategist`` is the one key whose reach is every region with no row in
-    ``shema_user_regions``, so defaulting to it would make every approved account global —
-    the fail-open this module is built to refuse. Asserted separately from the value above
-    because it is a different claim: that one says which role, this one says which property
-    of it matters.
+    An unscoped key — one whose reach is every region with no row in ``shema_user_regions`` —
+    would make every approved account global, the fail-open this module is built to refuse.
+    OBT-572 retired the one such key, so every Shemá role is regional now and the floor is
+    one of them. Asserted separately from the value above because it is a different claim:
+    that one says which role, this one says which property of it matters.
     """
-    from app.services.shema._scope import GLOBAL_ROLE, REGIONAL_ROLES
+    from app.services.shema._scope import REGIONAL_ROLES, ROLE_KEYS
 
-    assert default_role_for(APP_KEY) != GLOBAL_ROLE
+    assert set(ROLE_KEYS) <= set(REGIONAL_ROLES)
     assert default_role_for(APP_KEY) in REGIONAL_ROLES
 
 

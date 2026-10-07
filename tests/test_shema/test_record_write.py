@@ -722,7 +722,7 @@ async def test_a_write_reaches_exactly_as_far_as_a_read(
     assert response.status_code == 404
 
 
-@pytest.mark.parametrize("role_key", ["coordinator", "globalStrategist"])
+@pytest.mark.parametrize("role_key", ["coordinator"])
 async def test_a_slug_is_refused_the_same_whether_it_exists_elsewhere_or_not(
     client, db_session, shema_app, role_key
 ) -> None:

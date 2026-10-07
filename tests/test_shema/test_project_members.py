@@ -289,9 +289,7 @@ async def _persona(db_session, shema_app, form_app, project, persona: str):
             db_session, shema_app, email=email, role_key=persona, regions=[AFRICA]
         )
     user = await make_user(db_session, email=email, is_platform_admin=False)
-    if persona == "globalStrategist":
-        await grant(db_session, user, shema_app, "globalStrategist")
-    elif persona in ("mesa", "gestor"):
+    if persona in ("mesa", "gestor"):
         await grant(db_session, user, form_app, persona)
     elif persona == "form-admin":
         await grant(db_session, user, form_app, "admin")
@@ -309,16 +307,15 @@ async def _persona(db_session, shema_app, form_app, project, persona: str):
         "resourceCircle",
         "mesa",
         "gestor",
-        "globalStrategist",
         "form-admin",
         "member",
     ],
 )
 async def test_only_the_admin_writes_the_roster(db_session, client, shema_app, form_app, persona):
-    """The DoD's five, and three more that would each be a plausible hole: the global strategist
-    (who reaches every region), the ``admin`` granted only in the form (the same word in the
-    other app), and a member of the project itself. ``POST`` and ``DELETE`` are both 403, and the
-    roster is exactly what it was."""
+    """The DoD's five, and two more that would each be a plausible hole: the ``admin`` granted
+    only in the form (the same word in the other app), and a member of the project itself.
+    (The Global Strategist, who reached every region, was a third until OBT-572 retired it.)
+    ``POST`` and ``DELETE`` are both 403, and the roster is exactly what it was."""
     admin = await _admin(db_session, shema_app)
     project = await make_shema_project(db_session, project_id="p-writers", region_key=AFRICA)
     sitting = await make_user(db_session, email="sitting@writers.test")

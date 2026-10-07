@@ -253,13 +253,18 @@ async def collection(db_session, shema_app):
 
 @pytest.fixture()
 async def reader(db_session, shema_app):
-    """A ``globalStrategist``: every region, no admin flag, nothing else granted.
+    """A ``coordinator`` holding every region, no admin flag, nothing else granted — the seat
+    the Global Strategist's reach fell to when OBT-572 retired that role.
 
     Since OBT-528 this reader is **coordination** and reads a sensitive project's truth, so the
     tests below that prove the reduction read as :func:`lab_reader` instead.
     """
     return await make_scoped_user(
-        db_session, shema_app, email="global@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="global@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
 
 
@@ -616,7 +621,7 @@ async def test_the_sensitive_country_rule_reaches_the_counts_and_not_only_the_re
     withholds, because it is reading that payload.
 
     The notice of how many were withheld is coordination's (GATE-04, OBT-528): this reader gets
-    ``null`` and the ``globalStrategist`` over the same collection gets the count. Since OBT-556
+    ``null`` and the coordination over the same collection gets the count. Since OBT-556
     the ``sensitive`` facet is the same notice and is coordination's too — absent from this
     reader's counts — while the card's own marker still says the same to both.
     """

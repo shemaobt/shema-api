@@ -34,6 +34,7 @@ from app.services.shema import (
     RegionScope,
     count_projects,
     create_pending_project_from_request,
+    set_region_scope,
     visible_projects,
     within_scope,
 )
@@ -376,7 +377,6 @@ async def _one_of_each(db_session, client, shema_app, form_app) -> tuple[Filing,
         ("coordinator", [ShemaRegionKey.SOUTH_AMERICA]),
         ("obtLab", [ShemaRegionKey.SOUTH_AMERICA]),
         ("resourceCircle", [ShemaRegionKey.SOUTH_AMERICA]),
-        ("globalStrategist", None),
     ],
 )
 async def test_a_pending_project_is_absent_for_every_reader_of_the_collection(
@@ -410,7 +410,8 @@ async def test_the_admin_and_an_installation_admin_do_not_read_it_in_the_collect
     """The Atlas shows a project once it is confirmed — for the Admin too, however global."""
     async with pending_client(db_session) as client:
         filing, pending = await _one_of_each(db_session, client, shema_app, form_app)
-        await grant(db_session, filing.admin, shema_app, "globalStrategist")
+        await grant(db_session, filing.admin, shema_app, "coordinator")
+        await set_region_scope(db_session, filing.admin.id, list(ShemaRegionKey))
         installation = await make_user(
             db_session, email="root@shema.example", is_platform_admin=True
         )
@@ -479,7 +480,7 @@ async def test_the_admin_reads_the_pending_projects(db_session, shema_app, form_
     assert [member["email"] for member in entry["members"]] == ["", "", HOLDER]
 
 
-@pytest.mark.parametrize("role", ["coordinator", "obtLab", "resourceCircle", "globalStrategist"])
+@pytest.mark.parametrize("role", ["coordinator", "obtLab", "resourceCircle"])
 async def test_only_the_admin_reads_or_decides_a_pending_project(
     db_session, shema_app, form_app, role: str
 ) -> None:
@@ -493,7 +494,7 @@ async def test_only_the_admin_reads_or_decides_a_pending_project(
             shema_app,
             email=f"not-admin-{role}@shema.example",
             role_key=role,
-            regions=None if role == "globalStrategist" else [ShemaRegionKey.SOUTH_AMERICA],
+            regions=[ShemaRegionKey.SOUTH_AMERICA],
         )
         headers = await auth_header(db_session, other)
         listed = await client.get(PENDING, headers=headers)

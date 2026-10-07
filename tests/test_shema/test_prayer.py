@@ -90,7 +90,8 @@ async def coordinator(db_session, shema_app):
 
 @pytest.fixture()
 async def strategist(db_session, shema_app):
-    return await person(db_session, shema_app, "globalStrategist", regions=())
+    """A coordinator holding every region — where the Global Strategist's reach went (OBT-572)."""
+    return await person(db_session, shema_app, "coordinator", regions=tuple(ShemaRegionKey))
 
 
 @pytest.fixture()
@@ -576,15 +577,13 @@ async def test_the_record_hides_an_unauthorized_request_from_the_resource_circle
     assert shared.json()["prayerRequests"] == SHARED
 
 
-@pytest.mark.parametrize("role_key", ["coordinator", "obtLab", "globalStrategist"])
+@pytest.mark.parametrize("role_key", ["coordinator", "obtLab"])
 async def test_the_follow_up_reads_an_unauthorized_request_on_the_record(
     client, db_session, shema_app, role_key
 ) -> None:
     """``coordenacao`` is a destination: the people who follow up and support read it."""
     await seed(db_session, "tarde-vale", text=KEPT)
-    headers = await person(
-        db_session, shema_app, role_key, regions=() if role_key == "globalStrategist" else (HOME,)
-    )
+    headers = await person(db_session, shema_app, role_key)
 
     response = await client.get(f"{PROJECTS}/tarde-vale", headers=headers)
 
@@ -771,7 +770,7 @@ async def test_the_resource_circle_still_creates_a_record_with_its_request_kept(
     assert await wall(client, circle) == []
 
 
-@pytest.mark.parametrize("role_key", ["coordinator", "obtLab", "globalStrategist"])
+@pytest.mark.parametrize("role_key", ["coordinator", "obtLab"])
 async def test_only_the_resource_circle_generates_the_pulse(
     client, db_session, shema_app, circle, role_key
 ) -> None:
@@ -796,7 +795,8 @@ async def test_the_wall_and_the_pulse_need_a_shema_account(client, db_session) -
 async def test_the_wall_and_the_pulse_are_scoped(
     client, db_session, shema_app, circle, strategist
 ) -> None:
-    """A regional Resource Circle's wall and file carry its own regions; the global seat, all."""
+    """A regional Resource Circle's wall and file carry its own regions; a coordinator holding
+    every region reads the whole wall."""
     await seed(db_session, "zinco-vale", text=SHARED, visibility=ShemaPrayerVisibility.REDE)
     await seed(
         db_session,

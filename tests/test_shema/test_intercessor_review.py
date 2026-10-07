@@ -218,7 +218,7 @@ async def test_only_the_resource_circle_may_mark_a_review(db_session, client, sh
     _user, headers = await _circle(db_session, shema_app)
     person = await _listed(client, headers)
 
-    for role in ("coordinator", "obtLab", "globalStrategist"):
+    for role in ("coordinator", "obtLab"):
         other = await make_scoped_user(
             db_session, shema_app, email=f"{role}@review.test", role_key=role, regions=[]
         )

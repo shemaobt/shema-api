@@ -170,15 +170,12 @@ async def test_the_arrival_rings_no_mesa_no_coordination_and_no_admin_held_only_
     coordinator = await make_scoped_user(
         db_session, shema_app, email="coord@notices.test", role_key="coordinator", regions=[AFRICA]
     )
-    strategist = await make_scoped_user(
-        db_session, shema_app, email="global@notices.test", role_key="globalStrategist"
-    )
     starter = await make_user(db_session, email="starter@notices.test")
 
     assert await _arrive(db_session, project.id, starter.id) == 0
 
     assert await _rows(db_session, shema_app) == []
-    for nobody in (mesa, form_admin, coordinator, strategist, starter):
+    for nobody in (mesa, form_admin, coordinator, starter):
         assert await _panel(db_session, nobody) == []
 
 
@@ -312,7 +309,11 @@ async def test_the_panel_lists_both_request_kinds_with_their_project(
     member reaches the project of their own request."""
     project = await make_shema_project(db_session, project_id="kadiweu", region_key=AFRICA)
     strategist = await make_scoped_user(
-        db_session, shema_app, email="global@notices.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="global@notices.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     await grant(db_session, strategist, shema_app, "admin")
     starter = await make_user(db_session, email="starter@notices.test")

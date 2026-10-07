@@ -36,7 +36,6 @@ from app.db.models.shema_progress import ShemaProgressEntry
 from app.models.shema import ShemaProjectUpdate
 from app.models.shema_eten import EtenYearReport, EtenYearSnapshot
 from app.services.shema import eten_report, readership, region_scope, save_project
-from app.services.shema._scope import GLOBAL_ROLE
 from app.utils.shema_derivations import fiscal_year_of
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 
@@ -156,8 +155,14 @@ async def closed_in_year(db_session, project_id: str, **options) -> tuple[str, s
 
 @pytest.fixture()
 async def strategist(db_session, shema_app):
+    """A coordinator reaching every region — the seat the Global Strategist's work falls to
+    since OBT-572 retired that role."""
     return await make_scoped_user(
-        db_session, shema_app, email="estrategia@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="estrategia@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
 
 
@@ -450,7 +455,7 @@ async def test_a_completion_saved_on_31_july_counts_for_the_year_that_closes(
             scope,
             project_id,
             ShemaProjectUpdate(status=ShemaProjectStatus.CONCLUIDO),
-            readership=readership(scope, {GLOBAL_ROLE}, platform_admin=False),
+            readership=readership(scope, {"coordinator"}, platform_admin=False),
             user=strategist,
             expected_version=1,
             day=day,
@@ -569,7 +574,8 @@ async def test_every_report_answered_is_recorded_with_its_payload(
 
     (row,) = await _recorded(db_session)
     assert body["reportId"] == row.id
-    assert (row.year, row.scope_key, row.computed_by) == (YEAR, "global", strategist.id)
+    every_region = ",".join(sorted(k.value for k in ShemaRegionKey))
+    assert (row.year, row.scope_key, row.computed_by) == (YEAR, every_region, strategist.id)
     assert row.content["total_credits"] == body["totalCredits"] == 1
     (line,) = row.content["snapshots"]
     assert (line["credits"], line["region"]) == (1, "south-america")
@@ -675,7 +681,7 @@ async def test_a_withheld_project_still_counts_in_the_totals(
 @pytest.mark.parametrize(
     ("role", "regions"),
     [
-        ("globalStrategist", ()),
+        ("coordinator", tuple(ShemaRegionKey)),
         ("coordinator", (ShemaRegionKey.AFRICA,)),
         ("obtLab", (ShemaRegionKey.AFRICA,)),
         ("resourceCircle", (ShemaRegionKey.AFRICA,)),

@@ -74,9 +74,9 @@ async def test_a_regional_role_with_no_region_reaches_nothing(db_session, shema_
     """**The fail-closed floor, and the one reading of ``docs/shema.md`` §6.1 this issue
     narrows on purpose.**
 
-    "No rows means global" names who the empty case serves — the ``globalStrategist``, and
-    any account the client wants unscoped — and reading it as *anyone with no rows is
-    global* inverts the product's own sentence. It also has a live path to it:
+    "No rows means global" named who the empty case served — the Global Strategist, retired by
+    OBT-572 — and reading it as *anyone with no rows is global* inverts the product's own
+    sentence. It also has a live path to it:
     ``app/services/access_request`` grants a role on approval and grants no region, so every
     approved account would land globally scoped by default.
     """
@@ -90,16 +90,23 @@ async def test_a_regional_role_with_no_region_reaches_nothing(db_session, shema_
     assert scope.regions == frozenset()
 
 
-async def test_the_global_strategist_reaches_every_region_with_no_rows(db_session, shema_app):
-    """The one role the empty case is for. It has no seat in the org chart for the same
-    reason: the chart's three roles are per region and this one is not regional."""
+async def test_a_coordinator_holding_every_region_reaches_every_region_and_is_not_global(
+    db_session, shema_app
+):
+    """Since OBT-572 no role reaches every region by itself; an account that should is a
+    coordinator granted all seven, and its scope says the seven rather than ``global_``."""
     user = await make_scoped_user(
-        db_session, shema_app, email="strategist@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="everywhere@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
 
     scope = await region_scope(db_session, user, APP_KEY)
 
-    assert scope.global_ is True
+    assert scope.global_ is False
+    assert scope.regions == frozenset(key.value for key in ShemaRegionKey)
 
 
 async def test_a_platform_admin_is_global_without_any_grant(db_session, shema_app):
@@ -126,28 +133,16 @@ async def test_holding_two_roles_keeps_the_narrower_scope(db_session, shema_app)
     assert scope.regions == frozenset({"africa"})
 
 
-async def test_a_regional_role_plus_global_strategist_is_global(db_session, shema_app):
-    """The explicit way to make a scoped account unscoped, which is the point of it being
-    explicit — the alternative the module refuses is an account that drifts global by
-    having no row."""
-    user = await make_scoped_user(
-        db_session, shema_app, email="both@shema.test", role_key="coordinator", regions=[AFRICA]
-    )
-    await grant(db_session, user, shema_app, "globalStrategist")
-
-    assert (await region_scope(db_session, user, APP_KEY)).global_ is True
-
-
 async def test_the_scope_ignores_a_grant_in_another_application(db_session, shema_app):
-    """``list_roles`` is asked for this app key, so ``globalStrategist`` somewhere else — if
-    another product ever coins the key — is not ``globalStrategist`` here."""
+    """``list_roles`` is asked for this app key, so a ``coordinator`` somewhere else — another
+    product that happens to coin the key — is not a ``coordinator`` here."""
     from tests.baker import grant_app_role, make_app
 
     other = await make_app(db_session, app_key="other-product", name="Other")
     user = await make_scoped_user(
         db_session, shema_app, email="crossapp@shema.test", role_key="coordinator", regions=[ASIA]
     )
-    await grant_app_role(db_session, user, other, role_key="globalStrategist")
+    await grant_app_role(db_session, user, other, role_key="coordinator")
 
     scope = await region_scope(db_session, user, APP_KEY)
 
@@ -225,9 +220,15 @@ async def test_a_two_region_scope_carries_both_and_nothing_else(
     assert sorted(p.id for p in await list_projects(db_session, scope)) == ["basque", "wolof"]
 
 
-async def test_a_global_caller_carries_the_whole_collection(db_session, shema_app, three_regions):
+async def test_a_caller_holding_every_region_carries_the_whole_collection(
+    db_session, shema_app, three_regions
+):
     user = await make_scoped_user(
-        db_session, shema_app, email="global-list@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="global-list@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, APP_KEY)
 

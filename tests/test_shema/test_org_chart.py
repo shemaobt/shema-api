@@ -14,7 +14,6 @@ from tests.test_shema.conftest import (
     REGIONS,
     ROLE_CHANGES,
     auth_header,
-    grant,
     make_scoped_user,
 )
 
@@ -24,19 +23,17 @@ ASIA_TEAM = f"{REGIONS}/asia/team"
 async def _coordinator(db_session, shema_app, *, email: str, regions=None, everywhere=False):
     """A ``coordinator``, optionally reaching every region.
 
-    ``everywhere`` grants ``globalStrategist`` **beside** ``coordinator`` rather than instead
-    of it, which is the shape ``docs/shema.md`` §4.2 names as ordinary — an account
-    legitimately holds more than one Shemá role, and it is why grants go through
-    ``grant_app_role``. A ``coordinator`` with no region row reaches **nothing**, not
-    everything: BE-03 read §6.1's *no rows means global* narrowly on purpose, because
-    ``access_request`` grants a role and no region, so the loose reading would land every
-    approved account globally scoped.
+    ``everywhere`` names all seven regions — since OBT-572 retired the unscoped role, that is
+    the only way an account reaches every region by grant. A ``coordinator`` with no region
+    row reaches **nothing**, not everything: BE-03 read §6.1's *no rows means global* narrowly
+    on purpose, because ``access_request`` grants a role and no region, so the loose reading
+    would land every approved account globally scoped.
     """
+    if everywhere:
+        regions = list(ShemaRegionKey)
     user = await make_scoped_user(
         db_session, shema_app, email=email, role_key="coordinator", regions=regions
     )
-    if everywhere:
-        await grant(db_session, user, shema_app, "globalStrategist")
     return user, await auth_header(db_session, user)
 
 
@@ -412,7 +409,7 @@ async def test_a_regional_coordinator_reads_only_the_teams_of_their_own_regions(
 async def test_a_coordinator_who_reaches_every_region_reads_every_regions_team(
     db_session, client, shema_app
 ) -> None:
-    """The positive half: ``globalStrategist`` beside ``coordinator`` reaches all seven, so the
+    """The positive half: a ``coordinator`` holding all seven regions reaches all seven, so the
     scope added to the read narrows the regional holder and nobody else."""
     _user, headers = await _coordinator(
         db_session, shema_app, email="everywhere-reader@shema.test", everywhere=True

@@ -128,9 +128,10 @@ async def seed(
     return project
 
 
-#: The four personas, by the name a parametrised test asks for.
+#: The four personas, by the name a parametrised test asks for. ``strategist`` is a coordinator
+#: holding every region — where the Global Strategist's reach went when OBT-572 retired the role.
 PERSONAS: dict[str, tuple[str, tuple[ShemaRegionKey, ...]]] = {
-    "strategist": ("globalStrategist", ()),
+    "strategist": ("coordinator", tuple(ShemaRegionKey)),
     "coordinator": ("coordinator", (HOME,)),
     "lab": ("obtLab", (HOME,)),
     "circle": ("resourceCircle", (HOME,)),
@@ -144,7 +145,7 @@ async def persona(db_session, shema_app, name: str) -> dict[str, str]:
 
 @pytest.fixture()
 async def strategist(db_session, shema_app):
-    return await person(db_session, shema_app, "globalStrategist", regions=())
+    return await persona(db_session, shema_app, "strategist")
 
 
 @pytest.fixture()
@@ -462,7 +463,7 @@ async def test_every_csv_file_opens_with_its_provenance(client, db_session, stra
 
     assert preamble[0].startswith("Projetos do Ecossistema Shemá")
     assert preamble[1].startswith("Gerado em ") and preamble[1].endswith(" UTC por Test User")
-    assert preamble[2] == "Escopo: todas as regiões"
+    assert preamble[2] == "Escopo: " + ", ".join(sorted(k.value for k in ShemaRegionKey))
     assert preamble[3].startswith("Confidencial")
     assert preamble[4].startswith("Registro deste arquivo: ")
     assert response.headers["content-type"].startswith("text/csv")
@@ -494,7 +495,7 @@ async def test_the_header_speaks_the_language_asked_for(client, db_session, stra
     meta = document(await export(client, strategist, lang="en"))["meta"]
 
     assert preamble[0].startswith("Shemá Ecosystem projects")
-    assert preamble[2] == "Scope: every region"
+    assert preamble[2] == "Scope: " + ", ".join(sorted(k.value for k in ShemaRegionKey))
     assert meta["confidential"].startswith("Confidential")
 
 
@@ -604,8 +605,11 @@ async def test_the_export_log_cannot_be_edited(client, db_session, strategist) -
 
 @pytest.mark.parametrize(
     ("role_key", "regions", "key"),
-    [("globalStrategist", (), "global"), ("coordinator", (HOME, AWAY), "africa,other")],
-    ids=["global", "two regions"],
+    [
+        ("coordinator", tuple(ShemaRegionKey), ",".join(sorted(k.value for k in ShemaRegionKey))),
+        ("coordinator", (HOME, AWAY), "africa,other"),
+    ],
+    ids=["every region", "two regions"],
 )
 async def test_the_export_log_and_the_eten_log_file_a_scope_under_one_key(
     client, db_session, shema_app, role_key, regions, key

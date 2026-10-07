@@ -68,9 +68,7 @@ async def test_a_global_scope_is_null_and_not_an_empty_list(db_session, client, 
     """``null`` means global and ``[]`` means an account with a regional role and no region
     granted. They are opposite answers and the transport spells them differently, which is
     the whole reason the field is nullable rather than always a list."""
-    user = await make_scoped_user(
-        db_session, shema_app, email="null@shema.test", role_key="globalStrategist"
-    )
+    user = await make_user(db_session, email="null@shema.test", is_platform_admin=True)
 
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
 
@@ -121,13 +119,14 @@ async def test_one_role_is_answered_for_an_account_holding_two(db_session, shema
     assert (await _session(db_session, user)).role == "coordinator"
 
 
-async def test_the_global_strategist_wins_over_a_regional_role(db_session, shema_app):
+async def test_the_coordinator_wins_over_the_other_regional_roles(db_session, shema_app):
+    """Widest first: since OBT-572 retired the unscoped role, ``coordinator`` heads the list."""
     user = await make_scoped_user(
-        db_session, shema_app, email="widest@shema.test", role_key="coordinator", regions=[ASIA]
+        db_session, shema_app, email="widest@shema.test", role_key="obtLab", regions=[ASIA]
     )
-    await grant(db_session, user, shema_app, "globalStrategist")
+    await grant(db_session, user, shema_app, "coordinator")
 
-    assert (await _session(db_session, user)).role == "globalStrategist"
+    assert (await _session(db_session, user)).role == "coordinator"
 
 
 async def test_roles_lists_every_held_role_in_precedence_and_role_is_the_first(
@@ -161,22 +160,27 @@ async def test_the_four_console_roles_outrank_the_new_ones(db_session, shema_app
     assert (await _session(db_session, user)).role == "resourceCircle"
 
 
-async def test_an_account_holding_strategist_admin_and_gestor_keeps_the_role_it_has_today(
+async def test_an_account_holding_coordinator_admin_and_gestor_keeps_the_role_it_has_today(
     db_session, client, shema_app, form_app
 ):
-    """The Admin OBT-522 describes holds all three. Before the list its session answered
-    ``globalStrategist`` and global scope; it still does, and the list says the rest."""
+    """The Admin OBT-522 describes holds all three. Before the list its session answered the
+    Shemá role first; it still does, and the list says the rest. (The widest seat was the
+    Global Strategist's until OBT-572 retired it; the coordinator heads the list now.)"""
     user = await make_scoped_user(
-        db_session, shema_app, email="threeroles@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="threeroles@shema.test",
+        role_key="coordinator",
+        regions=[AFRICA],
     )
     await grant(db_session, user, shema_app, "admin")
     await grant(db_session, user, form_app, "gestor")
 
     res = await client.get(SESSION, headers=await auth_header(db_session, user))
 
-    assert res.json()["role"] == "globalStrategist"
-    assert res.json()["roles"] == ["globalStrategist", "admin", "gestor"]
-    assert res.json()["regionScope"] is None
+    assert res.json()["role"] == "coordinator"
+    assert res.json()["roles"] == ["coordinator", "admin", "gestor"]
+    assert res.json()["regionScope"] == ["africa"]
 
 
 async def test_the_service_answers_in_precedence_whatever_order_it_is_handed(db_session, shema_app):
@@ -237,17 +241,17 @@ async def test_renaming_the_seat_renames_the_session(db_session, shema_app):
     assert (await _session(db_session, user)).name == "After"
 
 
-async def test_the_global_strategist_falls_back_to_the_accounts_display_name(db_session, shema_app):
+async def test_a_seatless_role_falls_back_to_the_accounts_display_name(db_session, shema_app):
     """**Open question 4 of ``docs/shema.md`` §10, answered.**
 
-    ``globalStrategist`` has no seat — the chart's three roles are per region — so there is
-    no fact being duplicated and no rename to follow, and the *never duplicate a
-    role-holder's name* rule does not reach it. ``null`` was the alternative and would
-    guarantee that the console's ``GLOBAL_STRATEGIST_NAME`` hardcode stays, which is what
-    this endpoint exists to retire.
+    The ``admin`` has no seat — the chart's three roles are per region — so there is no fact
+    being duplicated and no rename to follow, and the *never duplicate a role-holder's name*
+    rule does not reach it. ``null`` was the alternative and would guarantee that the console
+    keeps a hardcoded name, which is what this endpoint exists to retire. (The Global
+    Strategist was the seatless role this was written for, until OBT-572.)
     """
-    user = await make_user(db_session, email="strategist@name.test", display_name="Karina")
-    await grant(db_session, user, shema_app, "globalStrategist")
+    user = await make_user(db_session, email="seatless@name.test", display_name="Karina")
+    await grant(db_session, user, shema_app, "admin")
 
     assert (await _session(db_session, user)).name == "Karina"
 

@@ -170,7 +170,7 @@ async def test_regions_on_a_role_that_is_not_regional_are_refused(
 
     async with surface_client(db_session) as client:
         res = await client.post(
-            GRANTS, json=_grant(person.id, "globalStrategist", regions=["africa"]), headers=headers
+            GRANTS, json=_grant(person.id, "admin", regions=["africa"]), headers=headers
         )
 
     assert res.status_code == 422
@@ -281,11 +281,13 @@ async def test_granting_to_yourself_is_refused(db_session, shema_app, form_app) 
     admin, headers = await make_admin(db_session, shema_app, form_app)
 
     async with surface_client(db_session) as client:
-        res = await client.post(GRANTS, json=_grant(admin.id, "globalStrategist"), headers=headers)
+        res = await client.post(
+            GRANTS, json=_grant(admin.id, "coordinator", regions=["africa"]), headers=headers
+        )
 
     assert res.status_code == 400
     assert res.json()["detail"] == "You cannot grant a role to yourself."
-    assert (APP_KEY, "globalStrategist") not in await _live_roles(db_session, admin.id)
+    assert (APP_KEY, "coordinator") not in await _live_roles(db_session, admin.id)
 
 
 async def test_revoking_your_own_role_is_refused(db_session, shema_app, form_app) -> None:
@@ -345,7 +347,9 @@ async def test_an_unknown_account_is_a_422(db_session, shema_app, form_app) -> N
 
     async with surface_client(db_session) as client:
         res = await client.post(
-            GRANTS, json=_grant("no-such-account", "globalStrategist"), headers=headers
+            GRANTS,
+            json=_grant("no-such-account", "coordinator", regions=["africa"]),
+            headers=headers,
         )
 
     assert res.status_code == 422
