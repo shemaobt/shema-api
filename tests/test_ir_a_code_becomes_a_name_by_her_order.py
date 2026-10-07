@@ -2,6 +2,7 @@ import logging
 
 import pytest
 
+from app.services.internalization_room.canon import names
 from app.services.internalization_room.canon.elements import elements_for, elements_of
 from app.services.internalization_room.canon.parse_map import MAPS_DIR, parse_map
 from app.services.internalization_room.prompt_blocks import coverage_status_block
@@ -61,3 +62,28 @@ def test_a_code_found_nowhere_reads_the_placeholder_and_is_logged_once(
     misses = [record for record in caplog.records if record.name == NAMES_LOGGER]
     assert len(misses) == 1, "a falta passava calada e ninguém a corrigia no cânon"
     assert "CB_9999" in misses[0].getMessage()
+
+
+def test_a_retired_entry_of_her_names_list_is_never_a_name() -> None:
+    labels = _ruth_1_with_famine_written_as("[[O17-Old-Thing]] — רָעָב / famine")
+
+    assert labels["object:S1:O17"] == "famine", (
+        "a entrada aposentada '[retired in V0.3; See O26]' ia ao Guia como se fosse um nome"
+    )
+
+
+@pytest.mark.parametrize(
+    ("code", "english"),
+    [
+        ("O99", "[reserved for P08-p10 in-compilation absorptions]"),
+        ("O98_RETIRED", "Old Thing"),
+    ],
+)
+def test_a_reserved_or_retired_mark_on_the_entry_or_its_key_skips_it(
+    monkeypatch: pytest.MonkeyPatch, code: str, english: str
+) -> None:
+    monkeypatch.setattr(names, "_names_list", lambda book: {code: {"english": english}})
+
+    labels = _ruth_1_with_famine_written_as(f"[[{code}-Old-Thing]] — רָעָב / famine")
+
+    assert labels[f"object:S1:{code}"] == "famine"

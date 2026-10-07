@@ -19,6 +19,8 @@ _SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman"}
 _DEFINITION = re.compile(r"^\[\[([A-Z][A-Z0-9_]*?)-[^\]\n]*\]\][ \t]*—[ \t]*([^\n]+)$", re.M)
 _NAMED_LINK = re.compile(r"\[\[[^\]\n]*\]\][ \t]+(?=[^\W\d_])")
 _FLAG_NOTE = re.compile(r"^active at\b", re.I)
+_RETIRED_OR_RESERVED = re.compile(r"\[(retired|reserved)", re.I)
+_RETIRED_KEY = re.compile(r"_RETIRED$", re.I)
 
 
 @lru_cache(maxsize=8)
@@ -49,9 +51,15 @@ def _glosses(body: str) -> dict[str, str]:
     return glosses
 
 
+def _retired_or_reserved(code: str, entry: dict) -> bool:
+    return bool(
+        _RETIRED_OR_RESERVED.search(entry.get("english") or "") or _RETIRED_KEY.search(code)
+    )
+
+
 def name_of(meaning_map: MeaningMap, code: str) -> str:
     entry = _names_list(meaning_map.book).get(code)
-    if entry is not None:
+    if entry is not None and not _retired_or_reserved(code, entry):
         return str(entry["english"])
     gloss = _glosses(meaning_map.body).get(code)
     if gloss:
