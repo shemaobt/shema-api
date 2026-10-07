@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -131,7 +132,7 @@ async def test_the_clip_lands_in_the_bucket_before_the_turn_answers(
     )
 
     assert answered.status_code == 200, answered.text[:300]
-    handle = answered.json()["audio_url"].rsplit("/", 1)[-1]
+    handle = urlsplit(answered.json()["audio_url"]).path.rsplit("/", 1)[-1]
     key = from_handle(handle, settings=get_settings())
     assert key in bucket.objects, (
         "a resposta saía antes de o clipe chegar ao bucket, e outra instância não o achava"

@@ -160,7 +160,7 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
 
     assert first.cancelled()
     assert resent.status_code == 200, resent.text[:300]
-    assert resent.json()["audio_url"] == clip_url(VOICED_AS)
+    assert resent.json()["audio_url"] == clip_url(VOICED_AS, session_id=session.id)
 
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)

@@ -708,7 +708,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
             voiced = (await room.synthesize_facilitator_speech(last, language=session.language))[0]
     return TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=clip_url(voiced.key, session_id=session.id) if voiced else "",
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
@@ -977,7 +977,10 @@ async def _draft_the_turn(
         audio_url=(
             ""
             if outcome.fixed_line
-            else clip_url(facilitator_speech_key(outcome.speech, language=session.language))
+            else clip_url(
+                facilitator_speech_key(outcome.speech, language=session.language),
+                session_id=session.id,
+            )
         ),
         fixed_line=outcome.fixed_line,
         peer_cue=outcome.peer_cue,

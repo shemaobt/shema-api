@@ -12,7 +12,11 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.services.internalization_room.questions import AUDIO_MIME
-from app.services.internalization_room.synthesize_facilitator_speech import voiced_here
+from app.services.internalization_room.sessions import session_for_room_caller
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    synthesize_facilitator_speech,
+    voiced_here,
+)
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform.storage import GcsPlatformStore
 from app.services.platform.tts import MIME_TYPE, SpeechStore, etag_of, fetch_clip
@@ -132,6 +136,7 @@ async def clip(
     x_room_key: str | None = Header(default=None),
     x_range: str | None = Header(default=None, alias="Range"),
     x_if_range: str | None = Header(default=None, alias="If-Range"),
+    session: str | None = None,
 ) -> Response:
     """Serve one synthesized line by the handle a turn handed out.
 
@@ -169,7 +174,7 @@ async def clip(
 
     gate_passed = False
     try:
-        await require_room_caller(
+        caller = await require_room_caller(
             db, x_device_credential=x_device_credential, x_room_key=x_room_key
         )
         gate_passed = True
@@ -189,6 +194,13 @@ async def clip(
         audio, gcs_ms = await _timed_fetch_clip(key, store=GcsPlatformStore(cfg))
     else:
         audio, gcs_ms = await read_task
+    if audio is None and session is not None:
+        audio = await _the_stored_line_voiced(
+            db,
+            session_id=session,
+            project_id=caller.project_id if caller else None,
+            store=GcsPlatformStore(cfg),
+        )
 
     etag = etag_of(audio) if audio is not None else ""
     byte_range: ByteRange | None = None
@@ -248,6 +260,24 @@ async def clip(
             "Accept-Ranges": "bytes",
         },
     )
+
+
+async def _the_stored_line_voiced(
+    db: AsyncSession, *, session_id: str, project_id: str | None, store: SpeechStore
+) -> bytes | None:
+    stored = await session_for_room_caller(db, session_id, project_id)
+    line = next(
+        (
+            message.get("text", "")
+            for message in reversed(stored.messages or [])
+            if message.get("role") == "guide"
+        ),
+        "",
+    )
+    if not line:
+        return None
+    speech, _ = await synthesize_facilitator_speech(line, language=stored.language)
+    return await fetch_clip(speech.key, store=store)
 
 
 def _media_type(key: str) -> str:

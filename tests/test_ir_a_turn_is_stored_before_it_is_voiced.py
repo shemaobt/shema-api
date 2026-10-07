@@ -182,3 +182,19 @@ async def test_an_opening_whose_voice_fails_is_stored_and_never_drafted_again(
     assert opened.status_code == 200, opened.text[:300]
     assert again.json() == opened.json()
     assert guide.drafts == 1, "a voz falhou na abertura e o Guia redigiu outra abertura"
+
+
+async def test_the_address_of_a_reply_whose_voice_failed_makes_its_sound_once_the_engine_is_back(
+    client: httpx.AsyncClient, room: tuple[str, str, dict[str, str]], elevenlabs: _Elevenlabs
+) -> None:
+    session_id, credential, _desk = room
+    elevenlabs.down = True
+    answered = await _the_team_answers(client, credential, session_id)
+    elevenlabs.down = False
+
+    heard = await client.get(answered.json()["audio_url"], headers=team_headers(credential))
+
+    assert heard.status_code == 200, heard.text[:300]
+    assert heard.content == f"som de {GUIDE_LINE}".encode(), (
+        "o endereço da resposta guardada nunca fazia o som que tinha falhado"
+    )
