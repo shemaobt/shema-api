@@ -47,9 +47,8 @@ class AccountGrants(BaseModel):
     """One account as the Admin sees it — what the lookup, a grant and a revocation answer.
 
     ``regions`` are the stored rows the Admin edits; ``regionScope`` is what they reach, by
-    the session's own rule (``null`` = every region). The two differ for a
-    ``globalStrategist`` who also coordinates a region, and for rows left under no regional
-    role, which reach nothing.
+    the session's own rule (``null`` = every region). The two differ for rows left under no
+    regional role, which reach nothing.
     """
 
     model_config = _RESPONSE

@@ -39,8 +39,8 @@ the flag are coordination's to write, and :func:`readership` below is where coor
 decided.
 
 **Who reads the truth is decided here too (OBT-528), in a function of its own.** GATE-04 gave
-the truth of a sensitive place to coordination — ``globalStrategist``, and ``coordinator`` on a
-project in a region of their scope — and the region half of that sentence is this file's.
+the truth of a sensitive place to coordination — ``coordinator`` on a project in a region of
+their scope, and the ``admin`` everywhere — and the region half of that sentence is this file's.
 :func:`readership` answers it from the grant and the scope a request already read, as a
 :class:`Readership` the services ask per project; :func:`visible_projects` is untouched, because
 who may *reach* a project and who may read its place are two different questions.
@@ -63,7 +63,7 @@ own that no reader of the collection composes.
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection, Sequence
+from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from typing import NamedTuple
 
@@ -84,7 +84,6 @@ logger = logging.getLogger(__name__)
 #: The role whose reach is every region. It is the one key of the four with no seat in the
 #: org chart (FE-44 §5.3 gives the chart three roles *per region*), which is the same fact
 #: read from the other side: it is not a regional role, so it is not regionally scoped.
-GLOBAL_ROLE = "globalStrategist"
 COORDINATOR_ROLE = "coordinator"
 OBT_LAB_ROLE = "obtLab"
 RESOURCE_CIRCLE_ROLE = "resourceCircle"
@@ -93,13 +92,19 @@ RESOURCE_CIRCLE_ROLE = "resourceCircle"
 #: ``shema_user_regions`` reaches nothing — see :func:`region_scope`.
 REGIONAL_ROLES = (COORDINATOR_ROLE, OBT_LAB_ROLE, RESOURCE_CIRCLE_ROLE)
 
-#: The four Shemá role keys, in FE-44's own order — the four personas the console's screens
-#: were drawn for, read verbatim from the frontend rather than translated (``docs/shema.md``
-#: §2.3). The seed, the four role aliases and their probes read this tuple, and it is also
-#: the head of :data:`ROLE_PRECEDENCE`, which is built from it rather than restating it: a
-#: second tuple naming the same four keys is what would let the seed and the session
+#: The three Shemá role keys, in FE-44's own order, read verbatim from the frontend rather than
+#: translated (``docs/shema.md`` §2.3). The seed, the role aliases and their probes read this
+#: tuple, and it is also the head of :data:`ROLE_PRECEDENCE`, which is built from it rather than
+#: restating it: a second tuple naming the same keys is what would let the seed and the session
 #: disagree.
-ROLE_KEYS = (GLOBAL_ROLE, COORDINATOR_ROLE, OBT_LAB_ROLE, RESOURCE_CIRCLE_ROLE)
+#:
+#: **There were four.** The unscoped seat FE-44 drew first left on
+#: 7/oct/2026 (OBT-572): Karina had meant to retire it and keep *Coordenador / Administrador
+#: Regional / Resource Circle* (6/oct, via Daniel), and Daniel decided the accounts holding it
+#: **lose it** rather than being converted — the Admin grants another role to whoever needs one.
+#: ``20261007_shema572`` revokes the grants; the role row stays in installations that have it,
+#: no longer seeded, and nothing here names the key again.
+ROLE_KEYS = (COORDINATOR_ROLE, OBT_LAB_ROLE, RESOURCE_CIRCLE_ROLE)
 
 #: The Admin of OBT-522 — **one role for both apps**, seeded in ``shema`` and in
 #: ``resource-request-form`` by ``20260927_shema08`` and labelled *"Admin da plataforma"*.
@@ -134,20 +139,22 @@ FORM_DOOR_ROLES = (GESTOR_ROLE, MESA_ROLE)
 
 #: The session's whole vocabulary, in the order ``roles`` is answered and ``role`` is picked.
 #:
-#: **The four Shemá roles come first**, widest-first as before, so every account that reached
-#: the console before this list existed keeps the ``role`` it had, byte for byte — ``role`` is
-#: kept on the wire only so no screen breaks during the transition, and an account holding
-#: ``globalStrategist``, ``admin`` and ``gestor`` still answers ``globalStrategist``. The new
-#: keys follow widest-first among themselves (Admin, Gestor, Mesa — OBT-522's hierarchy), and
-#: the reserved ``equipe`` closes the list. The frontend's ``SESSION_ROLES`` is this tuple.
+#: **The Shemá roles come first**, widest-first as before, so every account that reached the
+#: console before this list existed keeps the ``role`` it had, byte for byte — ``role`` is kept
+#: on the wire only so no screen breaks during the transition, and an account holding
+#: ``coordinator``, ``admin`` and ``gestor`` still answers ``coordinator``. The new keys follow
+#: widest-first among themselves (Admin, Gestor, Mesa — OBT-522's hierarchy), and the reserved
+#: ``equipe`` closes the list. The frontend's ``SESSION_ROLES`` is this tuple.
 ROLE_PRECEDENCE = (*ROLE_KEYS, ADMIN_ROLE, GESTOR_ROLE, MESA_ROLE, EQUIPE_ROLE)
 
 #: The roles that read the truth of a sensitive place in **every** region (OBT-528).
-#: ``globalStrategist`` is GATE-04's own answer. ``admin`` is here on the issue's reading — the
-#: Admin *vê tudo*, GATE of 23/set — and it is a **hypothesis to confirm with Daniel**: undoing
-#: it is deleting it from this tuple. ``coordinator`` is not here because it reads the truth
-#: only in its own regions (:func:`readership`).
-COORDINATION_EVERYWHERE = (GLOBAL_ROLE, ADMIN_ROLE)
+#: The unscoped seat was GATE-04's own answer and left with OBT-572. ``admin`` is here on the
+#: issue's reading — the Admin *vê tudo*, GATE of 23/set — and it is a **hypothesis to confirm
+#: with Daniel**: undoing it is deleting it from this tuple, which would leave the tuple empty
+#: and the truth of a sensitive place to coordinators in their regions and the platform admin.
+#: ``coordinator`` is not here because it reads the truth only in its own regions
+#: (:func:`readership`).
+COORDINATION_EVERYWHERE = (ADMIN_ROLE,)
 
 
 class RegionScope(NamedTuple):
@@ -163,7 +170,7 @@ class RegionScope(NamedTuple):
     ordering is written.
     """
 
-    #: Every region. A platform admin, or a holder of ``globalStrategist``.
+    #: Every region. A platform admin — and nobody else since OBT-572 retired the unscoped role.
     global_: bool
     #: The regions named in ``shema_user_regions``, for an account holding a regional role.
     #: **Empty and not global reaches nothing**, which is this module's fail-closed floor
@@ -213,17 +220,18 @@ async def region_scope(db: AsyncSession, user: User, app_key: str) -> RegionScop
     tests and is stated there: a negative test written per role must not use an admin
     account, or it passes for the wrong reason.
 
-    **"No rows means global" holds for** ``globalStrategist`` **and for nobody else**, and
-    this is the one place ``docs/shema.md`` §6.1 is read narrowly on purpose. That section
-    names who the empty case serves — *"the ``globalStrategist``, and any account the
-    client wants unscoped"* — and reading it as *anyone with no rows is global* inverts the
-    product's own sentence, which is that a regional coordinator sees **their** region. It
-    also opens a hole with a real path to it: ``app/services/access_request`` grants a role
-    on approval and grants no region, so every approved account would land globally scoped
-    by default. So a regional role with no row reaches nothing, and making such an account
-    global is an explicit act — name its regions, or grant it ``globalStrategist`` as well.
-    The converse holds too: a row reaches nothing without a regional role to be the reach of
-    (:func:`scope_from_roles`), so the ``admin`` role gains no region by holding one.
+    **"No rows means global" holds for nobody by role any more**, and this is the one place
+    ``docs/shema.md`` §6.1 is read narrowly on purpose. That section named who the empty case
+    served — *"the unscoped seat, and any account the client wants unscoped"* — and
+    reading it as *anyone with no rows is global* inverts the product's own sentence, which is
+    that a regional coordinator sees **their** region. It also opens a hole with a real path
+    to it: ``app/services/access_request`` grants a role on approval and grants no region, so
+    every approved account would land globally scoped by default. So a regional role with no
+    row reaches nothing, and making such an account reach more is an explicit act — name its
+    regions. Since OBT-572 retired the unscoped seat there is no role that reaches every
+    region; only the platform admin does. The converse holds too: a row reaches nothing
+    without a regional role to be the reach of (:func:`scope_from_roles`), so the ``admin``
+    role gains no region by holding one.
     """
     if user.is_platform_admin:
         return RegionScope(global_=True, regions=frozenset())
@@ -250,7 +258,7 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: AbstractSet[st
     regional role is revoked, and an org-chart seat or an operator can leave one behind. For
     the three regional roles nothing changes.
     """
-    if user.is_platform_admin or GLOBAL_ROLE in granted:
+    if user.is_platform_admin:
         return RegionScope(global_=True, regions=frozenset())
     if not any(role in granted for role in REGIONAL_ROLES):
         return RegionScope(global_=False, regions=frozenset())
@@ -270,18 +278,18 @@ async def holders_reaching(
     starts there. Addressing a notice asks the same question from the other end, about a list
     of accounts that :func:`~app.services.authorization.list_role_holders` just answered — and
     it belongs here for that function's own stated reason: the rule about what a region grant
-    means has one owner, and a second file deciding that *no rows means nothing unless you are
-    ``globalStrategist``* is a second place for a fail-open to be introduced.
+    means has one owner, and a second file deciding that *no rows means nothing* is a second
+    place for a fail-open to be introduced.
 
-    **Two queries for a list rather than two per person.** The roles of every holder and the
-    regions of every holder are each one read; the per-user loop underneath them is
-    arithmetic. A routing path called inside a save is not the place to issue a join per
-    recipient.
+    **One query for a list rather than one per person.** The regions of every holder are one
+    read; the per-user loop underneath it is arithmetic. A routing path called inside a save is
+    not the place to issue a join per recipient. (It was two reads until OBT-572: the second
+    listed the unscoped seat's holders, who reached every region by role; no role does now.)
 
     Order is preserved, because the caller's order is ``list_role_holders``'s — by e-mail, so
     a recipient list is stable between calls and a test can assert one.
 
-    **Precondition: ``users`` hold a regional or the global role.** :func:`scope_from_roles`
+    **Precondition: ``users`` hold a regional role.** :func:`scope_from_roles`
     refuses a region row to an account with no regional role; this function does not re-read
     roles to say the same, because every caller passes holders of named regional roles
     (``_needs.py``'s ``URGENT_NEED_ROLES``) and a second read per list is the cost it exists
@@ -290,10 +298,6 @@ async def holders_reaching(
     if not users:
         return []
 
-    globals_ = {
-        user.id
-        for user in await authorization_service.list_role_holders(db, app_key, (GLOBAL_ROLE,))
-    }
     rows = await db.execute(
         select(ShemaUserRegion.user_id, ShemaUserRegion.region_key).where(
             ShemaUserRegion.user_id.in_([user.id for user in users])
@@ -306,15 +310,11 @@ async def holders_reaching(
     return [
         user
         for user in users
-        if user.is_platform_admin
-        or user.id in globals_
-        or region_key.value in granted.get(user.id, set())
+        if user.is_platform_admin or region_key.value in granted.get(user.id, set())
     ]
 
 
-async def scopes_for(
-    db: AsyncSession, users: Sequence[User], *, unscoped: Collection[str]
-) -> dict[str, RegionScope]:
+async def scopes_for(db: AsyncSession, users: Sequence[User]) -> dict[str, RegionScope]:
     """:func:`scope_from_roles` for a whole list of accounts, in **one** read of the region table.
 
     The singular is written for the caller standing in front of one account. Addressing a
@@ -325,17 +325,15 @@ async def scopes_for(
     rows are read for the whole list and each account's reach is resolved off them, so the cost is
     one query rather than *n*.
 
-    ``unscoped`` is the ids of the accounts whose **role** already reaches every region — the
-    :data:`GLOBAL_ROLE` holders — and it is a parameter rather than a read because
-    ``docs/shema.md`` §2.4 gives ``user_app_roles`` to the auth spine: the caller asks
-    ``list_role_holders`` once for the whole list, which is the same one-query trade this function
-    makes for the table it does own. A platform admin is global here as they are everywhere else.
+    A platform admin is global here as they are everywhere else. Until OBT-572 the caller also
+    passed the ids of the unscoped seat's holders, whose role reached every region; no role
+    does now, so the only global reach left is the platform admin's own flag.
 
     Every account in ``users`` gets an entry, including the ones with no row at all: the
     fail-closed floor of :func:`region_scope` is an empty, non-global scope and not a missing key,
     so a caller cannot read *reaches nothing* as *not answered*.
 
-    Same precondition as :func:`holders_reaching`: ``users`` hold a regional or the global role
+    Same precondition as :func:`holders_reaching`: ``users`` hold a regional role
     (``_health_audience.py``'s ``HEALTH_AUDIENCE``), which is why a row here is read as reach.
     """
     by_user: dict[str, set[str]] = {}
@@ -351,7 +349,7 @@ async def scopes_for(
     return {
         user.id: (
             RegionScope(global_=True, regions=frozenset())
-            if user.is_platform_admin or user.id in unscoped
+            if user.is_platform_admin
             else RegionScope(global_=False, regions=frozenset(by_user.get(user.id, ())))
         )
         for user in users
@@ -473,10 +471,10 @@ def readership(
     (``app/api/shema/_deps.py``), and a second read of one fact is the defect
     :func:`scope_from_roles` was written to close.
 
-    * An installation admin, a ``globalStrategist`` and — the hypothesis in
-      :data:`COORDINATION_EVERYWHERE` — an ``admin`` coordinate every region: an installation
-      admin passes every guard in this repository, and reading less than the guards let it
-      reach would be a stricter rule on one route than on the route beside it.
+    * An installation admin and — the hypothesis in :data:`COORDINATION_EVERYWHERE` — an
+      ``admin`` coordinate every region: an installation admin passes every guard in this
+      repository, and reading less than the guards let it reach would be a stricter rule on one
+      route than on the route beside it. (The unscoped seat did too, until OBT-572.)
     * A ``coordinator`` coordinates the regions of its own scope — GATE-04's *cada um na sua
       região*.
     * Everybody else coordinates nothing, which is the fail-closed floor: a reader nobody named

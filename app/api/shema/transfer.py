@@ -15,7 +15,7 @@ keeps the routes that take it in a list somebody has to argue:
 
 **Who may use them is not the same for the two.** The export is any Shemá role's, inside its
 scope: the file is the scope the caller already reads, reduced for everybody. **The import is
-coordination's** — ``globalStrategist``, a ``coordinator`` in its regions, the ``admin`` role, an
+coordination's** — a ``coordinator`` in its regions, the ``admin`` role, an
 installation admin — because the file it restores is a whole record, and only coordination reads
 one; ``import_projects.py``'s docstring carries the argument. The refusal is the service's, like
 every other rule here.

@@ -3,7 +3,7 @@
 Seven routes and one guard: every handler takes :data:`~app.api.shema._deps.AdminUser`, the
 ``admin`` role of this app (OBT-522's *Admin da plataforma*), inside the ``authenticated``
 router that already refuses anybody with no role here. A Gestor or a mesa stops at that
-router's gate; a coordinator, an OBT Lab, a Resource Circle or a global strategist stops at
+router's gate; a coordinator, an OBT Lab or a Resource Circle stops at
 this one. ``tests/test_shema/test_admin_gate.py`` pins the seven paths and that each carries
 the guard, so an eighth route is a deliberate edit.
 

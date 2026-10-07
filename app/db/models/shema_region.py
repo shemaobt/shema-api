@@ -20,9 +20,9 @@ function, zero platform change. The split is the same one the sibling already ma
 platform answers *who are you and in what role*, and the module answers *how far does that
 reach*.
 
-**No rows means global.** That is the ``globalStrategist``, and any account the client wants
-unscoped; a platform admin is global too, short-circuiting before the query as they do at
-every other guard in this repository. ``app/services/shema/_scope.py`` computes one
+**No rows means global** was the unscoped seat's case, and that seat left with OBT-572: no
+role reaches every region now. A platform admin is global, short-circuiting before the query
+as they do at every other guard in this repository. ``app/services/shema/_scope.py`` computes one
 ``RegionScope`` value from one read, and **every list query takes it as a parameter** — a
 scope applied per endpoint is a rule the next endpoint forgets.
 """

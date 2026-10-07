@@ -18,8 +18,8 @@ file is not a URL prefix.
 **Read access is narrower than authentication, and it is one role.** Everything here is
 ``resourceCircle`` — *Intercessor*, the role whose stated responsibility (``CLAUDE.md`` §5.7)
 is *pedidos de oração, ora e compartilha com a rede*. ``obtLab``, ``coordinator`` and
-``globalStrategist`` are refused, and that is a real consequence rather than an oversight: a
-global strategist who needs the network is granted ``resourceCircle`` beside their own role,
+``admin`` are refused, and that is a real consequence rather than an oversight: a
+coordinator who needs the network is granted ``resourceCircle`` beside their own role,
 which this module explicitly supports — ``docs/shema.md`` §4.2 names a regional coordinator
 who is also ``resourceCircle`` as the ordinary case, and it is why grants go through
 ``grant_app_role`` and never through ``scripts/grant_app_role.py``. An OR guard over two roles

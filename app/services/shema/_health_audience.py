@@ -16,11 +16,10 @@ the prayer chain — is **not** in the audience, and the narrowing is deliberate
 inherited: the Resource Circle does not need to know that a team is in emotional difficulty in
 order to send them a recorder.
 
-``globalStrategist`` **is** in the audience, and that is this file's one departure from FE-44's
-table. It is the unscoped seat — the role with no region and no org-chart row — and reading the
-table literally would make the one person who sees every region the only person not told that a
-team went critical. The table is about the three regional roles and the global seat is outside
-its frame rather than excluded by it; the pull request declares the reading.
+The unscoped seat **was** in the audience — this file's one departure from FE-44's table,
+because the unscoped seat would otherwise have been the one person who saw every region and was
+not told a team went critical — and it left with the role (OBT-572, 7/oct/2026). The audience is
+now exactly the table's: the two regional roles that follow a team, in the regions they hold.
 
 **The region is the other half and it is not relaxed.** A recipient reaches a project exactly
 when ``_scope.py`` says they do, so a coordinator scoped to Africa is not told about Asia. The
@@ -68,7 +67,6 @@ from app.services import authorization_service
 from app.services.shema._redaction import log_reference
 from app.services.shema._scope import (
     COORDINATOR_ROLE,
-    GLOBAL_ROLE,
     OBT_LAB_ROLE,
     granted_roles,
     reaches,
@@ -78,7 +76,7 @@ from app.services.shema._scope import (
 logger = logging.getLogger(__name__)
 
 #: The roles an assessment reaches. Read the module docstring before widening it.
-HEALTH_AUDIENCE: tuple[str, ...] = (GLOBAL_ROLE, COORDINATOR_ROLE, OBT_LAB_ROLE)
+HEALTH_AUDIENCE: tuple[str, ...] = (COORDINATOR_ROLE, OBT_LAB_ROLE)
 
 
 def in_health_audience(granted: Collection[str], *, platform_admin: bool) -> bool:
@@ -166,8 +164,7 @@ async def recipients(
     ]
     if not holders:
         return []
-    unscoped = await authorization_service.list_role_holders(db, app_key, (GLOBAL_ROLE,))
-    scopes = await scopes_for(db, holders, unscoped={holder.id for holder in unscoped})
+    scopes = await scopes_for(db, holders)
     return [holder for holder in holders if reaches(scopes[holder.id], region)]
 
 

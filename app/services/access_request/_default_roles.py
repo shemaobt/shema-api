@@ -32,7 +32,7 @@ of *which* role is safe for a second reason worth writing down. The role carries
 that holds a **regional** role with no row there reaches nothing. So an approval hands out a
 role and no data, and somebody still has to name a region before the account sees a project.
 That is the half of deny-by-default this file could have broken, and the reason the floor is
-not ``globalStrategist``: that key *is* the unscoped one, and defaulting to it would make
+not an unscoped one: there is no such key since OBT-572, and defaulting to one would make
 every approval global. ``apps.auto_approve`` stays off for this app — Shemá access is
 granted, not registered for — so the approval this map serves is a human one either way.
 
