@@ -11,6 +11,17 @@ F3 = (
     "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização "
     "da primeira cena."
 )
+CLOSING = (
+    "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
+)
+CLOSING_OF_23_SEPTEMBER = (
+    "O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
+)
+FAMILIARIZATION_CLOSED = {"at": "familiarization", "closed": True}
+SCENE_ONE_OPEN = {"at": "internalization", "part": 1}
+SCENE_ONE = "Na primeira cena, a fome leva a família pra Moabe."
 TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira. Noemi voltou."
 
 
@@ -68,3 +79,21 @@ def test_her_familiarization_closing_as_the_last_words_closes_the_familiarizatio
 
 def test_her_familiarization_closing_with_words_after_it_is_not_the_closing() -> None:
     assert _after(FAMILIARIZATION, f"{TOLD} {F3} Mais alguma coisa?") == FAMILIARIZATION
+
+
+@pytest.mark.parametrize("closing", [CLOSING, CLOSING_OF_23_SEPTEMBER])
+def test_her_scene_closing_after_the_familiarization_closed_opens_the_first_scene(
+    closing: str,
+) -> None:
+    assert _after(FAMILIARIZATION_CLOSED, f"{SCENE_ONE} {closing}") == SCENE_ONE_OPEN, (
+        "o fechamento da cena terminou a abertura da cena 1 e a sala ficou na Familiarização"
+    )
+
+
+@pytest.mark.parametrize(
+    "moment", [FAMILIARIZATION, SCENE_TWO_OPEN], ids=["not closed", "inside a scene"]
+)
+def test_her_scene_closing_moves_nothing_where_it_opens_no_new_scene(
+    moment: dict[str, Any],
+) -> None:
+    assert _after(moment, f"{SCENE_ONE} {CLOSING}") == moment

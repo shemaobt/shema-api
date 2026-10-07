@@ -52,6 +52,13 @@ FAMILIARIZATION_CLOSING = (
     "da primeira cena."
 )
 
+SCENE_CLOSINGS = (
+    "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
+    "O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
+)
+
 
 def _folded(voiced: str) -> str:
     return " ".join(unicodedata.normalize("NFC", voiced).split())
@@ -107,17 +114,25 @@ def _triggers(folded: str) -> list[tuple[int, str, int | None]]:
     found: list[tuple[int, str, int | None]] = [
         (line.start(), "entrance", _number(line[2])) for line in _ENTRANCE.finditer(folded)
     ]
-    if folded.endswith(FAMILIARIZATION_CLOSING):
-        found.append((len(folded) - len(FAMILIARIZATION_CLOSING), "familiarization_closing", None))
+    for cause, lines in (
+        ("part_closing", SCENE_CLOSINGS),
+        ("familiarization_closing", (FAMILIARIZATION_CLOSING,)),
+    ):
+        for line in lines:
+            if folded.endswith(line):
+                found.append((len(folded) - len(line), cause, None))
+                break
     return sorted(found)
 
 
 def _moved(moment: Moment, cause: str, part: int | None) -> Moment:
     if cause == "entrance":
         return Moment(at="internalization", part=part)
-    if moment.at == "familiarization":
-        return Moment(at="familiarization", closed=True)
-    return moment
+    if moment.at != "familiarization":
+        return moment
+    if cause == "part_closing":
+        return Moment(at="internalization", part=1) if moment.closed else moment
+    return Moment(at="familiarization", closed=True)
 
 
 def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
