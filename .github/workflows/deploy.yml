@@ -29,6 +29,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Clone the compiler
+        run: git clone --quiet https://github.com/MarciaSuzuki/tripod_compiler.git /tmp/tripod_compiler
+
+      - name: Run the canon drift check
+        env:
+          TRIPOD_COMPILER_REPO: /tmp/tripod_compiler
+        run: uv run python scripts/sync_internalization_canon.py --check
+
       - name: Check required secrets
         run: |
           if [ -z "${{ secrets.GCP_PROJECT_ID }}" ]; then echo "::error::GCP_PROJECT_ID is not set. Add it in Settings → Secrets and variables → Actions."; exit 1; fi

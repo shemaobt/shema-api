@@ -16,6 +16,7 @@ uv run mypy app/
 uv run python scripts/check_doctrine.py
 uv run python scripts/sync_doctrine.py --check
 TRIPOD_COMPILER_REPO=~/tripod_compiler uv run python scripts/sync_internalization_canon.py --check
+DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python scripts/smoke_internalization_canon.py
 JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -m fresh_interpreter
 
 env -u DATABASE_URL JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -n 4 --dist loadfile -m migration
@@ -23,8 +24,8 @@ PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no 
 ```
 
 A test that spawns a process to prove what it proves does not run in the first line, the
-`test` job's own selection. The seven lines between the blank ones are the `checks` job — the
-seven commands the old `lint` job ran, in order, then the `fresh_interpreter` selection: the
+`test` job's own selection. The eight lines between the blank ones are the `checks` job — the
+seven commands the old `lint` job ran, in order, the canon smoke, then the `fresh_interpreter` selection: the
 three files that each open a clean interpreter to prove something the suite's own process
 cannot. The `migration` selection is the `migrations` job's own step,
 `DATABASE_URL` cleared: that job sets it at job level for its Postgres container, and left in

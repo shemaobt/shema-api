@@ -100,6 +100,13 @@ jobs:
           TRIPOD_COMPILER_REPO: /tmp/tripod_compiler
         run: uv run python scripts/sync_internalization_canon.py --check
 
+      - name: Run the canon smoke
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./boot-check.db
+          JWT_SECRET_KEY: test-secret-for-ci-only
+          INNGEST_DEV: "1"
+        run: uv run python scripts/smoke_internalization_canon.py
+
       # The three that open a fresh interpreter to prove what the suite's own process cannot
       # prove about itself: that a room module reached first still imports, that the
       # application boots, that two runs of the suite in one checkout do not tear each
