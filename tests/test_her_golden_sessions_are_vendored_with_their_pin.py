@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 
+from app.core.canon_pin import pinned_commit
 from scripts.golden_runner import SESSIONS_DIR, scripts_to_play
 from scripts.sync_doctrine import FROZEN, REPO_ROOT, VENDORED, digest
 
@@ -134,6 +135,6 @@ def test_the_map_the_judge_is_handed_is_pinned_at_the_same_commit_on_both_stacks
     )
     ours = REPO_ROOT / "app/services/internalization_room/canon/vendor/VENDOR_PIN"
 
-    assert ours.read_text(encoding="utf-8").strip() == her_commit, (
+    assert pinned_commit(ours.read_text(encoding="utf-8")) == her_commit, (
         "the two runs are only comparable when the vendored map comes from one compiler commit"
     )

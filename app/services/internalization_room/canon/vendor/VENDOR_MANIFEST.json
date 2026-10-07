@@ -1,0 +1,196 @@
+{
+  "pin_commit": "5b5c8d2b3ae7632279c07017224f861ae369b0d7",
+  "books": [
+    "ruth"
+  ],
+  "passages": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09",
+    "P10",
+    "P11",
+    "P12",
+    "P13",
+    "P14"
+  ],
+  "files": [
+    {
+      "path": "meaning-map/P01-Ruth-1-1-5.md",
+      "sha256": "1852ecb9d42fb2bc084cabd79c09e26ada70d4f4189fc4aa0e584a50c15c8c05"
+    },
+    {
+      "path": "meaning-map/P02-Ruth-1-6-14.md",
+      "sha256": "294f2c421c862a4e531c52086ab8f48660b435dd81e06d37ed40b5a29419ab05"
+    },
+    {
+      "path": "meaning-map/P03-Ruth-1-15-18.md",
+      "sha256": "eef88a64f0a904e8bdbcaad9abfa2d1ed2aa04d86415c7636d67fe72024d9641"
+    },
+    {
+      "path": "meaning-map/P04-Ruth-1-19-22.md",
+      "sha256": "967a79d197cfa52fe323c9bdf1ddfbe0a0f2966df1a26a5e86892366c3ea5023"
+    },
+    {
+      "path": "meaning-map/P05-Ruth-2-1-7.md",
+      "sha256": "464fae1c155f901de7619908dad74119f99f7083a5d4f925083cdeec9721d7bc"
+    },
+    {
+      "path": "meaning-map/P06-Ruth-2-8-16.md",
+      "sha256": "d28f84b4a619ff5bd5b4a31fe08a7270045acc744765555c6dd531dc3afa0412"
+    },
+    {
+      "path": "meaning-map/P07-Ruth-2-17-23.md",
+      "sha256": "8f9d774ea529c0d5b9366df1dc5eadbe75f8b123b4a5b7ae75513007a89cc629"
+    },
+    {
+      "path": "meaning-map/P08-Ruth-3-1-5.md",
+      "sha256": "4a25cab83bfaa546b0b39c47025b3c85f38906d709e5ec6aa690943ebe4b8492"
+    },
+    {
+      "path": "meaning-map/P09-Ruth-3-6-13.md",
+      "sha256": "65f5c51222eb36d3665d98d050da2c24dd26dd9e7abf2ffb7247db9852f20c56"
+    },
+    {
+      "path": "meaning-map/P10-Ruth-3-14-18.md",
+      "sha256": "d28ab199bbb76c4bec045e92fb4468689a78ca2dce4de5ca24093aac9a11ddae"
+    },
+    {
+      "path": "meaning-map/P11-Ruth-4-1-8.md",
+      "sha256": "d53c769d11f4a85646751fb49f4fb20adc0de3f8e9c2e895866de97ce8cceb30"
+    },
+    {
+      "path": "meaning-map/P12-Ruth-4-9-12.md",
+      "sha256": "7a34fe4195478a36937384294f641dc08dad30f00eb8e4d5d1294283e0576ed7"
+    },
+    {
+      "path": "meaning-map/P13-Ruth-4-13-17.md",
+      "sha256": "5920ca2d8df802cc4251c66a1233199608c3e6da816eab17b4eebe09de2dd425"
+    },
+    {
+      "path": "meaning-map/P14-Ruth-4-18-22.md",
+      "sha256": "dc7c25dace7ba4ce6f1403f5f9ca41439d6f3477be562ce0031cf94c155ed5cf"
+    },
+    {
+      "path": "meaning-coordinates/P01-Ruth-1-1-5-MEANING-COORDINATES.md",
+      "sha256": "a3d70765c20cea71c1c4694fa376f0841dc0c5a795f20fb0fb82da57edcc760c"
+    },
+    {
+      "path": "meaning-coordinates/P02-Ruth-1-6-14-MEANING-COORDINATES.md",
+      "sha256": "56a8e5493d26c8f51a7fa71a898925d00e9062f72c8ff82f31626ff81fe69e28"
+    },
+    {
+      "path": "meaning-coordinates/P03-Ruth-1-15-18-MEANING-COORDINATES.md",
+      "sha256": "51f204a2187d55aa889c9fd4ab59cff636fad6c9d4516a74f68cefe2e170dfe5"
+    },
+    {
+      "path": "meaning-coordinates/P04-Ruth-1-19-22-MEANING-COORDINATES.md",
+      "sha256": "d603277862c81eead4234ca702cec69bd38e961ec32553698a838d5d442cec55"
+    },
+    {
+      "path": "meaning-coordinates/P05-Ruth-2-1-7-MEANING-COORDINATES.md",
+      "sha256": "31710e868c60c27e8013dab10cd15c3a6d4653edceb98c84bbd32936945d3dcc"
+    },
+    {
+      "path": "meaning-coordinates/P06-Ruth-2-8-16-MEANING-COORDINATES.md",
+      "sha256": "779b61b2e80b154f5014c8098bc5a6032b891a09e7a9430087805ba1fc311602"
+    },
+    {
+      "path": "meaning-coordinates/P07-Ruth-2-17-23-MEANING-COORDINATES.md",
+      "sha256": "1204276d5a4147148f7712db7092f776b1602b14ea014c36a559e227e972d09e"
+    },
+    {
+      "path": "meaning-coordinates/P08-Ruth-3-1-5-MEANING-COORDINATES.md",
+      "sha256": "62dde8807b0671868038413ee134142d7767971a9ff5c9d4225850e46f6bb3bb"
+    },
+    {
+      "path": "meaning-coordinates/P09-Ruth-3-6-13-MEANING-COORDINATES.md",
+      "sha256": "45abd1d7454cf56104d6f033026c11d62c8426762e4429acc74f03dfec858842"
+    },
+    {
+      "path": "meaning-coordinates/P10-Ruth-3-14-18-MEANING-COORDINATES.md",
+      "sha256": "cb973a4b85a70e297f0a93beb818b129e99c96b4985be28d7e7970eb602a0b33"
+    },
+    {
+      "path": "meaning-coordinates/P11-Ruth-4-1-8-MEANING-COORDINATES.md",
+      "sha256": "4a1968e36b8ac558aeead86b2f4ce28bc2033d8f2c13c376522a3421219cab99"
+    },
+    {
+      "path": "meaning-coordinates/P12-Ruth-4-9-12-MEANING-COORDINATES.md",
+      "sha256": "9fd7c1eb846d17baf00522f074198e965567864c1b019b74f31ae8abf4e7a925"
+    },
+    {
+      "path": "meaning-coordinates/P13-Ruth-4-13-17-MEANING-COORDINATES.md",
+      "sha256": "12562ab1fb7d179a0cb3a5bdd8bbde06b927787c1b3eacaf06df0045019f3c1c"
+    },
+    {
+      "path": "meaning-coordinates/P14-Ruth-4-18-22-MEANING-COORDINATES.md",
+      "sha256": "7d8b760ced8753d785e2d5cc63d73a962a9155337413cfab383260065b0ebc55"
+    },
+    {
+      "path": "compilation-log/P01-Ruth-1-1-5-COMPILATION-LOG.md",
+      "sha256": "6c935689a2a1c4ade9e6f5cd6a2a022dc59803fe0ebf5345bb4e503755be1e2a"
+    },
+    {
+      "path": "compilation-log/P02-Ruth-1-6-14-COMPILATION-LOG.md",
+      "sha256": "be37d53dd67e35dc2a2971f21a50bf780a2d6f11743d0a822bdf4f453d63b833"
+    },
+    {
+      "path": "compilation-log/P03-Ruth-1-15-18-COMPILATION-LOG.md",
+      "sha256": "b7a07b54f4dc6c3ee1c447f1a9ffb53b3128a3905bc0c23d4b56eda4509a9712"
+    },
+    {
+      "path": "compilation-log/P04-Ruth-1-19-22-COMPILATION-LOG.md",
+      "sha256": "655cda76791e53f6c4a4df23cda11fe401d3d1aa8b8a29be1dea74353a971f27"
+    },
+    {
+      "path": "compilation-log/P05-Ruth-2-1-7-COMPILATION-LOG.md",
+      "sha256": "a2e77fb5a05e7eb2db9a6794dc6725f8ea2c6b71055b06ab6aee27c60d66e4dc"
+    },
+    {
+      "path": "compilation-log/P06-Ruth-2-8-16-COMPILATION-LOG.md",
+      "sha256": "62507245fc1e590c1931ca434fd78086720227d88753aae432a4766d37308597"
+    },
+    {
+      "path": "compilation-log/P07-Ruth-2-17-23-COMPILATION-LOG.md",
+      "sha256": "03f8867df57dc97201848b236459802d71469ee75d843bb7c0786663d478eed3"
+    },
+    {
+      "path": "compilation-log/P08-Ruth-3-1-5-COMPILATION-LOG.md",
+      "sha256": "37b719f62e18f75ad6a3dfa12c7c425f9141ec1cededa334272a94454f2006d0"
+    },
+    {
+      "path": "compilation-log/P09-Ruth-3-6-13-COMPILATION-LOG.md",
+      "sha256": "cad1dd69fbdede84fdc96b5f852190657f1407e58ccfa81d277f4fd53a5d7e4e"
+    },
+    {
+      "path": "compilation-log/P10-Ruth-3-14-18-COMPILATION-LOG.md",
+      "sha256": "e2e47ec74beb563df3f73b356a28c464917429b4c7beef6941d383850300b9f3"
+    },
+    {
+      "path": "compilation-log/P11-Ruth-4-1-8-COMPILATION-LOG.md",
+      "sha256": "19c213c7d1b1783fbc8beceff4a9bdfe05ef203377db834b184699d7372f877b"
+    },
+    {
+      "path": "compilation-log/P12-Ruth-4-9-12-COMPILATION-LOG.md",
+      "sha256": "93ccdf13d0b90fb15e82425ac257a889670f87ccf999fddbd754382632216e64"
+    },
+    {
+      "path": "compilation-log/P13-Ruth-4-13-17-COMPILATION-LOG.md",
+      "sha256": "1eccce4d6dd355594296e650ba79f9b2bb2bb9ee813e41e4db20bbad3514362a"
+    },
+    {
+      "path": "compilation-log/P14-Ruth-4-18-22-COMPILATION-LOG.md",
+      "sha256": "4167545760de1050a55165eddde335f0046e5bd49c6a5b1352cbfe76aff07b07"
+    },
+    {
+      "path": "registry/ruth.aliases.json",
+      "sha256": "6bd2550f0c5c38e879c506111ee55757588acacbaeb6df8708b393887cf1412c"
+    }
+  ]
+}
