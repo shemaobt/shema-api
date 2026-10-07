@@ -59,6 +59,8 @@ SCENE_CLOSINGS = (
     "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
 )
 
+SEND_OFF_LAST = "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
+
 
 def _folded(voiced: str) -> str:
     return " ".join(unicodedata.normalize("NFC", voiced).split())
@@ -117,6 +119,7 @@ def _triggers(folded: str) -> list[tuple[int, str, int | None]]:
     for cause, lines in (
         ("part_closing", SCENE_CLOSINGS),
         ("familiarization_closing", (FAMILIARIZATION_CLOSING,)),
+        ("send_off", (SEND_OFF_LAST,)),
     ):
         for line in lines:
             if folded.endswith(line):
@@ -126,6 +129,10 @@ def _triggers(folded: str) -> list[tuple[int, str, int | None]]:
 
 
 def _moved(moment: Moment, cause: str, part: int | None) -> Moment:
+    if cause == "send_off":
+        return Moment(at="ensaio_final")
+    if moment.at == "ensaio_final":
+        return moment
     if cause == "entrance":
         return Moment(at="internalization", part=part)
     if moment.at != "familiarization":

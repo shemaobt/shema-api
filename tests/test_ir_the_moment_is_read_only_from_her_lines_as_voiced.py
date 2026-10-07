@@ -22,6 +22,11 @@ CLOSING_OF_23_SEPTEMBER = (
 FAMILIARIZATION_CLOSED = {"at": "familiarization", "closed": True}
 SCENE_ONE_OPEN = {"at": "internalization", "part": 1}
 SCENE_ONE = "Na primeira cena, a fome leva a família pra Moabe."
+SEND_OFF = (
+    "Vocês contaram a passagem inteira. "
+    "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
+)
+ENSAIO_FINAL = {"at": "ensaio_final"}
 TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira. Noemi voltou."
 
 
@@ -97,3 +102,19 @@ def test_her_scene_closing_moves_nothing_where_it_opens_no_new_scene(
     moment: dict[str, Any],
 ) -> None:
     assert _after(moment, f"{SCENE_ONE} {CLOSING}") == moment
+
+
+def test_her_send_off_as_the_last_words_puts_the_room_in_the_ensaio_final() -> None:
+    assert _after(SCENE_TWO_OPEN, SEND_OFF) == ENSAIO_FINAL, (
+        "a despedida mandou a equipe pro ponto laranja e a sala continuou na cena"
+    )
+
+
+def test_her_send_off_with_words_after_it_is_not_the_send_off() -> None:
+    assert _after(SCENE_TWO_OPEN, f"{SEND_OFF} Ou querem ouvir de novo?") == SCENE_TWO_OPEN
+
+
+def test_an_opening_line_after_the_send_off_leaves_the_room_in_the_ensaio_final() -> None:
+    assert _after(ENSAIO_FINAL, "Vamos pra Internalização da cena 2.") == ENSAIO_FINAL, (
+        "uma linha numerada depois da despedida tirou a sala do Ensaio Final"
+    )
