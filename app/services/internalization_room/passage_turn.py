@@ -39,7 +39,8 @@ async def run_turn(
 
     `opening` is the session's first turn, where the Guide speaks before the team has.
     The coverage block is the whole of what the app tells the Guide, and the Validator is
-    handed none of it — it judges the draft against the map and the team's own words.
+    handed none of it — it judges the draft against the map and the team's own words, or, on
+    a take in the mother tongue, the room's note that stands for them.
 
     `prepared_pericope` names this call as `prepare_opening`'s own background run, so the
     `[llm-turn]` line can say which pericope it wrote ahead for. It is set nowhere else:
