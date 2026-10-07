@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey
+from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
+from app.services.internalization_room import prepare_opening as prepare_opening_module
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.hearing import HeardSpeech
@@ -169,3 +171,41 @@ async def test_the_validator_reads_her_opening_note_as_what_the_team_side_said(
     ) in agent.validator_systems[0], (
         "o Validator julgava a abertura sem saber que a sessão tinha acabado de começar"
     )
+
+
+async def test_the_opening_written_ahead_during_a_panorama_is_asked_with_her_note(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_session.add(
+        IRSession(
+            id="panorama-1",
+            pericope="OV-Ruth",
+            status=IRSessionStatus.IN_PROGRESS,
+            messages=[],
+            coverage_state={},
+            kept_takes={},
+            back_translation={},
+            language="en",
+        )
+    )
+    await db_session.commit()
+    agent = ListeningAgent(
+        "Let's begin with Familiarization. First I will tell you the whole passage."
+    )
+    the_room_agent_is(monkeypatch, turn=agent)
+
+    async def _resolves_to(*_: object, **__: object) -> str:
+        return "P01"
+
+    async def _synthesized(*_: object, **__: object) -> tuple[SimpleNamespace, None]:
+        return SimpleNamespace(key="tts/p01.mp3"), None
+
+    monkeypatch.setattr(prepare_opening_module, "active_passage", _resolves_to)
+    monkeypatch.setattr(prepare_opening_module, "synthesize_facilitator_speech", _synthesized)
+
+    await prepare_opening_module.prepare_opening("panorama-1")
+
+    assert agent.guide_turns == [
+        "[The session has just begun. The team opened passage P01 and is at the table, "
+        "ready to begin. Speak first.]"
+    ], "a abertura escrita durante o Panorama ainda pedia ao Guide o nosso roteiro"
