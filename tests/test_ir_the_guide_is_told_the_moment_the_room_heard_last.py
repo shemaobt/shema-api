@@ -60,3 +60,23 @@ async def test_the_opening_tells_the_guide_the_room_is_in_the_familiarization(
     assert recording.guide[0].partition(CACHE_BREAK)[2] == f"{ledger}\n\n{FAMILIARIZATION}", (
         "a abertura não dizia ao Guia que a sala estava na Familiarização"
     )
+
+
+async def test_the_turn_after_scene_two_opened_tells_the_guide_its_internalization_is_open(
+    recording: _Recording,
+) -> None:
+    opened = {
+        "role": "guide",
+        "text": "Vamos pra Internalização da cena 2. Na segunda cena, Noemi decide voltar.",
+        "moment": {
+            "before": {"at": "familiarization"},
+            "after": {"at": "internalization", "part": 2},
+            "by": ["entrance"],
+        },
+    }
+
+    await _turn([{"role": "team", "text": "estamos prontos"}, opened])
+
+    assert recording.guide[0].endswith(
+        f"\n\nMOMENT: Internalization of part 2 of 4 {EM} the part is open."
+    ), "o Guia continuava ouvindo Familiarização depois de abrir a cena 2"

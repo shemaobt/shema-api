@@ -5,6 +5,10 @@ from typing import Any, Literal
 
 import regex
 
+from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
+
+_DASH = "\N{EM DASH}"
+
 At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
 
 _ENTRANCE = regex.compile(r"vamos pra (Internalização) da cena (\d{1,2})\.", regex.IGNORECASE)
@@ -47,4 +51,8 @@ def moment_step(messages: list[dict[str, Any]], voiced: str) -> dict[str, Any]:
 def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
     """Her MOMENT fact (`src/turn/moment.ts` renderMoment, app 18fa7c4): where the room is,
     read from the lines the team heard — information for the Guide, never an instruction."""
-    return "MOMENT: Familiarization \N{EM DASH} the whole passage; no part has been opened yet."
+    moment = moment_at_turn_start(messages)
+    parts = len(scene_ids_for(pericope_num))
+    if moment.at == "internalization":
+        return f"MOMENT: Internalization of part {moment.part} of {parts} {_DASH} the part is open."
+    return f"MOMENT: Familiarization {_DASH} the whole passage; no part has been opened yet."
