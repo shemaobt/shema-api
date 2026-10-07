@@ -29,6 +29,10 @@ SEND_OFF = (
 ENSAIO_FINAL = {"at": "ensaio_final"}
 SCENE_TWO_PRACTISED = {"at": "articulation", "part": 2, "fenced": False}
 SCENE_TWO_FENCED = {"at": "articulation", "part": 2, "fenced": True}
+FENCE = (
+    "Agora vou dizer tudo o que deve entrar no ensaio de vocês. Noemi decide voltar pra Belém. "
+    "Agora podem ensaiar."
+)
 TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira. Noemi voltou."
 
 
@@ -130,3 +134,21 @@ def test_her_articulation_line_moves_the_room_to_the_scenes_articulation() -> No
 
 def test_her_articulation_line_said_again_in_that_articulation_keeps_its_fenced_block() -> None:
     assert _after(SCENE_TWO_FENCED, "Vamos pra Articulação da cena 2.") == SCENE_TWO_FENCED
+
+
+@pytest.mark.parametrize(
+    "voiced", [FENCE, f"Vamos pra Articulação da cena 2. {FENCE}"], ids=["fence", "A1 then fence"]
+)
+def test_her_fence_opening_marks_the_scenes_fenced_block_as_given(voiced: str) -> None:
+    assert _after(SCENE_TWO_OPEN, voiced) == SCENE_TWO_FENCED, (
+        "a voz deu o bloco do ensaio e a sala não registrou"
+    )
+
+
+def test_her_fence_opening_promised_inside_another_sentence_is_not_the_fence() -> None:
+    promise = "Depois eu vou dizer tudo o que deve entrar no ensaio de vocês."
+    assert _after(SCENE_TWO_OPEN, promise) == SCENE_TWO_OPEN
+
+
+def test_her_fence_opening_in_the_familiarization_sets_no_scene() -> None:
+    assert _after(FAMILIARIZATION, FENCE) == FAMILIARIZATION

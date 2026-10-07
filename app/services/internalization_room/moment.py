@@ -63,6 +63,12 @@ SEND_OFF_LAST = "Agora toquem no ponto laranja, no alto da tela, para abrir o En
 
 _ENTRANCES = {"internalização": "entrance", "articulação": "articulation_entrance"}
 
+_FENCE = regex.compile(
+    rf"{_START}{_LEAD_PT}(?:agora )?(?:eu )?vou dizer tudo o que deve entrar no ensaio de vocês"
+    rf"{_AFTER}",
+    regex.IGNORECASE,
+)
+
 
 def _folded(voiced: str) -> str:
     return " ".join(unicodedata.normalize("NFC", voiced).split())
@@ -127,6 +133,7 @@ def _triggers(folded: str) -> list[tuple[int, str, int | None]]:
         (line.start(), _ENTRANCES[line[1].lower()], _number(line[2]))
         for line in _ENTRANCE.finditer(folded)
     ]
+    found += [(line.start(), "fence", None) for line in _FENCE.finditer(folded)]
     for cause, lines in (
         ("part_closing", SCENE_CLOSINGS),
         ("familiarization_closing", (FAMILIARIZATION_CLOSING,)),
@@ -149,6 +156,9 @@ def _moved(moment: Moment, cause: str, part: int | None) -> Moment:
     if cause == "articulation_entrance":
         same = moment.at == "articulation" and moment.part == part
         return moment if same else Moment(at="articulation", part=part)
+    if cause == "fence":
+        fenced = Moment(at="articulation", part=moment.part, fenced=True)
+        return moment if moment.at == "familiarization" else fenced
     if moment.at != "familiarization":
         return moment
     if cause == "part_closing":
