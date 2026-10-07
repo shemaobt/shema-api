@@ -1,11 +1,3 @@
-"""Her notice under each earlier passage this team has not worked, where the voice reads it.
-
-The stamp told the voice which earlier passages the team had worked, in a line after the
-cache mark, far from the digests it reads those passages' content in. Her app puts her
-approved notice right under the heading of each digest the stamp marks not worked, and both
-the Guide and the Validator read it there.
-"""
-
 import json
 from typing import Any
 
@@ -25,14 +17,12 @@ GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 P = "P03"
 
-#: Her notice, word for word as the ticket and her `NOT_WORKED_NOTICE` give it.
 NOTICE = (
     "(This team has not worked this passage yet. If you speak of anything below, tell it as "
     "the story's — 'a história conta que…' (English sessions: 'the story tells that…') — only "
     "what is needed, in a few words; never 'lembrem', never 'na última parte'.)"
 )
 
-#: The two digest headings, typed from the maps' own titles.
 P01_HEADING = (
     "**Ruth 1:1\N{EN DASH}5** — The famine, the family's sojourn, and the emptying of the household"
 )
