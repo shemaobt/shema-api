@@ -61,9 +61,8 @@ NOT YET TOUCHED (still deserve a visit before the session ends):
   tone: Level-1 tone
   function: Level-1 function
   scene: S3 (v.4), S4 (v.5)
-  being: Elimelech, Naomi, Mahlon, Chilion, Mahlon, Chilion, Women of Moab, Orpah, Ruth, \
-Naomi, Mahlon, Chilion, the woman
-  place: Fields of Moab, Fields of Moab, Fields of Moab
+  being: Elimelech, Naomi, Mahlon, Chilion, Women of Moab, Orpah, Ruth, the woman
+  place: Fields of Moab
   object: about ten years
   significant_absence: absence @ S2, absence @ S3, absence @ S4
   preserved_element: R3, R5, R10"""

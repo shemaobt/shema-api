@@ -134,3 +134,15 @@ def test_a_being_is_named_by_its_display_name_with_no_scene_marker() -> None:
     assert [name for names in named.values() for name in names if " @ S" in name] == [], (
         "cada nome levava '@ S<n>' atrás, um marcador de cena que o ledger dela não tem"
     )
+
+
+def test_a_name_the_map_gives_in_several_scenes_is_listed_once() -> None:
+    untouched = coverage_status_block(initial_state(P), P).splitlines()
+    naomi_twice = coverage_status_block(_engaged("being:S1:B3", "being:S2:B3"), P).splitlines()
+
+    assert (
+        "  being: Elimelech, Naomi, Mahlon, Chilion, Judges, Ephrathites, Women of Moab, "
+        "Orpah, Ruth, the woman"
+    ) in untouched, "Naomi vinha três vezes na mesma linha"
+    assert "  place: Bethlehem, Fields of Moab, the land of Judah" in untouched
+    assert naomi_twice[2] == "WORKED WITH BY THE TEAM (engaged): Naomi"

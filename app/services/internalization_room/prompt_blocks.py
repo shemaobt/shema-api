@@ -58,7 +58,9 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
         if merged.get(element.key) == CoverageStatus.ENGAGED
     ]
     covered_line = "WORKED WITH BY THE TEAM (engaged): " + (
-        "; ".join(covered) if covered else "(nothing yet — the session is just beginning)"
+        "; ".join(dict.fromkeys(covered))
+        if covered
+        else "(nothing yet — the session is just beginning)"
     )
     raised = [
         element
@@ -89,7 +91,7 @@ def _by_kind(elements: list[Element], scenes: dict[int, str]) -> list[str]:
     for element in elements:
         by_kind.setdefault(element.kind, []).append(_short_label(element, scenes))
     return [
-        f"  {_HER_KIND_NAMES.get(kind, kind)}: {', '.join(by_kind[kind])}"
+        f"  {_HER_KIND_NAMES.get(kind, kind)}: {', '.join(dict.fromkeys(by_kind[kind]))}"
         for kind in ElementKind
         if kind in by_kind
     ]
