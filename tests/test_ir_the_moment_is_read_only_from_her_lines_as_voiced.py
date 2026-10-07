@@ -6,6 +6,12 @@ from app.services.internalization_room.moment import moment_step
 
 FAMILIARIZATION = {"at": "familiarization"}
 SCENE_TWO_OPEN = {"at": "internalization", "part": 2}
+F3 = (
+    "O que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
+    "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização "
+    "da primeira cena."
+)
+TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira. Noemi voltou."
 
 
 def _after(moment: dict[str, Any], voiced: str) -> dict[str, Any]:
@@ -52,3 +58,13 @@ def test_a_moment_named_in_passing_is_not_her_line_and_moves_nothing(voiced: str
     assert _after(FAMILIARIZATION, voiced) == FAMILIARIZATION, (
         f"a sala mudou de momento por uma menção de passagem: {voiced!r}"
     )
+
+
+def test_her_familiarization_closing_as_the_last_words_closes_the_familiarization() -> None:
+    assert _after(FAMILIARIZATION, f"{TOLD} {F3}") == {"at": "familiarization", "closed": True}, (
+        "o fechamento da Familiarização foi dito e a sala não registrou"
+    )
+
+
+def test_her_familiarization_closing_with_words_after_it_is_not_the_closing() -> None:
+    assert _after(FAMILIARIZATION, f"{TOLD} {F3} Mais alguma coisa?") == FAMILIARIZATION

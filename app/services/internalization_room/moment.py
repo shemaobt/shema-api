@@ -46,6 +46,13 @@ _ENTRANCE = regex.compile(
 )
 
 
+FAMILIARIZATION_CLOSING = (
+    "O que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
+    "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização "
+    "da primeira cena."
+)
+
+
 def _folded(voiced: str) -> str:
     return " ".join(unicodedata.normalize("NFC", voiced).split())
 
@@ -60,13 +67,19 @@ class Moment:
 
     at: At
     part: int | None = None
+    closed: bool = False
 
     def as_json(self) -> dict[str, Any]:
-        return {"at": self.at} | ({} if self.part is None else {"part": self.part})
+        stored: dict[str, Any] = {"at": self.at}
+        if self.part is not None:
+            stored["part"] = self.part
+        if self.closed:
+            stored["closed"] = True
+        return stored
 
     @classmethod
     def of(cls, stored: dict[str, Any]) -> Moment:
-        return cls(at=stored["at"], part=stored.get("part"))
+        return cls(at=stored["at"], part=stored.get("part"), closed=stored.get("closed", False))
 
 
 FAMILIARIZATION = Moment(at="familiarization")
@@ -82,10 +95,29 @@ def moment_step(messages: list[dict[str, Any]], voiced: str) -> dict[str, Any]:
     before = moment_at_turn_start(messages)
     after = before
     by: list[str] = []
-    for line in _ENTRANCE.finditer(_folded(voiced)):
-        after = Moment(at="internalization", part=_number(line[2]))
-        by.append("entrance")
+    for _, cause, part in _triggers(_folded(voiced)):
+        moved = _moved(after, cause, part)
+        if moved != after:
+            by.append(cause)
+        after = moved
     return {"before": before.as_json(), "after": after.as_json(), "by": by}
+
+
+def _triggers(folded: str) -> list[tuple[int, str, int | None]]:
+    found: list[tuple[int, str, int | None]] = [
+        (line.start(), "entrance", _number(line[2])) for line in _ENTRANCE.finditer(folded)
+    ]
+    if folded.endswith(FAMILIARIZATION_CLOSING):
+        found.append((len(folded) - len(FAMILIARIZATION_CLOSING), "familiarization_closing", None))
+    return sorted(found)
+
+
+def _moved(moment: Moment, cause: str, part: int | None) -> Moment:
+    if cause == "entrance":
+        return Moment(at="internalization", part=part)
+    if moment.at == "familiarization":
+        return Moment(at="familiarization", closed=True)
+    return moment
 
 
 def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
