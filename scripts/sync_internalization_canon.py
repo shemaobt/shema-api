@@ -14,12 +14,14 @@ book that is not served — is named on stderr, never dropped silently.
 `--sync` overwrites the vendored directory wholesale — including deleting every locally
 vendored file that is not in that published-and-served set, whether it left her repo, belongs
 to a passage that is no longer whole, or sits in a book outside `SERVED_BOOKS` — so nothing of
-ours may live inside it. The facilitator-facing element labels are the case that already
-exists: they sit in `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a
-re-pin cannot delete them without a word.
+ours may live inside it, with one exemption: `registry/PROVENANCE.md`, the note beside the names
+lists, is kept across a re-pin. The facilitator-facing element labels are the case that
+already exists: they sit in `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so
+a re-pin cannot delete them without a word.
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
-compiler's main line, and when the pin leaves no consumable passage at all.
+compiler's main line, when the pin leaves no consumable passage at all, and when a names list's
+bytes differ from the sha256 her `_spec/pins.json` records for it.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
