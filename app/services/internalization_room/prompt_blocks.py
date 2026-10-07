@@ -12,6 +12,7 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.canon.parse_map import (
+    MeaningMap,
     code_only_links,
     load_book,
     load_map,
@@ -104,21 +105,30 @@ def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str]
     is complete or absent: a status missing for any earlier passage of the book renders no
     line at all, as her app renders none, so a partial stamp never claims the rest unworked.
     """
-    earlier = [m for m in load_book(book) if m.pericope_num < pericope_num]
-    if not earlier or not statuses or any(m.pericope_num not in statuses for m in earlier):
+    stamped = _stamped_earlier(pericope_num, book, statuses)
+    if not stamped:
         return ""
     groups = [
-        f"{label}: {', '.join(m.reference for m in earlier if statuses[m.pericope_num] == status)}."
+        f"{label}: {', '.join(m.reference for m, given in stamped if given == status)}."
         for status, label in _EARLIER_GROUPS
-        if any(statuses[m.pericope_num] == status for m in earlier)
+        if any(given == status for _, given in stamped)
     ]
     return f"EARLIER PASSAGES FOR THIS TEAM: {' '.join(groups)}"
 
 
-def _not_worked(statuses: dict[str, str] | None) -> frozenset[str]:
+def _stamped_earlier(
+    pericope_num: str, book: str, statuses: dict[str, str] | None
+) -> list[tuple[MeaningMap, str]]:
+    earlier = [m for m in load_book(book) if m.pericope_num < pericope_num]
+    if not statuses or any(m.pericope_num not in statuses for m in earlier):
+        return []
+    return [(m, statuses[m.pericope_num]) for m in earlier]
+
+
+def _not_worked(pericope_num: str, book: str, statuses: dict[str, str] | None) -> frozenset[str]:
     return frozenset(
-        passage
-        for passage, status in (statuses or {}).items()
+        m.pericope_num
+        for m, status in _stamped_earlier(pericope_num, book, statuses)
         if status == EarlierPassageStatus.NOT_WORKED
     )
 
@@ -134,7 +144,7 @@ def meaning_map_block(
     what keeps a later disclosure from reaching this session.
     """
     passage = code_only_links(load_map(pericope_num).body)
-    earlier = story_so_far(book, pericope_num, _not_worked(earlier_passages))
+    earlier = story_so_far(book, pericope_num, _not_worked(pericope_num, book, earlier_passages))
     return f"{passage}\n\n{earlier}" if earlier else passage
 
 
@@ -174,5 +184,5 @@ def validator_map_block(
         "## SIGNIFICANT ABSENCES (per scene — silences that must be preserved, never "
         f"filled)\n\n{absences}\n"
     )
-    earlier = story_so_far(book, pericope_num, _not_worked(earlier_passages))
+    earlier = story_so_far(book, pericope_num, _not_worked(pericope_num, book, earlier_passages))
     return f"{validator_map}\n\n{earlier}" if earlier else validator_map

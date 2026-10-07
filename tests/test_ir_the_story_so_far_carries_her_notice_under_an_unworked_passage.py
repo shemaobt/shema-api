@@ -104,3 +104,23 @@ async def test_the_validator_reads_the_same_notice_under_the_same_passage(
     assert f"{P01_HEADING}\n{NOTICE}" not in judged and judged.count(NOTICE) == 1, (
         "uma passagem aprovada recebia o aviso de não trabalhada"
     )
+
+
+async def test_once_the_team_has_worked_the_passage_its_notice_is_gone(
+    recording: _Recording,
+) -> None:
+    await _turn({"P01": "approved", "P02": "started"})
+
+    assert NOTICE not in recording.guide[0] and NOTICE not in recording.validator[0], (
+        "uma passagem que a equipe já começou ainda era dada como não trabalhada"
+    )
+
+
+async def test_a_stamp_missing_an_earlier_passage_puts_no_notice_anywhere(
+    recording: _Recording,
+) -> None:
+    await _turn({"P02": "not_worked"})
+
+    assert NOTICE not in recording.guide[0] and NOTICE not in recording.validator[0], (
+        "um carimbo incompleto marcava avisos que a linha das passagens anteriores calava"
+    )
