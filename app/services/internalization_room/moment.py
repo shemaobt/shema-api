@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -11,7 +12,46 @@ _DASH = "\N{EM DASH}"
 
 At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
 
-_ENTRANCE = regex.compile(r"vamos pra (Internalização) da cena (\d{1,2})\.", regex.IGNORECASE)
+NUMBER_WORDS = {
+    "um": 1,
+    "uma": 1,
+    "dois": 2,
+    "duas": 2,
+    "três": 3,
+    "quatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "sete": 7,
+    "oito": 8,
+    "nove": 9,
+    "dez": 10,
+    "onze": 11,
+    "doze": 12,
+}
+
+
+def _alternatives(words: list[str]) -> str:
+    return "|".join(sorted(words, key=len, reverse=True))
+
+
+_N = rf"(\d{{1,2}}|{_alternatives(list(NUMBER_WORDS))})"
+_START = r"(?:^|(?<=[.!?…][\"'”\N{RIGHT SINGLE QUOTATION MARK}»)]*\s))"
+_LEAD_PT = r"(?:(?:agora|então|bom|ok|muito bem|mas)[,!]?\s+|não,\s+)?"
+_AFTER = r"(?=\s*(?:[.!,:;…—\N{EN DASH}]|$))"
+_PT_PART = rf"(?:cena|parte) {_N}"
+_ENTRANCE = regex.compile(
+    rf"{_START}{_LEAD_PT}vamos (?:agora )?(?:pra|para a|para|entrar na|passar (?:pra|para a)"
+    rf"|seguir (?:pra|para a)) (Internalização) da {_PT_PART}{_AFTER}",
+    regex.IGNORECASE,
+)
+
+
+def _folded(voiced: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", voiced).split())
+
+
+def _number(word: str) -> int:
+    return int(word) if word.isdigit() else NUMBER_WORDS[word.lower()]
 
 
 @dataclass(frozen=True)
@@ -42,8 +82,8 @@ def moment_step(messages: list[dict[str, Any]], voiced: str) -> dict[str, Any]:
     before = moment_at_turn_start(messages)
     after = before
     by: list[str] = []
-    for line in _ENTRANCE.finditer(voiced):
-        after = Moment(at="internalization", part=int(line[2]))
+    for line in _ENTRANCE.finditer(_folded(voiced)):
+        after = Moment(at="internalization", part=_number(line[2]))
         by.append("entrance")
     return {"before": before.as_json(), "after": after.as_json(), "by": by}
 
