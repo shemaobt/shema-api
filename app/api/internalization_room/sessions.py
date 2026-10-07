@@ -1006,13 +1006,13 @@ async def _draft_the_turn(
     try:
         with stage("voice"):
             _, segments = await _voice_the_turn(outcome, language=session.language, uploads=uploads)
-    except Exception:
-        logger.warning("a stored turn could not be voiced")
+    except Exception as error:
+        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
         segments = []
     try:
         await _upload(uploads)
-    except Exception:
-        logger.warning("a voiced turn's clip did not reach the bucket")
+    except Exception as error:
+        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
         return reply
     if not segments:
         return reply
