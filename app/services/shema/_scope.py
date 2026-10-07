@@ -434,26 +434,57 @@ class Readership(NamedTuple):
     team's health is ``_health_audience.py``'s rule, set here the same way.
     """
 
-    #: The regions this caller coordinates: all of them, their own, or none.
+    #: The regions this caller coordinates — reads the truth **and** writes the place and the
+    #: flag: all of them, their own, or none.
     coordination: RegionScope
+    #: The regions this caller reads the truth in without coordinating them (OBT-571): the
+    #: Resource Circle's own scope. ``None`` is the common case and means *none beyond
+    #: coordination*; it is a separate field so :attr:`coordination` keeps meaning what every
+    #: write path reads off it.
+    trusted: RegionScope | None = None
     #: Whether this caller reads a prayer request that has not been authorized to leave
     #: coordination — ``_consent.reads_withheld_requests``. ``False`` unless somebody said so.
     withheld_prayer: bool = False
-    #: Whether this caller reads a team's health — ``_health_audience.in_health_audience``.
+    #: Whether this caller reads a team's health — ``_health_audience.reads_team_health``.
     #: ``False`` unless somebody said so, which is the fail-closed floor: a readership built
     #: anywhere else (the notification panel's ``NO_COORDINATION``) reads no health.
     reads_health: bool = False
+    #: Whether this caller **writes** a team's pastoral follow-up —
+    #: ``_health_audience.in_health_audience``. Apart from :attr:`reads_health` since OBT-571,
+    #: when the Resource Circle began reading health it may not write. Same floor.
+    writes_health: bool = False
 
     def reader_of(self, region_key: ShemaRegionKey | str) -> ShemaReader:
-        """``coordination`` for a project in a region this caller coordinates, ``other`` else."""
+        """``coordination`` for a project in a region this caller coordinates, ``trusted`` for one
+        it reads the truth in without coordinating (OBT-571), ``other`` else."""
         if reaches(self.coordination, region_key):
             return ShemaReader.COORDINATION
+        if self.trusted is not None and reaches(self.trusted, region_key):
+            return ShemaReader.TRUSTED
         return ShemaReader.OTHER
 
     @property
     def coordinates_anything(self) -> bool:
-        """Whether this caller coordinates any region — who a notice about a collection is for."""
+        """Whether this caller coordinates any region — who may import, and who the export's
+        header used to be addressed to before OBT-571 widened the reading."""
         return self.coordination.global_ or bool(self.coordination.regions)
+
+    @property
+    def reads_truth_anywhere(self) -> bool:
+        """Whether this caller reads the truth in any region — who a notice about a collection
+        (``locationsWithheld``, the ``sensitive`` facet) is for since OBT-571."""
+        if self.coordinates_anything:
+            return True
+        return self.trusted is not None and (self.trusted.global_ or bool(self.trusted.regions))
+
+    @property
+    def collection_reader(self) -> ShemaReader:
+        """The reader a collection-level announcement is addressed to."""
+        if self.coordinates_anything:
+            return ShemaReader.COORDINATION
+        if self.reads_truth_anywhere:
+            return ShemaReader.TRUSTED
+        return ShemaReader.OTHER
 
 
 #: A readership that coordinates nothing: every project reads as ``other``. For a caller that
@@ -477,13 +508,19 @@ def readership(
       route than on the route beside it. (The unscoped seat did too, until OBT-572.)
     * A ``coordinator`` coordinates the regions of its own scope — GATE-04's *cada um na sua
       região*.
+    * A ``resourceCircle`` **reads the truth** in the regions of its own scope and coordinates
+      none of them (OBT-571, Karina via Daniel, 6/oct/2026) — ``trusted``. A coordinator who is
+      also Resource Circle is coordination wherever the account reaches, so the second field is
+      only ever set where the first is not.
     * Everybody else coordinates nothing, which is the fail-closed floor: a reader nobody named
-      reads the region.
+      reads the region. The OBT Lab stays here by Daniel's decision of 7/oct/2026.
     """
     if platform_admin or any(role in granted for role in COORDINATION_EVERYWHERE):
         return Readership(coordination=RegionScope(global_=True, regions=frozenset()))
     if COORDINATOR_ROLE in granted:
         return Readership(coordination=scope)
+    if RESOURCE_CIRCLE_ROLE in granted:
+        return Readership(coordination=NO_COORDINATION.coordination, trusted=scope)
     return NO_COORDINATION
 
 

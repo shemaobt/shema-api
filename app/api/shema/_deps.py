@@ -91,7 +91,7 @@ from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
 from app.services.shema._consent import reads_withheld_requests
-from app.services.shema._health_audience import in_health_audience
+from app.services.shema._health_audience import in_health_audience, reads_team_health
 from app.services.shema._scope import (
     ADMIN_ROLE,
     COORDINATOR_ROLE,
@@ -241,13 +241,15 @@ async def _reading(user: CurrentUser, granted: Granted, scope: Scope) -> Readers
     value to a service and does nothing else with it.
 
     The prayer request's reader rides on the same value (BE-09) and its rule is
-    ``_consent.reads_withheld_requests``'s, asked from the same grant; so does the health reader
-    (OBT-553), whose rule is ``_health_audience.in_health_audience``'s.
+    ``_consent.reads_withheld_requests``'s, asked from the same grant; so do the health reader
+    (OBT-553, ``_health_audience.reads_team_health``) and, apart from it since OBT-571, the
+    health writer (``_health_audience.in_health_audience``).
     """
     reading = readership(scope, granted, platform_admin=user.is_platform_admin)
     return reading._replace(
         withheld_prayer=reads_withheld_requests(granted, platform_admin=user.is_platform_admin),
-        reads_health=in_health_audience(granted, platform_admin=user.is_platform_admin),
+        reads_health=reads_team_health(granted, platform_admin=user.is_platform_admin),
+        writes_health=in_health_audience(granted, platform_admin=user.is_platform_admin),
     )
 
 

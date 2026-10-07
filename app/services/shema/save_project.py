@@ -408,7 +408,7 @@ async def save_project(
     refuse_unread_health_writes(
         project,
         payload.model_fields_set,
-        reads_health=readership.reads_health,
+        writes_health=readership.writes_health,
         user=user,
         operation="save_project",
     )

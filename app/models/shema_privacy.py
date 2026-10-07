@@ -125,17 +125,26 @@ class ShemaAudience(enum.StrEnum):
 class ShemaReader(enum.StrEnum):
     """Who a leaving shape is built for — OBT-528's second input to the sensitive-country rule.
 
-    * ``coordination`` reads the truth of a sensitive place: a
-      ``coordinator`` on a project in a region of their scope, the ``admin`` (the issue's
-      reading, to confirm with Daniel) and an installation admin. ``app/services/shema/_scope.py``
-      derives it; nothing else does.
-    * ``other`` is every other signed-in reader of the console — ``obtLab``, ``resourceCircle`` —
-      and reads the region in place of the country, the ficha included.
+    * ``coordination`` reads the truth of a sensitive place **and writes the place and the
+      flag**: a ``coordinator`` on a project in a region of their scope, the ``admin`` (the
+      issue's reading, to confirm with Daniel) and an installation admin.
+      ``app/services/shema/_scope.py`` derives it; nothing else does.
+    * ``trusted`` reads the truth and writes none of what coordination writes — the
+      ``resourceCircle`` on a project in a region of its scope, since OBT-571 (Karina, via
+      Daniel, 6/oct/2026: *"o Resource Circle poderá ver tudo, mesmo os projetos em países
+      sensíveis, só não podem editar"*). A third value and not ``coordination`` because the
+      console asks ``readAs`` two questions at once — *is this the truth?* and *may I edit the
+      place and the flag?* — and this is the first reader for whom the answers differ.
+    * ``other`` is every other signed-in reader of the console — ``obtLab`` — and reads the
+      region in place of the country, the ficha included. Daniel decided on 7/oct/2026 that the
+      OBT Lab stays redacted.
     * ``outside`` is whatever leaves the system: the export, the ETEN report, the Pulse, the
       leader's link, a notice. **The default**, and the fail-closed one.
 
     ``other`` and ``outside`` reduce the same fields today; they are two values because one is
     decided by the session and the other by the path, and a coordinator's export is ``outside``.
+    :attr:`reads_truth` is the one spelling of *this reader is handed the record as it is*, so a
+    path that checks ``is COORDINATION`` is asking about **writing**, never about reading.
 
     **Not** :class:`ShemaAudience`'s ``coordenacao``, which is FE-44's *destination* — every
     role that follows up and supports — and decides notes and media. The two coordinations are
@@ -144,8 +153,14 @@ class ShemaReader(enum.StrEnum):
     """
 
     COORDINATION = "coordination"
+    TRUSTED = "trusted"
     OTHER = "other"
     OUTSIDE = "outside"
+
+    @property
+    def reads_truth(self) -> bool:
+        """Whether a shape built for this reader carries a withheld record as it is."""
+        return self in (ShemaReader.COORDINATION, ShemaReader.TRUSTED)
 
 
 #: The validation-context key a leaving shape reads its reader from — set by
@@ -418,7 +433,7 @@ class LeavingShape(BaseModel):
         context = info.context if isinstance(info.context, dict) else {}
         if READER_KEY in context:
             self._reader = ShemaReader(context[READER_KEY])
-        reads_the_truth = self._reader is ShemaReader.COORDINATION
+        reads_the_truth = self._reader.reads_truth
 
         if self.sensitive_country is None and "location_withheld" in self.__pydantic_fields_set__:
             # The seam. The marker arrived and the flag did not, so this payload has been
@@ -443,12 +458,15 @@ class SessionShape(LeavingShape):
     ``readAs`` is additive, and it is the server's own answer to the question the console
     would otherwise answer with a second copy of the rule: whether the payload in hand is the
     truth or the reduction (``locationWithheld`` and ``readAs == "other"``), and whether its
-    place and flag are this reader's to edit (``readAs == "coordination"``). Shapes that leave
-    the system do not carry it: a file does not say who it was not written for.
+    place and flag are this reader's to edit (``readAs == "coordination"``). Since OBT-571 the
+    two answers can differ: ``readAs == "trusted"`` is the truth in hand and nothing of
+    coordination's to edit — the Resource Circle's read of a sensitive project. Shapes that
+    leave the system do not carry it: a file does not say who it was not written for.
     """
 
     @computed_field(alias="readAs")  # type: ignore[prop-decorator]
     @property
     def read_as(self) -> ShemaReader:
-        """Who this payload was read as — ``coordination`` or ``other`` on the console's reads."""
+        """Who this payload was read as — ``coordination``, ``trusted`` or ``other`` on the
+        console's reads."""
         return self._reader

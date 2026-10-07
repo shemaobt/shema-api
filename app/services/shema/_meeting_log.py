@@ -8,12 +8,13 @@ table over.
 **The role: the health audience, and nobody wider.** The log's notes are what a meeting with a
 field team produced - the general and emotional evaluation of the bimonthly meeting, the Member
 Care debriefing - which is a pastoral reading of how a team is doing. ``_health_audience.py``
-already answers *who may read a reading of a team*, and answered ``coordinator`` and
-``obtLab``: the Resource Circle does not need to know a team is in emotional
-difficulty in order to send them a recorder. The list is **composed, not copied** -
-:func:`require_reads_meetings` asks ``reads_assessments`` - so the day the client widens that
-audience, the log follows in the same edit. Fail-closed until then: the ``resourceCircle`` role
-is refused the log on all three routes, and so is any role a later issue adds.
+already answers *who follows up on a team*, and answered ``coordinator`` and ``obtLab``. The
+list is **composed, not copied** - :func:`require_reads_meetings` asks ``files_assessments``,
+the audience - so the day the client widens that audience, the log follows in the same edit.
+OBT-571 widened the **reading** of a team's health to the Resource Circle and deliberately not
+this log: the issue names the ficha, the card, the health tab, the filter and the order, and a
+meeting's pastoral debriefing is none of them. Fail-closed: the ``resourceCircle`` role is
+refused the log on all three routes, and so is any role a later issue adds.
 
 **The region: the caller's scope, on both sides.** A regional caller reads and writes the
 regions ``_scope.py`` says they reach, through its own ``reaches`` for the write and the same
@@ -42,7 +43,7 @@ from app.core.exceptions import AuthorizationError, UnprocessableValueError
 from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_meeting import ShemaMeetingLogEntry
-from app.services.shema._health_audience import HEALTH_AUDIENCE, reads_assessments
+from app.services.shema._health_audience import HEALTH_AUDIENCE, files_assessments
 from app.services.shema._scope import RegionScope, reaches
 from app.utils.shema_meetings import GLOBAL_SCOPE_KEY, MeetingScopeKey
 
@@ -57,7 +58,7 @@ async def require_reads_meetings(
     A 403, as ``require_reads_assessments`` answers: the caller is being told about their own
     grant, which they already hold, so there is nothing an existence-hiding 404 would protect.
     """
-    if await reads_assessments(db, user, app_key):
+    if await files_assessments(db, user, app_key):
         return
     logger.warning(
         "shema authorization refused: outside the audience of the rhythm's log",

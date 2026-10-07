@@ -23,7 +23,7 @@ coordination only (GATE-04, 1.3): ``withheld_note`` decides, told who the export
 region's coordination if they coordinate anything, as the Projetos screen addresses its own
 notice. The rows stay ``outside`` either way; the exporter's reader reaches the header — and,
 since OBT-553, one thing in each row: a team's health. A file is a copy of what its exporter reads,
-and an exporter outside ``_health_audience.HEALTH_AUDIENCE`` reads no health, so their rows carry
+and an exporter outside ``_health_audience.HEALTH_READERS`` reads no health, so their rows carry
 ``overallHealth: "na"`` (``_health_audience.health_as_read``); the place is still ``outside`` for
 everybody.
 
@@ -213,7 +213,7 @@ async def export_projects(
     open_needs = await _open_needs(db, ids)
 
     export_id = str(uuid.uuid4())
-    addressee = ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER
+    addressee = readership.collection_reader
     header = _Header(
         export_id=export_id,
         generated_at=now,

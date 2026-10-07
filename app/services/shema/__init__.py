@@ -202,9 +202,13 @@ from app.services.shema._form_validation import (
 from app.services.shema._grant_rules import GrantApps
 from app.services.shema._health_audience import (
     HEALTH_AUDIENCE,
+    HEALTH_READERS,
+    files_assessments,
     in_health_audience,
     reads_assessments,
+    reads_team_health,
     recipients,
+    require_files_assessments,
     require_reads_assessments,
 )
 from app.services.shema._health_notice import entered_critical, notice_body, notify_critical
@@ -361,6 +365,7 @@ __all__ = [
     "EXIT_LINK_DAYS",
     "GCS_SHEMA_BUCKET",
     "HEALTH_AUDIENCE",
+    "HEALTH_READERS",
     "MAX_LINK_DAYS",
     "MAX_PAYLOAD_BYTES",
     "NEEDS_FIELD_KEY",
@@ -419,6 +424,7 @@ __all__ = [
     "expires_on",
     "export_projects",
     "field_changes",
+    "files_assessments",
     "find_account",
     "form_fields",
     "generate_prayer_pulse",
@@ -482,6 +488,7 @@ __all__ = [
     "read_submission",
     "readership",
     "reads_assessments",
+    "reads_team_health",
     "reads_withheld_requests",
     "receive_submission",
     "recipients",
@@ -494,6 +501,7 @@ __all__ = [
     "reject_pending_project",
     "remove_intercessor",
     "remove_project_member",
+    "require_files_assessments",
     "require_reads_assessments",
     "reveal_intercessor_contact",
     "review_intercessor",

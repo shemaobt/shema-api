@@ -7,8 +7,9 @@ one user at a time, off ``list_role_holders`` and this module's own region scope
 caller's own rows is not a second place that rule could be applied differently. The one
 addition here is the stale reading, which has no row because nothing was written when a
 project merely stayed quiet; it is filtered by the same audience health and needs already use
-(``_health_audience.reads_assessments`` — coordination and the OBT Lab, never the Resource
-Circle) and by the caller's own ``RegionScope``, through ``browse_projects``'s stale preset,
+(``_health_audience.reads_assessments`` — coordination, the OBT Lab and, since OBT-571, the
+Resource Circle) and by the caller's own ``RegionScope``, through ``browse_projects``'s stale
+preset,
 which is already scoped and already redacted.
 
 **A project notice is worded by the console, from facts read now** (OBT-559). The five project
@@ -35,8 +36,9 @@ prose was written once, for whoever read it then, and an urgent need's named the
 
 **A health notice is read by who the account is now, not by who it was when it was addressed**
 (OBT-553). ``_health_notice.py`` addresses the audience at the moment a reading turns critical, and
-a grant can be taken back afterwards; an account that left the audience — moved to the Resource
-Circle, say — would otherwise keep reading *which team went critical* in its panel. So the same
+a grant can be taken back afterwards; an account that left the readers — one holding no Shemá
+role any more, say — would otherwise keep reading *which team went critical* in its panel. So the
+same
 ``reads_assessments`` answer that gates the stale reading leaves the health kind out of the
 delivered rows, in the query and therefore before the cap, as §5.10 routes everything else.
 

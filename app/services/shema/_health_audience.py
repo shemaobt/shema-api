@@ -68,6 +68,7 @@ from app.services.shema._redaction import log_reference
 from app.services.shema._scope import (
     COORDINATOR_ROLE,
     OBT_LAB_ROLE,
+    RESOURCE_CIRCLE_ROLE,
     granted_roles,
     reaches,
     scopes_for,
@@ -75,18 +76,31 @@ from app.services.shema._scope import (
 
 logger = logging.getLogger(__name__)
 
-#: The roles an assessment reaches. Read the module docstring before widening it.
+#: The roles an assessment reaches — who **files** a reading, who writes the pastoral follow-up
+#: and who is told a team went critical. Read the module docstring before widening it.
 HEALTH_AUDIENCE: tuple[str, ...] = (COORDINATOR_ROLE, OBT_LAB_ROLE)
+
+#: The roles that **read** a team's health: the audience, and the Resource Circle since OBT-571
+#: (Daniel, 7/oct/2026: Karina's *"ver tudo"* includes the health — his extension, not hers).
+#: Reading and filing parted here: the Circle reads the projection, the history, the filter and
+#: the order, and files nothing, writes nothing pastoral and is told nothing.
+HEALTH_READERS: tuple[str, ...] = (*HEALTH_AUDIENCE, RESOURCE_CIRCLE_ROLE)
 
 
 def in_health_audience(granted: Collection[str], *, platform_admin: bool) -> bool:
-    """Whether a caller holding ``granted`` reads a team's health — the rule, off a grant in hand.
+    """Whether a caller holding ``granted`` **files and writes** a team's health — the audience,
+    off a grant in hand.
 
     No query: the request has already read the grant once (``app/api/shema/_deps.py``), and a
     second read of one fact is the defect ``scope_from_roles`` was written to close. An
-    installation admin reads, as they pass every guard here.
+    installation admin passes, as they pass every guard here.
     """
     return platform_admin or any(role in granted for role in HEALTH_AUDIENCE)
+
+
+def reads_team_health(granted: Collection[str], *, platform_admin: bool) -> bool:
+    """Whether a caller holding ``granted`` **reads** a team's health (:data:`HEALTH_READERS`)."""
+    return platform_admin or any(role in granted for role in HEALTH_READERS)
 
 
 async def reads_assessments(db: AsyncSession, user: User, app_key: str) -> bool:
@@ -94,15 +108,42 @@ async def reads_assessments(db: AsyncSession, user: User, app_key: str) -> bool:
 
     The region half is the scope every query in this module already takes, so composing them
     here would be a second place the project filter is applied; this answers the question the
-    scope cannot. :func:`in_health_audience` with the grant read here — one rule, two callers.
+    scope cannot. :func:`reads_team_health` with the grant read here — one rule, two callers.
     """
+    if user.is_platform_admin:
+        return True
+    return reads_team_health(await granted_roles(db, user.id, app_key), platform_admin=False)
+
+
+async def files_assessments(db: AsyncSession, user: User, app_key: str) -> bool:
+    """Whether this account may **file** a reading — the audience (:data:`HEALTH_AUDIENCE`),
+    which since OBT-571 is narrower than who reads one."""
     if user.is_platform_admin:
         return True
     return in_health_audience(await granted_roles(db, user.id, app_key), platform_admin=False)
 
 
+async def require_files_assessments(db: AsyncSession, user: User, app_key: str) -> None:
+    """Refuse an account outside :data:`HEALTH_AUDIENCE` the filing of a reading — a 403 like
+    :func:`require_reads_assessments`, for the same reason it is a 403."""
+    if await files_assessments(db, user, app_key):
+        return
+    logger.warning(
+        "shema authorization refused: outside the health assessment audience",
+        extra={
+            "shema_operation": "health_assessment",
+            "shema_user_id": user.id,
+            "shema_audience": list(HEALTH_AUDIENCE),
+        },
+    )
+    raise AuthorizationError(
+        "A health assessment is filed by the coordination and the OBT Lab; this account holds "
+        "neither role in Shemá"
+    )
+
+
 async def require_reads_assessments(db: AsyncSession, user: User, app_key: str) -> None:
-    """Refuse an account outside :data:`HEALTH_AUDIENCE`, and say so in the log.
+    """Refuse an account outside :data:`HEALTH_READERS`, and say so in the log.
 
     **A 403 and not the 404 the scope answers**, and the difference is what each one conceals.
     ``_scope.py``'s ``NotFoundError`` hides *whether this project exists*, which is the fact a
@@ -121,12 +162,12 @@ async def require_reads_assessments(db: AsyncSession, user: User, app_key: str) 
         extra={
             "shema_operation": "health_assessment",
             "shema_user_id": user.id,
-            "shema_audience": list(HEALTH_AUDIENCE),
+            "shema_audience": list(HEALTH_READERS),
         },
     )
     raise AuthorizationError(
-        "A health assessment reaches the coordination and the OBT Lab; this account holds "
-        "neither role in Shemá"
+        "A health assessment reaches the coordination, the OBT Lab and the Resource Circle; "
+        "this account holds none of those roles in Shemá"
     )
 
 
@@ -217,25 +258,27 @@ def refuse_unread_health_writes(
     project: ShemaProject,
     sent: Collection[str],
     *,
-    reads_health: bool,
+    writes_health: bool,
     user: User,
     operation: str,
 ) -> None:
-    """Refuse the pastoral fields to a reader who reads them empty — a 403 naming them.
+    """Refuse the pastoral fields to a caller outside the audience — a 403 naming them.
 
     *Não dá para editar o que não se vê* (OBT-528), at the follow-up: a reader handed ``nao``
     and ``""`` where a team's pastoral escalation is would erase it by typing over what it
-    cannot see. Answered from the names sent and never from their values, so the refusal is no
-    oracle; ``_consent.refuse_prayer_decisions`` is the same answer for the prayer request.
+    cannot see. Since OBT-571 the Resource Circle reads the follow-up and is refused all the
+    same — *só não podem editar* — so the gate is the **audience** (``writes_health``) and no
+    longer the reading. Answered from the names sent and never from their values, so the refusal
+    is no oracle; ``_consent.refuse_prayer_decisions`` is the same answer for the prayer request.
     """
-    if reads_health:
+    if writes_health:
         return
     refused = [name for name in PASTORAL_WRITES if name in sent]
     if not refused:
         return
     named = [to_camel(name) for name in refused]
     logger.warning(
-        "shema authorization refused: a team's health this reader may not write",
+        "shema authorization refused: a team's health this caller may not write",
         extra={
             "shema_operation": operation,
             "shema_user_id": user.id,
