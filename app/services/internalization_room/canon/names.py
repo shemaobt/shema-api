@@ -16,7 +16,10 @@ UNRESOLVED_LABEL = "(unresolved — needs grounded wording)"
 WITHHELD_BEING_LABEL = "someone the text leaves unnamed here"
 
 _STRIPPED = "STRIPPED_TO_"
-_SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman"}
+WITHHELD_BEING = "B?"
+
+_SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman", "REDEEMER_GOEL": "a redeemer"}
+_ROLE_WORD = {"SON": "a son"}
 _PASSAGE_LABEL = {("P10", "O13"): "The Cloak"}
 _DEFINITION = re.compile(r"^\[\[([A-Z][A-Z0-9_]*?)-[^\]\n]*\]\][ \t]*—[ \t]*([^\n]+)$", re.M)
 _NAMED_LINK = re.compile(r"\[\[[^\]\n]*\]\][ \t]+(?=[^\W\d_])")
@@ -78,12 +81,25 @@ def thing_name(meaning_map: MeaningMap, code: str) -> str:
     return _PASSAGE_LABEL.get((meaning_map.pericope_num, code)) or name_of(meaning_map, code)
 
 
+def _withheld_label(form: str | None, role: str | None) -> str:
+    if not form:
+        return _ROLE_WORD.get(role or "", WITHHELD_BEING_LABEL)
+    if form in _SPOKEN:
+        return _SPOKEN[form]
+    words = form.lower().replace("_", " ").split()
+    if words[-1] == "unnamed":
+        return " ".join(words[:-1]) + " (unnamed here)"
+    return " ".join(words)
+
+
 def being_names(meaning_map: MeaningMap, scene: Scene) -> list[str]:
-    entries = _beings_by_scene(meaning_map.pericope_num).get(scene.number, [])
+    entries = _beings_by_scene(meaning_map.pericope_num)[scene.number]
+    withheld = iter(entry for entry in entries if entry["being_id"] == WITHHELD_BEING)
     names: list[str] = []
     for being in scene.beings:
         if being.code is None:
-            names.append(WITHHELD_BEING_LABEL)
+            entry = next(withheld, {})
+            names.append(_withheld_label(entry.get("referential_form"), entry.get("role_in_scene")))
             continue
         form = next(
             (entry.get("referential_form") for entry in entries if entry["being_id"] == being.code),

@@ -105,3 +105,11 @@ def test_the_unnamed_husband_of_ruth_2_11_is_given_no_name_and_no_description() 
     )
     assert labels["being:S2:ruth-s-father-and-mother-your-fa"] == UNNAMED
     assert "deceased husband" not in coverage_status_block({}, "P06")
+
+
+def test_an_unnamed_being_with_a_form_or_a_role_word_reads_it_and_nothing_more() -> None:
+    assert _labels("P11")["being:S3:the-dead-the-dead"] == "the dead (unnamed here)", (
+        "o morto de 4:5 era 'The dead — הַמֵּת / \"the dead\"', a linha do mapa inteira"
+    )
+    assert _labels("P13")["being:S2:the-child-a-redeemer"] == "a redeemer"
+    assert _labels("P13")["being:S1:the-child-a-son"] == "a son"
