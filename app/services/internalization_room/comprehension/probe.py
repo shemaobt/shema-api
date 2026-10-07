@@ -36,7 +36,6 @@ def select_probe_after_oral_turn(
     outcome: str,
     prior_probe: ActiveProbe | None,
     next_probe: ActiveProbe | None,
-    transcript_uncertain: bool,
     transcript_was_mother_tongue: bool,
     transcript_empty: bool,
 ) -> ActiveProbe | None:
@@ -44,11 +43,10 @@ def select_probe_after_oral_turn(
 
     A transport fail-safe did not voice the newly planned question: the prior probe is
     preserved only when the fixed line asks for the same bridge answer again (mother
-    tongue heard, nothing heard, or nothing the room could make out), otherwise it is
-    cleared.
+    tongue heard, or nothing heard), otherwise it is cleared.
     """
     if outcome != "fail_safe":
         return next_probe
-    if transcript_uncertain or transcript_was_mother_tongue or transcript_empty:
+    if transcript_was_mother_tongue or transcript_empty:
         return prior_probe
     return None

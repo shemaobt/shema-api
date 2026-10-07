@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import ColumnElement, and_, case, or_, select, update
-from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy import ColumnElement, and_, case, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
+from app.db.insert_once import insert_once
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
     IRSession,
@@ -44,13 +45,11 @@ from app.services.internalization_room.coverage import (
     initial_state,
     is_panorama,
 )
-from app.services.internalization_room.coverage_events import (
-    necklace_with_touches,
-    record_transitions,
-)
+from app.services.internalization_room.coverage_events import record_transitions
+from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.languages import floor, normalize
-from app.services.internalization_room.panorama_once import heard_panorama
+from app.services.internalization_room.live import live
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
@@ -106,7 +105,6 @@ async def create_session(
     after_panorama: bool = False,
     project_id: str | None = None,
     language: str | None = None,
-    chosen: bool = False,
     earlier_passages: Mapping[str, str] | None = None,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
@@ -135,29 +133,12 @@ async def create_session(
     and refusing a session without one would take every room in the field offline to gain a
     column value. Work with no project has no history to read, so it starts at the beginning.
 
-    The necklace is the team's and not this conversation's. A session on a passage the team
-    has already worked opens with those beads where the team's own coverage events left them,
-    so a tablet closed in the middle of the third scene on Tuesday comes back on Thursday to
-    the beads it filled, and the Guide is handed a REMAINING block naming what is actually
-    left rather than the whole passage again. A bead the events point at that this canon no
-    longer serves is dropped rather than carried: the spine is the canon's and the events are
-    only laid over it, which is `necklace_of`'s rule (`coverage_events.py`) and `floor_met`'s
-    own bias.
+    A new session starts fresh, as hers does (`freshState`, `src/session/store.ts`): every
+    bead at not encountered, whatever the team's earlier sessions or coverage events hold.
 
-    A request for the panorama is a request and not an instruction. The app asks for it at
-    every launch, and a team that already heard the book's panorama is answered with the
-    passage they stand on instead, opened as any other session and not as one that follows a
-    panorama — no panorama played, so the greeting must not say one did. Whether they heard
-    it is `heard_panorama`'s to say and is derived, never stored. A team standing on no
-    passage — the walkable book closed — is given the panorama as before: the decision puts
-    the team's passage in its place, and there is none to put there.
-
-    ``chosen`` is the team asking for the panorama themselves — the spoke on the wheel —
-    rather than the app asking at launch, and a request the team chose is honoured, heard
-    or not: the panorama is a conversation, and a team that has forgotten the shape of the
-    book, or gained a member, has to be able to hold it again. The difference rides on the
-    request and nowhere else. Nothing writes "asked" down, so the next automatic launch is
-    still answered from the rows, exactly as before the team asked.
+    The pericope asked for is the pericope opened, the Panorama included: a team that already
+    heard the book's panorama and asks for it again is opened the panorama (ENG-1237, folded
+    from ENG-1282). Only a silence is filled, never a request overruled.
 
     Raises ``ConflictError`` when the team has closed every passage that opens and none was
     named. That is the end of the book, and it is a defined state rather than a wrap-around:
@@ -166,7 +147,9 @@ async def create_session(
     the only end a team can reach — a passage `require_walkable` refuses can never be closed.
 
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
-    the session and never in its messages, so a session holding one has still not spoken.
+    the session and never in its messages, so a session holding one has still not spoken. A
+    caller that hands one in (the Golden door) is taken at its word; otherwise the room reads
+    it itself when the session is created (`earlier_passages`), and nothing rewrites it later.
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -174,7 +157,6 @@ async def create_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        chosen=chosen,
     )
     session = await _minted(
         db,
@@ -196,7 +178,6 @@ async def open_session(
     after_panorama: bool = False,
     project_id: str | None = None,
     language: str | None = None,
-    chosen: bool = False,
     lifts: bool = False,
 ) -> tuple[IRSession, bool]:
     """The session the room's open door returns, and whether this open created it.
@@ -219,8 +200,8 @@ async def open_session(
 
     A resumed session keeps what it is, except the panorama mark: an open that says it came
     from the Panorama sets ``after_panorama`` on the session it lands on, or a pericope opened
-    before the Panorama would leave `heard_panorama` false and the Panorama would play at
-    every launch.
+    before the Panorama would leave `heard_panorama` false, and the route would write the
+    Panorama's opening ahead again.
 
     A tablet that opens a session halted by its call for a person is back in the room, so
     ``lifts`` writes what a landed turn writes for it (`_a_teams_return`): the halt lifts, and
@@ -235,7 +216,6 @@ async def open_session(
             pericope=pericope,
             after_panorama=after_panorama,
             language=language,
-            chosen=chosen,
         )
         return minted, True
     pericope, after_panorama, spoken = await _resolved(
@@ -244,15 +224,10 @@ async def open_session(
         after_panorama=after_panorama,
         project_id=project_id,
         language=language,
-        chosen=chosen,
     )
-    claimed = await db.scalar(
-        select(IRTeamSession.session_id).where(*_team_key(project_id, pericope, spoken))
-    )
+    session = await _pointed(db, project_id, pericope, spoken)
     created = False
-    if claimed is not None:
-        session = await get_session(db, claimed)
-    else:
+    if session is None:
         stored = await _latest_stored(db, project_id, pericope, spoken)
         created = stored is None
         session = stored or await _minted(
@@ -284,6 +259,30 @@ async def open_session(
     return session, created
 
 
+async def _pointed(
+    db: AsyncSession, project_id: str, pericope: str, language: str
+) -> IRSession | None:
+    """The live session the key's pointer names, or ``None`` when there is none to return.
+
+    A pointer whose session is gone or archived is no pointer at all: left in place it would
+    404 every open of that key for good, and beat the next claim. It is deleted by the session
+    it names, so a pointer another open has just claimed again is never the one deleted.
+    """
+    claimed = await db.scalar(
+        select(IRTeamSession.session_id).where(*_team_key(project_id, pericope, language))
+    )
+    if claimed is None:
+        return None
+    session = await db.scalar(select(IRSession).where(IRSession.id == claimed, live()))
+    if session is None:
+        await db.execute(
+            delete(IRTeamSession).where(
+                *_team_key(project_id, pericope, language), IRTeamSession.session_id == claimed
+            )
+        )
+    return session
+
+
 def _team_key(
     project_id: str | None, pericope: str, language: str
 ) -> tuple[ColumnElement[bool], ...]:
@@ -308,6 +307,7 @@ async def _latest_stored(
             IRSession.project_id == project_id,
             IRSession.pericope == pericope,
             IRSession.language == language,
+            live(),
         )
         .order_by(
             case((entered(), 1), else_=0).desc(),
@@ -322,16 +322,16 @@ async def _latest_stored(
 
 async def _claim(db: AsyncSession, session: IRSession) -> str:
     """Point the key at this session unless another open already did, and say who holds it."""
-    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
-    await db.execute(
-        insert(IRTeamSession)
-        .values(
-            project_id=session.project_id,
-            pericope=session.pericope,
-            language=session.language,
-            session_id=session.id,
-        )
-        .on_conflict_do_nothing(index_elements=["project_id", "pericope", "language"])
+    await insert_once(
+        db,
+        IRTeamSession,
+        {
+            "project_id": session.project_id,
+            "pericope": session.pericope,
+            "language": session.language,
+            "session_id": session.id,
+        },
+        conflict_on=["project_id", "pericope", "language"],
     )
     held = await db.execute(
         select(IRTeamSession.session_id).where(
@@ -348,7 +348,6 @@ async def _resolved(
     after_panorama: bool,
     project_id: str | None,
     language: str | None,
-    chosen: bool,
 ) -> tuple[str, bool, str]:
     """Which pericope, panorama mark and language an open is for, before anything is written."""
     if pericope is None:
@@ -358,14 +357,7 @@ async def _resolved(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if is_panorama(pericope) and not chosen:
-        standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
-        if standing is not None and await heard_panorama(
-            db, project_id=project_id, book=book_of(pericope)
-        ):
-            pericope, after_panorama = standing, False
-    panorama = is_panorama(pericope)
-    if not panorama:
+    if not is_panorama(pericope):
         require_walkable(load_map(pericope))
     spoken = normalize(language)
     if language is not None and spoken is None:
@@ -382,12 +374,20 @@ async def _minted(
     language: str,
     earlier_passages: Mapping[str, str] | None = None,
 ) -> IRSession:
-    """A new session on a resolved pericope, flushed and not yet committed."""
-    panorama = is_panorama(pericope)
-    carried = (
-        {}
-        if panorama or project_id is None
-        else await necklace_with_touches(db, project_id=project_id, pericope=pericope)
+    """A new session on a resolved pericope, flushed and not yet committed.
+
+    Every bead starts at the canon's spine and nothing is laid over it. A panorama has no
+    coverage spine and never completes: it prepares the team to enter the book, and asks no
+    retelling of them.
+
+    The earlier-passages stamp is the caller's when one is handed in, and otherwise read here,
+    before the open claims its key: an open that loses the claim deletes this row, and its
+    stamp with it.
+    """
+    stamp = (
+        dict(earlier_passages)
+        if earlier_passages
+        else await read_earlier(db, project_id=project_id, pericope=pericope)
     )
     session = IRSession(
         project_id=project_id,
@@ -395,19 +395,12 @@ async def _minted(
         status=IRSessionStatus.IN_PROGRESS,
         messages=[],
         after_panorama=after_panorama,
-        # A panorama has no coverage spine and never completes: it prepares the team to enter
-        # the book, and asks no retelling of them.
-        coverage_state={}
-        if panorama
-        else {
-            element_key: carried[element_key].status.value if element_key in carried else status
-            for element_key, status in initial_state(pericope).items()
-        },
+        coverage_state={} if is_panorama(pericope) else initial_state(pericope),
         kept_takes={},
         back_translation={},
         language=language,
         comprehension={},
-        earlier_passages=dict(earlier_passages) if earlier_passages else None,
+        earlier_passages=stamp,
     )
     db.add(session)
     await db.flush()
@@ -464,7 +457,7 @@ async def get_session_for_room_caller(
     Somebody else's session *is* refused as not found, with the message
     `get_session_for_facilitator` gives, because unowned is nobody's but owned is somebody's.
     """
-    session = await get_session(db, session_id)
+    session = await _the_live_session(db, session_id)
     if session.project_id is not None and session.project_id != project_id:
         raise NotFoundError(_no_such_session(session_id))
     return session
@@ -485,7 +478,17 @@ async def session_for_room_caller(
     """
     if project_id is not None:
         return await get_session_for_room_caller(db, session_id, project_id)
-    return await get_session(db, session_id)
+    return await _the_live_session(db, session_id)
+
+
+async def _the_live_session(db: AsyncSession, session_id: str) -> IRSession:
+    """The session, refused as gone once a Zerar archived it, with the unknown session's own
+    words: the tablet reads that as the session gone and returns to the Choice (ADR 0047).
+    """
+    session = await get_session(db, session_id)
+    if session.archive_id is not None:
+        raise NotFoundError(_no_such_session(session_id))
+    return session
 
 
 async def _land(
@@ -501,6 +504,10 @@ async def _land(
     still what this ``session`` was read at, and the loser gets a raised conflict instead of
     a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
     sound necklace's own document, generalised to whichever columns the caller is writing.
+
+    A Zerar is a write too, and moves ``version``: a turn that resolved the session while it was
+    live and lands after the Zerar finds nothing to land on, and is answered as the session
+    gone, with the unknown session's words, rather than as another turn's conflict (ADR 0052).
     """
     await db.flush()
     stmt = (
@@ -518,6 +525,10 @@ async def _land(
         .execution_options(synchronize_session=False)
     )
     landed = (await db.execute(stmt)).one_or_none()
+    if landed is None and await db.scalar(
+        select(IRSession.archive_id).where(IRSession.id == session.id)
+    ):
+        raise NotFoundError(_no_such_session(session.id))
     if landed is None:
         # Nothing matched, so nothing is pending: leave the transaction to the caller's
         # teardown rather than rolling back a session shared with the rest of the request,
@@ -552,6 +563,9 @@ async def append_exchange(
     answered — so a session read back later never has to infer any of it. A turn that
     arrives with no outcome, the prepared opening, is written as it always was.
 
+    A take that followed a cut keeps where the cut fell on this turn's guide entry, beside the
+    hearing facts; the entry of the reply that was cut is never touched.
+
     In the telling-back round nobody speaks into the conversation, so no team turn is
     appended; what the team said there is the telling-back itself, and `told_back` is what
     the record keeps as the team's words when that round fires. It has no scene: the
@@ -578,6 +592,11 @@ async def append_exchange(
     ``scene_rehearsals`` is the scenes whose scene rehearsal had reached the Guide as of this
     turn, kept on the Guide's entry, the one entry every turn has; an empty list is the fact
     that none had, and ``None`` keeps nothing.
+
+    What the room heard of the team's take — the language, its probability, the
+    mother-tongue decision and the take's length — goes on the Guide's entry too, because a
+    mother-tongue turn and a missed one write no team entry. Only a turn the room heard
+    carries them; the opening and the telling-back verdict write none.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
@@ -602,6 +621,15 @@ async def append_exchange(
                 verdict=outcome.verdict,
                 issues=outcome.issues,
             )
+        if outcome.mother_tongue is not None:
+            guide.update(
+                language=outcome.language,
+                language_probability=outcome.language_probability,
+                mother_tongue=outcome.mother_tongue,
+                take_ms=outcome.take_ms,
+            )
+        if outcome.interrupted is not None:
+            guide["interrupted"] = asdict(outcome.interrupted)
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
     messages.append(guide)
@@ -671,13 +699,12 @@ async def apply_coverage(
     blind overwrite let the older reading win and darkened a bead the team had already
     earned.
 
-    Closing is the one end this schema stamps (ENG-451). A session ends either because the
-    floor was met — an event, at an instant, written into ``ended_at`` here — or because
-    nobody came back to it, which is derived from its last activity at read time and left
-    unwritten, because the limit that decides it is not agreed with the room app. The
-    ``IN_PROGRESS`` guard is what keeps the stamp a single instant: the classifier goes on
-    settling whatever turns were already in flight when the floor was met, and a stamp on
-    every one of them would grow the conversation's length after the team had finished.
+    Closing is the one end this schema knows (ENG-451, ENG-1263): the floor was met, an event
+    at an instant, written into ``ended_at`` here while the status becomes ``done``. Nothing
+    else ends a session; an idle one is simply in progress. The ``IN_PROGRESS`` guard is what
+    keeps the stamp a single instant: the classifier goes on settling whatever turns were
+    already in flight when the floor was met, and a stamp on every one of them would grow the
+    conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
     kept = session.coverage_state or {}
@@ -842,6 +869,7 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
                 IRSession.status.in_((IRSessionStatus.NEEDS_PERSON, IRSessionStatus.DONE)),
                 halt.a_warning_stands(),
             ),
+            live(),
             confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
         )
         .order_by(IRSession.updated_at.desc())

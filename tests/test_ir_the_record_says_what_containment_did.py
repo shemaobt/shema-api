@@ -214,6 +214,10 @@ async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
         "text": DRAFT,
         "outcome": "pass",
         "redrafts": 0,
+        "language": None,
+        "language_probability": None,
+        "mother_tongue": False,
+        "take_ms": None,
     }
 
 

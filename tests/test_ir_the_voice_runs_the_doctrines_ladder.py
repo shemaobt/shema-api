@@ -21,6 +21,7 @@ from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import llm
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import run_turn
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -244,7 +245,7 @@ async def test_the_book_the_panorama_reads_from_is_sent_once_and_cached(
         await run_panorama_turn(
             session_language="Portuguese",
             language_code="pt",
-            transcript=said,
+            speech=HeardSpeech(text=said),
             messages=[],
             panorama_prompt=panorama,
             validator_prompt=VALIDATOR,

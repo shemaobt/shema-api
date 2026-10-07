@@ -19,7 +19,6 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hard_stretches import (
     capture_and_note_a_hard_stretch,
-    count_an_empty_telling,
     hard_stretches_of,
     note_a_hard_stretch,
 )
@@ -74,12 +73,14 @@ from app.services.internalization_room.sessions import (
     unattend,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
+    in_a_voice_the_room_has,
     synthesize_facilitator_speech,
 )
 from app.services.internalization_room.verdict_round import (
     TellingBackVerdict,
     check_the_telling_back,
     save_the_spoken_verdict,
+    the_stored_verdicts_clip,
 )
 
 __all__ = [
@@ -101,7 +102,6 @@ __all__ = [
     "closing_block",
     "comprehension_of",
     "correction_to_verify",
-    "count_an_empty_telling",
     "create_session",
     "current_findings",
     "current_segments",
@@ -118,6 +118,7 @@ __all__ = [
     "get_session_for_facilitator",
     "get_session_for_room_caller",
     "hard_stretches_of",
+    "in_a_voice_the_room_has",
     "mark_needs_person",
     "note_a_hard_stretch",
     "open_session",
@@ -144,6 +145,7 @@ __all__ = [
     "stored_as_done",
     "synthesize_facilitator_speech",
     "the_finding_that_leads",
+    "the_stored_verdicts_clip",
     "told_back",
     "unattend",
     "unheard_parts",

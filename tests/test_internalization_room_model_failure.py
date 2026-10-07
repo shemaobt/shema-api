@@ -166,7 +166,6 @@ async def test_a_rehearsal_in_the_teams_own_language_is_voiced_by_the_guide_not_
     assert body["fixed_line"] == "", "a sala respondia com a linha fixa G, da lata"
     assert body["used_fail_safe"] is False
     assert body["degraded"] is False
-    assert body["transcript"] == ""
     assert body["audio_url"], "o turno não trazia clipe nenhum para o tablet tocar"
     assert spoken[-1] == GUIDE_LINE
 

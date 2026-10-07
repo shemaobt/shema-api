@@ -71,9 +71,14 @@ def scene_key(number: int) -> str:
     return f"{ElementKind.SCENE}:{number}"
 
 
+def scene_code(number: int) -> str:
+    """How the canon writes a scene in a bead's key, and how a facilitator types it."""
+    return f"S{number}"
+
+
 def _entity_key(kind: ElementKind, scene_number: int, entity: Entity) -> str:
     """Stable across sessions: coverage is persisted under these keys."""
-    return f"{kind}:S{scene_number}:{entity.code or _slug(_label(entity))}"
+    return f"{kind}:{scene_code(scene_number)}:{entity.code or _slug(_label(entity))}"
 
 
 def _label(entity: Entity) -> str:

@@ -50,6 +50,9 @@ ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 #: the tablet acts on it: it drops the pending translation and re-reads its stretches, which is
 #: the wrong response to every other BAD_REQUEST, and it must not tell the two apart by the words.
 ERROR_CODE_STRETCH_NO_LONGER_COUNTS: Final = "STRETCH_NO_LONGER_COUNTS"
+#: A recording, a telling or a check aimed at a panorama, which records nothing. Its own code
+#: because the tablet must tell it apart from any other 400 without reading the words.
+ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: A telling whose transcription holds no words. Its own code because the tablet says the
 #: inaudible line named in the body instead of showing a refused call, and it must not tell
 #: this from any other 422 by the words.
@@ -200,6 +203,32 @@ class ValidationError(Exception):
     pass
 
 
+class NoWordsHeard(ValidationError):
+    """The recognizer heard the take and found no words in it, which is not a refusal.
+
+    It carries the language the recognizer still reported, so the turn's record keeps what
+    the recognizer heard even when it wrote nothing down.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        language_code: str | None = None,
+        language_probability: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.language_code = language_code
+        self.language_probability = language_probability
+
+
+class PanoramaRecordsNothing(ValidationError):
+    """A door that records, tells back or checks was asked of a panorama session.
+
+    Its own exception for the reason ERROR_CODE_PANORAMA_RECORDS_NOTHING gives; still a 400.
+    """
+
+
 class StretchNoLongerCounts(ValidationError):
     """A stretch that was replaced, or whose Part was recorded again, was addressed anyway.
 
@@ -208,15 +237,14 @@ class StretchNoLongerCounts(ValidationError):
 
 
 class WordlessTelling(ValidationError):
-    """A telling was transcribed and holds no words, so it is no stretch and counts nothing.
+    """A telling holds no words the room could make out, so it is no stretch and counts nothing.
 
-    Carries the name of the inaudible line the room says in its place, chosen by whoever
-    refuses, because the handler has no session to choose it from.
+    Silence, a failed transcriber and one that did not answer in time are the same refusal. The
+    room says nothing in its place: the tablet shows its own line and asks for the telling again.
     """
 
-    def __init__(self, fixed_line: str) -> None:
+    def __init__(self) -> None:
         super().__init__("The telling has no words in it")
-        self.fixed_line = fixed_line
 
 
 class IdempotencyKeyReused(ValidationError):
@@ -395,6 +423,15 @@ async def handle_passage_closed(_request: Request, exc: PassageClosed) -> JSONRe
     )
 
 
+async def handle_panorama_records_nothing(
+    _request: Request, exc: PanoramaRecordsNothing
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_PANORAMA_RECORDS_NOTHING),
+    )
+
+
 async def handle_stretch_no_longer_counts(
     _request: Request, exc: StretchNoLongerCounts
 ) -> JSONResponse:
@@ -407,10 +444,7 @@ async def handle_stretch_no_longer_counts(
 async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            **_error_body(str(exc), ERROR_CODE_WORDLESS_TELLING),
-            "fixed_line": exc.fixed_line,
-        },
+        content=_error_body(str(exc), ERROR_CODE_WORDLESS_TELLING),
     )
 
 
@@ -573,6 +607,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
+    app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
