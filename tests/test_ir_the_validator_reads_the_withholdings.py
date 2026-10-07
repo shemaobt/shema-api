@@ -220,10 +220,10 @@ async def _verdict_systems(agent: FakeAgent) -> tuple[str, str]:
     return agent.systems[0], agent.systems[1]
 
 
-async def test_the_verdict_is_judged_against_the_withholdings_its_speaker_never_reads(
+async def test_the_verdict_is_judged_against_the_withholdings(
     patch_agent,
 ) -> None:
-    speaker_system, validator_system = await _verdict_systems(patch_agent(FakeAgent()))
+    _, validator_system = await _verdict_systems(patch_agent(FakeAgent()))
 
     assert R6 in validator_system and R10 in validator_system, (
         "o veredito falava sobre a passagem julgado contra o mapa do Guia; uma emenda que "
@@ -232,10 +232,6 @@ async def test_the_verdict_is_judged_against_the_withholdings_its_speaker_never_
     assert PROHIBITIONS in validator_system and ABSENCES in validator_system, (
         "o corte do veredito tem de ser o mesmo da passagem, senão o aperto vale num turno "
         "e não no outro"
-    )
-    assert R6 not in speaker_system and R10 not in speaker_system, (
-        "o Speaker do veredito narra a partir da prosa, e aqui não há lista REMAINING para "
-        "lhe mostrar a regra como conta a trabalhar"
     )
 
 

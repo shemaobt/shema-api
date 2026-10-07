@@ -17,9 +17,10 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.canon import parse_map
 from app.services.internalization_room.part_names import Addresses
-from app.services.internalization_room.run_turn import run_turn
+from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
 from tests.turn_harness import (
     GUIDE,
+    SPEAKER,
     VALIDATOR,
     settings,
     stretch,
@@ -221,3 +222,20 @@ async def test_the_correction_check_reads_the_validators_whole_material(
     )
 
     _reads_her_validator_material(systems[0])
+
+
+async def test_the_voiced_verdicts_speaker_reads_the_validators_whole_material(
+    agent: FakeAgent,
+) -> None:
+    await run_verdict_turn(
+        findings_text="No que vocês me contaram, Noemi não parou de falar.",
+        scope="P03",
+        pericope_num="P03",
+        messages=[],
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        settings=settings(),
+    )
+
+    _reads_her_validator_material(agent.systems[0])
