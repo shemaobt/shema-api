@@ -15,9 +15,9 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
-    OPENING_MOVEMENT_INSTRUCTION,
     SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
+    TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
     her_block,
     split_opening_movements,
@@ -139,12 +139,12 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
     )
 
 
-def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements: bool) -> str:
+def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
     """The Speaker's last user turn, behind everything already said.
 
     What the team just said is that turn, on its own: the exchange it answers is the
     conversation, not a heading inside the question. The instructions that ride per turn —
-    the opening, the two-movement mark — stay in that last message, which is where an
+    the opening's note — stay in that last message, which is where an
     instruction is read as this turn's and not as something said earlier.
 
     A turn with neither — the back-translation verdict — asks for its speech in the session's
@@ -153,10 +153,7 @@ def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements
     """
     if utterance:
         return utterance
-    instruction = opening_instruction or SPEAK_THIS_TURN
-    if ask_for_movements:
-        return f"{instruction} {OPENING_MOVEMENT_INSTRUCTION}"
-    return instruction
+    return opening_instruction or SPEAK_THIS_TURN
 
 
 async def _draft(
@@ -278,10 +275,15 @@ async def _voiced_after_validation(
 
     `mother_tongue` is the one case where `transcript` is not the team's own words in the
     session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. The Validator's `{{TEAM_EVIDENCE}}` is quoted
-    evidence of what the team *said*, under a heading no prompt tells it to read as a fact
-    about the room rather than speech. Left alone, the slot would credit the team with a
-    sentence in the session language it never spoke.
+    Guide has something to draft against. That note stays out of the Validator's
+    `{{TEAM_EVIDENCE}}`, which is quoted evidence of what the team *said*, under a heading no
+    prompt tells it to read as a fact about the room rather than speech. Let in, the slot
+    would credit the team with a sentence in the session language it never spoke.
+
+    The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
+    the kickoff's team text — and her turn loop hands that text to the Validator as what the
+    team said, so with no team words the note handed to the Guide stands
+    in the slot.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
@@ -311,7 +313,7 @@ async def _voiced_after_validation(
     issues: list[dict[str, Any]] = []
     warmed_connection = False
 
-    turn = _the_guides_turn("" if opening else transcript, opening_instruction, ask_for_movements)
+    turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
     for attempt in range(MAX_REDRAFTS + 1):
         draft, movements = split_opening_movements(
@@ -326,13 +328,16 @@ async def _voiced_after_validation(
         if not ask_for_movements:
             movements = []
 
+        reported = her_block(TEAM_REPORTED_HEADING, telling_back)
+        earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
         validator_system = render(
             cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
-            EARLIER_PASSAGES=her_block(EARLIER_PASSAGES_HEADING, earlier_passages),
+            EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
             TEAM_EVIDENCE=her_block(
-                TEAM_EVIDENCE_HEADING, "" if mother_tongue else transcript or telling_back
+                TEAM_EVIDENCE_HEADING,
+                "" if mother_tongue else transcript or opening_instruction,
             ),
             DRAFTED_RESPONSE=draft,
         )

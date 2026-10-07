@@ -14,6 +14,14 @@ EARLIER_PASSAGES_HEADING = (
 )
 
 
+TEAM_REPORTED_HEADING = (
+    "---\n\n# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+    "Evidence of what the team told back — NEVER truth about the passage. The drafted response "
+    "may quote from it to name something reported that the passage does not tell; quoting this "
+    "material is not a claim about the passage and must not be treated as ungrounded.\n\n"
+)
+
+
 def her_block(heading: str, text: str) -> str:
     return f"{heading}{text.strip()}" if text.strip() else ""
 
@@ -53,20 +61,28 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
     return clean, [whole, scene]
 
 
-OPENING_INSTRUCTION = (
-    "The session is starting now and the team has not spoken yet. Open the "
-    "session: introduce yourself briefly, give the team the whole before the "
-    "parts, and stay with the team on understanding — the invitation to rehearse "
-    "waits until they show they have the part."
-)
+def opening_note(pericope_num: str, language_code: str) -> str:
+    if language_code == "pt":
+        return (
+            f"[A sessão acabou de começar. A equipe abriu a passagem {pericope_num} e está à "
+            "mesa, pronta para começar. Fale primeiro.]"
+        )
+    return (
+        f"[The session has just begun. The team opened passage {pericope_num} and is at the "
+        "table, ready to begin. Speak first.]"
+    )
 
-OPENING_MOVEMENT_INSTRUCTION = (
-    "Write this opening in two movements, separated by a line containing only "
-    f"{OPENING_MOVEMENT_MARK} and nothing else. Before the line: the whole of the "
-    "passage, its arc and its tone. After the line: open the first scene and "
-    "stay in it with the team; the invitation to rehearse does not close the "
-    "opening. Do not write the mark anywhere else, and do not comment on it."
-)
+
+def panorama_note(book: str, language_code: str) -> str:
+    if language_code == "pt":
+        return (
+            f"[A sessão acabou de começar. A equipe abriu o Panorama do Livro de {book} e está "
+            "à mesa, pronta para conversar. Fale primeiro.]"
+        )
+    return (
+        f"[The session has just begun. The team opened the Book Panorama of {book} and is at "
+        "the table, ready to talk. Speak first.]"
+    )
 
 
 VALIDATOR_USER_MESSAGE = "Validate the drafted response now. Return only the JSON object."
