@@ -284,7 +284,19 @@ def build_book_material(book: str) -> str:
     )
 
 
-def story_so_far(book: str, current_pericope: str) -> str:
+NOT_WORKED_NOTICE = (
+    "(This team has not worked this passage yet. If you speak of anything below, tell it as "
+    "the story's — 'a história conta que…' (English sessions: 'the story tells that…') — only "
+    "what is needed, in a few words; never 'lembrem', never 'na última parte'.)"
+)
+
+
+def _with_notice(digest: str) -> str:
+    heading, _, rest = digest.partition("\n")
+    return f"{heading}\n{NOT_WORKED_NOTICE}\n{rest}"
+
+
+def story_so_far(book: str, current_pericope: str, not_worked: frozenset[str] = frozenset()) -> str:
     """Digests of strictly earlier passages only.
 
     The cut happens at the source, not in the prompt, so a later disclosure (who married whom
@@ -294,7 +306,10 @@ def story_so_far(book: str, current_pericope: str) -> str:
     earlier = [m for m in load_book(book) if m.pericope_num < current_pericope]
     if not earlier:
         return ""
-    digests = "\n\n".join(pericope_digest(m) for m in earlier)
+    digests = "\n\n".join(
+        _with_notice(pericope_digest(m)) if m.pericope_num in not_worked else pericope_digest(m)
+        for m in earlier
+    )
     return (
         "---\n\n# THE STORY SO FAR (earlier passages of this book — map-authored)\n"
         "Digests of this book's earlier passages, extracted verbatim from their own Meaning "

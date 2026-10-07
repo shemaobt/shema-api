@@ -115,7 +115,17 @@ def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str]
     return f"EARLIER PASSAGES FOR THIS TEAM: {' '.join(groups)}"
 
 
-def meaning_map_block(pericope_num: str, book: str) -> str:
+def _not_worked(statuses: dict[str, str] | None) -> frozenset[str]:
+    return frozenset(
+        passage
+        for passage, status in (statuses or {}).items()
+        if status == EarlierPassageStatus.NOT_WORKED
+    )
+
+
+def meaning_map_block(
+    pericope_num: str, book: str, earlier_passages: dict[str, str] | None = None
+) -> str:
     """The passage's map with its links as codes alone, plus the earlier passages' digests.
 
     *Tripod Internalization · Interaction Flows*
@@ -124,7 +134,7 @@ def meaning_map_block(pericope_num: str, book: str) -> str:
     what keeps a later disclosure from reaching this session.
     """
     passage = code_only_links(load_map(pericope_num).body)
-    earlier = story_so_far(book, pericope_num)
+    earlier = story_so_far(book, pericope_num, _not_worked(earlier_passages))
     return f"{passage}\n\n{earlier}" if earlier else passage
 
 

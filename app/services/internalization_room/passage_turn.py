@@ -66,7 +66,7 @@ async def run_turn(
             fixed_line=line,
         )
 
-    map_block = meaning_map_block(pericope_num, book)
+    map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
     coverage_status = "\n\n".join(
         block for block in (coverage_status_block(coverage_state, pericope_num), earlier) if block
