@@ -32,8 +32,9 @@ class PreservationRule(BaseModel):
     kind: str
     note: str
 
-    def render(self) -> str:
-        return f"- [{self.pericope}] {self.rule_id} ({self.kind}): {self.note}"
+    def render(self, *, tagged: bool = True) -> str:
+        tag = f"[{self.pericope}] " if tagged else ""
+        return f"- {tag}{self.rule_id} ({self.kind}): {self.note}"
 
     def folds_into(self, absence_text: str) -> bool:
         """Whether this rule is about the silence one scene's absence describes.
