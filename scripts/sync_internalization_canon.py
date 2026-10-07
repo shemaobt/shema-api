@@ -164,6 +164,9 @@ def sync(pin: str | None = None) -> int:
         )
         return 1
     sha = pin if pin else _head_sha()
+    if not pin and PIN_FILE.exists() and pinned_commit(PIN_FILE.read_text()) == sha:
+        print("UP_TO_DATE")
+        return 0
     published, skipped = _published(sha)
     for line in skipped:
         print(line, file=sys.stderr)
