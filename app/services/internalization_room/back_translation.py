@@ -777,7 +777,7 @@ async def analyse_telling_back(
         raw = await room_agent().analyst.call_agent(
             role="analyst",
             system_prompt=system,
-            user_content="Compare a tradução com o mapa.",
+            user_content="Analyze the telling-back now. Return only the JSON object.",
             ladder=analysis_ladder(cfg),
             max_output_tokens=2500,
             effort=None,

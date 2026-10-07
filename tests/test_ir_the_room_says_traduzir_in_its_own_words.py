@@ -80,7 +80,6 @@ _FORBIDDEN = (
 _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
-    "Compare a tradução com o mapa.",
     "a análise da tradução não pôde ser feita agora",
     "(nenhum achado — a tradução está completa)",
     "a leitura final da tradução não pôde ser feita agora",

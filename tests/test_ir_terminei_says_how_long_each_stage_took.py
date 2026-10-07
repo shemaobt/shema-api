@@ -38,7 +38,10 @@ class _SlowModels:
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         system = kwargs["system"]
         system = system if isinstance(system, str) else "".join(b["text"] for b in system)
-        if kwargs["messages"][-1]["content"] == "Compare a tradução com o mapa.":
+        if (
+            kwargs["messages"][-1]["content"]
+            == "Analyze the telling-back now. Return only the JSON object."
+        ):
             delay, text = ANALYST_MS, '{"evidence_sufficient": true, "findings": []}'
         elif "corrected_response" in system:
             delay, text = VALIDATOR_MS, json.dumps({"verdict": "pass", "issues": []})
