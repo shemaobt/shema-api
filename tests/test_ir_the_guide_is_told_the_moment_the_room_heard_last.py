@@ -104,3 +104,20 @@ async def test_after_her_send_off_the_guide_hears_the_room_is_in_the_ensaio_fina
     assert recording.guide[0].endswith(
         f"\n\nMOMENT: Ensaio Final (Final Rehearsal) {EM} the send-off has been given."
     ), "o Guia não sabia que a despedida já tinha sido dada"
+
+
+@pytest.mark.parametrize(
+    ("fenced", "fact"),
+    [
+        (False, "MOMENT: Articulation of part 2 of 4."),
+        (True, f"MOMENT: Articulation of part 2 of 4 {EM} its fenced block has been given."),
+    ],
+)
+async def test_in_a_scenes_articulation_the_guide_hears_whether_its_block_was_given(
+    recording: _Recording, fenced: bool, fact: str
+) -> None:
+    await _turn(_left_at({"at": "articulation", "part": 2, "fenced": fenced}))
+
+    assert recording.guide[0].endswith(f"\n\n{fact}"), (
+        "o Guia não sabia que a cena 2 estava na Articulação"
+    )
