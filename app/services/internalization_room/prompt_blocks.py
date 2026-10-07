@@ -22,7 +22,6 @@ from app.services.internalization_room.canon.parse_map import (
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     initial_state,
-    remaining,
 )
 
 
@@ -64,20 +63,36 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
     covered_line = "WORKED WITH BY THE TEAM (engaged): " + (
         "; ".join(covered) if covered else "(nothing yet — the session is just beginning)"
     )
-    left = remaining(coverage_state, pericope_num)
-    if not left:
-        remaining_lines = ["REMAINING: (none — every element has been worked by the team)"]
-    else:
-        by_kind: dict[ElementKind, list[str]] = {}
-        for element in left:
-            by_kind.setdefault(element.kind, []).append(_short_label(element, scenes))
-        remaining_lines = ["NOT YET TOUCHED (still deserve a visit before the session ends):"]
-        remaining_lines.extend(
-            f"  {_HER_KIND_NAMES.get(kind, kind)}: {', '.join(by_kind[kind])}"
-            for kind in ElementKind
-            if kind in by_kind
+    raised = [
+        element
+        for element in elements_for(pericope_num)
+        if merged.get(element.key) == CoverageStatus.SURFACED
+    ]
+    untouched = [
+        element
+        for element in elements_for(pericope_num)
+        if merged.get(element.key) not in (CoverageStatus.ENGAGED, CoverageStatus.SURFACED)
+    ]
+    lines = [_LEDGER, "", covered_line, ""]
+    if raised:
+        lines.extend(
+            ["RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:", *_by_kind(raised, scenes), ""]
         )
-    return "\n".join([_LEDGER, "", covered_line, "", *remaining_lines])
+    if not untouched:
+        return "\n".join([*lines, "REMAINING: (none — every element has been worked by the team)"])
+    lines.append("NOT YET TOUCHED (still deserve a visit before the session ends):")
+    return "\n".join([*lines, *_by_kind(untouched, scenes)])
+
+
+def _by_kind(elements: list[Element], scenes: dict[int, str]) -> list[str]:
+    by_kind: dict[ElementKind, list[str]] = {}
+    for element in elements:
+        by_kind.setdefault(element.kind, []).append(_short_label(element, scenes))
+    return [
+        f"  {_HER_KIND_NAMES.get(kind, kind)}: {', '.join(by_kind[kind])}"
+        for kind in ElementKind
+        if kind in by_kind
+    ]
 
 
 _EARLIER_GROUPS = (

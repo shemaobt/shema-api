@@ -89,3 +89,19 @@ def test_the_first_turn_reads_her_headings_with_every_element_not_yet_touched() 
         "  significant_absence",
         "  preserved_element",
     ], "os tipos saíam com os nomes nossos, 'absence' e 'preserved', não com os dela"
+
+
+def test_what_the_voice_raised_is_listed_apart_from_what_nobody_has_touched() -> None:
+    state = merge(initial_state(P), pericope_num=P, surfaced=["arc", "preserved:R5"])
+
+    lines = coverage_status_block(state, P).splitlines()
+
+    assert lines[4:9] == [
+        "RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:",
+        "  arc: Level-1 arc",
+        "  preserved_element: R5",
+        "",
+        "NOT YET TOUCHED (still deserve a visit before the session ends):",
+    ], "o que a voz levantou e a equipe não pegou ia junto com o que ninguém tocou"
+    assert lines[9] == "  context: Level-1 context"
+    assert lines[-1] == "  preserved_element: R3, R10"
