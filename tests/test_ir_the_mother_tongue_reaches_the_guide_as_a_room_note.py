@@ -270,7 +270,7 @@ async def test_an_earlier_room_note_never_reaches_the_validator_as_the_teams_wor
     assert "a fome chegou" in seen[0]
 
 
-async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_team_utterance(
+async def test_the_mother_tongue_turn_hands_the_validator_her_note_as_what_the_team_just_said(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
@@ -289,12 +289,12 @@ async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_tea
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
     )
 
-    assert "## WHAT THE TEAM JUST SAID" not in seen[0], (
-        "o slot 'What the team just said' entregava a nota da língua materna ao Validador "
-        "sob 'quoted evidence', creditando à equipe o que ela nunca disse na língua ponte"
-    )
-    assert NOTE_PT_40 not in seen[0], (
-        "a nota da língua materna aparecia em algum bloco do prompt do Validador neste turno"
+    assert (
+        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+        "The drafted response answers this. Referring to these words is not a claim about the "
+        f"passage.\n\n{NOTE_PT_40}"
+    ) in seen[0], (
+        "o Validador lia o slot vazio num turno na língua materna, e o dela lê a nota da sala ali"
     )
 
 
