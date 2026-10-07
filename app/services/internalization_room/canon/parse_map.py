@@ -8,11 +8,10 @@ import yaml
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import ValidationError
+from app.core.served_books import ROOM_BOOK as ROOM_BOOK
 
 VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
-
-ROOM_BOOK = "Ruth"
 
 CONSUMABLE_STATUS = "complete"
 SURVEYED_STATUS = "complete"
