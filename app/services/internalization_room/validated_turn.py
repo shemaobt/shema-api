@@ -328,11 +328,13 @@ async def _voiced_after_validation(
         if not ask_for_movements:
             movements = []
 
+        reported = her_block(TEAM_REPORTED_HEADING, telling_back)
+        earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
         validator_system = render(
             cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
-            MEANING_MAP=standard_of_truth + her_block(TEAM_REPORTED_HEADING, telling_back),
-            EARLIER_PASSAGES=her_block(EARLIER_PASSAGES_HEADING, earlier_passages),
+            MEANING_MAP=standard_of_truth,
+            EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
             TEAM_EVIDENCE=her_block(
                 TEAM_EVIDENCE_HEADING,
                 "" if mother_tongue else transcript or opening_instruction,
