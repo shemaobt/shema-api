@@ -39,9 +39,8 @@ async def run_panorama_turn(
     ``speech`` is what the room heard of the take, and the take is read by the passage's rule
     (`turn.speech.what_the_guide_is_handed`): a short take with no words draws the ladder's
     line, and the mother tongue reaches the Guide as the room's note, apart from the team's
-    words, so the Validator never reads it as the team's own speech. On every turn but the
-    opening the outcome keeps the language, its probability, the mother-tongue decision and the
-    take's length; the cut point is not kept.
+    words. On every turn but the opening the outcome keeps the language, its probability, the
+    mother-tongue decision and the take's length; the cut point is not kept.
     """
     cfg = settings or get_settings()
     handed = what_the_guide_is_handed(
@@ -74,7 +73,6 @@ async def run_panorama_turn(
                 settings=cfg,
                 session_id=session_id,
                 ask_for_movements=ask_for_movements,
-                mother_tongue=speech.mother_tongue,
             )
         )
     if not opening:

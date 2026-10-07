@@ -80,6 +80,12 @@ the copy to the record, and to a clone of the compiler at the pin where
 what the room could not serve. `canon-sync.yml` runs the sync twice a week and opens a
 pull request for review when there is new canon; it never merges.
 
+`pin_committed` in our `VENDOR_PIN` is the commit's UTC date, because the sync reads the
+compiler through GitHub's API, which reports the committer's time in UTC and drops the
+offset; her `VENDOR_PIN` carries the committer's local date, `git show --format=%cs`. The
+same commit can therefore read a day apart: `5b5c8d2` was committed at 21:42 at −0500, so
+hers says 2026-09-29 and ours 2026-09-30. Nothing reads the field; `pin_commit` is the pin.
+
 The order of a canon change is hers:
 
 1. The compiler's spec change merges first, on her word, never during a team session.

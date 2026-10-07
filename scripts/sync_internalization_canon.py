@@ -14,12 +14,14 @@ book that is not served — is named on stderr, never dropped silently.
 `--sync` overwrites the vendored directory wholesale — including deleting every locally
 vendored file that is not in that published-and-served set, whether it left her repo, belongs
 to a passage that is no longer whole, or sits in a book outside `SERVED_BOOKS` — so nothing of
-ours may live inside it. The facilitator-facing element labels are the case that already
-exists: they sit in `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a
-re-pin cannot delete them without a word.
+ours may live inside it, with one exemption: `registry/PROVENANCE.md`, the note beside the names
+lists, is kept across a re-pin. The facilitator-facing element labels are the case that
+already exists: they sit in `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so
+a re-pin cannot delete them without a word.
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
-compiler's main line, and when the pin leaves no consumable passage at all.
+compiler's main line, when the pin leaves no consumable passage at all, and when a names list's
+bytes differ from the sha256 her `_spec/pins.json` records for it.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
@@ -109,7 +111,7 @@ def _published(
     sha: str,
     listing: Callable[[str, str], list[str]] = _listing,
     read: Callable[[str, str], bytes] = _file,
-) -> tuple[dict[str, list[str]], list[str]]:
+) -> tuple[dict[str, list[str]], list[str], dict[str, dict[str, str]]]:
     listed = {kind: listing(kind, sha) for kind in KINDS}
     sources = json.loads(read("_spec/pins.json", sha))["sources"]
     listed_books = {found[1] for key in sources if (found := ALIASES_KEY.fullmatch(key))}
@@ -144,7 +146,7 @@ def _published(
             for kind in PASSAGE_SUFFIX:
                 published[kind].append(stems[kind][stem])
         published["registry"].append(f"{book.lower()}.aliases.json")
-    return published, skipped
+    return published, skipped, sources
 
 
 def _raw(kind: str, sha: str, name: str) -> bytes:
@@ -167,24 +169,34 @@ def sync(pin: str | None = None) -> int:
     if not pin and PIN_FILE.exists() and pinned_commit(PIN_FILE.read_text()) == sha:
         print("UP_TO_DATE")
         return 0
-    published, skipped = _published(sha)
+    published, skipped, recorded = _published(sha)
     for line in skipped:
         print(line, file=sys.stderr)
     if not published["meaning-map"]:
         print(f"nothing consumable at pin {sha} — refusing to empty the canon", file=sys.stderr)
         return 1
+    fetched = {kind: {name: _raw(kind, sha, name) for name in published[kind]} for kind in KINDS}
+    for name, data in fetched["registry"].items():
+        if _digest(data) != recorded[f"registry/{name}"]["sha256"]:
+            book = name.removesuffix(".aliases.json")
+            print(
+                f"the {book} names list is not the one pins.json records at pin {sha} — "
+                "refusing to vendor it",
+                file=sys.stderr,
+            )
+            return 1
     files = []
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
         names = published[kind]
         for name in names:
-            data = _raw(kind, sha, name)
+            data = fetched[kind][name]
             (target / name).write_bytes(data)
             files.append({"path": f"{kind}/{name}", "sha256": _digest(data)})
             print(f"  {kind}/{name}")
         for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
-            if existing not in names:
+            if existing not in names and f"{kind}/{existing}" != PROVENANCE:
                 (target / existing).unlink()
                 print(f"  removed {kind}/{existing}")
     record = {
@@ -248,7 +260,7 @@ def _against_the_clone(clone: Path, sha: str) -> list[str]:
     def read(path: str, at: str) -> bytes:
         return _git(clone, "show", f"{at}:{path}")
 
-    published, _ = _published(sha, listing, read)
+    published, _, _ = _published(sha, listing, read)
     expected = {
         f"{kind}/{name}": _digest(read(f"{KINDS[kind]}/{name}", sha))
         for kind in KINDS

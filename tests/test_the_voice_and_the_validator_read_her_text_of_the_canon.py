@@ -13,7 +13,10 @@ from app.services.internalization_room import golden_judge
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import analyse_telling_back
 from app.services.internalization_room.canon import book_material, parse_map
-from app.services.internalization_room.prompt_blocks import validator_map_block
+from app.services.internalization_room.prompt_blocks import (
+    meaning_map_block,
+    validator_map_block,
+)
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
 from tests.text_seam_harness import the_judge_answers
 from tests.turn_harness import (
@@ -53,6 +56,10 @@ P03_LAST_SILENCE = (
     "- S3 (1:18): Narrator tells us Naomi sees and stops speaking, but nothing of what is going "
     "on inside her. No agreement, no blessing, no further word from Naomi in this passage. We "
     "are let into Ruth's resolve, but not into how Naomi takes it."
+)
+P02_STORY_SO_FAR_ENDS = (
+    "Scenes: Famine and exile to Moab; Death of Elimelech; Marriages and time passing; "
+    "Deaths of the sons."
 )
 
 
@@ -141,6 +148,15 @@ async def test_the_story_so_far_opens_with_her_separator_and_header_and_never_na
 
     assert STORY_SO_FAR_OPENS in guide
     assert STORY_SO_FAR_OPENS in validator
+
+
+def test_the_story_so_far_ends_on_the_last_digest_as_hers_does_for_both_roles() -> None:
+    assert meaning_map_block("P02", "Ruth").endswith(P02_STORY_SO_FAR_ENDS), (
+        "o Guia lia uma quebra de linha a mais depois do último resumo, que o dela não tem"
+    )
+    assert validator_map_block("P02", "Ruth").endswith(P02_STORY_SO_FAR_ENDS), (
+        "o Validador lia uma quebra de linha a mais depois do último resumo, que o dela não tem"
+    )
 
 
 @pytest.fixture
