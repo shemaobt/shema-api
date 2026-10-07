@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from functools import lru_cache
 
 from app.services.internalization_room.canon.parse_map import VENDOR, MeaningMap, Scene
 
+logger = logging.getLogger(__name__)
+
 REGISTRY_DIR = VENDOR / "registry"
 COORDINATES_DIR = VENDOR / "meaning-coordinates"
+
+UNRESOLVED_LABEL = "(unresolved — needs grounded wording)"
 
 _STRIPPED = "STRIPPED_TO_"
 _SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman"}
@@ -44,11 +49,19 @@ def _glosses(body: str) -> dict[str, str]:
     return glosses
 
 
-def name_of(meaning_map: MeaningMap, code: str) -> str | None:
+def name_of(meaning_map: MeaningMap, code: str) -> str:
     entry = _names_list(meaning_map.book).get(code)
     if entry is not None:
         return str(entry["english"])
-    return _glosses(meaning_map.body).get(code)
+    gloss = _glosses(meaning_map.body).get(code)
+    if gloss:
+        return gloss
+    logger.warning(
+        "%s %s has no name in the names list and no gloss in the map",
+        meaning_map.pericope_num,
+        code,
+    )
+    return UNRESOLVED_LABEL
 
 
 def being_names(meaning_map: MeaningMap, scene: Scene) -> list[str | None]:
