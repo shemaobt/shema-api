@@ -235,3 +235,56 @@ async def test_an_address_of_another_teams_session_makes_no_sound(
 
     assert heard.status_code == 404, heard.text[:300]
     assert elevenlabs.calls == [], "outra equipe fazia soar a resposta guardada desta sessão"
+
+
+async def test_a_take_resent_after_its_voice_failed_is_answered_from_the_stored_turn(
+    client: httpx.AsyncClient,
+    room: tuple[str, str, dict[str, str]],
+    elevenlabs: _Elevenlabs,
+    guide: _Guide,
+) -> None:
+    session_id, credential, _desk = room
+    elevenlabs.down = True
+    answered = await _the_team_answers(client, credential, session_id)
+    elevenlabs.down = False
+
+    resent = await _the_team_answers(client, credential, session_id)
+    looked = await client.get(
+        f"{PREFIX}/sessions/{session_id}/turns/turno-1", headers=team_headers(credential)
+    )
+
+    assert guide.drafts == 1, "a voz falhou e o reenvio da gravação chamou o Guia de novo"
+    assert resent.json() == answered.json()
+    assert looked.status_code == 200, looked.text[:300]
+    assert looked.json() == answered.json(), "a olhada não achava o turno que tinha ficado"
+
+
+async def test_hearing_it_again_after_a_reload_plays_the_reply_whose_voice_failed(
+    client: httpx.AsyncClient, room: tuple[str, str, dict[str, str]], elevenlabs: _Elevenlabs
+) -> None:
+    session_id, credential, _desk = room
+    elevenlabs.down = True
+    answered = await _the_team_answers(client, credential, session_id)
+    elevenlabs.down = False
+
+    again = await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
+    )
+    heard = await client.get(again.json()["audio_url"], headers=team_headers(credential))
+
+    assert again.json()["audio_url"] == answered.json()["audio_url"]
+    assert heard.content == f"som de {GUIDE_LINE}".encode(), (
+        "«Ouvir de novo» tocava a fala de antes, não a resposta que tinha falhado"
+    )
+
+
+async def test_a_turn_whose_voice_works_serves_the_clip_it_voiced_without_voicing_it_again(
+    client: httpx.AsyncClient, room: tuple[str, str, dict[str, str]], elevenlabs: _Elevenlabs
+) -> None:
+    session_id, credential, _desk = room
+
+    answered = await _the_team_answers(client, credential, session_id)
+    heard = await client.get(answered.json()["audio_url"], headers=team_headers(credential))
+
+    assert heard.content == f"som de {GUIDE_LINE}".encode()
+    assert elevenlabs.calls == [GUIDE_LINE], "o endereço do turno pagava a mesma fala duas vezes"
