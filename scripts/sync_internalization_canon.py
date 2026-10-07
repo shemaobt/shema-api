@@ -146,7 +146,7 @@ def _raw(kind: str, sha: str, name: str) -> bytes:
 
 
 def _digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()[:12]
+    return hashlib.sha256(data).hexdigest()
 
 
 def sync(pin: str | None = None) -> int:
@@ -172,7 +172,7 @@ def sync(pin: str | None = None) -> int:
         for name in names:
             data = _raw(kind, sha, name)
             (target / name).write_bytes(data)
-            files.append({"path": f"{kind}/{name}", "sha256": hashlib.sha256(data).hexdigest()})
+            files.append({"path": f"{kind}/{name}", "sha256": _digest(data)})
             print(f"  {kind}/{name}")
         for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
             if existing not in names:
@@ -206,33 +206,47 @@ def _pin_record(sha: str, maps: list[str]) -> str:
     return "".join(f"{key + ':':<18}{value}\n" for key, value in fields.items())
 
 
+def _held() -> dict[str, bytes]:
+    return {
+        f"{kind}/{path.name}": path.read_bytes()
+        for kind in KINDS
+        if (VENDOR / kind).is_dir()
+        for path in sorted((VENDOR / kind).iterdir())
+        if path.is_file()
+    }
+
+
+def _drift(expected: dict[str, str], held: dict[str, bytes]) -> list[str]:
+    drifted = []
+    for path, sha256 in expected.items():
+        if path not in held:
+            drifted.append(f"missing: {path}")
+        elif _digest(held[path]) != sha256:
+            drifted.append(f"changed: {path}")
+    drifted.extend(f"extra: {path}" for path in held if path not in expected)
+    return drifted
+
+
 def check() -> int:
     if not PIN_FILE.exists():
         print("no VENDOR_PIN — run with --sync", file=sys.stderr)
         return 1
     sha = pinned_commit(PIN_FILE.read_text())
-    drifted: list[str] = []
-    published, _ = _published(sha)
-    for kind in KINDS:
-        names = published[kind]
-        for name in names:
-            local = VENDOR / kind / name
-            upstream = _raw(kind, sha, name)
-            if not local.exists():
-                drifted.append(f"missing: {kind}/{name}")
-            elif _digest(local.read_bytes()) != _digest(upstream):
-                drifted.append(f"changed: {kind}/{name}")
-
-        target = VENDOR / kind
-        if target.is_dir():
-            for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
-                if existing not in names:
-                    drifted.append(f"extra: {kind}/{existing}")
-
+    manifest = VENDOR / MANIFEST
+    if manifest.exists():
+        files = json.loads(manifest.read_text())["files"]
+        drifted = _drift({file["path"]: file["sha256"] for file in files}, _held())
+    else:
+        drifted = [f"missing: {MANIFEST}"]
     if drifted:
         print(f"canon drifted from pin {sha}:", file=sys.stderr)
         for line in drifted:
             print(f"  {line}", file=sys.stderr)
+        print(
+            f"Re-vendor with `uv run python scripts/sync_internalization_canon.py --sync --pin "
+            f"{sha}` — never edit vendored files (or the manifest) by hand.",
+            file=sys.stderr,
+        )
         return 1
     print(f"canon matches pin {sha}")
     return 0
