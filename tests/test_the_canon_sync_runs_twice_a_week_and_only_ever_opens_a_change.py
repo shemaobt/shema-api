@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "canon-sync.yml"
@@ -31,13 +34,35 @@ def test_it_runs_on_mondays_and_thursdays_at_nine_seventeen_utc() -> None:
     assert _workflow()[True]["schedule"] == [{"cron": "17 9 * * 1,4"}]
 
 
-def test_it_decides_whether_anything_is_new_from_the_syncs_own_last_line() -> None:
+@pytest.mark.parametrize(
+    ("last_line", "updated"),
+    [
+        ("UP_TO_DATE", "updated=false"),
+        ("pinned at 1eadbeef1eadbeef1eadbeef1eadbeef1eadbeef", "updated=true"),
+    ],
+)
+def test_it_decides_whether_anything_is_new_from_the_syncs_own_last_line(
+    last_line: str, updated: str, tmp_path: Path
+) -> None:
     sync = _steps()[_index("scripts/sync_internalization_canon.py --sync")]
+    uv = tmp_path / "bin" / "uv"
+    uv.parent.mkdir()
+    uv.write_text(f"#!/bin/sh\necho '  meaning-map/P01-Ruth-1-1-5.md'\necho '{last_line}'\n")
+    uv.chmod(0o755)
+    output = tmp_path / "output"
+
+    subprocess.run(
+        ["bash", "-e", "-c", sync["run"].replace("/tmp/sync.log", str(tmp_path / "sync.log"))],
+        check=True,
+        env={
+            **os.environ,
+            "PATH": f"{uv.parent}:{os.environ['PATH']}",
+            "GITHUB_OUTPUT": str(output),
+        },
+    )
 
     assert sync["id"] == "sync"
-    assert "UP_TO_DATE" in sync["run"]
-    assert "updated=false" in sync["run"]
-    assert "updated=true" in sync["run"]
+    assert output.read_text() == f"{updated}\n"
 
 
 def test_only_new_canon_reaches_the_guard_the_smoke_the_build_and_the_change_in_that_order() -> (
