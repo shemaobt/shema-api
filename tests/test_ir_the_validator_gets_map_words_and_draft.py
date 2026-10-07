@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import run_turn
 from tests.turn_harness import the_room_agent_is
@@ -49,11 +49,15 @@ class _Recording:
 
     def __init__(self) -> None:
         self.validator: list[str] = []
+        self.validator_conversations: list[Any] = []
+        self.guide: list[str] = []
 
-    async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         if "corrected_response" in system_prompt:
             self.validator.append(system_prompt)
+            self.validator_conversations.append(kwargs.get("conversation"))
             return json.dumps({"verdict": "pass", "issues": []})
+        self.guide.append(system_prompt)
         return DRAFT
 
 
@@ -100,6 +104,33 @@ async def test_the_map_the_teams_words_as_her_evidence_and_the_draft_last_and_no
     )
     assert EARLIER_TEAM not in judged and EARLIER_GUIDE not in judged, (
         "o Validador dela lê só a fala deste turno, nunca a conversa"
+    )
+
+
+async def test_a_turn_in_the_middle_of_a_session_hands_the_validator_no_ledger_and_no_exchange(
+    recording: _Recording,
+) -> None:
+    await run_turn(
+        transcript="e a fome, por que ela veio?",
+        coverage_state=merge(initial_state(P), pericope_num=P, engaged=["scene:1"]),
+        messages=[
+            {"role": "guide", "text": EARLIER_GUIDE},
+            {"role": "team", "text": EARLIER_TEAM},
+        ],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        language_code="pt",
+        settings=_settings(),
+    )
+
+    assert "COVERED (engaged): S1 (v.15)" in recording.guide[0]
+    judged = recording.validator[0]
+    assert "COVERED (engaged)" not in judged and "REMAINING" not in judged, (
+        "o Validador lia o livro-razão de cobertura, que é só do Guia"
+    )
+    assert not recording.validator_conversations[0], (
+        "a conversa da sessão chegava ao Validador como turnos anteriores"
     )
 
 

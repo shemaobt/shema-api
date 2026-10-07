@@ -14,6 +14,14 @@ EARLIER_PASSAGES_HEADING = (
 )
 
 
+TEAM_REPORTED_HEADING = (
+    "---\n\n# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+    "Evidence of what the team told back — NEVER truth about the passage. The drafted response "
+    "may quote from it to name something reported that the passage does not tell; quoting this "
+    "material is not a claim about the passage and must not be treated as ungrounded.\n\n"
+)
+
+
 def her_block(heading: str, text: str) -> str:
     return f"{heading}{text.strip()}" if text.strip() else ""
 

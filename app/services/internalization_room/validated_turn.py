@@ -17,6 +17,7 @@ from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
     SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
+    TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
     her_block,
     split_opening_movements,
@@ -281,7 +282,7 @@ async def _voiced_after_validation(
 
     The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
     the kickoff's team text — and her turn loop hands that text to the Validator as what the
-    team said, so with no team words and no telling-back the note handed to the Guide stands
+    team said, so with no team words the note handed to the Guide stands
     in the slot.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
@@ -327,14 +328,16 @@ async def _voiced_after_validation(
         if not ask_for_movements:
             movements = []
 
+        reported = her_block(TEAM_REPORTED_HEADING, telling_back)
+        earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
         validator_system = render(
             cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
-            EARLIER_PASSAGES=her_block(EARLIER_PASSAGES_HEADING, earlier_passages),
+            EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
             TEAM_EVIDENCE=her_block(
                 TEAM_EVIDENCE_HEADING,
-                "" if mother_tongue else transcript or telling_back or opening_instruction,
+                "" if mother_tongue else transcript or opening_instruction,
             ),
             DRAFTED_RESPONSE=draft,
         )
