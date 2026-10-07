@@ -37,6 +37,7 @@ from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import LABELS_DIR
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
+from tests.canon_harness import forget_the_canon
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 
@@ -143,15 +144,9 @@ def a_passage_whose_survey_is_pending(
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
     monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    _forget_the_canon()
+    forget_the_canon()
     yield "Q01"
-    _forget_the_canon()
-
-
-def _forget_the_canon() -> None:
-    parse_map.load_map.cache_clear()
-    parse_map.load_book.cache_clear()
-    book_material.preservation_rules.cache_clear()
+    forget_the_canon()
 
 
 @pytest.fixture
@@ -173,9 +168,9 @@ def a_finished_passage_whose_log_records_no_rule(
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
     monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    _forget_the_canon()
+    forget_the_canon()
     yield "Q01"
-    _forget_the_canon()
+    forget_the_canon()
 
 
 async def test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer(

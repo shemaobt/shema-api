@@ -56,6 +56,7 @@ from tests.baker import (
     make_language,
     make_project,
 )
+from tests.canon_harness import forget_the_canon
 
 _codes = itertools.count()
 
@@ -124,13 +125,6 @@ _A_FABLE_LOG_WITH_A_LAYER = (
 _A_FABLE_LOG_WITHOUT_ONE = '# COMPILATION LOG\n\n{"high_risk_register_audit": []}\n'
 
 
-def _forget_the_canon() -> None:
-    parse_map.load_map.cache_clear()
-    parse_map.load_book.cache_clear()
-    book_material.preservation_rules.cache_clear()
-    book_material._register_complete.cache_clear()
-
-
 @pytest.fixture
 def a_book_whose_walkable_passages_end_before_it_does(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -151,9 +145,9 @@ def a_book_whose_walkable_passages_end_before_it_does(
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
     monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    _forget_the_canon()
+    forget_the_canon()
     yield "Fable"
-    _forget_the_canon()
+    forget_the_canon()
 
 
 def at_the_floor(pericope: str) -> dict[str, str]:
