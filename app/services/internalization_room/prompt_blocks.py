@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.core.room_enums import EarlierPassageStatus
 from app.services.internalization_room.canon.book_material import (
     preservation_rules,
+    significant_absences,
     story_so_far,
 )
 from app.services.internalization_room.canon.elements import (
@@ -10,7 +11,11 @@ from app.services.internalization_room.canon.elements import (
     ElementKind,
     elements_for,
 )
-from app.services.internalization_room.canon.parse_map import load_book, load_map
+from app.services.internalization_room.canon.parse_map import (
+    code_only_links,
+    load_book,
+    load_map,
+)
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     current_scene,
@@ -111,22 +116,24 @@ def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str]
 
 
 def meaning_map_block(pericope_num: str, book: str) -> str:
-    """The passage's map verbatim, plus the digests of strictly earlier passages.
+    """The passage's map with its links as codes alone, plus the earlier passages' digests.
 
     *Tripod Internalization · Interaction Flows*
     (`internalization-room/docs/spec/interaction-flows.md`, §1, diagram caption) calls the
     Guide's standard of truth "MEANING MAP + story-so-far", and the earlier-only scoping is
     what keeps a later disclosure from reaching this session.
     """
-    passage = load_map(pericope_num).body
+    passage = code_only_links(load_map(pericope_num).body)
     earlier = story_so_far(book, pericope_num)
     return f"{passage}\n\n{earlier}" if earlier else passage
 
 
 def validator_map_block(pericope_num: str, book: str) -> str:
-    """The Guide's map plus the prohibitions the Guide is never shown, and the story so far.
+    """The passage's map plus the rules and silences the Guide is never shown, and the story so far.
 
-    The two roles read the same passage and judge it against different things. Ported from
+    Every reader that judges a telling against the passage reads this, as her `ctx.validatorMap`
+    is read: the Validator, the Ensaio Final's Analyst, its correction check and its verdict
+    Speaker, and the golden judge. Ported from
     the project's own `validatorMapText` (`Tripod-Internalization`, `src/turn/mapText.ts:85`),
     whose framing sentence is reproduced verbatim because it is what tells the Validator that
     a plausible-sounding draft is still ungrounded when it crosses one of these.
@@ -138,14 +145,15 @@ def validator_map_block(pericope_num: str, book: str) -> str:
     """
     meaning_map = load_map(pericope_num)
     rules = "\n".join(
-        rule.render() for rule in preservation_rules(book) if rule.pericope == pericope_num
+        rule.render(tagged=False)
+        for rule in preservation_rules(book)
+        if rule.pericope == pericope_num
     )
     absences = "\n".join(
-        f"- S{scene.number} ({scene.verses}): {scene.absence}"
-        for scene in meaning_map.scenes
-        if scene.absence
+        f"- {absence.scene_id} ({absence.verse_range}): {absence.text}"
+        for absence in significant_absences(pericope_num)
     )
-    validator_map = (
+    validator_map = code_only_links(
         f"{meaning_map.body}\n\n---\n\n"
         "## PRESERVATION RULES — do_not_decide (HARD CONSTRAINTS)\n"
         "These are explicit prohibitions from the Compilation Log. The response must honor "
