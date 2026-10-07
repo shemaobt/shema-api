@@ -119,6 +119,8 @@ def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str]
 
 
 class RoomFact(Enum):
+    """The facts after the ledger, in the order of her `liveTurn.ts:447-503` (app 18fa7c4)."""
+
     SCENE_REHEARSALS = auto()
     KEPT_REHEARSALS = auto()
     EARLIER_PASSAGES = auto()

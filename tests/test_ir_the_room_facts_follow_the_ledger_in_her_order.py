@@ -4,6 +4,7 @@ SCENE_REHEARSALS = (
     "SCENE REHEARSALS: parts whose recorded and translated scene rehearsal has reached you: "
     "S1. Parts with none: S2."
 )
+KEPT = "KEPT REHEARSALS: every part has a kept take."
 EARLIER = "EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1\N{EN DASH}5."
 MOMENT = "MOMENT: Internalization of part 2 of 4 \N{EM DASH} the part is open."
 ACCEPTED = "ACCEPTED READINGS FOR THE SCENE THIS TELLING CHECKS"
@@ -39,4 +40,21 @@ def test_the_accepted_readings_come_last_and_only_when_a_checking_turn_hands_the
     assert ACCEPTED not in ordinary, "um turno comum levava as leituras aceitas"
     assert checking == f"{EARLIER}\n\n{MOMENT}\n\n{ACCEPTED}", (
         "as leituras aceitas não vinham por último, depois do momento"
+    )
+
+
+def test_all_five_facts_follow_in_her_exact_order_whatever_order_they_were_handed_in() -> None:
+    block = room_facts_block(
+        {
+            RoomFact.ACCEPTED_READINGS: ACCEPTED,
+            RoomFact.MOMENT: MOMENT,
+            RoomFact.EARLIER_PASSAGES: EARLIER,
+            RoomFact.KEPT_REHEARSALS: KEPT,
+            RoomFact.SCENE_REHEARSALS: SCENE_REHEARSALS,
+        }
+    )
+
+    assert block == f"{SCENE_REHEARSALS}\n\n{KEPT}\n\n{EARLIER}\n\n{MOMENT}\n\n{ACCEPTED}", (
+        "os cinco fatos não vinham na ordem dela: cena, ensaios guardados, passagens anteriores, "
+        "momento, leituras aceitas"
     )
