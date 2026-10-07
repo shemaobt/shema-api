@@ -66,6 +66,7 @@ class _Bucket:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
         self.refuses_deletes = False
+        self.reports_no_crc32c = False
 
 
 class _Blob:
@@ -106,7 +107,9 @@ class _Blob:
 
     @property
     def crc32c(self) -> str | None:
-        return None if self._loaded is None else _crc32c(self._loaded)
+        if self._loaded is None or self._store.reports_no_crc32c:
+            return None
+        return _crc32c(self._loaded)
 
     def delete(self) -> None:
         if self._store.refuses_deletes:
@@ -542,6 +545,44 @@ async def test_confirm_upload_with_a_crc32c_that_does_not_match_is_refused_and_t
     await _assert_refused_and_untouched(db_session, bucket, rec.id, response, _todays_name(rec))
 
 
+async def test_confirm_upload_with_a_crc32c_the_bucket_cannot_report_is_refused_and_the_audio_kept(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
+    name = await device.upload_url(rec.id)
+    device.put(name, bytes(len(OLD_AUDIO)))
+    bucket.reports_no_crc32c = True
+
+    response = await device.confirm(rec.id, crc32c=_crc32c(bytes(len(OLD_AUDIO))))
+
+    await _assert_refused_and_untouched(db_session, bucket, rec.id, response, _todays_name(rec))
+
+
+async def test_a_refused_first_upload_answers_400_publishes_nothing_and_is_upload_failed(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _first_upload(db_session, bucket, client)
+    device.put(await device.upload_url(rec.id), NEW_AUDIO[:5])
+
+    response = await device.confirm(rec.id)
+
+    assert response.status_code == 400
+    stored = await _row(db_session, rec.id)
+    assert (stored.gcs_url, stored.upload_status) == (None, UploadStatus.UPLOAD_FAILED)
+
+
+async def test_a_pending_object_naming_the_published_audio_is_never_handed_out(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
+    rec.pending_blob_name = _todays_name(rec)
+    await db_session.commit()
+
+    name = await device.upload_url(rec.id)
+
+    assert name != _todays_name(rec)
+
+
 async def test_confirm_upload_with_an_md5_that_does_not_match_is_refused_and_the_audio_kept(
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
 ) -> None:
@@ -790,7 +831,7 @@ async def test_a_cleaning_that_finishes_after_a_replacement_leaves_the_new_audio
                 "gcs_url": _url(_todays_name(rec)),
             },
         ),
-        meanwhile={"update-status": _a_replacement_is_confirmed},
+        meanwhile={"repoint-to-cleaned-audio": _a_replacement_is_confirmed},
     )
 
     stored = await _row(db_session, rec.id)

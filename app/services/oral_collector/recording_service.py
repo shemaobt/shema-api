@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import re
 import uuid
@@ -8,13 +7,14 @@ from datetime import UTC, datetime, timedelta
 import google.auth
 import google.auth.transport.requests
 import inngest
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import (
     ACTIVE_UPLOAD_STATUSES,
     USER_SETTABLE_CLEANING_STATUSES,
+    CleaningStatus,
     OCNotificationEvent,
     OCRecordingEvent,
     SplittingStatus,
@@ -48,7 +48,7 @@ from app.services.oral_collector.constants import GCS_OC_PROJECT, gcs_oc_bucket
 from app.services.oral_collector.gcs_utils import (
     blob_name_from_url,
     content_type_for_format,
-    delete_gcs_object,
+    discard_gcs_object,
     gcs_public_base,
     uploaded_object_refusal,
 )
@@ -497,7 +497,7 @@ async def delete_recording(db: AsyncSession, recording_id: str) -> None:
     landing after the row is gone leaves an orphan object and answers `confirm-upload` 404.
     """
     recording = await get_recording(db, recording_id)
-    _delete_recording_objects(recording)
+    await _delete_recording_objects(recording)
     await db.delete(recording)
     await db.commit()
 
@@ -541,7 +541,7 @@ async def clear_stale_recordings(
     recordings = list(result.scalars().all())
 
     for recording in recordings:
-        _delete_recording_objects(recording)
+        await _delete_recording_objects(recording)
         await db.delete(recording)
 
     await db.commit()
@@ -617,11 +617,11 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
     `clear_stale_recordings` without a caller, so the reaper's output accumulates. The rubbish
     belongs to the server and the server removes it.
 
-    Removing the row cannot cost a recording. The device keeps its local copy until the server
-    reports `uploaded`/`verified` *and* returns a server id, so a recording that never
-    finished uploading is still on the phone; its healing request simply answers 404. One
-    exception: a replacement confirm-upload refused leaves its row `UPLOAD_FAILED` with the
-    previous, published audio still behind `gcs_url`, and this purge deletes it.
+    Removing a row whose upload never got through costs no recording. The device keeps its
+    local copy until the server reports `uploaded`/`verified` *and* returns a server id, so
+    that recording is still on the phone; its healing request simply answers 404. A refused
+    replacement is different: confirm-upload leaves its row `UPLOAD_FAILED` with the previous,
+    published audio still behind `gcs_url`, and this purge deletes that audio with the row.
 
     Nothing fixes the retention the way the seven-day GCS resumable session fixed the reaper's
     fourteen days: past that deadline the transfer provably could not resume, while here the
@@ -630,8 +630,8 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
     it keeps, and half a year after the owner was told the upload died. Age reads `updated_at`
     like the reaper does, so any edit counts as activity and starts it over.
 
-    `_delete_gcs_blob` logs and swallows, so an object the bucket cannot produce costs its own
-    delete and nothing else: neither its row nor the rest of the pass.
+    `discard_gcs_object` logs and swallows, so an object the bucket cannot produce costs its
+    own delete and nothing else: neither its row nor the rest of the pass.
 
     A pass takes `FAILED_UPLOAD_PURGE_BATCH` rows, oldest first, and leaves the rest to
     tomorrow's. Nothing else bounds the set, and this runs unattended: without a ceiling the
@@ -643,9 +643,8 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
     confirm-upload, and the platform does not start 300 uploads a day, so a backlog shrinks
     with every pass instead of being held at a level the batch cannot clear.
 
-    The delete runs on a worker thread, like every other blob call in this package
-    (`gcs_utils`). `_delete_recording_objects` is
-    synchronous, and a batch of blocking round-trips on the event loop would stall the uploads
+    The deletes run on a worker thread, like every other blob call in this package
+    (`gcs_utils`): a batch of blocking round-trips on the event loop would stall the uploads
     the API is serving at the same time.
     """
     cutoff = datetime.now(UTC) - FAILED_UPLOAD_RETENTION
@@ -662,7 +661,7 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
     abandoned = list(result.scalars().all())
 
     for recording in abandoned:
-        await asyncio.to_thread(_delete_recording_objects, recording)
+        await _delete_recording_objects(recording)
         await db.delete(recording)
 
     await db.commit()
@@ -684,19 +683,22 @@ def replacement_blob_path(project_id: str, genre_id: str, recording_id: str, fmt
     return _gcs_blob_path(project_id, genre_id, f"{recording_id}-{uuid.uuid4().hex}", fmt)
 
 
-def _hand_out_blob_path(recording: OC_Recording, fmt: str) -> str:
+async def _hand_out_blob_path(recording: OC_Recording, fmt: str) -> str:
     """The object name an upload of this recording goes to, kept as its pending object.
 
     A pending object in the same format is handed out again, so a resumed upload, a refetched
     URL and confirm-upload agree on one name. Otherwise a recording whose audio the server
     already holds gets a name it never used, a first upload gets the name it always had, and
-    a pending object in another format is deleted, since nothing will confirm it.
+    a pending object in another format is deleted, since nothing will confirm it. A pending
+    name the recording already publishes is no pending object: handed out, the upload would
+    write over the live audio.
     """
-    pending = recording.pending_blob_name
+    published = blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
+    pending = recording.pending_blob_name if recording.pending_blob_name != published else None
     if pending is not None and pending.endswith(_extension(fmt)):
         return pending
     if pending is not None:
-        _delete_object(pending)
+        await discard_gcs_object(pending)
     if recording.gcs_url:
         recording.pending_blob_name = replacement_blob_path(
             recording.project_id, recording.genre_id, recording.id, fmt
@@ -718,7 +720,7 @@ async def generate_upload_url(
     recording = await get_recording(db, recording_id)
     await check_recording_access(db, recording, user_id)
 
-    blob_path = _hand_out_blob_path(recording, fmt)
+    blob_path = await _hand_out_blob_path(recording, fmt)
 
     client = _get_gcs_client()
     bucket = client.bucket(gcs_oc_bucket())
@@ -797,10 +799,7 @@ async def publish_upload(
     await db.refresh(recording)
 
     if previous is not None and previous != blob_path:
-        try:
-            await delete_gcs_object(gcs_oc_bucket(), previous)
-        except Exception:
-            logger.exception("Failed to delete the replaced object: %s", previous)
+        await discard_gcs_object(previous)
     return None
 
 
@@ -855,6 +854,42 @@ async def mark_upload_verified(
     return recording.upload_status
 
 
+async def choose_cleaned_name(db: AsyncSession, recording_id: str) -> str:
+    recording = await db.get(OC_Recording, recording_id)
+    if recording is None:
+        raise NotFoundError("Recording not found")
+    return replacement_blob_path(
+        recording.project_id, recording.genre_id, recording.id, recording.format
+    )
+
+
+async def repoint_to_cleaned(
+    db: AsyncSession, recording_id: str, *, cleaned_from: str, cleaned_url: str
+) -> bool:
+    """Point the recording at its cleaned audio, unless its audio was replaced meanwhile.
+
+    A replacement confirmed while the cleaning ran moved the URL on: the cleaned audio is of
+    audio the recording no longer has, so the URL stays and the cleaning is undone. The
+    cleaned URL itself also matches, so a retried step finds its own write and keeps it.
+    """
+    repointed = await db.execute(
+        update(OC_Recording)
+        .where(
+            OC_Recording.id == recording_id,
+            OC_Recording.gcs_url.in_([cleaned_from, cleaned_url]),
+        )
+        .values(gcs_url=cleaned_url, cleaning_status=CleaningStatus.CLEANED, cleaning_error=None)
+    )
+    if repointed.rowcount == 0:
+        await db.execute(
+            update(OC_Recording)
+            .where(OC_Recording.id == recording_id)
+            .values(cleaning_status=CleaningStatus.NONE, cleaning_error=None)
+        )
+    await db.commit()
+    return bool(repointed.rowcount)
+
+
 async def generate_resumable_upload_url(
     db: AsyncSession,
     recording_id: str,
@@ -866,7 +901,7 @@ async def generate_resumable_upload_url(
     recording = await get_recording(db, recording_id)
     await check_recording_access(db, recording, user_id)
 
-    blob_path = _hand_out_blob_path(recording, fmt)
+    blob_path = await _hand_out_blob_path(recording, fmt)
 
     client = _get_gcs_client()
     bucket = client.bucket(gcs_oc_bucket())
@@ -892,28 +927,9 @@ async def generate_resumable_upload_url(
     )
 
 
-def _delete_recording_objects(recording: OC_Recording) -> None:
+async def _delete_recording_objects(recording: OC_Recording) -> None:
 
-    if recording.gcs_url:
-        _delete_gcs_blob(recording.gcs_url)
-    if recording.pending_blob_name:
-        _delete_object(recording.pending_blob_name)
-
-
-def _delete_gcs_blob(gcs_url: str) -> None:
-
-    blob_name = blob_name_from_url(gcs_url)
-    if blob_name is None:
-        logger.warning("Unexpected GCS URL format: %s", gcs_url)
-        return
-    _delete_object(blob_name)
-
-
-def _delete_object(blob_name: str) -> None:
-
-    try:
-        client = _get_gcs_client()
-        bucket = client.bucket(gcs_oc_bucket())
-        bucket.blob(blob_name).delete()
-    except Exception:
-        logger.exception("Failed to delete GCS blob: %s", blob_name)
+    published = blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
+    for blob_name in (published, recording.pending_blob_name):
+        if blob_name:
+            await discard_gcs_object(blob_name)

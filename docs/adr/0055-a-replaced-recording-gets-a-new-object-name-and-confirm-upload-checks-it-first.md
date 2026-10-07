@@ -21,7 +21,8 @@ written over.
 - The name handed out is kept on the recording as its **pending object** until
   confirm-upload accepts it. Asking again for a URL in the same format returns the same
   name, so a resumed upload and the confirm agree. Asking in another format gets a fresh
-  name, and the earlier pending object is deleted.
+  name, and the earlier pending object is deleted. A pending name equal to the one the
+  recording already publishes is never handed out, since the upload would write over it.
 - confirm-upload checks the object before it answers: it must exist, have the declared
   size, and match the md5 and crc32c when the app sends them. On success it publishes the
   name as `gcs_url` with status `uploaded`, commits, and only then deletes the previous
@@ -43,6 +44,10 @@ written over.
   previous object; the backup keeps it recoverable. It repoints only while the recording's
   URL is still the one it cleaned. If a replacement was confirmed in the meantime, it deletes
   its cleaned object, leaves the URL alone and sets the cleaning status back to none.
+
+Consequence: a split that downloads the recording's audio while a replacement or a cleaning
+deletes the previous object now fails with a 404 and can be asked again. Before, it split the
+old audio without saying so.
 
 Rejected: `Cache-Control: no-store` on every upload. On the small signed PUT the header has
 to be part of the signature, so the app would have to send it, which breaks app versions

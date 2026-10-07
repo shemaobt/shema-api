@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import contextlib
+import logging
 from datetime import timedelta
 from urllib.parse import urlsplit
 
@@ -10,6 +11,8 @@ from google.api_core.exceptions import NotFound
 from google.cloud import storage
 
 from app.services.oral_collector.constants import GCS_OC_PROJECT, gcs_oc_bucket
+
+logger = logging.getLogger(__name__)
 
 GCS_PUBLIC_HOST = "storage.googleapis.com"
 
@@ -145,6 +148,18 @@ async def delete_gcs_object(bucket_name: str, blob_name: str) -> None:
             client.bucket(bucket_name).blob(blob_name).delete()
 
     await asyncio.to_thread(_blocking)
+
+
+async def discard_gcs_object(blob_name: str) -> None:
+    """Delete an object of the Oral Collector's bucket without ever failing the caller.
+
+    Every caller has already moved on from the object: a published replacement, a deleted
+    row, a pending upload nothing will confirm. A delete the bucket refuses is logged.
+    """
+    try:
+        await delete_gcs_object(gcs_oc_bucket(), blob_name)
+    except Exception:
+        logger.exception("Failed to delete GCS object: %s", blob_name)
 
 
 async def download_gcs_object(bucket_name: str, blob_name: str) -> bytes:

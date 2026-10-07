@@ -34,7 +34,7 @@ async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
                 crc32c=payload.expected_crc32c,
             )
 
-    status = await step.run("finalize-verified", _finalize_verified)
+    status = await step.run("mark-verified", _finalize_verified)
 
     async def _notify_refused() -> None:
         if payload.user_id is None:

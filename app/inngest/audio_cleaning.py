@@ -2,7 +2,6 @@ import logging
 
 import httpx
 import inngest
-from sqlalchemy import update
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -12,7 +11,6 @@ from app.core.enums import (
     OCRecordingEvent,
 )
 from app.core.inngest_client import inngest_client
-from app.db.models.oc_recording import OC_Recording
 from app.inngest.helpers import (
     check_recording_verified,
     extract_failure_context,
@@ -20,16 +18,18 @@ from app.inngest.helpers import (
     update_recording_fields,
 )
 from app.inngest.schemas import CleanRequestedPayload
-from app.services.oral_collector.constants import gcs_oc_bucket
 from app.services.oral_collector.gcs_utils import (
     blob_name_from_url,
     copy_gcs_blob,
-    delete_gcs_object,
+    discard_gcs_object,
     gcs_public_base,
     original_blob_name,
     upload_gcs_blob,
 )
-from app.services.oral_collector.recording_service import replacement_blob_path
+from app.services.oral_collector.recording_service import (
+    choose_cleaned_name,
+    repoint_to_cleaned,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,44 +50,6 @@ async def _on_clean_failure(ctx: inngest.Context, _step: inngest.Step) -> None:
             "Audio cleaning failed",
             f"Audio cleaning failed: {fc.error_message}",
         )
-
-
-async def _choose_cleaned_name(recording_id: str) -> str:
-    async with AsyncSessionLocal() as db:
-        recording = await db.get(OC_Recording, recording_id)
-        if not recording:
-            raise inngest.NonRetriableError("Recording not found")
-        return replacement_blob_path(
-            recording.project_id, recording.genre_id, recording.id, recording.format
-        )
-
-
-async def _repoint_to_cleaned(recording_id: str, *, cleaned_from: str, cleaned_url: str) -> bool:
-    """Point the recording at its cleaned audio, unless its audio was replaced meanwhile.
-
-    A replacement confirmed while the cleaning ran moved the URL on: the cleaned audio is of
-    audio the recording no longer has, so the URL stays and the cleaning is undone. The
-    cleaned URL itself also matches, so a retried step finds its own write and keeps it.
-    """
-    async with AsyncSessionLocal() as db:
-        repointed = await db.execute(
-            update(OC_Recording)
-            .where(
-                OC_Recording.id == recording_id,
-                OC_Recording.gcs_url.in_([cleaned_from, cleaned_url]),
-            )
-            .values(
-                gcs_url=cleaned_url, cleaning_status=CleaningStatus.CLEANED, cleaning_error=None
-            )
-        )
-        if repointed.rowcount == 0:
-            await db.execute(
-                update(OC_Recording)
-                .where(OC_Recording.id == recording_id)
-                .values(cleaning_status=CleaningStatus.NONE, cleaning_error=None)
-            )
-        await db.commit()
-        return bool(repointed.rowcount)
 
 
 @inngest_client.create_function(
@@ -122,10 +84,11 @@ async def clean_recording_fn(ctx: inngest.Context, step: inngest.Step) -> str:
 
     cleaned_url = await step.run("call-cleaning-api", _call_cleaning_api)
 
-    cleaned_name = await step.run(
-        "choose-cleaned-name",
-        lambda: _choose_cleaned_name(payload.recording_id),
-    )
+    async def _choose_cleaned_name() -> str:
+        async with AsyncSessionLocal() as db:
+            return await choose_cleaned_name(db, payload.recording_id)
+
+    cleaned_name = await step.run("choose-cleaned-name", _choose_cleaned_name)
     previous = blob_name_from_url(verified_url or payload.gcs_url)
 
     async def _backup_and_upload() -> None:
@@ -136,16 +99,18 @@ async def clean_recording_fn(ctx: inngest.Context, step: inngest.Step) -> str:
             await copy_gcs_blob(previous, original_blob_name(previous))
         await upload_gcs_blob(cleaned_name, resp.content, "application/octet-stream")
 
-    await step.run("backup-and-upload", _backup_and_upload)
+    await step.run("back-up-and-write-cleaned-audio", _backup_and_upload)
 
     async def _update_status() -> bool:
-        repointed = await _repoint_to_cleaned(
-            payload.recording_id,
-            cleaned_from=verified_url or payload.gcs_url,
-            cleaned_url=f"{gcs_public_base()}{cleaned_name}",
-        )
+        async with AsyncSessionLocal() as db:
+            repointed = await repoint_to_cleaned(
+                db,
+                payload.recording_id,
+                cleaned_from=verified_url or payload.gcs_url,
+                cleaned_url=f"{gcs_public_base()}{cleaned_name}",
+            )
         if not repointed:
-            await delete_gcs_object(gcs_oc_bucket(), cleaned_name)
+            await discard_gcs_object(cleaned_name)
             return False
         await notify_user(
             payload.user_id,
@@ -155,17 +120,13 @@ async def clean_recording_fn(ctx: inngest.Context, step: inngest.Step) -> str:
         )
         return True
 
-    if not await step.run("update-status", _update_status):
+    if not await step.run("repoint-to-cleaned-audio", _update_status):
         return CleaningStatus.NONE
 
     async def _delete_previous() -> None:
-        if not previous or previous == cleaned_name:
-            return
-        try:
-            await delete_gcs_object(gcs_oc_bucket(), previous)
-        except Exception:
-            logger.exception("Failed to delete the object the cleaning replaced: %s", previous)
+        if previous and previous != cleaned_name:
+            await discard_gcs_object(previous)
 
-    await step.run("delete-previous", _delete_previous)
+    await step.run("delete-replaced-audio", _delete_previous)
 
     return CleaningStatus.CLEANED
