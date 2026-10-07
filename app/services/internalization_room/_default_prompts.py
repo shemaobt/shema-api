@@ -15,7 +15,6 @@ _FILES: dict[IRPromptKey, str] = {
     IRPromptKey.COVERAGE_CLASSIFIER: "classifier_system_prompt.md",
     IRPromptKey.BOOK_PANORAMA: "book_overview_system_prompt.md",
     IRPromptKey.BT_ANALYST: "backtranslation_analysis_system_prompt.md",
-    IRPromptKey.BT_CORRECTION: "backtranslation_correction_system_prompt.md",
     IRPromptKey.BT_VERDICT_SPEAKER: "backtranslation_verdict_system_prompt.md",
 }
 
@@ -25,7 +24,6 @@ _META: dict[IRPromptKey, str] = {
     IRPromptKey.COVERAGE_CLASSIFIER: "Coverage Classifier",
     IRPromptKey.BOOK_PANORAMA: "Book Panorama",
     IRPromptKey.BT_ANALYST: "BT Analyst",
-    IRPromptKey.BT_CORRECTION: "BT Correction",
     IRPromptKey.BT_VERDICT_SPEAKER: "BT Verdict Speaker",
 }
 

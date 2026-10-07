@@ -11,7 +11,6 @@ itself writes rather than about prose describing it.
 import ast
 from pathlib import Path
 
-from app.services.internalization_room.back_translation import CLOSING_CHECKED
 from app.services.internalization_room.turn_instructions import TEAM_REPORTED_HEADING
 
 _MODULES = [
@@ -73,18 +72,10 @@ _FORBIDDEN = (
 #: {{SESSION_LANGUAGE}} carries what language the team speaks, so its Portuguese and
 #: Spanish siblings no longer exist as literals to find here; the English one that remains
 #: is the fifth single below.
-#: `CLOSING_CHECKED` is named rather than copied: it is eight lines of ordered prose, and a
-#: second copy here would go stale on the first rewording while still agreeing with itself.
-#: What this entry pins is that the checked turn's closing is *in* this inventory — say it
-#: with *contar* instead and the sweep stops finding it, and the set stops matching.
 _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
-    "Compare a tradução com o mapa.",
     "a análise da tradução não pôde ser feita agora",
-    "(nenhum achado — a tradução está completa)",
-    "a leitura final da tradução não pôde ser feita agora",
-    CLOSING_CHECKED,
 }
 
 

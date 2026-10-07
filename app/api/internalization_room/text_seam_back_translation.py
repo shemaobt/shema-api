@@ -140,7 +140,7 @@ async def play_a_round(
     the standing stretch is found by the address, not by her index, because the address is
     what the room has always addressed by.
 
-    The verdict is the one `terminei` reaches, from the Correction check to the Speaker's
+    The verdict is the one `terminei` reaches, from the Analyst's reading to the Speaker's
     words, and it is voiced as text: the seam synthesizes nothing, so the clip key it records
     is empty and only the words are kept. What it does not carry are the five answers
     `terminei` gives before that point — the untold-stretch halt, the untold-part halt, the
@@ -163,14 +163,12 @@ async def play_a_round(
             await _capture(db, session, state, frase, number=number, parts=parts)
 
         told = room.told_back(await room.final_segments(db, session.id))
-        retired = await room.retired_segments(db, session.id)
         takes = await takes_of(db, session.id)
         await db.commit()
         verdict = await room.check_the_telling_back(
             session,
             state=state,
             told=told,
-            retired=retired,
             takes=takes,
             settings=get_settings(),
         )

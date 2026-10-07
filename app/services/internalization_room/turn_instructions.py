@@ -26,14 +26,10 @@ def her_block(heading: str, text: str) -> str:
     return f"{heading}{text.strip()}" if text.strip() else ""
 
 
-#: What is asked of the Speaker on a turn with no team utterance and nothing to open — the
-#: back-translation verdict, whose whole instruction is already in its system prompt. The
-#: conversation used to reach the model as one block of text, which made a user message by
-#: accident; now that it travels as the turns it was, the request would end on the Guide's
-#: own last speech, and the API refuses that as an assistant prefill. Composed in English like
-#: every other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language
-#: the team speaks.
-SPEAK_THIS_TURN = "Speak this turn."
+VERDICT_KICKOFF = (
+    "(The team heard their whole recording, told it back frase by frase, and tapped "
+    "'terminei'. Speak the verdict now.)"
+)
 
 
 OPENING_MOVEMENT_MARK = "[[CENA]]"

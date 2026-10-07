@@ -10,15 +10,11 @@ from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
-    CLOSING_MISSING_TO_REHEARSAL,
-    CLOSING_ON_SCREEN,
-    CLOSING_SPOKEN,
     EVIDENCE_LIMIT_KINDS,
     BackTranslationState,
     Finding,
     FindingKind,
     analyse_telling_back,
-    closing_block,
     current_findings,
     findings_block,
     findings_remaining,
@@ -26,8 +22,6 @@ from app.services.internalization_room.back_translation import (
     points_at_a_stretch,
     segments_block,
     the_finding_that_leads,
-    verify_correction,
-    with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.run_turn import run_verdict_turn
@@ -45,7 +39,6 @@ from tests.turn_harness import (
 )
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
-CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
 PARSER_LOGGER = "app.services.internalization_room.back_translation"
 #: The wire names an older reply may still carry. No prompt of ours may ask for one.
 RETIRED_WIRE_NAMES = (
@@ -236,10 +229,6 @@ def test_a_row_written_before_the_frase_number_existed_never_pairs() -> None:
     assert [finding.chunk for finding in state.findings] == [None, None]
     assert [finding.note for finding in current_findings(state)] == ["primeiro"]
     assert findings_remaining(state.findings) == 2
-
-
-def test_no_findings_reads_as_complete() -> None:
-    assert "nenhum achado" in findings_block([], Addresses())
 
 
 async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> None:
@@ -573,41 +562,6 @@ async def test_the_retired_evidence_kind_is_dropped_and_the_rest_of_the_reply_ke
     assert "refused" not in caplog.text
 
 
-async def test_the_retired_evidence_kind_is_dropped_from_a_correction_too(
-    patch_analyst, caplog: pytest.LogCaptureFixture
-) -> None:
-    """The verification reads the check and drops the name, instead of refusing the reply.
-
-    It is the same statement one step later, and a verification read as None is a finding
-    the team is never asked about again.
-    """
-    raw = json.dumps(
-        {
-            "resolved": True,
-            "findings": [{"kind": "insufficient_evidence", "note": "pouco para julgar"}],
-        }
-    )
-    patch_analyst(raw)
-
-    with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
-        check = await verify_correction(
-            findings=[Finding(kind=FindingKind.MISSING, note="Orfa", segment_id="segmento-1")],
-            earlier=stretch(1, "Noemi mandou Rute voltar."),
-            corrected=stretch(2, "Noemi mandou Rute voltar para a casa da mãe."),
-            chunk=1,
-            scope=P,
-            pericope_num=P,
-            correction_prompt=CORRECTION,
-            addresses=Addresses(),
-            settings=settings(),
-        )
-
-    assert check is not None, "a correção é verificada, não descartada"
-    assert check.resolved is True
-    assert check.findings == []
-    assert "insufficient_evidence" in caplog.text.replace(raw, ""), "e o descarte é anotado"
-
-
 def test_contiguous_playback_covers_the_clip() -> None:
     assert played_ranges_cover_clip([[0, 30000], [30000, 61000]], 61000)
 
@@ -717,8 +671,6 @@ async def test_an_addition_and_a_missing_on_the_same_frase_reach_the_speaker_tog
     assert "a notícia do pão" in spoken_to
     assert voiced[0].segment_id == "segmento-1"
     assert findings_remaining(state.findings) == 1
-    said = with_the_whole_stretch_asked_for("A frase 1 de novo.", voiced[0])
-    assert said != "A frase 1 de novo.", "o par pede o trecho inteiro, como qualquer achado nele"
 
 
 async def test_a_missing_placed_after_the_same_frase_still_pairs(patch_speaker) -> None:
@@ -797,7 +749,9 @@ async def test_an_addition_alone_is_voiced_as_today(patch_speaker) -> None:
     assert voiced == state.findings
     assert "o pedido das noras" in spoken_to
     assert "o pedido das noras" in findings_block(voiced, Addresses())
-    assert "\n" not in findings_block(voiced, Addresses()), "uma linha só, como antes desta regra"
+    assert len(json.loads(findings_block(voiced, Addresses()))) == 1, (
+        "um achado só, como antes desta regra"
+    )
     assert findings_remaining(state.findings) == 1
 
 
@@ -949,12 +903,7 @@ def test_a_swap_ranks_by_its_addition() -> None:
 
 
 def test_state_keeps_the_analysts_order() -> None:
-    """The order is applied at the pick, and the stored list is untouched by it.
-
-    Reordering the list instead would put the **Priority** where the packet, the resume and
-    the correction check all read from, and a finding a check put at the front would be taken
-    away from it — which is the precedence `findings_after_correction` exists to hold.
-    """
+    """The order is applied at the pick, and the stored list is untouched by it."""
     state = BackTranslationState(
         findings=[_unclear_on(1, "pouco claro"), _addition_on(3, "segmento-3", "outro acréscimo")]
     )
@@ -1084,58 +1033,6 @@ async def test_the_validator_is_shown_what_the_team_told_back(patch_loop) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_the_closing_to_rehearsal_names_the_circle_the_check_and_the_wood_disc() -> None:
-    """R9 (teste de 03/09, atualizado pelo ADR 0040 da sala e pela decisão de Henok de
-    25/09). A team that reached this screen did not know what to do with it.
-
-    The block used to say *what* was left — record what is still missing, keep what is
-    already recorded — without ever naming *how*: which control records, which confirms it,
-    and which brings them back. On the Rehearsal a recording stays pending until the green
-    check confirms it, and the wood disc only lights once nothing is pending — told just
-    "circle, then wood disc", the team would tap a dimmed disc. Three structural anchors
-    stand in for the three real steps the screen offers; the exact sentence around them is
-    the product owner's to shape.
-    """
-    assert "with the circle" in CLOSING_MISSING_TO_REHEARSAL
-    assert "green check" in CLOSING_MISSING_TO_REHEARSAL
-    assert "wood disc" in CLOSING_MISSING_TO_REHEARSAL
-    assert "big microphone" not in CLOSING_MISSING_TO_REHEARSAL
-    assert "green button" not in CLOSING_MISSING_TO_REHEARSAL
-
-
-@pytest.mark.parametrize(
-    ("kind", "segment_id"),
-    [
-        (FindingKind.ADDITION, "segmento-2"),
-        (FindingKind.UNCLEAR, "segmento-2"),
-        (FindingKind.ADDITION, None),
-        (FindingKind.UNCLEAR, None),
-    ],
-    ids=[
-        "addition on a stretch",
-        "unclear on a stretch",
-        "addition homeless (legacy row)",
-        "unclear homeless (legacy row)",
-    ],
-)
-def test_every_other_kind_closes_exactly_as_before(
-    kind: FindingKind, segment_id: str | None
-) -> None:
-    """Henok decided on 2026-09-25: `unclear` keeps `CLOSING_SPOKEN` on a stretch, for good.
-
-    A fresh reply can no longer produce an addition or an unclear without a stretch (ENG-1145):
-    the parser drops one that names no readable frase before it ever becomes a finding, and
-    refuses a reply that drops every finding it named. The two homeless cases here are legacy
-    only — a row `closing_block` may still be handed from before this rule, per ADR 0038 — and
-    it answers them exactly as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed
-    the two-microphone screen even where it does have a stretch.
-    """
-    finding = Finding(kind=kind, note="Orfa", segment_id=segment_id)
-    asked_on_a_stretch = segment_id is not None and kind is not FindingKind.UNCLEAR
-
-    assert closing_block(finding) == (CLOSING_ON_SCREEN if asked_on_a_stretch else CLOSING_SPOKEN)
-
-
 def test_the_analyst_is_never_asked_for_a_kind_it_may_not_report() -> None:
     """The taxonomy the model is handed is the one the parser and Refine define.
 
@@ -1166,17 +1063,6 @@ def test_the_speaker_has_no_branch_for_a_kind_that_is_never_produced() -> None:
     assert "is an addition with one more sentence" in SPEAKER, (
         "o silêncio preenchido perdeu a frase a mais que o distingue de uma adição comum"
     )
-
-
-def test_the_correction_check_asks_for_the_same_three_kinds() -> None:
-    """CORRECTION_KINDS and this prompt are one contract read from two sides.
-
-    Asking the reader for a kind the parser then refuses turns a correction check the team
-    already paid for into no verdict at all.
-    """
-    assert CORRECTION.count(THREE_KINDS) == 1
-    for name in RETIRED_WIRE_NAMES:
-        assert name not in CORRECTION, f"o prompt da correção ainda pede {name}"
 
 
 def _one_line(text: str) -> str:
@@ -1237,4 +1123,4 @@ async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehear
     )
 
     assert analysis is not None
-    assert closing_block(analysis.findings[0]) == CLOSING_ON_SCREEN
+    assert points_at_a_stretch(analysis.findings[0])

@@ -370,14 +370,12 @@ async def _finished(
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
-    retired = await room.retired_segments(db, session.id)
     with stage("db_let_go"):
         await db.commit()
     verdict = await room.check_the_telling_back(
         session,
         state=state,
         told=told,
-        retired=retired,
         takes=takes,
         settings=get_settings(),
     )

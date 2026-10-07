@@ -73,7 +73,7 @@ async def test_the_verdict_is_judged_against_what_the_team_reported_not_as_their
     assert judged.index(HER_REPORTED) < judged.index("## The drafted response to validate"), (
         "o que a equipe relatou vem com o mapa, antes do rascunho"
     )
-    assert "## WHAT THE TEAM JUST SAID" not in judged, (
+    assert TOLD_BACK not in judged.split("## WHAT THE TEAM JUST SAID", 1)[1], (
         "a tradução ocupava o lugar da fala da equipe, que neste turno não falou"
     )
     assert "(não se aplica a este turno)" not in judged

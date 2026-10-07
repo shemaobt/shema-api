@@ -28,7 +28,7 @@ def test_a_missing_element_sits_after_the_frase_she_names() -> None:
     assert finding.segment_id == "segmento-2", "o que falta depois da frase 1 começa na frase 2"
 
 
-def test_a_nuance_is_read_never_voiced_and_never_refuses_the_reply() -> None:
+def test_a_nuance_never_refuses_the_reply_and_is_no_blocking_finding() -> None:
     read = _read(
         {
             "kind": "nuance",

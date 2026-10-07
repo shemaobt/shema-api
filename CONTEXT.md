@@ -29,10 +29,6 @@ _Avoid_: checker, reviewer, classifier, Analista
 The entity that checks the Guide's or the Speaker's draft speech before audio synthesis and can refuse it, triggering the safety speech.
 _Avoid_: analyst (it judges content, not speech), Validador
 
-**Correction check** (`verify_correction`):
-The call that checks whether a correction answered the finding, counting the elements the stretch carried, those still told, and those the new telling brought back. Resolved and broken are independent answers.
-_Avoid_: analyst (it reads a whole scope; this answers one finding), validator (it judges speech, not content), Verificador de correção
-
 **Team** (`project`):
 The group of translators that owns the work. In the schema the column is called `project_id`; the Desk and the backlog say team.
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
@@ -184,11 +180,11 @@ The field of a missing finding that says whether the absent content sits before,
 _Avoid_: position, offset, Onde
 
 **Swap** (`current_findings`; *relação trocada*, in Marcia's words):
-An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again, one **Correction check** answering both — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
+An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
 _Avoid_: pair (it says there are two things), swapped relation (Marcia's phrase for the mistake, not for what the room carries), troca
 
 **Priority**:
-The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, a finding the **Correction check** put at the front keeps the front for the round that follows, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
+The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
 _Avoid_: severity, ranking, sorting (the stored list keeps the analyst's order), Prioridade
 
 **Filled silence** (`fills_silence`):
@@ -222,7 +218,7 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
+The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
 **Heard the rehearsal** (`unheard_parts`):

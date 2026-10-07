@@ -67,10 +67,6 @@ PLAYBACK_BLOCKER = "playback_did_not_cover_the_clip"
 #: rows written in the same second cannot say which.
 REHEARSED_AT = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
-#: The heading that only the correction prompt carries. The double tells the two readings
-#: apart by it, the way a reader would — not by counting calls.
-CORRECTION_MARK = "## What the team told back now"
-
 
 class Analyst:
     """The analyst, and a count of how many times it was actually asked to read.
@@ -99,26 +95,15 @@ class ScriptedAnalyst:
     """The analyst answering the findings a case wrote, one entry per whole reading.
 
     A case about what the room does *with* a finding has to put one there, and the counting
-    double above cannot: it answers the same clean reading every time. The correction check is
-    told apart by the heading only its prompt carries, the way a reader would, and it keeps
-    what it was shown and passes: a case that needs it to refuse, or to raise something of its
-    own, sets that up here when there is one — buttons nobody presses are a double agreeing
-    with itself. The seam has a double of the same shape (`text_seam_harness.Analyst`) and the
-    two are deliberately not merged: this module is where `CORRECTION_MARK` lives, so importing
-    that one back would close an import cycle.
+    double above cannot: it answers the same clean reading every time.
     """
 
     def __init__(self) -> None:
         self.readings: list[dict[str, Any]] = []
-        self.verifications: list[str] = []
-        self.verification: dict[str, Any] = {"resolved": True, "findings": []}
         self.shown: list[str] = []
         self.on_reading: Callable[[], Awaitable[None]] | None = None
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if CORRECTION_MARK in system_prompt:
-            self.verifications.append(system_prompt)
-            return json.dumps(self.verification)
         self.shown.append(system_prompt)
         if self.on_reading is not None:
             await self.on_reading()
