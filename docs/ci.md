@@ -23,6 +23,7 @@ turning red. [ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
 | Claude mention | Answers an `@claude` mention on a pull request or issue. |
 | Claude cost report | A weekly usage rollup, posted to a webhook when one is configured. |
+| Canon sync | Mondays and Thursdays at 09:17 UTC: when the compiler's `main` has moved past the pin, re-syncs the canon, runs the drift check against a fresh clone, the canon smoke and `docker build`, and opens one pull request, "Canon sync: new published canon from the compiler", for review. It never merges; with nothing new it does nothing. |
 | Reviews | Two review workflows, each fired by requesting its reviewer on the pull request; re-request to re-run. On a pull request into `dev` the request is made automatically, and remade on every head, because the check is keyed to the head SHA. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
 | Request Joãozinho on dev | Requests the reviewer on every head of a pull request into `dev`, including one retargeted onto it, which is what fires the review there. It requests nobody when the author is Joãozinho's own login or a bot, because the review would skip and a skipped check counts as passing. |
 
