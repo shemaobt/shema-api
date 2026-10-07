@@ -17,6 +17,7 @@ from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
     SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
+    TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
     her_block,
     split_opening_movements,
@@ -330,11 +331,11 @@ async def _voiced_after_validation(
         validator_system = render(
             cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
-            MEANING_MAP=standard_of_truth,
+            MEANING_MAP=standard_of_truth + her_block(TEAM_REPORTED_HEADING, telling_back),
             EARLIER_PASSAGES=her_block(EARLIER_PASSAGES_HEADING, earlier_passages),
             TEAM_EVIDENCE=her_block(
                 TEAM_EVIDENCE_HEADING,
-                "" if mother_tongue else transcript or telling_back or opening_instruction,
+                "" if mother_tongue else transcript or opening_instruction,
             ),
             DRAFTED_RESPONSE=draft,
         )

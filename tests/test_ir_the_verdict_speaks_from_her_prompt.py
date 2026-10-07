@@ -13,6 +13,12 @@ TOLD_BACK = "Noemi ouviu que o Senhor tinha dado pão ao seu povo, e decidiu vol
 VERDICT = (
     "No que vocês me traduziram, a frase 1 diz que as noras pediram. A história não conta isso."
 )
+HER_REPORTED = (
+    "\n\n---\n\n# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+    "Evidence of what the team told back — NEVER truth about the passage. The drafted response "
+    "may quote from it to name something reported that the passage does not tell; quoting this "
+    "material is not a claim about the passage and must not be treated as ungrounded.\n\n"
+)
 
 
 class _Recording:
@@ -35,7 +41,7 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> _Recording:
     return models
 
 
-async def test_the_verdict_is_spoken_from_her_body_and_judged_against_the_telling_back(
+async def test_the_verdict_is_judged_against_what_the_team_reported_not_as_their_words(
     recording: _Recording,
 ) -> None:
     outcome = await run_verdict_turn(
@@ -57,8 +63,15 @@ async def test_the_verdict_is_spoken_from_her_body_and_judged_against_the_tellin
     assert recording.speaker[0].startswith(
         "## Your role\n\nYou are the same warm voice that has walked this passage with the team."
     )
-    assert (
-        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
-        "The drafted response answers this. Referring to these words is not a claim about the "
-        f"passage.\n\n{TOLD_BACK}"
-    ) in recording.validator[0], "o Validador julgava o veredito sem ver o que a equipe traduziu"
+    judged = recording.validator[0]
+    assert f"{HER_REPORTED}{TOLD_BACK}" in judged, (
+        "a tradução da equipe chegava como fala deste turno, não sob o bloco dela"
+    )
+    assert judged.index(HER_REPORTED) < judged.index("## The drafted response to validate"), (
+        "o que a equipe relatou vem com o mapa, antes do rascunho"
+    )
+    assert "## WHAT THE TEAM JUST SAID" not in judged, (
+        "a tradução ocupava o lugar da fala da equipe, que neste turno não falou"
+    )
+    assert "(não se aplica a este turno)" not in judged
+    assert "(not applicable to this turn)" not in judged
