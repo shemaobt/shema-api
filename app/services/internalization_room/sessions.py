@@ -50,6 +50,7 @@ from app.services.internalization_room.earlier_passages import earlier_passages 
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.live import live
+from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
@@ -632,6 +633,7 @@ async def append_exchange(
             guide["interrupted"] = asdict(outcome.interrupted)
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
+    guide["moment"] = moment_step(session.messages or [], guide_response)
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
     if state is not None:
