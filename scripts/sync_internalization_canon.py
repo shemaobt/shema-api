@@ -48,6 +48,7 @@ REPO = "MarciaSuzuki/tripod_compiler"
 VENDOR = Path(__file__).resolve().parents[1] / ("app/services/internalization_room/canon/vendor")
 PIN_FILE = VENDOR / "VENDOR_PIN"
 MANIFEST = "VENDOR_MANIFEST.json"
+PROVENANCE = "registry/PROVENANCE.md"
 KINDS = {
     "meaning-map": "fixtures/meaning-map",
     "meaning-coordinates": "fixtures/meaning-coordinates",
@@ -212,7 +213,7 @@ def _held() -> dict[str, bytes]:
         for kind in KINDS
         if (VENDOR / kind).is_dir()
         for path in sorted((VENDOR / kind).iterdir())
-        if path.is_file()
+        if path.is_file() and f"{kind}/{path.name}" != PROVENANCE
     }
 
 
