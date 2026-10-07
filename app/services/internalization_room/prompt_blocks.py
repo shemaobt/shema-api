@@ -115,7 +115,7 @@ def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str]
 
 
 def meaning_map_block(pericope_num: str, book: str) -> str:
-    """The passage's map verbatim, plus the digests of strictly earlier passages.
+    """The passage's map with its links as codes alone, plus the earlier passages' digests.
 
     *Tripod Internalization · Interaction Flows*
     (`internalization-room/docs/spec/interaction-flows.md`, §1, diagram caption) calls the
