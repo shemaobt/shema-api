@@ -27,6 +27,8 @@ SEND_OFF = (
     "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
 )
 ENSAIO_FINAL = {"at": "ensaio_final"}
+SCENE_TWO_PRACTISED = {"at": "articulation", "part": 2, "fenced": False}
+SCENE_TWO_FENCED = {"at": "articulation", "part": 2, "fenced": True}
 TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira. Noemi voltou."
 
 
@@ -118,3 +120,13 @@ def test_an_opening_line_after_the_send_off_leaves_the_room_in_the_ensaio_final(
     assert _after(ENSAIO_FINAL, "Vamos pra Internalização da cena 2.") == ENSAIO_FINAL, (
         "uma linha numerada depois da despedida tirou a sala do Ensaio Final"
     )
+
+
+def test_her_articulation_line_moves_the_room_to_the_scenes_articulation() -> None:
+    assert _after(SCENE_TWO_OPEN, "Vamos pra Articulação da cena 2.") == SCENE_TWO_PRACTISED, (
+        "a voz abriu a Articulação da cena 2 e a sala continuou na Internalização"
+    )
+
+
+def test_her_articulation_line_said_again_in_that_articulation_keeps_its_fenced_block() -> None:
+    assert _after(SCENE_TWO_FENCED, "Vamos pra Articulação da cena 2.") == SCENE_TWO_FENCED

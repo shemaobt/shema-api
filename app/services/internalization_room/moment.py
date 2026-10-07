@@ -41,7 +41,7 @@ _AFTER = r"(?=\s*(?:[.!,:;…—\N{EN DASH}]|$))"
 _PT_PART = rf"(?:cena|parte) {_N}"
 _ENTRANCE = regex.compile(
     rf"{_START}{_LEAD_PT}vamos (?:agora )?(?:pra|para a|para|entrar na|passar (?:pra|para a)"
-    rf"|seguir (?:pra|para a)) (Internalização) da {_PT_PART}{_AFTER}",
+    rf"|seguir (?:pra|para a)) (Internalização|Articulação) da {_PT_PART}{_AFTER}",
     regex.IGNORECASE,
 )
 
@@ -61,6 +61,8 @@ SCENE_CLOSINGS = (
 
 SEND_OFF_LAST = "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
 
+_ENTRANCES = {"internalização": "entrance", "articulação": "articulation_entrance"}
+
 
 def _folded(voiced: str) -> str:
     return " ".join(unicodedata.normalize("NFC", voiced).split())
@@ -77,6 +79,7 @@ class Moment:
     at: At
     part: int | None = None
     closed: bool = False
+    fenced: bool = False
 
     def as_json(self) -> dict[str, Any]:
         stored: dict[str, Any] = {"at": self.at}
@@ -84,11 +87,18 @@ class Moment:
             stored["part"] = self.part
         if self.closed:
             stored["closed"] = True
+        if self.at == "articulation":
+            stored["fenced"] = self.fenced
         return stored
 
     @classmethod
     def of(cls, stored: dict[str, Any]) -> Moment:
-        return cls(at=stored["at"], part=stored.get("part"), closed=stored.get("closed", False))
+        return cls(
+            at=stored["at"],
+            part=stored.get("part"),
+            closed=stored.get("closed", False),
+            fenced=stored.get("fenced", False),
+        )
 
 
 FAMILIARIZATION = Moment(at="familiarization")
@@ -114,7 +124,8 @@ def moment_step(messages: list[dict[str, Any]], voiced: str) -> dict[str, Any]:
 
 def _triggers(folded: str) -> list[tuple[int, str, int | None]]:
     found: list[tuple[int, str, int | None]] = [
-        (line.start(), "entrance", _number(line[2])) for line in _ENTRANCE.finditer(folded)
+        (line.start(), _ENTRANCES[line[1].lower()], _number(line[2]))
+        for line in _ENTRANCE.finditer(folded)
     ]
     for cause, lines in (
         ("part_closing", SCENE_CLOSINGS),
@@ -135,6 +146,9 @@ def _moved(moment: Moment, cause: str, part: int | None) -> Moment:
         return moment
     if cause == "entrance":
         return Moment(at="internalization", part=part)
+    if cause == "articulation_entrance":
+        same = moment.at == "articulation" and moment.part == part
+        return moment if same else Moment(at="articulation", part=part)
     if moment.at != "familiarization":
         return moment
     if cause == "part_closing":
