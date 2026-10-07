@@ -119,7 +119,7 @@ async def check_the_telling_back(
         if read is None:
             raise UnreadableReply("a resposta do analista não pôde ser lida")
         read_this_round = read.findings
-        nuances = read.nuances
+        nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
 

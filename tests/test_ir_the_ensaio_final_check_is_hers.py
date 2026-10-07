@@ -289,3 +289,22 @@ async def test_a_nuance_quoting_words_its_frase_does_not_hold_is_dropped_alone(
 
     assert _handed(speaker) == "[]", "a voz citava como da equipe palavras que a frase dela não tem"
     assert result["conferida"] is True
+
+
+async def test_of_two_nuances_only_the_one_on_the_lowest_frase_is_handed(
+    client, analyst, speaker
+) -> None:
+    on_frase_one = {
+        "kind": "nuance",
+        "note": "A volta ficou com as noras.",
+        "frase": 1,
+        "quote": "voltou com as noras",
+        "story": "ela partiu com as duas noras",
+    }
+    analyst.readings = [{"findings": [A_NUANCE, on_frase_one]}]
+
+    await _a_round(client, TELLING)
+
+    assert [one["frase"] for one in json.loads(_handed(speaker))] == [1], (
+        "a voz dizia a primeira nuance da resposta, não a da frase mais baixa"
+    )
