@@ -17,9 +17,11 @@ from app.services.internalization_room.canon.parse_map import (
 )
 
 LOGS_DIR = VENDOR / "compilation-log"
+COORDINATES_DIR = VENDOR / "meaning-coordinates"
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
 _CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
+_JSON_BLOCK = re.compile(r"```json\s*(.*?)```", re.S)
 
 
 class PreservationRule(BaseModel):
@@ -156,6 +158,30 @@ def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
                 )
             )
     return tuple(rules)
+
+
+class SceneAbsence(BaseModel):
+    scene_id: str
+    verse_range: str
+    text: str
+
+
+@lru_cache(maxsize=64)
+def significant_absences(pericope_num: str) -> tuple[SceneAbsence, ...]:
+    path = sorted(COORDINATES_DIR.glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))[0]
+    block = _JSON_BLOCK.search(path.read_text(encoding="utf-8"))
+    if block is None:
+        raise ValidationError(f"{path.name}: no json block")
+    coordinates = json.loads(block.group(1))
+    return tuple(
+        SceneAbsence(
+            scene_id=scene["scene_id"],
+            verse_range=scene["verse_range"],
+            text=scene["significant_absence"],
+        )
+        for scene in coordinates["level_2_scenes"]
+        if scene.get("significant_absence")
+    )
 
 
 def unwalkable(meaning_map: MeaningMap) -> str | None:

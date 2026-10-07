@@ -15,6 +15,10 @@ R6_LINE = (
     "P01. The withholding is structural and intentional; it contrasts with the first divine "
     "action at 1:6 in P02. Reconstructor must not assign divine causation."
 )
+SCENE_1_SILENCE = (
+    "- S1 (1:1-2): Narrator never says YHWH sent the famine or drove the family out; the book "
+    "opens with no word of God acting."
+)
 
 
 class FakeAgent:
@@ -77,3 +81,12 @@ async def test_each_rule_reaches_the_validator_as_her_line_with_no_passage_tag_i
 
     assert R6_LINE in validator
     assert "[P01]" not in validator
+
+
+async def test_the_first_scenes_silence_reaches_the_validator_as_her_coordinates_sentence(
+    agent: FakeAgent,
+) -> None:
+    _, validator = await _guide_and_validator(agent, "P01")
+
+    assert SCENE_1_SILENCE in validator
+    assert "- S1 (v.1\u20132):" not in validator

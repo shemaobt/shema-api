@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.services.internalization_room.canon.book_material import (
     preservation_rules,
+    significant_absences,
     story_so_far,
 )
 from app.services.internalization_room.canon.elements import (
@@ -146,9 +147,8 @@ def validator_map_block(pericope_num: str, book: str) -> str:
         if rule.pericope == pericope_num
     )
     absences = "\n".join(
-        f"- S{scene.number} ({scene.verses}): {scene.absence}"
-        for scene in meaning_map.scenes
-        if scene.absence
+        f"- {absence.scene_id} ({absence.verse_range}): {absence.text}"
+        for absence in significant_absences(pericope_num)
     )
     validator_map = code_only_links(
         f"{meaning_map.body}\n\n---\n\n"

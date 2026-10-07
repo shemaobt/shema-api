@@ -1,5 +1,3 @@
-# ruff: noqa: RUF001 — the expectations are canon quoted verbatim; the en dash in a
-# verse range is the character the map itself carries.
 import json
 from typing import Any
 
@@ -47,17 +45,17 @@ PROHIBITIONS = (
 
 ABSENCES = "## SIGNIFICANT ABSENCES (per scene — silences that must be preserved, never filled)"
 
-#: The four silences of P01, quoted from the **Significant Absence** blocks of
-#: `canon/vendor/meaning-map/P01-Ruth-1-1-5.md`, scene by scene.
+#: The four silences of P01, quoted from the `significant_absence` of each scene in
+#: `canon/vendor/meaning-coordinates/P01-Ruth-1-1-5-MEANING-COORDINATES.md`, scene by scene.
 P01_ABSENCES = (
-    "- S1 (v.1–2): The narrator never says YHWH sent the famine or drove the family out. "
-    "The book opens with no word of God doing anything.",
-    "- S2 (v.3): The narrator points to no one as the cause of the death. No grief is "
-    "described. No funeral or mourning is mentioned.",
-    "- S3 (v.4): No children are born to either marriage in the ten years they live there. "
-    "The narrator tells us how long it was, but says nothing of any child.",
-    "- S4 (v.5): The narrator tells of no grief, no funeral, no one left to carry on the "
-    "line, and no act of God. The losses are reported, and the line simply stops there.",
+    "- S1 (1:1-2): Narrator never says YHWH sent the famine or drove the family out; the book "
+    "opens with no word of God acting.",
+    "- S2 (1:3): Narrator points to no one as the cause of the death. No grief described. No "
+    "funeral or mourning mentioned.",
+    "- S3 (1:4): No children born to either marriage in the ten years they live there; "
+    "narrator gives the length but names no child.",
+    "- S4 (1:5): Narrator tells of no grief, no funeral, no one left to carry on the line, and "
+    "no act of God. The losses are reported and the line simply stops there.",
 )
 
 
