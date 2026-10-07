@@ -304,7 +304,7 @@ async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exch
     ], "a resposta lembrada em duplicata voltava a transação e levava a troca junto"
 
 
-async def test_a_turn_whose_clip_never_reached_the_bucket_is_not_written_and_its_resend_is(
+async def test_a_turn_whose_clip_never_reached_the_bucket_is_still_written_and_its_resend_reads_it(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     voice: _Voice,
@@ -323,20 +323,21 @@ async def test_a_turn_whose_clip_never_reached_the_bucket_is_not_written_and_its
     monkeypatch.setattr(sessions_api.room, "append_exchange", append_then_say_so)
     voice.the_bucket_is_down = True
 
-    failed = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
+    answered = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
 
-    assert failed.status_code >= 500, failed.text[:300]
+    assert answered.status_code == 200, answered.text[:300]
     async with rival_factory() as fresh:
         after = await get_session(fresh, waiting_room.id)
         remembered = (await fresh.execute(select(IRTurn))).scalars().all()
-    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [FIRST_QUESTION], (
-        "a troca ficava gravada sem a equipe ter ouvido nada"
-    )
-    assert remembered == []
+    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [
+        FIRST_QUESTION,
+        GUIDE_LINE,
+    ], "o bucket recusava o clipe e a troca já validada se perdia"
+    assert len(remembered) == 1
 
     resent = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
 
-    assert resent.status_code == 200, resent.text[:300]
+    assert resent.json() == answered.json()
     async with rival_factory() as fresh:
         after = await get_session(fresh, waiting_room.id)
     assert [m["text"] for m in after.messages if m["role"] == "guide"] == [

@@ -274,12 +274,13 @@ def _addressed(
 
     voice = voice_id or resolve_voice(language)
     chosen_model = model or cfg.elevenlabs_tts_model
-    key = cache_key(
+    key = speech_key(
         text,
+        language=language,
         voice_id=voice,
         model=chosen_model,
-        output_format=cfg.elevenlabs_output_format,
         voice_settings=voice_settings,
+        settings=cfg,
     )
     voiced = partial(
         _synthesize,
@@ -294,6 +295,26 @@ def _addressed(
         api_key=credential,
     )
     return key, store or _default_store(cfg), voiced
+
+
+def speech_key(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None = None,
+    model: str | None = None,
+    voice_settings: Mapping[str, float | bool] | None = None,
+    settings: Settings | None = None,
+    **_: object,
+) -> str:
+    cfg = settings or get_settings()
+    return cache_key(
+        text,
+        voice_id=voice_id or resolve_voice(language),
+        model=model or cfg.elevenlabs_tts_model,
+        output_format=cfg.elevenlabs_output_format,
+        voice_settings=voice_settings,
+    )
 
 
 async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:

@@ -14,7 +14,6 @@ process would never see.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -34,6 +33,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     get_session,
 )
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.internalization_room.turn_dedup import remember_turn
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
@@ -94,7 +94,7 @@ def _dead_after() -> timedelta:
 
 
 def _clip_of(text: str) -> str:
-    return f"tts/voice/{hashlib.sha256(text.encode()).hexdigest()[:16]}.mp3"
+    return facilitator_speech_key(text, language="pt")
 
 
 class _Voice:

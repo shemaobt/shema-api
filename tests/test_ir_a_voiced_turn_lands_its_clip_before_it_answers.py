@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -53,25 +52,6 @@ class _Elevenlabs:
         return SimpleNamespace(status_code=200, content=b"mp3", text="")
 
 
-class _BucketThatWaitsForTheWrite:
-    def __init__(self) -> None:
-        self.uploading = asyncio.Event()
-        self.written = asyncio.Event()
-        self.objects: dict[str, bytes] = {}
-
-    async def get(self, key: str) -> bytes | None:
-        return self.objects.get(key)
-
-    async def exists(self, key: str) -> bool:
-        return key in self.objects
-
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        self.uploading.set()
-        await asyncio.wait_for(self.written.wait(), timeout=1)
-        await asyncio.sleep(0.05)
-        self.objects[key] = data
-
-
 async def _hearing(audio: bytes, **_: Any) -> HeardSpeech:
     return HeardSpeech(text="Noemi voltou para Belém com Rute no tempo da colheita")
 
@@ -90,14 +70,12 @@ def _forget_which_rung_answered():
 
 
 @pytest.fixture()
-def bucket() -> _BucketThatWaitsForTheWrite:
-    return _BucketThatWaitsForTheWrite()
+def bucket() -> _Bucket:
+    return _Bucket()
 
 
 @pytest.fixture()
-async def client(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _BucketThatWaitsForTheWrite
-):
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
@@ -116,16 +94,6 @@ async def client(
     )
     monkeypatch.setattr(tts, "_make_client", _Elevenlabs)
     monkeypatch.setattr(tts, "_default_store", lambda _: bucket)
-
-    appended = sessions_api.room.append_exchange
-
-    async def _append_then_say_so(*args: Any, **kwargs: Any) -> IRSession:
-        session = await appended(*args, **kwargs)
-        await asyncio.wait_for(bucket.uploading.wait(), timeout=1)
-        bucket.written.set()
-        return session
-
-    monkeypatch.setattr(sessions_api.room, "append_exchange", _append_then_say_so)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -151,8 +119,8 @@ async def waiting_room(db_session: AsyncSession) -> IRSession:
     return await save_comprehension(db_session, session, state)
 
 
-async def test_the_clip_uploads_while_the_turn_is_written_and_lands_before_the_answer(
-    client: httpx.AsyncClient, waiting_room: IRSession, bucket: _BucketThatWaitsForTheWrite
+async def test_the_clip_lands_in_the_bucket_before_the_turn_answers(
+    client: httpx.AsyncClient, waiting_room: IRSession, bucket: _Bucket
 ) -> None:
     from app.core.config import get_settings
 
@@ -162,15 +130,11 @@ async def test_the_clip_uploads_while_the_turn_is_written_and_lands_before_the_a
         files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
     )
 
-    assert answered.status_code == 200, (
-        "a escrita no banco terminava inteira antes de o upload começar, e a resposta "
-        "esperava as duas coisas uma atrás da outra"
-    )
+    assert answered.status_code == 200, answered.text[:300]
     handle = answered.json()["audio_url"].rsplit("/", 1)[-1]
     key = from_handle(handle, settings=get_settings())
     assert key in bucket.objects, (
-        "o upload do clipe ao GCS esperava inteiro antes da escrita no banco começar, e a "
-        "resposta só saía depois das duas coisas, uma atrás da outra"
+        "a resposta saía antes de o clipe chegar ao bucket, e outra instância não o achava"
     )
 
 
@@ -216,11 +180,11 @@ async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
     session = await create_session(db_session, language="pt", pericope="OV")
 
-    refused = await client.post(
+    answered = await client.post(
         f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}
     )
 
-    assert refused.status_code == 502
+    assert answered.status_code == 200, answered.text[:300]
     assert b"o todo" in store.objects.values(), (
         "a cena falhava e o fallback da fala inteira falhava atrás dela, e o movimento já "
         "pago à ElevenLabs nunca chegava ao bucket"

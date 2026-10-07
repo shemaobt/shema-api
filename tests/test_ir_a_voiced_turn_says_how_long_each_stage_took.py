@@ -255,10 +255,12 @@ async def test_a_turn_whose_voice_breaks_still_says_how_long_it_waited_before_br
     with caplog.at_level(logging.INFO):
         answered = await _the_team_answers(client, waiting_room.id)
 
-    assert answered.status_code == 500
+    assert answered.status_code == 200, answered.text[:300]
     lines = _timing_lines(caplog)
     assert len(lines) == 1, "o turno que quebrava não deixava tempo nenhum para trás"
-    assert re.search(r" stt=\d+ms guide=\d+ms validator=\d+ms voice=\d+ms total=\d+ms", lines[0])
+    assert re.search(
+        r" stt=\d+ms guide=\d+ms validator=\d+ms db_write=\d+ms voice=\d+ms", lines[0]
+    ), "a voz era feita antes de o turno ficar guardado"
 
 
 async def test_the_tablets_timings_of_its_last_turn_reach_the_same_log_as_the_servers(

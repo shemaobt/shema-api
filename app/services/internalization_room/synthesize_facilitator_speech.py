@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from functools import partial
 from typing import TypeVar
 
@@ -16,6 +16,7 @@ from app.services.platform.tts import (
     SpeechStore,
     SynthesizedSpeech,
     Upload,
+    speech_key,
     synthesize_speech,
     synthesize_speech_key,
 )
@@ -93,6 +94,10 @@ async def in_a_voice_the_room_has(key: str, text: str, *, language: str | None) 
     return speech.key
 
 
+def facilitator_speech_key(text: str, *, language: str | None) -> str:
+    return _in_the_rooms_voice(speech_key, text, language=language, settings=None)()
+
+
 async def render_facilitator_speech(
     text: str, *, language: str, store: SpeechStore
 ) -> SynthesizedSpeech:
@@ -101,12 +106,12 @@ async def render_facilitator_speech(
 
 
 def _in_the_rooms_voice(
-    speak: Callable[..., Awaitable[T]],
+    speak: Callable[..., T],
     text: str,
     *,
     language: str | None,
     settings: Settings | None,
-) -> Callable[..., Awaitable[T]]:
+) -> Callable[..., T]:
     cfg = settings or get_settings()
     spoken = normalize(language) or floor(cfg)
     return partial(
