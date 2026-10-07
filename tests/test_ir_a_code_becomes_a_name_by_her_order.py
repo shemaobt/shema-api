@@ -3,7 +3,11 @@ import logging
 import pytest
 
 from app.services.internalization_room.canon import names
-from app.services.internalization_room.canon.elements import element_keys, elements_for, elements_of
+from app.services.internalization_room.canon.elements import (
+    element_keys,
+    elements_for,
+    elements_of,
+)
 from app.services.internalization_room.canon.parse_map import MAPS_DIR, parse_map
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 
@@ -103,8 +107,15 @@ def test_the_unnamed_husband_of_ruth_2_11_is_given_no_name_and_no_description() 
     assert labels["being:S2:ruth-s-deceased-husband-your-hus"] == UNNAMED, (
         "o Guia lia 'Ruth's deceased husband', uma descrição que o texto não dá"
     )
-    assert labels["being:S2:ruth-s-father-and-mother-your-fa"] == UNNAMED
     assert "deceased husband" not in coverage_status_block({}, "P06")
+
+
+def test_a_being_her_coordinates_do_not_know_reads_the_maps_own_words_for_it() -> None:
+    assert _labels("P06")["being:S2:ruth-s-father-and-mother-your-fa"] == (
+        '"your father and your mother"'
+    ), "os pais de Rute eram 'Ruth's father and mother — אָבִיךְ וְאִמֵּךְ / …', hebraico e tudo"
+    assert _labels("P07")["being:S3:the-dead-of-the-household-the-de"] == '"the dead"'
+    assert _labels("P12")["being:S1:the-dead-the-dead"] == '"the dead"'
 
 
 def test_an_unnamed_being_with_a_form_or_a_role_word_reads_it_and_nothing_more() -> None:

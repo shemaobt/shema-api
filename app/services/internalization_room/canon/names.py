@@ -46,12 +46,19 @@ def _beings_by_scene(pericope_num: str) -> dict[int, list[dict]]:
     }
 
 
+def _gloss(line: str) -> str | None:
+    gloss = _NAMED_LINK.sub("", line.strip().rsplit("/", 1)[-1].strip())
+    if gloss and "[[" not in gloss and not _FLAG_NOTE.match(gloss):
+        return gloss
+    return None
+
+
 @lru_cache(maxsize=32)
 def _glosses(body: str) -> dict[str, str]:
     glosses: dict[str, str] = {}
     for code, rest in _DEFINITION.findall(body):
-        gloss = _NAMED_LINK.sub("", rest.strip().rsplit("/", 1)[-1].strip())
-        if gloss and "[[" not in gloss and not _FLAG_NOTE.match(gloss):
+        gloss = _gloss(rest)
+        if gloss:
             glosses.setdefault(code, gloss)
     return glosses
 
@@ -66,13 +73,16 @@ def name_of(meaning_map: MeaningMap, code: str) -> str:
     entry = _names_list(meaning_map.book).get(code)
     if entry is not None and not _retired_or_reserved(code, entry):
         return str(entry["english"])
-    gloss = _glosses(meaning_map.body).get(code)
+    return _grounded(meaning_map, code, _glosses(meaning_map.body).get(code))
+
+
+def _grounded(meaning_map: MeaningMap, mention: str, gloss: str | None) -> str:
     if gloss:
         return gloss
     logger.warning(
         "%s %s has no name in the names list and no gloss in the map",
         meaning_map.pericope_num,
-        code,
+        mention,
     )
     return UNRESOLVED_LABEL
 
@@ -98,8 +108,13 @@ def being_names(meaning_map: MeaningMap, scene: Scene) -> list[str]:
     names: list[str] = []
     for being in scene.beings:
         if being.code is None:
-            entry = next(withheld, {})
-            names.append(_withheld_label(entry.get("referential_form"), entry.get("role_in_scene")))
+            entry = next(withheld, None)
+            if entry is None:
+                names.append(_grounded(meaning_map, being.label, _gloss(being.label)))
+            else:
+                names.append(
+                    _withheld_label(entry.get("referential_form"), entry.get("role_in_scene"))
+                )
             continue
         form = next(
             (entry.get("referential_form") for entry in entries if entry["being_id"] == being.code),
