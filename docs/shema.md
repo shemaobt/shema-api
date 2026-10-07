@@ -1110,21 +1110,41 @@ truth of a sensitive place belongs to coordination**, and every other role reads
 in its place, *inclusive na ficha*. So every leaving shape — the ficha included — is built
 **for a reader**, `ShemaReader`, and one class covers the three values:
 
-| | `coordination` | `other` | `outside` |
-|---|---|---|---|
-| **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
-| `location`, `country` | the truth | the region **key** | the region key |
-| `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | `""` | `""` |
-| `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | `""` | `""` |
-| `coords` | the truth | the region centroid | the region centroid |
-| `sensitiveCountry` (the ficha) | the flag | the flag | — |
-| `locationWithheld` | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed |
-| `readAs` (card and ficha) | `"coordination"` | `"other"` | — |
-| `locationsWithheld` (the collection) | how many, or `null` when none | `null` | — |
+| | `coordination` | `trusted` (OBT-571) | `other` | `outside` |
+|---|---|---|---|---|
+| **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | a `resourceCircle` on a project in a region of its scope — reads the truth, writes nothing of coordination's | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
+| `location`, `country` | the truth | the truth | the region **key** | the region key |
+| `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
+| `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | the truth | `""` | `""` |
+| `coords` | the truth | the truth | the region centroid | the region centroid |
+| `sensitiveCountry` (the ficha) | the flag | the flag | the flag | — |
+| `locationWithheld` | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed |
+| `readAs` (card and ficha) | `"coordination"` | `"trusted"` | `"other"` | — |
+| `locationsWithheld` (the collection) | how many, or `null` when none | how many, or `null` when none | `null` | — |
 
 Only a **withheld** record is reduced — flagged, or built from something that could not say.
 A cleared record is the truth for every reader. On a reduced ficha `location2` and the two
 optional contacts read `""` rather than `null`.
+
+**The `trusted` column is OBT-571's** (Karina, via Daniel, 6/oct/2026: *"o Resource Circle poderá
+ver tudo, mesmo os projetos em países sensíveis, só não podem editar"*; Daniel, 7/oct/2026: the
+*tudo* includes the **health**, and the **OBT Lab stays redacted**). The Resource Circle reads a
+sensitive project in its own scope exactly as the coordination does — the place, the base, the
+contacts, the reason, the real language name, the free text, the needs' descriptions, the
+history's notes, the count of withheld projects and the `sensitive` facet — and the health on
+the ficha, the card, the health tab, the filter, the order and the file it exports
+(`_health_audience.HEALTH_READERS`). What it does **not** gain is a write: `readAs` is a third
+value because the console asks it two questions at once — *is this the truth?* and *may I edit
+the place and the flag?* — and this is the first reader whose answers differ. `Readership.truth`
+carries where a caller reads the truth apart from where it coordinates, so every write path
+(`unwritable_fields`, `refuse_unread_health_writes` — now gated on the **audience**, `import`,
+the ETEN ledger, the meetings' log, filing an assessment) keeps asking the coordination and the
+audience and refuses the Circle as before; `tests/test_shema/test_resource_circle_reads.py` holds
+a 403 per write route. A `trusted` payload is refused as an import, because it is still not the
+whole record: a prayer request kept in coordination is `""` to the Circle
+(`_consent.PRAYER_AUDIENCE` did not move). The meetings' pastoral log did not move either — the
+issue names the ficha, the card, the health tab, the filter and the order, and a debriefing is
+none of them.
 
 **Where the reader comes from.** `app/services/shema/_scope.py`'s `readership` answers it from
 the grant and the scope the request already read — no query of its own — as a `Readership` the
