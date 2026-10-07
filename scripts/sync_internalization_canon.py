@@ -242,10 +242,7 @@ def _git(clone: Path, *args: str) -> bytes:
 
 def _against_the_clone(clone: Path, sha: str) -> list[str]:
     def listing(kind: str, at: str) -> list[str]:
-        try:
-            names = _git(clone, "ls-tree", "-z", "--name-only", f"{at}:{KINDS[kind]}")
-        except subprocess.CalledProcessError:
-            return []
+        names = _git(clone, "ls-tree", "-z", "--name-only", f"{at}:{KINDS[kind]}")
         return sorted(name for name in names.decode().split("\0") if name)
 
     def read(path: str, at: str) -> bytes:
