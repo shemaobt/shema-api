@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from enum import Enum, auto
+
 from app.core.room_enums import EarlierPassageStatus
 from app.services.internalization_room.canon.book_material import (
     preservation_rules,
@@ -114,6 +116,18 @@ def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str]
         if any(given == status for _, given in stamped)
     ]
     return f"EARLIER PASSAGES FOR THIS TEAM: {' '.join(groups)}"
+
+
+class RoomFact(Enum):
+    SCENE_REHEARSALS = auto()
+    KEPT_REHEARSALS = auto()
+    EARLIER_PASSAGES = auto()
+    MOMENT = auto()
+    ACCEPTED_READINGS = auto()
+
+
+def room_facts_block(facts: dict[RoomFact, str]) -> str:
+    return "\n\n".join(facts[fact] for fact in RoomFact if facts.get(fact))
 
 
 def _stamped_earlier(
