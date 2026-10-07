@@ -80,7 +80,9 @@ def test_a_vendored_path_dropped_from_the_pin_is_still_a_vendored_path(tmp_path:
     and the artefact it stopped naming is then simply gone, with the check green. The list of
     vendored paths is the script's own, not the pin's, and the check reads it.
     """
-    pin = _pinned(tmp_path, "a" * 40, {"docs/doctrine/vendor/DOCTRINE.md": "hers\n"})
+    pin = _pinned(
+        tmp_path, "a" * 40, {"golden/reports/2026-09-03/J01-frame-before-elicit.md": "hers\n"}
+    )
 
     faults = drift(pin, root=tmp_path)
 
@@ -104,10 +106,11 @@ def test_a_vendored_artefact_edited_in_place_is_reported_rather_than_accepted(
 
     assert not drift(pin, root=tmp_path), "the pin did not agree with the bytes it was written from"
 
-    (tmp_path / VENDORED["docs/DOCTRINE.md"]).write_text("ours now\n", encoding="utf-8")
+    report = "golden/reports/2026-09-03/README.md"
+    (tmp_path / VENDORED[report]).write_text("ours now\n", encoding="utf-8")
     faults = drift(pin, root=tmp_path)
 
-    assert faults == ["edited: docs/doctrine/vendor/DOCTRINE.md"], (
+    assert faults == [f"edited: {report}"], (
         f"the one edited artefact was not the one reported: {faults}"
     )
 
@@ -215,3 +218,48 @@ def test_her_nine_prompt_files_are_stored_at_the_fingerprints_appendix_a_lists()
         assert digest((REPO_ROOT / path).read_bytes()) == hers, (
             f"{name}: os bytes guardados não são os do app congelado dela"
         )
+
+
+HER_DOCTRINE = "a2a29782fcd58b39004e3c1e4be6db78a83868e260bb32bf8b6a11675b3bf79d"
+HER_DOCTRINE_AT_THE_FREEZE = "docs/doctrine/vendor/DOCTRINE.md"
+
+
+def test_her_doctrine_is_stored_at_the_freeze_by_its_fingerprint() -> None:
+    pinned = read_pin(FREEZE_FILE).digests
+
+    assert FROZEN.get("docs/DOCTRINE.md") == HER_DOCTRINE_AT_THE_FREEZE, (
+        "a doutrina não está sob o mesmo pin dos prompts que a sala envia"
+    )
+    assert pinned.get(HER_DOCTRINE_AT_THE_FREEZE) == HER_DOCTRINE, (
+        "o pin do congelamento não registra a digital da doutrina dela em 18fa7c4"
+    )
+    assert digest((REPO_ROOT / HER_DOCTRINE_AT_THE_FREEZE).read_bytes()) == HER_DOCTRINE, (
+        "os bytes guardados não são os da doutrina do app congelado dela"
+    )
+
+
+def test_the_doctrine_has_one_pin_and_it_is_the_one_her_prompts_are_under() -> None:
+    assert HER_DOCTRINE_AT_THE_FREEZE not in read_pin().digests, (
+        "a doutrina continuava registrada também no pin de 533b6e3, com dois commits"
+    )
+
+
+def test_the_check_ci_runs_says_the_doctrine_matches_the_commit_of_her_freeze(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert check() == 0
+    assert "the vendored doctrine matches pin 18fa7c41f037" in capsys.readouterr().out, (
+        "a doutrina está no congelamento, e o check ainda dizia o commit dos relatórios de setembro"
+    )
+
+
+def test_a_report_of_hers_that_drifted_is_named_as_a_report_not_as_the_doctrine(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    report = "golden/reports/2026-09-03/README.md"
+    monkeypatch.setitem(VENDORED, report, "golden/reports/2026-09-03/gone.md")
+
+    assert check() == 1
+    assert "her reports of 2026-09-03 drifted from pin 533b6e3f338f" in capsys.readouterr().err, (
+        "o aviso de drift dos relatórios dizia que a doutrina tinha se movido"
+    )

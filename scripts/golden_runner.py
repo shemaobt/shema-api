@@ -66,7 +66,7 @@ from app.services.internalization_room.prompt_blocks import earlier_passages_lin
 from app.services.internalization_room.sessions import book_of
 from app.services.internalization_room.turn_instructions import opening_note
 from scripts.golden_checks import mechanical_checks
-from scripts.sync_doctrine import read_pin
+from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSIONS_DIR = REPO_ROOT / "golden/sessions"
@@ -542,7 +542,8 @@ def _refusal(refused: httpx.HTTPStatusError) -> str:
 
 
 def _pins() -> str:
-    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{vendor_pin()[:7]}`"
+    freeze = read_pin(FREEZE_FILE).commit[:7]
+    return f"roteiros e doutrina no pin `{freeze}` · cânon `{vendor_pin()[:7]}`"
 
 
 def _tip() -> str:

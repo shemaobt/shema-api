@@ -31,24 +31,22 @@ from scripts.sync_doctrine import (
 def test_every_line_of_the_acceptance_bar_is_claimed_by_a_named_test() -> None:
     """The live §4 against the live record, which is what CI runs.
 
-    Seventeen lines, parsed from the doctrine at the pin. A record compared against nothing
+    Twenty-nine lines, parsed from the doctrine at her freeze. A record compared against nothing
     would agree with any paragraph, so the parse is asserted to have found the bar at all
     before the claims are read.
     """
     lines = acceptance_bar()
     record = read_bar_record()
 
-    assert len(lines) == 17, f"§4 no longer parses to the bar this record was written for: {lines}"
+    assert len(lines) == 29, f"§4 no longer parses to the bar this record was written for: {lines}"
     assert not bar_faults(lines, record, REPO_ROOT), (
         f"the acceptance bar and its tests disagree: {bar_faults(lines, record, REPO_ROOT)}"
     )
 
     pending = [fragment for fragment, tests in record.items() if tests == [PENDING]]
-    assert pending == [
-        "the send-off is always",
-        "the first rehearsal is the first oral draft",
-        "the circle is alive at `done`",
-    ], f"a line of the bar went unheld without anyone recording it: {pending}"
+    assert pending == ["the circle is alive at `done`"], (
+        f"a line of the bar went unheld without anyone recording it: {pending}"
+    )
 
 
 def test_a_line_she_adds_on_the_next_re_sync_is_not_silently_unprotected() -> None:
