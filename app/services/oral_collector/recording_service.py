@@ -606,7 +606,7 @@ async def fail_stalled_uploads(db: AsyncSession) -> int:
 
 FAILED_UPLOAD_RETENTION = timedelta(days=180)
 
-FAILED_UPLOAD_PURGE_BATCH = 300
+FAILED_UPLOAD_PURGE_BATCH = 150
 
 
 async def purge_failed_uploads(db: AsyncSession) -> int:
@@ -635,12 +635,13 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
 
     A pass takes `FAILED_UPLOAD_PURGE_BATCH` rows, oldest first, and leaves the rest to
     tomorrow's. Nothing else bounds the set, and this runs unattended: without a ceiling the
-    first pass walks whatever backlog has accumulated, one bucket round-trip per row, in a
-    request Cloud Run kills at 300 seconds (`deploy.yml`) — which would time the Inngest step
-    out and retry the whole pass, forever, on the same oversized set. 300 rows is the ceiling
-    that fits: at a pessimistic half-second per delete it spends half that budget. It is also
-    well above the daily inflow, since the producers are `fail_stalled_uploads` and a refused
-    confirm-upload, and the platform does not start 300 uploads a day, so a backlog shrinks
+    first pass walks whatever backlog has accumulated, up to two bucket round-trips per row (a
+    refused replacement owns its published object and its pending one), in a request Cloud
+    Run kills at 300 seconds (`deploy.yml`) — which would time the Inngest step out and retry
+    the whole pass, forever, on the same oversized set. 150 rows is the ceiling that fits: 300
+    deletes at a pessimistic half-second each spend half that budget. It is also well above
+    the daily inflow, since the producers are `fail_stalled_uploads` and a refused
+    confirm-upload, and the platform does not start 150 uploads a day, so a backlog shrinks
     with every pass instead of being held at a level the batch cannot clear.
 
     The deletes run on a worker thread, like every other blob call in this package
