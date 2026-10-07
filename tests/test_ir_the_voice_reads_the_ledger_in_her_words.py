@@ -10,6 +10,7 @@ from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.llm import CACHE_BREAK
+from app.services.internalization_room.prompt_blocks import coverage_status_block
 from app.services.internalization_room.run_turn import run_turn
 from tests.turn_harness import the_room_agent_is
 
@@ -63,3 +64,28 @@ async def test_with_scene_one_closed_no_line_the_guide_reads_points_at_an_open_s
     assert pointing == [], (
         "o ledger apontava a primeira cena com contas abertas, e a voz ia para lá"
     )
+
+
+def test_the_first_turn_reads_her_headings_with_every_element_not_yet_touched() -> None:
+    lines = coverage_status_block(initial_state(P), P).splitlines()
+
+    assert lines[:5] == [
+        "LEDGER (the app's notes — information only; you decide what comes next)",
+        "",
+        "WORKED WITH BY THE TEAM (engaged): (nothing yet — the session is just beginning)",
+        "",
+        "NOT YET TOUCHED (still deserve a visit before the session ends):",
+    ], "o ledger vinha como lista de tarefas, COVERED e REMAINING, sem o cabeçalho dela"
+    assert [line.split(":")[0] for line in lines[5:]] == [
+        "  arc",
+        "  context",
+        "  tone",
+        "  function",
+        "  scene",
+        "  being",
+        "  place",
+        "  object",
+        "  time",
+        "  significant_absence",
+        "  preserved_element",
+    ], "os tipos saíam com os nomes nossos, 'absence' e 'preserved', não com os dela"

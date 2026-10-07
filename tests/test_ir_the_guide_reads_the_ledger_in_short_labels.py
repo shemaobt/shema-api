@@ -49,11 +49,13 @@ def _engaged(*keys: str) -> dict[str, str]:
 #: each line (`canon/vendor/meaning-map/P01-Ruth-1-1-5.md`, §3) and the compilation log
 #: numbers each rule — never read back through `elements_for`.
 SCENE_ONE_DONE_SCENE_TWO_OPEN = """\
-COVERED (engaged): S1 (v.1–2); Elimelech @ S1; Naomi @ S1; Mahlon @ S1; Chilion @ S1; \
+LEDGER (the app's notes — information only; you decide what comes next)
+
+WORKED WITH BY THE TEAM (engaged): S1 (v.1–2); Elimelech @ S1; Naomi @ S1; Mahlon @ S1; Chilion @ S1; \
 Judges @ S1; Ephrathites @ S1; Bethlehem @ S1; Fields of Moab @ S1; the land of Judah @ S1; \
 Famine @ S1; sojourning @ S1; In the Days When the Judges Judged @ S1; absence @ S1; S2 (v.3)
 
-REMAINING (not yet worked by the team, in their own words):
+NOT YET TOUCHED (still deserve a visit before the session ends):
   arc: Level-1 arc
   context: Level-1 context
   tone: Level-1 tone
@@ -63,8 +65,8 @@ REMAINING (not yet worked by the team, in their own words):
 Women of Moab @ S3, Orpah @ S3, Ruth @ S3, Naomi @ S3, Mahlon @ S4, Chilion @ S4, the woman @ S4
   place: Fields of Moab @ S2, Fields of Moab @ S3, Fields of Moab @ S4
   object: about ten years @ S3
-  absence: absence @ S2, absence @ S3, absence @ S4
-  preserved: R3, R5, R10"""
+  significant_absence: absence @ S2, absence @ S3, absence @ S4
+  preserved_element: R3, R5, R10"""
 
 
 def test_the_block_is_her_three_parts_in_labels_the_guide_can_say() -> None:
@@ -96,7 +98,11 @@ def test_the_first_turn_is_the_whole_passage_opening_not_scene_one() -> None:
 
     lines = coverage_status_block(nothing, P).splitlines()
 
-    assert lines[0] == "COVERED (engaged): (nothing engaged yet — the session is just beginning)"
+    assert lines[0] == "LEDGER (the app's notes — information only; you decide what comes next)"
+    assert (
+        lines[2]
+        == "WORKED WITH BY THE TEAM (engaged): (nothing yet — the session is just beginning)"
+    )
 
 
 def test_every_scene_engaged_is_the_integration_with_the_axes_still_listed() -> None:
@@ -104,13 +110,13 @@ def test_every_scene_engaged_is_the_integration_with_the_axes_still_listed() -> 
 
     lines = coverage_status_block(every_scene, P).splitlines()
 
-    assert lines[2:] == [
-        "REMAINING (not yet worked by the team, in their own words):",
+    assert lines[4:] == [
+        "NOT YET TOUCHED (still deserve a visit before the session ends):",
         "  arc: Level-1 arc",
         "  context: Level-1 context",
         "  tone: Level-1 tone",
         "  function: Level-1 function",
-        "  preserved: R3, R5, R10",
+        "  preserved_element: R3, R5, R10",
     ]
 
 
@@ -119,7 +125,7 @@ def test_a_finished_passage_is_the_integration_with_nothing_remaining() -> None:
 
     lines = coverage_status_block(everything, P).splitlines()
 
-    assert lines[2:] == ["REMAINING: (none — every element has been worked by the team)"]
+    assert lines[4:] == ["REMAINING: (none — every element has been worked by the team)"]
 
 
 AUDIT_KIND = re.compile(r"\b[A-Z][A-Z]+_[A-Z_]+\b")
@@ -193,8 +199,8 @@ async def test_nothing_but_the_ledger_reaches_the_guide_from_the_app(
     )
 
     composed = guide.systems[0].partition(CACHE_BREAK)[2].strip().splitlines()
-    assert composed[0] == "COVERED (engaged): (nothing engaged yet — the session is just beginning)"
-    assert composed[-1] == "  preserved: R3, R5, R10", (
+    assert composed[0] == "LEDGER (the app's notes — information only; you decide what comes next)"
+    assert composed[-1] == "  preserved_element: R3, R5, R10", (
         "o bloco COMPREHENSION EVIDENCE vinha colado embaixo do ledger, com READINESS e "
         "unidades semânticas que o Guia era mandado seguir"
     )

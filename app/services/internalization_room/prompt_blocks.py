@@ -41,6 +41,14 @@ def _short_label(element: Element, scenes: dict[int, str]) -> str:
     return element.label
 
 
+_LEDGER = "LEDGER (the app's notes — information only; you decide what comes next)"
+
+_HER_KIND_NAMES = {
+    ElementKind.ABSENCE: "significant_absence",
+    ElementKind.PRESERVED: "preserved_element",
+}
+
+
 def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> str:
     """Her ledger (`src/turn/coverageStatus.ts`, app 18fa7c4): what the team has and has not
     worked, and no line pointing at a scene. No key and no audit kind reaches it."""
@@ -53,8 +61,8 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
         for element in elements_for(pericope_num)
         if merged.get(element.key) == CoverageStatus.ENGAGED
     ]
-    covered_line = "COVERED (engaged): " + (
-        "; ".join(covered) if covered else "(nothing engaged yet — the session is just beginning)"
+    covered_line = "WORKED WITH BY THE TEAM (engaged): " + (
+        "; ".join(covered) if covered else "(nothing yet — the session is just beginning)"
     )
     left = remaining(coverage_state, pericope_num)
     if not left:
@@ -63,11 +71,13 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
         by_kind: dict[ElementKind, list[str]] = {}
         for element in left:
             by_kind.setdefault(element.kind, []).append(_short_label(element, scenes))
-        remaining_lines = ["REMAINING (not yet worked by the team, in their own words):"]
+        remaining_lines = ["NOT YET TOUCHED (still deserve a visit before the session ends):"]
         remaining_lines.extend(
-            f"  {kind}: {', '.join(by_kind[kind])}" for kind in ElementKind if kind in by_kind
+            f"  {_HER_KIND_NAMES.get(kind, kind)}: {', '.join(by_kind[kind])}"
+            for kind in ElementKind
+            if kind in by_kind
         )
-    return "\n".join([covered_line, "", *remaining_lines])
+    return "\n".join([_LEDGER, "", covered_line, "", *remaining_lines])
 
 
 _EARLIER_GROUPS = (
