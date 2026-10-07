@@ -9,7 +9,9 @@ from app.db.models.internalization_room import IRPromptKey, IRSession, IRSession
 from app.services.internalization_room import prepare_opening as prepare_opening_module
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.run_turn import run_turn
+from app.services.internalization_room.verdict_turn import run_verdict_turn
 from tests.release_harness import a_claimed_device
 from tests.turn_harness import the_room_agent_is
 
@@ -150,4 +152,32 @@ async def test_an_opening_written_on_the_panorama_reads_her_notice_under_the_unw
 
     assert f"{P02_HEADING}\n{NOTICE}\n" in recording.guide[0], (
         "a abertura escrita no panorama contava a passagem que a equipe nunca fez sem o aviso"
+    )
+
+
+async def test_the_verdict_reads_the_map_with_no_notice_where_the_live_validator_reads_hers(
+    recording: _Recording,
+) -> None:
+    await _turn({"P01": "approved", "P02": "not_worked"})
+    await run_verdict_turn(
+        findings_text='[{"kind": "addition", "frase": 1}]',
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        telling_back="Noemi decidiu voltar.",
+        speaker_prompt=default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"],
+        validator_prompt=VALIDATOR,
+        language_code="pt",
+        settings=_settings(),
+    )
+
+    live, verdict = recording.validator
+    speaker = recording.guide[1]
+    assert f"{P02_HEADING}\n{NOTICE}\n" in live, "o Validador ao vivo não lia o aviso dela"
+    assert P02_HEADING in verdict and NOTICE not in verdict and NOTICE not in speaker, (
+        "a leitura do veredito do Ensaio Final recebia o aviso que o mapa dela não carrega ali"
+    )
+    live_prefix = live.partition(CACHE_BREAK)[0].replace(f"{NOTICE}\n", "")
+    assert live_prefix == verdict.partition(CACHE_BREAK)[0], (
+        "o veredito lia um mapa que não é o do Validador ao vivo sem o aviso"
     )

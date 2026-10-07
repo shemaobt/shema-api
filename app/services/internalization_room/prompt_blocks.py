@@ -153,9 +153,10 @@ def validator_map_block(
 ) -> str:
     """The passage's map plus the rules and silences the Guide is never shown, and the story so far.
 
-    Every reader that judges a telling against the passage reads this, as her `ctx.validatorMap`
-    is read: the Validator, the Ensaio Final's Analyst, its correction check and its verdict
-    Speaker, and the golden judge. Ported from
+    The live turn's Guide and Validator read her notices for the session's stamp. The Ensaio
+    Final's readers and the golden judge read the map with no notice, as her `ctx.validatorMap`
+    is read, so in a stamped session with an unworked passage the verdict's prefix differs from
+    the live Validator's and is cached on its own. Ported from
     the project's own `validatorMapText` (`Tripod-Internalization`, `src/turn/mapText.ts:85`),
     whose framing sentence is reproduced verbatim because it is what tells the Validator that
     a plausible-sounding draft is still ungrounded when it crosses one of these.
