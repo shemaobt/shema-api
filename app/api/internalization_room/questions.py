@@ -141,7 +141,7 @@ async def heard(
     project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    question = await service.get_question_for_device(
+    question = await service.get_question_this_tablet_reaches(
         db, question_id, device_id=device_id, project_id=project_id
     )
     await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)

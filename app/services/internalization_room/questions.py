@@ -173,36 +173,41 @@ def _no_such_question(question_id: str) -> str:
     """The message the room's routes refuse a question with, written once.
 
     Every refusal it serves must be **identical**, not merely similar: absent, unowned,
-    another team's (the facilitator's three, ENG-534), another device's and another
-    project's (the tablet's two, ``get_question_for_device`` below — ENG-534 left the
-    device one written by hand in the router and said so here; ENG-1147 moved it and added
-    the project). A caller who can tell them apart asks for ids until one answers
-    differently, and a question that exists is a team that exists. Two call sites drifting
-    by a word is all it takes to hand that back.
+    another team's (the facilitator's three, ENG-534), and one the tablet does not reach
+    (``get_question_this_tablet_reaches`` below). A caller who can tell them apart asks for
+    ids until one answers differently, and a question that exists is a team that exists.
     """
     return f"Question {question_id} not found"
 
 
-async def get_question_for_device(
+def _reached_by_tablet(*, device_id: str, project_id: str | None) -> ColumnElement[bool]:
+    """Which questions a tablet reaches: its team's, and its own when they name no team.
+
+    A reply belongs to the team, so every tablet of the team lists it and any of them may
+    mark it heard. A question with no team belongs to nobody but the tablet that asked, and
+    a caller with no team (the shared key) is known only by its device.
+    """
+    if project_id is None:
+        return IRQuestion.device_id == device_id
+    return or_(
+        IRQuestion.project_id == project_id,
+        and_(IRQuestion.project_id.is_(None), IRQuestion.device_id == device_id),
+    )
+
+
+async def get_question_this_tablet_reaches(
     db: AsyncSession, question_id: str, *, device_id: str, project_id: str | None
 ) -> IRQuestion:
-    """The question, if this tablet raised it and, when the tablet names a project, in it.
-
-    The device id is self-declared (``require_device``), so on its own it is a claim, not a
-    proof: any caller that guesses a question's id and its device's id could mark it heard.
-    The project is what the credential proves, and ``question_for_room_caller`` beside this
-    already reads the reply's audio on that rule — the audio and the mark answered
-    different callers until this helper made them agree. Same rule, same shape: a caller
-    that names a project reaches only that project's questions; the shared key names none
-    and keeps the by-id read, as everywhere else in the room. The list the tablet pulls
-    (``replies_for``) reads on the same rule, so the list, the audio and the mark agree on
-    who may touch a question.
-    """
-    question = await get_question(db, question_id)
-    if question.device_id != device_id:
-        raise NotFoundError(_no_such_question(question_id))
-    owned_elsewhere = project_id is not None and question.project_id is not None
-    if owned_elsewhere and question.project_id != project_id:
+    """The question, if this tablet reaches it on the rule ``replies_for`` lists by."""
+    question = (
+        await db.execute(
+            select(IRQuestion).where(
+                IRQuestion.id == question_id,
+                _reached_by_tablet(device_id=device_id, project_id=project_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if question is None:
         raise NotFoundError(_no_such_question(question_id))
     return question
 
@@ -527,29 +532,18 @@ async def resolve_elsewhere(
 async def replies_for(
     db: AsyncSession, device_id: str, *, project_id: str | None
 ) -> list[IRQuestion]:
-    """Answers this device has not heard yet, from any session it ever held, in its project.
+    """Answers the team has not heard yet, from any session it ever held.
 
     A facilitator may answer hours later, when that passage is long closed. Scoping the
     reply to its session would drop it silently.
-
-    The project is the third filter, after the device and the unheard answer, and it reads on
-    the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
-    a caller that names one lists that project's questions and the ones that name none.
-    ``project_id=None`` is the shared key, which names no project, and it turns the rule off
-    and keeps the list by device.
     """
-    query = (
+    result = await db.execute(
         select(IRQuestion)
-        .where(IRQuestion.device_id == device_id)
+        .where(_reached_by_tablet(device_id=device_id, project_id=project_id))
         .where(IRQuestion.status == IRQuestionStatus.ANSWERED)
         .where(IRQuestion.heard_at.is_(None))
         .order_by(IRQuestion.answered_at)
     )
-    if project_id is not None:
-        query = query.where(
-            or_(IRQuestion.project_id.is_(None), IRQuestion.project_id == project_id)
-        )
-    result = await db.execute(query)
     return list(result.scalars())
 
 

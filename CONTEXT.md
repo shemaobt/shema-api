@@ -49,6 +49,10 @@ _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
 
+**Reply** (*resposta*):
+The facilitator's voice answer to a team's raised-hand question. It belongs to the team: it shows on every tablet of the team, and counts as heard for all of them once one of them played it to the end. A question that names no team stays with the tablet that asked.
+_Avoid_: answer (in prose), heard the rehearsal (a different listening)
+
 **Phase** (*fase*):
 One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
 _Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
