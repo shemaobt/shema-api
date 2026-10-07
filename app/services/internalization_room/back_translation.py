@@ -4,6 +4,7 @@ import enum
 import json
 import logging
 import re
+import unicodedata
 from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
@@ -609,11 +610,20 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     return BtAnalysis(findings=findings, nuances=[one for one in nuances if one is not None])
 
 
+def _words_of(text: str) -> str:
+    return re.sub(r"[\W_]+", " ", unicodedata.normalize("NFC", text).lower()).strip()
+
+
+def _stands_in(quote: str, transcript: str | None) -> bool:
+    words = _words_of(quote)
+    return bool(words) and f" {words} " in f" {_words_of(transcript or '')} "
+
+
 def _a_nuance(entry: dict[str, Any], segments: list[IRSegment]) -> Nuance | None:
     chunk = _chunk_named(entry.get("frase"), segments)
     quote = str(entry.get("quote", "")).strip()
     story = str(entry.get("story", "")).strip()
-    if chunk is None or not quote or not story:
+    if chunk is None or not story or not _stands_in(quote, segments[chunk - 1].transcript):
         return None
     return Nuance(
         note=str(entry.get("note", "")).strip() or f"«{quote}» — {story}",

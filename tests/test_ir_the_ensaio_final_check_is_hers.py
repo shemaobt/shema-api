@@ -264,3 +264,28 @@ async def test_a_telling_with_only_a_nuance_hands_her_speaker_that_nuance_and_st
         }
     ], "a nuance era lida e jogada fora: o falante dizia a rodada limpa"
     assert result["conferida"] is True, "uma nuance nunca impede a aprovação"
+
+
+async def test_a_nuance_beside_an_addition_waits_and_only_the_addition_reaches_her_speaker(
+    client, analyst, speaker
+) -> None:
+    an_addition = {"kind": "addition", "note": "Ela voltou com as noras.", "frase": 1}
+    analyst.readings = [{"findings": [A_NUANCE, an_addition]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert [one["kind"] for one in json.loads(_handed(speaker))] == ["addition"], (
+        "a nuance chegava ao falante ao lado de um achado que bloqueia"
+    )
+    assert result["conferida"] is False
+
+
+async def test_a_nuance_quoting_words_its_frase_does_not_hold_is_dropped_alone(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{**A_NUANCE, "quote": "naquela noite"}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert _handed(speaker) == "[]", "a voz citava como da equipe palavras que a frase dela não tem"
+    assert result["conferida"] is True
