@@ -1391,123 +1391,13 @@ def findings_block(findings: list[Finding], addresses: Addresses) -> str:
     this whole slice exists to remove, and it has already been in front of a team once.
     """
     if not findings:
-        return "(nenhum achado — a tradução está completa)"
+        return "[]"
     lines = []
     for finding in findings:
         address = addresses.of(finding.chunk, finding.segment_id)
         at = f" [{address}]" if address else ""
         lines.append(f"- {finding.kind}{at}: {finding.note}")
     return "\n".join(lines)
-
-
-#: What every closing below promises except `CLOSING_CHECKED`: the process goes on. It used
-#: to be a static line in the prompt template itself, right under `{{CLOSING}}` and outside
-#: any branch — true of every verdict turn there was, until `CLOSING_CHECKED` gave the
-#: process an ending. Left there it would have promised another round of telling back beside
-#: the one step that closes the passage, so it now lives inside each closing that still has
-#: a next round instead, and not in the one that does not.
-_NEXT_ROUND = "After the team acts on this one, they will finish the telling-back again."
-
-CLOSING_ON_SCREEN = (
-    """- End by handing the choice to the screen, not by asking for a spoken \
-answer. This stretch is on screen with its two voices side by side: theirs, in their own \
-language, and the telling in {session_language}. Ask the boundary question above, then in one \
-short sentence tell them they can listen to both and tap the microphone of the voice that has \
-to speak again. Do not ask them to say the answer out loud, and do not offer any other next \
-step — the screen offers exactly those two, and naming a third promises something they cannot \
-do. Remaining findings wait for the next round. """
-    + _NEXT_ROUND
-    + " Never a checklist, never a speech."
-)
-
-CLOSING_PLAIN = (
-    "- End with exactly one answerable question or invitation. Remaining findings wait for "
-    "the next round. " + _NEXT_ROUND + " Never a checklist, never a speech."
-)
-#: Word for word what this prompt closed with before the screen existed. A turn with no finding
-#: at all affirms and names the badge; both other closings explain themselves in terms of *this
-#: finding*, and there is none — `findings_block` is saying so in the same prompt.
-
-CLOSING_CHECKED = """- Say plainly that this passage is translated and checked. Then name \
-the one step that is left: invite the team to listen to their own recording once more, from \
-beginning to end, without stopping, and, if it sounds right to their ears, to approve it as \
-the team's final draft. That invitation is the only next step you name — no other gesture and \
-no other screen. Do not ask them to answer anything out loud, do not ask how the team feels, \
-and do not say goodbye. Call it the team's final draft and nothing more than that: what they \
-approve here is what OBT Refine works from. Never a checklist, never a speech."""
-#: The one turn with no finding that also has no next round: `state.checked` closes the
-#: passage for good. The step it names is the team's own — their last listening and their
-#: approval — and not another turn of this conversation, so, unlike every other closing,
-#: this one may not carry `_NEXT_ROUND` either.
-
-CLOSING_SPOKEN = (
-    "- End with exactly one answerable question or invitation, and let them answer in words. "
-    "This finding does not land on one stretch, so there is no stretch on screen and no two "
-    "voices to choose between — the next conversational turn will respond to what they say. "
-    "Remaining findings wait for the next round. "
-    + _NEXT_ROUND
-    + " Never a checklist, never a speech."
-)
-
-CLOSING_MISSING_TO_REHEARSAL = (
-    "- End by handing the choice to the screen, not by asking for a spoken answer. The end of "
-    "the story has not been told yet — nothing they recorded is wrong, and nothing they "
-    "recorded will be lost. In one or two short sentences, tell them to record what is still "
-    "missing with the circle, confirm it with the green check, and tap the wood disc to "
-    "come back and check it. Do not offer to settle it later, do not ask them to choose "
-    "between voices, and do not ask them to say anything out loud. "
-    + _NEXT_ROUND
-    + " Never a checklist, never a speech."
-)
-
-
-def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
-    """How the Speaker is told to end this turn: handing to the screen, or asking out loud.
-
-    `checked` is the caller's `state.checked` — whether this turn, with no finding, is also
-    the one that strikes the passage off the wheel for good. It only ever matters when
-    `finding` is `None`: a turn with a finding is not the checked turn, whatever `checked`
-    says, so the flag is read nowhere else in this function.
-
-    Chosen here rather than by the Speaker reading a branch, because which screen the team is
-    standing in front of is not something the findings block says: it carries the frase, the
-    part and the note, and none of the three tells a microphone from a rehearsal. A prompt that
-    branched would be asking a model not to promise a choice the screen will not offer;
-    injecting one closing means the wrong instruction is never in front of it.
-
-    What counts as a stretch to hand over is `points_at_a_stretch`, and it is not written out
-    a second time here: the room's request for the whole stretch turns on the same answer, and
-    two copies of it would be two things free to disagree about the same screen.
-
-    A missing element off every stretch is the one kind whose screen still differs from the
-    rest: the end of the story has simply not been told yet, so the screen takes them on to
-    record what is missing, keeping everything they recorded, and the closing that asks for a
-    spoken answer promises a next conversational turn this path never has — it is where
-    *"quer deixar para alinharmos mais na frente?"* came from. On a stretch, a missing element
-    gets the same two microphones as every other finding there (decision of 2026-09-03,
-    reversing ENG-710): the sibling closing that once named one microphone for it is gone.
-    What the screen offers the other kinds without a stretch was a product decision still
-    open; Henok closed it on 2026-09-25: `CLOSING_SPOKEN` stays. A fresh addition or unclear
-    can no longer reach here without a stretch at all — the parser drops one that names no
-    readable frase before it is ever a finding (ENG-1145), and refuses a reply that drops
-    every finding it named — so the only kind a fresh reply still hands this function
-    homeless is a missing. A row stored before ENG-1145 can still carry an addition or an
-    unclear with no stretch, and this function goes on answering that legacy shape exactly
-    as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed the two-microphone
-    screen even when it does have one.
-
-    Returned with `{session_language}` still in it, for whoever fills the template to
-    substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here
-    would mean two defaults that agree by luck, and the day a caller passes a language to the
-    turn the closing would go on saying Portuguese. It is not left as a `{{...}}` placeholder
-    because `render` fills in one pass: one arriving inside an injected value is never seen
-    again and reaches the model as literal braces.
-    """
-    if finding is None:
-        return CLOSING_CHECKED if checked else CLOSING_PLAIN
-    if finding.kind is FindingKind.MISSING and not points_at_a_stretch(finding):
-        return CLOSING_MISSING_TO_REHEARSAL
-    return CLOSING_ON_SCREEN if points_at_a_stretch(finding) else CLOSING_SPOKEN
 
 
 def points_at_a_stretch(finding: Finding | None) -> bool:

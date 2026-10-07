@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.services import internalization_room as room
+from app.services.internalization_room.llm import CACHE_BREAK
 from tests.text_seam_harness import RUNNER_KEY, the_app
 from tests.turn_harness import the_room_agent_is
 
@@ -149,3 +150,21 @@ async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validato
         "The drafted response answers this. Referring to these words is not a claim about the "
         f"passage.\n\n{HER_KICKOFF}"
     ) in speaker.validations[-1], "o Validador não lia o pontapé dela como o que a equipe disse"
+
+
+def _handed(speaker: Speaker) -> str:
+    system = speaker.drafts[-1]["system_prompt"].replace(CACHE_BREAK, "")
+    return system.split(f"## The findings for {PASSAGE}\n\n", 1)[1]
+
+
+async def test_a_clean_round_hands_her_speaker_an_empty_list_and_says_only_her_words(
+    client, speaker
+) -> None:
+    result = await _a_round(client, TELLING)
+
+    assert _handed(speaker) == "[]", "a rodada limpa entregava a nossa frase «(nenhum achado …)»"
+    assert result["spoken"] == SAID
+    assert result["conferida"] is True
+    sent = speaker.drafts[-1]["system_prompt"]
+    for ours in ("wood disc", "green check", "two voices side by side", "OBT Refine"):
+        assert ours not in sent, ours

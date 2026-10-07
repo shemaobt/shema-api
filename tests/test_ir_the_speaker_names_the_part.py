@@ -31,7 +31,6 @@ from app.services.internalization_room import part_names
 from app.services.internalization_room.back_translation import (
     Finding,
     FindingKind,
-    closing_block,
     findings_block,
 )
 from app.services.internalization_room.canon.labels import (
@@ -452,38 +451,6 @@ async def test_a_swap_carries_two_addresses_the_addition_first(
     assert len(lines) == 2
     assert lines[0].startswith(f"- addition [frase 5 — a parte 2 — {title}, das frases 4 a 7]:")
     assert lines[1].startswith(f"- missing [frase 5 — a parte 2 — {title}, das frases 4 a 7]:")
-
-
-def test_the_speakers_closings_call_it_the_final_draft_never_the_final_translation() -> None:
-    """The Refine-stage boundary, at the Speaker's mouth rather than the Guide's.
-
-    §4 of the doctrine holds that the first rehearsal is the first oral draft and never the
-    final translation. The Guide's prompt was the only mouth a test watched, and the verdict's
-    closing is the second: it is the one that tells a team their passage is done, and a team
-    told they have a final translation has been told the check they are owed already happened.
-
-    Asked of `closing_block` on each of the branches it decides between, not of the constants
-    by name: what the boundary has to survive is every ending the room can order, and a sweep
-    over module attributes would be a case reading our variable names. What each branch
-    *returns* is not asserted — two closings converging is a product decision, not a
-    regression — only that none of them promises the team a finished translation.
-    """
-    on_a_stretch = Finding(kind=FindingKind.MISSING, note="Noemi", segment_id="trecho-1", chunk=1)
-    off_every_stretch = Finding(kind=FindingKind.MISSING, note="Noemi", chunk=9)
-    unclear = Finding(kind=FindingKind.UNCLEAR, note="não deu para ouvir", segment_id="trecho-1")
-
-    ordered = {
-        "checked": closing_block(None, checked=True),
-        "clean": closing_block(None, checked=False),
-        "on a stretch": closing_block(on_a_stretch),
-        "off every stretch": closing_block(off_every_stretch),
-        "unclear": closing_block(unclear),
-    }
-
-    assert "final draft" in ordered["checked"]
-    for named, closing in ordered.items():
-        assert "final translation" not in closing.lower(), named
-        assert "tradução final" not in closing.lower(), named
 
 
 def test_a_finding_from_before_the_frase_number_existed_leaves_that_slot_out() -> None:

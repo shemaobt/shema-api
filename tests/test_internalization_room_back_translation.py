@@ -10,15 +10,11 @@ from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
-    CLOSING_MISSING_TO_REHEARSAL,
-    CLOSING_ON_SCREEN,
-    CLOSING_SPOKEN,
     EVIDENCE_LIMIT_KINDS,
     BackTranslationState,
     Finding,
     FindingKind,
     analyse_telling_back,
-    closing_block,
     current_findings,
     findings_block,
     findings_remaining,
@@ -236,10 +232,6 @@ def test_a_row_written_before_the_frase_number_existed_never_pairs() -> None:
     assert [finding.chunk for finding in state.findings] == [None, None]
     assert [finding.note for finding in current_findings(state)] == ["primeiro"]
     assert findings_remaining(state.findings) == 2
-
-
-def test_no_findings_reads_as_complete() -> None:
-    assert "nenhum achado" in findings_block([], Addresses())
 
 
 async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> None:
@@ -1084,58 +1076,6 @@ async def test_the_validator_is_shown_what_the_team_told_back(patch_loop) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_the_closing_to_rehearsal_names_the_circle_the_check_and_the_wood_disc() -> None:
-    """R9 (teste de 03/09, atualizado pelo ADR 0040 da sala e pela decisão de Henok de
-    25/09). A team that reached this screen did not know what to do with it.
-
-    The block used to say *what* was left — record what is still missing, keep what is
-    already recorded — without ever naming *how*: which control records, which confirms it,
-    and which brings them back. On the Rehearsal a recording stays pending until the green
-    check confirms it, and the wood disc only lights once nothing is pending — told just
-    "circle, then wood disc", the team would tap a dimmed disc. Three structural anchors
-    stand in for the three real steps the screen offers; the exact sentence around them is
-    the product owner's to shape.
-    """
-    assert "with the circle" in CLOSING_MISSING_TO_REHEARSAL
-    assert "green check" in CLOSING_MISSING_TO_REHEARSAL
-    assert "wood disc" in CLOSING_MISSING_TO_REHEARSAL
-    assert "big microphone" not in CLOSING_MISSING_TO_REHEARSAL
-    assert "green button" not in CLOSING_MISSING_TO_REHEARSAL
-
-
-@pytest.mark.parametrize(
-    ("kind", "segment_id"),
-    [
-        (FindingKind.ADDITION, "segmento-2"),
-        (FindingKind.UNCLEAR, "segmento-2"),
-        (FindingKind.ADDITION, None),
-        (FindingKind.UNCLEAR, None),
-    ],
-    ids=[
-        "addition on a stretch",
-        "unclear on a stretch",
-        "addition homeless (legacy row)",
-        "unclear homeless (legacy row)",
-    ],
-)
-def test_every_other_kind_closes_exactly_as_before(
-    kind: FindingKind, segment_id: str | None
-) -> None:
-    """Henok decided on 2026-09-25: `unclear` keeps `CLOSING_SPOKEN` on a stretch, for good.
-
-    A fresh reply can no longer produce an addition or an unclear without a stretch (ENG-1145):
-    the parser drops one that names no readable frase before it ever becomes a finding, and
-    refuses a reply that drops every finding it named. The two homeless cases here are legacy
-    only — a row `closing_block` may still be handed from before this rule, per ADR 0038 — and
-    it answers them exactly as it always did: `CLOSING_SPOKEN` for both, `unclear` never handed
-    the two-microphone screen even where it does have a stretch.
-    """
-    finding = Finding(kind=kind, note="Orfa", segment_id=segment_id)
-    asked_on_a_stretch = segment_id is not None and kind is not FindingKind.UNCLEAR
-
-    assert closing_block(finding) == (CLOSING_ON_SCREEN if asked_on_a_stretch else CLOSING_SPOKEN)
-
-
 def test_the_analyst_is_never_asked_for_a_kind_it_may_not_report() -> None:
     """The taxonomy the model is handed is the one the parser and Refine define.
 
@@ -1237,4 +1177,4 @@ async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehear
     )
 
     assert analysis is not None
-    assert closing_block(analysis.findings[0]) == CLOSING_ON_SCREEN
+    assert points_at_a_stretch(analysis.findings[0])

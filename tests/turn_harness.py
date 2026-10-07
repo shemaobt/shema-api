@@ -139,10 +139,6 @@ DESTINATIONS = {
     "no WhatsApp": "on WhatsApp",
 }
 
-#: The prompt's own promise of a next round, spliced into every closing but the checked one.
-#: That turn has no next round, so this and it may not both reach the Speaker on the same turn.
-CONTINUES_TELLING_BACK = "finish the telling-back again"
-
 _ATTRIBUTION = re.compile(r"[Vv]ocê contou que ([^.?!]+)")
 _PROPER_NAME = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕ][\wáéíóúâêôãõç]+")
 
