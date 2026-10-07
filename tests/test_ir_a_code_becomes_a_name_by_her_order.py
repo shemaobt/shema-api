@@ -10,7 +10,12 @@ from app.services.internalization_room.canon.elements import (
     elements_of,
 )
 from app.services.internalization_room.canon.labels import labelled_elements
-from app.services.internalization_room.canon.parse_map import MAPS_DIR, load_book, parse_map
+from app.services.internalization_room.canon.parse_map import (
+    MAPS_DIR,
+    load_book,
+    load_map,
+    parse_map,
+)
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 
 NAMES_LOGGER = "app.services.internalization_room.canon.names"
@@ -20,6 +25,11 @@ UNNAMED = "someone the text leaves unnamed here"
 
 def _labels(pericope: str) -> dict[str, str]:
     return {element.key: element.label for element in elements_for(pericope)}
+
+
+def _labels_of_map(pericope: str) -> dict[str, str]:
+    meaning_map = load_map(pericope)
+    return {element.key: element.label for element in elements_of(meaning_map)}
 
 
 def _ruth_1_with_famine_written_as(line: str) -> dict[str, str]:
@@ -69,6 +79,18 @@ def test_a_code_found_nowhere_reads_the_placeholder_and_is_logged_once(
     misses = [record for record in caplog.records if record.name == NAMES_LOGGER]
     assert len(misses) == 1, "a falta passava calada e ninguém a corrigia no cânon"
     assert "CB_9999" in misses[0].getMessage()
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["[[CB_9999-Nowhere]] — [[B3-Naomi]]", "[[CB_9999-Nowhere]] — active at Proposition 2"],
+)
+def test_a_bare_link_or_a_flag_note_after_the_dash_is_no_gloss(line: str) -> None:
+    labels = _ruth_1_with_famine_written_as(line)
+
+    assert labels["object:S1:CB_9999"] == UNRESOLVED, (
+        "o que vinha depois do travessão ia ao Guia mesmo sendo um código cru ou uma nota"
+    )
 
 
 def test_a_retired_entry_of_her_names_list_is_never_a_name() -> None:
@@ -126,6 +148,16 @@ def test_an_unnamed_being_with_a_form_or_a_role_word_reads_it_and_nothing_more()
     )
     assert _labels("P13")["being:S2:the-child-a-redeemer"] == "a redeemer"
     assert _labels("P13")["being:S1:the-child-a-son"] == "a son"
+
+
+def test_a_form_outside_her_table_reads_its_own_words_and_is_not_called_unnamed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinates = names._beings_by_scene("P13")
+    boy = {"being_id": "B?", "role_in_scene": "SON", "referential_form": "THE_BOY"}
+    monkeypatch.setattr(names, "_beings_by_scene", lambda pericope: {**coordinates, 1: [boy]})
+
+    assert _labels_of_map("P13")["being:S1:the-child-a-son"] == "the boy"
 
 
 def test_a_bead_renamed_by_her_keeps_the_key_its_coverage_is_stored_under() -> None:
