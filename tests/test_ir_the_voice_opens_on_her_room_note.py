@@ -116,3 +116,28 @@ async def test_a_portuguese_panorama_opens_on_her_panorama_note(
         "[A sessão acabou de começar. A equipe abriu o Panorama do Livro de Ruth e está à "
         "mesa, pronta para conversar. Fale primeiro.]"
     ], "o Panorama abria com o roteiro da passagem, falando de partes e de ensaio"
+
+
+async def test_an_english_panorama_opens_on_her_english_panorama_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = ListeningAgent("Hello, I am the Digital Facilitator.")
+    the_room_agent_is(monkeypatch, turn=agent)
+
+    await run_panorama_turn(
+        transcript="",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        session_language="English",
+        language_code="en",
+        opening=True,
+        settings=_settings(),
+    )
+
+    assert agent.guide_turns == [
+        "[The session has just begun. The team opened the Book Panorama of Ruth and is at the "
+        "table, ready to talk. Speak first.]"
+    ], "um Panorama em inglês ouvia a nota em português"

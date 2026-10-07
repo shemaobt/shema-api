@@ -66,9 +66,14 @@ def opening_note(pericope_num: str, language_code: str) -> str:
 
 
 def panorama_note(book: str, language_code: str) -> str:
+    if language_code == "pt":
+        return (
+            f"[A sessão acabou de começar. A equipe abriu o Panorama do Livro de {book} e está "
+            "à mesa, pronta para conversar. Fale primeiro.]"
+        )
     return (
-        f"[A sessão acabou de começar. A equipe abriu o Panorama do Livro de {book} e está à "
-        "mesa, pronta para conversar. Fale primeiro.]"
+        f"[The session has just begun. The team opened the Book Panorama of {book} and is at "
+        "the table, ready to talk. Speak first.]"
     )
 
 
