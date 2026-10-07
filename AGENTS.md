@@ -15,7 +15,7 @@ DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-
 uv run mypy app/
 uv run python scripts/check_doctrine.py
 uv run python scripts/sync_doctrine.py --check
-GITHUB_TOKEN=$(gh auth token) uv run python scripts/sync_internalization_canon.py --check
+TRIPOD_COMPILER_REPO=~/tripod_compiler uv run python scripts/sync_internalization_canon.py --check
 JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -m fresh_interpreter
 
 env -u DATABASE_URL JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -n 4 --dist loadfile -m migration

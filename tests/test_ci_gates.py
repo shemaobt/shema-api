@@ -214,11 +214,21 @@ def test_the_one_job_runs_every_check_the_five_jobs_ran() -> None:
     assert unreached == [], f"the checks job never reaches, in this order: {unreached}"
 
 
-def test_the_canon_check_carries_the_token_its_api_calls_need() -> None:
-    """Its two calls to Marcia's repository share the runner's 60 requests/hour without it."""
-    step = _checks_step_running("scripts/sync_internalization_canon.py --check")
+def test_the_canon_check_is_held_to_a_clone_of_the_compiler_made_before_it() -> None:
+    """On a runner `CI` is set, and there the drift check fails without a compiler clone."""
+    steps = _checks_steps()
+    check = _checks_step_running("scripts/sync_internalization_canon.py --check")
+    clone = check.get("env", {}).get("TRIPOD_COMPILER_REPO")
+    cloned = [
+        step
+        for step in steps[: steps.index(check)]
+        if "git clone" in step.get("run", "")
+        and "https://github.com/MarciaSuzuki/tripod_compiler.git" in step["run"]
+        and str(clone) in step["run"]
+    ]
 
-    assert step.get("env", {}).get("GITHUB_TOKEN"), f"{step.get('name')} has env {step.get('env')}"
+    assert clone, f"{check.get('name')} has env {check.get('env')}"
+    assert cloned, f"no step before {check.get('name')} clones the compiler into {clone}"
 
 
 def test_the_boot_import_carries_the_three_variables_it_needs() -> None:
