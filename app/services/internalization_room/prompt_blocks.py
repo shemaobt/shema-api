@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.room_enums import EarlierPassageStatus
 from app.services.internalization_room.canon.book_material import (
     preservation_rules,
     story_so_far,
@@ -85,9 +86,9 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
 
 
 _EARLIER_GROUPS = (
-    ("approved", "Approved"),
-    ("started", "Started, not approved yet"),
-    ("not_worked", "Not worked yet"),
+    (EarlierPassageStatus.APPROVED, "Approved"),
+    (EarlierPassageStatus.STARTED, "Started, not approved yet"),
+    (EarlierPassageStatus.NOT_WORKED, "Not worked yet"),
 )
 
 

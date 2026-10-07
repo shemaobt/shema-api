@@ -1,9 +1,12 @@
 ---
-status: accepted
+status: superseded in part by ADR 0049: a telling with no words counts nothing
 date: 2026-09-10
 ---
 
 # A retelling supersedes the stretch it retells, and the count of tellings lives on the row
+
+**Superseded in part by [ADR 0049](0049-a-telling-is-transcribed-in-the-bridge-language-and-refused-when-nothing-comes.md)**
+on 6 October 2026: a telling with no words counts nothing, in place or otherwise.
 
 Telling one stretch back again writes a **new version of that stretch**: the row it replaces
 stops counting and names the new one as what took its place, exactly as a correction already

@@ -175,8 +175,8 @@ async def test_an_interrupted_turn_tells_the_guide_it_was_cut(client, monkeypatc
     assert answered.json()["transcript"] == f"{INTERRUPTED_NOTE} {CUT_IN}"
 
 
-async def test_an_interruption_with_no_words_hands_the_guide_her_note_alone(
-    client, monkeypatch
+async def test_an_interruption_with_no_words_is_answered_with_d_1_and_never_reaches_the_guide(
+    client, db_session, monkeypatch
 ) -> None:
     session_id = await _an_open_session(client)
     agent = the_models_answer(monkeypatch)
@@ -187,11 +187,14 @@ async def test_an_interruption_with_no_words_hands_the_guide_her_note_alone(
     )
 
     assert answered.status_code == 200, answered.text
-    assert agent.guide_inputs == [INTERRUPTED_NOTE]
-    assert answered.json()["transcript"] == INTERRUPTED_NOTE
+    assert answered.json()["outcome"] == "fail_safe"
+    assert (await _the_last_entry(db_session, session_id))["fixed_line"] == "D0"
+    assert agent.guide_inputs == []
 
 
-async def test_an_interrupted_flag_alone_reaches_the_guide_as_its_note(client, monkeypatch) -> None:
+async def test_an_interrupted_flag_alone_is_answered_with_d_1(
+    client, db_session, monkeypatch
+) -> None:
     session_id = await _an_open_session(client)
     agent = the_models_answer(monkeypatch)
 
@@ -200,7 +203,16 @@ async def test_an_interrupted_flag_alone_reaches_the_guide_as_its_note(client, m
     )
 
     assert answered.status_code == 200, answered.text
-    assert agent.guide_inputs == [INTERRUPTED_NOTE]
+    assert answered.json()["outcome"] == "fail_safe"
+    assert (await _the_last_entry(db_session, session_id))["fixed_line"] == "D0"
+    assert agent.guide_inputs == []
+
+
+async def _the_last_entry(db_session: AsyncSession, session_id: str) -> dict[str, Any]:
+    db_session.expire_all()
+    stored = await room.get_session(db_session, session_id)
+    last: dict[str, Any] = stored.messages[-1]
+    return last
 
 
 async def test_a_cut_in_in_the_mother_tongue_tells_the_guide_both_facts(

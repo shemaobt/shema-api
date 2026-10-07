@@ -142,7 +142,7 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     assert agent.calls == []
 
 
-async def test_a_third_silence_in_a_row_draws_the_third_d_line_whatever_the_conversation_length(
+async def test_a_third_silence_in_a_row_still_hears_her_first_d_line(
     patch_agent,
 ) -> None:
     agent = patch_agent(FakeAgent(verdicts=[]))
@@ -165,9 +165,7 @@ async def test_a_third_silence_in_a_row_draws_the_third_d_line_whatever_the_conv
         settings=settings(),
     )
 
-    assert outcome.fixed_line == "D2", (
-        "quatro mensagens guardadas davam D1 pela paridade, fosse a primeira falha ou a terceira"
-    )
+    assert outcome.fixed_line == "D0", "o app dela diz didntCatchThat(0) a cada falha"
     assert agent.calls == []
 
 

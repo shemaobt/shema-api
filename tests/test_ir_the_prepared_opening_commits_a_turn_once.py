@@ -9,6 +9,7 @@ times — once to consume the line, once to write the exchange, once to remember
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
@@ -16,6 +17,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import get_settings
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import clip_url
 from tests.release_harness import KEY, PREFIX
@@ -23,6 +25,7 @@ from tests.room_harness import counting_commits, room_client
 
 P = "P03"
 PREPARED = "Vamos ficar nesta parte."
+PREPARED_KEY = f"tts/{get_settings().internalization_room_voice_id}/m/f/prepared.mp3"
 
 
 @pytest.fixture()
@@ -59,13 +62,13 @@ async def _a_session_with_a_line_ready(db_session: AsyncSession) -> str:
     session = await create_session(db_session, language="pt", pericope=P)
     parked = await get_session(db_session, session.id)
     parked.prepared_speech = PREPARED
-    parked.prepared_audio_key = "tts/voice/m/f/prepared.mp3"
+    parked.prepared_audio_key = PREPARED_KEY
     parked.prepared_pericope = P
     await db_session.commit()
     return session.id
 
 
-async def test_a_prepared_opening_with_a_turn_id_reaches_the_database_in_one_commit(
+async def test_a_prepared_opening_with_a_turn_id_lands_in_one_commit_after_its_claim(
     db_session: AsyncSession, client: httpx.AsyncClient, commits: list[object]
 ) -> None:
     session_id = await _a_session_with_a_line_ready(db_session)
@@ -78,13 +81,13 @@ async def test_a_prepared_opening_with_a_turn_id_reaches_the_database_in_one_com
     )
 
     assert opened.status_code == 200, opened.text[:300]
-    assert len(commits) == 1, (
+    assert len(commits) == 2, (
         "a abertura preparada gravava o consumo da linha, a troca e a lembrança do turno em"
-        " três commits"
+        " três commits, além da reivindicação da abertura (ADR 0053)"
     )
 
 
-async def test_a_prepared_opening_with_no_turn_id_also_reaches_the_database_in_one_commit(
+async def test_a_prepared_opening_with_no_turn_id_also_lands_in_one_commit_after_its_claim(
     db_session: AsyncSession, client: httpx.AsyncClient, commits: list[object]
 ) -> None:
     session_id = await _a_session_with_a_line_ready(db_session)
@@ -93,9 +96,10 @@ async def test_a_prepared_opening_with_no_turn_id_also_reaches_the_database_in_o
     opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
 
     assert opened.status_code == 200, opened.text[:300]
-    assert len(commits) == 1, (
+    assert len(commits) == 2, (
         "sem turn_id o commit final ficava dentro do `if turn_id:` e o ramo não comitava"
-        " nada no fim — só o consumo da linha e a troca, cada um por conta própria"
+        " nada no fim — só o consumo da linha e a troca, cada um por conta própria, além da"
+        " reivindicação da abertura (ADR 0053)"
     )
 
 
@@ -104,40 +108,43 @@ async def test_two_requests_racing_the_same_prepared_opening_both_hear_it_and_it
     per_request_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The second reader finds the first one's opening already written and drops its own, the
-    way a late live opening is dropped (ENG-941) — it used to lose `_land`'s version guard
-    instead, and a 409 is a request whose answer nobody remembers. The tablet that sent it
-    still hears the line it asked for, and the record still holds that line once.
+    """The second request asks while the first is consuming the line, and it hears that line.
+
+    It used to lose `_land`'s version guard, and a 409 is a request whose answer nobody
+    remembers. Since the opening is claimed once (ADR 0053) the second one waits for the
+    first one's answer instead of reading the line itself; the record holds the line once.
     """
     session_id = await _a_session_with_a_line_ready(db_session)
 
     from app.api.internalization_room import sessions as sessions_api
 
     real_take_prepared = sessions_api.take_prepared
-    fired = False
+    rivals: list[asyncio.Task[httpx.Response]] = []
 
-    async def take_prepared_but_a_rival_reads_the_line_first(
+    async def take_prepared_while_a_rival_asks_too(
         *args: Any, **kwargs: Any
     ) -> tuple[str, str] | None:
-        nonlocal fired
-        if not fired:
-            fired = True
-            rival = await per_request_client.post(
-                f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
+        if not rivals:
+            rivals.append(
+                asyncio.create_task(
+                    per_request_client.post(
+                        f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
+                    )
+                )
             )
-            assert rival.status_code == 200, rival.text[:300]
+            await asyncio.wait(rivals, timeout=0.2)
         return await real_take_prepared(*args, **kwargs)
 
-    monkeypatch.setattr(
-        sessions_api, "take_prepared", take_prepared_but_a_rival_reads_the_line_first
-    )
+    monkeypatch.setattr(sessions_api, "take_prepared", take_prepared_while_a_rival_asks_too)
 
-    lost = await per_request_client.post(
+    first = await per_request_client.post(
         f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
     )
+    lost = await asyncio.wait_for(rivals[0], timeout=10)
 
+    assert first.status_code == 200, first.text[:300]
     assert lost.status_code == 200, lost.text[:300]
-    assert lost.json()["audio_url"] == clip_url("tts/voice/m/f/prepared.mp3")
+    assert lost.json()["audio_url"] == clip_url(PREPARED_KEY)
     db_session.expire_all()
     written = await get_session(db_session, session_id)
     assert [message["text"] for message in written.messages] == [PREPARED], (

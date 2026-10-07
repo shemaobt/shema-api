@@ -102,7 +102,7 @@ async def test_a_portuguese_panorama_opens_on_her_panorama_note(
     the_room_agent_is(monkeypatch, turn=agent)
 
     await run_panorama_turn(
-        transcript="",
+        speech=HeardSpeech(),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,
@@ -127,7 +127,7 @@ async def test_an_english_panorama_opens_on_her_english_panorama_note(
     the_room_agent_is(monkeypatch, turn=agent)
 
     await run_panorama_turn(
-        transcript="",
+        speech=HeardSpeech(),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,

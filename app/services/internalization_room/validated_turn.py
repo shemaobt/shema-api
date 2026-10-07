@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 MAX_REDRAFTS = 2
 
 
+@dataclass(frozen=True)
+class CutPoint:
+    """Where the team cut the Guide's previous reply short, and how long that reply was."""
+
+    at_ms: int
+    of_ms: int | None
+
+
 @dataclass
 class TurnOutcome:
     speech: str
@@ -60,6 +68,18 @@ class TurnOutcome:
     #: The turn the Guide was handed in the team's place: their words behind any room note,
     #: or the instruction it spoke on. Empty when no Guide was asked.
     guide_heard: str = ""
+    #: The language the transcriber detected in the take, as it reported it.
+    language: str | None = None
+    #: The transcriber's probability for that language.
+    language_probability: float | None = None
+    #: Whether the take counted as the mother tongue; ``None`` on a turn the room did not
+    #: hear — the opening and the telling-back verdict — whose record keeps none.
+    mother_tongue: bool | None = None
+    #: The take's length as the note says it, in milliseconds: whole seconds for a measured
+    #: take, which the twenty-second rule read before it was rounded.
+    take_ms: float | None = None
+    #: Where the team cut the Guide's previous reply short to say this, when they did.
+    interrupted: CutPoint | None = None
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:

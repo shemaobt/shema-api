@@ -25,7 +25,10 @@ async def test_what_the_team_said_comes_back_as_it_is(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
-    assert await hearing.heard(b"audio", settings=_settings()) == "a gente contou de novo"
+    assert (
+        await hearing.heard(b"audio", language="pt", settings=_settings())
+        == "a gente contou de novo"
+    )
 
 
 @pytest.mark.parametrize(
@@ -44,10 +47,10 @@ async def test_silence_and_mangled_audio_answer_empty_rather_than_raise(
 
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
-    assert await hearing.heard(b"audio", settings=_settings()) == ""
+    assert await hearing.heard(b"audio", language="pt", settings=_settings()) == ""
 
 
-async def test_an_elevenlabs_outage_reaches_heard_as_an_error_not_silence(
+async def test_an_elevenlabs_outage_reads_as_nothing_made_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _transcribe(*_: object, **__: object) -> str:
@@ -55,8 +58,7 @@ async def test_an_elevenlabs_outage_reaches_heard_as_an_error_not_silence(
 
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
-    with pytest.raises(UpstreamServiceError):
-        await hearing.heard(b"audio", settings=_settings())
+    assert await hearing.heard(b"audio", language="pt", settings=_settings()) == ""
 
 
 async def test_an_elevenlabs_outage_reaches_heard_speech_as_an_error_not_silence(
@@ -99,7 +101,6 @@ def test_a_team_speaking_the_sessions_own_language_is_never_heard_as_mother_tong
     )
 
     assert heard_it.mother_tongue is False
-    assert heard_it.reliable_bridge_speech is True
 
 
 def test_speech_outside_the_sessions_language_still_meets_the_boundary() -> None:

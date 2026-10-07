@@ -24,11 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRHardStretch, IRSegment, IRSession
 from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.segments import (
-    capture_segment,
-    first_telling_of,
-    refuse_a_stretch_that_is_not_a_unit,
-)
+from app.services.internalization_room.segments import capture_segment, first_telling_of
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     raise_a_warning,
@@ -133,34 +129,6 @@ async def capture_and_note_a_hard_stretch(
         await save_back_translation(db, session, state, commit=False)
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()
-    return crossed
-
-
-async def count_an_empty_telling(db: AsyncSession, session: IRSession, stretch: IRSegment) -> bool:
-    """Count a re-recording nobody could make out, and mark the stretch if that crossed it.
-
-    Only the replace route counts it; the chunk door refuses a telling with no words instead.
-
-    Nothing is captured, so there is no new row to carry the count onto: it goes on the row
-    that is standing. Not counting it is what made the room unreachable exactly when it was
-    broken — during a transcriber outage every attempt comes back empty, and the team could
-    tell one stretch forever without the room ever offering them a person.
-
-    The count and the mark land in **one** transaction, closed here. Committed apart, a failure
-    between them left the count at the number with no mark, which is a stretch the room can
-    never ask about again on the reading `raise_a_warning` gives it.
-
-    A row that no longer counts, or one the team divided, is refused before anything is counted
-    on it — the same answer the captured path gets from `capture_segment`. Unguarded, a tablet
-    retrying a correction it already sent spent a telling on a stretch the room had retired, and
-    a divided parent could be marked hard although nothing can ever replace it.
-    """
-    await refuse_a_stretch_that_is_not_a_unit(db, session.id, stretch)
-    stretch.tellings += 1
-    await db.flush()
-    crossed = await note_a_hard_stretch(db, session, stretch)
-    await db.commit()
-    await db.refresh(stretch)
     return crossed
 
 
