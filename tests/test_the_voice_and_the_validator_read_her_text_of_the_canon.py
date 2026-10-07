@@ -10,6 +10,11 @@ from tests.turn_harness import GUIDE, VALIDATOR, settings, the_room_agent_is
 
 NAOMI_DEFINED = "[[B3]] — נָעֳמִי / Naomi"
 LAND_DEFINED = "[[PL_LAND_OF_JUDAH]] — הָאָרֶץ / the land"
+R6_LINE = (
+    "- R6 (STRUCTURAL_ABSENCE_OF_DIVINE_AGENCY): YHWH is not named as agent of any event in "
+    "P01. The withholding is structural and intentional; it contrasts with the first divine "
+    "action at 1:6 in P02. Reconstructor must not assign divine causation."
+)
 
 
 class FakeAgent:
@@ -63,3 +68,12 @@ async def test_a_link_the_map_already_writes_as_a_code_alone_reaches_both_roles_
 
     assert LAND_DEFINED in guide
     assert LAND_DEFINED in validator
+
+
+async def test_each_rule_reaches_the_validator_as_her_line_with_no_passage_tag_in_front(
+    agent: FakeAgent,
+) -> None:
+    _, validator = await _guide_and_validator(agent, "P01")
+
+    assert R6_LINE in validator
+    assert "[P01]" not in validator

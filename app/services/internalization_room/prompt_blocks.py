@@ -141,7 +141,9 @@ def validator_map_block(pericope_num: str, book: str) -> str:
     """
     meaning_map = load_map(pericope_num)
     rules = "\n".join(
-        rule.render() for rule in preservation_rules(book) if rule.pericope == pericope_num
+        f"- {rule.rule_id} ({rule.kind}): {rule.note}"
+        for rule in preservation_rules(book)
+        if rule.pericope == pericope_num
     )
     absences = "\n".join(
         f"- S{scene.number} ({scene.verses}): {scene.absence}"
