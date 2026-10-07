@@ -92,6 +92,13 @@ def test_the_change_carries_her_title_and_her_review_sentence() -> None:
     assert "**Review the new content, then merge to ship it.**" in change["body"]
 
 
+def test_the_change_says_its_own_checks_have_not_run_and_how_to_start_them() -> None:
+    body = " ".join(_steps()[_index("peter-evans/create-pull-request")]["with"]["body"].split())
+
+    assert "GitHub starts none of this repository's checks" in body
+    assert "Close and reopen this change to start them" in body
+
+
 def test_nothing_in_it_merges() -> None:
     text = WORKFLOW.read_text()
 

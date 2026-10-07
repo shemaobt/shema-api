@@ -78,6 +78,11 @@ jobs:
             drift check against a fresh clone of the compiler at the new pin, the canon smoke and
             `docker build`. `VENDOR_PIN` names what came in.
 
+            Those three ran in the job that opened this change, and nothing else has: GitHub
+            starts none of this repository's checks on a change opened with the job's own
+            token, so the test suite has not seen this canon. Close and reopen this change to
+            start them, and merge only once they pass.
+
             **Review the new content, then merge to ship it.** Merging deploys it: merge only
             outside a team session, and close this change if her own pin change for the same
             canon is already open.
