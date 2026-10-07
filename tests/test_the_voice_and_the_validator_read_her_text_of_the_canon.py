@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from app.services.internalization_room.canon import parse_map
 from app.services.internalization_room.run_turn import run_turn
 from tests.turn_harness import GUIDE, VALIDATOR, settings, the_room_agent_is
 
@@ -26,6 +29,8 @@ STORY_SO_FAR_OPENS = (
     "and to situate the current passage in the book. Nothing beyond these passages and the "
     "current map exists.\n\n**Ruth 1:1"
 )
+
+NAOMI_IN_THE_DIGEST = "narrows down, loss by loss, to [[B3]] Naomi, alone in a foreign land"
 
 
 class FakeAgent:
@@ -106,3 +111,32 @@ async def test_the_story_so_far_opens_with_her_separator_and_header_and_never_na
 
     assert STORY_SO_FAR_OPENS in guide
     assert STORY_SO_FAR_OPENS in validator
+
+
+@pytest.fixture
+def an_earlier_arc_with_a_slugged_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    maps = tmp_path / "meaning-map"
+    maps.mkdir()
+    for name in ("P01-Ruth-1-1-5.md", "P02-Ruth-1-6-14.md"):
+        text = (parse_map.MAPS_DIR / name).read_text(encoding="utf-8")
+        (maps / name).write_text(
+            text.replace("to one grieving woman, alone", "to [[B3-Naomi]] Naomi, alone"),
+            encoding="utf-8",
+        )
+    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
+    parse_map.load_map.cache_clear()
+    parse_map.load_book.cache_clear()
+    yield "P02"
+    parse_map.load_map.cache_clear()
+    parse_map.load_book.cache_clear()
+
+
+async def test_an_earlier_digest_with_a_slugged_link_reaches_both_roles_as_its_code_alone(
+    agent: FakeAgent, an_earlier_arc_with_a_slugged_link: str
+) -> None:
+    guide, validator = await _guide_and_validator(agent, an_earlier_arc_with_a_slugged_link)
+
+    assert NAOMI_IN_THE_DIGEST in guide
+    assert NAOMI_IN_THE_DIGEST in validator

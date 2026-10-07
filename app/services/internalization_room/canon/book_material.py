@@ -13,6 +13,7 @@ from app.services.internalization_room.canon.parse_map import (
     SURVEYED_STATUS,
     VENDOR,
     MeaningMap,
+    code_only_links,
     load_book,
 )
 
@@ -243,7 +244,7 @@ def pericope_digest(meaning_map: MeaningMap) -> str:
     a map problem for the project, not a gap for this app to fill.
     """
     scenes = "; ".join(scene.title for scene in meaning_map.scenes)
-    return (
+    return code_only_links(
         f"**{meaning_map.reference}** — {meaning_map.title}\n"
         f"{meaning_map.arc_prose}\n"
         f"Scenes: {scenes}."
