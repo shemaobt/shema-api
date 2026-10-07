@@ -674,9 +674,6 @@ async def test_the_served_order_is_the_canons_bead_order(client, db_session: Asy
     assert [element["key"] for element in body] == element_keys("P01")
 
 
-# ------------------------------------------------------- behaviour 9: no name the text withholds
-
-
 async def test_the_woman_of_ruth_1_5_reaches_the_desk_with_no_name_beside_her(
     client, db_session: AsyncSession
 ) -> None:
