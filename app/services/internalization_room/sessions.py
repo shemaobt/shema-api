@@ -744,6 +744,15 @@ def comprehension_of(session: IRSession) -> ComprehensionState:
         return ComprehensionState.model_validate(stored)
 
 
+def was_opened(session: IRSession) -> bool:
+    """Whether the session holds a Guide line: a room note or a team entry alone does not open it.
+
+    The tablet asks a session's Opening only while it is not opened, so a session that already
+    holds the Guide's line is not asked for a second one.
+    """
+    return any(line.get("role") == "guide" for line in session.messages or [])
+
+
 async def append_opening(
     db: AsyncSession,
     session: IRSession,

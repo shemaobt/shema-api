@@ -54,7 +54,7 @@ from app.services.internalization_room.prepare_opening import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
-from app.services.internalization_room.sessions import book_of, is_panorama
+from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
@@ -399,6 +399,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         back_translation=await _progress(db, session),
         language=session.language,
         halt=halt.standing(session),
+        opened=was_opened(session),
     )
 
 
