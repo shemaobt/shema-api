@@ -36,8 +36,10 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core.canon_pin import pinned_commit
 from app.core.served_books import SERVED_BOOKS
 
 SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -73,6 +75,11 @@ def _get(url: str) -> bytes:
 def _head_sha() -> str:
     payload = json.loads(_get(f"https://api.github.com/repos/{REPO}/commits/main"))
     return payload["sha"]
+
+
+def _committed(sha: str) -> str:
+    payload = json.loads(_get(f"https://api.github.com/repos/{REPO}/commits/{sha}"))
+    return payload["commit"]["committer"]["date"][:10]
 
 
 def _on_main_line(sha: str) -> bool:
@@ -178,16 +185,32 @@ def sync(pin: str | None = None) -> int:
         "files": files,
     }
     (VENDOR / MANIFEST).write_text(json.dumps(record, indent=2) + "\n")
-    PIN_FILE.write_text(sha + "\n")
+    PIN_FILE.write_text(_pin_record(sha, published["meaning-map"]))
     print(f"pinned at {sha}")
     return 0
+
+
+def _pin_record(sha: str, maps: list[str]) -> str:
+    ids: dict[str, list[str]] = {}
+    for name in sorted(maps):
+        ids.setdefault(name.split("-")[1], []).append(name.split("-")[0])
+    books = " + ".join(f"{book} ({found[0]}-{found[-1]})" for book, found in sorted(ids.items()))
+    fields = {
+        "source_repo": REPO,
+        "pin_commit": sha,
+        "pin_ref": "main",
+        "pin_committed": _committed(sha),
+        "vendored_on": datetime.now(UTC).date().isoformat(),
+        "published_books": f"{books} = {len(maps)} pericopes",
+    }
+    return "".join(f"{key + ':':<18}{value}\n" for key, value in fields.items())
 
 
 def check() -> int:
     if not PIN_FILE.exists():
         print("no VENDOR_PIN — run with --sync", file=sys.stderr)
         return 1
-    sha = PIN_FILE.read_text().strip()
+    sha = pinned_commit(PIN_FILE.read_text())
     drifted: list[str] = []
     published, _ = _published(sha)
     for kind in KINDS:

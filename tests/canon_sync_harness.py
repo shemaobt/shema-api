@@ -23,6 +23,7 @@ _CONTENTS = re.compile(
 )
 _RAW = re.compile(rf"^https://raw\.githubusercontent\.com/{REPO}/(?P<sha>\w+)/(?P<path>.+)$")
 _COMPARE = re.compile(rf"^https://api\.github\.com/repos/{REPO}/compare/(?P<sha>\w+)\.\.\.main$")
+_COMMIT = re.compile(rf"^https://api\.github\.com/repos/{REPO}/commits/(?P<ref>\w+)$")
 
 
 class Compiler:
@@ -31,6 +32,7 @@ class Compiler:
         self.files: dict[str, bytes] = {}
         self.listed: list[str] = []
         self.relation: str | None = "identical"
+        self.committed = "2026-09-29T21:14:03Z"
         self.requests: list[str] = []
 
     def passage(
@@ -59,6 +61,10 @@ class Compiler:
             if self.relation is None:
                 raise _not_found(url)
             return json.dumps({"status": self.relation}).encode()
+        if found := _COMMIT.match(url):
+            sha = self.sha if found["ref"] == "main" else found["ref"]
+            committer = {"date": self.committed}
+            return json.dumps({"sha": sha, "commit": {"committer": committer}}).encode()
         if found := _CONTENTS.match(url):
             prefix = found["path"].rstrip("/") + "/"
             names = [path[len(prefix) :] for path in self.files if path.startswith(prefix)]

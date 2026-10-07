@@ -40,7 +40,7 @@ def test_sync_with_pin_never_asks_upstream_for_its_head(
 
     canon.sync(pin=PINNED_SHA)
 
-    assert canon.PIN_FILE.read_text().strip() == PINNED_SHA
+    assert f"pin_commit:       {PINNED_SHA}\n" in canon.PIN_FILE.read_text()
 
 
 def test_sync_without_pin_still_resolves_the_upstream_head(
@@ -50,4 +50,4 @@ def test_sync_without_pin_still_resolves_the_upstream_head(
 
     canon.sync(pin=None)
 
-    assert canon.PIN_FILE.read_text().strip() == HEAD_SHA
+    assert f"pin_commit:       {HEAD_SHA}\n" in canon.PIN_FILE.read_text()
