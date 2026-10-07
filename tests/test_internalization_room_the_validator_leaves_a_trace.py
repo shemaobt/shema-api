@@ -79,13 +79,13 @@ async def _a_turn(session_id: str, **overrides: Any):
     return await run_turn(**kwargs)
 
 
-async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_draft(
+async def test_a_validator_answering_loose_text_leaves_one_trace_on_the_draft(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Both readings are of the first draft, so both traces name attempt 1.
+    """The one reading is of the first draft, so the trace names attempt 1.
 
     Three traces on attempts 1, 2 and 3 was the shape when an unreadable reply cost a
-    redraft; a reply the room cannot read is now read again before anything is redrawn.
+    redraft; a reply the room cannot read is the fail-safe at once, with nothing redrawn.
     """
 
     class Garbage(FakeAgent):
@@ -103,7 +103,7 @@ async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_d
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert record.__dict__["attempt"] == 1
         assert record.__dict__["session_id"] == "sessao-1"
@@ -114,7 +114,7 @@ async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_d
 async def test_json_without_a_verdict_key_also_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(FakeAgent(verdicts=[{"ok": True}] * 2))
+    patch_agent(FakeAgent(verdicts=[{"ok": True}]))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-2")
@@ -122,7 +122,7 @@ async def test_json_without_a_verdict_key_also_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert "verdict" in record.__dict__["condition"].lower()
         assert '"ok": true' in record.getMessage().lower()
@@ -158,7 +158,7 @@ async def test_a_regenerate_verdict_leaves_the_whole_reply(
 async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(FakeAgent(verdicts=[{"verdict": "correct", "corrected_response": "  "}] * 2))
+    patch_agent(FakeAgent(verdicts=[{"verdict": "correct", "corrected_response": "  "}]))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-4")
@@ -166,7 +166,7 @@ async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert "correct" in record.__dict__["condition"].lower()
         assert "empty" in record.__dict__["condition"].lower()

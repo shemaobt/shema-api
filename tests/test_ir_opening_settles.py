@@ -29,7 +29,6 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.passage_turn import run_turn
 from app.services.internalization_room.sessions import create_session
-from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
 from scripts.check_doctrine import RULES
 from scripts.doctrine_allowlist import Rule
 from tests.turn_harness import the_room_agent_is
@@ -87,7 +86,7 @@ async def test_a_session_after_the_panorama_is_still_told_to_introduce_itself(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The behavioural half of item 5: `after_panorama=True` used to reach the Guide as
-    `ALREADY_MET_INSTRUCTION`. It must reach it as `OPENING_INSTRUCTION`, same as any other
+    `ALREADY_MET_INSTRUCTION`. It must reach it as her opening note, same as any other
     first turn — the flag stays a fact the room could use elsewhere; it stops being words
     telling the model what not to say."""
     captured: dict[str, str] = {}
@@ -112,7 +111,10 @@ async def test_a_session_after_the_panorama_is_still_told_to_introduce_itself(
         settings=get_settings(),
     )
 
-    assert OPENING_INSTRUCTION in captured["user_content"]
+    assert captured["user_content"] == (
+        "[A sessão acabou de começar. A equipe abriu a passagem P03 e está à mesa, "
+        "pronta para começar. Fale primeiro.]"
+    )
     assert "do NOT introduce yourself" not in captured["user_content"]
 
 

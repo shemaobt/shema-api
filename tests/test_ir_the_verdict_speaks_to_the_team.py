@@ -68,21 +68,17 @@ THE_GLOSSARYS_ENGLISH = "told back"
 #: needs them, so the new wording reaches a team with no app release in between. Keyed by
 #: the enum that already names them, which is also how the sibling count table keys them.
 SPOKEN_FAMILIES = {FailSafe.UNTOLD_STRETCH: 3, FailSafe.STRETCH_TO_CORRECT: 1}
-#: The languages whose H and I lines this ticket rewrites. The Spanish supplement stays a
-#: draft and reaches no mouth; it takes the swap so the draft does not have to be found
-#: again on the day the room claims the language.
-SPOKEN_LANGUAGES = ("pt", "es")
-#: What a spoken line may no longer say, in either language. Case-blind and carrying `cuént`
-#: because the Spanish imperative the ticket rewrote is *Cuéntenmelo*: it opens its sentence,
-#: so a case-sensitive pattern misses it, and its accent breaks a literal `cuenten`. Measured
-#: — a line that swapped only its first verb passed both assertions until this was fixed.
+#: The languages whose H and I lines this ticket rewrites.
+SPOKEN_LANGUAGES = ("pt",)
+#: What a spoken line may no longer say. Case-blind, because a sentence that opens with the
+#: retired verb is missed by a case-sensitive pattern.
 RETIRED_IN_A_SPOKEN_LINE = re.compile(
-    r"contar|contem|contado|contarem|contaram|contarme|contaron|cuenten|cuént",
+    r"contar|contem|contado|contarem|contaram|contarme",
     re.IGNORECASE,
 )
-#: What it has to say instead, short enough to hold both languages: *traduzir* and
-#: *traducir*, in every person the eight lines put them in. Asserted positively because the
-#: sweep above only takes the old verb away, and a line that asked for neither would pass it.
+#: What it has to say instead: *traduzir*, in every person the lines put it in. Asserted
+#: positively because the sweep above only takes the old verb away, and a line that asked for
+#: neither would pass it.
 THE_STEM = "tradu"
 
 #: The parser reads a block from its heading to the next one and a line from its bullet
@@ -217,9 +213,7 @@ def test_the_english_h_and_i_lines_ask_for_a_translation() -> None:
 
 @pytest.mark.parametrize("family", SPOKEN_FAMILIES)
 @pytest.mark.parametrize("language", SPOKEN_LANGUAGES)
-def test_the_h_and_i_lines_say_traduzir_in_portuguese_and_spanish(
-    language: str, family: FailSafe
-) -> None:
+def test_the_h_and_i_lines_say_traduzir_in_portuguese(language: str, family: FailSafe) -> None:
     """The lines the room speaks say *traduzir* too, and there are still as many of them.
 
     One case per family and language, so each block is seen to fail on its own: a single

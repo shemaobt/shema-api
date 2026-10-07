@@ -15,7 +15,8 @@ DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-
 uv run mypy app/
 uv run python scripts/check_doctrine.py
 uv run python scripts/sync_doctrine.py --check
-GITHUB_TOKEN=$(gh auth token) uv run python scripts/sync_internalization_canon.py --check
+TRIPOD_COMPILER_REPO=~/tripod_compiler uv run python scripts/sync_internalization_canon.py --check
+DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python scripts/smoke_internalization_canon.py
 JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -m fresh_interpreter
 
 env -u DATABASE_URL JWT_SECRET_KEY=test-secret-for-ci-only uv run pytest tests/ -n 4 --dist loadfile -m migration
@@ -23,8 +24,8 @@ PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no 
 ```
 
 A test that spawns a process to prove what it proves does not run in the first line, the
-`test` job's own selection. The seven lines between the blank ones are the `checks` job — the
-seven commands the old `lint` job ran, in order, then the `fresh_interpreter` selection: the
+`test` job's own selection. The eight lines between the blank ones are the `checks` job — the
+seven commands the old `lint` job ran, in order, the canon smoke, then the `fresh_interpreter` selection: the
 three files that each open a clean interpreter to prove something the suite's own process
 cannot. The `migration` selection is the `migrations` job's own step,
 `DATABASE_URL` cleared: that job sets it at job level for its Postgres container, and left in
@@ -66,6 +67,26 @@ the gate on any change to the two back-translation prompts. The golden run is th
 release, not only on CI: `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions
 must pass before anything touching prompts, turn loop, model or canvas reaches the team, and
 a green unit suite is not sufficient to ship a prompt change.
+
+## The canon
+
+Marcia's canon — the Meaning Maps, Meaning Coordinates, Compilation Logs and each book's
+aliases list under `app/services/internalization_room/canon/vendor/` — moves only through
+`scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
+line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
+beside the copy. Never edit vendored files, the pin or the record by hand: `--check` holds
+the copy to the record, and to a clone of the compiler at the pin where
+`TRIPOD_COMPILER_REPO` names one, and `scripts/smoke_internalization_canon.py` fails on
+what the room could not serve. `canon-sync.yml` runs the sync twice a week and opens a
+pull request for review when there is new canon; it never merges.
+
+The order of a canon change is hers:
+
+1. The compiler's spec change merges first, on her word, never during a team session.
+2. The app re-pins to the compiler's merge commit.
+3. The app's pull request merges.
+4. The vault follows the compiler.
+5. If the canon-sync bot opened its own pull request for the same change, close it.
 
 ## Rules
 

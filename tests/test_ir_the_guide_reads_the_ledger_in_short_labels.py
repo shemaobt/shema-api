@@ -83,12 +83,9 @@ def test_a_bead_short_of_engaged_holds_the_pointer_on_its_scene() -> None:
 SCENE_ONE_DONE_SCENE_TWO_OPEN = """\
 FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: S2
 
-COVERED (engaged): S1 (v.1–2); אֱלִימֶלֶך / Elimelech @ S1; נָעֳמִי / Naomi @ S1; \
-מַחְלוֹן / Mahlon @ S1; כִלְיוֹן / Chilion @ S1; שֹּפְטִים / Judges @ S1; \
-אֶפְרָתִים / Ephrathites @ S1; בֵּית לֶחֶם יְהוּדָה / Bethlehem of Judah @ S1; \
-שְדֵי מוֹאָב / fields of Moab @ S1; הָאָרֶץ / the land @ S1; רָעָב / famine @ S1; \
-לָגוּר / sojourning @ S1; יְמֵי שְׁפֹט הַשֹּׁפְטִים / days of the judges @ S1; absence @ S1; \
-S2 (v.3)
+COVERED (engaged): S1 (v.1–2); Elimelech @ S1; Naomi @ S1; Mahlon @ S1; Chilion @ S1; \
+Judges @ S1; Ephrathites @ S1; Bethlehem @ S1; Fields of Moab @ S1; the land of Judah @ S1; \
+Famine @ S1; sojourning @ S1; In the Days When the Judges Judged @ S1; absence @ S1; S2 (v.3)
 
 REMAINING (not yet worked by the team, in their own words):
   arc: Level-1 arc
@@ -96,14 +93,10 @@ REMAINING (not yet worked by the team, in their own words):
   tone: Level-1 tone
   function: Level-1 function
   scene: S3 (v.4), S4 (v.5)
-  being: אֱלִימֶלֶך / Elimelech @ S2, נָעֳמִי / Naomi @ S2, מַחְלוֹן / Mahlon @ S2, \
-כִלְיוֹן / Chilion @ S2, מַחְלוֹן / Mahlon @ S3, כִלְיוֹן / Chilion @ S3, \
-נָשִׁים מוֹאֲבִיּוֹת / women of Moab @ S3, עָרְפָּה / Orpah @ S3, רוּת / Ruth @ S3, \
-נָעֳמִי / Naomi @ S3, מַחְלוֹן / Mahlon @ S4, כִלְיוֹן / Chilion @ S4, \
-הָאִשָּה (נָעֳמִי) / "the woman" (Naomi) @ S4
-  place: שְדֵי מוֹאָב / fields of Moab (implied) @ S2, \
-שָּם / there (fields of Moab, continued) @ S3, שְדֵי מוֹאָב / fields of Moab (implied) @ S4
-  object: כְּעֶשֶר שָׁנִים / about ten years @ S3
+  being: Elimelech @ S2, Naomi @ S2, Mahlon @ S2, Chilion @ S2, Mahlon @ S3, Chilion @ S3, \
+Women of Moab @ S3, Orpah @ S3, Ruth @ S3, Naomi @ S3, Mahlon @ S4, Chilion @ S4, the woman @ S4
+  place: Fields of Moab @ S2, Fields of Moab @ S3, Fields of Moab @ S4
+  object: about ten years @ S3
   absence: absence @ S2, absence @ S3, absence @ S4
   preserved: R3, R5, R10"""
 

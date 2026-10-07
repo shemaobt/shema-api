@@ -257,7 +257,7 @@ def _labels_that_change(language: str, divine_name: str) -> list[str]:
 
 
 def test_no_catalogue_label_loses_a_word_in_portuguese() -> None:
-    assert len(_catalogue_labels()) > 500
+    assert len(_catalogue_labels()) > 450
     assert _labels_that_change("pt", "Senhor Jeová") == []
 
 

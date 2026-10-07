@@ -21,6 +21,7 @@ from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import analysis_ladder
 from app.services.internalization_room.part_names import Addresses
+from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 
@@ -445,7 +446,6 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
 _NOTHING_TOLD_BACK_YET: dict[str, str] = {
     "pt": "(a equipe ainda não traduziu nada)",
     "en": "(the team has not translated anything yet)",
-    "es": "(el equipo aún no ha traducido nada)",
 }
 
 
@@ -770,7 +770,7 @@ async def analyse_telling_back(
         analyst_prompt,
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
-        MEANING_MAP=load_map(pericope_num).body,
+        MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
         SEGMENTS=segments_block(segments, language_code),
     )
     try:
@@ -779,7 +779,8 @@ async def analyse_telling_back(
             system_prompt=system,
             user_content="Compare a tradução com o mapa.",
             ladder=analysis_ladder(cfg),
-            max_output_tokens=4096,
+            max_output_tokens=2500,
+            effort=None,
             settings=cfg,
         )
     except Exception as failure:
@@ -1132,7 +1133,7 @@ async def verify_correction(
         correction_prompt,
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
-        MEANING_MAP=load_map(pericope_num).body,
+        MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
         FINDING=findings_block(findings, addresses),
         EARLIER_TELLING=earlier.transcript or "",
         NEW_TELLING=corrected.transcript or "",

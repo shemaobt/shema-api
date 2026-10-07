@@ -5,10 +5,7 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
-from app.services.internalization_room.prompt_blocks import (
-    meaning_map_block,
-    validator_map_block,
-)
+from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.render import render
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
@@ -34,7 +31,7 @@ async def run_verdict_turn(
     always about the telling-back. Runs through the Validator like every other voiced turn.
     """
     cfg = settings or get_settings()
-    map_block = meaning_map_block(pericope_num, book)
+    map_block = validator_map_block(pericope_num, book)
     return await _voiced_after_validation(
         speaker_system=render(
             cache_break_before(speaker_prompt, "{{FINDINGS}}"),
@@ -44,7 +41,7 @@ async def run_verdict_turn(
             FINDINGS=findings_text,
         ),
         validator_prompt=validator_prompt,
-        standard_of_truth=validator_map_block(pericope_num, book),
+        standard_of_truth=map_block,
         transcript="",
         messages=messages,
         session_language=session_language,

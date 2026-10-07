@@ -7,21 +7,24 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from app.core.canon_pin import pinned_commit
 from app.core.exceptions import ValidationError
+from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.parse_map import (
-    ROOM_BOOK,
+    _PERICOPE,
     SURVEYED_STATUS,
     VENDOR,
     MeaningMap,
+    code_only_links,
     load_book,
 )
 
 LOGS_DIR = VENDOR / "compilation-log"
-
-SERVED_BOOKS = frozenset({ROOM_BOOK})
+COORDINATES_DIR = VENDOR / "meaning-coordinates"
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
 _CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
+_JSON_BLOCK = re.compile(r"```json\s*(.*?)```", re.S)
 
 
 class PreservationRule(BaseModel):
@@ -30,8 +33,9 @@ class PreservationRule(BaseModel):
     kind: str
     note: str
 
-    def render(self) -> str:
-        return f"- [{self.pericope}] {self.rule_id} ({self.kind}): {self.note}"
+    def render(self, *, tagged: bool = True) -> str:
+        tag = f"[{self.pericope}] " if tagged else ""
+        return f"- {tag}{self.rule_id} ({self.kind}): {self.note}"
 
     def folds_into(self, absence_text: str) -> bool:
         """Whether this rule is about the silence one scene's absence describes.
@@ -160,6 +164,37 @@ def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     return tuple(rules)
 
 
+class SceneAbsence(BaseModel):
+    scene_id: str
+    verse_range: str
+    text: str
+
+
+@lru_cache(maxsize=64)
+def significant_absences(pericope_num: str) -> tuple[SceneAbsence, ...]:
+    matches = (
+        sorted(COORDINATES_DIR.glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
+        if _PERICOPE.match(pericope_num)
+        else []
+    )
+    if not matches:
+        raise ValidationError(f"no vendored Meaning Coordinates for {pericope_num}")
+    path = matches[0]
+    block = _JSON_BLOCK.search(path.read_text(encoding="utf-8"))
+    if block is None:
+        raise ValidationError(f"{path.name}: no json block")
+    coordinates = json.loads(block.group(1))
+    return tuple(
+        SceneAbsence(
+            scene_id=scene["scene_id"],
+            verse_range=scene["verse_range"],
+            text=scene["significant_absence"],
+        )
+        for scene in coordinates["level_2_scenes"]
+        if scene.get("significant_absence")
+    )
+
+
 def unwalkable(meaning_map: MeaningMap) -> str | None:
     """Why this passage must not be walked, or ``None`` when it may be.
 
@@ -213,13 +248,13 @@ def require_walkable(meaning_map: MeaningMap) -> None:
 
 
 def pericope_digest(meaning_map: MeaningMap) -> str:
-    """One passage, verbatim from its map — reference, title, arc prose, scene titles.
+    """One passage from its map — reference, title, arc prose, scene titles, links as codes alone.
 
-    Nothing here is freshly written. If a digest needs a line the map does not supply, that is
+    No word here is freshly written. If a digest needs a line the map does not supply, that is
     a map problem for the project, not a gap for this app to fill.
     """
     scenes = "; ".join(scene.title for scene in meaning_map.scenes)
-    return (
+    return code_only_links(
         f"**{meaning_map.reference}** — {meaning_map.title}\n"
         f"{meaning_map.arc_prose}\n"
         f"Scenes: {scenes}."
@@ -261,8 +296,9 @@ def story_so_far(book: str, current_pericope: str) -> str:
         return ""
     digests = "\n\n".join(pericope_digest(m) for m in earlier)
     return (
-        f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n"
-        "Grounded material: it may be used to answer the team's questions about the story "
+        "---\n\n# THE STORY SO FAR (earlier passages of this book — map-authored)\n"
+        "Digests of this book's earlier passages, extracted verbatim from their own Meaning "
+        "Maps. Grounded material: it may be used to answer the team's questions about the story "
         "so far and to situate the current passage in the book. Nothing beyond these "
         f"passages and the current map exists.\n\n{digests}\n"
     )
@@ -270,4 +306,4 @@ def story_so_far(book: str, current_pericope: str) -> str:
 
 def vendor_pin() -> str:
     pin = Path(VENDOR / "VENDOR_PIN")
-    return pin.read_text(encoding="utf-8").strip() if pin.exists() else "unpinned"
+    return pinned_commit(pin.read_text(encoding="utf-8")) if pin.exists() else "unpinned"

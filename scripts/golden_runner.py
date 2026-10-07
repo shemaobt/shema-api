@@ -59,10 +59,12 @@ from typing import Any
 import httpx
 
 from app.api.internalization_room.text_seam import _collecting_model_calls
+from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
 from app.services.internalization_room.prompt_blocks import earlier_passages_line
 from app.services.internalization_room.sessions import book_of
+from app.services.internalization_room.turn_instructions import opening_note
 from scripts.golden_checks import mechanical_checks
 from scripts.sync_doctrine import read_pin
 
@@ -214,19 +216,6 @@ def _portuguese(language: str) -> bool:
     return re.search("portugu", language, re.I) is not None
 
 
-def opening_note(pericope_id: str, language: str) -> str:
-    """Her server-owned opening note, so both exports read the same turn 0."""
-    if _portuguese(language):
-        return (
-            f"[A sessão acabou de começar. A equipe abriu a passagem {pericope_id} e está à "
-            "mesa, pronta para começar. Fale primeiro.]"
-        )
-    return (
-        f"[The session has just begun. The team opened passage {pericope_id} and is at the "
-        "table, ready to begin. Speak first.]"
-    )
-
-
 def mother_tongue_note(language: str, seconds: int) -> str:
     if _portuguese(language):
         return (
@@ -305,7 +294,7 @@ def request_for(
     body: dict[str, Any] = {"sessionId": session_id}
     said = ""
     if turn.kickoff:
-        said = opening_note(script.pericopeId, script.language)
+        said = opening_note(script.pericopeId, "pt" if _portuguese(script.language) else "en")
         body.update(roomNote="session_start", noteText=said)
     elif turn.motherTongue:
         said = mother_tongue_note(script.language, turn.motherTongue)
@@ -553,8 +542,7 @@ def _refusal(refused: httpx.HTTPStatusError) -> str:
 
 
 def _pins() -> str:
-    canon = (REPO_ROOT / "app/services/internalization_room/canon/vendor/VENDOR_PIN").read_text()
-    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{canon.strip()[:7]}`"
+    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{vendor_pin()[:7]}`"
 
 
 def _tip() -> str:

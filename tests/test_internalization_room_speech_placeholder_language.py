@@ -40,6 +40,17 @@ _EXPECTED_VALIDATOR_OPENING = {
     "es": "(el equipo aún no ha hablado — apertura de la sesión)",
 }
 
+_HER_OPENING_NOTE = {
+    "pt": (
+        "[A sessão acabou de começar. A equipe abriu a passagem P03 e está à mesa, pronta para "
+        "começar. Fale primeiro.]"
+    ),
+    "en": (
+        "[The session has just begun. The team opened passage P03 and is at the table, ready to "
+        "begin. Speak first.]"
+    ),
+}
+
 _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
     "pt": "(a equipe ainda não falou)",
     "en": "(the team has not spoken yet)",
@@ -49,7 +60,6 @@ _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
 _EXPECTED_NOTHING_TOLD_BACK = {
     "pt": "(a equipe ainda não traduziu nada)",
     "en": "(the team has not translated anything yet)",
-    "es": "(el equipo aún no ha traducido nada)",
 }
 
 
@@ -113,7 +123,10 @@ async def test_the_validator_opening_carries_no_placeholder_in_any_language(
     )
 
     system = captured["system"]
-    assert "## WHAT THE TEAM JUST SAID" not in system, "na abertura ninguém falou ainda"
+    assert (
+        "Referring to these words is not a claim about the passage.\n\n"
+        f"{_HER_OPENING_NOTE[language_code]}"
+    ) in system, "na abertura o Validator não lia a nota dela, que é o lado da equipe no app dela"
     for placeholder in _EXPECTED_VALIDATOR_OPENING.values():
         assert placeholder not in system
 
@@ -165,8 +178,9 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
             assert sentence not in system
 
 
+@pytest.mark.parametrize(("named", "code"), [("French", "fr"), ("Spanish", "es")])
 async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, named: str, code: str
 ) -> None:
     captured = _patch_analyst_capture(monkeypatch)
 
@@ -175,8 +189,8 @@ async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        session_language="French",
-        language_code="fr",
+        session_language=named,
+        language_code=code,
         settings=_settings(),
     )
 

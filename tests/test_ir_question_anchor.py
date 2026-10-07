@@ -62,8 +62,8 @@ def _label(key: str) -> LabelledElement:
     return next(e for e in labelled_elements(PERICOPE) if e.key == key)
 
 
-def _labels(card: dict) -> tuple[str | None, str | None, str | None]:
-    return (card["element_label_pt"], card["element_label_en"], card["element_label_es"])
+def _labels(card: dict) -> tuple[str | None, str | None]:
+    return (card["element_label_pt"], card["element_label_en"])
 
 
 async def auth_header(db: AsyncSession, user) -> dict[str, str]:
@@ -173,7 +173,7 @@ async def test_the_card_names_the_bead_the_room_was_on(
 
     card = await _card(desk_client, headers, question_id)
     expected = _label(bead)
-    assert _labels(card) == (expected.label_pt, expected.label_en, expected.label_es)
+    assert _labels(card) == (expected.label_pt, expected.label_en)
 
 
 async def test_the_most_recent_move_wins(
@@ -211,7 +211,7 @@ async def test_no_move_no_anchor(db_session: AsyncSession, room_client, desk_cli
     question_id = await _raise(room_client, session_id=session.id)
 
     card = await _card(desk_client, headers, question_id)
-    assert _labels(card) == (None, None, None)
+    assert _labels(card) == (None, None)
 
 
 async def test_another_sessions_bead_is_not_borrowed(
@@ -226,7 +226,7 @@ async def test_another_sessions_bead_is_not_borrowed(
 
     first_question = await _raise(room_client, session_id=s2.id)
     first_card = await _card(desk_client, headers, first_question)
-    assert _labels(first_card) == (None, None, None), (
+    assert _labels(first_card) == (None, None), (
         "a pergunta de S2 herdou o bead que S1 moveu, e cada sessao tem sua propria historia"
     )
 
