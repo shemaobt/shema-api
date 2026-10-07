@@ -149,6 +149,8 @@ def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
     parts = len(scene_ids_for(pericope_num))
     if moment.at == "internalization":
         return f"MOMENT: Internalization of part {moment.part} of {parts} {_DASH} the part is open."
+    if moment.at == "ensaio_final":
+        return f"MOMENT: Ensaio Final (Final Rehearsal) {_DASH} the send-off has been given."
     if moment.closed:
         return (
             f"MOMENT: Familiarization {_DASH} its closing has been said; "

@@ -94,3 +94,13 @@ async def test_after_her_familiarization_closing_the_guide_hears_it_has_been_sai
     assert recording.guide[0].endswith(
         f"\n\nMOMENT: Familiarization {EM} its closing has been said; no part has been opened yet."
     ), "o Guia não sabia que o fechamento da Familiarização já tinha sido dito"
+
+
+async def test_after_her_send_off_the_guide_hears_the_room_is_in_the_ensaio_final(
+    recording: _Recording,
+) -> None:
+    await _turn(_left_at({"at": "ensaio_final"}))
+
+    assert recording.guide[0].endswith(
+        f"\n\nMOMENT: Ensaio Final (Final Rehearsal) {EM} the send-off has been given."
+    ), "o Guia não sabia que a despedida já tinha sido dada"
