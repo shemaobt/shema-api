@@ -205,3 +205,18 @@ def test_a_part_told_ahead_still_passes_both_moments_and_a_comment_ends_as_the_o
         "the opening of a part: it ends with its own closing"
     ) in opening
     assert "the send-off (its one instruction, the orange dot, stays your last word)" in opening
+
+
+def test_an_omission_in_a_retelling_never_passes_silently_the_guide_names_it_aloud() -> None:
+    retelling = section("## Check every retelling — an omission must never pass")
+
+    assert "**If even one thing is missing, you must say so**" in retelling, (
+        "the omission is named, warmly, every time"
+    )
+    assert "there's someone in this part you haven't mentioned yet" in retelling, (
+        "her sentence for naming it"
+    )
+    assert (
+        "Never praise a retelling as complete, and never move on from it, while anything the "
+        "map gives for that part is missing from it"
+    ) in retelling, "no praise and no moving on over a gap"
