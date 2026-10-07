@@ -12,6 +12,7 @@ module keeps the three-line fixture that calls it — which is also how `release
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -319,7 +320,13 @@ async def tell_back_about(
 
 
 async def rehearsed_in_parts(
-    db: AsyncSession, count: int, *, project_id: str | None = None
+    db: AsyncSession,
+    count: int,
+    *,
+    project_id: str | None = None,
+    language: str = "pt",
+    content_types: tuple[str, ...] | None = None,
+    audio: tuple[bytes, ...] | None = None,
 ) -> tuple[IRSession, list[IRTake]]:
     """A session the release refuses only for want of a report, rehearsed in `count` parts.
 
@@ -333,8 +340,12 @@ async def rehearsed_in_parts(
     The parts are numbered the way the tablet numbers them — `parte-N` and `chunk_index` N,
     from one — because a part's identity is that number and not the scope string. Unnumbered,
     every part of a built rehearsal was one part under the same null.
+
+    `language` is the language the room speaks to this team. `content_types` is what each part
+    was uploaded as, one per part, and `audio` the bytes each one holds, so a case that sends
+    those bytes again meets the take that already has them.
     """
-    session = await create_session(db, pericope=P, project_id=project_id, language="pt")
+    session = await create_session(db, pericope=P, project_id=project_id, language=language)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, supported_comprehension(P))
 
@@ -344,10 +355,14 @@ async def rehearsed_in_parts(
             session.id,
             scope=f"parte-{index + 1}",
             ordinal=index + 1,
-            sha256=chr(ord("a") + index) * 64,
+            sha256=hashlib.sha256(audio[index]).hexdigest()
+            if audio
+            else chr(ord("a") + index) * 64,
             created_at=REHEARSED_AT + timedelta(minutes=index),
             project_id=session.project_id,
         )
+        if content_types:
+            take.content_type = content_types[index]
         db.add(take)
         await db.commit()
         await capture_segment(
@@ -584,7 +599,13 @@ async def heard_every_part(
 
 
 async def upload_a_part(
-    client: httpx.AsyncClient, session_id: str, *, part: int | None, audio: bytes
+    client: httpx.AsyncClient,
+    session_id: str,
+    *,
+    part: int | None,
+    audio: bytes,
+    content_type: str = "audio/mp4",
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     """Send a rehearsal recording up the way the tablet sends one.
 
@@ -601,9 +622,9 @@ async def upload_a_part(
         data["chunk_index"] = str(part)
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers=headers or {"X-Room-Key": KEY, "X-Room-Device": TABLET},
         data=data,
-        files={"file": ("gravacao.m4a", audio, "audio/mp4")},
+        files={"file": ("gravacao.m4a", audio, content_type)},
     )
 
 

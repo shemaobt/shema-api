@@ -11,9 +11,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.room_enums import EarlierPassageStatus
 from app.models.internalization_room_text_seam import ModelCall, Outcome
 
-EarlierPassageStatus = Literal["approved", "started", "not_worked"]
 RoomNote = Literal["session_start", "mother_tongue", "interrupted"]
 
 

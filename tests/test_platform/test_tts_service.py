@@ -99,6 +99,16 @@ async def test_the_output_format_reaches_elevenlabs_in_the_query_not_the_body() 
     assert "output_format" not in kwargs["json"]
 
 
+async def test_the_platforms_own_speech_still_states_its_language() -> None:
+    client = _client(_ok())
+
+    await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=MemoryStore()
+    )
+
+    assert client.post.await_args.kwargs["json"]["language_code"] == "pt"
+
+
 async def test_second_call_with_same_text_does_not_hit_elevenlabs() -> None:
     """The heart of the issue: each question is synthesized ONCE, forever, for every app."""
     client = _client(_ok(), _ok())

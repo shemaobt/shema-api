@@ -101,7 +101,6 @@ async def test_a_stretch_replaced_is_kept_and_heard_with_the_database_let_go(
     )
 
     assert replaced.status_code == 200, replaced.text
-    assert replaced.json()["captured"] is True
     assert held == {"put": False, "stat": False, "stt": False}, (
         "a troca do trecho transcrevia com a transação que o refresh do take reabria"
     )

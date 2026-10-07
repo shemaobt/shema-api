@@ -113,9 +113,9 @@ async def test_a_transcriber_that_never_answers_does_not_take_the_stretch_with_i
 ) -> None:
     """The likelier outage: not an empty answer, but no answer at all.
 
-    `heard` only catches `ValidationError`, so a read timeout to the transcriber raised
-    past the store. On a weak link the tablet also gives up first, and the cancelled
-    request dies in the same place.
+    The recording is stored before the transcriber is asked, so a read timeout that raises
+    out of the hearing finds it kept. On a weak link the tablet also gives up first, and the
+    cancelled request dies in the same place.
     """
     from app.api.internalization_room import back_translation as bt_api
 
@@ -195,34 +195,32 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     )
 
 
-async def test_a_transcriber_outage_counts_nothing_and_is_a_server_failure(
+async def test_a_transcriber_outage_counts_nothing_and_is_a_wordless_refusal(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An outage is not a telling nobody could make out: it is a 502 the tablet sends again.
-
-    The empty answer used to be counted so that the room's route to a person stayed open while
-    the room was broken. A telling with no words is now refused and counts nothing, and a
-    transcriber that is down raises past `heard`: neither reaches the count.
-    """
+    """An outage reads as a telling nobody could make out: refused, and it counts nothing."""
     from app.api.internalization_room import back_translation as bt_api
     from app.core.exceptions import UpstreamServiceError
+    from app.services.internalization_room import hearing
 
     session_id, take_id = await _rehearsed(client)
 
-    async def _heard(*_: Any, **__: Any) -> str:
+    async def _transcribe(*_: Any, **__: Any) -> str:
         return "a equipe contou o trecho"
 
-    monkeypatch.setattr(bt_api, "heard", _heard)
+    monkeypatch.setattr(bt_api, "heard", hearing.heard)
+    monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
     told = await _tell_back(client, session_id, take_id)
     assert told.status_code == 200, told.text
 
     async def _down(*_: Any, **__: Any) -> str:
         raise UpstreamServiceError("a transcricao esta fora do ar")
 
-    monkeypatch.setattr(bt_api, "heard", _down)
+    monkeypatch.setattr(hearing, "transcribe_audio", _down)
     outage = await _tell_back(client, session_id, take_id, retelling="true")
 
-    assert outage.status_code == 502, outage.text
+    assert outage.status_code == 422, outage.text
+    assert outage.json()["code"] == "WORDLESS_TELLING"
     db_session.expire_all()
     standing = list(
         (
