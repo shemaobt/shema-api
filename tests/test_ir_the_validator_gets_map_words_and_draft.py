@@ -189,4 +189,7 @@ async def test_an_english_session_reads_neither_portuguese_placeholder(
     judged = recording.validator[0]
     assert OPENING_PLACEHOLDER not in judged
     assert NO_UTTERANCE_PLACEHOLDER not in judged
-    assert HER_EVIDENCE not in judged, "na abertura ninguém falou: o bloco de evidência dela some"
+    assert (
+        f"{HER_EVIDENCE}[The session has just begun. The team opened passage P03 and is at the "
+        "table, ready to begin. Speak first.]"
+    ) in judged, "na abertura o Validator não lia a nota dela, que é o lado da equipe no app dela"

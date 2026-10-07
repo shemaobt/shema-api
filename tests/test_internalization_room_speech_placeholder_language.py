@@ -40,6 +40,17 @@ _EXPECTED_VALIDATOR_OPENING = {
     "es": "(el equipo aún no ha hablado — apertura de la sesión)",
 }
 
+_HER_OPENING_NOTE = {
+    "pt": (
+        "[A sessão acabou de começar. A equipe abriu a passagem P03 e está à mesa, pronta para "
+        "começar. Fale primeiro.]"
+    ),
+    "en": (
+        "[The session has just begun. The team opened passage P03 and is at the table, ready to "
+        "begin. Speak first.]"
+    ),
+}
+
 _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
     "pt": "(a equipe ainda não falou)",
     "en": "(the team has not spoken yet)",
@@ -112,7 +123,10 @@ async def test_the_validator_opening_carries_no_placeholder_in_any_language(
     )
 
     system = captured["system"]
-    assert "## WHAT THE TEAM JUST SAID" not in system, "na abertura ninguém falou ainda"
+    assert (
+        "Referring to these words is not a claim about the passage.\n\n"
+        f"{_HER_OPENING_NOTE[language_code]}"
+    ) in system, "na abertura o Validator não lia a nota dela, que é o lado da equipe no app dela"
     for placeholder in _EXPECTED_VALIDATOR_OPENING.values():
         assert placeholder not in system
 
