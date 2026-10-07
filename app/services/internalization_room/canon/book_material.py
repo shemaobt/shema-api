@@ -315,7 +315,7 @@ def story_so_far(book: str, current_pericope: str, not_worked: frozenset[str] = 
         "Digests of this book's earlier passages, extracted verbatim from their own Meaning "
         "Maps. Grounded material: it may be used to answer the team's questions about the story "
         "so far and to situate the current passage in the book. Nothing beyond these "
-        f"passages and the current map exists.\n\n{digests}\n"
+        f"passages and the current map exists.\n\n{digests}"
     )
 
 
