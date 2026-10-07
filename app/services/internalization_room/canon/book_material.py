@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from app.core.canon_pin import pinned_commit
 from app.core.exceptions import ValidationError
 from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.parse_map import (
@@ -268,4 +269,4 @@ def story_so_far(book: str, current_pericope: str) -> str:
 
 def vendor_pin() -> str:
     pin = Path(VENDOR / "VENDOR_PIN")
-    return pin.read_text(encoding="utf-8").strip() if pin.exists() else "unpinned"
+    return pinned_commit(pin.read_text(encoding="utf-8")) if pin.exists() else "unpinned"
