@@ -105,3 +105,17 @@ def test_what_the_voice_raised_is_listed_apart_from_what_nobody_has_touched() ->
     ], "o que a voz levantou e a equipe não pegou ia junto com o que ninguém tocou"
     assert lines[9] == "  context: Level-1 context"
     assert lines[-1] == "  preserved_element: R3, R10"
+
+
+def test_a_map_visited_to_its_last_element_says_so_under_her_heading() -> None:
+    everything_but_the_arc = [element.key for element in elements_for(P) if element.key != "arc"]
+    state = merge(
+        initial_state(P), pericope_num=P, surfaced=["arc"], engaged=everything_but_the_arc
+    )
+
+    lines = coverage_status_block(state, P).splitlines()
+
+    assert lines[-2:] == [
+        "NOT YET TOUCHED (still deserve a visit before the session ends):",
+        "  (nothing — everything in the map has been visited)",
+    ], "o fim do ledger dizia REMAINING: none, e só quando tudo estava engajado"

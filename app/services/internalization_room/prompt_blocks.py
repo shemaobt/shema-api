@@ -78,10 +78,13 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
         lines.extend(
             ["RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:", *_by_kind(raised, scenes), ""]
         )
-    if not untouched:
-        return "\n".join([*lines, "REMAINING: (none — every element has been worked by the team)"])
     lines.append("NOT YET TOUCHED (still deserve a visit before the session ends):")
-    return "\n".join([*lines, *_by_kind(untouched, scenes)])
+    lines.extend(
+        _by_kind(untouched, scenes)
+        if untouched
+        else ["  (nothing — everything in the map has been visited)"]
+    )
+    return "\n".join(lines)
 
 
 def _by_kind(elements: list[Element], scenes: dict[int, str]) -> list[str]:

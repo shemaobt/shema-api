@@ -125,7 +125,10 @@ def test_a_finished_passage_is_the_integration_with_nothing_remaining() -> None:
 
     lines = coverage_status_block(everything, P).splitlines()
 
-    assert lines[4:] == ["REMAINING: (none — every element has been worked by the team)"]
+    assert lines[4:] == [
+        "NOT YET TOUCHED (still deserve a visit before the session ends):",
+        "  (nothing — everything in the map has been visited)",
+    ]
 
 
 AUDIT_KIND = re.compile(r"\b[A-Z][A-Z]+_[A-Z_]+\b")

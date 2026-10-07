@@ -105,7 +105,7 @@ def test_a_finished_map_says_nothing_remains() -> None:
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     block = coverage_status_block(whole, P)
 
-    assert "none" in block
+    assert block.endswith("  (nothing — everything in the map has been visited)")
 
 
 def test_peer_cue_is_read_off_the_reply() -> None:
