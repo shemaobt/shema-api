@@ -525,31 +525,30 @@ async def resource_circle(db_session, shema_app):
     )
 
 
-async def test_the_resource_circle_opens_the_record_and_is_refused_the_assessment(
+async def test_the_resource_circle_opens_the_record_and_reads_the_assessment(
     client, db_session, headers, project, resource_circle
 ) -> None:
-    """**The issue's fourth line, as the one case that makes it mean something.**
-
-    ``resourceCircle`` holds a Shemá role and the same region, so it passes the record's own gate
-    and reads the ficha. An assessment is an OBT Lab mentor's reading of how four people are
-    actually doing, and FE-44 §5.8's audience table does not send it there — so the narrower
-    question has a different answer, which is the whole of what *at least as narrow, and reviewed
-    deliberately* asks for.
+    """**The issue's fourth line, reversed by OBT-571** — Daniel, 7/oct/2026: Karina's *"ver
+    tudo"* includes a team's health. ``resourceCircle`` holds a Shemá role and the same region,
+    passes the record's own gate and now reads the readings too; what it still cannot do is file
+    one (the test below), the narrower question that keeps the audience meaning something.
     """
     await _file(client, headers, project)
     theirs = await auth_header(db_session, resource_circle)
 
     assert (await client.get(f"{PROJECTS}/{project}", headers=theirs)).status_code == 200
-    refused = await client.get(assessments(project), headers=theirs)
-    assert refused.status_code == 403, refused.text
-    assert "OBT Lab" in refused.text
+    read = await client.get(assessments(project), headers=theirs)
+    assert read.status_code == 200, read.text
+    assert len(read.json()) == 1
 
 
-async def test_the_resource_circle_cannot_file_one_either(
+async def test_the_resource_circle_cannot_file_one(
     client, db_session, headers, project, resource_circle
 ) -> None:
     theirs = await auth_header(db_session, resource_circle)
-    assert (await _file(client, theirs, project)).status_code == 403
+    refused = await _file(client, theirs, project)
+    assert refused.status_code == 403
+    assert "OBT Lab" in refused.text
 
 
 @pytest.mark.parametrize("role_key", ["coordinator", "obtLab"])

@@ -505,7 +505,7 @@ async def _two_withheld_and_one_clear(db_session) -> None:
     await seed(db_session, "aberto-tres")
 
 
-@pytest.mark.parametrize("role", ["strategist", "coordinator"])
+@pytest.mark.parametrize("role", ["strategist", "coordinator", "circle"])
 async def test_coordination_is_told_how_many_were_withheld(
     client, db_session, shema_app, role
 ) -> None:
@@ -520,7 +520,7 @@ async def test_coordination_is_told_how_many_were_withheld(
     assert meta["withheldNote"] in preamble
 
 
-@pytest.mark.parametrize("role", ["lab", "circle"])
+@pytest.mark.parametrize("role", ["lab"])
 async def test_nobody_else_is_told_anything_was_withheld(
     client, db_session, shema_app, role
 ) -> None:
@@ -809,13 +809,14 @@ async def test_the_exported_file_is_recognised_and_refused(
 async def test_a_record_read_outside_the_prayer_audience_cannot_clear_its_request(
     client, db_session, coordinator, circle, mixed
 ) -> None:
-    """Nothing of this record is withheld, and the Resource Circle's read of it is still a
-    reduction: a request nobody authorized reads as ``""``. Imported, it would clear the request;
-    the payload says it was not read for coordination, and that is enough to refuse it."""
+    """Nothing of this record is withheld, and the Resource Circle's read of it — ``trusted``
+    since OBT-571 — is still not the whole record: a request nobody authorized reads as ``""``.
+    Imported, it would clear the request; the payload says it was not read for coordination, and
+    that is enough to refuse it."""
     kept, _shared = mixed
     read = (await client.get(f"{PROJECTS}/{kept.id}", headers=circle)).json()
     assert (read["readAs"], read["locationWithheld"], read["prayerRequests"]) == (
-        "other",
+        "trusted",
         False,
         "",
     )

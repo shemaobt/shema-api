@@ -7,9 +7,10 @@ withholds (item 6). A save refused as stale told its author which fields moved a
 them, the place and the contacts included (item 2). And the Projetos screen counted the
 withheld projects for readers GATE-04 tells nothing about them (item 4).
 
-Each rule is asserted for the two readers who are not coordination — the OBT Lab and the
-Resource Circle, each holding the region — against the region's coordinator, who reads
-everything in it, and against a cleared record, which is the truth for everybody. No account
+Each rule is asserted for the reader who is not coordination — the OBT Lab, holding the region
+(the Resource Circle read the reduction too until OBT-571) — against the region's coordinator,
+who reads everything in it, and against a cleared record, which is the truth for everybody. No
+account
 here is an installation admin: they pass every guard, and a refusal asserted with one would
 pass for the wrong reason.
 
@@ -58,7 +59,10 @@ SECRETS = (NOTES, HEALTH_NOTES, STATUS, SCOPE, NEED, READING_NOTES, DIMENSION, V
 #: The four the record and the card hold back, in the wire's spelling.
 FREE_TEXT_KEYS = ("notes", "healthNotes", "statusComments", "scopeDetails")
 
-NOT_COORDINATION = ["obtLab", "resourceCircle"]
+#: The console's one reader who is handed the reduction since OBT-571 — the Resource Circle reads
+#: the truth in its own scope now (``trusted``), by Karina's decision via Daniel (6/oct/2026); the
+#: OBT Lab stays redacted by Daniel's (7/oct/2026).
+NOT_COORDINATION = ["obtLab"]
 
 
 async def _seed(db_session, project_id: str, *, sensitive: bool) -> ShemaProject:
@@ -549,13 +553,13 @@ async def test_a_conflict_names_a_prayer_request_only_to_its_audience(
     assert ("prayerRequests" in res.json()["changedFields"]) is told
 
 
-@pytest.mark.parametrize(("role", "told"), [("resourceCircle", False), ("obtLab", True)])
-async def test_a_conflict_names_the_pastoral_follow_up_only_to_the_health_audience(
+@pytest.mark.parametrize(("role", "told"), [("resourceCircle", True), ("obtLab", True)])
+async def test_a_conflict_names_the_pastoral_follow_up_only_to_the_health_readers(
     client, db_session, shema_app, cleared, role, told
 ) -> None:
-    """The pastoral follow-up is empty to the Resource Circle (OBT-553), so the fact that it
-    moved, and who moved it, is not theirs either; the OBT Lab reads a team's health and is
-    told."""
+    """The OBT Lab reads a team's health and is told; so is the Resource Circle since OBT-571
+    (it read the follow-up empty under OBT-553, and the fact that it moved was not its either).
+    Parametrised so the day a reader leaves the list the row says ``False`` again."""
     who = await _coordinator_saves(
         client, db_session, shema_app, CLEARED_ID, {"pastoralInterventionName": "Pr. Joao"}
     )
@@ -568,19 +572,21 @@ async def test_a_conflict_names_the_pastoral_follow_up_only_to_the_health_audien
     assert (body["changedBy"] == who) is told
 
 
-async def test_the_resource_circle_reads_no_health_history_on_a_withheld_record(
+async def test_the_obt_lab_reads_the_history_of_a_withheld_record_without_its_notes(
     client, db_session, shema_app, withheld
 ) -> None:
-    """Both reductions answer the history on this record: the withheld record's, without its
-    notes, and the health audience's, none at all. The stricter one stays — the ratings and
-    the day of a reading are not the Resource Circle's on any record (OBT-553)."""
+    """The withheld record's reduction answers the history for a health reader who is not
+    coordination: the ratings stay, the notes do not. (The Resource Circle used to be handed
+    ``None`` here, both reductions at once — OBT-571 made it a ``trusted`` reader instead.)"""
     res = await client.get(
         f"{PROJECTS}/{WITHHELD_ID}",
-        headers=await _headers(db_session, shema_app, "resourceCircle"),
+        headers=await _headers(db_session, shema_app, "obtLab"),
     )
 
     assert res.status_code == 200, res.text
-    assert res.json()["healthHistory"] is None
+    history = res.json()["healthHistory"]
+    assert history is not None and len(history) == 1
+    assert READING_NOTES not in res.text
 
 
 # --------------------------------------------------------------------------------------

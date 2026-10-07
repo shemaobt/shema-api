@@ -169,11 +169,21 @@ def _assert_truth(body: dict[str, Any]) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def test_the_reader_has_three_values_and_outside_is_the_default() -> None:
-    """``coordination | other | outside``, and a shape nobody built for a reader is ``outside``
-    — the form everything that leaves the system already used, which is what *não muda* means
-    for the export, the ETEN report, the Pulse and the leader's link."""
-    assert {reader.value for reader in ShemaReader} == {"coordination", "other", "outside"}
+def test_the_reader_has_four_values_and_outside_is_the_default() -> None:
+    """``coordination | trusted | other | outside``, and a shape nobody built for a reader is
+    ``outside`` — the form everything that leaves the system already used, which is what *não
+    muda* means for the export, the ETEN report, the Pulse and the leader's link. ``trusted`` is
+    OBT-571's: the Resource Circle's read of the truth, with nothing of coordination's to write."""
+    assert {reader.value for reader in ShemaReader} == {
+        "coordination",
+        "trusted",
+        "other",
+        "outside",
+    }
+    assert {reader for reader in ShemaReader if reader.reads_truth} == {
+        ShemaReader.COORDINATION,
+        ShemaReader.TRUSTED,
+    }
 
     card = ShemaProjectCard.model_validate(
         {"id": "x", "location": PLACE, "sensitive_country": True}
@@ -191,7 +201,7 @@ GLOBAL = RegionScope(global_=True, regions=frozenset())
     [
         ({"coordinator"}, REGIONAL, False, "coordination", "other"),
         ({"obtLab"}, REGIONAL, False, "other", "other"),
-        ({"resourceCircle"}, REGIONAL, False, "other", "other"),
+        ({"resourceCircle"}, REGIONAL, False, "trusted", "other"),
         ({"coordinator", "obtLab"}, REGIONAL, False, "coordination", "other"),
         ({"admin", "obtLab"}, REGIONAL, False, "coordination", "coordination"),
         (set(), GLOBAL, True, "coordination", "coordination"),
@@ -289,21 +299,21 @@ SHAPES = {
 
 @pytest.mark.parametrize("reader", list(ShemaReader), ids=[r.value for r in ShemaReader])
 @pytest.mark.parametrize("shape", list(SHAPES), ids=list(SHAPES))
-def test_every_leaving_shape_takes_the_three_readers(shape: str, reader: ShemaReader) -> None:
+def test_every_leaving_shape_takes_every_reader(shape: str, reader: ShemaReader) -> None:
     """**The issue's acceptance line**: a new reader needs a case per reader in every shape that
     inherits the boundary — the card, the need line and the intake form, and now the record.
 
-    ``coordination`` is given the truth beside the marker; ``other`` and ``outside`` the region,
-    no base, no contact, no reason and the region's centroid. The marker is the same for all
-    three. The intake form declares no place at all, so for it the proof is that there is
-    nothing to leak whoever reads it.
+    ``coordination`` and ``trusted`` (OBT-571) are given the truth beside the marker; ``other``
+    and ``outside`` the region, no base, no contact, no reason and the region's centroid. The
+    marker is the same for all four. The intake form declares no place at all, so for it the
+    proof is that there is nothing to leak whoever reads it.
     """
     built = SHAPES[shape](reader, _row())
     body = built.model_dump(by_alias=True, mode="json")
 
     assert built.reader is reader
     assert body["locationWithheld"] is True
-    if reader is ShemaReader.COORDINATION and "location" in body:
+    if reader.reads_truth and "location" in body:
         assert body["location"] == PLACE
         assert BASE in json.dumps(body)
     else:
@@ -379,7 +389,7 @@ def test_only_an_explicit_context_names_the_reader() -> None:
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("role", ["obtLab", "resourceCircle"])
+@pytest.mark.parametrize("role", ["obtLab"])
 async def test_the_ficha_read_by_obt_lab_carries_the_region_no_base_and_no_coordinates(
     client, db_session, shema_app, withheld, role
 ) -> None:
@@ -544,7 +554,7 @@ async def test_the_record_a_write_answers_is_built_for_the_writers_reader(
 
 @pytest.mark.parametrize(
     ("role", "notice"),
-    [("obtLab", None), ("resourceCircle", None), ("coordinator", 1)],
+    [("obtLab", None), ("resourceCircle", 1), ("coordinator", 1)],
 )
 async def test_the_withheld_notice_is_coordinations_and_null_for_everybody_else(
     client, db_session, shema_app, withheld, cleared, role, notice
