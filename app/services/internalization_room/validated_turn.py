@@ -264,7 +264,6 @@ async def _voiced_after_validation(
     opening_instruction: str = "",
     ask_for_movements: bool = False,
     telling_back: str = "",
-    mother_tongue: bool = False,
     prepared_pericope: str | None = None,
     earlier_passages: str = "",
 ) -> TurnOutcome:
@@ -272,13 +271,6 @@ async def _voiced_after_validation(
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
-
-    `mother_tongue` is the one case where `transcript` is not the team's own words in the
-    session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. That note stays out of the Validator's
-    `{{TEAM_EVIDENCE}}`, which is quoted evidence of what the team *said*, under a heading no
-    prompt tells it to read as a fact about the room rather than speech. Let in, the slot
-    would credit the team with a sentence in the session language it never spoke.
 
     The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
     the kickoff's team text — and her turn loop hands that text to the Validator as what the
@@ -335,10 +327,7 @@ async def _voiced_after_validation(
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
             EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
-            TEAM_EVIDENCE=her_block(
-                TEAM_EVIDENCE_HEADING,
-                "" if mother_tongue else transcript or opening_instruction,
-            ),
+            TEAM_EVIDENCE=her_block(TEAM_EVIDENCE_HEADING, transcript or opening_instruction),
             DRAFTED_RESPONSE=draft,
         )
         if not warmed_connection:

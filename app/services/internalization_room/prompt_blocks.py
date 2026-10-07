@@ -12,6 +12,7 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.canon.parse_map import (
+    MeaningMap,
     code_only_links,
     load_book,
     load_map,
@@ -104,18 +105,37 @@ def earlier_passages_line(pericope_num: str, book: str, statuses: dict[str, str]
     is complete or absent: a status missing for any earlier passage of the book renders no
     line at all, as her app renders none, so a partial stamp never claims the rest unworked.
     """
-    earlier = [m for m in load_book(book) if m.pericope_num < pericope_num]
-    if not earlier or not statuses or any(m.pericope_num not in statuses for m in earlier):
+    stamped = _stamped_earlier(pericope_num, book, statuses)
+    if not stamped:
         return ""
     groups = [
-        f"{label}: {', '.join(m.reference for m in earlier if statuses[m.pericope_num] == status)}."
+        f"{label}: {', '.join(m.reference for m, given in stamped if given == status)}."
         for status, label in _EARLIER_GROUPS
-        if any(statuses[m.pericope_num] == status for m in earlier)
+        if any(given == status for _, given in stamped)
     ]
     return f"EARLIER PASSAGES FOR THIS TEAM: {' '.join(groups)}"
 
 
-def meaning_map_block(pericope_num: str, book: str) -> str:
+def _stamped_earlier(
+    pericope_num: str, book: str, statuses: dict[str, str] | None
+) -> list[tuple[MeaningMap, str]]:
+    earlier = [m for m in load_book(book) if m.pericope_num < pericope_num]
+    if not statuses or any(m.pericope_num not in statuses for m in earlier):
+        return []
+    return [(m, statuses[m.pericope_num]) for m in earlier]
+
+
+def _not_worked(pericope_num: str, book: str, statuses: dict[str, str] | None) -> frozenset[str]:
+    return frozenset(
+        m.pericope_num
+        for m, status in _stamped_earlier(pericope_num, book, statuses)
+        if status == EarlierPassageStatus.NOT_WORKED
+    )
+
+
+def meaning_map_block(
+    pericope_num: str, book: str, earlier_passages: dict[str, str] | None = None
+) -> str:
     """The passage's map with its links as codes alone, plus the earlier passages' digests.
 
     *Tripod Internalization · Interaction Flows*
@@ -124,16 +144,19 @@ def meaning_map_block(pericope_num: str, book: str) -> str:
     what keeps a later disclosure from reaching this session.
     """
     passage = code_only_links(load_map(pericope_num).body)
-    earlier = story_so_far(book, pericope_num)
+    earlier = story_so_far(book, pericope_num, _not_worked(pericope_num, book, earlier_passages))
     return f"{passage}\n\n{earlier}" if earlier else passage
 
 
-def validator_map_block(pericope_num: str, book: str) -> str:
+def validator_map_block(
+    pericope_num: str, book: str, earlier_passages: dict[str, str] | None = None
+) -> str:
     """The passage's map plus the rules and silences the Guide is never shown, and the story so far.
 
-    Every reader that judges a telling against the passage reads this, as her `ctx.validatorMap`
-    is read: the Validator, the Ensaio Final's Analyst, its correction check and its verdict
-    Speaker, and the golden judge. Ported from
+    The live turn's Guide and Validator read her notices for the session's stamp. The Ensaio
+    Final's readers and the golden judge read the map with no notice, as her `ctx.validatorMap`
+    is read, so in a stamped session with an unworked passage the verdict's prefix differs from
+    the live Validator's and is cached on its own. Ported from
     the project's own `validatorMapText` (`Tripod-Internalization`, `src/turn/mapText.ts:85`),
     whose framing sentence is reproduced verbatim because it is what tells the Validator that
     a plausible-sounding draft is still ungrounded when it crosses one of these.
@@ -162,5 +185,5 @@ def validator_map_block(pericope_num: str, book: str) -> str:
         "## SIGNIFICANT ABSENCES (per scene — silences that must be preserved, never "
         f"filled)\n\n{absences}\n"
     )
-    earlier = story_so_far(book, pericope_num)
+    earlier = story_so_far(book, pericope_num, _not_worked(pericope_num, book, earlier_passages))
     return f"{validator_map}\n\n{earlier}" if earlier else validator_map

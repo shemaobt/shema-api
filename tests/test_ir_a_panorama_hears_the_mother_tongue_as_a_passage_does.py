@@ -2,8 +2,8 @@
 
 A short take with no words hears her first D line and the Guide is not called; a take in another
 language, under the mother-tongue floor, or with no words for twenty seconds reaches the Guide as
-her note, never as the recognizer's words, and the Validator never reads that note as the team's
-own speech. The turn's record keeps what the room heard, as a passage turn's does.
+her note, never as the recognizer's words. The turn's record keeps what the room heard, as a
+passage turn's does.
 """
 
 from __future__ import annotations
@@ -227,7 +227,7 @@ async def test_english_speech_in_an_english_panorama_reaches_the_guide_as_the_te
     assert english.guide_inputs == [ENGLISH]
 
 
-async def test_a_panorama_mother_tongue_turn_is_never_handed_to_the_validator_as_the_teams_words(
+async def test_a_panorama_mother_tongue_turn_hands_the_validator_her_note_not_the_words(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -244,8 +244,11 @@ async def test_a_panorama_mother_tongue_turn_is_never_handed_to_the_validator_as
     assert models.guide_inputs == [_note(40)]
     assert len(models.validator_systems) == 1
     judged = models.validator_systems[0]
-    assert "língua materna" not in judged
-    assert "[A equipe" not in judged
+    assert (
+        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+        "The drafted response answers this. Referring to these words is not a claim about the "
+        f"passage.\n\n{_note(40)}"
+    ) in judged, "o Validador do Panorama lia o slot vazio, e o dela lê a nota da sala ali"
     assert TERENA_AS_SPANISH not in judged
 
 
