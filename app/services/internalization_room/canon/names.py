@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from functools import lru_cache
+from pathlib import Path
 
 from app.services.internalization_room.canon.parse_map import VENDOR, MeaningMap, Scene
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 REGISTRY_DIR = VENDOR / "registry"
 COORDINATES_DIR = VENDOR / "meaning-coordinates"
+PASSAGE_LABELS = Path(__file__).parent / "passage-labels.json"
 
 UNRESOLVED_LABEL = "(unresolved — needs grounded wording)"
 WITHHELD_BEING_LABEL = "someone the text leaves unnamed here"
@@ -20,7 +22,6 @@ WITHHELD_BEING = "B?"
 
 _SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman", "REDEEMER_GOEL": "a redeemer"}
 _ROLE_WORD = {"SON": "a son"}
-_PASSAGE_LABEL = {("P10", "O13"): "The Cloak"}
 _DEFINITION = re.compile(r"^\[\[([A-Z][A-Z0-9_]*?)-[^\]\n]*\]\][ \t]*—[ \t]*([^\n]+)$", re.M)
 _NAMED_LINK = re.compile(r"\[\[[^\]\n]*\]\][ \t]+(?=[^\W\d_])")
 _FLAG_NOTE = re.compile(r"^active at\b", re.I)
@@ -33,6 +34,14 @@ def _names_list(book: str) -> dict[str, dict]:
     path = REGISTRY_DIR / f"{book.lower()}.aliases.json"
     entities: dict[str, dict] = json.loads(path.read_text(encoding="utf-8"))["entities"]
     return entities
+
+
+@lru_cache(maxsize=1)
+def _passage_labels() -> dict[str, dict[str, dict[str, str]]]:
+    labels: dict[str, dict[str, dict[str, str]]] = json.loads(
+        PASSAGE_LABELS.read_text(encoding="utf-8")
+    )
+    return labels
 
 
 @lru_cache(maxsize=64)
@@ -88,7 +97,8 @@ def _grounded(meaning_map: MeaningMap, mention: str, gloss: str | None) -> str:
 
 
 def thing_name(meaning_map: MeaningMap, code: str) -> str:
-    return _PASSAGE_LABEL.get((meaning_map.pericope_num, code)) or name_of(meaning_map, code)
+    for_passage = _passage_labels().get(meaning_map.book, {}).get(meaning_map.pericope_num, {})
+    return for_passage.get(code) or name_of(meaning_map, code)
 
 
 def _withheld_label(form: str | None, role: str | None) -> str:
