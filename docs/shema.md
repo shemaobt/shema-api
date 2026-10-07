@@ -203,7 +203,7 @@ The naming trips every newcomer once.
 | | |
 |---|---|
 | `app_key` | **`shema`** |
-| Role keys | **`globalStrategist`, `coordinator`, `obtLab`, `resourceCircle`**, and **`admin`** since OBT-523 (§6.8) |
+| Role keys | **`coordinator`, `obtLab`, `resourceCircle`**, and **`admin`** since OBT-523 (§6.8). ~~`globalStrategist`~~ was the fourth and left on 7/oct/2026 (OBT-572): Karina had meant to retire it; Daniel decided its holders lose it and the Admin grants another role — `20261007_shema572` revokes the grants and the pending invites, the row stays unseeded |
 | Seeded by | `scripts/seed_apps_roles.py`'s `SEED_APPS` and `APP_ROLES_OVERRIDE` — BE-03; `admin` by its `PLATFORM_ADMIN_APPS` and by `20260927_shema08` — OBT-523 |
 | Named in code | `app/api/shema/_deps.py` and nowhere else in the module |
 
@@ -803,7 +803,7 @@ behaviour on it.
 >   answer a submission may carry are last-write-wins between two simultaneous wizards.
 >
 > And the **audience** is this module's answer to *read access at least as narrow as the
-> record's*: `globalStrategist`, `coordinator`, `obtLab` — `resourceCircle` opens the ficha and is
+> record's*: `coordinator`, `obtLab` (and `globalStrategist`, until OBT-572) — `resourceCircle` opens the ficha and is
 > refused the assessment, off FE-44 §5.8's own table. The same list addresses the critical notice,
 > because notifying somebody who may not read it leaks the fact that it exists.
 
@@ -853,7 +853,7 @@ behaviour on it.
 > - **The `projectId` travels on the line** — the client allowed it on 28/sep/2026 (§9.4).
 > - **The ledger holds manual rows only**, and names who set each one; a calculated figure is
 >   kept with its readings in the recorded report instead. Setting one is the coordination's
->   (`globalStrategist`, `coordinator` in its region) — this issue's reading, one tuple to change.
+>   (`coordinator` in its region, the `admin`; `globalStrategist` until OBT-572) — this issue's reading, one tuple to change.
 > - **The line is an `outside` reader**: withheld for every role, the region's own coordinator
 >   included, and still counted in the totals. `test_privacy_owners.py`'s route audit now walks
 >   computed fields as well, with `EtenLocationShown` on a named allowlist.
@@ -905,7 +905,7 @@ behaviour on it.
 >   Pulse that wrote a request without that answer — a new text, `coordenacao`, the same text
 >   again — announces nothing, whatever the project said before.
 > - **Who reads a request nobody authorized is the health assessment's audience**
->   (`PRAYER_AUDIENCE = HEALTH_AUDIENCE`): `globalStrategist`, `coordinator` and `obtLab` in their
+>   (`PRAYER_AUDIENCE = HEALTH_AUDIENCE`): `coordinator` and `obtLab` (and `globalStrategist`, until OBT-572) in their
 >   scope, and an installation admin. The request is raised in the assessment and kept on the
 >   health tab, and `coordenacao` is *the people who follow up and support*. `resourceCircle` —
 >   the wall's audience, the role that shares with the network — reads what the team authorized:
@@ -960,7 +960,7 @@ Three shapes were available. The decision is the third.
 
 **The shape.** `shema_user_regions (user_id → users, region_key)`, unique on the pair. A row
 means *this account's scope includes this region*. **No rows means global** — the
-`globalStrategist`, and any account the client wants unscoped. The grant itself stays
+`globalStrategist`, and any account the client wants unscoped — a case with no holder since OBT-572 retired that role. The grant itself stays
 `(user, app, role)` and is written through
 `app/services/authorization/grant_app_role.py`, never through `scripts/grant_app_role.py`
 (§4.2).
@@ -1018,13 +1018,13 @@ rather than announcing a refused authorization the service never decided. An inv
 allowed to know which it was joins the id where being allowed is checked —
 `app/services/shema/_scope.py`.
 
-**"No rows means global" holds for `globalStrategist` and for nobody else — BE-03 narrowed
+**"No rows means global" held for `globalStrategist` and for nobody else, and since OBT-572 for nobody at all — BE-03 narrowed
 it, deliberately.** The sentence above names who the empty case serves; read as *anyone with
 no rows is global* it inverts the product's own rule, which is that a regional coordinator
 sees **their** region. It also has a live path to it: `app/services/access_request` grants a
 role on approval and grants no region, so every approved account would land globally scoped.
 So a **regional** role with no row reaches nothing, and making such an account unscoped is
-an explicit act — name its seven regions, or grant it `globalStrategist` too. The
+an explicit act — name its seven regions (granting `globalStrategist` was the other way, until OBT-572). The
 `default_role_for("shema")` entry is `resourceCircle` for the same reason: an approval hands
 out a role and no data.
 
@@ -1034,7 +1034,7 @@ append-only `shema_scope_changes` (§6.10). Other doors still leave rows behind,
 paragraph makes harmless.
 
 **And a row counts only under a regional role — OBT-523 closed the converse.** An account
-holding no regional role (and not `globalStrategist`) reaches nothing whatever rows it has,
+holding no regional role reaches nothing whatever rows it has,
 without the table being read. Nothing deletes an account's rows when its regional role is
 revoked, and a seat or an operator can leave one behind; without this, the `admin`, `gestor`
 and `mesa` of §6.8 would reach a region by accident of data. The three regional roles reach
@@ -1072,18 +1072,18 @@ read of `shema_project_members` for the `equipe` a live membership adds (§6.9);
 it is not a user profile field, and renaming a role-holder renames who the session says you
 are.
 
-`globalStrategist` is a role key with no org-chart seat (the chart's three roles are per
+`admin` is a role key with no org-chart seat (the chart's three roles are per
 region). FE-44 §12.2 leaves `GLOBAL_STRATEGIST_NAME` as the frontend's one remaining
 hardcoded name. ~~**Open · BE-03:** whether `name` for that role falls back to
 `users.display_name`.~~ **Answered by BE-03: yes, and the fallback is one rule rather than
 four special cases.** The chart's rule exists so there is no second owner of a seat's name;
-`globalStrategist` has no seat, so there is no fact being duplicated and no rename to follow,
+a seatless role has no seat, so there is no fact being duplicated and no rename to follow,
 and the rule does not reach it. `null` was the alternative the contract permits, and it would
 guarantee that `GLOBAL_STRATEGIST_NAME` stays — which is what this endpoint exists to retire.
 
 So: the seat is read when there is exactly one seat to read — the role has a seat **and** the
 scope names exactly one region **and** the seat is filled. Global scope, a two-region scope,
-`globalStrategist`, and an unassigned seat all fall back to `users.display_name`, and the
+a seatless role, and an unassigned seat all fall back to `users.display_name`, and the
 last of those is the ordinary path rather than an edge case: all twenty-one seats ship
 unassigned.
 
@@ -1112,7 +1112,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 
 | | `coordination` | `other` | `outside` |
 |---|---|---|---|
-| **Who** | `globalStrategist`; a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
+| **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
 | `location`, `country` | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | `""` | `""` |
 | `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | `""` | `""` |
@@ -1515,7 +1515,7 @@ validated and written per project — runs in a worker thread. Measured on 30/se
 with the machine shared by four other runs: 127 projects in 46–131 ms; 2,000 in 0.33–0.68 s at the
 best of three and up to 1.5 s at the worst, where the Projetos read of the same 2,000 took 0.59 s.
 
-**Only coordination imports, and that is a decision to record.** `globalStrategist`, a
+**Only coordination imports, and that is a decision to record.** A
 `coordinator` in its regions, the `admin` role and an installation admin import; the OBT Lab and the Resource Circle
 are answered 403 before the file is looked at (`readership.coordinates_anything`, the same answer
 the export's withheld line is addressed by). The import is the backup that returns, and only
@@ -1791,8 +1791,8 @@ the mesa was refused at the door of a console it now belongs to. Six rules.
   `ROLE_PRECEDENCE` the account holds, in that order; `role` is its first entry, kept so no
   screen that reads one role breaks while the console moves to the list. The four Shemá roles
   lead the precedence, widest-first as before, so every account that reached the console
-  before keeps its `role` byte for byte (the Admin of today holds `globalStrategist`, `admin`
-  and `gestor` and still answers `globalStrategist`); then `admin`, `gestor`, `mesa`, and the
+  before keeps its `role` byte for byte (an account holding `coordinator`, `admin` and `gestor`
+  answers `coordinator`; the Admin of that day held `globalStrategist` first, until OBT-572); then `admin`, `gestor`, `mesa`, and the
   reserved `equipe`. The console's `SESSION_ROLES` is this tuple and refuses any key outside it,
   so the list is closed: a key added here is a key added there.
 - **The door is a router of its own and opens one route.** `door` carries `DOOR` and holds
@@ -2389,7 +2389,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 1 | ~~Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each.~~ **Answered by BE-02, in opposite directions, because the pairs are not the same shape.** `team` and `ywamBase` are **one column**: they are one concept in two languages, identical on all 127 records, and collapsing removes the drift instead of policing it. `sensitivity` and `sensitive_country` **stay two**, with the boolean authoritative: the text is a free-text export column that agrees with the flag by accident of the data, so collapsing would delete evidence. **BE-16 departs from one half-sentence of that answer:** BE-02 expected the import to *derive the flag from the text*, and it does not — §9.5's client list is where the flag comes from, and the export's text and boolean may only **raise** it. The columns and their ownership are unchanged; what changed is that the export is never read as permission. | ~~BE-02~~ **closed**, amended by BE-16 |
 | 2 | ~~Whether `region_key` is stored as a maintained derived column or computed per query.~~ **Answered by BE-02: stored, maintained, indexed — and deliberately not a generated column,** because the derivation is a lookup over 25 country strings kept in Python and expressing it in DDL would be a second copy of a map whose whole value is that there is one. | ~~BE-02~~ **closed** |
 | 3 | ~~The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry.~~ ~~**Answered by BE-03: `https://shema.shemaywam.com`, and the same value added to `cors_origins`.**~~ **Superseded by OBT-567 (6/oct/2026): the hostname never got a DNS record, and the seed and the installed row now carry `https://project-management-ecosystem-f7ssqjozfq-uc.a.run.app` — the Cloud Run address the PME answers on — by the user's decision that no `shema.shemaywam.com` is planned; `20261006_shema567` is the UPDATE, guarded by the old value. `cors_origins` was left to the core (the deployed PME proxies `/api` through its own nginx, so CORS never applied to it). The PME still has no `/reset-password` route, so the link reaches a real host and no page — the PME's screen, not this module's.** BE-03's reasoning, kept as history: there was no deployment to read — the console is wave 1, with no deploy workflow, no environment file beyond `VITE_API_PROXY_TARGET`, and no host named in either repository — so this follows the eight rows already in `SEED_APPS`, every one of them the product's name lowercased with no separators. Leaving it empty was the alternative and is worse: `request_password_reset` then builds the reset link from `http://localhost:5173` in production, which is the silent failure §2.3 warns about, while a conventional hostname that turns out wrong fails on the first click and is a one-row UPDATE to correct. | ~~BE-03~~ **closed** |
-| 4 | ~~Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3).~~ **Answered by BE-03: yes**, and generalised to one rule — the seat is read when the role has one, the scope names exactly one region and the seat is filled; everything else falls back. §6.3 carries the argument. | ~~BE-03~~ **closed** |
+| 4 | ~~Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist` (retired by OBT-572; the `admin` is the seatless role now), which has no org-chart seat (§6.3).~~ **Answered by BE-03: yes**, and generalised to one rule — the seat is read when the role has one, the scope names exactly one region and the seat is filled; everything else falls back. §6.3 carries the argument. | ~~BE-03~~ **closed** |
 | 5 | ~~Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3).~~ **Answered by BE-13: the network is BE-13's**, because INT-10 is blocked by OBT-402 and not by OBT-398 and OBT-402's whole Context section is about that table. The frozen paths did not move. §1.3 C3 carries the argument. | ~~BE-09 / BE-13~~ **closed** |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
 | 7 | ~~Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1).~~ **Answered by BE-16: as-is, with `approved_units_unverified` set on every migrated record.** Zero would have discarded the only number there is, and as-is alone would have credited approvals nobody made; the flag says the number came from the export rather than from an approval, which is true of all 127 and needs no second rule for the 105 where it is zero anyway. **BE-11 reads it to tell a migrated count from a typed one**, and the write path that lets somebody approve a chapter for real is the one that clears it. | ~~BE-16~~ **closed** |
@@ -2409,7 +2409,7 @@ description, naming what this document changes for it. Nothing is deleted. The r
 items, so they are stated once:
 
 - **The module is `shema`, the prefix is `/api/shema`, the app key is `shema`**, and the four
-  role keys are `globalStrategist`, `coordinator`, `obtLab`, `resourceCircle` (§2.1, §2.3).
+  role keys are `coordinator`, `obtLab`, `resourceCircle` (§2.1, §2.3; `globalStrategist` until OBT-572).
 - **Do not touch `app/main.py`.** The anchor is mounted; include your router in
   `app/api/shema/__init__.py`, on a line of its own (§3.2).
 - **Create your own model file** under the `shema_` prefix; do not grow BE-02's (§2.2).
