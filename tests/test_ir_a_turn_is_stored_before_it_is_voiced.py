@@ -288,3 +288,25 @@ async def test_a_turn_whose_voice_works_serves_the_clip_it_voiced_without_voicin
 
     assert heard.content == f"som de {GUIDE_LINE}".encode()
     assert elevenlabs.calls == [GUIDE_LINE], "o endereço do turno pagava a mesma fala duas vezes"
+
+
+async def test_a_team_walking_back_in_while_the_voice_is_down_gets_the_stored_reply_not_a_502(
+    client: httpx.AsyncClient, room: tuple[str, str, dict[str, str]], elevenlabs: _Elevenlabs
+) -> None:
+    session_id, credential, _desk = room
+    elevenlabs.down = True
+    answered = await _the_team_answers(client, credential, session_id)
+
+    again = await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns", headers=team_headers(credential)
+    )
+    assert again.status_code == 200, again.text[:300]
+    elevenlabs.down = False
+    heard = await client.get(again.json()["audio_url"], headers=team_headers(credential))
+
+    assert again.json()["audio_url"] == answered.json()["audio_url"], (
+        "a equipe que voltava com a voz fora recebia outro endereço para a mesma fala"
+    )
+    assert heard.content == f"som de {GUIDE_LINE}".encode(), (
+        "a equipe que voltava com a voz fora nunca ouvia a resposta guardada"
+    )

@@ -705,10 +705,22 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
             except Exception:
                 voiced = None
         if voiced is None:
-            voiced = (await room.synthesize_facilitator_speech(last, language=session.language))[0]
+            try:
+                voiced = (
+                    await room.synthesize_facilitator_speech(last, language=session.language)
+                )[0]
+            except Exception as error:
+                logger.warning("a stored line could not be voiced again: %s", type(error).__name__)
     return TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key, session_id=session.id) if voiced else "",
+        audio_url=(
+            clip_url(
+                voiced.key if voiced else facilitator_speech_key(last, language=session.language),
+                session_id=session.id,
+            )
+            if last
+            else ""
+        ),
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
