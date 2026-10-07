@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import urllib.error
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,22 @@ def point_the_sync_at(
     monkeypatch.setattr(canon, "PIN_FILE", vendor / "VENDOR_PIN")
     monkeypatch.setattr(canon, "_get", compiler.get)
     return vendor
+
+
+def a_clone_of(compiler: Compiler, clone: Path) -> str:
+    for path, data in {
+        **compiler.files,
+        "_spec/pins.json": json.dumps(compiler._pins()).encode(),
+    }.items():
+        (clone / path).parent.mkdir(parents=True, exist_ok=True)
+        (clone / path).write_bytes(data)
+    git = ["git", "-C", str(clone), "-c", "user.name=compiler", "-c", "user.email=c@example.org"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "canon"], check=True)
+    return subprocess.run(
+        [*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def what_is_vendored(vendor: Path) -> dict[str, bytes]:

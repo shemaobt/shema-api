@@ -33,9 +33,11 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -99,15 +101,18 @@ def _listing(kind: str, sha: str) -> list[str]:
     return sorted(entry["name"] for entry in json.loads(_get(url)))
 
 
-def _listed_books(sha: str) -> set[str]:
-    url = f"https://raw.githubusercontent.com/{REPO}/{sha}/_spec/pins.json"
-    sources = json.loads(_get(url))["sources"]
-    return {found[1] for key in sources if (found := ALIASES_KEY.fullmatch(key))}
+def _file(path: str, sha: str) -> bytes:
+    return _get(f"https://raw.githubusercontent.com/{REPO}/{sha}/{path}")
 
 
-def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
-    listed = {kind: _listing(kind, sha) for kind in KINDS}
-    listed_books = _listed_books(sha)
+def _published(
+    sha: str,
+    listing: Callable[[str, str], list[str]] = _listing,
+    read: Callable[[str, str], bytes] = _file,
+) -> tuple[dict[str, list[str]], list[str]]:
+    listed = {kind: listing(kind, sha) for kind in KINDS}
+    sources = json.loads(read("_spec/pins.json", sha))["sources"]
+    listed_books = {found[1] for key in sources if (found := ALIASES_KEY.fullmatch(key))}
     stems = {
         kind: {name.removesuffix(suffix): name for name in listed[kind]}
         for kind, suffix in PASSAGE_SUFFIX.items()
@@ -143,7 +148,7 @@ def _published(sha: str) -> tuple[dict[str, list[str]], list[str]]:
 
 
 def _raw(kind: str, sha: str, name: str) -> bytes:
-    return _get(f"https://raw.githubusercontent.com/{REPO}/{sha}/{KINDS[kind]}/{name}")
+    return _file(f"{KINDS[kind]}/{name}", sha)
 
 
 def _digest(data: bytes) -> str:
@@ -228,6 +233,30 @@ def _drift(expected: dict[str, str], held: dict[str, bytes]) -> list[str]:
     return drifted
 
 
+def _git(clone: Path, *args: str) -> bytes:
+    return subprocess.run(["git", "-C", str(clone), *args], check=True, capture_output=True).stdout
+
+
+def _against_the_clone(clone: Path, sha: str) -> list[str]:
+    def listing(kind: str, at: str) -> list[str]:
+        try:
+            names = _git(clone, "ls-tree", "-z", "--name-only", f"{at}:{KINDS[kind]}")
+        except subprocess.CalledProcessError:
+            return []
+        return sorted(name for name in names.decode().split("\0") if name)
+
+    def read(path: str, at: str) -> bytes:
+        return _git(clone, "show", f"{at}:{path}")
+
+    published, _ = _published(sha, listing, read)
+    expected = {
+        f"{kind}/{name}": _digest(read(f"{KINDS[kind]}/{name}", sha))
+        for kind in KINDS
+        for name in published[kind]
+    }
+    return _drift(expected, _held())
+
+
 def check() -> int:
     if not PIN_FILE.exists():
         print("no VENDOR_PIN — run with --sync", file=sys.stderr)
@@ -239,6 +268,11 @@ def check() -> int:
         drifted = _drift({file["path"]: file["sha256"] for file in files}, _held())
     else:
         drifted = [f"missing: {MANIFEST}"]
+    clone = os.environ.get("TRIPOD_COMPILER_REPO")
+    if clone:
+        drifted.extend(
+            f"against the pin in {clone}: {line}" for line in _against_the_clone(Path(clone), sha)
+        )
     if drifted:
         print(f"canon drifted from pin {sha}:", file=sys.stderr)
         for line in drifted:
