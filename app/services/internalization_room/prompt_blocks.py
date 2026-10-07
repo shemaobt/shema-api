@@ -138,7 +138,9 @@ def meaning_map_block(
     return f"{passage}\n\n{earlier}" if earlier else passage
 
 
-def validator_map_block(pericope_num: str, book: str) -> str:
+def validator_map_block(
+    pericope_num: str, book: str, earlier_passages: dict[str, str] | None = None
+) -> str:
     """The passage's map plus the rules and silences the Guide is never shown, and the story so far.
 
     Every reader that judges a telling against the passage reads this, as her `ctx.validatorMap`
@@ -172,5 +174,5 @@ def validator_map_block(pericope_num: str, book: str) -> str:
         "## SIGNIFICANT ABSENCES (per scene — silences that must be preserved, never "
         f"filled)\n\n{absences}\n"
     )
-    earlier = story_so_far(book, pericope_num)
+    earlier = story_so_far(book, pericope_num, _not_worked(earlier_passages))
     return f"{validator_map}\n\n{earlier}" if earlier else validator_map

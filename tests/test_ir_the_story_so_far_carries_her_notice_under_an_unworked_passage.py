@@ -90,3 +90,17 @@ async def test_the_guide_reads_her_notice_under_the_passage_the_team_never_worke
     assert f"{P01_HEADING}\n{NOTICE}" not in guide and guide.count(NOTICE) == 1, (
         "uma passagem aprovada recebia o aviso de não trabalhada"
     )
+
+
+async def test_the_validator_reads_the_same_notice_under_the_same_passage(
+    recording: _Recording,
+) -> None:
+    await _turn({"P01": "approved", "P02": "not_worked"})
+
+    judged = recording.validator[0]
+    assert f"{P02_HEADING}\n{NOTICE}\n" in judged, (
+        "o Validador julgava a fala sobre uma passagem não trabalhada sem o aviso que o Guia lia"
+    )
+    assert f"{P01_HEADING}\n{NOTICE}" not in judged and judged.count(NOTICE) == 1, (
+        "uma passagem aprovada recebia o aviso de não trabalhada"
+    )

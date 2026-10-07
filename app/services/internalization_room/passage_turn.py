@@ -79,7 +79,7 @@ async def run_turn(
             COVERAGE_STATUS=coverage_status,
         ),
         validator_prompt=validator_prompt,
-        standard_of_truth=validator_map_block(pericope_num, book),
+        standard_of_truth=validator_map_block(pericope_num, book, earlier_passages),
         transcript=transcript,
         messages=messages,
         session_language=session_language,
