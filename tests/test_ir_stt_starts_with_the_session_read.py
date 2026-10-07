@@ -22,7 +22,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
-from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.hearing import HeardSpeech, stop_hearing
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
@@ -305,7 +305,7 @@ async def _slow_to_actually_cancel() -> None:
 
 
 async def test_cancelling_the_request_does_not_get_swallowed_while_stopping_the_stt() -> None:
-    """`_cancelled` runs while `_answer_the_turn` itself is unwinding from a failure, so a
+    """`stop_hearing` runs while `_answer_the_turn` itself is unwinding from a failure, so a
     cancellation of the request landing at that exact suspension point must reach the caller,
     never read as if it were the stopped transcription's own outcome."""
     hung = asyncio.create_task(_slow_to_actually_cancel())
@@ -313,11 +313,11 @@ async def test_cancelling_the_request_does_not_get_swallowed_while_stopping_the_
 
     async def _cleaning_up() -> None:
         entered_cleanup.set()
-        await sessions_api._cancelled(hung)
+        await stop_hearing(hung)
 
     request = asyncio.create_task(_cleaning_up())
     await asyncio.wait_for(entered_cleanup.wait(), timeout=1)
-    await asyncio.sleep(0.05)  # _cancelled has called hung.cancel() and is now inside its wait
+    await asyncio.sleep(0.05)  # stop_hearing has called hung.cancel() and is now inside its wait
     request.cancel()
 
     with pytest.raises(asyncio.CancelledError):

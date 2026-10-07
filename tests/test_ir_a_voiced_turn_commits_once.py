@@ -55,11 +55,6 @@ def models() -> _Models:
     return _Models()
 
 
-@pytest.fixture()
-def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
-
-
 class _Voice:
     def __init__(self) -> None:
         self.the_bucket_is_down = False
@@ -186,7 +181,7 @@ async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
     )
 
 
-async def test_an_opening_the_room_voices_live_reaches_the_database_in_one_commit(
+async def test_an_opening_the_room_voices_live_lands_in_one_commit_after_its_claim(
     client: httpx.AsyncClient, db_session: AsyncSession, commits: list[object]
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
@@ -195,7 +190,10 @@ async def test_an_opening_the_room_voices_live_reaches_the_database_in_one_commi
     opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
 
     assert opened.status_code == 200, opened.text[:300]
-    assert len(commits) == 1, "a abertura gravava a comprehension e a primeira fala em dois commits"
+    assert len(commits) == 2, (
+        "a abertura gravava a comprehension e a primeira fala em dois commits, além da"
+        " reivindicação da abertura (ADR 0053)"
+    )
 
 
 async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(

@@ -324,8 +324,7 @@ async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
     finished Ruth 1:1-5 and then struggled to tell one stretch back would be handed the
     passage again, with their recording sitting in the bucket.
 
-    Which is why the mark read is `ended_at` and not the status: the close is stamped there
-    at the same instant and no halt writes over it.
+    Which is why the passage reads `done` from the status: the refused halt leaves it as it was.
     """
     team = await a_team(db_session, name="Gravou e depois a sala parou")
     session = await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)

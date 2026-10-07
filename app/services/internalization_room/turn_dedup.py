@@ -5,11 +5,11 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from sqlalchemy import or_, select
-from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.stage_clock import StageClock, adopt, current_clock
+from app.db.insert_once import insert_once
 from app.db.models.internalization_room import IRSession, IRTurn
 from app.models.internalization_room import TurnResponse
 
@@ -92,9 +92,9 @@ async def remember_turn(
     db: AsyncSession, *, session_id: str, turn_id: str, response: dict[str, Any]
 ) -> None:
     """Record this turn's answer, once, so a resend finds it instead of repeating the work."""
-    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
-    await db.execute(
-        insert(IRTurn)
-        .values(session_id=session_id, turn_id=turn_id, response=response)
-        .on_conflict_do_nothing(index_elements=["session_id", "turn_id"])
+    await insert_once(
+        db,
+        IRTurn,
+        {"session_id": session_id, "turn_id": turn_id, "response": response},
+        conflict_on=["session_id", "turn_id"],
     )

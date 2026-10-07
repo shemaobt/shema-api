@@ -89,6 +89,8 @@ MIGRATION_FILES = {
     "test_ir_closed_passage_repair_migration.py",
     "test_ir_team_sessions_migration.py",
     "test_ir_earlier_passages_migration.py",
+    "test_ir_archives_migration.py",
+    "test_ir_opening_claim_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

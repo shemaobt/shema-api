@@ -6,7 +6,12 @@ import math
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import UpstreamServiceError, ValidationError, upstream_or_validation_error
+from app.core.exceptions import (
+    NoWordsHeard,
+    UpstreamServiceError,
+    ValidationError,
+    upstream_or_validation_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +121,7 @@ async def transcribe_audio_detailed(
     mime_type: str | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
+    language: str | None = None,
 ) -> TranscriptionResult:
     if not audio_bytes:
         raise ValidationError("Audio payload is empty")
@@ -136,13 +142,16 @@ async def transcribe_audio_detailed(
             )
 
     upload_name = _filename_for_upload(filename, resolved_mime)
+    form = {"model_id": cfg.elevenlabs_stt_model}
+    if language:
+        form["language_code"] = language
     http = client or _make_client()
     try:
         response = await http.post(
             f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
             headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
             files={"file": (upload_name, audio_bytes, resolved_mime)},
-            data={"model_id": cfg.elevenlabs_stt_model},
+            data=form,
         )
     except httpx.HTTPError as error:
         logger.warning("ElevenLabs STT unreachable: %s", error)
@@ -161,13 +170,19 @@ async def transcribe_audio_detailed(
 
     payload = response.json()
     text = (payload.get("text") or "").strip()
-    if not text:
-        raise ValidationError("Transcription returned empty text")
+    language_code = payload.get("language_code") or None
     probability = payload.get("language_probability")
+    language_probability = float(probability) if isinstance(probability, (int, float)) else None
+    if not text:
+        raise NoWordsHeard(
+            "Transcription returned empty text",
+            language_code=language_code,
+            language_probability=language_probability,
+        )
     return TranscriptionResult(
         text=text,
-        language_code=payload.get("language_code") or None,
-        language_probability=float(probability) if isinstance(probability, (int, float)) else None,
+        language_code=language_code,
+        language_probability=language_probability,
         transcript_confidence=_transcript_confidence(payload.get("words") or []),
     )
 
@@ -179,6 +194,7 @@ async def transcribe_audio(
     mime_type: str | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
+    language: str | None = None,
 ) -> str:
     result = await transcribe_audio_detailed(
         audio_bytes,
@@ -186,5 +202,6 @@ async def transcribe_audio(
         mime_type=mime_type,
         settings=settings,
         client=client,
+        language=language,
     )
     return result.text

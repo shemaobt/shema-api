@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
     #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
     internalization_room_turn_bound_ms: int = 300_000
+    #: How long a team turn sent while the session's opening drafts waits for it, counted
+    #: from the claim (her ``KICKOFF_WAIT_MS``). The turn's own bound starts after the wait,
+    #: so a turn that waited and then ran long can still be cut by the deployment's ceiling.
+    internalization_room_opening_wait_ms: int = 90_000
+    #: The language-detection probability under which a take heard in the session's own
+    #: language counts as the mother tongue. A deployment's, never a session's: it is read on
+    #: every take, so a change reaches the next turn heard. A probability, so a value outside
+    #: 0..1 is refused at boot rather than silently making every take, or none, the mother
+    #: tongue.
+    internalization_room_mother_tongue_floor: float = Field(default=0.35, ge=0, le=1)
     #: How long the Guide's and the Validator's prefix survives a rehearsal pause. Anthropic's
     #: default cache entry is 5 minutes; a team that steps away for the ensaio comes back to a
     #: cold prefix and pays its ~16k/~14k tokens again on the first turn back. Empty reverts to
@@ -87,21 +97,16 @@ class Settings(BaseSettings):
     internalization_room_runner_key: str = ""
     #: The room bills its own voice. Empty falls back to the shared key.
     internalization_room_elevenlabs_api_key: str = ""
-    #: The room's Portuguese voice. One native voice per language it speaks, never one
-    #: multilingual voice for all of them: a voice keeps its accent in any language, and a
-    #: Brazilian-cloned voice reading English is the failure ``platform/voices.py`` argues
-    #: against at length.
-    internalization_room_voice_id: str = "83Nae6GFQiNslSbuzmE7"
-    internalization_room_voice_id_en: str = "x52Gqgso2pdbdr7KngsJ"
+    #: The room's voice is Mariana's, chosen on 2026-09-21, because Marcia's frozen app is the
+    #: bar for what the team hears and it speaks every line in her. English is voiced by
+    #: ``_en`` when a deployment configures one and by her otherwise.
+    internalization_room_voice_id: str = "tZ2oxQJXfOrGrN7iKnta"
+    internalization_room_voice_id_en: str = ""
     #: What a caller that names no language gets. Not "the language the room speaks" any
     #: more — the app names that on the session, because it is the tablet that knows which
     #: language the team in front of it reads its own settings in.
     internalization_room_default_language: str = "en"
     internalization_room_tts_model: str = "eleven_turbo_v2_5"
-    internalization_room_voice_stability: float = 0.45
-    internalization_room_voice_similarity: float = 0.85
-    internalization_room_voice_style: float = 0.10
-    internalization_room_voice_speed: float = 0.96
 
     gcs_bucket_name: str = ""
     # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it
