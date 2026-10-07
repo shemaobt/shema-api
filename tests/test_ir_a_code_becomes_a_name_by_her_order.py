@@ -4,11 +4,13 @@ import pytest
 
 from app.services.internalization_room.canon import names
 from app.services.internalization_room.canon.elements import (
+    ElementKind,
     element_keys,
     elements_for,
     elements_of,
 )
-from app.services.internalization_room.canon.parse_map import MAPS_DIR, parse_map
+from app.services.internalization_room.canon.labels import labelled_elements
+from app.services.internalization_room.canon.parse_map import MAPS_DIR, load_book, parse_map
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 
 NAMES_LOGGER = "app.services.internalization_room.canon.names"
@@ -134,3 +136,17 @@ def test_a_bead_renamed_by_her_keeps_the_key_its_coverage_is_stored_under() -> N
     )
     assert "being:S2:ruth-s-father-and-mother-your-fa" in keys
     assert "being:S4:B3" in element_keys("P01")
+
+
+def test_every_being_ruth_leaves_unnamed_reads_on_the_desk_what_the_voice_is_told() -> None:
+    drifted = []
+    for meaning_map in load_book("Ruth"):
+        pericope = meaning_map.pericope_num
+        desk = {element.key: element.label_en for element in labelled_elements(pericope)}
+        for element in elements_for(pericope):
+            if element.kind is ElementKind.BEING and element.key.split(":")[-1].islower():
+                said = desk[element.key]
+                if said[:1].lower() + said[1:] != element.label.strip('"'):
+                    drifted.append(f"{pericope} {element.key}: {said!r} / {element.label!r}")
+
+    assert drifted == [], "a conta dava ao ser sem nome palavras que a voz não ouvia"
