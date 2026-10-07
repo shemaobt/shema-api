@@ -68,6 +68,26 @@ release, not only on CI: `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golde
 must pass before anything touching prompts, turn loop, model or canvas reaches the team, and
 a green unit suite is not sufficient to ship a prompt change.
 
+## The canon
+
+Marcia's canon — the Meaning Maps, Meaning Coordinates, Compilation Logs and each book's
+aliases list under `app/services/internalization_room/canon/vendor/` — moves only through
+`scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
+line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
+beside the copy. Never edit vendored files, the pin or the record by hand: `--check` holds
+the copy to the record, and to a clone of the compiler at the pin where
+`TRIPOD_COMPILER_REPO` names one, and `scripts/smoke_internalization_canon.py` fails on
+what the room could not serve. `canon-sync.yml` runs the sync twice a week and opens a
+pull request for review when there is new canon; it never merges.
+
+The order of a canon change is hers:
+
+1. The compiler's spec change merges first, on her word, never during a team session.
+2. The app re-pins to the compiler's merge commit.
+3. The app's pull request merges.
+4. The vault follows the compiler.
+5. If the canon-sync bot opened its own pull request for the same change, close it.
+
 ## Rules
 
 Every schema change is an Alembic migration, and nothing is applied by hand. Routers never touch the database and services never raise HTTP: [ADR 0009](docs/adr/0009-routers-never-touch-the-database.md).
