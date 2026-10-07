@@ -76,7 +76,6 @@ _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
     "a análise da tradução não pôde ser feita agora",
-    "a leitura final da tradução não pôde ser feita agora",
 }
 
 

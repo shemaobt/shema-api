@@ -29,7 +29,6 @@ from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.takes import takes_of
 from tests.hard_stretch_harness import row
-from tests.room_harness import CORRECTION_MARK
 from tests.text_seam_harness import (
     RUNNER_KEY,
     THE_EXTRA_CAUSE,
@@ -327,27 +326,6 @@ async def test_the_causa_a_mais_round_carries_an_addition_on_frase_1_and_no_miss
     assert result["missingWithoutFrase"] == 0
 
 
-async def test_a_superseding_frase_runs_the_correction_check_then_the_reading(
-    client, analyst, db_session
-) -> None:
-    analyst.readings = [{"findings": [{"kind": "addition", "note": THE_EXTRA_CAUSE, "chunk": 1}]}]
-    session_id = await _a_session(client)
-    await _a_round(client, session_id, CAUSA_A_MAIS)
-
-    result = await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
-
-    assert len(analyst.verifications) == 1, (
-        "uma frase que supera outra é uma correção: a sala verifica a correção contra o achado "
-        "que a pediu, e só depois lê a passagem inteira"
-    )
-    assert result["findings"] == []
-    assert result["conferida"] is True
-    told = room.told_back(await room.final_segments(db_session, session_id))
-    assert len(told) == len(CAUSA_A_MAIS), "a frase nova substitui a primeira, não se soma a ela"
-    assert told[0].pass_number == 2
-    assert told[0].transcript == FAITHFUL_FRASE_ONE["text"]
-
-
 async def test_the_warning_a_round_raises_for_a_hard_stretch_outlives_the_rounds_verdict(
     client, db_session
 ) -> None:
@@ -378,7 +356,7 @@ async def test_a_visit_while_the_crossing_round_is_read_keeps_its_warning_ended(
     async def a_facilitator_goes_while_the_analyst_reads(
         *, system_prompt: str, user_content: str, **rest: Any
     ) -> str:
-        if visits and CORRECTION_MARK not in system_prompt and visits[-1] == "armed":
+        if visits and visits[-1] == "armed":
             factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
             async with factory() as rival:
                 await room.attend(rival, await room.get_session(rival, visits[0]), by="ana")
@@ -424,10 +402,6 @@ async def test_two_superseding_frases_in_one_round_both_replace_their_stretches(
 
     result = await _a_round(client, session_id, [FAITHFUL_FRASE_ONE, retold_third])
 
-    assert analyst.verifications == [], (
-        "duas posições mudadas não são uma correção; a sala cai na leitura inteira, que é a "
-        "resposta que nunca está errada"
-    )
     assert result["conferida"] is True
     told = room.told_back(await room.final_segments(db_session, session_id))
     assert [told[0].transcript, told[2].transcript] == [
@@ -551,13 +525,13 @@ async def test_a_missing_without_a_frase_is_counted_once_and_not_again_next_roun
                 {"kind": "addition", "note": THE_EXTRA_CAUSE, "chunk": 1},
                 {"kind": "missing", "note": "Falta a notícia do pão.", "where": "after"},
             ]
-        }
+        },
+        {"findings": [{"kind": "addition", "note": THE_EXTRA_CAUSE, "chunk": 1}]},
     ]
     session_id = await _a_session(client)
     first = await _a_round(client, session_id, CAUSA_A_MAIS)
     assert first["missingWithoutFrase"] == 1
 
-    analyst.resolves = False
     second = await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
 
     assert second["findings"], "o achado continua de pé: é o que torna a recontagem possível"

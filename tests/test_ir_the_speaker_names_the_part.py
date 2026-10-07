@@ -17,7 +17,7 @@ quotes would go green on a catalogue that had drifted, which is the one thing it
 
 from __future__ import annotations
 
-import re
+import json
 from typing import Any
 
 import httpx
@@ -43,8 +43,6 @@ from app.services.internalization_room.part_names import (
     addresses_for,
     words_for,
 )
-from app.services.internalization_room.segments import capture_segment, final_segments
-from app.services.internalization_room.sessions import get_session
 from tests.room_harness import (
     Room,
     ScriptedAnalyst,
@@ -102,7 +100,6 @@ def _scene_title(pericope: str, scene: int, language: str) -> str | None:
 _BLOCK_HEADINGS = (
     "## The findings for ",
     "## What the analyst found",
-    "## The finding to verify",
 )
 
 
@@ -114,13 +111,14 @@ def _block(brief: str) -> str:
     raise AssertionError("neither template heads its findings block any more")
 
 
-def _addresses(brief: str) -> list[str]:
-    """Every address a model was handed this turn, in the order the findings are in."""
-    return re.findall(r"^- \w+ \[([^\]]*)\]:", _block(brief), re.M)
+def _addresses(brief: str) -> list[str | None]:
+    """Every part a model was handed this turn, in the order the findings are in."""
+    return [finding.get("part") for finding in _handed(brief)]
 
 
-def _findings_lines(brief: str) -> list[str]:
-    return [line for line in _block(brief).splitlines() if line.startswith("- ")]
+def _handed(brief: str) -> list[dict[str, Any]]:
+    block = _block(brief)
+    return list(json.loads(block[block.index("[") :]))
 
 
 #: Neither of these is autouse. The seam cases below double the same two call sites, and a
@@ -170,14 +168,14 @@ async def test_a_finding_on_part_two_of_a_three_scene_passage_names_the_scene(
     parts are the map's scenes by the room's own direction and the title may be said.
     """
     session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED)
-    analyst.readings = [{"findings": [_missing(5)]}]
+    analyst.readings = [{"findings": [_addition(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
     title = _scene_title(TITLED, 2, "pt")
     assert title, "the case needs a passage the catalogue names in Portuguese"
-    assert _addresses(room.briefs[-1]) == [f"frase 5 — a parte 2 — {title}, das frases 4 a 7"]
+    assert _addresses(room.briefs[-1]) == [f"a parte 2 — {title}"]
 
 
 async def test_a_four_part_rehearsal_names_the_part_by_number_alone(
@@ -192,12 +190,12 @@ async def test_a_four_part_rehearsal_names_the_part_by_number_alone(
     the wrong scene with full confidence. The frases they heard are the address that survives.
     """
     session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 1, 1], pericope=TITLED)
-    analyst.readings = [{"findings": [_missing(5)]}]
+    analyst.readings = [{"findings": [_addition(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["frase 5 — a parte 2, das frases 4 a 7"]
+    assert _addresses(room.briefs[-1]) == ["a parte 2"]
     title = _scene_title(TITLED, 2, "pt")
     assert title and title not in _block(room.briefs[-1])
 
@@ -215,12 +213,12 @@ async def test_a_passage_without_portuguese_titles_names_the_number_alone(
     """
     untitled = _a_passage_with_no_portuguese_titles()
     session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=untitled)
-    analyst.readings = [{"findings": [_missing(5)]}]
+    analyst.readings = [{"findings": [_addition(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["frase 5 — a parte 2, das frases 4 a 7"]
+    assert _addresses(room.briefs[-1]) == ["a parte 2"]
     in_english = _scene_title(untitled, 2, "en")
     assert in_english and in_english not in _block(room.briefs[-1])
 
@@ -233,12 +231,12 @@ async def test_a_rehearsal_told_whole_is_the_whole_recording(
 ) -> None:
     """A rehearsal recorded in one go has no part number and must not be given one."""
     session, _ = await rehearsed_in_parts_of(db_session, [9], pericope=TITLED, told_whole=True)
-    analyst.readings = [{"findings": [_missing(5)]}]
+    analyst.readings = [{"findings": [_addition(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["frase 5 — a gravação inteira"]
+    assert _addresses(room.briefs[-1]) == ["a gravação inteira"]
 
 
 @pytest.mark.parametrize("language", ROOM_LANGUAGES)
@@ -256,7 +254,7 @@ def test_every_language_the_room_speaks_has_its_own_address_words(language: str)
     """
     words = words_for(language)
 
-    for shape in (words.frase, words.whole, words.part, words.span, words.one):
+    for shape in (words.whole, words.part):
         assert shape, f"{language} has no word for part of an address"
     for other in (one for one in ROOM_LANGUAGES if one != language):
         assert words != words_for(other), (
@@ -282,14 +280,14 @@ async def test_a_part_with_no_number_beside_the_scenes_does_not_cost_the_titles(
     session, _ = await rehearsed_in_parts_of(
         db_session, [2, 3, 4, 2], pericope=TITLED, unnumbered_first=True
     )
-    analyst.readings = [{"findings": [_missing(7)]}]
+    analyst.readings = [{"findings": [_addition(7)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
     title = _scene_title(TITLED, 2, "pt")
     assert title, "the case needs a passage the catalogue names in Portuguese"
-    assert _addresses(room.briefs[-1]) == [f"frase 7 — a parte 2 — {title}, das frases 6 a 9"]
+    assert _addresses(room.briefs[-1]) == [f"a parte 2 — {title}"]
 
 
 async def test_a_whole_recording_beside_numbered_parts_does_not_shift_their_numbers(
@@ -309,12 +307,12 @@ async def test_a_whole_recording_beside_numbered_parts_does_not_shift_their_numb
     session, _ = await rehearsed_in_parts_of(
         db_session, [2, 3, 4], pericope=TITLED, unnumbered_first=True
     )
-    analyst.readings = [{"findings": [_missing(4)]}]
+    analyst.readings = [{"findings": [_addition(4)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["frase 4 — a parte 1, das frases 3 a 5"]
+    assert _addresses(room.briefs[-1]) == ["a parte 1"]
 
 
 async def test_a_holed_catalogue_costs_the_title_and_not_the_verdict(
@@ -337,12 +335,12 @@ async def test_a_holed_catalogue_costs_the_title_and_not_the_verdict(
 
     monkeypatch.setattr(part_names, "labelled_elements", holed)
     session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED)
-    analyst.readings = [{"findings": [_missing(5)]}]
+    analyst.readings = [{"findings": [_addition(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["frase 5 — a parte 2, das frases 4 a 7"]
+    assert _addresses(room.briefs[-1]) == ["a parte 2"]
     assert room.said, "the room still spoke a verdict"
 
 
@@ -360,33 +358,15 @@ async def test_an_english_session_names_the_part_in_english(
     spoken in English is the echo her rule against a voiced line in two languages forbids.
     """
     session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED, language="en")
-    analyst.readings = [{"findings": [_missing(5)]}]
+    analyst.readings = [{"findings": [_addition(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
     title = _scene_title(TITLED, 2, "en")
-    assert _addresses(room.briefs[-1]) == [f"sentence 5 — part 2 — {title}, sentences 4 to 7"]
+    assert _addresses(room.briefs[-1]) == [f"part 2 — {title}"]
     in_portuguese = _scene_title(TITLED, 2, "pt")
     assert in_portuguese and in_portuguese not in _block(room.briefs[-1])
-    assert "frase" not in _block(room.briefs[-1])
-
-
-async def test_a_part_with_one_frase_says_the_frase(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    analyst: ScriptedAnalyst,
-    room: Room,
-) -> None:
-    """One stretch is one frase, and a range from a number to itself names nothing."""
-    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 1], pericope=TITLED)
-    analyst.readings = [{"findings": [_missing(8)]}]
-
-    answered = await _checked(client, db_session, session.id)
-
-    assert answered.status_code == 200, answered.text
-    title = _scene_title(TITLED, 3, "pt")
-    assert _addresses(room.briefs[-1]) == [f"frase 8 — a parte 3 — {title}, da frase 8"]
 
 
 async def test_a_missing_without_an_address_names_no_part(
@@ -407,10 +387,10 @@ async def test_a_missing_without_an_address_names_no_part(
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["frase 9"]
+    assert _addresses(room.briefs[-1]) == [None]
 
 
-async def test_a_missing_after_a_frase_names_the_next_stretches_part(
+async def test_a_missing_after_a_frase_is_handed_no_part(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     analyst: ScriptedAnalyst,
@@ -429,8 +409,10 @@ async def test_a_missing_after_a_frase_names_the_next_stretches_part(
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    title = _scene_title(TITLED, 2, "pt")
-    assert _addresses(room.briefs[-1]) == [f"frase 3 — a parte 2 — {title}, das frases 4 a 7"]
+    assert _handed(room.briefs[-1])[0]["frase"] == 3
+    assert _addresses(room.briefs[-1]) == [None], (
+        "a falta recebia a parte do trecho seguinte; a dela nunca nomeia parte"
+    )
 
 
 async def test_a_swap_carries_two_addresses_the_addition_first(
@@ -447,10 +429,11 @@ async def test_a_swap_carries_two_addresses_the_addition_first(
 
     assert answered.status_code == 200, answered.text
     title = _scene_title(TITLED, 2, "pt")
-    lines = _findings_lines(room.briefs[-1])
-    assert len(lines) == 2
-    assert lines[0].startswith(f"- addition [frase 5 — a parte 2 — {title}, das frases 4 a 7]:")
-    assert lines[1].startswith(f"- missing [frase 5 — a parte 2 — {title}, das frases 4 a 7]:")
+    handed = _handed(room.briefs[-1])
+    assert [(one["kind"], one["frase"], one.get("part")) for one in handed] == [
+        ("addition", 5, f"a parte 2 — {title}"),
+        ("missing", 5, None),
+    ]
 
 
 def test_a_finding_from_before_the_frase_number_existed_leaves_that_slot_out() -> None:
@@ -465,16 +448,18 @@ def test_a_finding_from_before_the_frase_number_existed_leaves_that_slot_out() -
     Both halves of the branch, because the row may also have lost its stretch: with neither,
     the line is the kind and the note exactly as it read before this rule.
     """
-    on_a_stretch = Finding(kind=FindingKind.MISSING, note="Noemi", segment_id="trecho-5")
-    off_every_stretch = Finding(kind=FindingKind.MISSING, note="Noemi")
-    addresses = Addresses({"trecho-5": "a parte 2, das frases 4 a 7"}, words_for("pt"))
+    on_a_stretch = Finding(kind=FindingKind.ADDITION, note="Noemi", segment_id="trecho-5")
+    off_every_stretch = Finding(kind=FindingKind.ADDITION, note="Noemi")
+    addresses = Addresses({"trecho-5": "a parte 2"}, words_for("pt"))
 
     assert on_a_stretch.chunk is None and off_every_stretch.chunk is None
 
-    assert findings_block([on_a_stretch], addresses) == (
-        "- missing [a parte 2, das frases 4 a 7]: Noemi"
-    )
-    assert findings_block([off_every_stretch], addresses) == "- missing: Noemi"
+    assert json.loads(findings_block([on_a_stretch], addresses)) == [
+        {"kind": "addition", "note": "Noemi", "part": "a parte 2", "repair": "part"}
+    ]
+    assert json.loads(findings_block([off_every_stretch], addresses)) == [
+        {"kind": "addition", "note": "Noemi", "repair": "part"}
+    ]
 
 
 def test_a_finding_on_a_part_that_is_no_longer_one_names_the_frase_alone() -> None:
@@ -499,12 +484,14 @@ def test_a_finding_on_a_part_that_is_no_longer_one_names_the_frase_alone() -> No
         transcript="a frase 5",
     )
 
-    assert addresses_for([gone], [], [None, None, None], "pt", superseded=[]).by_stretch == {}
+    assert addresses_for([gone], [], [None, None, None], "pt").by_stretch == {}
 
-    finding = Finding(kind=FindingKind.MISSING, note="Noemi", segment_id=gone.id, chunk=5)
-    elsewhere = Addresses({"outro": "a parte 1, das frases 1 a 3"}, words_for("pt"))
+    finding = Finding(kind=FindingKind.ADDITION, note="Noemi", segment_id=gone.id, chunk=5)
+    elsewhere = Addresses({"outro": "a parte 1"}, words_for("pt"))
 
-    assert findings_block([finding], elsewhere) == "- missing [frase 5]: Noemi"
+    assert json.loads(findings_block([finding], elsewhere)) == [
+        {"kind": "addition", "note": "Noemi", "frase": 5, "repair": "part"}
+    ]
 
 
 @pytest.fixture()
@@ -567,7 +554,7 @@ async def test_the_seam_declares_parts_from_one(
     whole recording, and a room passing it through would hand them *a parte 0*.
     """
     session_id = await _seam_session(seam_client, ["S1", "S2", "S3"])
-    seam_analyst.readings = [{"findings": [_missing(1)]}]
+    seam_analyst.readings = [{"findings": [_addition(1)]}]
 
     played = await seam_client.post(
         f"{SEAM}/round",
@@ -583,42 +570,4 @@ async def test_the_seam_declares_parts_from_one(
 
     assert played.status_code == 200, played.text
     title = _scene_title(TITLED, 1, "pt")
-    assert _addresses(seam_room.briefs[-1]) == [f"frase 1 — a parte 1 — {title}, da frase 1"]
-
-
-async def test_the_correction_check_reads_the_address(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    analyst: ScriptedAnalyst,
-    room: Room,
-) -> None:
-    """The check that asks whether a retelling mended the finding sees the same address.
-
-    It is shown the finding and the two tellings; shown a finding with no address while the
-    Speaker had one, the two would be reading different sentences about the same stretch.
-    """
-    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED)
-    analyst.readings = [{"findings": [_missing(5)]}]
-    await _checked(client, db_session, session.id)
-
-    told = await final_segments(db_session, session.id)
-    fresh = await get_session(db_session, session.id)
-    await capture_segment(
-        db_session,
-        fresh,
-        take_id=told[4].take_id,
-        starts_ms=told[4].starts_ms,
-        ends_ms=told[4].ends_ms,
-        bridge_take_id="retro-de-novo",
-        transcript="a frase 5, contada outra vez, com Noemi",
-        replaces=told[4],
-    )
-
-    answered = await _checked(client, db_session, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert analyst.verifications, "the correction check ran"
-    title = _scene_title(TITLED, 2, "pt")
-    assert _addresses(analyst.verifications[-1]) == [
-        f"frase 5 — a parte 2 — {title}, das frases 4 a 7"
-    ]
+    assert _addresses(seam_room.briefs[-1]) == [f"a parte 1 — {title}"]

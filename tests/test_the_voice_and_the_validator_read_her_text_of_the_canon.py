@@ -11,14 +11,8 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import golden_judge
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.back_translation import (
-    Finding,
-    FindingKind,
-    analyse_telling_back,
-    verify_correction,
-)
+from app.services.internalization_room.back_translation import analyse_telling_back
 from app.services.internalization_room.canon import book_material, parse_map
-from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
 from tests.text_seam_harness import the_judge_answers
@@ -27,13 +21,11 @@ from tests.turn_harness import (
     SPEAKER,
     VALIDATOR,
     settings,
-    stretch,
     the_room_agent_is,
     told_stretches,
 )
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
-CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
 
 NAOMI_DEFINED = "[[B3]] — נָעֳמִי / Naomi"
 LAND_DEFINED = "[[PL_LAND_OF_JUDAH]] — הָאָרֶץ / the land"
@@ -196,32 +188,6 @@ async def test_the_ensaio_final_analyst_reads_the_validators_whole_material(
         scope="P03",
         pericope_num="P03",
         analyst_prompt=ANALYST,
-        settings=settings(),
-    )
-
-    _reads_her_validator_material(systems[0])
-
-
-async def test_the_correction_check_reads_the_validators_whole_material(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    systems: list[str] = []
-
-    async def check(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        systems.append(system_prompt)
-        return json.dumps({"resolved": True, "findings": []})
-
-    the_room_agent_is(monkeypatch, analyst=check)
-
-    await verify_correction(
-        findings=[Finding(kind=FindingKind.MISSING, note="Noemi parou de falar")],
-        earlier=stretch(1, "Rute disse que ia junto."),
-        corrected=stretch(2, "Rute disse que ia junto, e Noemi parou de falar."),
-        chunk=1,
-        scope="P03",
-        pericope_num="P03",
-        correction_prompt=CORRECTION,
-        addresses=Addresses(),
         settings=settings(),
     )
 

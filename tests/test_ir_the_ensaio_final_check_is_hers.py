@@ -168,3 +168,69 @@ async def test_a_clean_round_hands_her_speaker_an_empty_list_and_says_only_her_w
     sent = speaker.drafts[-1]["system_prompt"]
     for ours in ("wood disc", "green check", "two voices side by side", "OBT Refine"):
         assert ours not in sent, ours
+
+
+async def test_a_missing_detail_reaches_her_speaker_with_the_frase_it_follows_and_no_part(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [
+        {"findings": [{"kind": "missing", "note": "Não ouvi a volta de Orfa.", "frase": 2}]}
+    ]
+
+    await _a_round(client, TELLING)
+
+    assert _handed(speaker) == (
+        "[\n"
+        "  {\n"
+        '    "kind": "missing",\n'
+        '    "note": "Não ouvi a volta de Orfa.",\n'
+        '    "frase": 2,\n'
+        '    "repair": "part"\n'
+        "  }\n"
+        "]"
+    ), "o falante recebia a nossa linha «- missing [frase 2 — …]: …», não o JSON dela"
+
+
+async def test_an_addition_reaches_her_speaker_with_its_part_and_nothing_of_ours_follows(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}]}
+    ]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {
+            "kind": "addition",
+            "note": "Ela voltou «à noite».",
+            "frase": 3,
+            "part": "a parte 3 — O segundo apelo e a separação",
+            "repair": "part",
+        }
+    ], "o falante recebia o endereço nosso, com «das frases N a M», não a parte dela"
+    assert result["spoken"] == SAID, "a sala colava a nossa frase «I» depois do veredito"
+
+
+async def test_a_retold_frase_is_judged_by_her_analyst_over_the_whole_telling(
+    client, analyst
+) -> None:
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}]},
+        {"findings": []},
+    ]
+    first = await _a_round(client, TELLING)
+    retold = {
+        **TELLING[2],
+        "text": "Orfa beijou a sogra e voltou, mas Rute ficou.",
+        "supersedes": 2,
+    }
+
+    result = await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert [call["user_content"] for call in analyst.asked] == [
+        "Analyze the telling-back now. Return only the JSON object."
+    ] * 2, "uma frase traduzida de novo ia para a nossa verificação da correção"
+    whole = analyst.asked[-1]["system_prompt"]
+    assert all(frase["text"] in whole for frase in [*TELLING[:2], retold])
+    assert result["conferida"] is True
