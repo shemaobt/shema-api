@@ -1,0 +1,42 @@
+{
+  "name": "P01-frases",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "The passage-level telling-back (docs/RETROVERIFICACAO-POR-FRASES-SPEC.md §4): a planted addition that fills the marked silence (frase 1: 'Deus mandou a fome'), a planted omission ('efrateus' told nowhere), and a detail split across two frases (the sons married Moabite women / their names were Orfa and Rute — frases 5 and 6) that must NOT be a finding. Round 2 re-tells frases 1 and 3 (superseding) and must come back conferida, with the voice inviting 'ouvir tudo e aprovar'.",
+  "draft": { "clips": [ { "key": "S1", "durationMs": 20000 }, { "key": "S2", "durationMs": 8000 }, { "key": "S3", "durationMs": 15000 }, { "key": "S4", "durationMs": 10000 } ] },
+  "rounds": [
+    {
+      "frases": [
+        { "clipKey": "S1", "coversFrom": 0, "coversTo": 6, "text": "No tempo em que os juízes governavam, Deus mandou uma fome na terra." },
+        { "clipKey": "S1", "coversFrom": 6, "coversTo": 14, "text": "Um homem de Belém de Judá foi morar em Moabe com a mulher e os dois filhos." },
+        { "clipKey": "S1", "coversFrom": 14, "coversTo": 20, "text": "O nome do homem era Elimeleque, a mulher era Noemi, e os filhos eram Malom e Quiliom. Eles chegaram nos campos de Moabe e ficaram lá." },
+        { "clipKey": "S2", "coversFrom": 0, "coversTo": 8, "text": "Elimeleque, o marido de Noemi, morreu, e ela ficou com os dois filhos." },
+        { "clipKey": "S3", "coversFrom": 0, "coversTo": 7, "text": "Os filhos casaram com mulheres de Moabe." },
+        { "clipKey": "S3", "coversFrom": 7, "coversTo": 15, "text": "Uma se chamava Orfa e a outra se chamava Rute. Eles moraram lá uns dez anos." },
+        { "clipKey": "S4", "coversFrom": 0, "coversTo": 10, "text": "Depois Malom e Quiliom morreram também, os dois. E Noemi ficou sem os dois filhos e sem o marido." }
+      ],
+      "expect": {
+        "conferida": false,
+        "findings": [
+          { "kind": "addition", "note": "Deus|mandou|divin", "frase": 1 },
+          { "kind": "missing", "note": "efrat" }
+        ],
+        "no_finding": "Orfa|Rute|dez anos|casar|casamento",
+        "spoken_names_frase": 1,
+        "spoken_matches": "áudio|gravação",
+        "spoken_asks_audio_or_explanation": true
+      }
+    },
+    {
+      "frases": [
+        { "clipKey": "S1", "coversFrom": 0, "coversTo": 6, "text": "No tempo em que os juízes governavam, teve uma fome na terra.", "supersedes": 0 },
+        { "clipKey": "S1", "coversFrom": 14, "coversTo": 20, "text": "O nome do homem era Elimeleque, a mulher era Noemi, e os filhos eram Malom e Quiliom. Eles eram efrateus, de Belém de Judá. Eles chegaram nos campos de Moabe e ficaram lá.", "supersedes": 2 }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir"
+      }
+    }
+  ]
+}

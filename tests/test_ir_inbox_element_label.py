@@ -9,15 +9,15 @@ never anything a person was meant to see.
 rendered straight onto the card. Serving both would put a field on every response that its
 only consumer never reads.
 
-**Three languages and not one.** The room negotiates the language it *speaks* — on the
+**Two languages and not one.** The room negotiates the language it *speaks* — on the
 session, and on the wheel that precedes any session — but never the language it *labels* in:
 a bead's name is read by a facilitator at the Desk, and the Desk is not the tablet whose
-locale the room obeys. `LabelledElement` and the coverage legend both serve `pt`/`en`/`es` as
+locale the room obeys. `LabelledElement` and the coverage legend both serve `pt`/`en` as
 named fields and let the client choose, and serving a single label here would tie a
 facilitator's reading to a team's listening.
 
 The catalogue now holds all fourteen passages, and only four of them — P01, P02, P05, P14 —
-are translated. The other ten carry English and two nulls, so **that is the shape most teams
+are translated. The other ten carry English and a null Portuguese, so **that is the shape most teams
 will see**, and it gets a case of its own rather than being left to the pilot's four.
 """
 
@@ -47,7 +47,7 @@ INBOX_URL = "/api/internalization-room/facilitator/questions"
 #: drifted from what a facilitator sees, and this text **is** what they see.
 PILOT = "P01"
 PILOT_KEY = "being:S1:B3"
-PILOT_PT, PILOT_EN, PILOT_ES = "Noemi", "Naomi", "Noemí"
+PILOT_PT, PILOT_EN = "Noemi", "Naomi"
 
 #: One of the ten. English is filled in and the other two are null for every bead in the
 #: passage — the path the pilot's four never take.
@@ -145,19 +145,19 @@ def every_value(card: dict) -> list[str]:
     return [str(value) for value in card.values() if value is not None]
 
 
-async def test_the_card_names_the_bead_in_the_three_languages(client, db_session):
-    """The whole slice, on a passage that has all three."""
+async def test_the_card_names_the_bead_in_portuguese_and_english(client, db_session):
+    """The whole slice, on a passage that has both."""
     team = await a_team(db_session, name="Equipe do piloto")
     _user, headers = await a_facilitator(db_session, team, email="piloto@example.com")
     hand = await a_hand(db_session, team, pericope=PILOT, element_key=PILOT_KEY)
 
     card = card_of(await read(client, headers), hand.id)
 
-    assert (card["element_label_pt"], card["element_label_en"], card["element_label_es"]) == (
+    assert (card["element_label_pt"], card["element_label_en"]) == (
         PILOT_PT,
         PILOT_EN,
-        PILOT_ES,
     ), f"a caixa nao nomeou a conta: {card}"
+    assert "element_label_es" not in card, f"a caixa ainda serve espanhol: {card}"
 
 
 async def test_the_raw_key_reaches_no_served_field(client, db_session):
@@ -179,10 +179,10 @@ async def test_the_raw_key_reaches_no_served_field(client, db_session):
     assert "element_key" not in card, f"o campo da chave continua servido: {card}"
 
 
-async def test_a_passage_outside_the_pilot_serves_english_and_two_nulls(client, db_session):
+async def test_a_passage_outside_the_pilot_serves_english_and_no_portuguese(client, db_session):
     """Ten of the fourteen look like this, so this is what most teams will see.
 
-    The pilot's four are complete in all three languages, which means a suite that only ever
+    The pilot's four are complete in both languages, which means a suite that only ever
     asked about them would be green on a resolver that could not produce a null at all.
     """
     team = await a_team(db_session, name="Equipe das dez")
@@ -191,11 +191,10 @@ async def test_a_passage_outside_the_pilot_serves_english_and_two_nulls(client, 
 
     card = card_of(await read(client, headers), hand.id)
 
-    assert (card["element_label_pt"], card["element_label_en"], card["element_label_es"]) == (
+    assert (card["element_label_pt"], card["element_label_en"]) == (
         None,
         UNTRANSLATED_EN,
-        None,
-    ), f"uma passagem nao traduzida nao saiu com o ingles e dois nulos: {card}"
+    ), f"uma passagem nao traduzida nao saiu com o ingles e o portugues nulo: {card}"
 
 
 async def test_a_key_the_catalogue_does_not_know_costs_the_card_and_not_the_inbox(
@@ -264,8 +263,7 @@ async def test_a_hand_raised_on_no_bead_is_named_by_nothing(client, db_session):
 
     card = card_of(await read(client, headers), hand.id)
 
-    assert (card["element_label_pt"], card["element_label_en"], card["element_label_es"]) == (
-        None,
+    assert (card["element_label_pt"], card["element_label_en"]) == (
         None,
         None,
     ), f"uma pergunta sem conta ganhou rotulo: {card}"

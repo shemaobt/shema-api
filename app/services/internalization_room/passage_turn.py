@@ -13,7 +13,7 @@ from app.services.internalization_room.prompt_blocks import (
     validator_map_block,
 )
 from app.services.internalization_room.render import render
-from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
+from app.services.internalization_room.turn_instructions import opening_note
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
@@ -67,13 +67,9 @@ async def run_turn(
         )
 
     map_block = meaning_map_block(pericope_num, book)
+    earlier = earlier_passages_line(pericope_num, book, earlier_passages)
     coverage_status = "\n\n".join(
-        block
-        for block in (
-            coverage_status_block(coverage_state, pericope_num),
-            earlier_passages_line(pericope_num, book, earlier_passages),
-        )
-        if block
+        block for block in (coverage_status_block(coverage_state, pericope_num), earlier) if block
     )
     return await _voiced_after_validation(
         speaker_system=render(
@@ -89,10 +85,11 @@ async def run_turn(
         session_language=session_language,
         language_code=language_code,
         opening=opening,
-        opening_instruction=OPENING_INSTRUCTION,
+        opening_instruction=opening_note(pericope_num, language_code),
         settings=cfg,
         session_id=session_id,
         ask_for_movements=ask_for_movements,
         mother_tongue=mother_tongue,
         prepared_pericope=prepared_pericope,
+        earlier_passages=earlier,
     )

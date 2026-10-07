@@ -234,16 +234,14 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
     prompt files, nothing here is templated per {{SESSION_LANGUAGE}}, so a Portuguese literal
     in any of them is Portuguese an English session hears too (ENG-822, item 3)."""
     from app.services.internalization_room.turn_instructions import (
-        NOT_THIS_TURN,
-        OPENING_INSTRUCTION,
-        OPENING_MOVEMENT_INSTRUCTION,
+        EARLIER_PASSAGES_HEADING,
+        TEAM_EVIDENCE_HEADING,
         VALIDATOR_USER_MESSAGE,
     )
 
     for value in (
-        OPENING_INSTRUCTION,
-        OPENING_MOVEMENT_INSTRUCTION,
-        NOT_THIS_TURN,
+        TEAM_EVIDENCE_HEADING,
+        EARLIER_PASSAGES_HEADING,
         VALIDATOR_USER_MESSAGE,
     ):
         assert not _PORTUGUESE_MARKER.search(value), value
@@ -251,9 +249,9 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
 
 def test_speak_this_turn_is_english_on_every_session() -> None:
     """SPEAK_THIS_TURN is the filler user message a verdict turn sends when it has neither an
-    opening nor a team utterance to answer — a backend-composed instruction exactly like
-    OPENING_INSTRUCTION above, just missed by the sweep that translated its siblings in this
-    same file. A `pt` session must not see "Fale este turno."."""
+    opening nor a team utterance to answer — a backend-composed instruction, just missed by
+    the sweep that translated its siblings in this same file. A `pt` session must not see
+    "Fale este turno."."""
     from app.services.internalization_room.turn_instructions import SPEAK_THIS_TURN
 
     assert SPEAK_THIS_TURN == "Speak this turn."

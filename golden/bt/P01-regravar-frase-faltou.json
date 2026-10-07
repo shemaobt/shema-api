@@ -1,0 +1,110 @@
+{
+  "name": "P01-regravar-frase-faltou",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "joined": true,
+  "why": "Ensaio Final Stage 2 — a MISSING detail on a recording the team's screen can repair by the sentence (docs/ENSAIO-FINAL-SPEC.md §8.3 — Marcia's texts, approved verbatim 2026-09-21; her Q3: a missing detail = record again, WHOLE, the sentence where it belongs, with the detail inside — there is NO 'new sentence' control). Every clip is WAV and the finding may carry no frase, so `repair` is \"sentence\" because EVERY recording can take one (src/backtranslation/repair.ts). Map: _spec/canon/meaning-map/P01-Ruth-1-1-5.md, Proposition 3 (Ruth 1:2a): their clan — Ephrathites, from Bethlehem of Judah. Planted: 'efrateus' is told NOWHERE (frase 3 names the four and stops); frase 1 is the faithful line, so nothing is added. Expected round 1: a missing finding about the Ephrathites (no frase number required — the Analyst may omit it for a missing element; when it gives one the voice says 'entraria depois da frase N'), no addition, not conferida; the voice offers the two paths — tap the frase and translate it again, or 'regravem inteira a frase onde X cabe, já com X dentro' — and must NOT offer a new sentence ('frase nova', 'gravem uma frase'), must NOT name a part ('a parte onde', 'gravem essa parte de novo'). Round 2 is the 'it is in the audio' path: frase 3 translated again with the Ephrathites (supersedes) → conferida. LIVE run owed — never in session hours.",
+  "draft": {
+    "clips": [
+      {
+        "key": "S1",
+        "durationMs": 20000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S2",
+        "durationMs": 8000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S3",
+        "durationMs": 15000,
+        "contentType": "audio/wav"
+      },
+      {
+        "key": "S4",
+        "durationMs": 10000,
+        "contentType": "audio/wav"
+      }
+    ]
+  },
+  "rounds": [
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 0,
+          "coversTo": 6,
+          "text": "No tempo em que os juízes governavam, teve uma fome na terra."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 6,
+          "coversTo": 14,
+          "text": "Um homem de Belém de Judá foi morar em Moabe com a mulher e os dois filhos."
+        },
+        {
+          "clipKey": "S1",
+          "coversFrom": 14,
+          "coversTo": 20,
+          "text": "O nome do homem era Elimeleque, a mulher era Noemi, e os filhos eram Malom e Quiliom. Eles chegaram nos campos de Moabe e ficaram lá."
+        },
+        {
+          "clipKey": "S2",
+          "coversFrom": 0,
+          "coversTo": 8,
+          "text": "Elimeleque, o marido de Noemi, morreu, e ela ficou com os dois filhos."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 0,
+          "coversTo": 7,
+          "text": "Os filhos casaram com mulheres de Moabe."
+        },
+        {
+          "clipKey": "S3",
+          "coversFrom": 7,
+          "coversTo": 15,
+          "text": "Uma se chamava Orfa e a outra se chamava Rute. Eles moraram lá uns dez anos."
+        },
+        {
+          "clipKey": "S4",
+          "coversFrom": 0,
+          "coversTo": 10,
+          "text": "Depois Malom e Quiliom morreram também, os dois. E Noemi ficou sem os dois filhos e sem o marido."
+        }
+      ],
+      "expect": {
+        "conferida": false,
+        "findings": [
+          {
+            "kind": "missing",
+            "note": "efrat"
+          }
+        ],
+        "no_kinds": [
+          "addition"
+        ],
+        "no_finding": "Orfa|Rute|dez anos|casar|casamento",
+        "spoken_matches": "regrav\\w+ inteira a frase onde|frase onde [^.]*cab|regrav\\w+[^.]*frase[^.]*inteira",
+        "spoken_must_not_match": "frase nova|nova frase|gravem uma frase|(a|essa) parte onde|grav\\w+ (de novo )?(essa|a) parte|regrav\\w+ (essa|a) (parte|cena)"
+      }
+    },
+    {
+      "frases": [
+        {
+          "clipKey": "S1",
+          "coversFrom": 14,
+          "coversTo": 20,
+          "text": "O nome do homem era Elimeleque, a mulher era Noemi, e os filhos eram Malom e Quiliom. Eles eram efrateus, de Belém de Judá. Eles chegaram nos campos de Moabe e ficaram lá.",
+          "supersedes": 2
+        }
+      ],
+      "expect": {
+        "conferida": true,
+        "findings": [],
+        "spoken_matches": "aprov|ouvir"
+      }
+    }
+  ]
+}

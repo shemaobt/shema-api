@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import run_turn
 from tests.turn_harness import the_room_agent_is
@@ -49,11 +49,15 @@ class _Recording:
 
     def __init__(self) -> None:
         self.validator: list[str] = []
+        self.validator_conversations: list[Any] = []
+        self.guide: list[str] = []
 
-    async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         if "corrected_response" in system_prompt:
             self.validator.append(system_prompt)
+            self.validator_conversations.append(kwargs.get("conversation"))
             return json.dumps({"verdict": "pass", "issues": []})
+        self.guide.append(system_prompt)
         return DRAFT
 
 
@@ -64,10 +68,20 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> _Recording:
     return models
 
 
-async def test_the_map_the_teams_words_and_the_draft_last_and_nothing_else(
+HER_EVIDENCE = (
+    "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+    "The drafted response answers this. Referring to these words is not a claim about the "
+    "passage.\n\n"
+)
+HER_EARLIER = (
+    "## EARLIER PASSAGES FOR THIS TEAM (the app's fact about this team — NEVER truth about the "
+    "passage)\n\nThe Guide read this same line this turn.\n\n"
+)
+
+
+async def test_the_map_the_teams_words_as_her_evidence_and_the_draft_last_and_nothing_else(
     recording: _Recording,
 ) -> None:
-    """No window, but the whole record: a recollection has to be checkable against it."""
     await run_turn(
         transcript="e a fome, por que ela veio?",
         coverage_state=initial_state(P),
@@ -83,18 +97,80 @@ async def test_the_map_the_teams_words_and_the_draft_last_and_nothing_else(
     )
 
     judged = recording.validator[0]
-    assert judged.index(MAP_HEADING) < judged.index("e a fome, por que ela veio?"), (
-        "o mapa é o padrão de verdade e vem antes da evidência"
+    evidence = f"{HER_EVIDENCE}e a fome, por que ela veio?"
+    assert evidence in judged, "a fala da equipe chegava sob um cabeçalho nosso, não o dela"
+    assert judged.index(MAP_HEADING) < judged.index(evidence) < judged.index(DRAFT), (
+        "o mapa é o padrão de verdade, a fala é evidência, e o rascunho vem por último"
     )
-    assert judged.index("e a fome, por que ela veio?") < judged.index(DRAFT), (
-        "o rascunho é a última coisa que o Validador lê"
+    assert EARLIER_TEAM not in judged and EARLIER_GUIDE not in judged, (
+        "o Validador dela lê só a fala deste turno, nunca a conversa"
     )
-    assert judged.index(EARLIER_TEAM) < judged.index("e a fome, por que ela veio?"), (
-        "a conversa inteira chega como evidência citada, antes da fala de agora"
+
+
+async def test_a_turn_in_the_middle_of_a_session_hands_the_validator_no_ledger_and_no_exchange(
+    recording: _Recording,
+) -> None:
+    await run_turn(
+        transcript="e a fome, por que ela veio?",
+        coverage_state=merge(initial_state(P), pericope_num=P, engaged=["scene:1"]),
+        messages=[
+            {"role": "guide", "text": EARLIER_GUIDE},
+            {"role": "team", "text": EARLIER_TEAM},
+        ],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        language_code="pt",
+        settings=_settings(),
     )
-    assert EARLIER_GUIDE in judged, (
-        "o que o Guia disse antes também é evidência para conferir uma lembrança"
+
+    assert "COVERED (engaged): S1 (v.15)" in recording.guide[0]
+    judged = recording.validator[0]
+    assert "COVERED (engaged)" not in judged and "REMAINING" not in judged, (
+        "o Validador lia o livro-razão de cobertura, que é só do Guia"
     )
+    assert not recording.validator_conversations[0], (
+        "a conversa da sessão chegava ao Validador como turnos anteriores"
+    )
+
+
+async def test_the_validator_reads_the_earlier_passages_line_the_guide_read(
+    recording: _Recording,
+) -> None:
+    await run_turn(
+        transcript="e a fome, por que ela veio?",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        language_code="pt",
+        settings=_settings(),
+        earlier_passages={"P01": "approved", "P02": "not_worked"},
+    )
+
+    assert (
+        f"{HER_EARLIER}EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1\u20135. "
+        "Not worked yet: Ruth 1:6\u201314."
+    ) in recording.validator[0], "só o Guia lia o estado das passagens anteriores da equipe"
+
+
+async def test_a_stamp_missing_an_earlier_passage_gives_the_validator_no_such_block(
+    recording: _Recording,
+) -> None:
+    await run_turn(
+        transcript="e a fome, por que ela veio?",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        language_code="pt",
+        settings=_settings(),
+        earlier_passages={"P01": "approved"},
+    )
+
+    assert HER_EARLIER not in recording.validator[0]
 
 
 async def test_no_app_owned_state_block_is_appended_to_what_it_judges(
@@ -144,4 +220,7 @@ async def test_an_english_session_reads_neither_portuguese_placeholder(
     judged = recording.validator[0]
     assert OPENING_PLACEHOLDER not in judged
     assert NO_UTTERANCE_PLACEHOLDER not in judged
-    assert "(the team has not spoken yet — session opening)" in judged
+    assert (
+        f"{HER_EVIDENCE}[The session has just begun. The team opened passage P03 and is at the "
+        "table, ready to begin. Speak first.]"
+    ) in judged, "na abertura o Validator não lia a nota dela, que é o lado da equipe no app dela"

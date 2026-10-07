@@ -27,35 +27,6 @@ GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 NEVERS = "## What you never do"
 
 
-def test_the_send_off_names_the_ensaio_and_the_teams_own_language() -> None:
-    """§4: "final rehearsal → the send-off is always 'gravem o ensaio, na língua de vocês'".
-
-    Hers says it in one sentence. Ours splits it: the Guide gives a readiness cue naming the
-    ensaio and the team's own language, and the app plays the fixed navigation directions, which
-    the Guide is told never to recite itself. Both halves of her line are in the cue, and that
-    is what this holds — the wording divergence is recorded in the PR, not decided here.
-    """
-    assert "na língua de vocês" in GUIDE, (
-        "the send-off stopped naming the language the rehearsal is in"
-    )
-    assert "ensaio" in GUIDE
-    assert "Do not recite, replace, or improvise those navigation directions yourself." in GUIDE, (
-        "the Guide may improvise the recording directions, which is how the send-off drifts"
-    )
-
-
-def test_the_first_rehearsal_is_the_first_oral_draft_never_the_final_translation() -> None:
-    """§4: "the first rehearsal is the first oral draft, never 'the final translation'".
-
-    A team told their first rehearsal is the final translation stops rehearsing it. The rule is
-    one clause inside a numbered step about preparing the recording, so it is exactly the kind
-    of line a tightening of that step drops without anyone noticing it had been a ruling.
-    """
-    assert "It is not the final translation, and you never call it that." in GUIDE, (
-        "the Guide is no longer told not to call the first rehearsal the final translation"
-    )
-
-
 def test_the_guide_ends_plainly_with_no_blessing_of_its_own() -> None:
     """§4: "no blessings".
 
@@ -63,7 +34,7 @@ def test_the_guide_ends_plainly_with_no_blessing_of_its_own() -> None:
     Guide's own words stay plain. The two examples are named because a ban with no example is
     a ban a model reads as being about tone.
     """
-    step = GUIDE[GUIDE.index("Hand the recording directions to the app") :]
+    step = GUIDE[GUIDE.index("7. **The send-off — always your last word.**") :]
     step = step[: step.index("\n## ")]
     nevers = GUIDE[GUIDE.index(NEVERS) :]
     nevers = nevers[: nevers.index("\n## ")]

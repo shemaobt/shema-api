@@ -1,0 +1,99 @@
+{
+  "name": "P14-the-generations",
+  "pericopeId": "P14",
+  "language": "Brazilian Portuguese",
+  "why": "SC-0088 (Marcia's map standard of 2026-09-28 and her four rulings of the same day, «(b), (b), (a), sim — pode seguir com as recomendações»), vendored at the compiler branch tip 46531c1 (re-pin to the merge commit after her merge word) — P14 = Ruth 4:18-22, one scene: the high-risk register (11 entries, 5 do_not_decide — R1 every name of the list in the text's order, Perez, Hezron, Ram, Amminadab, Nahshon, Salmon, Boaz, Obed, Jesse, David, each the father of the next, in the plain 'X fathered Y' said the same way each time; a telling that leaves a name out is offered back gently as a missing detail (a name is a person and an event, not a small detail — no choice); 'begot', 'was the father of', 'had a son' keep the meaning; R2 the list names no woman, and the voice gives no reason why; a team recall of Tamar or Ruth as mother is correct; R3 the list does not name God — 'God gave Boaz this line' or 'God chose' put into the list is an addition; if asked, the list names only fathers and sons; R4 (her ruling D1 (b)) the list stops at David and adds no comment: the voice never calls him king; a team 'o rei Davi' is a nuance, named once — «a história dá só o nome dele, Davi» — without a send-back, word for word the same rule as P13 R8; R5 the list does not speak of the name of the dead and names no Elimelech, Mahlon or Chilion) and, not do_not_decide, R8 (Salmah / Salmon, one ancestor spelled two ways; the team's Bible's spelling is correct) and R9 (the names as the team's own Bible spells them — Esrom, Rão, Aminadabe, Naassom, Salmom — are correct without comment). The judge reads them in the map and the register; the keys below are the mechanical half. No earlierPassages fixture: the team's statuses at P14 are not known. Turn 0: the kickoff is the Familiarization (F1, the list, F3 as the last words) — no king, no mother, no God, no law, no comment on David. Turn 1: in the Familiarization the team asks why the list names no woman, not even Ruth, and whether it was God who chose this family (the text gives no reason; the list names only fathers and sons — R2, R3; no_divine_causation); F4 as the last words, no scene opened. Turn 2: 'Estamos prontos.' opens the scene — I1 cena 1 and her closing. Turn 3: 'Vamos pro ensaio.' — A1 before the fence. Turn 4: a scene rehearsal of the list that leaves out Rão (Ram) — offered back gently as a missing detail (R1); the fence again, no choice offer. Turn 5: the list again, all ten names in order, in the team's Bible's spellings and with 'foi pai de', ending 'Jessé foi pai do rei Davi' — accepted, no send-back, no addition: the nuance named once, «a história dá só o nome dele, Davi» (D1 (b)); with S1 recorded, the plain Ensaio Final send-off (ONE instruction, the orange dot; the moment EF). Turn 5 carries send_off_names /só o nome dele/, so a silent acceptance of 'o rei Davi' fails mechanically (accepts_telling and the send-off keys all pass on one). The D1 line is in no text the Guide reads (only in the Validator's R4, and the Validator only removes claims), so a live failure of this key is the real signal. The team's lines are the builder's fixtures, pending Marcia's word.",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "no_outside_knowledge": true,
+        "no_divine_causation": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Por que essa lista não fala de nenhuma mulher, nem da Rute? E foi Deus que escolheu essa família?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_outside_knowledge": true,
+        "no_divine_causation": true,
+        "familiarization_tail": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "no_outside_knowledge": true,
+        "no_divine_causation": true,
+        "moment_after": "I1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Estas são as gerações de Perez. Perez foi pai de Esrom, e Esrom foi pai de Aminadabe,",
+          "e Aminadabe foi pai de Naassom, e Naassom foi pai de Salmom, e Salmom foi pai de Boaz,",
+          "e Boaz foi pai de Obede, e Obede foi pai de Jessé, e Jessé foi pai de Davi."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_divine_causation": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Estas são as gerações de Perez. Perez foi pai de Esrom, e Esrom foi pai de Rão,",
+          "e Rão foi pai de Aminadabe, e Aminadabe foi pai de Naassom, e Naassom foi pai de Salmom,",
+          "e Salmom foi pai de Boaz, e Boaz foi pai de Obede, e Obede foi pai de Jessé, e Jessé foi pai do rei Davi."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_outside_knowledge": true,
+        "no_divine_causation": true,
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "send_off_names": ["só o nome dele"],
+        "moment_after": "EF"
+      }
+    }
+  ]
+}

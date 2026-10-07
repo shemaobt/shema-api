@@ -12,6 +12,7 @@ import ast
 from pathlib import Path
 
 from app.services.internalization_room.back_translation import CLOSING_CHECKED
+from app.services.internalization_room.turn_instructions import TEAM_REPORTED_HEADING
 
 _MODULES = [
     "app/services/internalization_room/back_translation.py",
@@ -63,9 +64,9 @@ _FORBIDDEN = (
     r"|contaron de vuelta|contado nada de vuelta|contou nada de volta|told (anything )?back"
 )
 
-#: Nine sentences across seven renderings: one three-language dict (pt/en/es), five
+#: Eight sentences across seven renderings: one two-language dict (pt/en), five
 #: single-language strings — four Portuguese, one English — and the ordered closing of the
-#: checked turn: 3 + 1 + 1 + 1 + 1 + 1 + 1.
+#: checked turn: 2 + 1 + 1 + 1 + 1 + 1 + 1.
 #: `turn_instructions.py`'s told-back rendering was one of the three-language dicts too
 #: (pt/en/es) until ENG-822 collapsed it to the single English sentence every session now
 #: reads — the backend composes it in English on every session, and only
@@ -79,12 +80,10 @@ _FORBIDDEN = (
 _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
-    "(el equipo aún no ha traducido nada)",
     "Compare a tradução com o mapa.",
     "a análise da tradução não pôde ser feita agora",
     "(nenhum achado — a tradução está completa)",
     "a leitura final da tradução não pôde ser feita agora",
-    "(the team has not spoken in this conversation; what they translated is in the block below)",
     CLOSING_CHECKED,
 }
 
@@ -92,16 +91,20 @@ _EXPECTED_TRADUZIR_WORDS = {
 def test_no_literal_the_room_writes_says_contar_de_volta() -> None:
     """Every string literal under `app/`, not just the three named modules.
 
-    The business rule is that *no* server literal says it, so a sixth or seventh place the
-    ticket never named — anywhere in the app, not only in the three modules this slice
-    touches — must be caught too.
+    The business rule is that no literal of the room's own says it, so a sixth or seventh
+    place the ticket never named — anywhere in the app, not only in the three modules this
+    slice touches — must be caught too. The one literal found is hers: the heading of the
+    block the Validator reads on the verdict turn, byte for byte from her `liveTurn.ts:689-692`
+    («Evidence of what the team told back»), said to the model and never to the team. It is
+    named rather than copied, and expected rather than skipped, so a second literal saying it
+    still fails the sweep and so does losing hers.
     """
     import re
 
     pattern = re.compile(_FORBIDDEN)
-    offenders = sorted({literal for literal in _all_app_literals() if pattern.search(literal)})
+    found = sorted({literal for literal in _all_app_literals() if pattern.search(literal)})
 
-    assert offenders == [], f"literais ainda dizem contar de volta: {offenders}"
+    assert found == [TEAM_REPORTED_HEADING], f"literais ainda dizem contar de volta: {found}"
 
 
 def test_the_rooms_words_for_the_telling_back_are_exactly_these() -> None:

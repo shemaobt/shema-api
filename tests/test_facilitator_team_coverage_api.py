@@ -239,7 +239,7 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
 
     assert len(body) == PILOT["P02"]["elements"]
     for element in body:
-        for language in ("pt", "en", "es"):
+        for language in ("pt", "en"):
             named = element[f"label_{language}"]
             assert named.strip()
             assert named != element["key"]
@@ -452,7 +452,6 @@ async def test_no_aggregate_reaches_the_facilitator(client, db_session: AsyncSes
         "key",
         "label_pt",
         "label_en",
-        "label_es",
         "kind",
         "scene",
         "status",
@@ -547,8 +546,8 @@ async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     This route refused it until ENG-442 landed. It does not any more, and the reason is worth
     keeping: the canon serves all fourteen of Ruth, D-03 walks every team through them, and
     refusing ten of the fourteen would have taken the whole necklace down for a passage the
-    team is genuinely working on. English comes almost free from the canon; Portuguese and
-    Spanish are absent rather than filled in with it, which is what stops a sentence a
+    team is genuinely working on. English comes almost free from the canon; Portuguese is
+    absent rather than filled in with it, which is what stops a sentence a
     facilitator does not read arriving under the name of their own language.
     """
     _user, project, headers = await a_facilitator(db_session, email="b7@x.com")
@@ -559,7 +558,7 @@ async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     body = response.json()
     assert body, "a passagem sem catalogo respondeu vazia em vez de vir do canon"
     assert all(bead["label_en"] for bead in body)
-    assert all(bead["label_pt"] is None and bead["label_es"] is None for bead in body)
+    assert all(bead["label_pt"] is None for bead in body)
 
 
 async def test_a_pericope_outside_the_book_is_refused(client, db_session: AsyncSession) -> None:
@@ -673,3 +672,28 @@ async def test_the_served_order_is_the_canons_bead_order(client, db_session: Asy
     body = (await client.get(coverage_url(project.id, "P01"), headers=headers)).json()
 
     assert [element["key"] for element in body] == element_keys("P01")
+
+
+async def test_the_woman_of_ruth_1_5_reaches_the_desk_with_no_name_beside_her(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b10woman@x.com")
+
+    body = by_key((await client.get(coverage_url(project.id, "P01"), headers=headers)).json())
+
+    assert body["being:S4:B3"]["label_en"] == "The woman"
+    assert body["being:S4:B3"]["label_pt"] == "A mulher", (
+        "a conta da cena 4 dizia «A mulher (Noemi)», devolvendo o nome que o texto tira em 1:5"
+    )
+
+
+async def test_the_unnamed_husband_of_ruth_2_11_reaches_the_desk_unnamed(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b10husband@x.com")
+
+    body = by_key((await client.get(coverage_url(project.id, "P06"), headers=headers)).json())
+
+    assert body["being:S2:ruth-s-deceased-husband-your-hus"]["label_en"] == (
+        "Someone the text leaves unnamed here"
+    ), "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"

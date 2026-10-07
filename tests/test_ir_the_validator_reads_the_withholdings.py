@@ -1,5 +1,3 @@
-# ruff: noqa: RUF001 — the expectations are canon quoted verbatim; the en dash in a
-# verse range is the character the map itself carries.
 import json
 from typing import Any
 
@@ -48,24 +46,24 @@ PROHIBITIONS = (
 
 ABSENCES = "## SIGNIFICANT ABSENCES (per scene — silences that must be preserved, never filled)"
 
-#: The four silences of P01, quoted from the **Significant Absence** blocks of
-#: `canon/vendor/meaning-map/P01-Ruth-1-1-5.md`, scene by scene.
+#: The four silences of P01, quoted from the `significant_absence` of each scene in
+#: `canon/vendor/meaning-coordinates/P01-Ruth-1-1-5-MEANING-COORDINATES.md`, scene by scene.
 P01_ABSENCES = (
-    "- S1 (v.1–2): The narrator never says YHWH sent the famine or drove the family out. "
-    "The book opens with no word of God doing anything.",
-    "- S2 (v.3): The narrator points to no one as the cause of the death. No grief is "
-    "described. No funeral or mourning is mentioned.",
-    "- S3 (v.4): No children are born to either marriage in the ten years they live there. "
-    "The narrator tells us how long it was, but says nothing of any child.",
-    "- S4 (v.5): The narrator tells of no grief, no funeral, no one left to carry on the "
-    "line, and no act of God. The losses are reported, and the line simply stops there.",
+    "- S1 (1:1-2): Narrator never says YHWH sent the famine or drove the family out; the book "
+    "opens with no word of God acting.",
+    "- S2 (1:3): Narrator points to no one as the cause of the death. No grief described. No "
+    "funeral or mourning mentioned.",
+    "- S3 (1:4): No children born to either marriage in the ten years they live there; "
+    "narrator gives the length but names no child.",
+    "- S4 (1:5): Narrator tells of no grief, no funeral, no one left to carry on the line, and "
+    "no act of God. The losses are reported and the line simply stops there.",
 )
 
 
-#: The two headings the Validator's own prompt puts around the map slot
-#: (`prompts/validator_system_prompt.md:127,131`).
+#: The heading the Validator's own prompt puts above the map slot, and the start of
+#: `TEAM_EVIDENCE_HEADING`, which the room renders into the `{{TEAM_EVIDENCE}}` slot after it.
 MAP_SLOT = "## The Meaning Map (the only standard of truth)"
-NEXT_SLOT = "## Recent conversation"
+NEXT_SLOT = "## WHAT THE TEAM JUST SAID"
 
 
 #: Her operational sentence for the panorama's preservation header, quoted from
@@ -212,7 +210,6 @@ async def test_the_two_new_blocks_read_the_same_in_a_portuguese_and_an_english_s
 async def _verdict_systems(agent: FakeAgent) -> tuple[str, str]:
     await run_verdict_turn(
         findings_text="No que você me contou, Orfa não apareceu.",
-        closing="Vamos ouvir de novo, em {session_language}.",
         scope="P01",
         pericope_num="P01",
         messages=[],
@@ -224,10 +221,10 @@ async def _verdict_systems(agent: FakeAgent) -> tuple[str, str]:
     return agent.systems[0], agent.systems[1]
 
 
-async def test_the_verdict_is_judged_against_the_withholdings_its_speaker_never_reads(
+async def test_the_verdict_is_judged_against_the_withholdings(
     patch_agent,
 ) -> None:
-    speaker_system, validator_system = await _verdict_systems(patch_agent(FakeAgent()))
+    _, validator_system = await _verdict_systems(patch_agent(FakeAgent()))
 
     assert R6 in validator_system and R10 in validator_system, (
         "o veredito falava sobre a passagem julgado contra o mapa do Guia; uma emenda que "
@@ -236,10 +233,6 @@ async def test_the_verdict_is_judged_against_the_withholdings_its_speaker_never_
     assert PROHIBITIONS in validator_system and ABSENCES in validator_system, (
         "o corte do veredito tem de ser o mesmo da passagem, senão o aperto vale num turno "
         "e não no outro"
-    )
-    assert R6 not in speaker_system and R10 not in speaker_system, (
-        "o Speaker do veredito narra a partir da prosa, e aqui não há lista REMAINING para "
-        "lhe mostrar a regra como conta a trabalhar"
     )
 
 

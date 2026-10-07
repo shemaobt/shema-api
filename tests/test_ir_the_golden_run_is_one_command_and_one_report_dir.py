@@ -601,3 +601,31 @@ def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> 
     ) in readme, (
         "uma reprovação do juiz não vira aviso mecânico — e a linha diz por que o portão fechou"
     )
+
+
+async def test_a_session_about_an_earlier_passage_is_judged_with_her_kind_and_the_apps_fact(
+    over_the_seam, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    path = _script(
+        sessions,
+        "P03-earlier-passages-status",
+        "P03",
+        [{"kickoff": True}, {"team": "Lembrem: na última parte, Noemi mandou as noras voltarem."}],
+    )
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["earlierPassages"] = {"P01": "approved", "P02": "not_worked"}
+    path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    await golden_runner.run(_args(sessions, tmp_path / "reports"))
+
+    (asked,) = judge.asked
+    assert "kind `worked_passage_assumed`" in asked["system_prompt"], (
+        "o juiz antigo não tinha o incidente de uma passagem que a equipe não fez"
+    )
+    assert (
+        "APP STATUS (what the app told the guide this turn): EARLIER PASSAGES FOR THIS TEAM: "
+        "Approved: Ruth 1:1\u20135. Not worked yet: Ruth 1:6\u201314.\n"
+    ) in asked["user_content"], "sem o fato do app, o juiz não tinha como julgar o incidente"
