@@ -778,7 +778,8 @@ async def analyse_telling_back(
             system_prompt=system,
             user_content="Compare a tradução com o mapa.",
             ladder=analysis_ladder(cfg),
-            max_output_tokens=4096,
+            max_output_tokens=2500,
+            effort=None,
             settings=cfg,
         )
     except Exception as failure:

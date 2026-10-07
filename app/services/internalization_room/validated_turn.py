@@ -8,16 +8,16 @@ from typing import Any
 
 from app.core.config import Settings
 from app.services.internalization_room.fail_safe import validation_ladder
-from app.services.internalization_room.llm import Turn, cache_break_before
+from app.services.internalization_room.llm import TruncatedReply, Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
-    OPENING_MOVEMENT_INSTRUCTION,
     SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
+    TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
     her_block,
     split_opening_movements,
@@ -34,9 +34,6 @@ from app.services.platform.tts import warm_connection_in_background
 logger = logging.getLogger(__name__)
 
 MAX_REDRAFTS = 2
-
-#: How many times one draft is put to the Validator before its reply is given up on.
-READINGS_OF_ONE_DRAFT = 2
 
 
 @dataclass(frozen=True)
@@ -142,12 +139,12 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
     )
 
 
-def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements: bool) -> str:
+def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
     """The Speaker's last user turn, behind everything already said.
 
     What the team just said is that turn, on its own: the exchange it answers is the
     conversation, not a heading inside the question. The instructions that ride per turn —
-    the opening, the two-movement mark — stay in that last message, which is where an
+    the opening's note — stay in that last message, which is where an
     instruction is read as this turn's and not as something said earlier.
 
     A turn with neither — the back-translation verdict — asks for its speech in the session's
@@ -156,10 +153,7 @@ def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements
     """
     if utterance:
         return utterance
-    instruction = opening_instruction or SPEAK_THIS_TURN
-    if ask_for_movements:
-        return f"{instruction} {OPENING_MOVEMENT_INSTRUCTION}"
-    return instruction
+    return opening_instruction or SPEAK_THIS_TURN
 
 
 async def _draft(
@@ -281,10 +275,15 @@ async def _voiced_after_validation(
 
     `mother_tongue` is the one case where `transcript` is not the team's own words in the
     session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. The Validator's `{{TEAM_EVIDENCE}}` is quoted
-    evidence of what the team *said*, under a heading no prompt tells it to read as a fact
-    about the room rather than speech. Left alone, the slot would credit the team with a
-    sentence in the session language it never spoke.
+    Guide has something to draft against. That note stays out of the Validator's
+    `{{TEAM_EVIDENCE}}`, which is quoted evidence of what the team *said*, under a heading no
+    prompt tells it to read as a fact about the room rather than speech. Let in, the slot
+    would credit the team with a sentence in the session language it never spoke.
+
+    The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
+    the kickoff's team text — and her turn loop hands that text to the Validator as what the
+    team said, so with no team words the note handed to the Guide stands
+    in the slot.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
@@ -298,13 +297,14 @@ async def _voiced_after_validation(
     as the family-A fail-safe: the next tap failed the same way, and the team heard the
     same canned line over and over with nothing to say a person was needed. The only
     fail-safe this engine still speaks is the designed one — a Validator that will not
-    settle after `MAX_REDRAFTS`, or one whose reply cannot be read twice over.
+    settle after `MAX_REDRAFTS`, or one whose reply is not a verdict.
 
-    A reply the room cannot read is not a verdict on the draft, so it costs a second
-    reading of the same draft and never a redraft: the Guide's words were not judged, and
-    sending them back to be rewritten spent the budget that keeps the Guide talking on a
-    fault that was the Validator's. Only when the second reading is unreadable too does the
-    family-A line answer, and the redrafts it reports are the ones actually spent.
+    The Validator reads each draft once, as in her app. A reply cut at its ceiling, one that
+    cannot be read, one with a verdict she never named, or a correction with nothing in it is
+    not a judgment of the draft and gets no second reading: the family-A line answers at once,
+    with no redraft spent, because the Guide's words were not judged and sending them back to
+    be rewritten would spend the budget that keeps the Guide talking on a fault that was the
+    Validator's.
     """
     started = time.monotonic()
     spend = open_ledger()
@@ -313,7 +313,7 @@ async def _voiced_after_validation(
     issues: list[dict[str, Any]] = []
     warmed_connection = False
 
-    turn = _the_guides_turn("" if opening else transcript, opening_instruction, ask_for_movements)
+    turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
     for attempt in range(MAX_REDRAFTS + 1):
         draft, movements = split_opening_movements(
@@ -328,13 +328,16 @@ async def _voiced_after_validation(
         if not ask_for_movements:
             movements = []
 
+        reported = her_block(TEAM_REPORTED_HEADING, telling_back)
+        earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
         validator_system = render(
             cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
-            EARLIER_PASSAGES=her_block(EARLIER_PASSAGES_HEADING, earlier_passages),
+            EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
             TEAM_EVIDENCE=her_block(
-                TEAM_EVIDENCE_HEADING, "" if mother_tongue else transcript or telling_back
+                TEAM_EVIDENCE_HEADING,
+                "" if mother_tongue else transcript or opening_instruction,
             ),
             DRAFTED_RESPONSE=draft,
         )
@@ -345,20 +348,22 @@ async def _voiced_after_validation(
                 settings=settings,
             )
             warmed_connection = True
-        for _reading in range(READINGS_OF_ONE_DRAFT):
+        try:
             raw_verdict = await room_agent().turn.call_agent(
                 role="validator",
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
-                max_output_tokens=4096,
+                max_output_tokens=8192,
+                effort=None,
+                fails_on_truncation=True,
                 settings=settings,
             )
             verdict, refusal = _parse_verdict(raw_verdict)
-            issues = _issues_as_dicts(verdict.get("issues"))
-            if refusal is None:
-                break
-            _refused(refusal, raw_verdict, session_id, attempt + 1)
+        except TruncatedReply as cut:
+            raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
+        issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
+            _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
 
         speech = ""
