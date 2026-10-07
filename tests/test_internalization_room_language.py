@@ -249,9 +249,9 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
 
 def test_speak_this_turn_is_english_on_every_session() -> None:
     """SPEAK_THIS_TURN is the filler user message a verdict turn sends when it has neither an
-    opening nor a team utterance to answer — a backend-composed instruction exactly like
-    OPENING_INSTRUCTION above, just missed by the sweep that translated its siblings in this
-    same file. A `pt` session must not see "Fale este turno."."""
+    opening nor a team utterance to answer — a backend-composed instruction, just missed by
+    the sweep that translated its siblings in this same file. A `pt` session must not see
+    "Fale este turno."."""
     from app.services.internalization_room.turn_instructions import SPEAK_THIS_TURN
 
     assert SPEAK_THIS_TURN == "Speak this turn."
