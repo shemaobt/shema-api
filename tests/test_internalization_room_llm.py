@@ -250,6 +250,59 @@ async def test_a_rung_that_refuses_outright_hands_the_request_to_the_next(
     )
 
 
+async def test_a_fall_driven_by_a_refusal_says_it_was_a_refusal(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingMessages()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    answered = [r for r in caplog.records if getattr(r, "rung", None) == "claude-opus-5"]
+    (line,) = [r for r in answered if r.getMessage().startswith("[llm-usage]")]
+    assert line.getMessage().endswith(" — claude-fable-5-1 refused the request")
+    assert line.rung_fell_because == "claude-fable-5-1 refused the request", (
+        "the key could use the top rung and the line said it could not"
+    )
+
+
+async def test_a_call_that_fell_both_ways_names_each_rung_for_its_own_cause(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class _NoTopRungThenARefusal:
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            if kwargs["model"] == "claude-fable-5-1":
+                raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+            if kwargs["model"] == "claude-opus-5":
+                reply = _reply("", stop_reason="refusal")
+                reply.content = []
+                return reply
+            return _reply("ok")
+
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=_NoTopRungThenARefusal(), options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    (line,) = [
+        r
+        for r in caplog.records
+        if r.getMessage().startswith("[llm-usage]") and getattr(r, "rung", "") == "claude-opus-4-8"
+    ]
+    assert line.rung_fell_because == (
+        "the key cannot use claude-fable-5-1; claude-opus-5 refused the request"
+    ), "the rung that refused was written down as one the key could not use"
+
+
 class RefusingRungs:
     """Rungs that turn every request away at the door, and the ones that still answer."""
 
