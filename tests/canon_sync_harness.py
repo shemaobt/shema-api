@@ -100,6 +100,8 @@ def point_the_sync_at(
     monkeypatch.setattr(canon, "VENDOR", vendor)
     monkeypatch.setattr(canon, "PIN_FILE", vendor / "VENDOR_PIN")
     monkeypatch.setattr(canon, "_get", compiler.get)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("TRIPOD_COMPILER_REPO", raising=False)
     return vendor
 
 

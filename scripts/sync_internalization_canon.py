@@ -273,6 +273,11 @@ def check() -> int:
         drifted.extend(
             f"against the pin in {clone}: {line}" for line in _against_the_clone(Path(clone), sha)
         )
+    elif os.environ.get("CI"):
+        drifted.append(
+            "no compiler copy: on a build machine the guard needs TRIPOD_COMPILER_REPO, "
+            f"a local clone of {REPO} holding the pin"
+        )
     if drifted:
         print(f"canon drifted from pin {sha}:", file=sys.stderr)
         for line in drifted:
