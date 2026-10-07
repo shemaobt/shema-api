@@ -59,6 +59,7 @@ from typing import Any
 import httpx
 
 from app.api.internalization_room.text_seam import _collecting_model_calls
+from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
 from app.services.internalization_room.prompt_blocks import earlier_passages_line
@@ -541,8 +542,7 @@ def _refusal(refused: httpx.HTTPStatusError) -> str:
 
 
 def _pins() -> str:
-    canon = (REPO_ROOT / "app/services/internalization_room/canon/vendor/VENDOR_PIN").read_text()
-    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{canon.strip()[:7]}`"
+    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{vendor_pin()[:7]}`"
 
 
 def _tip() -> str:

@@ -1,0 +1,88 @@
+name: Canon sync
+
+on:
+  schedule:
+    - cron: "17 9 * * 1,4"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Sync the canon from the compiler's main line
+        id: sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          uv run python scripts/sync_internalization_canon.py --sync | tee /tmp/sync.log
+          if [ "$(tail -n 1 /tmp/sync.log)" = "UP_TO_DATE" ]; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Clone the compiler
+        if: steps.sync.outputs.updated == 'true'
+        run: git clone --quiet https://github.com/MarciaSuzuki/tripod_compiler.git /tmp/tripod_compiler
+
+      - name: Run the canon drift check
+        if: steps.sync.outputs.updated == 'true'
+        env:
+          TRIPOD_COMPILER_REPO: /tmp/tripod_compiler
+        run: uv run python scripts/sync_internalization_canon.py --check
+
+      - name: Run the canon smoke
+        if: steps.sync.outputs.updated == 'true'
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./boot-check.db
+          JWT_SECRET_KEY: test-secret-for-ci-only
+          INNGEST_DEV: "1"
+        run: uv run python scripts/smoke_internalization_canon.py
+
+      - name: Build the image
+        if: steps.sync.outputs.updated == 'true'
+        run: docker build .
+
+      - name: Open the canon change
+        if: steps.sync.outputs.updated == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: canon-sync/auto
+          delete-branch: true
+          add-paths: app/services/internalization_room/canon/vendor/**
+          commit-message: "feat(ir): the canon moves to the compiler's newly published commit"
+          title: "Canon sync: new published canon from the compiler"
+          body: |
+            The compiler's `main` moved past the pin, and the canon published there passed the
+            drift check against a fresh clone of the compiler at the new pin, the canon smoke and
+            `docker build`. `VENDOR_PIN` names what came in.
+
+            Those three ran in the job that opened this change, and nothing else has: GitHub
+            starts none of this repository's checks on a change opened with the job's own
+            token, so the test suite has not seen this canon. Close and reopen this change to
+            start them, and merge only once they pass.
+
+            **Review the new content, then merge to ship it.** Merging deploys it: merge only
+            outside a team session, and close this change if her own pin change for the same
+            canon is already open.
