@@ -1132,7 +1132,7 @@ async def verify_correction(
         correction_prompt,
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
-        MEANING_MAP=load_map(pericope_num).body,
+        MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
         FINDING=findings_block(findings, addresses),
         EARLIER_TELLING=earlier.transcript or "",
         NEW_TELLING=corrected.transcript or "",
