@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 
 from app.services.internalization_room.canon.parse_map import VENDOR, MeaningMap, Scene
@@ -10,6 +11,9 @@ COORDINATES_DIR = VENDOR / "meaning-coordinates"
 
 _STRIPPED = "STRIPPED_TO_"
 _SPOKEN = {"STRIPPED_TO_HA_ISHAH": "the woman"}
+_DEFINITION = re.compile(r"^\[\[([A-Z][A-Z0-9_]*?)-[^\]\n]*\]\][ \t]*—[ \t]*([^\n]+)$", re.M)
+_NAMED_LINK = re.compile(r"\[\[[^\]\n]*\]\][ \t]+(?=[^\W\d_])")
+_FLAG_NOTE = re.compile(r"^active at\b", re.I)
 
 
 @lru_cache(maxsize=8)
@@ -30,9 +34,21 @@ def _beings_by_scene(pericope_num: str) -> dict[int, list[dict]]:
     }
 
 
+@lru_cache(maxsize=32)
+def _glosses(body: str) -> dict[str, str]:
+    glosses: dict[str, str] = {}
+    for code, rest in _DEFINITION.findall(body):
+        gloss = _NAMED_LINK.sub("", rest.strip().rsplit("/", 1)[-1].strip())
+        if gloss and "[[" not in gloss and not _FLAG_NOTE.match(gloss):
+            glosses.setdefault(code, gloss)
+    return glosses
+
+
 def name_of(meaning_map: MeaningMap, code: str) -> str | None:
     entry = _names_list(meaning_map.book).get(code)
-    return entry["english"] if entry is not None else None
+    if entry is not None:
+        return str(entry["english"])
+    return _glosses(meaning_map.body).get(code)
 
 
 def being_names(meaning_map: MeaningMap, scene: Scene) -> list[str | None]:

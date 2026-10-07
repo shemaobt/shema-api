@@ -85,8 +85,7 @@ FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: S2
 
 COVERED (engaged): S1 (v.1–2); Elimelech @ S1; Naomi @ S1; Mahlon @ S1; Chilion @ S1; \
 Judges @ S1; Ephrathites @ S1; Bethlehem @ S1; Fields of Moab @ S1; the land of Judah @ S1; \
-Famine @ S1; לָגוּר / sojourning @ S1; In the Days When the Judges Judged @ S1; absence @ S1; \
-S2 (v.3)
+Famine @ S1; sojourning @ S1; In the Days When the Judges Judged @ S1; absence @ S1; S2 (v.3)
 
 REMAINING (not yet worked by the team, in their own words):
   arc: Level-1 arc
@@ -97,7 +96,7 @@ REMAINING (not yet worked by the team, in their own words):
   being: Elimelech @ S2, Naomi @ S2, Mahlon @ S2, Chilion @ S2, Mahlon @ S3, Chilion @ S3, \
 Women of Moab @ S3, Orpah @ S3, Ruth @ S3, Naomi @ S3, Mahlon @ S4, Chilion @ S4, the woman @ S4
   place: Fields of Moab @ S2, Fields of Moab @ S3, Fields of Moab @ S4
-  object: כְּעֶשֶר שָׁנִים / about ten years @ S3
+  object: about ten years @ S3
   absence: absence @ S2, absence @ S3, absence @ S4
   preserved: R3, R5, R10"""
 

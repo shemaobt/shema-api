@@ -23,3 +23,12 @@ def test_the_woman_of_ruth_1_5_reaches_the_voice_as_the_woman_with_no_name_besid
     assert "(Naomi)" not in ledger, (
         "o Guia lia 'הָאִשָּה (נָעֳמִי) / \"the woman\" (Naomi) @ S4', com o nome ao lado"
     )
+
+
+def test_a_code_her_names_list_does_not_carry_reads_the_maps_own_gloss() -> None:
+    labels = _labels("P12")
+
+    assert labels["object:S2:CB_0010"] == '"the house of Israel"', (
+        "o Guia lia 'בֵּית יִשְׂרָאֵל / \"the house of [[PL_ISRAEL-Israel]] Israel\"', link e tudo"
+    )
+    assert _labels("P01")["object:S1:CB_0030"] == "sojourning"
