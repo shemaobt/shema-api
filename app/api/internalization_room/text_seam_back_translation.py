@@ -140,7 +140,7 @@ async def play_a_round(
     the standing stretch is found by the address, not by her index, because the address is
     what the room has always addressed by.
 
-    The verdict is the one `terminei` reaches, from the Correction check to the Speaker's
+    The verdict is the one `terminei` reaches, from the Analyst's reading to the Speaker's
     words, and it is voiced as text: the seam synthesizes nothing, so the clip key it records
     is empty and only the words are kept. What it does not carry are the five answers
     `terminei` gives before that point — the untold-stretch halt, the untold-part halt, the

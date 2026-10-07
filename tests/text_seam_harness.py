@@ -67,11 +67,7 @@ def the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> Scripted
 
 
 class Analyst:
-    """The analyst in its two modes, each answering what the case set.
-
-    The two are told apart by the heading only the
-    correction prompt has, the way a reader would — not by counting calls.
-    """
+    """The analyst answering what the case set."""
 
     def __init__(self) -> None:
         self.readings: list[dict[str, Any]] = []

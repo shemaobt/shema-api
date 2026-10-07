@@ -95,11 +95,7 @@ class ScriptedAnalyst:
     """The analyst answering the findings a case wrote, one entry per whole reading.
 
     A case about what the room does *with* a finding has to put one there, and the counting
-    double above cannot: it answers the same clean reading every time. The correction check is
-    told apart by the heading only its prompt carries, the way a reader would, and it keeps
-    what it was shown and passes: a case that needs it to refuse, or to raise something of its
-    own, sets that up here when there is one — buttons nobody presses are a double agreeing
-    with itself.
+    double above cannot: it answers the same clean reading every time.
     """
 
     def __init__(self) -> None:
