@@ -14,6 +14,7 @@ from app.services.internalization_room.canon.book_material import (
     PreservationRule,
     preservation_rules,
 )
+from app.services.internalization_room.canon.names import being_names, name_of
 from app.services.internalization_room.canon.parse_map import Entity, MeaningMap, load_map
 
 
@@ -87,6 +88,10 @@ def _label(entity: Entity) -> str:
     return (after_link or entity.label).strip()
 
 
+def _thing_names(meaning_map: MeaningMap, entities: list[Entity]) -> list[str | None]:
+    return [entity.code and name_of(meaning_map, entity.code) for entity in entities]
+
+
 def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Element]:
     """The passage's coverage spine, derived from its map.
 
@@ -128,17 +133,17 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
             )
         )
         groups = (
-            (ElementKind.BEING, scene.beings),
-            (ElementKind.PLACE, scene.places),
-            (ElementKind.OBJECT, scene.objects),
-            (ElementKind.TIME, scene.times),
+            (ElementKind.BEING, scene.beings, being_names(meaning_map, scene)),
+            (ElementKind.PLACE, scene.places, _thing_names(meaning_map, scene.places)),
+            (ElementKind.OBJECT, scene.objects, _thing_names(meaning_map, scene.objects)),
+            (ElementKind.TIME, scene.times, _thing_names(meaning_map, scene.times)),
         )
-        for kind, entities in groups:
-            for entity in entities:
+        for kind, entities, names in groups:
+            for entity, name in zip(entities, names, strict=True):
                 elements.append(
                     Element(
                         key=_entity_key(kind, scene.number, entity),
-                        label=_label(entity),
+                        label=name or _label(entity),
                         kind=kind,
                         scene=scene.number,
                     )
