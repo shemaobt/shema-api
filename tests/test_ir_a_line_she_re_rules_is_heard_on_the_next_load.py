@@ -32,100 +32,164 @@ ACKS_AS_RULED = """
 - "Tá."
 """
 
-HER_PROCESS_LINES_AT_18FA7C4 = "\n\n".join(
-    f"### {family}.\n\n" + "\n".join(f'- "{line}"' for line in lines)
-    for family, lines in {
-        "P": (
-            (
-                "First let's listen to your whole recording, from beginning to end. For now, "
-                "just listen."
-            ),
-            (
-                "Now let's go back to the beginning. You will listen to your recording and, at "
-                "each sentence, pause to translate for me only what was said there. Tap the "
-                "circle to pause, translate, and tap again so the recording goes on. Don't add "
-                "anything and don't explain; it doesn't need to sound nice. Say in English "
-                "exactly what that sentence says. Pause wherever it helps you remember what was"
-                " said so you can translate it. When the whole recording has been translated, "
-                "tap 'done'."
-            ),
-            "There is still a part of the recording to listen to before I check.",
-            (
-                "Approved as the team's final draft. The next step is the external check: tap "
-                "the 'external check' button below and call in the listeners."
-            ),
+
+def her_file(blocks: dict[str, tuple[str, ...]]) -> str:
+    return "\n\n".join(
+        f"### {family}.\n\n" + "\n".join(f'- "{line}"' for line in lines)
+        for family, lines in blocks.items()
+    )
+
+
+HER_PROCESS_BLOCKS_AT_18FA7C4 = {
+    "P": (
+        (
+            "First let's listen to your whole recording, from beginning to end. For now, "
+            "just listen."
         ),
-        "P-pt": (
-            (
-                "Primeiro vamos ouvir a gravação de vocês inteira, do começo ao fim. Por "
-                "enquanto é só ouvir."
-            ),
-            (
-                "Agora vamos voltar ao começo. Vocês vão ouvir a gravação de vocês e, a cada "
-                "frase, pausar para me traduzir só o que foi dito ali. Toquem no círculo para "
-                "pausar, traduzam, e toquem de novo para a gravação seguir. Não acrescentem "
-                "nada e não expliquem; não precisa ficar bonito. Digam em português exatamente "
-                "o que aquela frase diz. Façam as pausas onde for melhor para vocês lembrarem "
-                "do que foi dito e traduzirem. Quando a gravação inteira estiver traduzida, "
-                "toquem em 'terminei'."
-            ),
-            "Ainda falta ouvir um trecho da gravação antes de eu conferir.",
-            (
-                "Aprovado como rascunho final da equipe. O próximo passo é a checagem externa: "
-                "toquem no botão 'checagem externa', aqui embaixo, e chamem os ouvintes."
-            ),
+        (
+            "Now let's go back to the beginning. You will listen to your recording and, at "
+            "each sentence, pause to translate for me only what was said there. Tap the "
+            "circle to pause, translate, and tap again so the recording goes on. Don't add "
+            "anything and don't explain; it doesn't need to sound nice. Say in English "
+            "exactly what that sentence says. Pause wherever it helps you remember what was"
+            " said so you can translate it. When the whole recording has been translated, "
+            "tap 'done'."
         ),
-        "X": (
-            (
-                "Now it's the turn of those who didn't help translate. What you say here is "
-                "recorded, only for the team to hear afterwards. You will hear the whole "
-                "passage. Then I'll ask what you understood. There is no right answer: what you"
-                " understood is what matters."
-            ),
-            (
-                "Now tell me, in your own way, what you heard. It doesn't need to be perfect, "
-                "tell what you remember. Tap the circle to speak and tap again when you finish."
-            ),
-            (
-                "Did anything stay unclear? Would you like to comment on anything about the "
-                "whole passage? If so, tap the circle and speak, as many times as you want. If "
-                "not, tap 'continue'."
-            ),
-            (
-                "Now, listen to the sentences one by one. When you hear a sentence, if you "
-                "think it is good, tap the 'it's good' button. But if you think the sentence "
-                "needs to change in some way, or if you think it is not clear, tap the circle "
-                "again and make your comment."
-            ),
-            "Thank you for your help. What you said is kept for the team to hear.",
+        "There is still a part of the recording to listen to before I check.",
+        (
+            "Approved as the team's final draft. The next step is the external check: tap "
+            "the 'external check' button below and call in the listeners."
         ),
-        "X-pt": (
-            (
-                "Agora é a vez de quem não ajudou a traduzir. O que vocês disserem aqui fica "
-                "gravado, só para a equipe ouvir depois. Vocês vão ouvir a passagem inteira. "
-                "Depois eu pergunto o que vocês entenderam. Não tem resposta certa: o que vocês"
-                " entenderam é o que importa."
-            ),
-            (
-                "Agora me contem, do jeito de vocês, o que vocês ouviram. Não precisa ser "
-                "perfeito, conte o que você se lembrar. Toquem no círculo para falar e toquem "
-                "de novo quando terminarem."
-            ),
-            (
-                "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem "
-                "inteira? Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, "
-                "toquem em 'continuar'."
-            ),
-            (
-                "Agora, escute as frases uma por uma. Quando ouvir uma frase, se achar que ela "
-                "está boa, clique no botão 'está boa'. Mas se achar que a frase precisa mudar "
-                "em alguma coisa, ou se achar que ela não está clara, clique novamente no "
-                "círculo e faça o seu comentário."
-            ),
-            "Agradecemos sua ajuda. O que vocês disseram fica guardado para a equipe ouvir.",
+    ),
+    "P-pt": (
+        (
+            "Primeiro vamos ouvir a gravação de vocês inteira, do começo ao fim. Por "
+            "enquanto é só ouvir."
         ),
-    }.items()
-)
+        (
+            "Agora vamos voltar ao começo. Vocês vão ouvir a gravação de vocês e, a cada "
+            "frase, pausar para me traduzir só o que foi dito ali. Toquem no círculo para "
+            "pausar, traduzam, e toquem de novo para a gravação seguir. Não acrescentem "
+            "nada e não expliquem; não precisa ficar bonito. Digam em português exatamente "
+            "o que aquela frase diz. Façam as pausas onde for melhor para vocês lembrarem "
+            "do que foi dito e traduzirem. Quando a gravação inteira estiver traduzida, "
+            "toquem em 'terminei'."
+        ),
+        "Ainda falta ouvir um trecho da gravação antes de eu conferir.",
+        (
+            "Aprovado como rascunho final da equipe. O próximo passo é a checagem externa: "
+            "toquem no botão 'checagem externa', aqui embaixo, e chamem os ouvintes."
+        ),
+    ),
+    "X": (
+        (
+            "Now it's the turn of those who didn't help translate. What you say here is "
+            "recorded, only for the team to hear afterwards. You will hear the whole "
+            "passage. Then I'll ask what you understood. There is no right answer: what you"
+            " understood is what matters."
+        ),
+        (
+            "Now tell me, in your own way, what you heard. It doesn't need to be perfect, "
+            "tell what you remember. Tap the circle to speak and tap again when you finish."
+        ),
+        (
+            "Did anything stay unclear? Would you like to comment on anything about the "
+            "whole passage? If so, tap the circle and speak, as many times as you want. If "
+            "not, tap 'continue'."
+        ),
+        (
+            "Now, listen to the sentences one by one. When you hear a sentence, if you "
+            "think it is good, tap the 'it's good' button. But if you think the sentence "
+            "needs to change in some way, or if you think it is not clear, tap the circle "
+            "again and make your comment."
+        ),
+        "Thank you for your help. What you said is kept for the team to hear.",
+    ),
+    "X-pt": (
+        (
+            "Agora é a vez de quem não ajudou a traduzir. O que vocês disserem aqui fica "
+            "gravado, só para a equipe ouvir depois. Vocês vão ouvir a passagem inteira. "
+            "Depois eu pergunto o que vocês entenderam. Não tem resposta certa: o que vocês"
+            " entenderam é o que importa."
+        ),
+        (
+            "Agora me contem, do jeito de vocês, o que vocês ouviram. Não precisa ser "
+            "perfeito, conte o que você se lembrar. Toquem no círculo para falar e toquem "
+            "de novo quando terminarem."
+        ),
+        (
+            "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem "
+            "inteira? Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, "
+            "toquem em 'continuar'."
+        ),
+        (
+            "Agora, escute as frases uma por uma. Quando ouvir uma frase, se achar que ela "
+            "está boa, clique no botão 'está boa'. Mas se achar que a frase precisa mudar "
+            "em alguma coisa, ou se achar que ela não está clara, clique novamente no "
+            "círculo e faça o seu comentário."
+        ),
+        "Agradecemos sua ajuda. O que vocês disseram fica guardado para a equipe ouvir.",
+    ),
+}
+
+HER_PROCESS_LINES_AT_18FA7C4 = her_file(HER_PROCESS_BLOCKS_AT_18FA7C4)
+
+HER_ENSAIO_FINAL_AT_18FA7C4 = {
+    "N": (
+        (
+            "I put together the scene rehearsals you already recorded and translated. Now let's"
+            " listen to the whole passage, from beginning to end. For now, just listen."
+        ),
+        ("We heard it all. Now I will check the translations you already made for me. One moment."),
+        (
+            "One stretch of the recording has no translation yet. Listen to that stretch. If "
+            "something was said there, tap the circle to pause and translate for me only what "
+            "was said. When you finish, tap 'done'."
+        ),
+        (
+            "Listen to the sentence as it is now. Then record that sentence again, whole, from "
+            "its beginning to its end, in your language. Never just a piece of it. Tap the "
+            "circle to record and tap again when you finish."
+        ),
+        (
+            "The new sentence is in place. Listen to how it came out. Then tap the circle and "
+            "translate that sentence for me."
+        ),
+        "The sentence you re-recorded still needs to be translated.",
+        "Listen to the sentence as it is now.",
+        (
+            "Now record that sentence again, whole, in your language. Never just a piece of it."
+            " Tap the circle to record and tap again when you finish."
+        ),
+    ),
+    "N-pt": (
+        (
+            "Juntei os ensaios das cenas que vocês já gravaram e traduziram. Agora vamos ouvir "
+            "a passagem inteira, do começo ao fim. Por enquanto é só ouvir."
+        ),
+        "Ouvimos tudo. Agora vou conferir as traduções que vocês já me fizeram. Um momento.",
+        (
+            "Um trecho da gravação ainda não tem tradução. Ouçam esse trecho. Se alguma coisa "
+            "foi dita ali, toquem no círculo para pausar e traduzam pra mim só o que foi dito. "
+            "Quando terminarem, toquem em 'terminei'."
+        ),
+        (
+            "Ouçam a frase como está agora. Depois gravem essa frase de novo, inteira, do "
+            "começo ao fim dela, na língua de vocês. Nunca só um pedaço. Toquem no círculo para"
+            " gravar e toquem de novo quando terminarem."
+        ),
+        (
+            "A frase nova já está no lugar. Ouçam como ficou. Depois toquem no círculo e "
+            "traduzam essa frase pra mim."
+        ),
+        "Ainda falta traduzir a frase que vocês regravaram.",
+        "Ouçam a frase como está agora.",
+        (
+            "Agora gravem essa frase de novo, inteira, na língua de vocês. Nunca só um pedaço. "
+            "Toquem no círculo para gravar e toquem de novo quando terminarem."
+        ),
+    ),
+}
 
 
 class Bucket:
@@ -311,7 +375,68 @@ async def test_the_two_stale_lines_are_heard_in_her_current_wording(
     )
 
 
-@pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "N0", "Z0", "F3", "F", "Fx", "f0"])
+@pytest.mark.parametrize(("language", "block"), [("pt", "X-pt"), ("en", "X")])
+async def test_every_step_of_the_external_check_is_heard_in_her_words(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+    language: str,
+    block: str,
+) -> None:
+    deploy(HER_PROCESS_LINES_AT_18FA7C4)
+    async with room_client(db_session, monkeypatch) as client:
+        spoken = [(await heard(client, f"X{position}", language))[1] for position in range(5)]
+
+    assert spoken == [f"voz:{line}" for line in HER_PROCESS_BLOCKS_AT_18FA7C4[block]], (
+        "da checagem externa só a pergunta sobre a passagem inteira tinha sido ouvida da sala"
+    )
+
+
+@pytest.mark.parametrize(("language", "block"), [("pt", "N-pt"), ("en", "N")])
+async def test_the_ensaio_final_is_heard_in_her_words_at_every_step_she_speaks(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+    language: str,
+    block: str,
+) -> None:
+    deploy(her_file(HER_ENSAIO_FINAL_AT_18FA7C4))
+    async with room_client(db_session, monkeypatch) as client:
+        spoken = [
+            (await heard(client, f"N{position}", language))[1] for position in (0, 1, 2, 4, 5, 6, 7)
+        ]
+
+    hers = HER_ENSAIO_FINAL_AT_18FA7C4[block]
+    assert spoken == [f"voz:{line}" for line in hers[:3] + hers[4:]], (
+        "o ensaio final não tinha fala nenhuma: a sala respondia 404 a toda linha N"
+    )
+
+
+@pytest.mark.parametrize("line", ["N3", "N03"])
+@pytest.mark.parametrize("language", ["pt", "en"])
+async def test_the_sentence_line_she_kept_in_its_place_is_never_spoken(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+    deploy: Callable[[str], None],
+    line: str,
+    language: str,
+) -> None:
+    deploy(her_file(HER_ENSAIO_FINAL_AT_18FA7C4))
+    async with room_client(db_session, monkeypatch) as client:
+        asked = await client.get(
+            f"{PREFIX}/fixed-lines/{line}", params={"language": language}, headers=THE_TABLET
+        )
+
+    assert asked.status_code == 404, asked.text
+    assert elevenlabs.voiced == [], (
+        "a quarta linha do ensaio final, que ela trocou pelas duas do fim, era falada"
+    )
+
+
+@pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "Z0", "F3", "F", "Fx", "f0"])
 async def test_a_line_that_is_not_in_her_file_is_never_voiced(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
