@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from app.services.internalization_room.canon import names
-from app.services.internalization_room.canon.elements import elements_for, elements_of
+from app.services.internalization_room.canon.elements import element_keys, elements_for, elements_of
 from app.services.internalization_room.canon.parse_map import MAPS_DIR, parse_map
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 
@@ -113,3 +113,13 @@ def test_an_unnamed_being_with_a_form_or_a_role_word_reads_it_and_nothing_more()
     )
     assert _labels("P13")["being:S2:the-child-a-redeemer"] == "a redeemer"
     assert _labels("P13")["being:S1:the-child-a-son"] == "a son"
+
+
+def test_a_bead_renamed_by_her_keeps_the_key_its_coverage_is_stored_under() -> None:
+    keys = element_keys("P06")
+
+    assert "being:S2:ruth-s-deceased-husband-your-hus" in keys, (
+        "a chave saía do rótulo, e a cobertura gravada sob a antiga ficava órfã"
+    )
+    assert "being:S2:ruth-s-father-and-mother-your-fa" in keys
+    assert "being:S4:B3" in element_keys("P01")
