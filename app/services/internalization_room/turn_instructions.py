@@ -53,14 +53,6 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
     return clean, [whole, scene]
 
 
-OPENING_INSTRUCTION = (
-    "The session is starting now and the team has not spoken yet. Open the "
-    "session: introduce yourself briefly, give the team the whole before the "
-    "parts, and stay with the team on understanding — the invitation to rehearse "
-    "waits until they show they have the part."
-)
-
-
 def opening_note(pericope_num: str, language_code: str) -> str:
     if language_code == "pt":
         return (
@@ -70,6 +62,13 @@ def opening_note(pericope_num: str, language_code: str) -> str:
     return (
         f"[The session has just begun. The team opened passage {pericope_num} and is at the "
         "table, ready to begin. Speak first.]"
+    )
+
+
+def panorama_note(book: str, language_code: str) -> str:
+    return (
+        f"[A sessão acabou de começar. A equipe abriu o Panorama do Livro de {book} e está à "
+        "mesa, pronta para conversar. Fale primeiro.]"
     )
 
 

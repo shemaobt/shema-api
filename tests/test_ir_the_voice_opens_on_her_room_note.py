@@ -9,13 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
+from app.services.internalization_room.panorama_turn import run_panorama_turn
 from app.services.internalization_room.sessions import create_session
 from tests.turn_harness import the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
+PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
 P = "P03"
 
 
@@ -88,3 +91,28 @@ async def test_an_english_passage_opens_on_her_english_note(
         "[The session has just begun. The team opened passage P03 and is at the table, "
         "ready to begin. Speak first.]"
     ], "uma sessão em inglês ouvia a nota em português"
+
+
+async def test_a_portuguese_panorama_opens_on_her_panorama_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = ListeningAgent()
+    the_room_agent_is(monkeypatch, turn=agent)
+
+    await run_panorama_turn(
+        transcript="",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        session_language="Brazilian Portuguese",
+        language_code="pt",
+        opening=True,
+        settings=_settings(),
+    )
+
+    assert agent.guide_turns == [
+        "[A sessão acabou de começar. A equipe abriu o Panorama do Livro de Ruth e está à "
+        "mesa, pronta para conversar. Fale primeiro.]"
+    ], "o Panorama abria com o roteiro da passagem, falando de partes e de ensaio"

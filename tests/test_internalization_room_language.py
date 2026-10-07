@@ -235,13 +235,11 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
     in any of them is Portuguese an English session hears too (ENG-822, item 3)."""
     from app.services.internalization_room.turn_instructions import (
         EARLIER_PASSAGES_HEADING,
-        OPENING_INSTRUCTION,
         TEAM_EVIDENCE_HEADING,
         VALIDATOR_USER_MESSAGE,
     )
 
     for value in (
-        OPENING_INSTRUCTION,
         TEAM_EVIDENCE_HEADING,
         EARLIER_PASSAGES_HEADING,
         VALIDATOR_USER_MESSAGE,
