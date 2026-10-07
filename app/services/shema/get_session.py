@@ -13,7 +13,7 @@ consumers.
 ``users.display_name``. The argument, since §6.3 asked for one rather than a coin toss:
 
 * The rule the org chart protects is *never duplicate a role-holder's name into another
-  model*, and it exists so a rename has one place to happen. ``globalStrategist`` **has no
+  model*, and it exists so a rename has one place to happen. The ``admin`` **has no
   seat** — the chart's three roles are per region — so for that role there is no fact being
   duplicated and no rename to follow. The rule does not reach it.
 * The alternative is ``null``, which the contract permits (``name: string | null``). But the
@@ -25,7 +25,7 @@ consumers.
 
 **The fallback is one rule and not four special cases.** A seat is looked up when there is
 exactly one seat to look up: the role has a seat in the chart, and the scope names exactly
-one region. Global scope, a scope spanning two regions, ``globalStrategist``, and an
+one region. Global scope, a scope spanning two regions, a seatless role, and an
 unassigned seat all land on ``display_name`` — and the last of those is not an edge case
 today but the normal one, because all twenty-one seats ship unassigned on purpose.
 

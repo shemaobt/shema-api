@@ -292,7 +292,7 @@ async def test_every_other_network_route_refuses_a_member_without_resource_circl
         ("DELETE", f"{target}/consents/directory", None),
         ("POST", f"{target}/review", None),
     ]
-    for role in ("coordinator", "obtLab", "globalStrategist"):
+    for role in ("coordinator", "obtLab"):
         user = await make_scoped_user(
             db_session, shema_app, email=f"{role}@exit.test", role_key=role, regions=[]
         )

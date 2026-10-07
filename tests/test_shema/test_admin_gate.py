@@ -2,7 +2,7 @@
 
 Only the ``admin`` role of the Shemá app reaches ``/api/shema/access``. A Gestor or a mesa —
 whose grants live in the form — is refused by the app gate of the ``authenticated`` router;
-a coordinator, an OBT Lab, a Resource Circle or a global strategist by the Admin guard itself.
+a coordinator, an OBT Lab or a Resource Circle by the Admin guard itself.
 And the raw ``/api/roles/assign`` and ``/revoke`` no longer take the two apps' roles from an
 Admin, because every rule the surface applies would be one request away from being skipped.
 
@@ -58,12 +58,17 @@ async def _calls(client, headers, target_id: str, target_email: str):
         ("GET", PEOPLE): await client.get(PEOPLE, params={"email": target_email}, headers=headers),
         ("POST", GRANTS): await client.post(
             GRANTS,
-            json={"userId": target_id, "appKey": APP_KEY, "roleKey": "globalStrategist"},
+            json={
+                "userId": target_id,
+                "appKey": APP_KEY,
+                "roleKey": "coordinator",
+                "regionKeys": ["africa"],
+            },
             headers=headers,
         ),
         ("POST", REVOKE): await client.post(
             REVOKE,
-            json={"userId": target_id, "appKey": APP_KEY, "roleKey": "globalStrategist"},
+            json={"userId": target_id, "appKey": APP_KEY, "roleKey": "coordinator"},
             headers=headers,
         ),
         ("POST", INVITES): await client.post(
@@ -88,7 +93,6 @@ async def _calls(client, headers, target_id: str, target_email: str):
         ("gestor", "form"),
         ("mesa", "form"),
         ("coordinator", "shema"),
-        ("globalStrategist", "shema"),
         ("obtLab", "shema"),
         ("resourceCircle", "shema"),
     ],
@@ -96,7 +100,8 @@ async def _calls(client, headers, target_id: str, target_email: str):
 async def test_every_admin_route_refuses_a_persona_that_is_not_the_admin(
     db_session, shema_app, form_app, role, app_name
 ) -> None:
-    """The DoD's own three — ``gestor``, ``coordinator``, ``globalStrategist`` — and the rest.
+    """The DoD's own three — ``gestor``, ``coordinator`` and the Global Strategist, who left with
+    OBT-572 — and the rest.
 
     The form's seats stop at the app gate (they hold nothing in ``shema``); the Shemá
     personas pass it and stop at the Admin guard. Nothing is written either way.
@@ -213,7 +218,12 @@ async def test_a_stale_admin_is_refused_before_anything_is_written(
 
         res = await client.post(
             GRANTS,
-            json={"userId": target.id, "appKey": APP_KEY, "roleKey": "globalStrategist"},
+            json={
+                "userId": target.id,
+                "appKey": APP_KEY,
+                "roleKey": "coordinator",
+                "regionKeys": ["africa"],
+            },
             headers=headers,
         )
 
@@ -262,7 +272,7 @@ async def test_the_raw_role_routes_refuse_the_two_apps_to_an_admin(
     async with surface_client(db_session) as client:
         to_self = await client.post(
             "/api/roles/assign",
-            json={"target_user_id": admin.id, "app_key": APP_KEY, "role_key": "globalStrategist"},
+            json={"target_user_id": admin.id, "app_key": APP_KEY, "role_key": "coordinator"},
             headers=headers,
         )
         seat = await client.post(
@@ -337,7 +347,7 @@ def test_the_raw_route_constant_is_the_modules_two_keys() -> None:
 
 @pytest.mark.parametrize(
     ("role", "app_name"),
-    [("coordinator", "shema"), ("globalStrategist", "shema"), ("gestor", "form")],
+    [("coordinator", "shema"), ("obtLab", "shema"), ("gestor", "form")],
 )
 async def test_roles_check_refuses_a_persona_probing_another_account(
     db_session, shema_app, form_app, role, app_name

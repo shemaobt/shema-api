@@ -454,11 +454,11 @@ async def test_a_flagged_person_keeps_their_country_on_the_read_and_loses_it_on_
 
 
 async def test_every_other_shema_role_is_refused_the_network(db_session, client, shema_app) -> None:
-    """**The DoD's fourth line.** The network is the Resource Circle's instrument, and even
-    ``globalStrategist`` is refused — a real consequence, and the escape is a second grant
-    rather than a second guard. Not an admin account, or it would pass with the alias gone.
+    """**The DoD's fourth line.** The network is the Resource Circle's instrument, and a
+    coordinator is refused — a real consequence, and the escape is a second grant rather than
+    a second guard. Not an admin account, or it would pass with the alias gone.
     """
-    for role in ("coordinator", "obtLab", "globalStrategist"):
+    for role in ("coordinator", "obtLab"):
         user = await make_scoped_user(
             db_session, shema_app, email=f"{role}@net.test", role_key=role, regions=[]
         )

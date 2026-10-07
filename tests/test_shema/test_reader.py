@@ -3,7 +3,7 @@
 BE-04 decided *where* a sensitive place may go: everything that leaves coordination leaves
 reduced, and the record read carried the truth to anybody allowed to open it. GATE-04 (Karina
 22/set, Daniel 23/set) moved the line to the reader: the truth of a sensitive place is
-**coordination's** — ``globalStrategist``, and ``coordinator`` in a region of their scope — and
+**coordination's** — ``coordinator`` in a region of their scope, and the ``admin`` — and
 every other reader reads the region, *inclusive na ficha*. So a leaving shape is built for a
 reader, three values, one class for all three, and this file is the acceptance of that sentence:
 
@@ -133,7 +133,7 @@ async def _user(db_session, shema_app, role: str, *, regions=(HERE,), email: str
         shema_app,
         email=email or f"{role.lower()}@leitor.test",
         role_key=role,
-        regions=list(regions) if role != "globalStrategist" else None,
+        regions=list(regions),
     )
 
 
@@ -189,7 +189,6 @@ GLOBAL = RegionScope(global_=True, regions=frozenset())
 @pytest.mark.parametrize(
     ("granted", "scope", "platform_admin", "here", "elsewhere"),
     [
-        ({"globalStrategist"}, GLOBAL, False, "coordination", "coordination"),
         ({"coordinator"}, REGIONAL, False, "coordination", "other"),
         ({"obtLab"}, REGIONAL, False, "other", "other"),
         ({"resourceCircle"}, REGIONAL, False, "other", "other"),
@@ -199,7 +198,6 @@ GLOBAL = RegionScope(global_=True, regions=frozenset())
         ({"gestor", "mesa"}, RegionScope(False, frozenset()), False, "other", "other"),
     ],
     ids=[
-        "globalStrategist",
         "coordinator",
         "obtLab",
         "resourceCircle",
@@ -214,8 +212,9 @@ def test_each_role_reads_as_coordination_or_other(
 ) -> None:
     """GATE-04's *coordenação*, per role and per region.
 
-    ``coordinator`` is coordination **in its own regions** and ``other`` everywhere else;
-    ``globalStrategist`` everywhere. The ``admin`` row is the issue's reading — the Admin *vê
+    ``coordinator`` is coordination **in its own regions** and ``other`` everywhere else (the
+    Global Strategist was coordination everywhere, until OBT-572). The ``admin`` row is the
+    issue's reading — the Admin *vê
     tudo* — to confirm with Daniel. Region rows are per account, so a ``coordinator`` who is
     also ``obtLab`` is coordination wherever the account reaches.
     """
@@ -431,13 +430,14 @@ async def test_the_ficha_read_by_another_regions_coordinator_is_a_404(
     assert _leaks(response.json()) == []
 
 
-async def test_the_strategist_and_the_admin_read_the_truth(
+async def test_the_coordinator_and_the_admin_read_the_truth(
     client, db_session, shema_app, withheld
 ) -> None:
-    """``globalStrategist`` is GATE-04's own; the ``admin`` is the issue's hypothesis. The admin
-    alone reaches no region, so it is granted beside a regional role that does — and that role
-    alone (``obtLab``) reads the region, which is what isolates the admin as the cause."""
-    strategist = await _user(db_session, shema_app, "globalStrategist")
+    """``coordinator`` in its region is GATE-04's own; the ``admin`` is the issue's hypothesis.
+    The admin alone reaches no region, so it is granted beside a regional role that does — and
+    that role alone (``obtLab``) reads the region, which is what isolates the admin as the
+    cause."""
+    strategist = await _user(db_session, shema_app, "coordinator")
     _assert_truth(
         (
             await client.get(
@@ -491,7 +491,13 @@ async def test_coordination_reads_the_truth_on_all_five_console_routes(
     assert filed.status_code == 201, filed.text
     _assert_truth(filed.json())
 
-    strategist = await _user(db_session, shema_app, "globalStrategist")
+    strategist = await _user(
+        db_session,
+        shema_app,
+        "coordinator",
+        regions=tuple(ShemaRegionKey),
+        email="everywhere@leitor.test",
+    )
     created = await client.post(
         PROJECTS,
         json={
@@ -538,7 +544,7 @@ async def test_the_record_a_write_answers_is_built_for_the_writers_reader(
 
 @pytest.mark.parametrize(
     ("role", "notice"),
-    [("obtLab", None), ("resourceCircle", None), ("coordinator", 1), ("globalStrategist", 1)],
+    [("obtLab", None), ("resourceCircle", None), ("coordinator", 1)],
 )
 async def test_the_withheld_notice_is_coordinations_and_null_for_everybody_else(
     client, db_session, shema_app, withheld, cleared, role, notice
@@ -697,7 +703,13 @@ async def test_coordination_writes_the_place_and_the_flag(
     base = await _patch(client, db_session, coordinator, WITHHELD_ID, {"team": "JOCUM Nova"})
     assert base.status_code == 200, base.text
 
-    strategist = await _user(db_session, shema_app, "globalStrategist")
+    strategist = await _user(
+        db_session,
+        shema_app,
+        "coordinator",
+        regions=tuple(ShemaRegionKey),
+        email="everywhere@leitor.test",
+    )
     moved = await client.patch(
         f"{PROJECTS}/{CLEARED_ID}",
         json={"location": "Outro Campo"},
@@ -860,7 +872,13 @@ async def test_no_answer_to_a_reader_outside_coordination_names_the_place_throug
     moved the imported slugs to one too — so a sensitive project read by the OBT Lab, on the list,
     the record and the export, carries no id that spells where it is.
     """
-    strategist = await _user(db_session, shema_app, "globalStrategist")
+    strategist = await _user(
+        db_session,
+        shema_app,
+        "coordinator",
+        regions=tuple(ShemaRegionKey),
+        email="everywhere@leitor.test",
+    )
     created = await client.post(
         PROJECTS,
         json={

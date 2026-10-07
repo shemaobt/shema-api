@@ -8,8 +8,8 @@ table over.
 **The role: the health audience, and nobody wider.** The log's notes are what a meeting with a
 field team produced - the general and emotional evaluation of the bimonthly meeting, the Member
 Care debriefing - which is a pastoral reading of how a team is doing. ``_health_audience.py``
-already answers *who may read a reading of a team*, and answered ``globalStrategist``,
-``coordinator`` and ``obtLab``: the Resource Circle does not need to know a team is in emotional
+already answers *who may read a reading of a team*, and answered ``coordinator`` and
+``obtLab``: the Resource Circle does not need to know a team is in emotional
 difficulty in order to send them a recorder. The list is **composed, not copied** -
 :func:`require_reads_meetings` asks ``reads_assessments`` - so the day the client widens that
 audience, the log follows in the same edit. Fail-closed until then: the ``resourceCircle`` role

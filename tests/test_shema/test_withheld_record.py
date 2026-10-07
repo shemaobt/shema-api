@@ -8,10 +8,10 @@ them, the place and the contacts included (item 2). And the Projetos screen coun
 withheld projects for readers GATE-04 tells nothing about them (item 4).
 
 Each rule is asserted for the two readers who are not coordination — the OBT Lab and the
-Resource Circle, each holding the region — against the region's coordinator and a
-``globalStrategist``, who read everything, and against a cleared record, which is the truth for
-everybody. No account here is an installation admin: they pass every guard, and a refusal
-asserted with one would pass for the wrong reason.
+Resource Circle, each holding the region — against the region's coordinator, who reads
+everything in it, and against a cleared record, which is the truth for everybody. No account
+here is an installation admin: they pass every guard, and a refusal asserted with one would
+pass for the wrong reason.
 
 The canaries are invented, and a cleared record carries its own so a body search cannot find
 one record's text in the other's card.
@@ -117,7 +117,7 @@ async def _user(db_session, shema_app, role: str, *, email: str | None = None):
         shema_app,
         email=email or f"{role.lower()}@recolhido.test",
         role_key=role,
-        regions=None if role == "globalStrategist" else [HERE],
+        regions=[HERE],
     )
 
 
@@ -164,11 +164,11 @@ async def test_a_withheld_records_free_text_is_empty_for_a_reader_who_is_not_coo
         assert [entry["emotional"] for entry in history] == ["atencao"]
 
 
-@pytest.mark.parametrize("role", ["coordinator", "globalStrategist"])
+@pytest.mark.parametrize("role", ["coordinator"])
 async def test_coordination_reads_a_withheld_records_free_text(
     client, db_session, shema_app, withheld, role
 ) -> None:
-    """The positive half: the region's coordinator and the strategist read every word."""
+    """The positive half: the region's coordinator reads every word."""
     res = await client.get(
         f"{PROJECTS}/{WITHHELD_ID}", headers=await _headers(db_session, shema_app, role)
     )

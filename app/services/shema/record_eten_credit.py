@@ -7,7 +7,8 @@ two things travel with it: **who may set it**, and **who did**.
 
 **Who may: the coordination** — :data:`ETEN_LEDGER_AUDIENCE`, and a platform admin, as they pass
 every guard in this repository. GATE-04's answer (OBT-486, 23/sep) names the coordination as
-``globalStrategist`` and ``coordinator`` in their own region; ``obtLab`` and ``resourceCircle``
+``coordinator`` in their own region (the unscoped seat too, until OBT-572 retired it); ``obtLab``
+and ``resourceCircle``
 (the Intercessor seat, FE-44 §5.3) do not set funding figures. That is this issue's reading and
 not a client answer, so it is one tuple, declared in the pull request. The refusal is a 403 and
 comes **before** the project is looked at, so it says nothing about any project; a project outside
@@ -31,14 +32,14 @@ from app.db.models.shema_enums import ShemaEtenCreditSource
 from app.db.models.shema_eten import ShemaEtenCredit
 from app.models.shema_eten import EtenCreditEntry
 from app.services.shema._audit import author_name
-from app.services.shema._scope import COORDINATOR_ROLE, GLOBAL_ROLE, RegionScope, granted_roles
+from app.services.shema._scope import COORDINATOR_ROLE, RegionScope, granted_roles
 from app.services.shema.get_project import get_project
 from app.services.shema.list_eten_credits import credit_entry
 
 logger = logging.getLogger(__name__)
 
 #: The roles that may set a manual ETEN figure. Read the module docstring before widening it.
-ETEN_LEDGER_AUDIENCE: tuple[str, ...] = (GLOBAL_ROLE, COORDINATOR_ROLE)
+ETEN_LEDGER_AUDIENCE: tuple[str, ...] = (COORDINATOR_ROLE,)
 
 
 async def _require_ledger_audience(db: AsyncSession, user: User, app_key: str) -> None:
@@ -61,7 +62,7 @@ async def _require_ledger_audience(db: AsyncSession, user: User, app_key: str) -
     )
     raise AuthorizationError(
         "A manual ETEN credit is set by the coordination; this account holds neither "
-        "globalStrategist nor coordinator in Shemá"
+        "coordinator in Shemá"
     )
 
 

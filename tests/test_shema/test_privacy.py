@@ -454,7 +454,8 @@ async def test_an_aggregate_is_keyed_by_region_and_never_by_a_place(
         db_session,
         shema_app,
         email="counter@shema.test",
-        role_key="globalStrategist",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, "shema")
 
@@ -555,7 +556,8 @@ async def test_an_endpoint_written_without_knowledge_of_the_rule_still_protects(
         db_session,
         shema_app,
         email="naive@shema.test",
-        role_key="globalStrategist",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
 
     res = await naive_client.get(NAIVE_PROBE, headers=await auth_header(db_session, user))
@@ -601,7 +603,8 @@ async def test_the_second_serialization_pass_agrees_with_the_first(
         db_session,
         shema_app,
         email="twice@shema.test",
-        role_key="globalStrategist",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     headers = await auth_header(db_session, user)
 
@@ -687,7 +690,8 @@ async def test_the_collection_read_hands_out_rows_the_boundary_still_has_to_redu
         db_session,
         shema_app,
         email="lister@shema.test",
-        role_key="globalStrategist",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, "shema")
 
@@ -842,7 +846,11 @@ async def test_an_authorized_item_is_served_from_the_private_bucket_and_expires(
     """The link is minted per call, against the module's own private bucket, and nothing
     stores it — which is what makes the expiry worth anything."""
     user = await make_scoped_user(
-        db_session, shema_app, email="media@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="media@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, "shema")
     item = await _make_photo(db_session, cleared, granted=True)
@@ -863,7 +871,11 @@ async def test_media_of_a_withheld_project_is_refused_to_a_public_audience(
     from app.core.exceptions import AuthorizationError
 
     user = await make_scoped_user(
-        db_session, shema_app, email="publisher@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="publisher@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, "shema")
     item = await _make_photo(db_session, flagged, granted=True)
@@ -889,7 +901,11 @@ async def test_the_refusal_reads_the_same_whichever_gate_closed(
     from app.core.exceptions import AuthorizationError
 
     user = await make_scoped_user(
-        db_session, shema_app, email="prober@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="prober@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, "shema")
     undecided = await _make_photo(db_session, cleared, granted=None)
@@ -942,7 +958,11 @@ async def test_a_video_has_no_object_to_serve(db_session, shema_app, storage, cl
     from app.core.exceptions import NotFoundError
 
     user = await make_scoped_user(
-        db_session, shema_app, email="video@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="video@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, "shema")
     video = ShemaMediaItem(
@@ -968,7 +988,11 @@ async def test_a_material_rides_the_same_three_gates_as_a_photo(
     from app.core.exceptions import AuthorizationError
 
     user = await make_scoped_user(
-        db_session, shema_app, email="materials@shema.test", role_key="globalStrategist"
+        db_session,
+        shema_app,
+        email="materials@shema.test",
+        role_key="coordinator",
+        regions=list(ShemaRegionKey),
     )
     scope = await region_scope(db_session, user, "shema")
 

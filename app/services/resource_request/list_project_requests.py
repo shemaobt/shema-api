@@ -38,8 +38,7 @@ async def list_project_requests(
       OBT-522 is one role seeded in both, and the mesa and the Gestor already reach the whole
       board;
     * a regional role of the PME whose scope reaches the project's region — ``region_scope``'s
-      rule, read through ``scope_from_roles`` so the grants are read once, which is also what
-      gives ``globalStrategist`` every project;
+      rule, read through ``scope_from_roles`` so the grants are read once;
     * a live member of the project (OBT-524).
 
     **Everyone else gets 404**, a missing project included — the Shemá module's convention,

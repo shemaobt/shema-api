@@ -422,10 +422,12 @@ async def test_a_regional_role_with_no_region_reads_and_writes_nothing(
     assert res.status_code == 403
 
 
-async def test_the_global_strategist_reads_and_writes_every_region(
+async def test_a_coordinator_holding_every_region_reads_and_writes_every_region(
     db_session, client, shema_app
 ) -> None:
-    _user, headers = await _member(db_session, shema_app, role="globalStrategist", regions=())
+    """The seat the Global Strategist's work falls to since OBT-572: a coordinator granted all
+    seven regions."""
+    _user, headers = await _member(db_session, shema_app, regions=tuple(ShemaRegionKey))
     await _insert(db_session, scope_key="africa", period="2026-B2")
 
     written = await client.post(LOG, headers=headers, json=_body(scope_key="oceania"))
@@ -437,8 +439,9 @@ async def test_the_global_strategist_reads_and_writes_every_region(
 
 async def test_global_is_not_a_region_a_meeting_is_held_in(db_session, client, shema_app) -> None:
     """Every meeting GATE-02 kept is held per region, so ``global`` is refused as a value with
-    the reason - and for the global strategist too, whose scope would otherwise let it pass."""
-    _user, headers = await _member(db_session, shema_app, role="globalStrategist", regions=())
+    the reason - for a coordinator holding every region too, whose scope would otherwise let
+    it pass."""
+    _user, headers = await _member(db_session, shema_app, regions=tuple(ShemaRegionKey))
 
     logged = await client.post(LOG, headers=headers, json=_body(scope_key="global"))
     undone = await client.delete(f"{LOG}/{BIMESTRAL}/global/2026-B2", headers=headers)

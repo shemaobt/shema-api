@@ -105,10 +105,9 @@ class ShemaRegionKey(enum.StrEnum):
 class ShemaRoleKey(enum.StrEnum):
     """The three seats the org chart holds **per region**.
 
-    ``globalStrategist`` is the module's fourth *platform* role key and has no seat here,
-    because the chart's three roles are per region (FE-44 §5.3). It is granted through
-    ``user_app_roles`` like the other three and is named in ``app/api/shema/_deps.py``;
-    this type is the chart's vocabulary, not the app's.
+    The ``admin`` is a *platform* role key and has no seat here, because the chart's three
+    roles are per region (FE-44 §5.3); the unscoped fourth key FE-44 drew left with OBT-572.
+    This type is the chart's vocabulary, not the app's.
     """
 
     COORDINATOR = "coordinator"

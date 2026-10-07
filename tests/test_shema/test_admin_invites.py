@@ -204,7 +204,7 @@ async def test_inviting_yourself_is_refused(db_session, shema_app, form_app) -> 
 
     async with surface_client(db_session) as client:
         res = await client.post(
-            INVITES, json=_invite(admin.email, "globalStrategist"), headers=headers
+            INVITES, json=_invite(admin.email, "coordinator", regions=["africa"]), headers=headers
         )
 
     assert res.status_code == 400
@@ -216,10 +216,14 @@ async def test_a_second_pending_invite_is_refused(db_session, shema_app, form_ap
 
     async with surface_client(db_session) as client:
         first = await client.post(
-            INVITES, json=_invite("new@shema.example", "globalStrategist"), headers=headers
+            INVITES,
+            json=_invite("new@shema.example", "coordinator", regions=["africa"]),
+            headers=headers,
         )
         second = await client.post(
-            INVITES, json=_invite("new@shema.example", "globalStrategist"), headers=headers
+            INVITES,
+            json=_invite("new@shema.example", "coordinator", regions=["africa"]),
+            headers=headers,
         )
 
     assert first.status_code == 201
@@ -332,7 +336,9 @@ async def test_a_withdrawn_invite_cannot_be_accepted(db_session, shema_app, form
 
     async with surface_client(db_session) as client:
         sent = await client.post(
-            INVITES, json=_invite("joiner@shema.example", "globalStrategist"), headers=headers
+            INVITES,
+            json=_invite("joiner@shema.example", "coordinator", regions=["africa"]),
+            headers=headers,
         )
         withdrawn = await client.post(
             WITHDRAW, json={"inviteId": sent.json()["id"]}, headers=headers
@@ -374,7 +380,9 @@ async def test_an_accepted_invite_is_past_withdrawing(db_session, shema_app, for
 
     async with surface_client(db_session) as client:
         sent = await client.post(
-            INVITES, json=_invite("joiner@shema.example", "globalStrategist"), headers=headers
+            INVITES,
+            json=_invite("joiner@shema.example", "coordinator", regions=["africa"]),
+            headers=headers,
         )
         _joiner_id, joiner = await _signup(client, "joiner@shema.example")
         await client.post(f"{FORM_INVITES}/{_token(sent.json())}/accept", headers=joiner)

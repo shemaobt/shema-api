@@ -125,7 +125,7 @@ class ShemaAudience(enum.StrEnum):
 class ShemaReader(enum.StrEnum):
     """Who a leaving shape is built for — OBT-528's second input to the sensitive-country rule.
 
-    * ``coordination`` reads the truth of a sensitive place: ``globalStrategist``, a
+    * ``coordination`` reads the truth of a sensitive place: a
       ``coordinator`` on a project in a region of their scope, the ``admin`` (the issue's
       reading, to confirm with Daniel) and an installation admin. ``app/services/shema/_scope.py``
       derives it; nothing else does.

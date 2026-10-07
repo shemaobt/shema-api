@@ -5,7 +5,7 @@ input, which has to meet the same rules as any write, applied atomically, and wh
 way around authorization.
 
 **Only coordination imports** — whoever ``_scope.readership`` makes coordination:
-``globalStrategist``, a ``coordinator`` (in the regions of its scope, which are the regions it
+a ``coordinator`` (in the regions of its scope, which are the regions it
 coordinates), the ``admin`` role and an installation admin; the OBT Lab and the Resource Circle
 are refused before anything in the file is looked at. The import is the backup that returns
 (FE-44 §8.4: the export is the report that leaves), and a whole record is only ever read by
@@ -346,7 +346,7 @@ def _require_coordination(readership: Readership, *, user: User) -> None:
     )
     raise AuthorizationError(
         "Projects are imported by the coordination; this account holds neither "
-        "globalStrategist nor coordinator in Shemá"
+        "coordinator nor admin in Shemá"
     )
 
 

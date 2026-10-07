@@ -552,12 +552,12 @@ async def test_the_resource_circle_cannot_file_one_either(
     assert (await _file(client, theirs, project)).status_code == 403
 
 
-@pytest.mark.parametrize("role_key", ["coordinator", "obtLab", "globalStrategist"])
+@pytest.mark.parametrize("role_key", ["coordinator", "obtLab"])
 async def test_the_audience_reads_and_files(
     client, db_session, shema_app, headers, project, role_key
 ) -> None:
-    """The three roles a reading reaches, each through the real guard chain."""
-    regions = None if role_key == "globalStrategist" else [ShemaRegionKey.SOUTH_AMERICA]
+    """The two roles a reading reaches, each through the real guard chain."""
+    regions = [ShemaRegionKey.SOUTH_AMERICA]
     reader = await make_scoped_user(
         db_session, shema_app, email=f"{role_key}@shema.test", role_key=role_key, regions=regions
     )

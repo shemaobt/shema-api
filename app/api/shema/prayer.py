@@ -7,7 +7,7 @@ the router hands down the scope and nothing else. The intercessor network's rout
 
 **The Pulse is ``resourceCircle``'s**, the role whose stated responsibility is sharing with the
 network — the same single role the network's routes are guarded on, for the same reason: an OR
-guard is the capability map ``_deps.py`` refuses. A global strategist who sends the Pulse is
+guard is the capability map ``_deps.py`` refuses. A coordinator who sends the Pulse is
 granted ``resourceCircle`` beside their own role. The Pulse covers the caller's scope, so a
 regional Resource Circle's file carries its own regions.
 """

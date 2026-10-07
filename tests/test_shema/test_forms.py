@@ -941,8 +941,7 @@ async def test_the_inbox_is_scoped_like_every_other_read_in_this_module(
     """A submission on a project the caller cannot reach is not in their inbox and cannot be
     opened by id."""
     await make_shema_project(db_session, project_id="wolof-dakar", region_key=ShemaRegionKey.AFRICA)
-    # A coordinator of the other region, not a global one: minting is a coordinator's act, and
-    # ``globalStrategist`` does not hold that role.
+    # A coordinator of the other region: minting is a coordinator's act, scoped like one.
     africa = await make_scoped_user(
         db_session,
         shema_app,

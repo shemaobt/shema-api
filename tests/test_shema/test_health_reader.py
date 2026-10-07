@@ -66,19 +66,19 @@ READING = {
     "pastoralInterventionWhen": WHEN,
 }
 
-AUDIENCE = ["coordinator", "obtLab", "globalStrategist"]
+AUDIENCE = ["coordinator", "obtLab"]
 
 READING_DAY = date(2026, 9, 10)
 
 
 async def person(db_session, shema_app, role_key: str) -> dict[str, str]:
-    """An account holding one role — scoped to ``other``, or unscoped for the global seat."""
+    """An account holding one role, scoped to the project's region."""
     user = await make_scoped_user(
         db_session,
         shema_app,
         email=f"{role_key.lower()}@saude.test",
         role_key=role_key,
-        regions=None if role_key == "globalStrategist" else [HERE],
+        regions=[HERE],
     )
     return await auth_header(db_session, user)
 
@@ -165,7 +165,6 @@ async def _version(client, headers, project_id: str) -> str:
         (set(), False, False),
         ({"coordinator"}, False, True),
         ({"obtLab"}, False, True),
-        ({"globalStrategist"}, False, True),
         ({"resourceCircle", "obtLab"}, False, True),
         (set(), True, True),
     ],

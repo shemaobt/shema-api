@@ -99,7 +99,6 @@ async def test_the_pme_admin_reads_any_projects_cards(
     [
         ("coordinator", [ShemaRegionKey.SOUTH_AMERICA]),
         ("resourceCircle", [ShemaRegionKey.SOUTH_AMERICA]),
-        ("globalStrategist", None),
     ],
 )
 async def test_a_pme_role_whose_scope_reaches_the_project_reads_it(

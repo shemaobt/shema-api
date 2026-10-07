@@ -26,7 +26,6 @@ from app.api.shema._deps import (
     AdminUser,
     CoordinatorUser,
     CurrentUser,
-    GlobalStrategistUser,
     ObtLabUser,
     ResourceCircleUser,
     Scope,
@@ -171,10 +170,6 @@ def shema_test_app():
     @probe.get("/_probe/scope")
     async def _probe_scope(scope: Scope) -> dict[str, object]:
         return {"global": scope.global_, "regions": sorted(scope.regions)}
-
-    @probe.get("/_probe/role/globalStrategist")
-    async def _probe_global(user: GlobalStrategistUser) -> dict[str, str]:
-        return {"email": user.email}
 
     @probe.get("/_probe/role/coordinator")
     async def _probe_coordinator(user: CoordinatorUser) -> dict[str, str]:

@@ -254,8 +254,7 @@ async def test_a_link_on_another_region_cannot_be_revoked(
 ) -> None:
     """Revocation is a write and is scoped like one."""
     await make_shema_project(db_session, project_id="wolof-dakar", region_key=ShemaRegionKey.AFRICA)
-    # Minted by the coordinator of the other region: ``globalStrategist`` does not hold the
-    # role that mints, so an account with only that key could not have issued this link.
+    # Minted by the coordinator of the other region, the only role that mints.
     africa = await make_scoped_user(
         db_session,
         shema_app,
