@@ -109,7 +109,7 @@ def _published(
     sha: str,
     listing: Callable[[str, str], list[str]] = _listing,
     read: Callable[[str, str], bytes] = _file,
-) -> tuple[dict[str, list[str]], list[str]]:
+) -> tuple[dict[str, list[str]], list[str], dict[str, dict[str, str]]]:
     listed = {kind: listing(kind, sha) for kind in KINDS}
     sources = json.loads(read("_spec/pins.json", sha))["sources"]
     listed_books = {found[1] for key in sources if (found := ALIASES_KEY.fullmatch(key))}
@@ -144,7 +144,7 @@ def _published(
             for kind in PASSAGE_SUFFIX:
                 published[kind].append(stems[kind][stem])
         published["registry"].append(f"{book.lower()}.aliases.json")
-    return published, skipped
+    return published, skipped, sources
 
 
 def _raw(kind: str, sha: str, name: str) -> bytes:
@@ -167,14 +167,13 @@ def sync(pin: str | None = None) -> int:
     if not pin and PIN_FILE.exists() and pinned_commit(PIN_FILE.read_text()) == sha:
         print("UP_TO_DATE")
         return 0
-    published, skipped = _published(sha)
+    published, skipped, recorded = _published(sha)
     for line in skipped:
         print(line, file=sys.stderr)
     if not published["meaning-map"]:
         print(f"nothing consumable at pin {sha} — refusing to empty the canon", file=sys.stderr)
         return 1
     fetched = {kind: {name: _raw(kind, sha, name) for name in published[kind]} for kind in KINDS}
-    recorded = json.loads(_file("_spec/pins.json", sha))["sources"]
     for name, data in fetched["registry"].items():
         if _digest(data) != recorded[f"registry/{name}"]["sha256"]:
             book = name.removesuffix(".aliases.json")
@@ -259,7 +258,7 @@ def _against_the_clone(clone: Path, sha: str) -> list[str]:
     def read(path: str, at: str) -> bytes:
         return _git(clone, "show", f"{at}:{path}")
 
-    published, _ = _published(sha, listing, read)
+    published, _, _ = _published(sha, listing, read)
     expected = {
         f"{kind}/{name}": _digest(read(f"{KINDS[kind]}/{name}", sha))
         for kind in KINDS
