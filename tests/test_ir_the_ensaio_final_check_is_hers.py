@@ -234,3 +234,33 @@ async def test_a_retold_frase_is_judged_by_her_analyst_over_the_whole_telling(
     whole = analyst.asked[-1]["system_prompt"]
     assert all(frase["text"] in whole for frase in [*TELLING[:2], retold])
     assert result["conferida"] is True
+
+
+A_NUANCE = {
+    "kind": "nuance",
+    "note": "O tempo ficou solto.",
+    "frase": 3,
+    "quote": "à noite",
+    "story": "foi naquela mesma noite",
+}
+
+
+async def test_a_telling_with_only_a_nuance_hands_her_speaker_that_nuance_and_stays_conferida(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {
+            "kind": "nuance",
+            "note": "O tempo ficou solto.",
+            "frase": 3,
+            "quote": "à noite",
+            "story": "foi naquela mesma noite",
+            "part": "a parte 3 — O segundo apelo e a separação",
+            "repair": "part",
+        }
+    ], "a nuance era lida e jogada fora: o falante dizia a rodada limpa"
+    assert result["conferida"] is True, "uma nuance nunca impede a aprovação"

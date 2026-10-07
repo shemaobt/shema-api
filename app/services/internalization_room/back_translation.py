@@ -142,10 +142,19 @@ class Finding(BaseModel):
         }
 
 
+class Nuance(BaseModel):
+    note: str
+    chunk: int
+    segment_id: str
+    quote: str
+    story: str
+
+
 class BtAnalysis(BaseModel):
     """One completed analyst pass."""
 
     findings: list[Finding] = Field(default_factory=list)
+    nuances: list[Nuance] = Field(default_factory=list)
 
 
 class ReadAhead(BtAnalysis):
@@ -596,7 +605,23 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     for kind, note in dropped_without_a_frase:
         _dropped_without_a_frase(kind, note, raw, session)
     _dropped(reported, raw, f"session {session}")
-    return BtAnalysis(findings=findings)
+    nuances = [_a_nuance(one, segments) for one in reported if _is_a_nuance(one)]
+    return BtAnalysis(findings=findings, nuances=[one for one in nuances if one is not None])
+
+
+def _a_nuance(entry: dict[str, Any], segments: list[IRSegment]) -> Nuance | None:
+    chunk = _chunk_named(entry.get("frase"), segments)
+    quote = str(entry.get("quote", "")).strip()
+    story = str(entry.get("story", "")).strip()
+    if chunk is None or not quote or not story:
+        return None
+    return Nuance(
+        note=str(entry.get("note", "")).strip() or f"«{quote}» — {story}",
+        chunk=chunk,
+        segment_id=segments[chunk - 1].id,
+        quote=quote,
+        story=story,
+    )
 
 
 def _log_accepted_reading(
@@ -965,18 +990,27 @@ def findings_remaining(findings: list[Finding]) -> int:
     return len(findings) - len(_swaps(findings))
 
 
-def findings_block(findings: list[Finding], addresses: Addresses) -> str:
+def findings_block(findings: list[Finding] | list[Nuance], addresses: Addresses) -> str:
     return json.dumps(
         [_for_her_speaker(one, addresses) for one in findings], ensure_ascii=False, indent=2
     )
 
 
-def _for_her_speaker(finding: Finding, addresses: Addresses) -> dict[str, Any]:
-    handed: dict[str, Any] = {"kind": finding.kind.value, "note": finding.note}
-    if finding.chunk is not None:
-        handed["frase"] = finding.chunk
+def _for_her_speaker(finding: Finding | Nuance, addresses: Addresses) -> dict[str, Any]:
+    if isinstance(finding, Nuance):
+        handed: dict[str, Any] = {
+            "kind": "nuance",
+            "note": finding.note,
+            "frase": finding.chunk,
+            "quote": finding.quote,
+            "story": finding.story,
+        }
+    else:
+        handed = {"kind": finding.kind.value, "note": finding.note}
+        if finding.chunk is not None:
+            handed["frase"] = finding.chunk
     part = addresses.part_of(finding.segment_id)
-    if part and finding.kind is not FindingKind.MISSING:
+    if part and (isinstance(finding, Nuance) or finding.kind is not FindingKind.MISSING):
         handed["part"] = part
     handed["repair"] = "part"
     return handed

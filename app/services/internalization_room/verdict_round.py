@@ -25,6 +25,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
+    Nuance,
     VoicedVerdict,
     analyse_telling_back,
     current_findings,
@@ -97,6 +98,7 @@ async def check_the_telling_back(
     else it decides.
     """
     read_this_round: list[Finding] = []
+    nuances: list[Nuance] = []
     addresses = addresses_for(
         told,
         current_parts(takes),
@@ -117,6 +119,7 @@ async def check_the_telling_back(
         if read is None:
             raise UnreadableReply("a resposta do analista não pôde ser lida")
         read_this_round = read.findings
+        nuances = read.nuances
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
 
@@ -129,7 +132,7 @@ async def check_the_telling_back(
 
     told_back = segments_block(told)
     outcome = await run_verdict_turn(
-        findings_text=findings_block(current, addresses),
+        findings_text=findings_block(current or nuances[:1], addresses),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],
