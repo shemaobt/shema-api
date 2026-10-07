@@ -20,10 +20,18 @@ while the bytes and the canon pin the judge's map comes from are the ones her br
 
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,
-when she has ruled. Point it at a checkout of `fia/pilot-2026-09`.
+when she has ruled. Point it at a checkout of her repository.
+
+Two pins, two commits. `DOCTRINE_PIN` is her pilot branch, `fia/pilot-2026-09`, and holds her
+2026-09-03 golden reports. `FREEZE_PIN` is her `main` at the freeze and holds the doctrine, her
+prompts, her sessions and the Back-Translation scripts.
 
     uv run python scripts/sync_doctrine.py --check             # offline; CI runs this
     uv run python scripts/sync_doctrine.py --sync --from ~/src/Tripod-Internalization
+    uv run python scripts/sync_doctrine.py --sync --freeze --from ~/src/Tripod-Internalization
+
+The first, on `fia/pilot-2026-09`, rewrites `DOCTRINE_PIN`; the second, on `main`, rewrites
+`FREEZE_PIN`.
 """
 
 from __future__ import annotations
@@ -257,6 +265,10 @@ def unruled(pin: Pin, rulings: list[Ruling]) -> list[str]:
     A re-sync rewrites every sha in the pin, so drift alone can never catch one: the bytes
     and their record move together. What cannot move quietly is the commit — so a pin naming
     a commit no ruling names is the re-sync nobody recorded her word for.
+
+    Only `DOCTRINE_PIN` is asked for a ruling. `FREEZE_PIN` moves without one: the freeze is
+    her word, so the doctrine, her prompts and her sessions move with it as her prompts already
+    did, and the freeze commit is not a commit a ruling has to name.
     """
     faults = []
     if not any(ruling.pin == pin.commit for ruling in rulings):
