@@ -7,9 +7,11 @@ from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import (
+    RoomFact,
     coverage_status_block,
     earlier_passages_line,
     meaning_map_block,
+    room_facts_block,
     validator_map_block,
 )
 from app.services.internalization_room.render import render
@@ -66,7 +68,12 @@ async def run_turn(
     map_block = meaning_map_block(pericope_num, book, earlier_passages)
     earlier = earlier_passages_line(pericope_num, book, earlier_passages)
     coverage_status = "\n\n".join(
-        block for block in (coverage_status_block(coverage_state, pericope_num), earlier) if block
+        block
+        for block in (
+            coverage_status_block(coverage_state, pericope_num),
+            room_facts_block({RoomFact.EARLIER_PASSAGES: earlier}),
+        )
+        if block
     )
     return await _voiced_after_validation(
         speaker_system=render(
