@@ -1,14 +1,9 @@
-"""The room's voice, one per language it speaks.
+"""The voice the room speaks in, by the language it speaks.
 
-``app/services/platform/voices.py`` makes the argument this module obeys: a voice "retains
-its unique characteristics *and accent* in any language it speaks", so one multilingual
-voice reading three languages sounds like a Brazilian reading English. The room's own key
-and tuning are separable from the platform's, so it keeps its own map rather than borrowing
-that one.
-
-Which voice belongs to which language is a product choice made by ear. It sits in settings
-so a bad match can be corrected without a deploy of new code, and it is read through here so
-that adding a language is one entry rather than a search for every place a voice is named.
+The room speaks in Mariana's voice, as Marcia's frozen app does: Portuguese always, and English
+too unless a deployment configures an English voice of its own. Which voice is a product
+choice made by ear, so it sits in settings and can be corrected without a deploy of new code,
+and it is read through here so that every reader agrees on which voices the room has.
 """
 
 from __future__ import annotations
@@ -18,10 +13,14 @@ from app.core.exceptions import ValidationError
 
 
 def room_voices(settings: Settings) -> dict[str, str]:
-    """Every voice this room may speak in, by the language it speaks."""
+    """Every voice this room may speak in, by the language it speaks.
+
+    An empty English voice means the Portuguese one, decided here so that ``voice_for`` and
+    the clip handles agree and an empty value never reaches either.
+    """
     return {
         "pt": settings.internalization_room_voice_id,
-        "en": settings.internalization_room_voice_id_en,
+        "en": settings.internalization_room_voice_id_en or settings.internalization_room_voice_id,
         "es": settings.internalization_room_voice_id_es,
     }
 
@@ -29,10 +28,9 @@ def room_voices(settings: Settings) -> dict[str, str]:
 def voice_for(language: str, *, settings: Settings) -> str:
     """The voice for one language.
 
-    Refuses a language with no voice of its own instead of borrowing another's, which is the
-    stance ``platform/voices.py`` takes and for the same reason: a voice keeps its accent in
-    any language it speaks, so a borrowed one does not make the room speak that language — it
-    makes it speak that language wrongly, to a team that cannot tell us so.
+    Refuses a language the room has no voice for at all. English without a voice of its own is
+    not such a language: ``room_voices`` already answers it with the Portuguese voice, which is
+    what her app does.
 
     Does **not** refuse ``es``, on purpose, even though it left ``ROOM_LANGUAGES`` in
     shema-api#362: a session row persisted before that still carries ``language="es"``, and

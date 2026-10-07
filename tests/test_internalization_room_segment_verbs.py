@@ -725,23 +725,18 @@ async def test_the_count_runs_out_on_one_stretch_and_the_room_offers_a_person(
     assert answered.json()["segments"], "a resposta daquela correção não se perde no caminho"
 
 
-async def test_the_count_is_spent_on_the_attempt_not_on_the_result(
+async def test_a_correction_nobody_could_make_out_counts_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Case 3. The same argument the telling-back route already carries in writing.
-
-    If only a correction that landed counted, then during a transcriber outage — when every
-    attempt comes back empty — the team could correct forever, the count would never cross,
-    and the room's only route to a person would be unreachable exactly when the room is broken.
-    """
+    """Case 3. A refused correction is no attempt: the stretch keeps the count it had."""
     session_id, _, stretch = await _one_told_stretch(client)
     assert await _tellings(db_session, session_id) == [1]
 
     answered = await _correct(client, session_id, stretch, saying=None)
 
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["captured"] is False, "nada pôde ser entendido, então nada foi trocado"
-    assert await _tellings(db_session, session_id) == [2]
+    assert answered.status_code == 422, answered.text
+    assert answered.json()["code"] == "WORDLESS_TELLING"
+    assert await _tellings(db_session, session_id) == [1]
 
 
 async def test_telling_a_new_stretch_never_counts_against_another(

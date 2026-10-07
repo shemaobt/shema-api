@@ -17,8 +17,8 @@ from app.services.internalization_room.passage_lines import panorama_line_for
 from app.services.internalization_room.voices import voice_for
 from app.services.platform import tts
 
-ROOM_VOICE_ID = "83Nae6GFQiNslSbuzmE7"
-ROOM_VOICE_ID_EN = "x52Gqgso2pdbdr7KngsJ"
+MARIANA = "tZ2oxQJXfOrGrN7iKnta"
+RETIRED_VOICE_ID = "83Nae6GFQiNslSbuzmE7"
 ROOM_VOICE_ID_ES = "fYypSok4m8xKqKsDwS7O"
 ROOM_MODEL = "eleven_turbo_v2_5"
 
@@ -65,7 +65,7 @@ class RefusingStore(MemoryStore):
         raise OSError("the bucket refused the write")
 
 
-async def test_the_rooms_configured_voice_is_the_one_that_speaks() -> None:
+async def test_a_portuguese_sessions_line_is_spoken_in_marianas_voice() -> None:
     client = _client()
     store = MemoryStore()
 
@@ -79,16 +79,44 @@ async def test_the_rooms_configured_voice_is_the_one_that_speaks() -> None:
 
     assert store.objects[speech.key] == b"audio"
     assert cached is False
-    assert ROOM_VOICE_ID in client.post.await_args.args[0]
+    assert client.post.await_args.args[0].endswith(f"/v1/text-to-speech/{MARIANA}")
 
 
-async def test_a_legacy_es_session_is_floored_before_the_voice_is_chosen() -> None:
+async def test_an_english_session_with_no_english_voice_is_spoken_in_marianas_voice() -> None:
+    client = _client()
+
+    await synthesize_facilitator_speech(
+        "Good to have you here.",
+        language="en",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
+    )
+
+    assert client.post.await_args.args[0].endswith(f"/v1/text-to-speech/{MARIANA}")
+
+
+async def test_an_english_session_with_an_english_voice_is_spoken_in_that_voice() -> None:
+    client = _client()
+
+    await synthesize_facilitator_speech(
+        "Good to have you here.",
+        language="en",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(internalization_room_voice_id_en="EnglishVoice123"),
+    )
+
+    assert client.post.await_args.args[0].endswith("/v1/text-to-speech/EnglishVoice123")
+
+
+async def test_a_legacy_es_session_is_floored_and_spoken_in_the_floors_voice() -> None:
     """`es` left `ROOM_LANGUAGES` in shema-api#362, but a session row persisted before that
     still carries `language="es"` and still calls this with it. Marcia's ruling stands:
-    Spanish is off the air until she offers it, so this must land on the floor's own voice
-    and language code, never on `voice_for("es", ...)`, which still answers — it is kept on
-    purpose so a legacy row does not 500 — and would otherwise speak the Portuguese or
-    English fail-safe text in the Spanish voice.
+    Spanish is off the air until she offers it, so this must land on the floor's own voice,
+    never on `voice_for("es", ...)`, which still answers — it is kept on purpose so a legacy
+    row does not 500 — and would otherwise speak the Portuguese or English fail-safe text in
+    the Spanish voice.
     """
     client = _client()
 
@@ -100,14 +128,11 @@ async def test_a_legacy_es_session_is_floored_before_the_voice_is_chosen() -> No
         settings=_settings(),
     )
 
-    body = client.post.await_args.kwargs["json"]
-    assert body["language_code"] == "en"
-    assert ROOM_VOICE_ID_EN in client.post.await_args.args[0]
-    assert ROOM_VOICE_ID_ES not in client.post.await_args.args[0]
+    assert client.post.await_args.args[0].endswith(f"/v1/text-to-speech/{MARIANA}")
 
 
-async def test_the_language_is_stated_rather_than_guessed() -> None:
-    """`eleven_multilingual_v2` reads the language off the text; turbo obeys this field."""
+async def test_the_speech_engine_receives_only_the_text_and_the_model() -> None:
+    """Her app sends `{ text, model_id }` and nothing else: no tuning, no language hint."""
     client = _client()
 
     await synthesize_facilitator_speech(
@@ -119,24 +144,31 @@ async def test_the_language_is_stated_rather_than_guessed() -> None:
     )
 
     body = client.post.await_args.kwargs["json"]
-    assert body["language_code"] == "pt"
+    assert set(body) == {"text", "model_id"}
     assert body["model_id"] == ROOM_MODEL
 
 
-async def test_the_delivery_is_tuned_rather_than_left_to_the_defaults() -> None:
-    client = _client()
+async def test_a_line_the_bucket_holds_in_the_old_voice_is_voiced_once_more_in_marianas() -> None:
+    store = MemoryStore()
+    client = _client(_ok(b"antiga"), _ok(b"mariana"))
 
     await synthesize_facilitator_speech(
-        "Eu escuto até o fim.",
+        "Vamos juntos.",
         client=client,
-        store=MemoryStore(),
-        settings=_settings(),
+        store=store,
+        settings=_settings(internalization_room_voice_id=RETIRED_VOICE_ID),
         language="pt",
     )
+    speech, cached = await synthesize_facilitator_speech(
+        "Vamos juntos.", client=client, store=store, settings=_settings(), language="pt"
+    )
+    _, cached_again = await synthesize_facilitator_speech(
+        "Vamos juntos.", client=client, store=store, settings=_settings(), language="pt"
+    )
 
-    tuning = client.post.await_args.kwargs["json"]["voice_settings"]
-    assert tuning["speed"] == pytest.approx(0.96)
-    assert tuning["stability"] == pytest.approx(0.45)
+    assert (cached, cached_again) == (False, True)
+    assert store.objects[speech.key] == b"mariana"
+    assert client.post.await_count == 2
 
 
 async def test_a_repeated_line_is_never_bought_twice() -> None:
@@ -217,29 +249,6 @@ async def test_the_panoramas_own_line_is_served_from_cache_without_a_model_call(
 
     assert cached is True
     assert client.post.await_count == 0
-
-
-async def test_retuning_the_voice_does_not_serve_the_old_delivery() -> None:
-    store = MemoryStore()
-    client = _client(_ok(b"firme"), _ok(b"mais-solto"))
-
-    await synthesize_facilitator_speech(
-        "Vamos juntos.",
-        client=client,
-        store=store,
-        settings=_settings(),
-        language="pt",
-    )
-    speech, cached = await synthesize_facilitator_speech(
-        "Vamos juntos.",
-        client=client,
-        store=store,
-        settings=_settings(internalization_room_voice_stability=0.9),
-        language="pt",
-    )
-
-    assert cached is False
-    assert store.objects[speech.key] == b"mais-solto"
 
 
 async def test_the_facilitators_voice_never_spells_the_divine_name_in_portuguese() -> None:
@@ -374,3 +383,22 @@ async def test_after_an_hour_a_known_line_is_asked_of_the_bucket_again(
         "uma chave lembrada para sempre continuava sendo entregue mesmo que o objeto "
         "tivesse saído do bucket"
     )
+
+
+async def test_the_team_never_hears_a_canon_code_in_a_guide_line() -> None:
+    client = _client()
+
+    await synthesize_facilitator_speech(
+        "[[B3-Naomi]] Noemi ouve, e FIG_0013 volta.",
+        language="pt",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
+    )
+
+    spoken = client.post.await_args.kwargs["json"]["text"]
+    assert "[[" not in spoken
+    assert "]]" not in spoken
+    assert "B3" not in spoken
+    assert "FIG_0013" not in spoken
+    assert "Noemi ouve" in spoken

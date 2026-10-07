@@ -247,7 +247,13 @@ async def stretches(client: httpx.AsyncClient, team: Team, session_id: str) -> l
 
 
 async def replace(
-    client: httpx.AsyncClient, team: Team, session_id: str, take_id: str, stretch: dict
+    client: httpx.AsyncClient,
+    team: Team,
+    session_id: str,
+    take_id: str,
+    stretch: dict,
+    *,
+    status: int = 200,
 ) -> httpx.Response:
     replaced = await client.post(
         f"{IR}/sessions/{session_id}/segments/{stretch['segment_id']}/replace",
@@ -259,7 +265,7 @@ async def replace(
         },
         files={"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")},
     )
-    assert replaced.status_code == 200, replaced.text
+    assert replaced.status_code == status, replaced.text
     return replaced
 
 
@@ -508,7 +514,7 @@ async def test_a_divide_a_replace_and_a_chunk_nudge_stretches(
         assert await nudges_heard(desk) == ["stretches"], "a correção não chegou à Mesa"
 
 
-async def test_a_replace_nobody_could_make_out_still_nudges_stretches(
+async def test_a_replace_nobody_could_make_out_changes_nothing_and_nudges_nothing(
     desk_app: FastAPI,
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -522,10 +528,9 @@ async def test_a_replace_nobody_could_make_out_still_nudges_stretches(
 
     async with the_stream(desk_app, team.team_id, team.desk) as desk:
         ears.append("")
-        unheard = await replace(client, team, session_id, take_id, stretch)
-        assert unheard.json()["captured"] is False
+        await replace(client, team, session_id, take_id, stretch, status=422)
 
-        assert await nudges_heard(desk) == ["stretches"]
+        assert await nudges_heard(desk) == []
 
 
 async def test_a_chunk_that_raises_the_hard_stretch_warning_nudges_stretches_and_halts(

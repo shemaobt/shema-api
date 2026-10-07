@@ -112,7 +112,7 @@ async def force_internalization_release(
     release = await approve_release(db, session, forced_by=user.id)
     nudge(session.project_id, "release")
     return ForcedReleaseResponse(
-        release_id=release.id,
+        release_id=release.packet["release_id"],
         session_id=release.session_id,
         version=release.version,
         package_sha256=release.package_sha256,
@@ -213,7 +213,7 @@ async def approve_internalization_release(
     nudge(session.project_id, "release")
     return TeamReleaseResponse(
         session_id=session_id,
-        release_id=release.id,
+        release_id=release.packet["release_id"],
         version=release.version,
         package_sha256=release.package_sha256,
         approved_at=as_utc(release.approved_at).isoformat(),

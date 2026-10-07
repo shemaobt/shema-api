@@ -6,10 +6,8 @@ Four of these carry the slice.
 going on the 12th under a finished one from the 19th — the one session a facilitator can act
 on, buried under one they cannot. Two of the three ordering tests were red before the fix.
 
-**The third was green on arrival and is a guard rather than a discovery.** An abandoned
-session leading is what a fix that reached for "not complete" would do, and that is the shape
-the obvious fix takes. Proved by mutation rather than left to look thorough: keying the sort
-on `COMPLETE` turns exactly that test red and nothing else.
+**Nothing ends a session for being idle (ENG-1263).** A conversation left for thirty days
+reads `in_progress`, leads the history while it is the live one, and keeps its halt.
 
 **The project scoping is measured, not inherited.** Every session in the field today has a
 null project — the room app does not send its device credential until ENG-454 — so a route
@@ -18,9 +16,8 @@ facilitator every other team's history. A number that is right by accident reads
 like a number that is right by construction, so the null case is asserted rather than
 assumed.
 
-**The end is the team's last activity, never the moment somebody looked.** The abandoned
-session here was left at 15:00 and is asked about the next morning; the card has to say 47
-minutes, and has to go on saying 47 minutes however long nobody asks.
+**The end is the moment the floor was met.** A session that never met it has no end and no
+length, however long nobody asks.
 
 **Every timestamp on the wire carries its offset.** ``DateTime(timezone=True)`` is naive on
 SQLite and aware on Postgres, and a bare ``20:00:56`` was measured coming off the device
@@ -39,7 +36,6 @@ from app.core.enums import ProjectRole
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.session_end import SESSION_IDLE_LIMIT
 from tests.baker import (
     grant_facilitator_app_role,
     keep_a_take,
@@ -144,7 +140,7 @@ async def a_session(
     project_id: str | None,
     pericope: str = P,
     opened_at: datetime | None = None,
-    last_activity: datetime | None = None,
+    updated_at: datetime | None = None,
     ready_to_close: bool = False,
     entered: bool = True,
 ):
@@ -166,9 +162,9 @@ async def a_session(
         session = await room.append_exchange(db, session, team_utterance="oi", guide_response="ok")
     if opened_at is not None:
         session.created_at = opened_at
-    if last_activity is not None:
-        session.updated_at = last_activity
-    if opened_at is not None or last_activity is not None:
+    if updated_at is not None:
+        session.updated_at = updated_at
+    if opened_at is not None or updated_at is not None:
         await db.commit()
         await db.refresh(session)
     return session
@@ -213,7 +209,7 @@ async def test_the_conversation_still_going_leads_however_old_it_is(client, db_s
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
-        last_activity=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     await db_session.commit()
 
@@ -223,14 +219,8 @@ async def test_the_conversation_still_going_leads_however_old_it_is(client, db_s
     assert history[0]["state"] == "in_progress"
 
 
-async def test_a_conversation_nobody_closed_does_not_lead_the_history(client, db_session):
-    """`in_progress` and nothing else leads, which is a decision this route has to take.
-
-    RF-06's sentence was written when a session was either open or finished. There are three
-    states now, and an abandoned conversation carries no end anybody stamped — but it is over,
-    and the facilitator can do nothing with it. Leading with it would put the one thing they
-    cannot act on where the one thing they can is supposed to be.
-    """
+async def test_a_conversation_days_old_still_leads_when_it_is_the_live_one(client, db_session):
+    """Nothing ends a session for being idle, so the live one leads however long it sat."""
     _user, project, headers = await a_facilitator(db_session)
     finished = await a_session(
         db_session,
@@ -238,18 +228,18 @@ async def test_a_conversation_nobody_closed_does_not_lead_the_history(client, db
         opened_at=datetime(2026, 8, 19, 9, 0, tzinfo=UTC),
     )
     finished.ended_at = datetime(2026, 8, 19, 10, 0, tzinfo=UTC)
-    abandoned = await a_session(
+    quiet = await a_session(
         db_session,
         project_id=project.id,
-        opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 8, 12, 9, 47, tzinfo=UTC),
+        opened_at=datetime(2026, 7, 1, 9, 0, tzinfo=UTC),
+        updated_at=datetime.now(UTC) - timedelta(days=30),
     )
     await db_session.commit()
 
     history = await read_history(client, project.id, headers)
 
-    assert [card["session_id"] for card in history] == [finished.id, abandoned.id]
-    assert history[1]["state"] == "abandoned"
+    assert [card["session_id"] for card in history] == [quiet.id, finished.id]
+    assert history[0]["state"] == "in_progress"
 
 
 async def test_two_conversations_still_going_lead_in_the_order_they_opened(client, db_session):
@@ -265,13 +255,13 @@ async def test_two_conversations_still_going_lead_in_the_order_they_opened(clien
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
-        last_activity=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     newer = await a_session(
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 8, 15, 9, 0, tzinfo=UTC),
-        last_activity=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     await db_session.commit()
 
@@ -433,32 +423,23 @@ async def test_a_conversation_closed_by_the_floor_reads_complete_with_its_length
     assert card["duration_minutes"] == 34
 
 
-async def test_a_conversation_nobody_closed_ends_where_the_team_stopped(client, db_session):
-    _user, project, headers = await a_facilitator(db_session)
-    started = datetime(2026, 8, 20, 14, 13, tzinfo=UTC)
-    stopped = datetime(2026, 8, 20, 15, 0, tzinfo=UTC)
-    await a_session(db_session, project_id=project.id, opened_at=started, last_activity=stopped)
-
-    [card] = await read_history(client, project.id, headers)
-
-    assert card["state"] == "abandoned"
-    assert card["duration_minutes"] == 47, (
-        "the length ran to the moment somebody asked instead of to the team's last word"
-    )
-    assert card["ended_at"].startswith("2026-08-20T15:00:00")
-
-
-async def test_a_quiet_conversation_is_still_going_until_the_limit_is_past(client, db_session):
+@pytest.mark.parametrize("idle", [timedelta(hours=7), timedelta(days=30)])
+async def test_the_desk_never_calls_a_session_abandoned_however_long_it_sat(
+    client, db_session, idle
+):
     _user, project, headers = await a_facilitator(db_session)
     await a_session(
         db_session,
         project_id=project.id,
-        last_activity=datetime.now(UTC) - SESSION_IDLE_LIMIT + timedelta(minutes=5),
+        opened_at=datetime.now(UTC) - idle - timedelta(minutes=47),
+        updated_at=datetime.now(UTC) - idle,
     )
 
     [card] = await read_history(client, project.id, headers)
 
     assert card["state"] == "in_progress"
+    assert card["ended_at"] is None
+    assert card["duration_minutes"] is None
 
 
 # Behaviour 4 — every timestamp says which clock it is on.
@@ -467,12 +448,13 @@ async def test_a_quiet_conversation_is_still_going_until_the_limit_is_past(clien
 async def test_every_moment_on_the_wire_carries_its_offset(client, db_session):
     """A bare `2026-08-20T15:00:00` is read as local by whoever receives it."""
     _user, project, headers = await a_facilitator(db_session)
-    await a_session(
+    closed = await a_session(
         db_session,
         project_id=project.id,
         opened_at=datetime(2026, 8, 20, 14, 13, tzinfo=UTC),
-        last_activity=datetime(2026, 8, 20, 15, 0, tzinfo=UTC),
     )
+    closed.ended_at = datetime(2026, 8, 20, 15, 0, tzinfo=UTC)
+    await db_session.commit()
 
     [card] = await read_history(client, project.id, headers)
 
@@ -614,36 +596,34 @@ async def test_a_turn_that_lands_lifts_the_halt(client, db_session):
 
 
 async def test_a_session_that_ended_is_never_reported_as_still_halted(client, db_session):
-    """A halt cannot survive past an end, whichever way the session got there.
-
-    A completed session cannot arrive here carrying `NEEDS_PERSON`: `apply_coverage` only
-    closes a session whose status is already `IN_PROGRESS` (`sessions.py`), so today's state
-    machine has no path from a halt straight to `DONE`. The assertion is kept regardless —
-    it is the contract this field promises, not an artifact of which paths exist today.
-
-    An abandoned session is the reachable half of this case. Nothing but a landed turn ever
-    writes `NEEDS_PERSON` back to `IN_PROGRESS` (`append_exchange`), so a team that is marked
-    as needing a person and never returns keeps that status in the row forever. The idle rule
-    still declares the conversation over, and the Desk must not call an abandoned
-    conversation one that is "waiting for a person" — nothing is waiting on it any more.
+    """A completed session cannot arrive here carrying `NEEDS_PERSON`: `apply_coverage` only
+    closes a session whose status is already `IN_PROGRESS`, so today's state machine has no
+    path from a halt straight to `DONE`. The assertion is kept: it is the contract the field
+    promises, not an artifact of which paths exist today.
     """
     _user, project, headers = await a_facilitator(db_session)
-
     completed = await a_session(db_session, project_id=project.id, ready_to_close=True)
     await room.apply_coverage(db_session, completed.id, dict.fromkeys(element_keys(P), ENGAGED))
 
-    abandoned = await a_session(db_session, project_id=project.id)
-    await room.mark_needs_person(db_session, abandoned)
-    abandoned.updated_at = datetime.now(UTC) - SESSION_IDLE_LIMIT - timedelta(minutes=1)
+    [card] = await read_history(client, project.id, headers)
+
+    assert card["state"] == "complete"
+    assert card["needs_person"] is False
+
+
+async def test_a_halted_session_idle_for_seven_hours_still_reads_as_needing_a_person(
+    client, db_session
+):
+    _user, project, headers = await a_facilitator(db_session)
+    halted = await a_session(db_session, project_id=project.id)
+    await room.mark_needs_person(db_session, halted)
+    halted.updated_at = datetime.now(UTC) - timedelta(hours=7)
     await db_session.commit()
 
-    history = await read_history(client, project.id, headers)
-    by_id = {card["session_id"]: card for card in history}
+    [card] = await read_history(client, project.id, headers)
 
-    assert by_id[completed.id]["state"] == "complete"
-    assert by_id[completed.id]["needs_person"] is False
-    assert by_id[abandoned.id]["state"] == "abandoned"
-    assert by_id[abandoned.id]["needs_person"] is False
+    assert card["state"] == "in_progress"
+    assert card["needs_person"] is True
 
 
 async def test_the_cards_shape_names_every_field_the_desk_reads(client, db_session):

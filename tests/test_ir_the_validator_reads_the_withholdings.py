@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.book_material import build_book_material
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import (
     run_panorama_turn,
     run_turn,
@@ -246,7 +247,7 @@ async def test_the_panorama_is_told_what_honouring_a_withholding_means(patch_age
     agent = patch_agent(FakeAgent("Vamos conhecer o livro."))
 
     await run_panorama_turn(
-        transcript="o que é esse livro?",
+        speech=HeardSpeech(text="o que é esse livro?"),
         messages=[],
         panorama_prompt=PANORAMA,
         validator_prompt=VALIDATOR,

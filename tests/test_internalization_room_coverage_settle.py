@@ -397,7 +397,12 @@ async def test_a_settled_turn_reaches_every_subscriber_of_its_session_and_no_oth
             turn_id="turn-7",
             status="settled",
             coverage=CoverageView(
-                engaged=1, surfaced=1, total=len(keys), absence_index=absence_index(P)
+                engaged=1,
+                surfaced=1,
+                total=len(keys),
+                absence_index=absence_index(P),
+                beads_total=12,
+                beads_filled=0,
             ),
         )
         assert first.get_nowait() == second.get_nowait() == announced, (
