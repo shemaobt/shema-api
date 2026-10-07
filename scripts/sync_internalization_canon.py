@@ -45,6 +45,7 @@ SHA_RE = re.compile(r"[0-9a-f]{40}")
 REPO = "MarciaSuzuki/tripod_compiler"
 VENDOR = Path(__file__).resolve().parents[1] / ("app/services/internalization_room/canon/vendor")
 PIN_FILE = VENDOR / "VENDOR_PIN"
+MANIFEST = "VENDOR_MANIFEST.json"
 KINDS = {
     "meaning-map": "fixtures/meaning-map",
     "meaning-coordinates": "fixtures/meaning-coordinates",
@@ -156,17 +157,27 @@ def sync(pin: str | None = None) -> int:
     if not published["meaning-map"]:
         print(f"nothing consumable at pin {sha} — refusing to empty the canon", file=sys.stderr)
         return 1
+    files = []
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
         names = published[kind]
         for name in names:
-            (target / name).write_bytes(_raw(kind, sha, name))
+            data = _raw(kind, sha, name)
+            (target / name).write_bytes(data)
+            files.append({"path": f"{kind}/{name}", "sha256": hashlib.sha256(data).hexdigest()})
             print(f"  {kind}/{name}")
         for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
             if existing not in names:
                 (target / existing).unlink()
                 print(f"  removed {kind}/{existing}")
+    record = {
+        "pin_commit": sha,
+        "books": sorted(name.removesuffix(".aliases.json") for name in published["registry"]),
+        "passages": sorted(name.split("-")[0] for name in published["meaning-map"]),
+        "files": files,
+    }
+    (VENDOR / MANIFEST).write_text(json.dumps(record, indent=2) + "\n")
     PIN_FILE.write_text(sha + "\n")
     print(f"pinned at {sha}")
     return 0

@@ -100,5 +100,5 @@ def what_is_vendored(vendor: Path) -> dict[str, bytes]:
     return {
         str(path.relative_to(vendor)): path.read_bytes()
         for path in sorted(vendor.rglob("*"))
-        if path.is_file() and path.name != "VENDOR_PIN"
+        if path.is_file() and path.name not in ("VENDOR_PIN", "VENDOR_MANIFEST.json")
     }
