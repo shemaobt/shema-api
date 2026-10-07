@@ -120,6 +120,26 @@ def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     )
 
 
+def _regenerated(raw: str, session_id: str, attempt: int) -> None:
+    """A Validator that read the draft and asked for another leaves its whole reply behind.
+
+    Not a refused reply: the verdict was readable, and what it decided was a redraft. The
+    `condition` field is kept so everything that already counts a Validator trace by it still
+    counts this one.
+    """
+    logger.warning(
+        "Validator regenerate verdict for session %s, attempt %s: %s",
+        session_id,
+        attempt,
+        raw,
+        extra={
+            "session_id": session_id,
+            "attempt": attempt,
+            "condition": "verdict is 'regenerate'",
+        },
+    )
+
+
 def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
     """The room's own gate rejecting spoken text: the condition and a number, never the words.
 
@@ -356,7 +376,7 @@ async def _voiced_after_validation(
             speech = str(verdict["corrected_response"]).strip()
             movements = []
         else:
-            _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
+            _regenerated(raw_verdict, session_id, attempt + 1)
 
         if speech and bool(
             await asyncio.to_thread(room_agent().strays_from, speech, language_code)
