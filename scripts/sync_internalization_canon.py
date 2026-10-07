@@ -4,11 +4,22 @@ The room reads canon only from the vendored directory — never over the network
 time, and never writing back. Canon changes through the project's own governed process; this
 script is the one door, and it is deliberate.
 
-`--sync` overwrites the vendored directory wholesale — including deleting a locally vendored
-file whose name the upstream listing no longer has — so nothing of ours may live inside it.
-The facilitator-facing element labels are the case that already exists: they sit in
-`canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a re-pin cannot delete
-them without a word.
+What is vendored is worked out from the pin: a book is a candidate when `_spec/pins.json` lists
+its aliases list, a passage counts when its map, its Meaning Coordinates and its Compilation Log
+all exist at the pin, and a book is published when it is a candidate with a whole passage and
+its aliases list is in `_spec/registry/`. Only the published books named in `SERVED_BOOKS`
+reach the copy. Whatever is left out — an incomplete passage, a book without its names list, a
+book that is not served — is named on stderr, never dropped silently.
+
+`--sync` overwrites the vendored directory wholesale — including deleting every locally
+vendored file that is not in that published-and-served set, whether it left her repo, belongs
+to a passage that is no longer whole, or sits in a book outside `SERVED_BOOKS` — so nothing of
+ours may live inside it. The facilitator-facing element labels are the case that already
+exists: they sit in `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a
+re-pin cannot delete them without a word.
+
+`--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
+compiler's main line, and when the pin leaves no consumable passage at all.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
