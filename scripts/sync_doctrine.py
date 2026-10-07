@@ -44,7 +44,6 @@ BRANCH = "fia/pilot-2026-09"
 
 #: Her path in `Tripod-Internalization` → the path it is vendored to here.
 VENDORED = {
-    "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
     "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
     "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
         "golden/reports/2026-09-03/J01-frame-before-elicit.md"
@@ -123,6 +122,7 @@ FROZEN = {
     **{f"golden/sessions/{name}.json": f"golden/sessions/{name}.json" for name in HER_SESSIONS},
     **{f"golden/bt/{name}.json": f"golden/bt/{name}.json" for name in HER_BT_SCRIPTS},
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
+    "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
 }
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"
@@ -144,7 +144,7 @@ GOVERNED = ("ladder", "max_output_tokens", "effort", "thinks")
 UNRULED = "unruled"
 
 BAR_FILE = REPO_ROOT / "docs/doctrine/ACCEPTANCE_BAR"
-DOCTRINE = REPO_ROOT / VENDORED["docs/DOCTRINE.md"]
+DOCTRINE = REPO_ROOT / FROZEN["docs/DOCTRINE.md"]
 
 #: The second column of a bar row this repo does not hold today. Counted out loud rather than
 #: left out, because a line missing from the record reads as a line nobody had to think about.
@@ -492,7 +492,7 @@ def check() -> int:
     pin = read_pin()
     faults = drift(pin)
     if faults:
-        print(f"the vendored doctrine drifted from pin {pin.commit[:12]}:", file=sys.stderr)
+        print(f"her reports of 2026-09-03 drifted from pin {pin.commit[:12]}:", file=sys.stderr)
         for line in faults:
             print(f"  {line}", file=sys.stderr)
         print(NOT_A_FORK, file=sys.stderr)
@@ -529,7 +529,7 @@ def check() -> int:
 
     inherited = sum(1 for _value, ruling in record.values() if ruling == UNRULED)
     pending = sum(1 for claims in bar.values() if claims == [PENDING])
-    print(f"the vendored doctrine matches pin {pin.commit[:12]}")
+    print(f"the vendored doctrine matches pin {freeze.commit[:12]}")
     print(f"the model seam matches its record — {inherited} of {len(record)} rows still unruled")
     print(f"the acceptance bar is {len(lines)} lines — {pending} still PENDING")
     return 0
