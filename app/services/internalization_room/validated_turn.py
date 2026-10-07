@@ -282,7 +282,7 @@ async def _voiced_after_validation(
 
     The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
     the kickoff's team text — and her turn loop hands that text to the Validator as what the
-    team said, so with no team words and no telling-back the note handed to the Guide stands
+    team said, so with no team words the note handed to the Guide stands
     in the slot.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
