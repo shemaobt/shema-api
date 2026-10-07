@@ -9,7 +9,11 @@ from app.services.internalization_room.canon.elements import (
     ElementKind,
     elements_for,
 )
-from app.services.internalization_room.canon.parse_map import load_book, load_map
+from app.services.internalization_room.canon.parse_map import (
+    code_only_links,
+    load_book,
+    load_map,
+)
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     current_scene,
@@ -117,7 +121,7 @@ def meaning_map_block(pericope_num: str, book: str) -> str:
     Guide's standard of truth "MEANING MAP + story-so-far", and the earlier-only scoping is
     what keeps a later disclosure from reaching this session.
     """
-    passage = load_map(pericope_num).body
+    passage = code_only_links(load_map(pericope_num).body)
     earlier = story_so_far(book, pericope_num)
     return f"{passage}\n\n{earlier}" if earlier else passage
 
@@ -144,7 +148,7 @@ def validator_map_block(pericope_num: str, book: str) -> str:
         for scene in meaning_map.scenes
         if scene.absence
     )
-    validator_map = (
+    validator_map = code_only_links(
         f"{meaning_map.body}\n\n---\n\n"
         "## PRESERVATION RULES — do_not_decide (HARD CONSTRAINTS)\n"
         "These are explicit prohibitions from the Compilation Log. The response must honor "

@@ -47,6 +47,7 @@ _SCENE = re.compile(r"^### Scene (\d+) — (.+?) \(([^)]*)\)\s*$", re.M)
 _BLOCK = re.compile(r"^\*\*3([A-F]) — [^*]+\*\*\s*$", re.M)
 _ABSENCE = re.compile(r"^\*\*Significant Absence\*\*\s*$", re.M)
 _WIKILINK = re.compile(r"\[\[([A-Za-z]+[0-9_][^\]|]*)\]\]")
+_SLUGGED_LINK = re.compile(r"\[\[([^\]\n-]+)-[^\]\n]*\]\]")
 _PROPOSITION = re.compile(r"^### Proposition (\d+) — (.+?) \[Scene (\d+)\]\s*$", re.M)
 _ATOM = re.compile(r"^- \*\*Q:\*\* (.+?) \*\*A:\*\* (.+)$", re.M)
 
@@ -114,6 +115,10 @@ class MeaningMap(BaseModel):
         """Derived from the reference (`Ruth 1:15-18`) rather than stored, so the session
         table needs no second column that could disagree with canon."""
         return self.reference.split(" ", 1)[0]
+
+
+def code_only_links(text: str) -> str:
+    return _SLUGGED_LINK.sub(r"[[\1]]", text)
 
 
 def _entities(block: str) -> list[Entity]:
