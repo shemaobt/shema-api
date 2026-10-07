@@ -261,6 +261,10 @@ _Avoid_: creating a session, starting a session, Abrir a passagem
 The Guide's first line of a session, spoken before the team has said anything, drafted once whatever number of tablets ask for it. Not to be confused with **Opening a session**, the open door.
 _Avoid_: kickoff, abertura, first turn
 
+**Opened** (`opened`):
+A session that holds a Guide line, its **Opening** at least. A room note or a team entry alone does not open it. The session state says so, and the tablet asks a session's Opening only while it is not opened. Not to be confused with **Opening a session**, the open door.
+_Avoid_: started, begun, aberta
+
 **Opening claim** (`opening_claim_turn_id`, `opening_claimed_at`):
 The mark on a session that one request is drafting its **Opening**, naming the turn id its answer will be stored under. Every other request for the opening answers with that one's, and a claim older than the turn bound plus thirty seconds counts as none (ADR 0053).
 _Avoid_: lease, lock, kickoff lease

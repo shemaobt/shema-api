@@ -375,6 +375,9 @@ class SessionStateResponse(BaseModel):
     #: is the conservative answer: it sends somebody to a room that may not have needed one,
     #: where the other reading leaves a stopped room waiting.
     halt: str | None = None
+    #: True once the session holds a Guide line, its Opening at least. The tablet asks a
+    #: session's Opening only while this is false.
+    opened: bool = False
 
 
 class SpokenSegment(BaseModel):
