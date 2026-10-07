@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.core.exceptions import ValidationError
 from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.parse_map import (
+    _PERICOPE,
     SURVEYED_STATUS,
     VENDOR,
     MeaningMap,
@@ -169,7 +170,14 @@ class SceneAbsence(BaseModel):
 
 @lru_cache(maxsize=64)
 def significant_absences(pericope_num: str) -> tuple[SceneAbsence, ...]:
-    path = sorted(COORDINATES_DIR.glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))[0]
+    matches = (
+        sorted(COORDINATES_DIR.glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
+        if _PERICOPE.match(pericope_num)
+        else []
+    )
+    if not matches:
+        raise ValidationError(f"no vendored Meaning Coordinates for {pericope_num}")
+    path = matches[0]
     block = _JSON_BLOCK.search(path.read_text(encoding="utf-8"))
     if block is None:
         raise ValidationError(f"{path.name}: no json block")

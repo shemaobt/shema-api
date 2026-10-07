@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import golden_judge
 from app.services.internalization_room._default_prompts import default_prompt
@@ -16,8 +17,9 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     verify_correction,
 )
-from app.services.internalization_room.canon import parse_map
+from app.services.internalization_room.canon import book_material, parse_map
 from app.services.internalization_room.part_names import Addresses
+from app.services.internalization_room.prompt_blocks import validator_map_block
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
 from tests.text_seam_harness import the_judge_answers
 from tests.turn_harness import (
@@ -253,3 +255,20 @@ async def test_the_golden_judge_reads_the_same_material_the_validator_reads(
     )
 
     _reads_her_validator_material(judge.asked[0]["system_prompt"])
+
+
+@pytest.fixture
+def a_passage_without_its_coordinates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    monkeypatch.setattr(book_material, "COORDINATES_DIR", tmp_path)
+    book_material.significant_absences.cache_clear()
+    yield "P01"
+    book_material.significant_absences.cache_clear()
+
+
+def test_a_passage_without_its_coordinates_is_refused_by_name(
+    a_passage_without_its_coordinates: str,
+) -> None:
+    with pytest.raises(ValidationError, match="P01"):
+        validator_map_block(a_passage_without_its_coordinates, "Ruth")
