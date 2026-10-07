@@ -24,8 +24,6 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.coverage import (
-    CoverageStatus,
-    current_scene,
     initial_state,
     merge,
 )
@@ -47,42 +45,10 @@ def _engaged(*keys: str) -> dict[str, str]:
     return merge(initial_state(P), pericope_num=P, engaged=list(keys))
 
 
-def test_the_scene_pointer_is_read_off_the_ledger_not_off_the_planner() -> None:
-    """Scene 1 finished and scene 2 begun puts the team in scene 2, whatever was said."""
-    nothing = initial_state(P)
-    scene_one_done = _engaged(*_scene_keys(1))
-    scene_two_begun = _engaged(*_scene_keys(1), "scene:2")
-    every_scene = _engaged(*(key for n in (1, 2, 3, 4) for key in _scene_keys(n)))
-
-    assert current_scene(nothing, P) is None, (
-        "no turno zero o Guia lia CURRENT SCENE = Scene 1 antes de a equipe abrir a boca"
-    )
-    assert current_scene(scene_one_done, P) == "S2"
-    assert current_scene(scene_two_begun, P) == "S2"
-    assert current_scene(every_scene, P) is None, (
-        "com toda cena engajada não há cena para apontar — é a integração da passagem"
-    )
-
-
-def test_a_bead_short_of_engaged_holds_the_pointer_on_its_scene() -> None:
-    scene_one_echoed = {
-        **_engaged(*_scene_keys(1)),
-        next(key for key in _scene_keys(1) if key.startswith(ElementKind.ABSENCE)): (
-            CoverageStatus.SURFACED.value
-        ),
-    }
-
-    assert current_scene(scene_one_echoed, P) == "S1", (
-        "a ausência só levantada pelo Guia deixava a cena 1 para trás como feita"
-    )
-
-
 #: Scene 1 of Ruth 1:1-5 worked to its last bead and scene 2 opened, as the map spells
 #: each line (`canon/vendor/meaning-map/P01-Ruth-1-1-5.md`, §3) and the compilation log
 #: numbers each rule — never read back through `elements_for`.
 SCENE_ONE_DONE_SCENE_TWO_OPEN = """\
-FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: S2
-
 COVERED (engaged): S1 (v.1–2); Elimelech @ S1; Naomi @ S1; Mahlon @ S1; Chilion @ S1; \
 Judges @ S1; Ephrathites @ S1; Bethlehem @ S1; Fields of Moab @ S1; the land of Judah @ S1; \
 Famine @ S1; sojourning @ S1; In the Days When the Judges Judged @ S1; absence @ S1; S2 (v.3)
@@ -117,16 +83,6 @@ def test_the_block_is_her_three_parts_in_labels_the_guide_can_say() -> None:
     )
 
 
-OPENING = (
-    "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: none yet — no bead is closed; "
-    "the whole passage is still open"
-)
-INTEGRATION = (
-    "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: none — every scene's beads are closed; "
-    "the whole-passage meaning remains"
-)
-
-
 def test_a_preserved_bead_carries_its_rule_id_and_is_labelled_by_it() -> None:
     """The id is read off the bead, never off the spelling of its key."""
     preserved = [e for e in elements_for(P) if e.kind is ElementKind.PRESERVED]
@@ -140,8 +96,7 @@ def test_the_first_turn_is_the_whole_passage_opening_not_scene_one() -> None:
 
     lines = coverage_status_block(nothing, P).splitlines()
 
-    assert lines[0] == OPENING, "no turno um o bloco punha a equipe na cena 1"
-    assert lines[2] == "COVERED (engaged): (nothing engaged yet — the session is just beginning)"
+    assert lines[0] == "COVERED (engaged): (nothing engaged yet — the session is just beginning)"
 
 
 def test_every_scene_engaged_is_the_integration_with_the_axes_still_listed() -> None:
@@ -149,8 +104,7 @@ def test_every_scene_engaged_is_the_integration_with_the_axes_still_listed() -> 
 
     lines = coverage_status_block(every_scene, P).splitlines()
 
-    assert lines[0] == INTEGRATION
-    assert lines[4:] == [
+    assert lines[2:] == [
         "REMAINING (not yet worked by the team, in their own words):",
         "  arc: Level-1 arc",
         "  context: Level-1 context",
@@ -165,26 +119,7 @@ def test_a_finished_passage_is_the_integration_with_nothing_remaining() -> None:
 
     lines = coverage_status_block(everything, P).splitlines()
 
-    assert lines[0] == INTEGRATION
-    assert lines[4:] == ["REMAINING: (none — every element has been worked by the team)"]
-
-
-@pytest.mark.parametrize(
-    ("state", "scene_line"),
-    [
-        (initial_state(P), OPENING),
-        (_engaged(*_scene_keys(1), "scene:2"), "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: S2"),
-        (_engaged(*(key for n in (1, 2, 3, 4) for key in _scene_keys(n))), INTEGRATION),
-    ],
-    ids=["nothing closed", "a scene open", "every scene closed"],
-)
-def test_the_scene_line_says_what_it_computes_and_instructs_nothing(
-    state: dict[str, str], scene_line: str
-) -> None:
-    """DOCTRINE §2.1: the ledger is information, never instruction (ADR 0035)."""
-    first_line = coverage_status_block(state, P).splitlines()[0]
-
-    assert first_line == scene_line
+    assert lines[2:] == ["REMAINING: (none — every element has been worked by the team)"]
 
 
 AUDIT_KIND = re.compile(r"\b[A-Z][A-Z]+_[A-Z_]+\b")
@@ -258,7 +193,7 @@ async def test_nothing_but_the_ledger_reaches_the_guide_from_the_app(
     )
 
     composed = guide.systems[0].partition(CACHE_BREAK)[2].strip().splitlines()
-    assert composed[0] == OPENING
+    assert composed[0] == "COVERED (engaged): (nothing engaged yet — the session is just beginning)"
     assert composed[-1] == "  preserved: R3, R5, R10", (
         "o bloco COMPREHENSION EVIDENCE vinha colado embaixo do ledger, com READINESS e "
         "unidades semânticas que o Guia era mandado seguir"

@@ -21,7 +21,6 @@ from app.services.internalization_room.canon.parse_map import (
 )
 from app.services.internalization_room.coverage import (
     CoverageStatus,
-    current_scene,
     initial_state,
     remaining,
 )
@@ -42,17 +41,9 @@ def _short_label(element: Element, scenes: dict[int, str]) -> str:
     return element.label
 
 
-_SCENE_LINE = "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED"
-
-
 def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> str:
-    """Her three parts, in her order: the scene, what is behind the team, what is not.
-
-    Information only (DOCTRINE §2.1): the block says the first scene whose beads are not
-    all closed and what the team has and has not worked; it never says what to do next. No
-    key and no audit kind reaches it — the Guide speaks names, never codes, and it has no
-    screen to check a code against.
-    """
+    """Her ledger (`src/turn/coverageStatus.ts`, app 18fa7c4): what the team has and has not
+    worked, and no line pointing at a scene. No key and no audit kind reaches it."""
     scenes = {
         scene.number: f"S{scene.number} ({scene.verses})" for scene in load_map(pericope_num).scenes
     }
@@ -62,20 +53,6 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
         for element in elements_for(pericope_num)
         if merged.get(element.key) == CoverageStatus.ENGAGED
     ]
-    scene = current_scene(coverage_state, pericope_num)
-    if scene is not None:
-        scene_line = f"{_SCENE_LINE}: {scene}"
-    elif all(
-        merged.get(element.key) == CoverageStatus.ENGAGED
-        for element in elements_for(pericope_num)
-        if element.scene is not None
-    ):
-        scene_line = (
-            f"{_SCENE_LINE}: none — every scene's beads are closed; "
-            "the whole-passage meaning remains"
-        )
-    else:
-        scene_line = f"{_SCENE_LINE}: none yet — no bead is closed; the whole passage is still open"
     covered_line = "COVERED (engaged): " + (
         "; ".join(covered) if covered else "(nothing engaged yet — the session is just beginning)"
     )
@@ -90,7 +67,7 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
         remaining_lines.extend(
             f"  {kind}: {', '.join(by_kind[kind])}" for kind in ElementKind if kind in by_kind
         )
-    return "\n".join([scene_line, "", covered_line, "", *remaining_lines])
+    return "\n".join([covered_line, "", *remaining_lines])
 
 
 _EARLIER_GROUPS = (
