@@ -668,3 +668,19 @@ def test_a_send_off_with_a_part_told_only_aloud_says_it_has_no_recording_yet() -
     assert _turn(guide=SEND_OFF, expect=unrecorded) == [
         "send-off did not say that a part told only aloud has no recording yet"
     ]
+
+
+def test_a_new_fact_is_named_as_something_the_story_does_not_tell() -> None:
+    new_fact = {"names_new_fact": True}
+    for named in (
+        "A história guarda silêncio sobre o motivo.",
+        "Ela fica quieta aí de propósito.",
+        "Esse medo não vem da história.",
+        "Isso a gente não sabe pela história.",
+        "A história não explica por que ela voltou.",
+        "Isso ficou de fora da história.",
+    ):
+        assert _turn(guide=named, expect=new_fact) == [], named
+    assert _turn(guide="Que bonito: a Noemi voltou porque estava com medo.", expect=new_fact) == [
+        "guide did not name the new fact as something the story does not tell"
+    ], "aceitar a causa nova como se fosse da história é o incidente"

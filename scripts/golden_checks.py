@@ -318,6 +318,11 @@ _THE_WHOLE_PASSAGE_ASKED_FOR = _her(
     r"|whole passage|whole story|from (the )?beginning to (the )?end|from start to finish)"
 )
 _NO_RECORDING_YET = _her(r"n[ãa]o t[eê]m grava[çc][ãa]o|sem grava[çc][ãa]o|no recording")
+_THE_STORY_DOES_NOT_TELL = _her(
+    r"não conta|não diz|não fala|não está na história|não traz|não explica|não mostra|não revela"
+    r"|não sabe(mos)? pela história|não vem da história|guarda (em )?silêncio"
+    r"|fica (quieta|calada|em silêncio)|silêncio|de fora"
+)
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -413,6 +418,8 @@ def mechanical_checks(
         )
     if expect.get("send_off_names_unrecorded_scene") and not _NO_RECORDING_YET.search(guide):
         fails.append("send-off did not say that a part told only aloud has no recording yet")
+    if expect.get("names_new_fact") and not _THE_STORY_DOES_NOT_TELL.search(guide):
+        fails.append("guide did not name the new fact as something the story does not tell")
     if _THE_MAP.search(guide):
         fails.append("says 'o mapa' / 'the map' to the team")
     if _FAREWELL.search(guide):
