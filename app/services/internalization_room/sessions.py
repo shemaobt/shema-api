@@ -644,7 +644,7 @@ async def append_exchange(
         )
     )
     if step is not None:
-        guide["moment"] = step
+        guide["moment"] = step.as_json()
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
     if state is not None:

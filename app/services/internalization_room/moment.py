@@ -11,6 +11,15 @@ from app.services.internalization_room.comprehension.checkpoints import scene_id
 _DASH = "\N{EM DASH}"
 
 At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
+Cause = Literal[
+    "entrance",
+    "articulation_entrance",
+    "where_we_are",
+    "fence",
+    "part_closing",
+    "familiarization_closing",
+    "send_off",
+]
 
 NUMBER_WORDS = {
     "um": 1,
@@ -103,7 +112,7 @@ _FENCE = _either(
     rf"{_LEAD_EN}(?:now )?I(?: will|{_APOSTROPHE}ll) (?:say|tell you) everything that should go "
     r"into your rehearsal",
 )
-_ENTRANCES: dict[str, tuple[str, At]] = {
+_ENTRANCES: dict[str, tuple[Cause, At]] = {
     "internalização": ("entrance", "internalization"),
     "internalization": ("entrance", "internalization"),
     "articulação": ("articulation_entrance", "articulation"),
@@ -193,16 +202,29 @@ def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment | None:
     return None if step is None else Moment.of(step["after"])
 
 
+@dataclass(frozen=True)
+class MomentStep:
+    """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
+    reply left the room in, and the lines that moved it."""
+
+    before: Moment
+    after: Moment
+    by: list[Cause]
+
+    def as_json(self) -> dict[str, Any]:
+        return {"before": self.before.as_json(), "after": self.after.as_json(), "by": self.by}
+
+
 def moment_step(
     messages: list[dict[str, Any]], voiced: str, *, fail_safe: bool, parts: int
-) -> dict[str, Any] | None:
+) -> MomentStep | None:
     """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
     A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
     before = moment_at_turn_start(messages)
     if before is None:
         return None
     after = before
-    by: list[str] = []
+    by: list[Cause] = []
     earlier = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
         outside = line.part is not None and not 1 <= line.part <= parts
@@ -214,12 +236,12 @@ def moment_step(
         if moved != after:
             by.append(line.cause)
         after = moved
-    return {"before": before.as_json(), "after": after.as_json(), "by": by}
+    return MomentStep(before=before, after=after, by=by)
 
 
 class _Line(NamedTuple):
     at: int
-    cause: str
+    cause: Cause
     part: int | None = None
     to: At | None = None
 

@@ -38,7 +38,9 @@ TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem intei
 
 def _after(moment: dict[str, Any], voiced: str) -> dict[str, Any]:
     heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
-    return moment_step(heard, voiced, fail_safe=False, parts=4)["after"]
+    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+    assert step is not None
+    return step.after.as_json()
 
 
 @pytest.mark.parametrize(
