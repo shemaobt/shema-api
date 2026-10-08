@@ -65,7 +65,12 @@ from app.services.internalization_room.golden_judge import FLOORED, judge_sessio
 from app.services.internalization_room.prompt_blocks import earlier_passages_line
 from app.services.internalization_room.sessions import book_of
 from app.services.internalization_room.turn_instructions import opening_note
-from scripts.golden_checks import mechanical_checks
+from scripts.golden_checks import (
+    Moment,
+    mechanical_checks,
+    moment_after_reply,
+    moment_at_turn_start,
+)
 from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -79,6 +84,7 @@ class ScriptTurn:
     motherTongue: int | None = None
     interrupted: bool = False
     rehearsal: list[str] | None = None
+    rehearsalScene: str | None = None
     sceneRehearsals: list[str] | None = None
     expect: dict[str, Any] = field(default_factory=dict)
 
@@ -203,6 +209,7 @@ def load_script(path: Path) -> Script:
                 motherTongue=turn.get("motherTongue"),
                 interrupted=bool(turn.get("interrupted")),
                 rehearsal=turn["rehearsal"]["pieces"] if "rehearsal" in turn else None,
+                rehearsalScene=turn["rehearsal"].get("sceneId") if "rehearsal" in turn else None,
                 sceneRehearsals=turn.get("sceneRehearsals"),
                 expect=turn.get("expect", {}),
             )
@@ -346,6 +353,8 @@ async def play(
     earlier = earlier_passages_line(
         script.pericopeId, book_of(script.pericopeId), script.earlierPassages
     )
+    moment: Moment | None = None
+    heard = 2 * len(played)
     for idx, turn in enumerate(script.turns[:turns]):
         body, expected = request_for(turn, script, session_id, carried[idx])
         started = time.monotonic()
@@ -371,13 +380,34 @@ async def play(
                 if fact
             ],
         )
+        arriving = (
+            scene_ids.index(turn.rehearsalScene) + 1 if turn.rehearsalScene in scene_ids else None
+        )
+        before = moment_at_turn_start(moment, heard=heard, parts=len(scene_ids), arriving=arriving)
+        after = (
+            moment_after_reply(
+                before,
+                line.guide,
+                outcome=line.outcome,
+                parts=len(scene_ids),
+                came_back=[
+                    scene_ids.index(scene) + 1 for scene in carried[idx] or [] if scene in scene_ids
+                ],
+                unmarked_now=turn.rehearsal is not None and turn.rehearsalScene is None,
+            )
+            if before
+            else None
+        )
+        moment, heard = after, heard + 2
         line.mechanical = mechanical_checks(
             guide=line.guide,
             outcome=line.outcome,
             expect=turn.expect,
             previous_guide=previous_guide,
-            earlier_guides=[earlier.guide for earlier in played],
+            earlier_guides=[earlier_turn.guide for earlier_turn in played],
             parts=len(scene_ids),
+            moment_before=before,
+            moment_after=after,
         )
         previous_guide = line.guide
         played.append(line)

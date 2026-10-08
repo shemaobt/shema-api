@@ -11,10 +11,16 @@ dropped, none is loosened. The turns below are shaped after
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from scripts.golden_checks import mechanical_checks
+from scripts.golden_checks import (
+    Moment,
+    mechanical_checks,
+    moment_after_reply,
+    moment_at_turn_start,
+)
 
 #: The demo failure answered the way her 5/5 answered it: opened more, no redirect.
 OPENS_MORE = (
@@ -46,6 +52,8 @@ def _turn(**over: Any) -> list[str]:
         "previous_guide": "Oi, Daniel, oi, Suzuki! Bem-vindos, equipe Terena.",
         "earlier_guides": ["Oi, Daniel, oi, Suzuki! Bem-vindos, equipe Terena."],
         "parts": 4,
+        "moment_before": None,
+        "moment_after": None,
     }
     return mechanical_checks(**{**played, **over})
 
@@ -1233,3 +1241,325 @@ def test_no_where_we_are_line_is_said_after_the_send_off() -> None:
     assert _in_four_scenes(
         "We are in Familiarization. Estamos na Articulação da cena 2.", no_where_we_are=True
     ) == ["a where-we-are line was said after the send-off (F, 2)"], "na ordem em que a sala ouviu"
+
+
+F = Moment("familiarization")
+FC = Moment("familiarization", closed=True)
+EF = Moment("ensaio_final")
+
+
+def _i(part: int) -> Moment:
+    return Moment("internalization", part)
+
+
+def _a(part: int, fenced: bool = False) -> Moment:
+    return Moment("articulation", part, fenced=fenced)
+
+
+I1_LINE = "Vamos pra Internalização da cena {}."
+A1_LINE = "Vamos pra Articulação da cena {}."
+SEND_OFF_LAST = "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
+FENCE = f"{FENCE_OPEN} (fixture) a cena. {FENCE_CLOSE} {MIC}"
+CLOSE = f"(fixture). {PART_CLOSING}"
+
+
+def _after(
+    moment: Moment,
+    reply: str,
+    came_back: tuple[int, ...] = (),
+    *,
+    unmarked_now: bool = False,
+    outcome: str = "pass",
+) -> Moment:
+    return moment_after_reply(
+        moment,
+        reply,
+        outcome=outcome,
+        parts=4,
+        came_back=list(came_back),
+        unmarked_now=unmarked_now,
+    )
+
+
+def _arriving(moment: Moment | None, part: int, *, heard: int = 1) -> Moment | None:
+    return moment_at_turn_start(moment, heard=heard, parts=4, arriving=part)
+
+
+def test_her_moment_starts_in_the_familiarization_and_follows_the_lines_the_voice_said() -> None:
+    assert moment_at_turn_start(None, heard=0, parts=4, arriving=None) == F
+    assert moment_at_turn_start(None, heard=2, parts=4, arriving=None) is None, "sessão antiga"
+    assert moment_at_turn_start(None, heard=0, parts=0, arriving=None) is None
+    assert _after(F, I1_LINE.format(2)) == _i(2)
+    assert _after(F, A1_LINE.format(3)) == _a(3)
+    assert _after(F, f"(fixture). {FENCE}") == F, "a cerca na Familiarização não tem número"
+    assert _after(F, f"(fixture). {F3}") == FC
+    assert _after(FC, CLOSE) == _i(1), "o fechamento depois do F3 abre a cena 1"
+    assert _after(F, f"(fixture). {SEND_OFF_LAST}") == EF
+    assert _after(_i(2), f"(fixture). {FENCE}") == _a(2, fenced=True)
+    assert _after(_i(2), CLOSE) == _i(2), "o fechamento é a última fala da própria abertura"
+    assert _after(_a(2, fenced=True), A1_LINE.format(2)) == _a(2, fenced=True)
+    assert _after(_a(2, fenced=True), A1_LINE.format(3)) == _a(3)
+    assert _after(_a(2, fenced=True), "Estamos na Internalização da cena 2.") == _i(2)
+    assert _after(_a(2, fenced=True), "Estamos na Familiarização.") == F
+    assert _after(FC, "Estamos na Familiarização.") == FC
+    assert _after(_i(2), I1_LINE.format(9)) == _i(2), "um número fora da passagem não move nada"
+    assert _after(_i(2), f"{I1_LINE.format(3)} {FENCE} {SEND_OFF_LAST}", outcome="fail_safe") == (
+        _i(2)
+    ), "uma fala enlatada não muda o momento"
+    assert _after(_i(2), I1_LINE.format(3), outcome="corrected") == _i(3)
+    assert _after(_a(1, fenced=True), f"{I1_LINE.format(2)} (fixture) a cena. {FENCE}") == _a(
+        2, fenced=True
+    ), "o que a sala ouviu por último"
+
+
+def test_her_closing_moves_on_only_when_the_part_came_back_and_never_after_the_send_off() -> None:
+    assert _after(_a(2, fenced=True), CLOSE, (2,)) == _i(3)
+    assert _after(_a(2, fenced=True), CLOSE, (1,)) == replace(
+        _a(2, fenced=True), numberless_opening=True
+    ), "reabrir a mesma cena pra entender nunca põe o próximo número na tela"
+    assert _after(_a(1, fenced=True), CLOSE, unmarked_now=True) == _i(2), "o P06 T9"
+    assert _after(_a(4, fenced=True), CLOSE, (4,)) == _a(4, fenced=True), "depois da última cena"
+    assert _after(
+        _a(1, fenced=True), f"{I1_LINE.format(2)} (fixture) a cena. {FENCE} {PART_CLOSING}", (1, 2)
+    ) == _a(2, fenced=True)
+    old = (
+        "(fixture). O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte "
+        "ficou clara? Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente "
+        "vai pro ensaio."
+    )
+    assert _after(_a(1, fenced=True), old, (1,)) == _i(2), "o fechamento de 23/09 ainda é lido"
+    assert _after(EF, f"{I1_LINE.format(3)} (fixture) a cena. {PART_CLOSING}") == EF
+    assert _after(EF, "Estamos na Articulação da cena 2.") == EF
+    assert _after(EF, f"(fixture). {FENCE}") == EF
+    assert _after(EF, CLOSE, (1, 2, 3)) == EF
+
+
+def test_a_scene_rehearsal_moves_her_moment_only_for_the_scene_that_is_open() -> None:
+    assert _arriving(_i(3), 3) == _a(3)
+    assert _arriving(_i(3), 2) == _i(3)
+    assert _arriving(_i(2), 3) == _i(2), (
+        "uma cena contada adiante fica guardada, o momento não muda"
+    )
+    assert _arriving(_a(2, fenced=True), 2) == _a(2, fenced=True)
+    assert _arriving(F, 1) == F
+    assert _arriving(EF, 2) == EF
+    assert _arriving(_i(2), 9) == _i(2)
+    assert moment_at_turn_start(None, heard=0, parts=4, arriving=2) == F
+
+
+def test_a_numberless_opening_lets_the_next_scenes_rehearsal_move_her_moment() -> None:
+    opened = _after(_a(2, fenced=True), CLOSE)
+    assert opened == replace(_a(2, fenced=True), numberless_opening=True)
+    assert _arriving(opened, 3) == _a(3), "a cena 3 foi aberta, só o número se perdeu"
+    assert _arriving(opened, 4) == opened
+    assert _after(F, CLOSE) == replace(F, numberless_opening=True)
+    assert _arriving(replace(F, numberless_opening=True), 1) == _a(1)
+    assert _after(_i(2), CLOSE) == _i(2), "nunca na Internalização"
+    assert _after(opened, "Estamos na Articulação da cena 2.") == _a(2, fenced=True), (
+        "uma linha numerada diz de novo onde a sala está"
+    )
+    assert _after(opened, "(fixture) uma resposta.") == opened
+    assert _after(replace(_i(2), numberless_opening=True), f"(fixture). {FENCE}") == replace(
+        _a(2, fenced=True), numberless_opening=True
+    )
+    assert _after(_a(2, fenced=True), f"{I1_LINE.format(9)} (fixture). {PART_CLOSING}", (2,)) == (
+        opened
+    ), "um número fora da passagem não amarra nada"
+    assert _after(
+        _a(2, fenced=True), f"Estamos na Articulação da cena 2. (fixture). {PART_CLOSING}", (2,)
+    ) == _a(2, fenced=True)
+
+
+def test_the_next_scene_is_never_opened_before_this_one_came_back_whole() -> None:
+    def opened(guide: str, before: Moment | None) -> list[str]:
+        return _turn(guide=guide, expect={"no_next_part": True}, moment_before=before)
+
+    assert opened(I1_LINE.format(2), _a(2, fenced=True)) == [], "reabrir a mesma cena pra entender"
+    assert opened(I1_LINE.format(3), _a(2, fenced=True)) == [
+        "the next scene was opened before this scene came back whole (Internalization line for "
+        "scene 3)"
+    ]
+    assert opened(I1_LINE.format(1), F) == [
+        "the next scene was opened before this scene came back whole (Internalization line for "
+        "scene 1)"
+    ]
+    assert opened(I1_LINE.format(1), EF) == [
+        "the next scene was opened before this scene came back whole (Internalization line for "
+        "scene 1)"
+    ], "depois da despedida, qualquer abertura é cedo demais"
+    assert opened(I1_LINE.format(0), F) == [], "a Familiarização é a cena 0"
+    assert opened(I1_LINE.format(0), EF) == [
+        "the next scene was opened before this scene came back whole (Internalization line for "
+        "scene 0)"
+    ]
+
+
+def test_the_moment_her_script_expects_after_the_reply_is_the_one_the_reply_left() -> None:
+    def left(after: Moment | None, wanted: str | list[str]) -> list[str]:
+        return _turn(guide=OPENS_MORE, expect={"moment_after": wanted}, moment_after=after)
+
+    assert left(_i(2), "I2") == []
+    assert left(_a(3, fenced=True), ["I3", "A3"]) == []
+    assert left(FC, "F") == []
+    assert left(EF, "EF") == []
+    assert left(_a(2), "I3") == ["the app's moment after this reply is A2, not I3"]
+    assert left(_i(2), ["F", "I1"]) == ["the app's moment after this reply is I2, not F or I1"]
+    assert left(None, "F") == [
+        "the app kept no moment for this session (moment_after cannot be read)"
+    ]
+
+
+def test_every_fault_of_one_turn_at_her_freeze_comes_back_in_her_order() -> None:
+    everything = (
+        "Ensaiem agora. "
+        "A Rute casou com Malom, diz o mapa. "
+        "Isso é acréscimo. "
+        "Agora vou dizer tudo o que deve entrar no ensaio de vocês. "
+        "Reparem na fome. "
+        "Agora podem ensaiar. "
+        "Lembrem disso. "
+        "Gravem a passagem inteira. "
+        "Contem a passagem inteira pra mim. "
+        "A própria história dá um sinal disso. "
+        "Vamos começar pela Familiarização. "
+        "Primeiro eu conto a passagem inteira. "
+        "Vamos pra Internalização da cena 3. "
+        "Vamos pra Articulação da cena 3. "
+        "Estamos na Articulação da cena 3. "
+        "Nessa parte ele dormiu. "
+        "Amém."
+    )
+    expect = {
+        "no_fail_safe": True,
+        "no_rehearsal_invite": True,
+        "no_pairing": True,
+        "send_off_record": True,
+        "offers_choice": True,
+        "no_choice_offer": True,
+        "send_off_names": ["quem é você"],
+        "send_off_scene_by_scene": True,
+        "accepts_telling": True,
+        "fenced_rehearsal": True,
+        "part_opening_closing": True,
+        "take_up_closing": True,
+        "invites_microphone": True,
+        "send_off_ensaio_final": True,
+        "no_record_again": True,
+        "no_whole_retelling_request": True,
+        "offers_choice_final": True,
+        "send_off_names_unrecorded_scene": True,
+        "names_new_fact": True,
+        "team_reading_stays_theirs": True,
+        "familiarization_entrance": True,
+        "familiarization_closing": True,
+        "familiarization_tail": True,
+        "part_entrance": 2,
+        "articulation_entrance": 2,
+        "where_we_are": 2,
+        "no_next_part": True,
+        "no_where_we_are": True,
+        "moment_after": "I2",
+        "no_familiarization_lines": True,
+        "scene_word_cena": True,
+        "boaz_never_asleep": True,
+    }
+    assert _turn(
+        guide=everything,
+        outcome="fail_safe",
+        expect=expect,
+        previous_guide="",
+        moment_before=_i(2),
+        moment_after=_a(3, fenced=True),
+    ) == [
+        "fail_safe voiced in reply to a turn that must be answered",
+        "rehearsal invited on a turn where the team asked to understand first",
+        "possible Ruth↔Mahlon pairing voiced (judge must confirm)",
+        (
+            "guide did not offer the choice (contar de novo OU seguir pra gravação) on a second "
+            "near-complete telling"
+        ),
+        ("send-off did not repeat the detail the team carries into the recording: /quem é você/i"),
+        "send-off did not tell the team to record scene by scene",
+        'a faithful telling in other words was not accepted (meaning, not form): "acréscimo"',
+        'commentary inside the fenced rehearsal block: "Reparem"',
+        "commentary after the fence's closing line",
+        (
+            "the part opening does not end with the fixed closing ('O que chamou a atenção de "
+            "vocês nessa cena? … a gente vai pro ensaio.')"
+        ),
+        "the fenced block was given in the same turn that opens a part",
+        (
+            "the reply to the team's comment or question does not end with the closing's last "
+            "two sentences ('Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e "
+            "a gente vai pro ensaio.')"
+        ),
+        "the fenced block was given before the team said it was ready",
+        "the Guide invited the rehearsal without the red-microphone instruction",
+        (
+            "send-off did not send the team to the Ensaio Final by the orange dot (Ensaio Final "
+            "+ ponto laranja)"
+        ),
+        'guide told the team to record or translate the passage again: "Gravem a passagem"',
+        (
+            'guide asked for the whole passage to be told or rehearsed again: "Contem a '
+            'passagem inteira"'
+        ),
+        (
+            "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar "
+            "no Ensaio Final)"
+        ),
+        "send-off did not say that a part told only aloud has no recording yet",
+        "guide did not name the new fact as something the story does not tell",
+        (
+            "the team's reading was presented as the passage's own (the story confirms it, or "
+            'gives a sign of it): "A própria história dá um sinal"'
+        ),
+        (
+            "the Familiarization turn does not end with its closing, said whole ('O que chamou "
+            "a atenção de vocês nessa passagem? … a gente vai pra Internalização da primeira "
+            "cena.')"
+        ),
+        (
+            "the take-up in the Familiarization does not end with its closing's last two "
+            "sentences ('Se tiver alguma dúvida, me perguntem. Quando estiverem prontos, me "
+            "digam e a gente vai pra Internalização da primeira cena.')"
+        ),
+        (
+            "a scene was opened in the Familiarization, before the team's word: \"Vamos pra "
+            'Internalização da cena 3. Vamos pra Articulação da"'
+        ),
+        (
+            "the scene opening does not carry its numbered Internalization line, word for word "
+            "('Vamos pra Internalização da cena 2.')"
+        ),
+        "an Internalization line names another scene than the one being opened (2): 3",
+        (
+            "the first fence of scene 2 does not follow its Articulation line, word for word "
+            "('Vamos pra Articulação da cena 2.' right before 'Agora vou dizer tudo o que deve "
+            "entrar no ensaio de vocês.')"
+        ),
+        "an Articulation line names another scene than the one being rehearsed (2): 3",
+        (
+            "the reply does not say where the team is, word for word ('Estamos na Articulação "
+            "da cena 2.' or 'Estamos na Internalização da cena 2.')"
+        ),
+        "a where-we-are line names another moment or scene than the one the team is in (2): 3",
+        (
+            "the next scene was opened before this scene came back whole (Internalization line "
+            "for scene 3)"
+        ),
+        "a where-we-are line was said after the send-off (3)",
+        "the app's moment after this reply is A3, not I2",
+        (
+            "the whole passage asked for mid-session was told with the Familiarization's first "
+            "words (F1) — D7 (a): without F1 and without F3, the moment unchanged"
+        ),
+        ('the voice called a scene of today\'s passage "parte" ("Nessa parte") — D1 (c): "cena"'),
+        (
+            'the voice made Boaz sleep or wake at the threshing-floor night: "Nessa parte ele '
+            'dormiu." — P09 R19 / P10 R14: he lies down (3:7), trembles and twists (3:8); the '
+            "text never says he slept or woke"
+        ),
+        "says 'o mapa' / 'the map' to the team",
+        "religious farewell of its own",
+    ], "a ordem dela é a ordem de mechanicalChecks em run.ts a 18fa7c4"

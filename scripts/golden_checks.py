@@ -18,7 +18,7 @@ says separates the two here: the words on either side of every `\\b` below are u
 from __future__ import annotations
 
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import regex
@@ -777,7 +777,13 @@ def _opens_a_scene(text: str, parts: int) -> str | None:
     return None
 
 
-def _moment_line_faults(guide: str, expect: dict[str, Any], parts: int) -> list[str]:
+def _moment_line_faults(
+    guide: str,
+    expect: dict[str, Any],
+    parts: int,
+    moment_before: Moment | None,
+    moment_after: Moment | None,
+) -> list[str]:
     faults = []
     scenes = parts or 12
     if expect.get("familiarization_entrance") and not _says(guide, list(_F1)):
@@ -859,11 +865,187 @@ def _moment_line_faults(guide: str, expect: dict[str, Any], parts: int) -> list[
                 "a where-we-are line names another moment or scene than the one the team is in "
                 f"({where}): {', '.join(map(str, wrong))}"
             )
+    if expect.get("no_next_part"):
+        if moment_before is None or moment_before.at == "ensaio_final":
+            current = None
+        else:
+            current = moment_before.part or 0
+        if past := [
+            n for n in _numbered_lines(guide, scenes, "entrance") if current is None or n > current
+        ]:
+            faults.append(
+                "the next scene was opened before this scene came back whole (Internalization "
+                f"line for scene {', '.join(map(str, past))})"
+            )
     if expect.get("no_where_we_are") and (said := _numbered_lines(guide, scenes, "where_we_are")):
         faults.append(
             f"a where-we-are line was said after the send-off ({', '.join(map(str, said))})"
         )
+    if (wanted := expect.get("moment_after")) is not None:
+        wanted = wanted if isinstance(wanted, list) else [wanted]
+        if moment_after is None:
+            faults.append("the app kept no moment for this session (moment_after cannot be read)")
+        elif (left := _moment_short(moment_after)) not in wanted:
+            faults.append(f"the app's moment after this reply is {left}, not {' or '.join(wanted)}")
     return faults
+
+
+@dataclass(frozen=True)
+class Moment:
+    at: str
+    part: int | None = None
+    fenced: bool | None = None
+    closed: bool = False
+    numberless_opening: bool = False
+
+
+_ENSAIO_FINAL = Moment("ensaio_final")
+
+
+def _scene(moment: Moment) -> int:
+    if moment.at == "familiarization":
+        return 0
+    if moment.at == "ensaio_final":
+        return -1
+    return moment.part or 0
+
+
+def _numberless(moment: Moment) -> bool:
+    return moment.at != "ensaio_final" and moment.numberless_opening
+
+
+def _with_numberless(moment: Moment, heard: bool) -> Moment:
+    if moment.at == "ensaio_final" or _numberless(moment) == heard:
+        return moment
+    return replace(moment, numberless_opening=heard)
+
+
+def _says_where(trigger: _Trigger) -> bool:
+    return not trigger.outside and (trigger.part is not None or trigger.cause == "where_we_are")
+
+
+def _articulation(moment: Moment, part: int) -> Moment:
+    if moment.at == "articulation" and moment.part == part:
+        return moment
+    return Moment("articulation", part, fenced=False)
+
+
+def _step(
+    moment: Moment,
+    trigger: _Trigger,
+    *,
+    parts: int,
+    earlier: bool,
+    came_back: list[int],
+    unmarked_now: bool,
+) -> Moment:
+    if trigger.outside:
+        return moment
+    part = trigger.part or 0
+    numbered = trigger.cause in ("entrance", "articulation_entrance", "where_we_are")
+    if moment.at == "ensaio_final" and numbered:
+        return moment
+    if trigger.cause == "send_off":
+        return _ENSAIO_FINAL
+    if trigger.cause == "entrance":
+        return Moment("internalization", part)
+    if trigger.cause == "articulation_entrance":
+        return _articulation(moment, part)
+    if trigger.cause == "where_we_are":
+        if trigger.to == "familiarization":
+            return moment if moment.at == "familiarization" else Moment("familiarization")
+        if trigger.to == "internalization":
+            return Moment("internalization", part)
+        return _articulation(moment, part)
+    if trigger.cause == "fence":
+        if moment.at in ("familiarization", "ensaio_final"):
+            return moment
+        return Moment("articulation", moment.part, fenced=True)
+    if trigger.cause == "part_closing":
+        if moment.at in ("internalization", "ensaio_final") or earlier:
+            return moment
+        if moment.at == "familiarization":
+            return Moment("internalization", 1) if moment.closed else moment
+        current = moment.part or 0
+        if current >= parts or (not unmarked_now and current not in came_back):
+            return moment
+        return Moment("internalization", current + 1)
+    if trigger.cause == "familiarization_closing" and moment.at == "familiarization":
+        return Moment("familiarization", closed=True)
+    return moment
+
+
+def _room_event(moment: Moment, part: int) -> Moment:
+    if moment.at == "ensaio_final":
+        return moment
+    if part == _scene(moment) + 1 and _numberless(moment):
+        return Moment("articulation", part, fenced=False)
+    if moment.at == "familiarization":
+        return moment
+    if moment.at == "internalization" and part == moment.part:
+        return _with_numberless(Moment("articulation", part, fenced=False), _numberless(moment))
+    return moment
+
+
+def moment_at_turn_start(
+    moment: Moment | None, *, heard: int, parts: int, arriving: int | None
+) -> Moment | None:
+    if parts < 1:
+        return None
+    if moment is None:
+        if heard > 0:
+            return None
+        moment = Moment("familiarization")
+    if arriving is not None:
+        moment = _room_event(moment, arriving)
+    return moment
+
+
+def moment_after_reply(
+    moment: Moment,
+    reply: str,
+    *,
+    outcome: str,
+    parts: int,
+    came_back: list[int],
+    unmarked_now: bool,
+) -> Moment:
+    if outcome == "fail_safe":
+        return moment
+    earlier = anchored = False
+    for trigger in _moment_triggers(reply, parts):
+        moved = _step(
+            moment,
+            trigger,
+            parts=parts,
+            earlier=earlier,
+            came_back=came_back,
+            unmarked_now=unmarked_now,
+        )
+        same_scene = _scene(moved) == _scene(moment)
+        heard = _numberless(moment) and same_scene and not _says_where(trigger)
+        if (
+            trigger.cause == "part_closing"
+            and not anchored
+            and moment.at not in ("ensaio_final", "internalization")
+            and same_scene
+            and _scene(moment) < parts
+        ):
+            heard = True
+        moment = _with_numberless(moved, heard)
+        if trigger.part is not None or trigger.cause in ("where_we_are", "fence"):
+            earlier = True
+        if _says_where(trigger) or trigger.cause == "fence":
+            anchored = True
+    return moment
+
+
+def _moment_short(moment: Moment) -> str:
+    if moment.at == "familiarization":
+        return "F"
+    if moment.at == "ensaio_final":
+        return "EF"
+    return f"{'I' if moment.at == 'internalization' else 'A'}{moment.part}"
 
 
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
@@ -878,6 +1060,8 @@ def mechanical_checks(
     previous_guide: str,
     earlier_guides: list[str],
     parts: int,
+    moment_before: Moment | None,
+    moment_after: Moment | None,
 ) -> list[str]:
     """Every fault of one turn the runner can name without a judge, in her words and order.
 
@@ -981,7 +1165,7 @@ def mechanical_checks(
             "the team's reading was presented as the passage's own (the story confirms it, or "
             f'gives a sign of it): "{confirmed}"'
         )
-    fails.extend(_moment_line_faults(guide, expect, parts))
+    fails.extend(_moment_line_faults(guide, expect, parts, moment_before, moment_after))
     if expect.get("no_familiarization_lines") and (line := _familiarization_line_said(guide)):
         fails.append(
             f"the whole passage asked for mid-session was told with the Familiarization's {line} — "

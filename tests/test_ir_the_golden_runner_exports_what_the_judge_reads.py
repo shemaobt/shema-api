@@ -370,3 +370,81 @@ async def test_the_last_scene_her_moment_lines_name_is_the_last_scene_of_the_pas
     assert played[1].mechanical == [
         "an Internalization line names another scene than the one being opened (2): 4"
     ], "a 'última parte' de Rute 1:1-5 é a cena 4; sem as cenas da passagem virava a cena 12"
+
+
+async def test_the_runner_steps_her_moment_from_every_reply_as_her_http_driver_does(
+    seam, tmp_path, monkeypatch
+) -> None:
+    closing = (
+        "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
+        "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
+    )
+    familiarization = (
+        "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira. (a passagem). O "
+        "que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
+        "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização "
+        "da primeira cena."
+    )
+    fence = (
+        "Agora vou dizer tudo o que deve entrar no ensaio de vocês. (a cena). Agora podem ensaiar."
+    )
+    replies = [
+        familiarization,
+        f"Vamos pra Internalização da cena 1. (a cena). {closing}",
+        "Muito bem, vocês contaram a cena.",
+        f"(a cena 2). {closing}",
+        f"Vamos pra Articulação da cena 2. {fence}",
+        f"(a cena 3). {closing}",
+        "Vamos pra Internalização da cena 3.",
+        "Vamos pra Internalização da cena 4.",
+    ]
+    the_models_answer(monkeypatch, *[step for reply in replies for step in (reply, None)])
+    rehearsal = {"pieces": ["Noemi disse: voltem."]}
+    path = tmp_path / "P01-the-moment-stepped.json"
+    path.write_text(
+        json.dumps(
+            {
+                "name": "P01-the-moment-stepped",
+                "pericopeId": "P01",
+                "language": "Brazilian Portuguese",
+                "why": "the moment the runner steps from the replies, a reducer input per turn",
+                "turns": [
+                    {"kickoff": True, "expect": {"moment_after": "F"}},
+                    {"team": "Entendemos.", "expect": {"moment_after": "I1"}},
+                    {
+                        "rehearsal": {**rehearsal, "sceneId": "S1"},
+                        "sceneRehearsals": ["S1"],
+                        "expect": {"moment_after": "A1"},
+                    },
+                    {"team": "Pode seguir.", "expect": {"moment_after": "I2"}},
+                    {"team": "Entendemos.", "expect": {"moment_after": "A2"}},
+                    {"rehearsal": rehearsal, "expect": {"moment_after": "I3"}},
+                    {"team": "Conta de novo?", "expect": {"no_next_part": True}},
+                    {"team": "Entendemos.", "expect": {"no_next_part": True}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    script = load_script(path)
+    played: list[Played] = []
+    await play(script, seam, session_id=await open_session(script, seam), played=played)
+
+    assert [turn.guide for turn in played] == replies
+    assert [turn.mechanical for turn in played] == [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [
+            "the next scene was opened before this scene came back whole (Internalization line "
+            "for scene 4)"
+        ],
+    ], (
+        "o momento começa na Familiarização, o ensaio marcado da cena 1 a leva à Articulação, o "
+        "fechamento passa à cena 2 só porque a cena 1 voltou, o ensaio sem marca de agora passa à "
+        "3, reabrir a 3 pra entender não é abrir a próxima, e a cena 4 aberta na 3 é cedo demais"
+    )
