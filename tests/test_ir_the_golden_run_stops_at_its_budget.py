@@ -34,8 +34,11 @@ def _charged(role: str, cost: float | None) -> dict[str, Any]:
     }
 
 
-@pytest.fixture()
-def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+PRICED = [_charged("guide", 2.0), _charged("validator", 1.0)]
+WITH_ONE_UNPRICED = [*PRICED, _charged("classifier", None)]
+
+
+def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]]) -> list[str]:
     sessions: list[str] = []
 
     def _room(request: httpx.Request) -> httpx.Response:
@@ -43,12 +46,7 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
             sessions.append(json.loads(request.content)["pericopeId"])
             return httpx.Response(200, json={"sessionId": f"s-{len(sessions)}"})
         return httpx.Response(
-            200,
-            json={
-                "guideText": GUIDE_LINE,
-                "outcome": "pass",
-                "usage": [_charged("guide", 2.0), _charged("validator", 1.0)],
-            },
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": usage}
         )
 
     made = httpx.AsyncClient
@@ -58,6 +56,16 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(httpx, "AsyncClient", _client)
     return sessions
+
+
+@pytest.fixture()
+def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    return _room_charging(monkeypatch, PRICED)
+
+
+@pytest.fixture()
+def opened_with_a_call_the_table_never_priced(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    return _room_charging(monkeypatch, WITH_ONE_UNPRICED)
 
 
 def _shelf(tmp_path: Path, *scripts: tuple[str, str, int]) -> Path:
@@ -180,3 +188,75 @@ async def test_the_flag_beats_the_environment(
     await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=1.0))
 
     assert opened == ["P01"]
+
+
+async def test_each_sessions_line_shows_what_it_cost_and_the_run_ends_with_the_total_by_role(
+    opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+
+    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=100.0))
+
+    shown = capsys.readouterr().out
+    assert "  PASS · P01-a · judge=pass · mechanical=0 · cost US$ 3.00\n" in shown, (
+        "uma volta de US$ 2 do Guia e US$ 1 do Validador custa US$ 3"
+    )
+    assert "  FAIL · P02-b · judge=pass · mechanical=1 · cost US$ 6.00\n" in shown
+    assert "\ncost US$ 9.00 — guide US$ 6.00 · validator US$ 3.00\n" in shown, (
+        "a rodada termina com o total e a divisão por papel, na tela e não só no README"
+    )
+
+
+async def test_the_total_and_the_stop_say_how_many_calls_the_budget_could_not_see(
+    opened_with_a_call_the_table_never_priced: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    the_judge_answers(monkeypatch)
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 2), ("P01-b", "P01", 1))
+
+    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=5.0))
+
+    shown = capsys.readouterr()
+    assert (
+        "golden: budget US$ 5.00 reached at US$ 6.00; not started: P01-b; "
+        "the budget did not count 2 calls with no price\n"
+    ) in shown.err, "um modelo fora da tabela não pode furar o teto sem que ninguém seja avisado"
+    assert (
+        "\ncost US$ 6.00 — guide US$ 4.00 · validator US$ 2.00; "
+        "the budget did not count 2 calls with no price\n"
+    ) in shown.out
+
+
+async def test_one_call_the_budget_could_not_see_is_a_call_and_not_calls(
+    opened_with_a_call_the_table_never_priced: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    the_judge_answers(monkeypatch)
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 1))
+
+    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=100.0))
+
+    assert "the budget did not count 1 call with no price\n" in capsys.readouterr().out
+
+
+async def test_the_readme_of_a_stopped_run_says_it_stopped_and_names_what_it_left(
+    opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    the_judge_answers(monkeypatch)
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 2), ("P01-b", "P01", 1), ("P02-c", "P02", 1))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(_args(sessions, out, budget_usd=5.0))
+
+    assert (
+        "Rodada parada pelo orçamento de US$ 5.00, já em US$ 6.00. "
+        "Sessões que não começaram: P01-b, P02-c.\n"
+    ) in (out / "README.md").read_text(encoding="utf-8"), (
+        "um README de 1/1 sem esta linha passaria por uma rodada inteira"
+    )

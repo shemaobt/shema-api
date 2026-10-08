@@ -76,7 +76,7 @@ from scripts.golden_checks import (
     moment_after_reply,
     moment_at_turn_start,
 )
-from scripts.golden_spend import OVER_BUDGET, budget_of, priced, stopped
+from scripts.golden_spend import OVER_BUDGET, budget_of, priced, split, stopped, uncounted
 from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -613,7 +613,15 @@ def _spent(results: list[SessionResult]) -> float:
     return sum(priced(_paid(results))[0].values())
 
 
-def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str, pins: str) -> str:
+def summary(
+    results: list[SessionResult],
+    *,
+    base_url: str,
+    stamp: str,
+    tip: str,
+    pins: str,
+    halted: str = "",
+) -> str:
     """The run's README, in the shape of hers: the verdict line, the table, the money, the clock.
 
     Two columns, as her reports keep them: the judge's PASS or FAIL by her rule, and the
@@ -660,7 +668,6 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
     lines.append("")
     if by_role:
         total = sum(by_role.values())
-        split = " · ".join(f"{role} US$ {cost:.2f}" for role, cost in sorted(by_role.items()))
         free = (
             f"; {len(unpriced)} chamada{'s' if len(unpriced) > 1 else ''} sem preço de tabela "
             f"({', '.join(sorted(set(unpriced)))}), fora da soma"
@@ -669,7 +676,7 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         )
         lines.append(
             f"Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ {total:.2f} "
-            f"— {split}{free}."
+            f"— {split(by_role)}{free}."
         )
     else:
         lines.append("A sala não informou custo por chamada nesta rodada.")
@@ -678,6 +685,8 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
             f"Latência Guia+Validador por turno: {_seconds(voice)}; turno inteiro, com o "
             f"classificador em linha: {_seconds([turn.turnMs for turn in played])}."
         )
+    if halted:
+        lines.append(halted)
     return "\n".join(lines) + "\n"
 
 
@@ -705,12 +714,39 @@ async def run(args: argparse.Namespace) -> int:
                     script, client, base_url=base_url, out=out, stamp=stamp, turns=args.turns
                 )
             )
-    exit_code = close(results, out=out, base_url=base_url, stamp=stamp)
-    if not_started:
-        message = stopped("golden", budget=budget, spent=_spent(results), not_started=not_started)
-        print(message, file=sys.stderr)
-        return OVER_BUDGET
-    return exit_code
+    return finish(
+        results,
+        out=out,
+        base_url=base_url,
+        stamp=stamp,
+        budget=budget,
+        not_started=not_started,
+    )
+
+
+def finish(
+    results: list[SessionResult],
+    *,
+    out: Path,
+    base_url: str,
+    stamp: str,
+    budget: float,
+    not_started: list[str],
+) -> int:
+    if not not_started:
+        return close(results, out=out, base_url=base_url, stamp=stamp)
+    by_role, unpriced = priced(_paid(results))
+    spent = sum(by_role.values())
+    halted = (
+        f"Rodada parada pelo orçamento de US$ {budget:.2f}, já em US$ {spent:.2f}. "
+        f"Sessões que não começaram: {', '.join(not_started)}."
+    )
+    close(results, out=out, base_url=base_url, stamp=stamp, halted=halted)
+    message = stopped(
+        "golden", budget=budget, spent=spent, not_started=not_started, unpriced=unpriced
+    )
+    print(message, file=sys.stderr)
+    return OVER_BUDGET
 
 
 def exported(path: Path) -> tuple[Script, SessionResult, str]:
@@ -780,10 +816,12 @@ async def rejudge(args: argparse.Namespace) -> int:
     return close(results, out=out, base_url=base_url, stamp=stamp)
 
 
-def close(results: list[SessionResult], *, out: Path, base_url: str, stamp: str) -> int:
+def close(
+    results: list[SessionResult], *, out: Path, base_url: str, stamp: str, halted: str = ""
+) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "README.md").write_text(
-        summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins()),
+        summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins(), halted=halted),
         encoding="utf-8",
     )
     passed = sum(1 for result in results if result.passed)
@@ -791,8 +829,11 @@ def close(results: list[SessionResult], *, out: Path, base_url: str, stamp: str)
         verdict = "REFUSED" if result.refused else ("PASS" if result.passed else "FAIL")
         print(
             f"  {verdict} · {result.name} · judge={result.judged.lower().replace('—', 'n/a')} "
-            f"· mechanical={len(result.faults)}"
+            f"· mechanical={len(result.faults)} · cost US$ {_spent([result]):.2f}"
         )
+    by_role, unpriced = priced(_paid(results))
+    if by_role:
+        print(f"\ncost US$ {sum(by_role.values()):.2f} — {split(by_role)}{uncounted(unpriced)}")
     print(f"\n{passed}/{len(results)} golden sessions pass · {out / 'README.md'}")
     return 0 if passed == len(results) else 1
 

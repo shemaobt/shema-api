@@ -34,8 +34,21 @@ def priced(calls: Iterable[tuple[str, str, float | None]]) -> tuple[dict[str, fl
     return by_role, unpriced
 
 
-def stopped(prefix: str, *, budget: float, spent: float, not_started: list[str]) -> str:
+def split(by_role: dict[str, float]) -> str:
+    return " · ".join(f"{role} US$ {cost:.2f}" for role, cost in sorted(by_role.items()))
+
+
+def uncounted(unpriced: list[str]) -> str:
+    if not unpriced:
+        return ""
+    plural = "s" if len(unpriced) > 1 else ""
+    return f"; the budget did not count {len(unpriced)} call{plural} with no price"
+
+
+def stopped(
+    prefix: str, *, budget: float, spent: float, not_started: list[str], unpriced: list[str]
+) -> str:
     return (
         f"{prefix}: budget US$ {budget:.2f} reached at US$ {spent:.2f}; "
-        f"not started: {', '.join(not_started)}"
+        f"not started: {', '.join(not_started)}{uncounted(unpriced)}"
     )
