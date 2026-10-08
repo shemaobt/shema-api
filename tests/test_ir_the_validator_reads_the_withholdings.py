@@ -67,9 +67,9 @@ NEXT_SLOT = "## WHAT THE TEAM JUST SAID"
 
 
 #: Her operational sentence for the panorama's preservation header, quoted from
-#: `app/lib/liveTurn.ts:191-192` in `Tripod-Internalization`. Only the second half is ours
-#: to carry: hers opens by telling the team it has lived no passage, which is true of a
-#: panorama played once per book and false of one played once per passage.
+#: `app/lib/liveTurn.ts:191-192` in `Tripod-Internalization`. The room carries both halves:
+#: hers opens by telling the team it has lived no passage, which holds because the panorama
+#: is played once per book, before its first passage.
 HONOUR = (
     "The panorama must honor each — never state, pair, name, or attribute what a passage "
     "withholds until its moment."

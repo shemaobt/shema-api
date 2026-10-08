@@ -1,11 +1,11 @@
 """Her judge, reading a whole golden session and saying whether the Guide kept the doctrine.
 
-The rubric and the pass rule are hers — `prompts/vendor/golden_judge_system_prompt.md`, "the
-acceptance test that guards the app's behaviour across model and prompt changes" — and this
-module applies them as she wrote them: the prompt body between her markers, the Validator's
-map in the map slot, the session language in its slot, and her one-line request in front of
-the transcript block. It never reaches the team; `scripts/golden_runner.py` calls it once per
-session played.
+The rubric and the pass rule are hers — `prompts/golden_judge_system_prompt.md`, kept byte for
+byte at her freeze, "the acceptance test that guards the app's behaviour across model and
+prompt changes" — and this module applies them as she wrote them: the prompt body between her
+markers, the Validator's map in `{{MEANING_MAP}}`, the session language in
+`{{SESSION_LANGUAGE}}`, and her one-line request in front of the transcript block. It never
+reaches the team; `scripts/golden_runner.py` calls it once per session played.
 """
 
 from __future__ import annotations

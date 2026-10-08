@@ -902,11 +902,11 @@ async def open_ir_session(
 ) -> IRSession:
     """A room session on one passage, opened through the room wherever the room opens it.
 
-    Since ENG-589 the room refuses a passage whose preservation layer nobody wrote, and eight
-    of Ruth's fourteen are in that state. Walking the whole book is therefore a position the
-    production path cannot reach with the canon as vendored today, so the fixtures that need
-    a team standing past P06 have those rows written here rather than pretend the room opened
-    them.
+    Since ENG-589 the room refuses a passage whose preservation layer nobody wrote. All
+    fourteen of Ruth's carry theirs in the canon as vendored today, so the production path
+    reaches every one of them and walking the whole book is a position it can reach. A passage
+    the canon leaves without a layer has its row written here, rather than pretend the room
+    opened it.
 
     Which branch a passage takes is decided from the canon *before* calling, never from a
     caught refusal. A passage that carries its layer goes through `create_session` unguarded:

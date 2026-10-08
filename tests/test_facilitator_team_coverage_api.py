@@ -197,9 +197,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
 ) -> None:
     """Behaviour 1 — each pilot passage serves its own count, scenes and preservation group.
 
-    P14 is a case of this and not a test of its own: one scene, and the fifth group empty.
-    Both are real passages of Ruth rather than edge cases, and asserting them twice would be
-    the same branch covered under two names.
+    P14 is a case of this and not a test of its own: the only one of the four with a single
+    scene. It is a real passage of Ruth rather than an edge case, and asserting it twice
+    would be the same branch covered under two names.
     """
     _user, project, headers = await a_facilitator(db_session, email=f"b1{pericope}@x.com")
 
