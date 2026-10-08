@@ -1,18 +1,20 @@
 """Marcia's `mechanicalChecks`, ported whole as a pure function over one played turn.
 
-Read from `src/golden/run.ts` in `shemaobt/Tripod-Internalization` at `533b6e3`, the commit
-`docs/doctrine/DOCTRINE_PIN` names, where the function holds seven checks. Her runner at the
-freeze (`docs/doctrine/FREEZE_PIN`, 18fa7c4) holds many more and takes the earlier replies as a
-third argument; this port is the seven and does not follow it. The rules are hers and so are
-the messages, in her English, because a report of ours is read beside one of hers and a rule
-renamed on our side is a rule the two stacks no longer share. No check is added, none is
-dropped, none is loosened. These are "the cheap, unambiguous ones" the runner makes without a
-judge; the rest of her `expect` keys — `opens_more`, `names_gap`, `no_spoiler` — are the
-judge's to score.
+Read from `src/golden/run.ts` in `shemaobt/Tripod-Internalization` at her freeze
+(`docs/doctrine/FREEZE_PIN`, 18fa7c4), with the helpers it calls in `src/golden/checks.ts` and
+the moment reducer her runner steps over HTTP in `src/turn/moment.ts`. At `533b6e3`, the commit
+`docs/doctrine/DOCTRINE_PIN` names, the function held seven checks; at the freeze it holds many
+more and takes the earlier replies as a third argument, and this port follows it. The rules are
+hers and so are the messages, in her English, because a report of ours is read beside one of
+hers and a rule renamed on our side is a rule the two stacks no longer share. No check is
+added, none is dropped, none is loosened. These are "the cheap, unambiguous ones" the runner
+makes without a judge; the rest of her `expect` keys — `opens_more`, `names_gap`, `no_spoiler`
+— are the judge's to score.
 
-Her regexes run without the `u` flag, so her `\\b` is ASCII-only where Python's is
-Unicode-aware; `scripts/bt_golden_checks.py` measures the difference. Nothing a Guide turn
-says separates the two here: the words on either side of every `\\b` below are unaccented.
+Her regexes are JavaScript's, whose `\\b`, `\\w` and `\\d` are ASCII-only with or without the `u`
+flag. `_her` compiles each one under `regex`, for her variable-width lookbehinds and `\\p{L}`,
+with those three scoped to ASCII and case folding left Unicode; `scripts/bt_golden_checks.py`
+measures what Python's Unicode `\\b` would have changed.
 """
 
 from __future__ import annotations

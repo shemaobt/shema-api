@@ -1,11 +1,13 @@
 """Her `mechanicalChecks`, ported whole: the same turn trips here for the same reasons.
 
 The rules and the messages are hers, read from `src/golden/run.ts` in
-`shemaobt/Tripod-Internalization` at `533b6e3`, the commit `docs/doctrine/DOCTRINE_PIN` names,
-and kept in her words, because a report of ours is read beside one of hers. Her runner at the
-freeze (18fa7c4) has more checks than the seven ported here. No check is added, none is
-dropped, none is loosened. The turns below are shaped after
-`golden/sessions/P01-understand-first.json`.
+`shemaobt/Tripod-Internalization` at her freeze (18fa7c4), with the helpers and the moment
+reducer it calls, and kept in her words, because a report of ours is read beside one of hers.
+At `533b6e3`, the commit `docs/doctrine/DOCTRINE_PIN` names, the function held seven checks;
+the port is the freeze's now. No check is added, none is dropped, none is loosened. The turns
+below are shaped after `golden/sessions/P01-understand-first.json` and the cases of her own
+`src/golden/checksTest.ts` and `src/turn/momentTest.ts`; where her failure line quotes words,
+the quote is what her function returns on the same sentence.
 """
 
 from __future__ import annotations
