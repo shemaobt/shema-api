@@ -1,5 +1,5 @@
 ---
-status: superseded in part by ADR 0049: an outage is now the same refusal, and the replace route no longer counts
+status: superseded in part by ADR 0049: an outage is now the same refusal, and the replace route no longer counts; amended by shema-api#686: the text seam refuses it too
 date: 2026-09-30
 ---
 
@@ -7,6 +7,9 @@ date: 2026-09-30
 
 **Superseded in part by [ADR 0049](0049-a-telling-is-transcribed-in-the-bridge-language-and-refused-when-nothing-comes.md)**
 on 6 October 2026: an outage is now the same refusal, and the replace route no longer counts.
+
+**Amended by shema-api#686** on 8 October 2026: the text seam used by golden runs now refuses a
+round with a wordless frase, so the last paragraph of the decision is rewritten below.
 
 The chunk door answered 200 `captured: false` when the transcript came back empty, and an empty
 **retelling** was counted toward the warning on the stretch being retold (ENG-706). The reason
@@ -32,8 +35,10 @@ and the refused one is the team's work like any other.
 
 ENG-706's counting of an empty retelling retires on this door only. The replace route's empty
 re-recording still counts in place and is not touched here. The text seam used by golden runs
-can still write a stretch from an empty transcript; it is not a door a team reaches and is out
-of scope.
+is not a door a team reaches, and it refuses the same thing: a round with any frase that holds
+no words, once a transcriber's annotation such as `[silêncio]` is taken out, is answered 422
+`WORDLESS_TELLING` naming the frases, before anything is stored, so it never writes a stretch
+from an empty transcript.
 
 Rejected: turning the transcriber's `ValidationError` into a server failure on the chunk door.
 The ticket's own case, a recording of silence, arrives as exactly that error, so it would have

@@ -12,10 +12,10 @@ The seam is the rendered Guide prompt, `default_prompt(IRPromptKey.GUIDE)`, the 
 the team hears, and what the team hears is decided in the prompt: §2 gives the model the
 conversation, so there is no code branch below this to assert on instead.
 
-Each expectation is written down from §4 and from her prompt at the pin, never recomputed from
-ours. Where ours and hers diverge the divergence is named in the docstring rather than asserted
-away — her send-off is "gravem o ensaio de vocês, na língua de vocês" and ours hands the
-directions to the app, and ENG-835 adds no behaviour to the room.
+Each expectation is written down from §4 and from her prompt at her freeze, never recomputed
+from the rendered one. The Guide prompt the room reads is hers byte for byte
+(`docs/doctrine/FREEZE_PIN`), so there is no divergence of ours to name here, and ENG-835 adds
+no behaviour to the room.
 """
 
 from __future__ import annotations

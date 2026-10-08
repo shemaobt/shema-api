@@ -7,8 +7,9 @@ guard `scripts/check_doctrine.py` prints pointed at a document nobody here had.
 
 Vendored, not forked: the bytes come from one commit of `Tripod-Internalization`, the pin
 records which, and `scripts/sync_doctrine.py --check` is what notices an edit. Her prompts
-sit beside ours rather than replacing them — ours are derived from hers and have diverged,
-and the whole point is that "how does our Guide prompt differ from hers" is a `diff`.
+sit where the room reads them, in `app/services/internalization_room/prompts/`, and are hers
+byte for byte, so a prompt that differs from hers is a failed `--check` and not a different
+Guide.
 
 Everything here calls the script's functions directly, never the CLI: `main()`'s only job
 beyond them is printing and an exit code.

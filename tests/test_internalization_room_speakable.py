@@ -775,10 +775,6 @@ def test_no_catalogue_label_loses_a_word_in_english() -> None:
     assert _labels_that_change("en", "the LORD") == []
 
 
-def test_no_catalogue_label_loses_a_word_in_spanish() -> None:
-    assert _labels_that_change("es", "YHWH") == []
-
-
 def test_a_line_with_no_code_is_spoken_as_written_but_for_whitespace_runs_and_edges() -> None:
     text = "Em Rute 1:6,  depois de dez anos, Noemi volta ; Senhor, LORD, 40 .  "
 

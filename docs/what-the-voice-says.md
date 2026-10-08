@@ -81,9 +81,11 @@ prompts already rule on:
 | `pt` | Senhor Jeová |
 | `en` | the LORD |
 
-Source, in the prompts this tree ships: the Guide's system prompt ("The divine name. The map
-writes it as YHWH — four letters no one can pronounce…") and the Validator's ("Faithful
-rendering into the session language… 'Senhor Jeová' / 'o SENHOR' (Portuguese) or 'the LORD'
-(English)"). The same two rules sit in her repository, `Tripod-Internalization` on
-`fia/pilot-2026-09`. A language outside this table — Spanish included — keeps the bare letters
-rather than guessing at a form the pilot does not speak; the other three steps still run.
+Source, in the prompts this tree ships: `app/services/internalization_room/prompts/guide_system_prompt.md:251`
+("The divine name. The map writes it as YHWH — four letters no one can pronounce…") and
+`app/services/internalization_room/prompts/validator_system_prompt.md:86` ("Faithful rendering
+into the session language… 'Senhor Jeová' / 'o SENHOR' (Portuguese) or 'the LORD' (English)").
+Both files are hers byte for byte at her freeze (`docs/doctrine/FREEZE_PIN`), so the same two
+rules sit at the same lines in her repository, `Tripod-Internalization`. A language outside
+this table — Spanish included — keeps the bare letters rather than guessing at a form the pilot
+does not speak; the other three steps still run.
