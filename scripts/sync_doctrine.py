@@ -8,10 +8,11 @@ open it.
 
 They are vendored here, not forked. The bytes come from one commit of her repository, the pin
 records repo, branch, commit and a sha256 per file, and an edit to a vendored file is a merge
-conflict rather than a decision. Her nine prompts sit where the room reads them, in
+conflict rather than a decision. Her eight prompts in use sit where the room reads them, in
 `app/services/internalization_room/prompts/`, and are hers byte for byte: no copy of ours
 stands beside them, so a prompt that differs from hers is a failed `--check` and not a
-different Guide.
+different Guide. Her ninth, the guided self-check, is retired by the production team's decision
+of 8 Oct 2026: `RETIRED_PROMPTS` names it, and `--check` fails if its file or its pin row returns.
 
 Her twenty-three golden sessions and ten Back-Translation scripts travel the same door, at
 their own paths, because a script that drifts from hers grades this room against its own
@@ -116,7 +117,6 @@ HER_PROMPTS = (
     "backtranslation_verdict_system_prompt.md",
     "book_overview_system_prompt.md",
     "classifier_system_prompt.md",
-    "draft_check_system_prompt.md",
     "fail_safe_utterances.md",
     "golden_judge_system_prompt.md",
     "guide_system_prompt.md",
@@ -125,7 +125,9 @@ HER_PROMPTS = (
 
 PROMPTS_DIR = "app/services/internalization_room/prompts"
 
-RETIRED_PROMPTS: dict[str, str] = {}
+RETIRED_PROMPTS = {
+    "draft_check_system_prompt.md": "the production team's decision of 8 Oct 2026",
+}
 
 FROZEN = {
     **{f"prompts/{name}": f"{PROMPTS_DIR}/{name}" for name in HER_PROMPTS},
@@ -562,6 +564,8 @@ def check() -> int:
     inherited = sum(1 for _value, ruling in record.values() if ruling == UNRULED)
     pending = sum(1 for claims in bar.values() if claims == [PENDING])
     print(f"the vendored doctrine matches pin {freeze.commit[:12]}")
+    retired = "; ".join(f"{name}, {why}" for name, why in RETIRED_PROMPTS.items())
+    print(f"her prompts: {len(HER_PROMPTS)} in use, {len(RETIRED_PROMPTS)} retired — {retired}")
     print(f"the model seam matches its record — {inherited} of {len(record)} rows still unruled")
     print(f"the acceptance bar is {len(lines)} lines — {pending} still PENDING")
     return 0
