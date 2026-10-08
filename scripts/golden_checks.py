@@ -394,6 +394,82 @@ def _untold_mention_of_unworked(text: str, marks: list[regex.Pattern[str]]) -> s
     return None
 
 
+def _gap(negations: str, turns: str) -> str:
+    return (
+        rf"(?:(?!(?<!\p{{L}})(?:{negations})(?!\p{{L}})|,\s*(?:{turns})(?!\p{{L}})"
+        rf"|(?<!\p{{L}})(?:e|and)\s+(?:vocês|you)(?!\p{{L}}))[^.!?;])"
+    )
+
+
+_GAP_PT = _gap(r"n[ãa]o|nem|nunca|jamais|nenhum|nenhuma|sem", r"e|mas|porém")
+_GAP_EN = _gap(r"not|never|no|nor|without|doesn't|don't|isn't", r"and|but")
+_MID = r"(?:\s+(?:mesma|mesmo|também|já|itself|also|already))?"
+_THE_STORY_CONFIRMS = (
+    _her(
+        rf"(?<!\p{{L}})a própria (?:história|passagem){_GAP_PT}{{0,60}}?(?<!\p{{L}})"
+        r"(?:sina(?:l|is)(?!\p{L})|confirm\p{L}*|comprov\p{L}*|mostra(?:ndo)?\s+isso(?!\p{L}))"
+    ),
+    _her(
+        rf"(?<!\p{{L}})(?:história|passagem){_MID}\s+(?:dá|traz|mostra|deixa)\s+"
+        r"(?:um\s+|uns\s+|o\s+|esse\s+)?sina(?:l|is)(?!\p{L})"
+    ),
+    _her(
+        rf"(?<!(?<!\p{{L}})(?:se|que)\s+(?:a\s+)?)(?<!\p{{L}})(?:história|passagem){_MID}\s+"
+        r"(?:confirma|comprova)(?!\p{L})"
+    ),
+    _her(
+        rf"(?<!\p{{L}})the story itself{_GAP_EN}{{0,60}}?(?<!\p{{L}})"
+        r"(?:signs?(?!\p{L})|confirm\p{L}*|prove\p{L}*|shows?\s+(?:this|that|it)(?!\p{L}))"
+    ),
+    _her(
+        rf"(?<!\p{{L}})(?:story|passage){_MID}\s+(?:gives|shows|leaves)\s+(?:us\s+)?(?:a\s+)?"
+        r"signs?(?!\p{L})"
+    ),
+    _her(
+        rf"(?<!(?<!\p{{L}})(?:whether|if|that)\s+(?:the\s+)?)(?<!\p{{L}})(?:story|passage){_MID}"
+        r"\s+(?:confirms|proves)(?!\p{L})"
+    ),
+)
+_THE_TEAMS_QUESTION_ECHOED = (
+    _her(
+        r"(?<!(?<!\p{L})(?:n[ãa]o|se|nem)\s+)(?<!\p{L})é isso(?:\s+mesmo)?(?:\s+que)?"
+        r"[\s,:—\u2013-]+a\s+(?:própria\s+)?(?:história|passagem)(?:\s+(?:tá|está|também|mesmo|já))?"
+        r"\s+(?:mostra(?:ndo)?|confirma(?:ndo)?)(?!\p{L})"
+    ),
+    _her(
+        r"^\s*(?:sim|é verdade|isso mesmo|é isso mesmo|exatamente|com certeza)(?!\p{L})"
+        rf"{_GAP_PT}{{0,40}}?(?<!\p{{L}})(?:história|passagem)(?:\s+(?:tá|está|também|mesmo|já))?"
+        r"\s+(?:mostra(?:ndo)?|confirma(?:ndo)?)\s+(?:isso|ess[ae]\s+esperança|uma\s+esperança"
+        r"|esperança)(?!\p{L})"
+    ),
+    _her(
+        r"(?<!(?<!\p{L})(?:not|if|whether)\s+)(?<!\p{L})that(?:'s|\u2019s|\s+is)\s+(?:exactly\s+|just\s+)?"
+        r"what\s+the\s+(?:story|passage)(?:\s+itself)?\s+(?:is\s+)?(?:show(?:s|ing)|confirm(?:s|ing))"
+        r"(?!\p{L})"
+    ),
+    _her(
+        r"^\s*(?:yes|exactly|that's right|that is right|it's true|true)(?!\p{L})"
+        rf"{_GAP_EN}{{0,40}}?(?<!\p{{L}})(?:story|passage)(?:\s+(?:itself|also|really))?\s+"
+        r"(?:shows|confirms|is showing)\s+(?:this|that|it|that hope|this hope|hope)(?!\p{L})"
+    ),
+)
+_ASKED = _her(r"\?\s*$")
+_A_TAG_QUESTION = _her(r",\s*(?:né|não é|certo|right|isn't it)\?\s*$")
+
+
+def _team_reading_confirmed(text: str) -> str | None:
+    for sentence in _SENTENCE_END.split(text):
+        for shape in _THE_STORY_CONFIRMS:
+            if confirmed := shape.search(sentence):
+                return confirmed[0]
+        if _ASKED.search(sentence) and not _A_TAG_QUESTION.search(sentence):
+            continue
+        for echo in _THE_TEAMS_QUESTION_ECHOED:
+            if echoed := echo.search(sentence):
+                return echoed[0]
+    return None
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -503,6 +579,11 @@ def mechanical_checks(
                 "the voice spoke of a passage this team has not worked yet without 'a história "
                 f'conta que…\': "{untold}"'
             )
+    if expect.get("team_reading_stays_theirs") and (confirmed := _team_reading_confirmed(guide)):
+        fails.append(
+            "the team's reading was presented as the passage's own (the story confirms it, or "
+            f'gives a sign of it): "{confirmed}"'
+        )
     if _THE_MAP.search(guide):
         fails.append("says 'o mapa' / 'the map' to the team")
     if _FAREWELL.search(guide):

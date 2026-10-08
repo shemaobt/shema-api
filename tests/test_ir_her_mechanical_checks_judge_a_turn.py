@@ -789,3 +789,78 @@ def test_a_passage_the_team_has_not_worked_is_told_her_way_a_historia_conta_que(
         ),
     ):
         assert _turn(guide=reply, expect=TOLD_AS_STORY) == _untold(sentence), reply
+
+
+def test_the_teams_reading_is_received_as_theirs_never_confirmed_by_the_story() -> None:
+    theirs = {"team_reading_stays_theirs": True}
+
+    def confirmed(words: str) -> list[str]:
+        return [
+            "the team's reading was presented as the passage's own (the story confirms it, or "
+            f'gives a sign of it): "{words}"'
+        ]
+
+    p10 = (
+        "Que bom que vocês repararam nisso. É verdade: nessa parte a história não fala o nome de "
+        "Deus. E mesmo assim vocês sentiram a esperança crescendo. A própria história dá um sinal "
+        "disso. E lá no caminho de volta, Noemi pediu descanso pra elas."
+    )
+    assert _turn(guide=p10, expect=theirs) == confirmed("A própria história dá um sinal"), (
+        "o piloto P10, 24/09, 11:09"
+    )
+    for said, words in (
+        ("É isso mesmo, a história confirma.", "história confirma"),
+        ("A história dá um sinal disso: a mulher ainda está de pé.", "história dá um sinal"),
+        ("A própria passagem confirma o que vocês sentiram.", "A própria passagem confirma"),
+        ("A própria história dá um sinal disso, não é?", "A própria história dá um sinal"),
+        ("A história também mostra sinais disso.", "história também mostra sinais"),
+        ("The story itself gives a sign of it.", "The story itself gives a sign"),
+        ("Yes, the story confirms it.", "story confirms"),
+        (
+            "A própria história, no fim, dá um sinal disso.",
+            "A própria história, no fim, dá um sinal",
+        ),
+        ("Sim, é isso que a história tá mostrando.", "é isso que a história tá mostrando"),
+        ("Sim, é isso que a história tá mostrando, né?", "é isso que a história tá mostrando"),
+        ("É isso mesmo: a história mostra essa esperança.", "É isso mesmo: a história mostra"),
+        (
+            "É verdade, a história mostra isso: a esperança está crescendo.",
+            "É verdade, a história mostra isso",
+        ),
+        (
+            "Exatamente, a passagem mostra essa esperança.",
+            "Exatamente, a passagem mostra essa esperança",
+        ),
+        ("Yes, that's what the story is showing.", "that's what the story is showing"),
+        ("Yes, the story shows that hope.", "Yes, the story shows that"),
+        ("The story itself shows this.", "The story itself shows this"),
+        ("The passage gives us a sign of that.", "passage gives us a sign"),
+        (
+            "Que bom. Exatamente, a passagem mostra essa esperança.",
+            "Exatamente, a passagem mostra essa esperança",
+        ),
+    ):
+        assert _turn(guide=said, expect=theirs) == confirmed(words), said
+    for kept in (
+        "Que bom que vocês trouxeram isso. Vocês estão vendo uma esperança pra Noemi.",
+        "A própria história deixa essa pergunta aberta.",
+        "A história não confirma nem nega isso.",
+        "A própria história não dá sinal disso.",
+        "A história não diz se a oração se cumpriu.",
+        "Vocês acham que a história confirma isso?",
+        "The story does not say whether the story confirms it.",
+        "The story itself does not give a sign.",
+        "Vocês tiraram isso da própria história, e estão vendo um sinal de esperança.",
+        "A própria história deixa isso em aberto, e vocês estão vendo nisso um sinal de esperança.",
+        "A própria história deixa isso em aberto e vocês estão vendo nisso um sinal.",
+        "A própria história deixa isso em aberto, mas vocês veem nisso um sinal.",
+        "A própria história em nenhum momento dá um sinal disso.",
+        "A própria história jamais confirma isso.",
+        "A própria história fica sem dar sinal nenhum.",
+        "Vocês acham que é isso que a história tá mostrando?",
+        "É verdade: a história mostra uma família ficando menor.",
+        "É isso que a história conta nessa parte: a família sai de Belém.",
+        "The story itself gives no sign of it.",
+        "The story itself is significant here.",
+    ):
+        assert _turn(guide=kept, expect=theirs) == [], kept
