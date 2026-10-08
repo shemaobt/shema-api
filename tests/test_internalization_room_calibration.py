@@ -33,8 +33,6 @@ PANORAMA = "OV"
 THE_TEAM_ANSWERS = "Uma pergunta curta de cada vez."
 PASSAGE = "P03"
 #: The method question as the ticket quotes it, in the two languages the room claims.
-#: Read from the ticket rather than from `bridge_calibration_question`, which this branch
-#: deletes: an expectation taken from the code under test agrees with it by construction.
 THE_METHOD_QUESTION = {
     "pt": (
         "Quando trabalharmos as passagens, qual jeito fica melhor para vocês: "

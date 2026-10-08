@@ -34,8 +34,8 @@ from tests.baker import (
 )
 
 #: A fully translated passage — pt and en both carry real text for every bead — because
-#: cases 1 and 2 assert the card in both languages. Every passage of Ruth carries both in the
-#: catalogue today, so `P01` is the first that can carry that assertion, not the only one.
+#: cases 1 and 2 assert the card in both languages. `P01` carries both in the catalogue; a
+#: passage whose entry has no Portuguese label could not carry that assertion.
 PERICOPE = "P01"
 
 DEVICE = "tablet-da-equipe-1"

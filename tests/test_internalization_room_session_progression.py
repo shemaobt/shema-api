@@ -51,7 +51,7 @@ CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND = CANON[0], CANON[1]
 
 #: The passages a team can actually finish: those `unwalkable` leaves open. For Ruth today that
-#: is all of `CANON`, and a map the room refuses would drop out of this list and not out of it.
+#: is all of `CANON`; a map the room refuses drops out of this list and stays in `CANON`.
 WALKABLE = [
     meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
 ]
