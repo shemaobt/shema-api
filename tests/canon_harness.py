@@ -1,4 +1,4 @@
-"""What a case that stands a made-up book in place of the canon needs to put the canon back.
+"""What a case that stands a made-up book in place of the canon needs: the book, and the canon back.
 
 The loader reads Marcia's maps and logs through caches, and the passages built from them are
 cached in turn, so a case that points the loader at a directory of its own has to forget
@@ -9,6 +9,7 @@ the loader gains is added in one place. Builders and constants only.
 from __future__ import annotations
 
 import shutil
+import textwrap
 from collections.abc import Callable
 from pathlib import Path
 
@@ -54,3 +55,51 @@ def the_canon_moves_on(
     monkeypatch.setattr(kept, "DEPLOYED_PIN", record)
     forget_the_canon()
     return tree
+
+
+def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
+    return textwrap.dedent(
+        f"""\
+        ---
+        type: "pericope"
+        pericope-num: "Q0{number}"
+        pericope-title: "A fixture, not canon"
+        bcv: "Fable 1:{number}-{number + 1}"
+        genre-group: "NARRATIVE"
+        genre: "HISTORICAL_NARRATIVE"
+        status: "complete"
+        sta-status: "{sta_status}"
+        ---
+
+        # Q0{number} — Fable 1:{number}-{number + 1}
+
+        ## 2. Level 1 — Whole-Passage Movement
+        ### 2.1 Prose Arc
+        Someone stands somewhere, and the telling stops there.
+
+        ### 2.2 Context
+        None. This passage exists only inside this test.
+
+        ### 2.3 Emotion / Tone / Pace
+        Flat, because nothing happens.
+
+        ### 2.4 Communicative Function
+        To be walked, or to be refused at the door of the room.
+
+        ## 3. Level 2 — Scenes / Episodes
+
+        ### Scene 1 — The only scene (v.{number}-{number + 1})
+
+        **3A — Beings**
+        [[B1-Someone]] — מִישֶׁהוּ / Someone
+
+        **3B — Places**
+        [[PL1-Somewhere]] — אֵיפֹשֶׁהוּ / Somewhere
+
+        **3E — What Happens**
+        Someone stands somewhere.
+
+        **Significant Absence**
+        Nobody says why.
+        """
+    )
