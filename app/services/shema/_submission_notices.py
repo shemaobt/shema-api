@@ -57,7 +57,6 @@ from app.db.models.shema_form import ShemaSubmission
 from app.models.shema_privacy import ShemaReader
 from app.services import authorization_service
 from app.services.notifications import get_shema_app_id
-from app.services.shema._consent import newly_shared_request
 from app.services.shema._project_notices import ProjectNoticeFacts, stage_project_notice
 from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import (
@@ -107,26 +106,58 @@ async def _recipients(
     return reached
 
 
-async def _addressing(db: AsyncSession, project: ShemaProject) -> tuple[str, str]:
-    """The Shemá app's id and the project's name as the recipients may read it.
+def _language(project: ShemaProject) -> str:
+    """The project's name as the recipients may read it, not the archived copy.
 
-    The name is not the archived copy: OBT Lab is told of an arrival and is not coordination, and
-    a sensitive project's name can name the place (OBT-560).
+    OBT Lab is told of an arrival and is not coordination, and a sensitive project's name can
+    name the place (OBT-560).
+    """
+    return language_name_for(project, ShemaReader.OTHER, fallback="") or "a project"
+
+
+async def _tell(
+    db: AsyncSession,
+    project: ShemaProject,
+    *,
+    app_key: str,
+    roles: tuple[str, ...],
+    event_type: str,
+    title: str,
+    body: str,
+    facts: ProjectNoticeFacts,
+    nobody: str,
+) -> int:
+    """Stage one notice for every holder of ``roles`` who reaches ``project``; answer how many.
+
+    Staged with ``commit=False`` by ``stage_project_notice``: the caller owns the transaction and
+    takes the commit, so the notices land with the write they announce. Returned as a count
+    rather than as rows because the number is what a test can assert and what a log line can
+    carry, and the rows belong to the people they were addressed to. A notice that reaches
+    nobody is logged as ``nobody`` says — the region has no holder of the role, which is a
+    staffing gap somebody should see.
     """
     app_id = await get_shema_app_id(db)
-    language = language_name_for(project, ShemaReader.OTHER, fallback="") or "a project"
-    return app_id, language
-
-
-def _reached_nobody(project: ShemaProject, message: str, operation: str) -> None:
-    logger.warning(
-        message,
-        extra={
-            "shema_operation": operation,
-            "shema_project_id": project.id,
-            "shema_region": project.region_key.value,
-        },
-    )
+    recipients = await _recipients(db, app_key, roles, project)
+    if not recipients:
+        logger.warning(
+            nobody,
+            extra={
+                "shema_operation": event_type,
+                "shema_project_id": project.id,
+                "shema_region": project.region_key.value,
+            },
+        )
+    for user in recipients:
+        await stage_project_notice(
+            db,
+            user_id=user.id,
+            app_id=app_id,
+            event_type=event_type,
+            title=title,
+            body=body,
+            facts=facts,
+        )
+    return len(recipients)
 
 
 async def notify_submission(
@@ -134,70 +165,47 @@ async def notify_submission(
 ) -> int:
     """Tell coordination that a Pulse arrived, and answer how many were told.
 
-    Staged with ``commit=False``: the caller owns the transaction and takes the commit, so the
-    notices and the archive land together. Returned as a count rather than as rows because the
-    number is what a test can assert and what a log line can carry, and the rows belong to the
-    people they were addressed to.
-
     Nothing here is about prayer: what the Pulse asked to share has not reached anybody yet, and
     the Resource Circle hears of it when it does (:func:`notify_shared_request`).
     """
-    app_id, language = await _addressing(db, project)
-    recipients = await _recipients(db, app_key, ARRIVAL_ROLES, project)
-    if not recipients:
-        _reached_nobody(project, "shema submission arrived and reached nobody", "notify_submission")
-    facts = ProjectNoticeFacts(
-        project_id=project.id, submitted_by=submission.submitted_by.strip() or None
+    language = _language(project)
+    return await _tell(
+        db,
+        project,
+        app_key=app_key,
+        roles=ARRIVAL_ROLES,
+        event_type=ARRIVAL_EVENT,
+        title=f"Pulse received — {language}",
+        body=(
+            f"{submission.submitted_by or 'A team leader'} submitted the monthly Pulse for "
+            f"{language}. Open the project to review it."
+        ),
+        facts=ProjectNoticeFacts(
+            project_id=project.id, submitted_by=submission.submitted_by.strip() or None
+        ),
+        nobody="shema submission arrived and reached nobody",
     )
-    for user in recipients:
-        await stage_project_notice(
-            db,
-            user_id=user.id,
-            app_id=app_id,
-            event_type=ARRIVAL_EVENT,
-            title=f"Pulse received — {language}",
-            body=(
-                f"{submission.submitted_by or 'A team leader'} submitted the monthly Pulse for "
-                f"{language}. Open the project to review it."
-            ),
-            facts=facts,
-        )
-    return len(recipients)
 
 
-async def notify_shared_request(
-    db: AsyncSession, project: ShemaProject, *, app_key: str, carries_prayer: bool, before: str
-) -> int:
-    """Tell the Resource Circle that an applied Pulse put a prayer request on the wall (OBT-566).
+async def notify_shared_request(db: AsyncSession, project: ShemaProject, *, app_key: str) -> None:
+    """Tell the Resource Circle that an applied Pulse put its prayer request on the wall (OBT-566).
 
-    Called by the apply, after the record write and inside its transaction: the notice lands with
-    the request it announces, or neither does. ``before`` is the wall's text for this project as
-    it stood ahead of that write, and ``carries_prayer`` whether the Pulse wrote a request at all
-    — the notice says *the Pulse received carries a prayer request*, so a Pulse that only
-    answered the visibility is not one. Answers how many were told, ``0`` when the wall did not
-    gain a request.
+    Called by the apply, after the record write and inside its transaction, once the Pulse wrote
+    a request and ``_consent.newly_shared_request`` says the wall gained it: the notice lands
+    with the request it announces, or neither does.
     """
-    if not carries_prayer or not newly_shared_request(project, before):
-        return 0
-    app_id, language = await _addressing(db, project)
-    recipients = await _recipients(db, app_key, PRAYER_ROLES, project)
-    if not recipients:
-        _reached_nobody(
-            project,
-            "shema submission carried a prayer request and reached nobody",
-            "notify_shared_request",
-        )
-    for user in recipients:
-        await stage_project_notice(
-            db,
-            user_id=user.id,
-            app_id=app_id,
-            event_type=PRAYER_EVENT,
-            title=f"Prayer request — {language}",
-            body=(
-                f"The Pulse received for {language} carries a prayer request the team has "
-                "shared with the network. Open the project to read it."
-            ),
-            facts=ProjectNoticeFacts(project_id=project.id),
-        )
-    return len(recipients)
+    language = _language(project)
+    await _tell(
+        db,
+        project,
+        app_key=app_key,
+        roles=PRAYER_ROLES,
+        event_type=PRAYER_EVENT,
+        title=f"Prayer request — {language}",
+        body=(
+            f"The Pulse received for {language} carries a prayer request the team has "
+            "shared with the network. Open the project to read it."
+        ),
+        facts=ProjectNoticeFacts(project_id=project.id),
+        nobody="shema submission carried a prayer request and reached nobody",
+    )

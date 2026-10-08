@@ -124,11 +124,8 @@ async def _pulse(db_session, project, *, prayer: bool) -> None:
     submission = ShemaSubmission(language_name=project.language_name, submitted_by="Kuaray")
     await notify_submission(db_session, project, submission, app_key=APP_KEY)
     if prayer:
-        # Applied, the Pulse put its request on a wall that showed none before (OBT-566).
-        project.prayer_requests = "Orem pela colheita."
-        await notify_shared_request(
-            db_session, project, app_key=APP_KEY, carries_prayer=True, before=""
-        )
+        # Applied, the Pulse put its request on the wall (OBT-566).
+        await notify_shared_request(db_session, project, app_key=APP_KEY)
     await db_session.commit()
 
 

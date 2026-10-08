@@ -44,7 +44,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, SubmissionImport
-from app.services.shema._consent import shared_prayer_text
+from app.services.shema._consent import newly_shared_request, shared_prayer_text
 from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
 from app.services.shema._progress import ProgressSource
@@ -107,9 +107,9 @@ async def _apply(
 
     **The prayer notice is staged here, between the write and the commit** (OBT-566). This is the
     moment a request reaches the wall, so the wall's text is read before the write and the
-    notice asks the record after it whether the wall gained one
-    (``_submission_notices.notify_shared_request``) — the first share included, which the notice
-    at arrival could never see.
+    record is asked after it whether the wall gained one (``_consent.newly_shared_request``) —
+    the first share included, which the notice at arrival could never see. Only a Pulse that
+    wrote a request announces one: the notice says the Pulse carries it.
 
     The write goes through ``save_project`` as the caller's own, ``readership`` included: an
     import is a person writing the record, and what that person may write is the record's rule
@@ -132,13 +132,8 @@ async def _apply(
             ),
             commit=False,
         )
-        await notify_shared_request(
-            db,
-            written,
-            app_key=app_key,
-            carries_prayer=carries_prayer_request(answers),
-            before=before,
-        )
+        if carries_prayer_request(answers) and newly_shared_request(written, before):
+            await notify_shared_request(db, written, app_key=app_key)
     except Exception:
         await db.rollback()
         raise
