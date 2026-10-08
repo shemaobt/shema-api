@@ -157,6 +157,19 @@ ROLE_PRECEDENCE = (*ROLE_KEYS, ADMIN_ROLE, GESTOR_ROLE, MESA_ROLE, EQUIPE_ROLE)
 #: (:func:`readership`).
 COORDINATION_EVERYWHERE = (ADMIN_ROLE,)
 
+#: Who reads the intercessor network — the list and one contact at a time (OBT-574). Karina,
+#: via Daniel, 6/out/2026, question 4a: *"Somente a coordenação tem acesso editar e apagar o
+#: contato do intercessor. O Resource Circle pode ver, mas não edita."* The Resource Circle
+#: reads, coordination reads what it edits, and the Admin, who edits too, reads with it. The
+#: network has no region (``docs/shema.md`` §5.7), so each of them reads all of it.
+NETWORK_READERS = frozenset({RESOURCE_CIRCLE_ROLE, COORDINATOR_ROLE, ADMIN_ROLE})
+
+#: Who writes the network — adds, edits, erases, marks a review, records or withdraws a
+#: consent (OBT-574): *só a coordenação* and the Admin. *Pode ver, mas não edita* is read
+#: whole for the Resource Circle, as Daniel read *só não podem editar* on OBT-571: no write, on
+#: no route.
+NETWORK_WRITERS = frozenset({COORDINATOR_ROLE, ADMIN_ROLE})
+
 
 class RegionScope(NamedTuple):
     """How far a caller reaches, as the two answers the scope actually has.

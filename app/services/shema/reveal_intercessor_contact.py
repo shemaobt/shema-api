@@ -12,11 +12,15 @@ the contact nor the name** — the same trade ``_scope.refuse_out_of_scope`` mak
 same reason: a log is read by more people and kept longer than a response body, so it holds
 the fact of the read and not its content.
 
-**The ``network`` consent is checked, and it is not a formality.** It is the consent to being
-held and reached at all, so a contact with no such row is one nobody agreed the platform could
-use — and reading it would be the act the row exists to authorise. The row is created with the
-person and cannot be absent for anything this module wrote; the check is what makes that true
-for anything anybody writes later.
+**The ``directory`` consent is checked, and it is not a formality** (OBT-574). Karina, via
+Daniel, 6/out/2026, question 4b: the contact is shown only if the person *"precisa ter aceitado
+aparecer no diretório"*. ``network`` is the consent to being held and reached by the Pulse;
+``directory`` is the consent to being listed and looked up by the people who read the network,
+and reading one contact is looking it up. So somebody who only agreed to receive the Pulse has
+their contact shown to nobody, whoever asks — the list already leaves them out
+(``list_intercessors``), and this is the one-person read agreeing with it. ``directory`` is
+never held without ``network``, whose withdrawal erases the person, so the narrower check
+carries the wider one.
 """
 
 from __future__ import annotations
@@ -47,9 +51,10 @@ async def reveal_intercessor_contact(
     """
     contact = await revealed_contact(db, intercessor_id)
 
-    if not await with_consent(db, ShemaConsentContext.NETWORK, ids=[intercessor_id]):
+    if not await with_consent(db, ShemaConsentContext.DIRECTORY, ids=[intercessor_id]):
         raise AuthorizationError(
-            "This contact has no standing consent to be held and reached by the network."
+            "This person has not consented to appear in the directory, so their contact is "
+            "shown to nobody."
         )
 
     logger.info(
