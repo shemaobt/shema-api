@@ -37,6 +37,10 @@ _Avoid_: project (in prose; it is the schema's word for the same entity), user, 
 The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
 _Avoid_: panel, dashboard, Mesa
 
+**Consultant**:
+A reader of every team's work in the Desk, who arrives after the fact to judge a passage: a platform role on the internalization-room app, not a link to a team, admitted to every read door and refused at every write (ADR 0054). A facilitator can hold it too and still acts only on the teams they facilitate.
+_Avoid_: observer, auditor, read-only facilitator, Consultor
+
 **Nudge**:
 A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
