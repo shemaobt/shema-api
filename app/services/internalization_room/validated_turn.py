@@ -333,6 +333,9 @@ async def _voiced_after_validation(
         )
         if not ask_for_movements:
             movements = []
+        if not draft:
+            verdict: dict[str, Any] = {}
+            break
 
         reported = her_block(TEAM_REPORTED_HEADING, telling_back)
         earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
