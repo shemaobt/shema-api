@@ -29,6 +29,7 @@ from app.services.internalization_room.back_translation import (
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
+from app.services.internalization_room.canon.kept import deployed_pin
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -401,6 +402,7 @@ async def _minted(
         language=language,
         comprehension={},
         earlier_passages=stamp,
+        canon_pin=deployed_pin(),
     )
     db.add(session)
     await db.flush()
