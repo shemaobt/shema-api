@@ -36,10 +36,14 @@ EARLIER_APPROVED_STARTED = (
     f"Started, not approved yet: Ruth 1:6{EN}14."
 )
 EARLIER_BOTH_APPROVED = f"EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1{EN}5, Ruth 1:6{EN}14."
+FAMILIARIZATION = (
+    "MOMENT: Familiarization \N{EM DASH} the whole passage; no part has been opened yet."
+)
 LEDGER_MARKERS = (
     "EARLIER PASSAGES FOR THIS TEAM",
     "WORKED WITH BY THE TEAM (engaged)",
     "NOT YET TOUCHED",
+    "MOMENT:",
 )
 
 
@@ -79,7 +83,7 @@ async def _turn(coverage_state: dict[str, str], earlier_passages: dict[str, str]
     )
 
 
-async def test_the_earlier_passages_line_follows_the_ledger_at_the_very_end(
+async def test_the_earlier_passages_line_follows_the_ledger_and_the_moment_comes_after_it(
     recording: _Recording,
 ) -> None:
     await _turn(initial_state(P), {"P01": "approved", "P02": "started"})
@@ -87,6 +91,7 @@ async def test_the_earlier_passages_line_follows_the_ledger_at_the_very_end(
     after_the_break = recording.guide[0].partition(CACHE_BREAK)[2]
     assert after_the_break == (
         f"{coverage_status_block(initial_state(P), P)}\n\n{EARLIER_APPROVED_STARTED}"
+        f"\n\n{FAMILIARIZATION}"
     ), "a linha das passagens anteriores não vinha logo depois do ledger, no fim do que o Guia lê"
 
 
@@ -152,6 +157,7 @@ async def test_the_stored_conversation_of_a_session_holds_no_room_fact_text(
     await the_team_says(client, tablet, session_id, "turno-1")
 
     assert all("EARLIER PASSAGES FOR THIS TEAM" in system for system in agent.guide_systems)
+    assert all("MOMENT: " in system for system in agent.guide_systems)
     async with per_request() as fresh:
         stored = (await get_session(fresh, session_id)).messages
     assert len(stored) >= 3
