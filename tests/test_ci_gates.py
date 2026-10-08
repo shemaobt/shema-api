@@ -157,7 +157,8 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 #: raises the migrations ceiling to fit the `-m migration` step it adds, at twice the 3m04s
 #: the whole job measured on shemaobt/shema-api#474's own CI run. ENG-1092 raises the test
 #: ceiling to 12: at ~3700 tests the step measured 6m21s on shemaobt/shema-api#534, and a
-#: run cancelled at 7m15s was the timeout doing the wrong job.
+#: run cancelled at 7m15s was the timeout doing the wrong job. ENG-1498 holds that twelve on
+#: the `Run tests` step and gives the job thirty, over an apt install seen to stall past 12m41s.
 JOB_TIMEOUT_MINUTES = {
     ("test.yml", "test"): 30,
     ("checks.yml", "checks"): 10,
@@ -274,10 +275,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
     G2 (criterion 3): ENG-980 selects out the tests that spawn processes to prove what they
     prove — they run in Migrations and Checks instead.
     """
-    steps = _workflow("test.yml")["jobs"]["test"]["steps"]
-    running_pytest = [step["run"] for step in steps if "pytest" in step.get("run", "")]
-    assert len(running_pytest) == 1, f"test.yml runs pytest in {len(running_pytest)} steps"
-    command = running_pytest[0]
+    command = _the_pytest_step()["run"]
 
     assert "-n 4" in command, f"the test step runs `{command}`"
     assert "--dist loadfile" in command, f"the test step runs `{command}`"
