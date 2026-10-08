@@ -727,6 +727,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         turn_id=turn_id or "",
+        moment=moment_view(session),
     )
 
 

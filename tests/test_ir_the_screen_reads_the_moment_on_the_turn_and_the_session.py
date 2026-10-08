@@ -96,3 +96,17 @@ async def test_the_session_read_says_where_the_last_reply_left_the_room_and_noth
     assert read.json()["moment"] == {"at": "internalization", "part": 2, "parts": 4}, (
         "o tablet que voltava para a sessão não sabia em que momento a sala estava"
     )
+
+
+async def test_saying_the_last_line_again_keeps_the_moment_the_room_is_in(
+    client: httpx.AsyncClient, db_session: AsyncSession, guide: _Guide
+) -> None:
+    tablet, session_id = await an_opened_session(client, db_session)
+    guide.says = "Muito bem. Vamos pra Internalização da cena 2."
+    await the_team_says(client, tablet, session_id, "segundo")
+
+    again = (await the_room_opens(client, tablet, session_id)).json()
+
+    assert again["moment"] == {"at": "internalization", "part": 2, "parts": 4}, (
+        "dizer de novo a última fala apagava o momento da tela"
+    )
