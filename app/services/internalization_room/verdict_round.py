@@ -130,7 +130,7 @@ async def check_the_telling_back(
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
-    told_back = segments_block(told)
+    told_back = segments_block(told, session.language)
     outcome = await run_verdict_turn(
         findings_text=findings_block(current or nuances[:1], addresses),
         scope=state.scope or session.pericope,
