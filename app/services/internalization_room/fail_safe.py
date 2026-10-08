@@ -123,15 +123,15 @@ def first(kind: FailSafe, language_code: str = FLOOR) -> str:
 def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str, str]:
     """One line for this situation, and the name the app knows it by.
 
-    Rotating with the turn is what the authored file asks for — *"vary them, don't repeat
-    the same line twice running, so the session doesn't feel robotic"* — and a room that
-    answers two failures in a row with the identical sentence sounds like a machine stuck,
-    which is the one impression the fail-safe exists to avoid.
+    ``turn`` is not a count of turns. The A family is read by the draft at which the turn
+    gave up, as her turn loop reads it (``failSafeLine(attempt)``, attempts from one): the
+    first draft says A-2, the third A-4, A-1 never, and nothing carries from one turn to the
+    next — so a Validator that refuses every draft makes each such turn say A-4, as hers would.
 
-    The inaudible family is the exception and never rotates. Her app answers every miss with
+    The inaudible family ignores ``turn``. Her app answers every miss with
     ``didntCatchThat(0)`` — in the conversation, on a telling-back with nothing told, and in
-    the check rounds — so every "couldn't hear" is her first D line, whatever ``turn`` says.
-    The other two D lines stay in her file and are simply never chosen.
+    the check rounds — so every "couldn't hear" is her first D line, D-1. The other two D
+    lines stay in her file and are simply never chosen.
 
     The name is what the app asks for: the tablet hands it back to `/fixed-lines/{line}`,
     which voices the line from the text this server was deployed with, so a line she
