@@ -1,7 +1,7 @@
 """Play her golden sessions through a room by text, and leave a report directory per run.
 
 The scripts are hers, vendored byte for byte at `golden/sessions/` under the pin in
-`docs/doctrine/DOCTRINE_PIN`: the exact words the team says, turn by turn, with the room-notes
+`docs/doctrine/FREEZE_PIN`: the exact words the team says, turn by turn, with the room-notes
 her app hands the Guide — a kickoff, the team speaking their own language for N seconds, an
 interruption. They are played through the room's **Golden doors**, `golden/session` and
 `golden/turn` under the base URL, with the requests her own runner sends
@@ -11,11 +11,11 @@ interruption. They are played through the room's **Golden doors**, `golden/sessi
         --base-url http://127.0.0.1:8044/api/internalization-room \\
         [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>]
 
-One command is the five, as `npm run golden` is on her side; `--only` names one of them and
-`--script <path>` plays a script from anywhere. Per turn the runner prints the outcome, the
-wall clock and the faults her mechanical checks name, and one `[llm-usage]` line per model
-call the room reported. A session the room refuses — a pericope this canon does not hold — is
-one line of the report, not the end of the run.
+One command is every session in `golden/sessions/`, as `npm run golden` is on her side;
+`--only` names one of them and `--script <path>` plays a script from anywhere. Per turn the
+runner prints the outcome, the wall clock and the faults her mechanical checks name, and one
+`[llm-usage]` line per model call the room reported. A session the room refuses — a pericope
+this canon does not hold — is one line of the report, not the end of the run.
 
 `--out` defaults to `golden/reports/<date>/`, committed, so two runs a week apart can be
 compared by a person who was not in the room. Per session it holds `<name>.<stamp>.json`, one
@@ -695,7 +695,7 @@ async def rejudge(args: argparse.Namespace) -> int:
     """Her judge over a run already on disk, with the room left alone.
 
     A judge prompt that changes, or a rung that does, changes the verdict and not the
-    transcript; and a run's verdict can be asked for twice without paying the five sessions
+    transcript; and a run's verdict can be asked for twice without paying for the sessions
     again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
     pericope names today, and its verdict written under the same name and stamp into `--out`,
     so the file still says which transcript it judged. The mechanical column is the one the

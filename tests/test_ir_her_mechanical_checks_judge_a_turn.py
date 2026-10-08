@@ -1,9 +1,11 @@
 """Her `mechanicalChecks`, ported whole: the same turn trips here for the same reasons.
 
 The rules and the messages are hers, read from `src/golden/run.ts` in
-`shemaobt/Tripod-Internalization` at the pinned commit and kept in her words, because a
-report of ours is read beside one of hers. No check is added, none is dropped, none is
-loosened. The turns below are shaped after `golden/sessions/P01-understand-first.json`.
+`shemaobt/Tripod-Internalization` at `533b6e3`, the commit `docs/doctrine/DOCTRINE_PIN` names,
+and kept in her words, because a report of ours is read beside one of hers. Her runner at the
+freeze (18fa7c4) has more checks than the seven ported here. No check is added, none is
+dropped, none is loosened. The turns below are shaped after
+`golden/sessions/P01-understand-first.json`.
 """
 
 from __future__ import annotations
