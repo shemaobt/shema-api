@@ -84,6 +84,19 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                     },
                 )
                 return
+            if outcome.used_fail_safe and not outcome.verdict:
+                logger.warning(
+                    "Prepared opening fell to the fail-safe on an unreadable Validator reply "
+                    "for session %s, pericope %s: the draft was never judged",
+                    panorama_session_id,
+                    pericope,
+                    extra={
+                        "session_id": panorama_session_id,
+                        "pericope": pericope,
+                        "reason": "unreadable Validator reply",
+                    },
+                )
+                return
             if outcome.used_fail_safe:
                 reason = (
                     ", ".join(str(issue.get("problem", "?")) for issue in outcome.issues)

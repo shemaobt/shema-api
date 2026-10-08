@@ -61,6 +61,7 @@ async def test_a_refused_opening_names_the_session_the_pericope_and_the_reason(
             transcript="",
             used_fail_safe=True,
             draft="Vamos começar pela Familiarização.",
+            verdict="regenerate",
             issues=[{"problem": "imported_knowledge"}],
         )
 
@@ -122,6 +123,30 @@ async def test_an_empty_draft_after_a_redraft_does_not_blame_the_issues_that_red
     assert "imported_knowledge" not in str(record.__dict__["reason"])
 
 
+async def test_an_opening_whose_validator_reply_could_not_be_read_is_not_logged_as_a_refusal(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    db_session.add(_panorama())
+    await db_session.commit()
+    unreadable = {"issues": [{"problem": "imported_knowledge"}]}
+    agent = the_agent_answers(monkeypatch, FakeAgent(verdicts=[unreadable]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await prepare_opening("panorama-1", pericope="P01")
+
+    assert agent.calls == ["guide", "validator"]
+    (record,) = _warnings(caplog)
+    assert record.getMessage() == (
+        "Prepared opening fell to the fail-safe on an unreadable Validator reply for session "
+        "panorama-1, pericope P01: the draft was never judged"
+    ), "a reply the room could not read was logged as the Validator refusing the draft"
+    assert record.__dict__["session_id"] == "panorama-1"
+    assert record.__dict__["pericope"] == "P01"
+    assert record.__dict__["reason"] == "unreadable Validator reply"
+
+
 async def test_an_opening_the_validator_refused_is_still_logged_as_the_validators(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -155,6 +180,7 @@ async def test_a_refused_opening_still_leaves_the_session_with_nothing_prepared(
             transcript="",
             used_fail_safe=True,
             draft="Vamos começar pela Familiarização.",
+            verdict="regenerate",
             issues=[{"problem": "imported_knowledge"}],
         )
 
