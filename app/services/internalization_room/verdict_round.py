@@ -104,7 +104,7 @@ async def check_the_telling_back(
         told,
         current_parts(takes),
         scene_titles(session),
-        session.language,
+        language,
     )
     if not state.already_analysed(told):
         read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
@@ -131,7 +131,7 @@ async def check_the_telling_back(
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
-    told_back = segments_block(told, session.language)
+    told_back = segments_block(told, language)
     outcome = await run_verdict_turn(
         findings_text=findings_block(current or nuances[:1], addresses),
         scope=state.scope or session.pericope,

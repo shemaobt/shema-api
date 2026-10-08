@@ -30,22 +30,27 @@ from app.services.internalization_room import (
     verdict_round,
 )
 from app.services.internalization_room import prepare_opening as prepare_opening_module
+from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
 from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import (
+    heard_every_part,
+    press_terminei,
     rehearsed_in_parts,
+    rehearsed_in_parts_of,
     room_client,
     the_analyst_is_scripted,
     the_room_speaks,
 )
 from tests.text_seam_harness import ScriptedAgent, the_models_answer
-from tests.turn_harness import settings, the_room_agent_is, told_stretches
+from tests.turn_harness import NOTHING_TOLD_BACK, settings, the_room_agent_is, told_stretches
 
 PANORAMA = "OV-Ruth"
 PASSAGE = "P03"
+TITLED = "P02"
 PORTUGUESE = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 FLOORS = [("en", "English"), ("pt", "Brazilian Portuguese")]
@@ -358,3 +363,55 @@ async def test_an_opening_prepared_on_a_row_stored_in_spanish_is_written_in_the_
     )
     stored = await get_session(db_session, "panorama-es")
     assert stored.prepared_speech == "Bem-vindos de volta."
+
+
+@pytest.mark.parametrize("floor", ["en", "pt"])
+async def test_the_note_a_verdict_keeps_on_a_row_stored_in_spanish_is_in_the_rooms_language(
+    models: _Models, monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    session = _a_telling_back_on_a_row_stored_in_spanish()
+
+    verdict = await check_the_telling_back(
+        session,
+        state=back_translation_of(session),
+        told=[],
+        takes=[],
+        settings=settings(),
+    )
+
+    assert verdict.told_back == NOTHING_TOLD_BACK[floor], (
+        "o registro do veredito guardava a nota em inglês para uma sessão guardada em espanhol"
+    )
+
+
+def _scene_title(pericope: str, scene: int, language: str) -> str | None:
+    for element in labelled_elements(pericope):
+        if element.key == f"scene:{scene}":
+            return element.label_pt if language == "pt" else element.label_en
+    return None
+
+
+@pytest.mark.parametrize(("floor", "part"), [("en", "part 2"), ("pt", "a parte 2")])
+async def test_a_part_is_named_in_the_rooms_language_on_a_row_stored_in_spanish(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str, part: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    analyst = the_analyst_is_scripted(monkeypatch)
+    room = the_room_speaks(monkeypatch)
+    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED)
+    session.language = "es"
+    await db_session.commit()
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "o pedido das noras", "chunk": 5}]}
+    ]
+
+    async with room_client(db_session, monkeypatch) as door:
+        pressed = await press_terminei(
+            door, session.id, report=await heard_every_part(db_session, session.id)
+        )
+
+    assert pressed.status_code == 200, pressed.text
+    assert f"{part} — {_scene_title(TITLED, 2, floor)}" in room.briefs[-1], (
+        "o veredito de uma sessão guardada em espanhol nomeava a parte na língua errada"
+    )
