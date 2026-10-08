@@ -22,7 +22,11 @@ from app.services.oral_collector.recording_service import (
     retries=3,
 )
 async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
-    """Mark a recording confirm-upload checked and published as verified, and notify."""
+    """Mark a recording confirm-upload checked and published as verified, and notify.
+
+    A recording the job cannot mark verified keeps its status, and its owner is told to keep
+    the local recording, since only `verified` lets the phone free it.
+    """
     payload = UploadConfirmedPayload.model_validate(ctx.event.data)
 
     async def _finalize_verified() -> str | None:
@@ -47,9 +51,10 @@ async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
             "Please keep the local recording and retry the upload.",
         )
 
-    if status == UploadStatus.UPLOAD_FAILED:
-        await step.run("notify-upload-refused", _notify_refused)
+    if status is None:
+        return str(status)
     if status != UploadStatus.VERIFIED:
+        await step.run("notify-upload-refused", _notify_refused)
         return str(status)
 
     async def _notify() -> None:

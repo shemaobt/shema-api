@@ -76,6 +76,10 @@ ERROR_CODE_UNREADABLE_REPLY: Final = "UNREADABLE_REPLY"
 #: response to every other refusal.
 ERROR_CODE_DEVICE_REVOKED: Final = "DEVICE_REVOKED"
 
+ERROR_CODE_UPLOAD_OBJECT_MISSING: Final = "UPLOAD_OBJECT_MISSING"
+ERROR_CODE_UPLOAD_SIZE_MISMATCH: Final = "UPLOAD_SIZE_MISMATCH"
+ERROR_CODE_UPLOAD_CHECKSUM_MISMATCH: Final = "UPLOAD_CHECKSUM_MISMATCH"
+
 
 class AuthenticationError(Exception):
     pass
@@ -331,7 +335,14 @@ class SecondaryClassificationConflictError(ValidationError):
 
 
 class UploadNotConfirmed(ValidationError):
-    pass
+    """confirm-upload refused the uploaded object, and `code` names the check it failed.
+
+    Still a 400. Its own codes because the app tells the person why, without reading the words.
+    """
+
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
 
 
 class SegmentClassificationConflictError(ValidationError):
@@ -442,6 +453,13 @@ async def handle_stretch_no_longer_counts(
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=_error_body(str(exc), ERROR_CODE_STRETCH_NO_LONGER_COUNTS),
+    )
+
+
+async def handle_upload_not_confirmed(_request: Request, exc: UploadNotConfirmed) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), exc.code),
     )
 
 
@@ -613,6 +631,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
     app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
+    app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
     app.add_exception_handler(StoredAnswer, handle_stored_answer)  # type: ignore[arg-type]

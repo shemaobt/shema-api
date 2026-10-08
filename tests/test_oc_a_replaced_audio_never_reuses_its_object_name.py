@@ -501,24 +501,33 @@ async def test_confirm_upload_of_the_declared_size_and_crc32c_answers_the_new_ur
 
 
 async def _assert_refused_and_untouched(
-    db: AsyncSession, bucket: _Bucket, rec_id: str, response: httpx.Response, old_name: str
+    db: AsyncSession,
+    bucket: _Bucket,
+    rec_id: str,
+    response: httpx.Response,
+    old_name: str,
+    pending: str,
+    reason: str,
 ) -> None:
-    assert response.status_code == 400
+    assert (response.status_code, response.json()["code"]) == (400, reason)
     stored = await _row(db, rec_id)
     assert stored.gcs_url == _url(old_name)
     assert bucket.objects[old_name] == OLD_AUDIO
-    assert stored.upload_status == UploadStatus.UPLOAD_FAILED
+    assert stored.upload_status == UploadStatus.VERIFIED
+    assert (stored.upload_error, stored.pending_blob_name) == (None, pending)
 
 
 async def test_confirm_upload_with_no_object_is_refused_and_the_recording_keeps_its_audio(
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
 ) -> None:
     device, rec = await _uploaded(db_session, bucket, client)
-    await device.upload_url(rec.id)
+    name = await device.upload_url(rec.id)
 
     response = await device.confirm(rec.id)
 
-    await _assert_refused_and_untouched(db_session, bucket, rec.id, response, _todays_name(rec))
+    await _assert_refused_and_untouched(
+        db_session, bucket, rec.id, response, _todays_name(rec), name, "UPLOAD_OBJECT_MISSING"
+    )
 
 
 async def test_confirm_upload_with_an_object_of_the_wrong_size_is_refused_and_the_audio_kept(
@@ -530,7 +539,9 @@ async def test_confirm_upload_with_an_object_of_the_wrong_size_is_refused_and_th
 
     response = await device.confirm(rec.id)
 
-    await _assert_refused_and_untouched(db_session, bucket, rec.id, response, _todays_name(rec))
+    await _assert_refused_and_untouched(
+        db_session, bucket, rec.id, response, _todays_name(rec), name, "UPLOAD_SIZE_MISMATCH"
+    )
 
 
 async def test_confirm_upload_with_a_crc32c_that_does_not_match_is_refused_and_the_audio_kept(
@@ -542,7 +553,9 @@ async def test_confirm_upload_with_a_crc32c_that_does_not_match_is_refused_and_t
 
     response = await device.confirm(rec.id, crc32c=_crc32c(OLD_AUDIO))
 
-    await _assert_refused_and_untouched(db_session, bucket, rec.id, response, _todays_name(rec))
+    await _assert_refused_and_untouched(
+        db_session, bucket, rec.id, response, _todays_name(rec), name, "UPLOAD_CHECKSUM_MISMATCH"
+    )
 
 
 async def test_confirm_upload_with_a_crc32c_the_bucket_cannot_report_is_refused_and_the_audio_kept(
@@ -555,10 +568,12 @@ async def test_confirm_upload_with_a_crc32c_the_bucket_cannot_report_is_refused_
 
     response = await device.confirm(rec.id, crc32c=_crc32c(bytes(len(OLD_AUDIO))))
 
-    await _assert_refused_and_untouched(db_session, bucket, rec.id, response, _todays_name(rec))
+    await _assert_refused_and_untouched(
+        db_session, bucket, rec.id, response, _todays_name(rec), name, "UPLOAD_CHECKSUM_MISMATCH"
+    )
 
 
-async def test_a_refused_first_upload_answers_400_publishes_nothing_and_is_upload_failed(
+async def test_a_refused_first_upload_answers_its_reason_publishes_nothing_and_stays_uploading(
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
 ) -> None:
     device, rec = await _first_upload(db_session, bucket, client)
@@ -566,9 +581,79 @@ async def test_a_refused_first_upload_answers_400_publishes_nothing_and_is_uploa
 
     response = await device.confirm(rec.id)
 
-    assert response.status_code == 400
+    assert (response.status_code, response.json()["code"]) == (400, "UPLOAD_SIZE_MISMATCH")
     stored = await _row(db_session, rec.id)
-    assert (stored.gcs_url, stored.upload_status) == (None, UploadStatus.UPLOAD_FAILED)
+    assert (stored.gcs_url, stored.upload_status) == (None, UploadStatus.UPLOADING)
+
+
+async def test_a_recording_with_published_audio_keeps_its_status_when_it_asks_an_upload_url(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
+
+    await device.upload_url(rec.id)
+
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.VERIFIED
+
+
+async def test_a_recording_with_published_audio_keeps_its_status_when_it_asks_a_resumable_session(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
+
+    await device.resumable_upload_url(rec.id)
+
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.VERIFIED
+
+
+async def test_a_first_uploads_upload_url_puts_the_recording_in_uploading(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _first_upload(db_session, bucket, client)
+
+    await device.upload_url(rec.id)
+
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.UPLOADING
+
+
+async def _untouched_for(db: AsyncSession, recording_id: str, age: timedelta) -> None:
+    await db.execute(
+        text("UPDATE oc_recordings SET updated_at = :when WHERE id = :rid"),
+        {"when": datetime.now(UTC) - age - timedelta(days=1), "rid": recording_id},
+    )
+    await db.commit()
+
+
+async def test_a_replacement_never_confirmed_is_left_alone_by_the_stalled_upload_sweep(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    from app.services.oral_collector import recording_service
+
+    await make_app(db_session, app_key=OC_APP_KEY, name="Oral Collector")
+    device, rec = await _uploaded(db_session, bucket, client)
+    device.put(await device.upload_url(rec.id), NEW_AUDIO)
+    await _untouched_for(db_session, rec.id, recording_service.STALLED_UPLOAD_DEADLINE)
+
+    await recording_service.fail_stalled_uploads(db_session)
+
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.VERIFIED
+
+
+async def test_a_replacement_never_confirmed_is_never_listed_by_the_purge(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    from app.services.oral_collector import recording_service
+
+    await make_app(db_session, app_key=OC_APP_KEY, name="Oral Collector")
+    device, rec = await _uploaded(db_session, bucket, client)
+    device.put(await device.upload_url(rec.id), NEW_AUDIO)
+    await _untouched_for(db_session, rec.id, recording_service.FAILED_UPLOAD_RETENTION)
+    await recording_service.fail_stalled_uploads(db_session)
+    await _untouched_for(db_session, rec.id, recording_service.FAILED_UPLOAD_RETENTION)
+
+    assert await recording_service.purge_failed_uploads(db_session) == 0
+    assert (await _row(db_session, rec.id)).gcs_url == _url(_todays_name(rec))
+    assert bucket.objects[_todays_name(rec)] == OLD_AUDIO
 
 
 async def test_a_pending_object_naming_the_published_audio_is_never_handed_out(
@@ -592,7 +677,9 @@ async def test_confirm_upload_with_an_md5_that_does_not_match_is_refused_and_the
 
     response = await device.confirm(rec.id, md5_hash=_md5_hex(OLD_AUDIO))
 
-    await _assert_refused_and_untouched(db_session, bucket, rec.id, response, _todays_name(rec))
+    await _assert_refused_and_untouched(
+        db_session, bucket, rec.id, response, _todays_name(rec), name, "UPLOAD_CHECKSUM_MISMATCH"
+    )
 
 
 async def test_confirm_upload_with_the_md5_the_app_computed_publishes_the_object(
@@ -780,7 +867,7 @@ async def test_a_confirm_queued_before_this_deploy_is_checked_and_published_by_t
     assert await _verified_notices(db_session, rec.user_id) == [OCNotificationEvent.UPLOAD_VERIFIED]
 
 
-async def test_a_confirm_queued_before_this_deploy_with_a_wrong_object_tells_to_keep_the_recording(
+async def test_a_refused_confirm_queued_before_this_deploy_keeps_its_status_and_the_phone_its_audio(
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
 ) -> None:
     from app.inngest.upload_processing import process_upload_fn
@@ -798,8 +885,7 @@ async def test_a_confirm_queued_before_this_deploy_with_a_wrong_object_tells_to_
     await _run_job(process_upload_fn, _queued_by_the_old_confirm(rec, NEW_AUDIO))
 
     stored = await _row(db_session, rec.id)
-    assert stored.upload_status == UploadStatus.UPLOAD_FAILED
-    assert stored.gcs_url is None
+    assert (stored.gcs_url, stored.upload_status) == (None, UploadStatus.UPLOADING)
     told = await db_session.execute(
         select(Notification.event_type).where(Notification.user_id == rec.user_id)
     )
@@ -956,19 +1042,12 @@ async def test_purging_failed_uploads_removes_a_pending_object(
 ) -> None:
     from app.services.oral_collector import recording_service
 
+    await make_app(db_session, app_key=OC_APP_KEY, name="Oral Collector")
     device, rec = await _first_upload(db_session, bucket, client)
-    device.put(await device.upload_url(rec.id), NEW_AUDIO + b" and more than was declared")
-    await device.confirm(rec.id)
-    await db_session.execute(
-        text("UPDATE oc_recordings SET updated_at = :when WHERE id = :rid"),
-        {
-            "when": datetime.now(UTC)
-            - recording_service.FAILED_UPLOAD_RETENTION
-            - timedelta(days=1),
-            "rid": rec.id,
-        },
-    )
-    await db_session.commit()
+    device.put(await device.upload_url(rec.id), NEW_AUDIO)
+    await _untouched_for(db_session, rec.id, recording_service.STALLED_UPLOAD_DEADLINE)
+    await recording_service.fail_stalled_uploads(db_session)
+    await _untouched_for(db_session, rec.id, recording_service.FAILED_UPLOAD_RETENTION)
 
     assert await recording_service.purge_failed_uploads(db_session) == 1
     assert bucket.objects == {}

@@ -10,6 +10,12 @@ import google.auth.transport.requests
 from google.api_core.exceptions import NotFound
 from google.cloud import storage
 
+from app.core.exceptions import (
+    ERROR_CODE_UPLOAD_CHECKSUM_MISMATCH,
+    ERROR_CODE_UPLOAD_OBJECT_MISSING,
+    ERROR_CODE_UPLOAD_SIZE_MISMATCH,
+    UploadNotConfirmed,
+)
 from app.services.oral_collector.constants import GCS_OC_PROJECT, gcs_oc_bucket
 
 logger = logging.getLogger(__name__)
@@ -107,26 +113,37 @@ async def uploaded_object_refusal(
     expected_size_bytes: int,
     expected_md5_hash: str | None,
     expected_crc32c: str | None,
-) -> str | None:
-    def _blocking() -> str | None:
+) -> UploadNotConfirmed | None:
+    def _blocking() -> UploadNotConfirmed | None:
         client = storage.Client(project=GCS_OC_PROJECT)
         blob = client.bucket(gcs_oc_bucket()).blob(blob_name)
 
         if not blob.exists():
-            return "The uploaded audio is not in the bucket"
+            return UploadNotConfirmed(
+                "The uploaded audio is not in the bucket", ERROR_CODE_UPLOAD_OBJECT_MISSING
+            )
 
         blob.reload()
         actual_size = blob.size or 0
         if expected_size_bytes > 0 and actual_size != expected_size_bytes:
-            return f"Size mismatch: expected {expected_size_bytes}, got {actual_size}"
+            return UploadNotConfirmed(
+                f"Size mismatch: expected {expected_size_bytes}, got {actual_size}",
+                ERROR_CODE_UPLOAD_SIZE_MISMATCH,
+            )
 
         if expected_md5_hash and blob.md5_hash:
             gcs_md5_hex = base64.b64decode(blob.md5_hash).hex()
             if gcs_md5_hex != expected_md5_hash.lower():
-                return f"MD5 mismatch: client={expected_md5_hash}, gcs={gcs_md5_hex}"
+                return UploadNotConfirmed(
+                    f"MD5 mismatch: client={expected_md5_hash}, gcs={gcs_md5_hex}",
+                    ERROR_CODE_UPLOAD_CHECKSUM_MISMATCH,
+                )
 
         if expected_crc32c and blob.crc32c != expected_crc32c:
-            return f"CRC32C mismatch: client={expected_crc32c}, gcs={blob.crc32c}"
+            return UploadNotConfirmed(
+                f"CRC32C mismatch: client={expected_crc32c}, gcs={blob.crc32c}",
+                ERROR_CODE_UPLOAD_CHECKSUM_MISMATCH,
+            )
 
         return None
 

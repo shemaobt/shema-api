@@ -487,10 +487,8 @@ async def _validate_storyteller_in_project(
 async def delete_recording(db: AsyncSession, recording_id: str) -> None:
     """Delete a recording, and its objects if they ever reached the bucket.
 
-    The published object goes whenever `gcs_url` is set, whatever the upload status: a
-    replacement refused by confirm-upload leaves an `UPLOAD_FAILED` row that still owns its
-    previous, published audio, and `clear_stale_recordings` deletes that same object. The
-    pending object goes too, since an upload never confirmed leaves bytes under it.
+    The published object goes whenever `gcs_url` is set, whatever the upload status, and
+    so does the pending object, since an upload never confirmed leaves bytes under it.
 
     An upload still in flight is deleted rather than refused, since the bytes travel from the
     client to GCS over a signed URL and this API cannot cancel a transfer either way. A `PUT`
@@ -517,9 +515,10 @@ async def clear_stale_recordings(
     `purge_failed_uploads` — not this — as the routine that keeps the rows from piling up.
 
     Only `UPLOAD_FAILED` is cleared, and the client counts more things as failed than the
-    server ever will: a failure it hits before or instead of the upload leaves the server row
-    at `UPLOADING`, written back when the upload URL was issued, and that row survives this
-    call deliberately — its bytes may still be in flight. So a device listing several failed
+    server ever will: a first upload that fails before or instead of the transfer leaves the
+    server row at `UPLOADING`, written when its upload URL was issued, and that row survives
+    this call deliberately — its bytes may still be in flight. A refused replacement leaves
+    its row as it was, published audio included. So a device listing several failed
     recordings can get `deleted: 0` back, and that is the intended answer, not a bug. Ageing
     a stalled `UPLOADING` row into a failure is a separate state transition.
     """
@@ -559,10 +558,12 @@ STALLED_UPLOAD_ERROR = (
 async def fail_stalled_uploads(db: AsyncSession) -> int:
     """Fail the uploads that stopped making progress `STALLED_UPLOAD_DEADLINE` ago.
 
-    `UPLOADING` is entered when the client asks for an upload URL and left only by
+    `UPLOADING` is entered when the client asks for a first upload's URL and left only by
     `confirm-upload`, so an app that dies mid-transfer leaves a row nothing else on the server
-    moves. Fourteen days because a V4 signed URL and a resumable session URI both last at most
-    seven, so past a week the transfer provably cannot resume; the second week is grace for an
+    moves. A replacement never enters it, so a recording with published audio is never swept,
+    save a row the previous code left `UPLOADING` while replacing its audio.
+    Fourteen days because a V4 signed URL and a resumable session URI both last at most seven,
+    so past a week the transfer provably cannot resume; the second week is grace for an
     offline-first client. Staleness reads `updated_at`, so any edit counts as progress.
 
     Nothing is deleted and no blob is touched, but each owner is told once per sweep: the only
@@ -619,9 +620,10 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
 
     Removing a row whose upload never got through costs no recording. The device keeps its
     local copy until the server reports `uploaded`/`verified` *and* returns a server id, so
-    that recording is still on the phone; its healing request simply answers 404. A refused
-    replacement is different: confirm-upload leaves its row `UPLOAD_FAILED` with the previous,
-    published audio still behind `gcs_url`, and this purge deletes that audio with the row.
+    that recording is still on the phone; its healing request simply answers 404. A
+    replacement never makes a row `UPLOAD_FAILED`, so published audio is not reached this way,
+    save a row the previous code left `UPLOADING` while replacing its audio, which the sweep
+    still fails and this purge deletes with that audio.
 
     Nothing fixes the retention the way the seven-day GCS resumable session fixed the reaper's
     fourteen days: past that deadline the transfer provably could not resume, while here the
@@ -636,13 +638,13 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
     A pass takes `FAILED_UPLOAD_PURGE_BATCH` rows, oldest first, and leaves the rest to
     tomorrow's. Nothing else bounds the set, and this runs unattended: without a ceiling the
     first pass walks whatever backlog has accumulated, up to two bucket round-trips per row (a
-    refused replacement owns its published object and its pending one), in a request Cloud
-    Run kills at 300 seconds (`deploy.yml`) — which would time the Inngest step out and retry
-    the whole pass, forever, on the same oversized set. 150 rows is the ceiling that fits: 300
-    deletes at a pessimistic half-second each spend half that budget. It is also well above
-    the daily inflow, since the producers are `fail_stalled_uploads` and a refused
-    confirm-upload, and the platform does not start 150 uploads a day, so a backlog shrinks
-    with every pass instead of being held at a level the batch cannot clear.
+    row the previous code left `UPLOADING` with published audio gains a pending object when it
+    asks an upload URL again), in a request Cloud Run kills at 300 seconds (`deploy.yml`) —
+    which would time the Inngest step out and retry the whole pass, forever, on the same
+    oversized set. 150 rows is the ceiling that fits: 300 deletes at a pessimistic half-second
+    each spend half that budget. It is also well above the daily inflow, since the only
+    producer is `fail_stalled_uploads` and the platform does not start 150 uploads a day, so a
+    backlog shrinks with every pass instead of being held at a level the batch cannot clear.
 
     The deletes run on a worker thread, like every other blob call in this package
     (`gcs_utils`): a batch of blocking round-trips on the event loop would stall the uploads
@@ -711,6 +713,12 @@ async def _hand_out_blob_path(recording: OC_Recording, fmt: str) -> str:
     return recording.pending_blob_name
 
 
+def _mark_first_upload_in_flight(recording: OC_Recording) -> None:
+    """`UPLOADING` means a first upload; a recording with published audio keeps its status."""
+    if not recording.gcs_url:
+        recording.upload_status = UploadStatus.UPLOADING
+
+
 async def generate_upload_url(
     db: AsyncSession,
     recording_id: str,
@@ -745,7 +753,7 @@ async def generate_upload_url(
 
     expires_at = datetime.now(UTC) + expiry
 
-    recording.upload_status = UploadStatus.UPLOADING
+    _mark_first_upload_in_flight(recording)
     await db.commit()
 
     return UploadUrlResponse(
@@ -763,14 +771,15 @@ async def publish_upload(
     *,
     md5_hash: str | None,
     crc32c: str | None,
-) -> str | None:
+) -> UploadNotConfirmed | None:
     """Publish the uploaded audio once the bucket holds it as declared, else say why not.
 
     The object checked is the pending object; with none, the one the recording's URL names
     (a repeated confirm), else today's name (an upload started before pending objects
-    existed). A refused upload leaves the URL, the audio behind it and the pending object as
-    they were. The previous object is deleted only after the new URL is committed, and a
-    failed delete never fails the publish: the new audio is already out.
+    existed). A refused upload changes nothing on the recording: its status, its URL, the
+    audio behind it and the pending object stay as they were. The previous object is deleted
+    only after the new URL is committed, and a failed delete never fails the publish: the new
+    audio is already out.
     """
     previous = blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
     blob_path = (
@@ -786,9 +795,6 @@ async def publish_upload(
         expected_crc32c=crc32c,
     )
     if refusal is not None:
-        recording.upload_status = UploadStatus.UPLOAD_FAILED
-        recording.upload_error = refusal
-        await db.commit()
         return refusal
 
     recording.gcs_url = f"{gcs_public_base()}{blob_path}"
@@ -814,7 +820,7 @@ async def confirm_upload(
     recording = await get_recording(db, recording_id)
     refusal = await publish_upload(db, recording, md5_hash=md5_hash, crc32c=crc32c)
     if refusal is not None:
-        raise UploadNotConfirmed(refusal)
+        raise refusal
 
     payload = UploadConfirmedPayload(
         recording_id=recording_id,
@@ -841,8 +847,8 @@ async def mark_upload_verified(
     """Mark a published upload verified, and answer the recording's upload status.
 
     A row still uploading with no pending object was confirmed before confirm-upload checked
-    anything, so it is checked and published here first. Any other row that is not uploaded
-    is left as it is: nothing vouches for its audio.
+    anything, so it is checked and published here first; refused, it keeps its status. Any
+    row that is not uploaded is left as it is: nothing vouches for its audio.
     """
     recording = await db.get(OC_Recording, recording_id)
     if recording is None:
@@ -917,7 +923,7 @@ async def generate_resumable_upload_url(
         origin=origin,
     )
 
-    recording.upload_status = UploadStatus.UPLOADING
+    _mark_first_upload_in_flight(recording)
     await db.commit()
 
     return ResumableUploadUrlResponse(
