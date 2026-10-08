@@ -19,6 +19,12 @@ lists, is kept across a re-pin. The facilitator-facing element labels are the ca
 already exists: they sit in `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so
 a re-pin cannot delete them without a word.
 
+Before it overwrites, `--sync` keeps the canon it replaces: `vendor/` as it stands, with its
+pin and manifest, and the element labels beside it, are copied to `canon/kept/<old pin>/`. A
+session keeps the canon it was opened with until its passage is approved, and that copy is
+the only place its canon still exists once the pin moves. A kept tree may be dropped only once
+no open session names its pin.
+
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
 compiler's main line, when the pin leaves no consumable passage at all, and when a names list's
 bytes differ from the sha256 her `_spec/pins.json` records for it.
@@ -35,6 +41,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -185,6 +192,8 @@ def sync(pin: str | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+    if PIN_FILE.exists() and (held := pinned_commit(PIN_FILE.read_text())) != sha:
+        _keep(held)
     files = []
     for kind in KINDS:
         target = VENDOR / kind
@@ -209,6 +218,12 @@ def sync(pin: str | None = None) -> int:
     PIN_FILE.write_text(_pin_record(sha, published["meaning-map"]))
     print(f"pinned at {sha}")
     return 0
+
+
+def _keep(pin: str) -> None:
+    kept = VENDOR.parent / "kept" / pin
+    shutil.copytree(VENDOR, kept / "vendor", dirs_exist_ok=True)
+    shutil.copytree(VENDOR.parent / "element-labels", kept / "element-labels", dirs_exist_ok=True)
 
 
 def _pin_record(sha: str, maps: list[str]) -> str:

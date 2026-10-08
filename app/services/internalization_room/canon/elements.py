@@ -14,6 +14,7 @@ from app.services.internalization_room.canon.book_material import (
     PreservationRule,
     preservation_rules,
 )
+from app.services.internalization_room.canon.kept import per_canon
 from app.services.internalization_room.canon.names import being_names, thing_name
 from app.services.internalization_room.canon.parse_map import Entity, MeaningMap, load_map
 
@@ -178,7 +179,7 @@ def _rule_label(rule: PreservationRule) -> str:
     return f"{rule.kind}: {rule.note}"
 
 
-@lru_cache(maxsize=32)
+@per_canon(maxsize=32)
 def elements_for(pericope_num: str, book: str = "Ruth") -> tuple[Element, ...]:
     return tuple(elements_of(load_map(pericope_num), book=book))
 

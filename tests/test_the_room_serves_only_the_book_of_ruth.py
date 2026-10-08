@@ -8,6 +8,7 @@ import pytest
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon import book_material, parse_map
+from tests.canon_harness import forget_the_canon
 
 A_LOG_WITH_ONE_RULE_AND_A_COMPLETE_REGISTER = (
     "# Q01 — COMPILATION LOG\n\n"
@@ -47,17 +48,9 @@ def a_second_book_that_would_walk_in_every_other_way(
     )
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
-    caches = (
-        parse_map.load_map,
-        parse_map.load_book,
-        book_material.preservation_rules,
-        book_material._register_complete,
-    )
-    for cached in caches:
-        cached.cache_clear()
+    forget_the_canon()
     yield "Fable"
-    for cached in caches:
-        cached.cache_clear()
+    forget_the_canon()
 
 
 def test_a_book_that_is_not_ruth_is_refused_at_the_gate_even_when_it_is_vendored_whole(

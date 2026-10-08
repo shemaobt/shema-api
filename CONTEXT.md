@@ -131,6 +131,14 @@ _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Soun
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
 
+**Book material**:
+What the Panorama voice reads as its standard of truth for one book: the digest of every published passage in story order, then the **Preservation notes**. Built from the vendored canon at its pin, never written by hand.
+_Avoid_: book context, overview prompt, summary
+
+**Preservation notes**:
+The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)»; Ruth has 99 at the pin 5b5c8d2.
+_Avoid_: do_not_decide (the canon's field name), spoilers, constraints
+
 **Address**:
 Where a stretch sits: the take it belongs to, and its start and end in milliseconds inside
 that one file.
@@ -150,8 +158,8 @@ What an element of the Meaning Map is. Six kinds sit in a scene of the passage �
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
-_Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
+The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it; the Guide's ledger block stopped carrying it in ENG-1358, as her live ledger never prints it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+_Avoid_: current scene (the retired heading of the ledger's scene line, which the ledger no longer prints; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):
 The scene a rehearsal invitation is about: the first scene of the passage still owed a rehearsal on the turn the Guide invites, kept with the turn's record and credited when the team reports the rehearsal done. Never the **Scene pointer**, which has not settled when the invitation is spoken.
