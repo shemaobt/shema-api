@@ -135,6 +135,14 @@ _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Soun
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
 
+**Book material**:
+What the Panorama voice reads as its standard of truth for one book: the digest of every published passage in story order, then the **Preservation notes**. Built from the vendored canon at its pin, never written by hand.
+_Avoid_: book context, overview prompt, summary
+
+**Preservation notes**:
+The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)»; Ruth has 99 at the pin 5b5c8d2.
+_Avoid_: do_not_decide (the canon's field name), spoilers, constraints
+
 **Address**:
 Where a stretch sits: the take it belongs to, and its start and end in milliseconds inside
 that one file.
