@@ -224,6 +224,7 @@ def _keep(pin: str) -> None:
     kept = VENDOR.parent / "kept" / pin
     shutil.copytree(VENDOR, kept / "vendor", dirs_exist_ok=True)
     shutil.copytree(VENDOR.parent / "element-labels", kept / "element-labels", dirs_exist_ok=True)
+    shutil.copy(VENDOR.parent / "ui-labels.pt.json", kept / "ui-labels.pt.json")
 
 
 def _pin_record(sha: str, maps: list[str]) -> str:
