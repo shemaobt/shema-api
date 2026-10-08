@@ -544,33 +544,6 @@ async def test_a_raised_hand_asked_on_the_pericope_before_a_zerar_is_still_in_th
 
     after = await client.get(inbox, headers=desk, params={"team_id": team.id})
     assert after.json() == before.json()
-
-
-async def test_a_question_asked_on_a_pericope_before_a_zerar_is_still_in_the_inbox_with_that_pericope(  # noqa: E501
-    client, db_session, per_request, room_app
-) -> None:
-    team, tablet = await a_claimed_device(db_session)
-    desk, _ = await at_the_desk(db_session, room_app, team)
-    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
-    async with per_request() as fresh:
-        fresh.add(
-            IRQuestion(
-                session_id=opened["session_id"],
-                device_id="tablet-1",
-                project_id=team.id,
-                pericope=P,
-                status=IRQuestionStatus.OPEN,
-                audio_key="internalization-room/questions/mao-levantada.m4a",
-            )
-        )
-        await fresh.commit()
-
-    await zerar(client, desk, team.id, P)
-
-    after = await client.get(
-        f"{PREFIX}/facilitator/questions", headers=desk, params={"team_id": team.id}
-    )
-    assert after.status_code == 200, after.text[:300]
     assert [question["pericope"] for question in after.json()["questions"]] == [P]
 
 

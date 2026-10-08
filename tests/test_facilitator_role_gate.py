@@ -338,15 +338,22 @@ async def test_the_gate_does_not_re_read_the_role_tables_on_every_request(
     )
 
 
-async def test_the_teams_tablet_credential_cannot_read_the_facilitator_inbox(
+async def test_the_credential_a_tablet_opens_a_session_with_is_refused_on_the_facilitator_inbox(
     client, db_session
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
+    tablet_headers = team_headers(tablet)
 
+    opened = await client.post(
+        "/api/internalization-room/sessions",
+        headers=tablet_headers,
+        json={"pericope": "P01", "language": "pt"},
+    )
     refused = await client.get(
         "/api/internalization-room/facilitator/questions",
-        headers=team_headers(tablet),
+        headers=tablet_headers,
         params={"team_id": team.id},
     )
 
+    assert opened.status_code == 200, opened.text[:300]
     assert refused.status_code == 401
