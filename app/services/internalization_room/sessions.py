@@ -49,6 +49,7 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.fail_safe import FailSafe
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.live import live
 from app.services.internalization_room.passage_lines import PANORAMA
@@ -614,7 +615,7 @@ async def append_exchange(
         guide["redrafts"] = outcome.redrafts
         if outcome.used_fail_safe:
             guide.update(
-                category=outcome.fixed_line[:1],
+                category=outcome.fixed_line[:1] or str(FailSafe.UNREPAIRABLE),
                 fixed_line=outcome.fixed_line,
                 pericope=session.pericope,
                 scene=scene,
