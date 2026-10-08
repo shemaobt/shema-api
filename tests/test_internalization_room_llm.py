@@ -11,6 +11,7 @@ from pydantic import ValidationError as PydanticValidationError
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError
 from app.services.internalization_room import llm
+from app.services.internalization_room.usage import open_ledger
 
 
 def _settings(**overrides: Any) -> Settings:
@@ -978,6 +979,35 @@ async def test_a_rung_that_refuses_logs_its_usage_line_as_a_refusal_not_an_answe
     (line,) = refusing
     assert line.getMessage().startswith(
         "[llm-usage] guide refused on claude-fable-5-1 (rung 1 of 3) at high effort in "
-    ), "o degrau que recusou aparecia na linha como se tivesse respondido"
+    ), "the rung that refused read in its own line as one that had answered"
     assert line.outcome == "refused"
     assert (line.input_tokens, line.output_tokens, line.cost_usd) == (10, 0, 0.0001)
+
+
+async def test_a_refusal_that_wrote_some_words_is_logged_as_a_refusal_with_its_tokens_counted(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingWithText("claude-fable-5-1")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+    spend = open_ledger()
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    (line,) = [r for r in _usage_records(caplog) if r.rung == "claude-fable-5-1"]
+    assert line.getMessage().startswith("[llm-usage] ? refused on claude-fable-5-1 (rung 1 of 3)")
+    assert line.getMessage().endswith(
+        ": in=10 cache_read=0 cache_write=0 cache_write_5m=0 cache_write_1h=0 out=6"
+    )
+    assert line.outcome == "refused"
+    assert (line.input_tokens, line.output_tokens, line.cost_usd) == (10, 6, 0.0004)
+    assert (spend.calls, spend.input_tokens, spend.output_tokens, spend.cost_usd) == (
+        2,
+        20,
+        6,
+        0.00045,
+    ), "a rung that refused dropped out of the session's count"
