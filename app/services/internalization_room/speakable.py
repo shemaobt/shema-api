@@ -1,17 +1,17 @@
 """What the team hears, made speakable before it ever reaches a voice engine.
 
-Two things happen to the text on the way to the voice. The canon codes the maps carry — `B3`,
-`FIG_0013`, `PL_ISRAEL`, `[[B3-Naomi]]` — are removed, in every language, because a voice engine
-spells them out as letters and numbers no one on the team has a use for; the name that follows
-a link in the map prose already says what it stood for, so nothing is replaced. And the
-tetragrammaton is rendered pronounceable.
+Four rewrites, in this order, and only of what is voiced: the stored turn keeps the Guide's own
+form. Formatting marks come off and every word stays (Marcia, pilot day 1, 2026-09-09). The
+canon codes the maps carry — `B3`, `FIG_0013`, `PL_ISRAEL`, `[[B3-Naomi]]` — are removed, in
+every language, because a voice engine spells them out as letters and numbers no one on the
+team has a use for. A question folded after a colon, a semicolon or a dash is cut so it stands
+alone and is voiced with its tune (the same ruling). And the tetragrammaton is rendered
+pronounceable: the maps write "YHWH", which a voice engine reads letter by letter.
 
-The maps and the Guide write the divine name as the four consonants "YHWH", which a voice
-engine reads letter by letter — a name spelled instead of spoken, in the middle of the turn
-the map most depends on. The prompts already instruct the spoken form, but a substitution
-here is the deterministic last line of defence: any "YHWH" that slips through a corrected
-draft or a story-so-far quote is still voiced as a name, never as four letters. The table and
-its source are recorded in ``docs/divine-name-speakable-form.md``.
+The prompts already ask for plain, voice-first text; these rewrites are the deterministic last
+line of defence for anything that slips through a corrected draft or a story-so-far quote. Each
+is idempotent and never drops, reorders or invents a word. The order and the rulings are
+recorded in ``docs/divine-name-speakable-form.md``.
 """
 
 from __future__ import annotations
@@ -115,10 +115,10 @@ _SPOKEN_FORM: dict[str, str] = {
 }
 
 
-def _mend(line: str) -> str:
-    removed = _CANON_CODE.sub("", line)
-    if removed == line:
-        return line
+def _mend(text: str) -> str:
+    removed = _CANON_CODE.sub("", text)
+    if removed == text:
+        return text
     mended = _EMPTY_BRACKETS.sub("", removed)
     mended = _EMPTY_QUOTES.sub("", mended)
     mended = _DASH_PAIR.sub(" ", mended)
@@ -132,26 +132,18 @@ def _mend(line: str) -> str:
     return _EDGE_DEBRIS.sub("", mended)
 
 
-def _without_canon_codes(text: str) -> str:
-    """Remove every canon code and mend the seam, line by line.
-
-    A line with no code is returned as written, so a line the removal never touched keeps its
-    indentation and its spacing, in a text where another line did lose a code.
-    """
-    return "\n".join(_mend(line) for line in text.split("\n"))
-
-
 def speakable_text(text: str, language: str) -> str:
-    """Remove the canon codes, then replace the tetragrammaton with its spoken form.
+    """Make the text speakable: her three rewrites in her order, with our guard after the first.
 
-    A code is a bracketed link that begins with one, or a bare one with the slug attached to
-    it; it goes in every language and is never replaced by a word.
+    The marks come off first, so a code inside bold is bare when the guard looks for it; the
+    codes go next, so the seam they leave is mended before the question split reads it; the
+    divine name is rewritten last.
 
     The divine-name table is Marcia's, not invented here: it exists only where her own rebuilt
     prompts already carry the rule in the same language. A language outside that table keeps
-    the text it had, minus the codes, rather than guessing at a form the pilot does not speak.
+    the bare letters rather than guessing at a form the pilot does not speak.
     """
-    text = _without_canon_codes(text)
+    text = standalone_questions(_mend(strip_markdown(text)))
     form = _SPOKEN_FORM.get(language)
     if form is None:
         return text

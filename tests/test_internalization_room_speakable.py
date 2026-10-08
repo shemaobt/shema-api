@@ -181,12 +181,14 @@ _MENDED = [
     pytest.param("B3/B4 e B3-B4", "e", id="slash-and-hyphen-joined-codes"),
     pytest.param("Naomi, B3 ,Ruth", "Naomi, Ruth", id="space-after-the-comma-kept"),
     pytest.param("Noemi\u00a0B3\u00a0chega.", "Noemi chega.", id="non-breaking-space"),
-    pytest.param("Linha um B3\nLinha dois.", "Linha um\nLinha dois.", id="trim-per-line"),
     pytest.param(
-        "B3 abre\n  recuo B4 fica.", "abre\nrecuo fica.", id="indent-of-a-line-with-a-code"
+        "Linha um B3\nLinha dois.", "Linha um Linha dois.", id="a-code-at-the-end-of-a-line"
     ),
+    pytest.param("B3 abre\n  recuo B4 fica.", "abre recuo fica.", id="a-code-on-each-of-two-lines"),
     pytest.param(
-        "Linha um.\n  Recuo.\nTem B3.", "Linha um.\n  Recuo.\nTem.", id="other-lines-untouched"
+        "Linha um.\n  Recuo.\nTem B3.",
+        "Linha um. Recuo. Tem.",
+        id="a-code-on-the-last-of-three-lines",
     ),
     pytest.param(" [[B3-Naomi]] ", "", id="only-a-code"),
 ]
@@ -273,10 +275,13 @@ def test_no_catalogue_label_loses_a_word_in_spanish() -> None:
     assert _labels_that_change("es", "YHWH") == []
 
 
-def test_a_line_with_no_code_is_spoken_exactly_as_written() -> None:
+def test_a_line_with_no_code_is_spoken_as_written_but_for_whitespace_runs_and_edges() -> None:
     text = "Em Rute 1:6,  depois de dez anos, Noemi volta ; Senhor, LORD, 40 .  "
 
-    assert speakable_text(text, "pt") == text
+    assert (
+        speakable_text(text, "pt")
+        == "Em Rute 1:6, depois de dez anos, Noemi volta ; Senhor, LORD, 40 ."
+    )
 
 
 def test_the_divine_name_is_still_rewritten_beside_a_removed_code() -> None:
@@ -584,3 +589,198 @@ def test_formatting_marks_never_reach_the_voice_and_every_word_stays(
     text: str, expected: str
 ) -> None:
     assert strip_markdown(text) == expected
+
+
+_THE_WHOLE_TRANSFORM = [
+    pytest.param(
+        "**YHWH** cuidou deles.",
+        "pt",
+        "Senhor Jeová cuidou deles.",
+        id="bold-yhwh-is-senhor-jeova-once-the-marks-are-gone",
+    ),
+    pytest.param("*YHWH* saw it.", "en", "the LORD saw it.", id="italic-yhwh-is-the-lord"),
+    pytest.param(
+        "**Noemi pergunta:** onde você trabalhou?",
+        "pt",
+        "Noemi pergunta. Onde você trabalhou?",
+        id="marks-off-then-the-question-split",
+    ),
+    pytest.param(
+        "Lembram de **Rute 1:5**, às 10:30 — o que Noemi sentiu?",
+        "pt",
+        "Lembram de Rute 1:5, às 10:30. O que Noemi sentiu?",
+        id="time-and-verse-reference-survive-the-whole-transform",
+    ),
+    pytest.param(
+        "- Noemi pergunta: onde você trabalhou?\n- Rute responde: Boaz.",
+        "pt",
+        "Noemi pergunta. Onde você trabalhou? Rute responde: Boaz.",
+        id="a-bullet-list-of-questions-each-its-own-sentence",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, language, expected", _THE_WHOLE_TRANSFORM)
+def test_what_is_voiced_loses_its_marks_then_its_folded_questions_then_the_bare_name(
+    text: str, language: str, expected: str
+) -> None:
+    assert speakable_text(text, language) == expected
+
+
+_TURNO_2 = (
+    "Sem pressa, gente. Parece que vocês ainda estão se acertando com o aparelho — tudo bem, "
+    "isso é normal no começo. Só para lembrar: quem quiser falar comigo, toca no círculo, fala, "
+    "e toca de novo quando terminar. Não precisa esperar nada além disso. Quando estiverem "
+    "prontos, a pergunta segue de pé: o que vem à cabeça de vocês quando ouvem o nome "
+    '"Rute"? Já ouviram essa história antes? Pode falar do jeito que for.'
+)
+_TURNO_8 = (
+    "Muito bom. Quarta parte, devagar. Em Belém, Rute vai para o campo. Ela vai catar o que "
+    'sobra da colheita. Isso se chama "respigar": pegar os grãos que ficam depois da '
+    "colheita. Rute chega num campo. É o campo de um homem chamado Boaz. Boaz é parente da "
+    "família de Noemi. Boaz vê Rute. Ele é bom com ela. Ele diz: fique no meu campo. Ele dá "
+    "comida. Ele manda os trabalhadores cuidarem dela. Rute volta para casa com muito grão. "
+    "Noemi pergunta: onde você trabalhou? Rute diz o nome: Boaz. E Noemi fica com esperança. "
+    "Ela sabe que Boaz é parente. Um parente que pode ajudar a família. Vou parar aqui. "
+    "Alguma dúvida nessa parte? Depois eu conto como a história continua."
+)
+_TURNO_10 = (
+    "Ótimo. Agora a segunda metade. Boaz vê Rute no campo. Boaz é bom com ela. Ele diz: "
+    '"fique no meu campo. Aqui você está segura." Ele dá comida para Rute. E ele manda os '
+    "trabalhadores ajudarem Rute. No fim do dia, Rute volta para casa. Ela leva muito grão. "
+    'Muito mais do que um dia normal. Noemi vê tudo aquilo. Ela pergunta: "onde você '
+    'trabalhou hoje?" Rute responde com o nome: "Boaz." Noemi fica com esperança. Ela sabe '
+    "que Boaz é parente. Um parente próximo pode ajudar a família dela. Vou parar aqui. "
+    "Ficou claro? Se sim, eu conto o que vem depois."
+)
+_TURNO_12 = (
+    "Que bom. Sexta parte, devagar. E é a última. De manhã, Boaz vai até o portão da cidade e "
+    "se senta. Ali ele chama dez homens mais velhos da cidade para se sentarem com ele. Ele "
+    "fala na frente de todos. Ele quer resolver o assunto da família de Noemi. E resolve. O "
+    "povo abençoa Boaz e Rute. E a história termina em Belém. Lembram do começo? Noemi voltou "
+    "dizendo que estava vazia. No fim, ela não está mais vazia. A casa que parecia acabada "
+    "volta a ter futuro. Como acaba exatamente — quem faz o quê, o que nasce disso — o livro "
+    "guarda para o final. E vamos chegar lá juntos, passagem por passagem. Agora, parece que "
+    'vocês iam dizer algo: "é que como…". Podem terminar o pensamento?'
+)
+_TURNO_13 = (
+    "Sim. Vocês já têm o mapa da viagem: a fome, a perda, o caminho de volta, o campo de Boaz, "
+    "a noite, o portão, e a casa que fica cheia de novo. Agora é hora de entrar na história de "
+    "verdade. O próximo passo é a primeira passagem: Rute 1, versículos 1 a 5 — a fome, a "
+    "família em Moabe, e as perdas uma atrás da outra. Podem abrir a primeira passagem. Eu "
+    "encontro vocês lá."
+)
+
+_REAL_GUIDE_TURNS = [
+    pytest.param(
+        _TURNO_2,
+        _TURNO_2.replace("segue de pé: o que", "segue de pé. O que"),
+        id="turno-2",
+    ),
+    pytest.param(
+        _TURNO_8,
+        _TURNO_8.replace("Noemi pergunta: onde", "Noemi pergunta. Onde"),
+        id="turno-8",
+    ),
+    pytest.param(
+        _TURNO_10,
+        _TURNO_10.replace('Ela pergunta: "onde', 'Ela pergunta. "Onde'),
+        id="turno-10",
+    ),
+    pytest.param(_TURNO_12, _TURNO_12, id="turno-12-no-folded-question"),
+    pytest.param(_TURNO_13, _TURNO_13, id="turno-13"),
+]
+
+
+@pytest.mark.parametrize("text, expected", _REAL_GUIDE_TURNS)
+def test_a_real_guide_turn_changes_only_at_the_ruled_split(text: str, expected: str) -> None:
+    assert speakable_text(text, "pt") == expected
+
+
+_CORPUS = [
+    _TURNO_2,
+    _TURNO_8,
+    _TURNO_10,
+    _TURNO_12,
+    _TURNO_13,
+    "Quando estiverem prontos, a pergunta segue de pé: o que vem à cabeça de vocês quando ouvem "
+    'o nome "Rute"?',
+    'Noemi pergunta: "onde você trabalhou hoje?"',
+    "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
+    "- o pai morre\n- os dois filhos casam",
+    "## Segunda parte\n* a fome\n1. a perda — o que vocês sentem?\n\n__Noemi__ volta para "
+    "_Belém_ com `Rute`; e [Boaz](1) — onde está?",
+    "Primeira parte: a fome; segunda parte — a perda: o que vocês sentem?",
+    "um * só e # aqui e C# fica snake_case_name",
+    "Vocês chegaram às 10:30 da manhã? Lembram de Rute 1:5, onde Noemi fica só? Placar 2:1 — "
+    "quem ganhou?",
+    "O que Noemi — a sogra — sentiu? Noemi — a sogra — pergunta: onde você trabalhou? Pensem, "
+    "— o que sentiram?",
+    "Naomi asks: “where\N{RIGHT SINGLE QUOTATION MARK}s Boaz: here or there?” "
+    "Naomi\N{RIGHT SINGLE QUOTATION MARK}s question: where did you work? Ele "
+    "perguntou \N{LEFT SINGLE QUOTATION MARK}onde: aqui ou lá?\N{RIGHT SINGLE QUOTATION MARK}",
+    'Ele disse: "fique no meu campo. Aqui: você está segura?" Vocês viram isso: ela ficou?!',
+    "Primeira parte.\n---\nSegunda parte: o que vocês sentem?",
+]
+
+
+def _words_in_order(text: str) -> list[str]:
+    return re.findall(r"[^\W\d_]+", text.lower())
+
+
+@pytest.mark.parametrize("text", _CORPUS)
+def test_stripping_the_marks_twice_is_stripping_them_once(text: str) -> None:
+    once = strip_markdown(text)
+
+    assert strip_markdown(once) == once
+
+
+@pytest.mark.parametrize("text", _CORPUS)
+def test_standing_the_questions_alone_twice_is_doing_it_once(text: str) -> None:
+    once = standalone_questions(strip_markdown(text))
+
+    assert standalone_questions(once) == once
+
+
+@pytest.mark.parametrize("text", _CORPUS)
+def test_a_voiced_line_made_speakable_again_comes_back_equal(text: str) -> None:
+    once = speakable_text(text, "pt")
+
+    assert speakable_text(once, "pt") == once
+
+
+@pytest.mark.parametrize("text", _CORPUS)
+def test_stripping_the_marks_keeps_every_word(text: str) -> None:
+    assert sorted(_words_in_order(strip_markdown(text))) == sorted(_words_in_order(text))
+
+
+@pytest.mark.parametrize("text", _CORPUS)
+def test_standing_the_questions_alone_keeps_every_word(text: str) -> None:
+    unmarked = strip_markdown(text)
+
+    assert sorted(_words_in_order(standalone_questions(unmarked))) == sorted(
+        _words_in_order(unmarked)
+    )
+
+
+@pytest.mark.parametrize("text", _CORPUS)
+def test_the_words_are_voiced_in_the_order_they_were_written(text: str) -> None:
+    assert _words_in_order(speakable_text(text, "pt")) == _words_in_order(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("Vejam **B3** agora.", id="inside-bold"),
+        pytest.param("Vejam _B3_ agora.", id="inside-italic-the-marks-come-off-before-the-guard"),
+    ],
+)
+def test_a_code_inside_formatting_marks_is_not_voiced(text: str) -> None:
+    assert speakable_text(text, "pt") == "Vejam agora."
+
+
+def test_the_divine_name_is_rewritten_after_the_question_split() -> None:
+    assert (
+        speakable_text("**YHWH** pergunta: onde você trabalhou?", "pt")
+        == "Senhor Jeová pergunta. Onde você trabalhou?"
+    )
