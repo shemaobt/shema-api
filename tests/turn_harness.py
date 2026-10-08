@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
@@ -97,7 +96,6 @@ def the_room_agent_is(
     analyst: CallAgent | None = None,
     classifier: CallAgent | None = None,
     judge: CallAgent | None = None,
-    strays_from: Callable[[str, str], bool] | None = None,
 ) -> None:
     swapped: dict[str, Any] = {}
     if turn is not None:
@@ -108,8 +106,6 @@ def the_room_agent_is(
         swapped["classifier"] = Agent(call_agent=classifier)
     if judge is not None:
         swapped["judge"] = Agent(call_agent=judge)
-    if strays_from is not None:
-        swapped["strays_from"] = strays_from
     monkeypatch.setattr(provider, "_current", replace(provider.room_agent(), **swapped))
 
 
