@@ -69,7 +69,7 @@ _NAMED_BY_ITS_SLUG = re.compile(r"\[\[(?:FIG|CB)_[0-9]+-([^\]]+)\]\]")
 #: or a second code joined to it by a slash. A list of codes goes with its commas and its "e".
 #: `(?<!\w)` and `(?!\w)` keep the match off the middle of a word.
 _ONE_CODE = (
-    rf"\[\[{_SPACE}*{_CODE}(?:[-|][^\]]*)?{_SPACE}*\]\](?:{_SPACE}*:)?"
+    rf"\[\[{_SPACE}*{_CODE}{_SPACE}*(?:[-|][^\]]*)?\]\](?:{_SPACE}*:)?"
     rf"|(?<!\w){_CODE}(?:-\w+|/{_CODE})*(?!\w)"
 )
 _CANON_CODE = re.compile(rf"(?:{_ONE_CODE})(?:(?:,{_SPACE}*|{_SPACE}+e{_SPACE}+)(?:{_ONE_CODE}))*")
@@ -94,7 +94,7 @@ _MARK_BEFORE_CLOSE = re.compile(rf"[,;:](?={_SPACE}*[.!?])|,(?={_SPACE}*[;:])")
 _MARK_AFTER_STRONG = re.compile(rf"(?<=[!?]){_SPACE}*[,;:]")
 _SPACE_RUN = re.compile(rf"{_SPACE}{{2,}}")
 _SPACE_BEFORE_MARK = re.compile(rf"{_SPACE}+(?=[,.;:!?)\]])")
-_EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,;:\u2013—]+|[ \t\u00a0,;\u2013—]+$")
+_EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,.;:\u2013—]+|[ \t\u00a0,;\u2013—]+$")
 
 _YHWH = re.compile(r"\bYHWH\b")
 

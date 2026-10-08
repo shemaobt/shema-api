@@ -828,8 +828,26 @@ def test_a_list_of_codes_goes_with_its_commas_and_its_e() -> None:
     assert speakable_text("As figuras B3, B4 e B5 choram.", "pt") == "As figuras choram."
 
 
-def test_a_code_with_spaces_inside_its_brackets_leaves_nothing() -> None:
-    assert speakable_text("Vejam [[ B3 ]] agora.", "pt") == "Vejam agora."
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("Vejam [[ B3 ]] agora.", id="a-bare-code"),
+        pytest.param("Vejam [[ B3 - Naomi ]] agora.", id="a-code-and-its-slug"),
+    ],
+)
+def test_a_code_with_spaces_inside_its_brackets_leaves_nothing(text: str) -> None:
+    assert speakable_text(text, "pt") == "Vejam agora."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("- B3\n- Noemi volta.", id="a-bullet"),
+        pytest.param("## B3\nNoemi volta.", id="a-heading"),
+    ],
+)
+def test_a_first_line_that_held_only_a_code_leaves_no_full_stop(text: str) -> None:
+    assert speakable_text(text, "pt") == "Noemi volta."
 
 
 @pytest.mark.parametrize(
