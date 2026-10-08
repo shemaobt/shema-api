@@ -4,23 +4,44 @@ Every test here is a rule somebody wrote down about a real person, not a round t
 SQLAlchemy. The five the file exists for: a contact cannot be stored without a recorded basis;
 consenting to be listed is not consenting to be exported; the collection has no contact string
 in it; withdrawing the floor consent deletes the person; and the read is narrower than
-authentication.
+authentication — the Resource Circle reads the network, coordination and the Admin write it,
+and a contact is revealed only to somebody listed in the directory (OBT-574).
 """
 
 from __future__ import annotations
 
 from sqlalchemy import event
 
+from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_intercessor import ShemaIntercessor
 from tests.baker import make_user
 from tests.test_shema.conftest import PEOPLE, auth_header, make_intercessor, make_scoped_user
 
 
+async def _coordination(db_session, shema_app, *, email: str = "coordination@shema.test"):
+    """Whoever keeps the network: coordination writes it, and reads what it writes (OBT-574)."""
+    user = await make_scoped_user(
+        db_session, shema_app, email=email, role_key="coordinator", regions=[]
+    )
+    return user, await auth_header(db_session, user)
+
+
 async def _circle(db_session, shema_app, *, email: str = "circle@shema.test"):
+    """The Resource Circle, who reads the network and writes none of it (OBT-574)."""
     user = await make_scoped_user(
         db_session, shema_app, email=email, role_key="resourceCircle", regions=[]
     )
     return user, await auth_header(db_session, user)
+
+
+async def _in_the_directory(client, headers, **fields) -> dict:
+    """A contact who agreed to be listed — the only kind whose contact may be revealed."""
+    person = await make_intercessor(client, headers, **fields)
+    res = await client.put(
+        f"{PEOPLE}/{person['id']}/consents/directory", headers=headers, json={"basis": "said yes"}
+    )
+    assert res.status_code == 200, res.text
+    return person
 
 
 # --- consent, per context ---------------------------------------------------------------
@@ -31,7 +52,7 @@ async def test_a_person_cannot_be_stored_without_a_recorded_basis(
 ) -> None:
     """``docs/shema.md`` §10 item 8's first question, answered by making the alternative
     unrepresentable rather than by a rule a service has to follow."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     res = await client.post(
         PEOPLE,
@@ -52,7 +73,7 @@ async def test_a_basis_of_whitespace_is_a_bad_payload_and_not_a_server_fault(
     refusal is re-read rather than taken on the status code: the directory still withholds the
     person, which is how this file spells *no* ``directory`` *consent stands*. The create
     response would say so whatever the ``PUT`` wrote, so it is not what is asked."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     res = await client.post(
         PEOPLE,
@@ -83,7 +104,7 @@ async def test_the_create_grants_the_floor_consent_and_not_the_other_two(
     """A person is asked three separate questions and answering one is not answering the
     others. A create that quietly granted all three would be the single flag this design
     exists to refuse, wearing three names."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     person = await make_intercessor(client, headers)
 
@@ -102,7 +123,7 @@ async def test_consenting_to_the_directory_is_not_consenting_to_an_export(
     """
     from app.services.shema import leaving_directory
 
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers)
 
     listed = await client.put(
@@ -131,7 +152,7 @@ async def test_the_withheld_count_is_of_people_in_the_network(
     counting every row told the Resource Circle that somebody exists who never agreed even to be
     reached. Counted by row, this test read ``2``.
     """
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     listed = await make_intercessor(client, headers, name="Ana Listada", contact="ana@ex.org")
     await client.put(
         f"{PEOPLE}/{listed['id']}/consents/directory",
@@ -146,6 +167,8 @@ async def test_the_withheld_count_is_of_people_in_the_network(
 
     assert [person["name"] for person in listing["people"]] == ["Ana Listada"]
     assert listing["withheldCount"] == 1
+    _circle_user, circle_headers = await _circle(db_session, shema_app)
+    assert (await client.get(PEOPLE, headers=circle_headers)).json() == listing
 
 
 async def test_the_export_gate_is_the_query_and_the_shape_carries_no_contact(
@@ -159,7 +182,7 @@ async def test_the_export_gate_is_the_query_and_the_shape_carries_no_contact(
     """
     from app.services.shema import leaving_directory
 
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers)
     await client.put(
         f"{PEOPLE}/{person['id']}/consents/partner-export",
@@ -176,10 +199,11 @@ async def test_the_export_gate_is_the_query_and_the_shape_carries_no_contact(
 async def test_withdrawing_a_narrow_consent_deletes_the_row_and_keeps_the_person(
     db_session, client, shema_app
 ) -> None:
-    """Somebody who leaves the internal directory is still reachable — which is exactly the
-    distinction a single flag cannot express. And the row is **deleted**, not flagged: FE-44
-    §8.2's *never flagged and retained*, on a person."""
-    _user, headers = await _circle(db_session, shema_app)
+    """Somebody who leaves the internal directory is still in the network — the Pulse still
+    reaches them — which is exactly the distinction a single flag cannot express; but their
+    contact is no longer shown to anybody (OBT-574, Karina's 4b). And the row is **deleted**,
+    not flagged: FE-44 §8.2's *never flagged and retained*, on a person."""
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers)
     await client.put(
         f"{PEOPLE}/{person['id']}/consents/directory",
@@ -191,7 +215,8 @@ async def test_withdrawing_a_narrow_consent_deletes_the_row_and_keeps_the_person
 
     assert res.status_code == 204
     contact = await client.get(f"{PEOPLE}/{person['id']}/contact", headers=headers)
-    assert contact.status_code == 200
+    assert contact.status_code == 403
+    assert "maria.santos" not in contact.text
     listing = await client.get(PEOPLE, headers=headers)
     assert listing.json()["people"] == []
     assert listing.json()["withheldCount"] == 1
@@ -202,7 +227,7 @@ async def test_withdrawing_the_floor_consent_erases_the_person(
 ) -> None:
     """``network`` is the consent to being held at all, so withdrawing it removes the basis
     the row exists on — and a contact held with no basis is retained personal data."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers)
 
     res = await client.delete(f"{PEOPLE}/{person['id']}/consents/network", headers=headers)
@@ -219,7 +244,7 @@ async def test_withdrawing_from_somebody_who_is_not_there_is_a_404(
 ) -> None:
     """The subject is read before the delete, so an unknown id is a 404 naming what is
     missing and not a 204 about a row that was never there."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     res = await client.delete(f"{PEOPLE}/nobody/consents/directory", headers=headers)
 
@@ -233,7 +258,7 @@ async def test_the_directory_is_read_in_the_same_number_of_statements_whatever_i
     the whole consumer of the route. The people come in one ``select`` and the consents in
     one more, so the statement count of the read is the same for one person and for six —
     measured, rather than asserted as a number that the auth chain would make brittle."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     async def _listed(index: int) -> None:
         person = await make_intercessor(
@@ -274,7 +299,7 @@ async def test_the_directory_carries_no_contact_string_anywhere_in_it(
 ) -> None:
     """**The DoD's last line**, asserted over the serialised body rather than over a field
     list, because the claim is about the response and not about one model's keys."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers, contact="maria.santos@example.org")
     await client.put(
         f"{PEOPLE}/{person['id']}/consents/directory",
@@ -296,7 +321,7 @@ async def test_a_phone_hint_keeps_two_digits_and_the_domain_of_an_email_never_su
 ) -> None:
     """A hint separates two people with the same name and identifies nobody outside the list.
     The e-mail domain is often the employer, which is the identifying half."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers, contact="+55 11 98765-4321")
     await client.put(
         f"{PEOPLE}/{person['id']}/consents/directory", headers=headers, json={"basis": "yes"}
@@ -311,13 +336,30 @@ async def test_a_phone_hint_keeps_two_digits_and_the_domain_of_an_email_never_su
 async def test_the_real_contact_is_read_one_person_at_a_time(db_session, client, shema_app) -> None:
     """Its own route rather than a flag on the collection: a bulk read and a single read are
     different acts with different risk, and an option makes them look like one act."""
-    _user, headers = await _circle(db_session, shema_app)
-    person = await make_intercessor(client, headers)
+    _user, headers = await _coordination(db_session, shema_app)
+    person = await _in_the_directory(client, headers)
 
     res = await client.get(f"{PEOPLE}/{person['id']}/contact", headers=headers)
 
     assert res.status_code == 200
     assert res.json() == {"id": person["id"], "contact": "maria.santos@example.org"}
+
+
+async def test_a_contact_without_directory_consent_is_revealed_to_nobody(
+    db_session, client, shema_app
+) -> None:
+    """Karina, 6/out/2026, question 4b: the contact is shown only to somebody who *"precisa ter
+    aceitado aparecer no diretório"*. A person who only agreed to be reached by the Pulse holds
+    ``network`` and nothing else, and every reader of the network is refused their contact —
+    with nothing of it in the refusal."""
+    _user, headers = await _coordination(db_session, shema_app)
+    person = await make_intercessor(client, headers)
+    _circle_user, circle_headers = await _circle(db_session, shema_app)
+
+    for reader in (headers, circle_headers):
+        res = await client.get(f"{PEOPLE}/{person['id']}/contact", headers=reader)
+        assert res.status_code == 403, res.text
+        assert "maria.santos" not in res.text
 
 
 # --- the record ----------------------------------------------------------------------------
@@ -327,7 +369,7 @@ async def test_a_record_with_no_usable_channel_is_refused_naming_the_field(
     db_session, client, shema_app
 ) -> None:
     """FE-44 §9.6: *the error must say which field is missing, because the screen names it.*"""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     res = await client.post(
         PEOPLE,
@@ -349,7 +391,7 @@ async def test_an_unknown_country_is_refused_and_a_lowercase_one_is_accepted(
 ) -> None:
     """The code is what stops the network fragmenting into *Brasil* / *Brazil* / *BR*.
     Case is a typo worth accepting; prose is not."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     refused = await client.post(
         PEOPLE,
@@ -373,7 +415,7 @@ async def test_an_edit_leaves_added_at_alone_and_does_not_unflag_by_omission(
 ) -> None:
     """FE-44 §9.6's *``addedAt`` survives an edit*, and the reason ``exclude_unset`` is not
     ``exclude_none``: a partial edit of a name must not silently unflag somebody."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers, sensitive=True)
 
     res = await client.patch(
@@ -406,7 +448,7 @@ async def test_erasing_a_person_takes_their_consents_with_them(
     from app.db.models.shema_consent import ShemaIntercessorConsent
     from app.db.models.shema_intercessor import ShemaIntercessor
 
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers)
 
     res = await client.delete(f"{PEOPLE}/{person['id']}", headers=headers)
@@ -434,7 +476,7 @@ async def test_a_flagged_person_keeps_their_country_on_the_read_and_loses_it_on_
     """
     from app.services.shema import leaving_directory
 
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers, country="EG", sensitive=True)
     for context in ("directory", "partner-export"):
         await client.put(
@@ -453,18 +495,89 @@ async def test_a_flagged_person_keeps_their_country_on_the_read_and_loses_it_on_
 # --- who may reach it ------------------------------------------------------------------------
 
 
-async def test_every_other_shema_role_is_refused_the_network(db_session, client, shema_app) -> None:
-    """**The DoD's fourth line.** The network is the Resource Circle's instrument, and a
-    coordinator is refused — a real consequence, and the escape is a second grant rather than
-    a second guard. Not an admin account, or it would pass with the alias gone.
-    """
-    for role in ("coordinator", "obtLab"):
+def _network_routes(person_id: str) -> tuple[list[tuple], list[tuple]]:
+    """Every authenticated route of the network, as the reads and the writes (OBT-574)."""
+    target = f"{PEOPLE}/{person_id}"
+    reads = [("GET", PEOPLE, None), ("GET", f"{target}/contact", None)]
+    writes = [
+        (
+            "POST",
+            PEOPLE,
+            {"name": "X", "country": "BR", "contact": "x@example.org", "consentBasis": "yes"},
+        ),
+        ("PATCH", target, {"name": "Outro Nome"}),
+        ("POST", f"{target}/review", None),
+        ("PUT", f"{target}/consents/partner-export", {"basis": "yes"}),
+        ("DELETE", f"{target}/consents/directory", None),
+        ("DELETE", target, None),
+    ]
+    return reads, writes
+
+
+async def test_the_resource_circle_reads_the_network_and_writes_none_of_it(
+    db_session, client, shema_app
+) -> None:
+    """**OBT-574**, Karina's 4a: *"O Resource Circle pode ver, mas não edita."* A Circle scoped to
+    Asia reads a Brazilian contact — the network has no region — and every write is a 403 that
+    leaves the person exactly as they were. Not an admin account, which passes every guard."""
+    _user, headers = await _coordination(db_session, shema_app)
+    person = await _in_the_directory(client, headers)
+    circle = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="circle@asia.test",
+        role_key="resourceCircle",
+        regions=[ShemaRegionKey.ASIA],
+    )
+    circle_headers = await auth_header(db_session, circle)
+    reads, writes = _network_routes(person["id"])
+
+    for method, url, body in reads:
+        res = await client.request(method, url, headers=circle_headers, json=body)
+        assert res.status_code == 200, (method, url, res.text)
+    for method, url, body in writes:
+        res = await client.request(method, url, headers=circle_headers, json=body)
+        assert res.status_code == 403, (method, url)
+        assert "coordination" in res.json()["detail"]
+
+    listing = (await client.get(PEOPLE, headers=headers)).json()
+    assert [(entry["id"], entry["name"]) for entry in listing["people"]] == [
+        (person["id"], "Maria Santos")
+    ]
+
+
+async def test_coordination_and_the_admin_write_the_network(db_session, client, shema_app) -> None:
+    """Somente a coordenação — and the Admin of OBT-522, a granted role and not the platform
+    admin — adds, edits, reads back, reviews and erases a contact."""
+    for role in ("coordinator", "admin"):
         user = await make_scoped_user(
-            db_session, shema_app, email=f"{role}@net.test", role_key=role, regions=[]
+            db_session, shema_app, email=f"{role}@write.test", role_key=role, regions=[]
         )
-        res = await client.get(PEOPLE, headers=await auth_header(db_session, user))
-        assert res.status_code == 403, role
-        assert "resourceCircle" in res.json()["detail"]
+        headers = await auth_header(db_session, user)
+        person = await _in_the_directory(client, headers, contact=f"{role}.contato@example.org")
+        target = f"{PEOPLE}/{person['id']}"
+
+        assert (
+            await client.patch(target, headers=headers, json={"name": "Novo"})
+        ).status_code == 200
+        assert (await client.get(f"{target}/contact", headers=headers)).status_code == 200
+        assert (await client.post(f"{target}/review", headers=headers)).status_code == 200
+        assert (await client.delete(target, headers=headers)).status_code == 204, role
+
+
+async def test_obt_lab_reaches_nothing_of_the_network(db_session, client, shema_app) -> None:
+    """The OBT Lab neither reads nor writes the network, on any route."""
+    _user, headers = await _coordination(db_session, shema_app)
+    person = await _in_the_directory(client, headers)
+    lab = await make_scoped_user(
+        db_session, shema_app, email="lab@net.test", role_key="obtLab", regions=[]
+    )
+    lab_headers = await auth_header(db_session, lab)
+    reads, writes = _network_routes(person["id"])
+
+    for method, url, body in reads + writes:
+        res = await client.request(method, url, headers=lab_headers, json=body)
+        assert res.status_code == 403, (method, url)
 
 
 async def test_an_account_with_no_shema_grant_reaches_nothing_of_the_network(
@@ -488,7 +601,7 @@ async def test_a_null_in_a_partial_edit_is_a_refusal_and_not_a_server_fault(
     ``.strip()`` on ``None`` and the caller gets a 500 for a payload the server should have
     refused by naming the field.
     """
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await make_intercessor(client, headers)
 
     for field in ("name", "country", "contact"):

@@ -26,7 +26,16 @@ from tests.test_shema.conftest import PEOPLE, auth_header, make_intercessor, mak
 NOW = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
 
 
+async def _coordination(db_session, shema_app, *, email: str = "coordination@review.test"):
+    """Whoever keeps the network: coordination writes it, and reads what it writes (OBT-574)."""
+    user = await make_scoped_user(
+        db_session, shema_app, email=email, role_key="coordinator", regions=[]
+    )
+    return user, await auth_header(db_session, user)
+
+
 async def _circle(db_session, shema_app, *, email: str = "circle@review.test"):
+    """The Resource Circle, who reads the network and writes none of it (OBT-574)."""
     user = await make_scoped_user(
         db_session, shema_app, email=email, role_key="resourceCircle", regions=[]
     )
@@ -105,7 +114,7 @@ async def test_a_contact_untouched_for_more_than_a_year_is_due_for_review(
 ) -> None:
     """**The DoD's first line, over the wire**: the flag arrives computed; nothing in the
     console has to know what a year is."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     old = await _listed(client, headers, name="Ana Velha", contact="ana@example.org")
     fresh = await _listed(client, headers, name="Bia Nova", contact="bia@example.org")
     await _age(db_session, old["id"], added_at=_ago(400))
@@ -125,7 +134,7 @@ async def test_a_send_within_the_year_keeps_an_old_contact_off_the_review(
     db_session, client, shema_app
 ) -> None:
     """``last_sent_at`` is BE-09's to write; what is proved here is that it is read."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await _listed(client, headers)
     await _age(db_session, person["id"], added_at=_ago(700), last_sent_at=_ago(20))
 
@@ -142,7 +151,7 @@ async def test_marking_reviewed_stamps_the_row_and_clears_the_flag(
     db_session, client, shema_app
 ) -> None:
     """The stamp is read back from the table, not from the response that claims it."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await _listed(client, headers)
     await _age(db_session, person["id"], added_at=_ago(400))
 
@@ -167,7 +176,7 @@ async def test_the_review_logs_who_kept_the_person_and_not_the_person(
 ) -> None:
     """ "Revisado" keeps somebody's data for another year, so it leaves the same trace every
     other write on a person leaves: who did it and which row — never the name or the contact."""
-    user, headers = await _circle(db_session, shema_app)
+    user, headers = await _coordination(db_session, shema_app)
     person = await _listed(client, headers, name="Ana Velha", contact="ana@example.org")
     caplog.set_level(logging.INFO, logger="app.services.shema.review_intercessor")
 
@@ -187,7 +196,7 @@ async def test_the_review_logs_who_kept_the_person_and_not_the_person(
 async def test_a_review_moves_neither_added_at_nor_a_consent(db_session, client, shema_app) -> None:
     """A review is somebody deciding the person should still be held — not a new entry, and
     not a new answer from the person."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     person = await _listed(client, headers)
     long_ago = _ago(400)
     await _age(db_session, person["id"], added_at=long_ago)
@@ -205,20 +214,21 @@ async def test_a_review_moves_neither_added_at_nor_a_consent(db_session, client,
 
 
 async def test_reviewing_somebody_who_is_not_there_is_a_404(db_session, client, shema_app) -> None:
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
 
     res = await client.post(f"{PEOPLE}/nobody/review", headers=headers)
 
     assert res.status_code == 404
 
 
-async def test_only_the_resource_circle_may_mark_a_review(db_session, client, shema_app) -> None:
-    """Every other Shemá role is refused, and so is an account with none. **Never an admin**:
-    an admin passes every guard, and this test would pass with the guard deleted."""
-    _user, headers = await _circle(db_session, shema_app)
+async def test_only_coordination_and_the_admin_mark_a_review(db_session, client, shema_app) -> None:
+    """Marking a review is a write, and the Resource Circle writes none of the network (OBT-574);
+    the OBT Lab reaches none of it, and an account with no grant neither. **Never an admin**: an
+    admin passes every guard, and this test would pass with the guard deleted."""
+    _user, headers = await _coordination(db_session, shema_app)
     person = await _listed(client, headers)
 
-    for role in ("coordinator", "obtLab"):
+    for role in ("resourceCircle", "obtLab"):
         other = await make_scoped_user(
             db_session, shema_app, email=f"{role}@review.test", role_key=role, regions=[]
         )
@@ -248,7 +258,7 @@ async def test_a_withheld_person_past_a_year_is_counted_and_never_named(
     """Somebody with no ``directory`` consent is on no screen, so nobody can review them there.
     The count is what says they exist — and it is a number: the body carries no name of theirs.
     A listed person past their year is flagged on their entry and is not counted twice."""
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     hidden = await make_intercessor(
         client, headers, name="Carla Oculta", contact="carla@example.org"
     )
@@ -281,7 +291,7 @@ async def test_the_review_due_count_reads_the_same_people_as_the_withheld_count(
     choice*; the other was never in the network, so neither count announces them. Counted by row,
     this test read ``withheldCount == 2`` and ``withheldReviewDueCount == 2``.
     """
-    _user, headers = await _circle(db_session, shema_app)
+    _user, headers = await _coordination(db_session, shema_app)
     member = await make_intercessor(client, headers, name="Fabi Reservada", contact="fabi@ex.org")
     imported = ShemaIntercessor(name="Gil Importado", country="BR", contact="gil@example.org")
     db_session.add(imported)

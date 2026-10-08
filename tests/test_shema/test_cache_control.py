@@ -121,6 +121,13 @@ async def urls(db_session, server, shema_app, form_app) -> tuple[dict[str, str],
     submission_id = (await db_session.execute(select(ShemaSubmission.id))).scalar_one()
 
     person = await make_intercessor(server, headers, contact="pessoa@example.test")
+    # A contact is revealed only to somebody listed in the directory (OBT-574).
+    listed = await server.put(
+        f"{PREFIX}/prayer/intercessors/{person['id']}/consents/directory",
+        headers=headers,
+        json={"basis": "said yes"},
+    )
+    assert listed.status_code == 200, listed.text
     exit_token = await issue_exit_link(db_session, person["id"])
 
     concrete = {

@@ -43,21 +43,22 @@ def _exit(token: str) -> str:
 
 
 @pytest.fixture()
-async def circle_headers(db_session, shema_app) -> dict[str, str]:
+async def coordination_headers(db_session, shema_app) -> dict[str, str]:
+    """Whoever keeps the network: coordination writes it (OBT-574)."""
     user = await make_scoped_user(
-        db_session, shema_app, email="circle@exit.test", role_key="resourceCircle", regions=[]
+        db_session, shema_app, email="coordination@exit.test", role_key="coordinator", regions=[]
     )
     return await auth_header(db_session, user)
 
 
 @pytest.fixture()
-async def person(client, circle_headers) -> dict:
+async def person(client, coordination_headers) -> dict:
     """One contact with all three consents, so every table that can hold them does."""
-    created = await make_intercessor(client, circle_headers, contact=CONTACT)
+    created = await make_intercessor(client, coordination_headers, contact=CONTACT)
     for context in ("directory", "partner-export"):
         res = await client.put(
             f"{PEOPLE}/{created['id']}/consents/{context}",
-            headers=circle_headers,
+            headers=coordination_headers,
             json={"basis": "said yes"},
         )
         assert res.status_code == 200, res.text
@@ -275,12 +276,13 @@ def test_the_limited_exit_routes_resolve_their_dependencies() -> None:
         assert {param.name for param in route.dependant.query_params} == set()
 
 
-async def test_every_other_network_route_refuses_a_member_without_resource_circle(
-    client, db_session, shema_app, circle_headers, person
+async def test_every_other_network_route_refuses_whoever_may_not_use_it(
+    client, db_session, shema_app, coordination_headers, person
 ) -> None:
     """**The DoD's fifth line, other half**: the exit link opened two routes and nothing else.
-    Every route of the network still refuses every other Shemá role — never an admin, who
-    passes every guard and would make this pass with the guards deleted."""
+    Every route of the network still refuses the OBT Lab, and every write refuses the Resource
+    Circle, who reads the network and edits none of it (OBT-574) — never an admin, who passes
+    every guard and would make this pass with the guards deleted."""
     target = f"{PEOPLE}/{person['id']}"
     calls = [
         ("GET", PEOPLE, None),
@@ -292,12 +294,15 @@ async def test_every_other_network_route_refuses_a_member_without_resource_circl
         ("DELETE", f"{target}/consents/directory", None),
         ("POST", f"{target}/review", None),
     ]
-    for role in ("coordinator", "obtLab"):
+    reads = {("GET", PEOPLE), ("GET", f"{target}/contact")}
+    for role in ("resourceCircle", "obtLab"):
         user = await make_scoped_user(
             db_session, shema_app, email=f"{role}@exit.test", role_key=role, regions=[]
         )
         headers = await auth_header(db_session, user)
         for method, url, body in calls:
+            if role == "resourceCircle" and (method, url) in reads:
+                continue
             res = await client.request(method, url, headers=headers, json=body)
             assert res.status_code == 403, (role, method, url)
 
