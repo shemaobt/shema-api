@@ -501,10 +501,12 @@ def _report_spend(
         cache_write_1h_tokens=cache_write_1h,
         cache_read_tokens=cache_read,
     )
+    turned_away = _refused_outright(response)
     logger.info(
-        "[llm-usage] %s answered on %s (rung %s of %s)%s in %s ms, US$ %s: "
+        "[llm-usage] %s %s on %s (rung %s of %s)%s in %s ms, US$ %s: "
         "in=%s cache_read=%s cache_write=%s cache_write_5m=%s cache_write_1h=%s out=%s%s",
         role,
+        "refused" if turned_away else "answered",
         model,
         rung_number,
         len(rungs),
@@ -525,7 +527,7 @@ def _report_spend(
             "rung_fell_because": fell_because,
             "effort": effort,
             "latency_ms": latency_ms,
-            "outcome": "ok",
+            "outcome": "refused" if turned_away else "ok",
             "cost_usd": cost,
             "input_tokens": usage.input_tokens,
             "cache_read_tokens": cache_read,
