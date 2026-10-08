@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 
 from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import ElementLabelsBroken, labelled_elements
 from app.services.internalization_room.languages import FLOOR
 
@@ -93,7 +94,8 @@ def scene_titles(session: IRSession) -> list[str | None]:
     told about is how it stays there.
     """
     try:
-        elements = labelled_elements(session.pericope)
+        with reading_the_canon_of(session.canon_pin):
+            elements = labelled_elements(session.pericope)
     except ElementLabelsBroken:
         logger.exception(
             "element labels are holed for %s; the address loses its titles", session.pericope

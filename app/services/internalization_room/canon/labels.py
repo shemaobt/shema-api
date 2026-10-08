@@ -30,6 +30,7 @@ from pathlib import Path
 
 from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
+from app.services.internalization_room.canon.kept import canon_path
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.coverage import CoverageStatus
 
@@ -98,7 +99,7 @@ def labelled_elements(
     whose English is missing.
     """
     elements = elements_for(pericope_num, book)
-    for_passage = _catalogue(catalogue_dir, book).get(pericope_num)
+    for_passage = _catalogue(canon_path(catalogue_dir), book).get(pericope_num)
     if for_passage is None:
         return [_from_the_canon(element) for element in elements]
 
