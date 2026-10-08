@@ -47,7 +47,16 @@ from tests.baker import make_app, make_role
 from tests.canon_harness import the_canon_moves_on
 from tests.opening_harness import another_tablet_of, the_tablet_opens
 from tests.release_harness import P, a_claimed_device, at_the_desk, ready_session
-from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
+from tests.room_harness import (
+    heard_every_part,
+    nothing_is_read_ahead,
+    press_terminei,
+    rehearsed_in_parts,
+    room_client,
+    the_analyst_is_scripted,
+    the_bucket_is_in_memory,
+    the_room_speaks,
+)
 from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
 from tests.turn_harness import the_room_agent_is
 
@@ -360,6 +369,32 @@ async def test_an_approved_passage_opened_again_in_a_new_session_reads_the_canon
     assert KEPT_LINE in guide and KEPT_LINE in validator, (
         "a nova sessão da passagem aprovada não guardou o canon com que abriu"
     )
+
+
+async def test_the_ensaio_final_check_of_a_session_open_when_a_new_canon_is_published_reads_its_own_canon(  # noqa: E501
+    client, db_session, prompts, monkeypatch, tmp_path
+) -> None:
+    nothing_is_read_ahead(monkeypatch)
+    analyst = the_analyst_is_scripted(monkeypatch)
+    kept_session, _ = await rehearsed_in_parts(db_session, 1)
+
+    def kept(tree: Path) -> None:
+        _the_kept_p03_is_told_its_own_way(tree)
+        _the_kept_p03_has_its_own_rule_and_silence(tree)
+
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=kept)
+    fresh, _ = await rehearsed_in_parts(db_session, 1)
+    for session in (fresh, kept_session):
+        pressed = await press_terminei(
+            client, session.id, report=await heard_every_part(db_session, session.id)
+        )
+        assert pressed.status_code == 200, pressed.text[:300]
+    read = analyst.shown[-1]
+
+    assert KEPT_LINE in read, "a checagem do ensaio final leu o mapa novo"
+    assert KEPT_RULE in read, "a checagem do ensaio final leu as regras do canon novo"
+    assert KEPT_SILENCE in read, "a checagem do ensaio final leu os silêncios do canon novo"
+    assert VENDORED_LINE not in read and VENDORED_RULE not in read
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
