@@ -35,7 +35,6 @@ from app.db.models.shema_enums import (
 from app.db.models.shema_form import ShemaSubmission
 from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_notification import ShemaProjectNotice
-from app.models.shema import ShemaProjectUpdate
 from app.models.shema_need import ShemaNeedLine
 from app.services.notifications import create_notification, get_shema_app_id
 from app.services.shema import list_notification_panel, region_scope, set_region_scope
@@ -45,6 +44,7 @@ from app.services.shema._needs import URGENT_NEED_EVENT, notify_urgent, urgent_n
 from app.services.shema._submission_notices import (
     ARRIVAL_EVENT,
     PRAYER_EVENT,
+    notify_shared_request,
     notify_submission,
 )
 from tests.baker import make_user
@@ -122,16 +122,13 @@ async def _critical(db_session, project, day: date) -> None:
 
 async def _pulse(db_session, project, *, prayer: bool) -> None:
     submission = ShemaSubmission(language_name=project.language_name, submitted_by="Kuaray")
-    # The Pulse states its own consent (OBT-554): a prayer Pulse here is one the team shared.
-    written = ShemaProjectUpdate(prayer_visibility=ShemaPrayerVisibility.REDE if prayer else None)
-    await notify_submission(
-        db_session,
-        project,
-        submission,
-        app_key=APP_KEY,
-        carries_prayer=prayer,
-        written=written,
-    )
+    await notify_submission(db_session, project, submission, app_key=APP_KEY)
+    if prayer:
+        # Applied, the Pulse put its request on a wall that showed none before (OBT-566).
+        project.prayer_requests = "Orem pela colheita."
+        await notify_shared_request(
+            db_session, project, app_key=APP_KEY, carries_prayer=True, before=""
+        )
     await db_session.commit()
 
 

@@ -106,6 +106,42 @@ async def told(db_session, event_type: str) -> set[str]:
     return {row.user_id for row in rows.scalars()}
 
 
+async def a_circle(db_session, shema_app):
+    """The prayer notice's one audience, in the fixture project's region."""
+    return await make_scoped_user(
+        db_session,
+        shema_app,
+        email="circulo@shema.test",
+        role_key="resourceCircle",
+        regions=[ShemaRegionKey.SOUTH_AMERICA],
+    )
+
+
+async def apply_received(client, db_session, headers, version: int = 1):
+    """Apply the link's answer still waiting in the inbox — the coordinator's half of the link."""
+    waiting = (
+        await db_session.execute(
+            select(ShemaSubmission).where(ShemaSubmission.applied_at.is_(None))
+        )
+    ).scalar_one()
+    response = await client.post(
+        f"{SUBMISSIONS}/{waiting.id}/import", headers={**headers, "If-Match": f'"{version}"'}
+    )
+    assert response.status_code == 200, response.text
+    return response
+
+
+async def file_and_apply(client, headers, version: int = 1, **pulse):
+    """A coordinator filing a Pulse that arrived some other way — archived and applied at once."""
+    response = await client.post(
+        SUBMISSIONS,
+        json={"projectId": "guarani-mbya", "answers": answers(**pulse)},
+        headers={**headers, "If-Match": f'"{version}"'},
+    )
+    assert response.status_code == 201, response.text
+    return response
+
+
 # --- stored and versioned -------------------------------------------------------------
 
 
@@ -511,19 +547,15 @@ async def test_a_shared_prayer_request_reaches_the_resource_circle_alone(
     client, db_session, shema_app, headers, coordinator, project
 ) -> None:
     """``resourceCircle`` **alone** — the one row of FE-44 §5.8's audience table with a single
-    role in it, and not an oversight to be tidied up."""
-    circle = await make_scoped_user(
-        db_session,
-        shema_app,
-        email="circulo@shema.test",
-        role_key="resourceCircle",
-        regions=[ShemaRegionKey.SOUTH_AMERICA],
-    )
+    role in it, and not an oversight to be tidied up. Told once the Pulse is applied, and never
+    with the request's words."""
+    circle = await a_circle(db_session, shema_app)
     project.prayer_visibility = ShemaPrayerVisibility.REDE
     await db_session.commit()
     link = await a_link(client, headers)
-
     await answer(client, link["token"], prayerRequest="Orem pela seca.", prayerVisibility="rede")
+
+    await apply_received(client, db_session, headers)
 
     prayer = (
         (
@@ -539,23 +571,127 @@ async def test_a_shared_prayer_request_reaches_the_resource_circle_alone(
 
 
 @pytest.mark.parametrize("door", ["link", "import"])
+async def test_the_first_shared_request_reaches_the_circle_when_the_coordinator_applies_it(
+    client, db_session, shema_app, headers, coordinator, project, door
+) -> None:
+    """OBT-566. The project never shared a request, and this Pulse shares its own: it reaches the
+    wall when a coordinator applies it, and that is when the Resource Circle is told — once, on
+    either door. At arrival the record still said nothing, which is why the notice that fired
+    there never announced a first share."""
+    circle = await a_circle(db_session, shema_app)
+    pulse = {"prayerRequest": "Orem pela seca.", "prayerVisibility": "rede"}
+
+    if door == "link":
+        link = await a_link(client, headers)
+        response = await answer(client, link["token"], **pulse)
+        assert response.status_code == 202, response.text
+        assert await told(db_session, ARRIVAL_EVENT) == {coordinator.id}
+        assert await told(db_session, PRAYER_EVENT) == set()
+        await apply_received(client, db_session, headers)
+        again = await client.post(
+            f"{SUBMISSIONS}/{(await db_session.execute(select(ShemaSubmission))).scalar_one().id}"
+            "/import",
+            headers={**headers, "If-Match": '"2"'},
+        )
+    else:
+        await file_and_apply(client, headers, **pulse)
+        again = await client.post(
+            SUBMISSIONS,
+            json={"projectId": "guarani-mbya", "answers": answers(**pulse)},
+            headers={**headers, "If-Match": '"2"'},
+        )
+
+    assert again.status_code in (200, 201), again.text
+    prayer = (
+        (
+            await db_session.execute(
+                select(Notification).where(Notification.event_type == PRAYER_EVENT)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.user_id for row in prayer] == [circle.id]
+    wall = await client.get(f"{PREFIX}/prayer/requests", headers=headers)
+    assert "Orem pela seca." in wall.text
+
+
+@pytest.mark.parametrize("door", ["link", "import"])
+@pytest.mark.parametrize(
+    "pulse",
+    [
+        {"prayerRequest": "Orem pela colheita.", "prayerVisibility": "rede"},
+        {"prayerRequest": "Orem pela colheita."},
+    ],
+    ids=["same-text-rede", "same-text-unanswered"],
+)
+async def test_a_request_already_on_the_wall_is_not_announced_again(
+    client, db_session, shema_app, headers, coordinator, project, door, pulse
+) -> None:
+    """The request on the wall, sent again by a new Pulse that does not change its consent, is
+    not news: the wall shows what it showed before the apply, and the circle hears nothing."""
+    await a_circle(db_session, shema_app)
+    project.prayer_requests = "Orem pela colheita."
+    project.prayer_visibility = ShemaPrayerVisibility.REDE
+    await db_session.commit()
+
+    if door == "link":
+        link = await a_link(client, headers)
+        await answer(client, link["token"], **pulse)
+        await apply_received(client, db_session, headers)
+    else:
+        await file_and_apply(client, headers, **pulse)
+
+    assert await told(db_session, ARRIVAL_EVENT) == {coordinator.id}
+    assert await told(db_session, PRAYER_EVENT) == set()
+
+
+async def test_a_pulse_that_wrote_no_request_announces_none(
+    client, db_session, shema_app, headers, coordinator, project
+) -> None:
+    """The notice says *the Pulse received carries a prayer request*. A Pulse that only answered
+    the visibility carried none, so it announces nothing, even where its ``rede`` puts the
+    record's older request on the wall — that case is named in the PR, not decided here."""
+    await a_circle(db_session, shema_app)
+    project.prayer_requests = "Orem pela colheita."
+    await db_session.commit()
+    link = await a_link(client, headers)
+    await answer(client, link["token"], prayerVisibility="rede")
+
+    await apply_received(client, db_session, headers)
+
+    assert await told(db_session, PRAYER_EVENT) == set()
+
+
+async def test_a_new_request_on_a_shared_project_is_announced_when_applied(
+    client, db_session, shema_app, headers, coordinator, project
+) -> None:
+    """A new text the team shares in its own Pulse is a request the wall did not show, although
+    the project was already sharing: the circle is told when it lands, not when it arrives."""
+    circle = await a_circle(db_session, shema_app)
+    project.prayer_requests = "Orem pela colheita."
+    project.prayer_visibility = ShemaPrayerVisibility.REDE
+    await db_session.commit()
+    link = await a_link(client, headers)
+    await answer(client, link["token"], prayerRequest="Orem pela seca.", prayerVisibility="rede")
+    assert await told(db_session, PRAYER_EVENT) == set()
+
+    await apply_received(client, db_session, headers)
+
+    assert await told(db_session, PRAYER_EVENT) == {circle.id}
+
+
+@pytest.mark.parametrize("door", ["link", "import"])
 async def test_a_shared_project_does_not_lend_its_consent_to_a_pulse_that_gave_none(
     client, db_session, shema_app, headers, coordinator, project, door
 ) -> None:
-    """OBT-554, at the order that made it. Both doors stage the notice before anybody applies
-    the Pulse — the link never writes the record, and the import writes it after the archive and
-    its notices commit — so the record still holds the answer **last** month's request was
-    given. An authorization belongs to the request it was given for, and this one gave none.
+    """OBT-554, now at the apply. The record holds the answer **last** month's request was
+    given; an authorization belongs to the request it was given for, and this Pulse gave none —
+    so applying it takes the new text off the wall rather than announcing it.
 
     The coordinator is told of the arrival, which is what makes the empty prayer half the gate's
     doing rather than a notice that never ran."""
-    await make_scoped_user(
-        db_session,
-        shema_app,
-        email="circulo@shema.test",
-        role_key="resourceCircle",
-        regions=[ShemaRegionKey.SOUTH_AMERICA],
-    )
+    await a_circle(db_session, shema_app)
     project.prayer_requests = "Orem pela colheita."
     project.prayer_visibility = ShemaPrayerVisibility.REDE
     await db_session.commit()
@@ -564,13 +700,9 @@ async def test_a_shared_project_does_not_lend_its_consent_to_a_pulse_that_gave_n
         link = await a_link(client, headers)
         response = await answer(client, link["token"], prayerRequest="Orem pela seca.")
         assert response.status_code == 202, response.text
+        await apply_received(client, db_session, headers)
     else:
-        response = await client.post(
-            SUBMISSIONS,
-            json={"projectId": "guarani-mbya", "answers": answers(prayerRequest="Orem pela seca.")},
-            headers={**headers, "If-Match": '"1"'},
-        )
-        assert response.status_code == 201, response.text
+        await file_and_apply(client, headers, prayerRequest="Orem pela seca.")
 
     assert await told(db_session, ARRIVAL_EVENT) == {coordinator.id}
     assert await told(db_session, PRAYER_EVENT) == set()
@@ -591,16 +723,11 @@ async def test_a_shared_project_does_not_lend_its_consent_to_a_pulse_that_gave_n
 async def test_an_unauthorized_pulse_tells_the_circle_nothing_whatever_the_project_said_before(
     client, db_session, shema_app, headers, coordinator, project, before, pulse
 ) -> None:
-    """The submission authorizes its own request or nothing does. ``same-text-unanswered`` is
-    the request already on the record sent again: the record keeps its answer for it, but the
-    notice announces **this** Pulse's consent, and resending a text gives none."""
-    await make_scoped_user(
-        db_session,
-        shema_app,
-        email="circulo@shema.test",
-        role_key="resourceCircle",
-        regions=[ShemaRegionKey.SOUTH_AMERICA],
-    )
+    """The submission authorizes its own request or nothing does — at arrival, and once applied
+    (OBT-566). ``same-text-unanswered`` is the request already on the record sent again: the
+    record keeps its answer for it, so over a shared project it was on the wall before and is
+    after, and over an unshared one it never reaches the wall."""
+    await a_circle(db_session, shema_app)
     project.prayer_requests = "Orem pela colheita."
     project.prayer_visibility = before
     await db_session.commit()
@@ -612,20 +739,18 @@ async def test_an_unauthorized_pulse_tells_the_circle_nothing_whatever_the_proje
     assert await told(db_session, ARRIVAL_EVENT) == {coordinator.id}
     assert await told(db_session, PRAYER_EVENT) == set()
 
+    await apply_received(client, db_session, headers)
+
+    assert await told(db_session, PRAYER_EVENT) == set()
+
 
 async def test_a_leader_claiming_rede_through_the_link_does_not_by_itself_reach_the_resource_circle(
     client, db_session, shema_app, headers, coordinator, project
 ) -> None:
-    """The other half of the gate: the link is the weakest credential in the system and its
-    answer is not applied until a coordinator applies it, so ``rede`` said there reaches the
-    network's notice only once the record agrees."""
-    await make_scoped_user(
-        db_session,
-        shema_app,
-        email="circulo@shema.test",
-        role_key="resourceCircle",
-        regions=[ShemaRegionKey.SOUTH_AMERICA],
-    )
+    """The link is the weakest credential in the system and its answer is not applied until a
+    coordinator applies it, so ``rede`` said there reaches the network's notice only once the
+    record agrees — never at arrival."""
+    await a_circle(db_session, shema_app)
     link = await a_link(client, headers)
 
     response = await answer(
