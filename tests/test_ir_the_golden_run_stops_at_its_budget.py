@@ -16,26 +16,14 @@ import httpx
 import pytest
 
 from scripts import golden_runner
+from tests.golden_spend_harness import charged_call, the_room_answers
 from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, RUNNER_KEY, the_judge_answers
 
 STAMP = "2026-10-08T12-00-00"
 
 
-def _charged(role: str, cost: float | None) -> dict[str, Any]:
-    return {
-        "role": role,
-        "rung": "claude-fable-5-1",
-        "input_tokens": 1000,
-        "output_tokens": 50,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
-        "latency_ms": 1000,
-        "cost_usd": cost,
-    }
-
-
-PRICED = [_charged("guide", 2.0), _charged("validator", 1.0)]
-WITH_ONE_UNPRICED = [*PRICED, _charged("classifier", None)]
+PRICED = [charged_call("guide", 2.0), charged_call("validator", 1.0)]
+WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None)]
 
 
 def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]]) -> list[str]:
@@ -49,12 +37,7 @@ def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]])
             200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": usage}
         )
 
-    made = httpx.AsyncClient
-
-    def _client(**kwargs: Any) -> httpx.AsyncClient:
-        return made(**{**kwargs, "transport": httpx.MockTransport(_room)})
-
-    monkeypatch.setattr(httpx, "AsyncClient", _client)
+    the_room_answers(monkeypatch, _room)
     return sessions
 
 

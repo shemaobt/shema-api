@@ -16,25 +16,12 @@ import httpx
 import pytest
 
 from scripts import bt_golden_runner
+from tests.golden_spend_harness import charged_call, the_room_answers
 
 BASE_URL = "http://room/api/internalization-room/text-seam/back-translation/"
 
-
-def _charged(role: str, cost: float | None) -> dict[str, Any]:
-    return {
-        "role": role,
-        "rung": "claude-fable-5-1",
-        "input_tokens": 1000,
-        "output_tokens": 50,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
-        "latency_ms": 1000,
-        "cost_usd": cost,
-    }
-
-
-PRICED = [_charged("analyst", 2.0), _charged("speaker", 1.0)]
-WITH_ONE_UNPRICED = [*PRICED, _charged("classifier", None)]
+PRICED = [charged_call("analyst", 2.0), charged_call("speaker", 1.0)]
+WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None)]
 
 
 def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]]) -> list[str]:
@@ -56,12 +43,7 @@ def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]])
             },
         )
 
-    made = httpx.AsyncClient
-
-    def _client(**kwargs: Any) -> httpx.AsyncClient:
-        return made(**{**kwargs, "transport": httpx.MockTransport(_room)})
-
-    monkeypatch.setattr(httpx, "AsyncClient", _client)
+    the_room_answers(monkeypatch, _room)
     return sessions
 
 
