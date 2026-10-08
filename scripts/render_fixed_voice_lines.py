@@ -186,7 +186,7 @@ def _write_clip_hashes(bundle: Path, language_code: str, names: list[str], into:
     }
     into.mkdir(parents=True, exist_ok=True)
     (into / CLIP_HASHES).write_text(
-        json.dumps(hashes, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8"
+        json.dumps(hashes, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
 
