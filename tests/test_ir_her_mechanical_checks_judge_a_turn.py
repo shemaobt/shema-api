@@ -864,3 +864,125 @@ def test_the_teams_reading_is_received_as_theirs_never_confirmed_by_the_story() 
         "The story itself is significant here.",
     ):
         assert _turn(guide=kept, expect=theirs) == [], kept
+
+
+def test_boaz_never_sleeps_nor_wakes_at_the_threshing_floor_night() -> None:
+    asleep = {"boaz_never_asleep": True}
+    for said, words in (
+        (
+            (
+                "A história conta só o que conta: ela descobre o lugar dos pés dele, se deita, "
+                "ele acorda assustado, e depois é só conversa até de manhã."
+            ),
+            (
+                "que conta: ela descobre o lugar dos pés dele, se deita, ele acorda assustado, "
+                "e depois é só conv"
+            ),
+        ),
+        (
+            (
+                "E tem uma coisa que a história faz de propósito: essas são as mesmas palavras "
+                "que Boaz perguntou na noite, na eira, quando acordou assustado: quem é você?"
+            ),
+            (
+                "esmas palavras que Boaz perguntou na noite, na eira, quando acordou assustado: "
+                "quem é você?"
+            ),
+        ),
+        (
+            "No meio da noite o homem acordou e viu uma mulher deitada aos pés dele.",
+            "No meio da noite o homem acordou e viu uma mulher deitada aos",
+        ),
+        (
+            (
+                "Cena 2: no meio da noite, Boaz acorda assustado, pergunta quem é, e Rute faz o "
+                "pedido."
+            ),
+            "Cena 2: no meio da noite, Boaz acorda assustado, pergunta quem é, e",
+        ),
+        (
+            "Enquanto ele dorme, Rute descobre o lugar dos pés dele.",
+            "Enquanto ele dorme, Rute descobre o lugar dos pé",
+        ),
+        (
+            "Ele está dormindo, e ela se deita aos pés dele.",
+            "Ele está dormindo, e ela se deita aos pés dele.",
+        ),
+        (
+            "Boaz come, bebe e vai dormir no fim do monte de grão.",
+            "Boaz come, bebe e vai dormir no fim do monte de grão.",
+        ),
+        (
+            "Ele pegou no sono.",
+            "Ele pegou no sono.",
+        ),
+        (
+            "Boaz adormeceu depois de comer.",
+            "Boaz adormeceu depois de comer.",
+        ),
+        (
+            "Ela esperou até ele dormir.",
+            "Ela esperou até ele dormir.",
+        ),
+        (
+            "Ela chegou devagar, sem acordar ele.",
+            "Ela chegou devagar, sem acordar ele.",
+        ),
+        (
+            "Ela chegou devagarinho pra não o acordar.",
+            "Ela chegou devagarinho pra não o acordar.",
+        ),
+        (
+            "Ela se deitou sem acordá-lo.",
+            "Ela se deitou sem acordá-lo.",
+        ),
+        (
+            "Ele não dormiu a noite toda.",
+            "Ele não dormiu a noite toda.",
+        ),
+        (
+            "No meio da noite, acordou assustado e viu a mulher.",
+            "No meio da noite, acordou assustado e viu a mulher.",
+        ),
+        (
+            "A história não diz o nome dele. Ele acordou assustado.",
+            "Ele acordou assustado.",
+        ),
+        (
+            "At midnight he woke up and was afraid.",
+            "At midnight he woke up and was afraid.",
+        ),
+        (
+            "The man was asleep at the end of the heap.",
+            "The man was asleep at the end of the heap.",
+        ),
+    ):
+        assert _turn(guide=said, expect=asleep) == [
+            f'the voice made Boaz sleep or wake at the threshing-floor night: "{words}" — P09 '
+            "R19 / P10 R14: he lies down (3:7), trembles and twists (3:8); the text never says he "
+            "slept or woke"
+        ], said
+    for kept in (
+        (
+            "O Boaz comeu e bebeu, o coração dele ficou alegre, e ele foi se deitar no fim do "
+            "monte de grão."
+        ),
+        (
+            "No meio da noite o homem estremeceu e se virou, e havia uma mulher deitada no "
+            "lugar dos pés dele."
+        ),
+        "De acordo com o costume, o resgatador mais próximo vem primeiro.",
+        "Eles fizeram um acordo.",
+        "A Noemi concordou.",
+        "Rute recordou o que a sogra tinha dito.",
+        "Ela dormiu aos pés dele até de manhã.",
+        "Rute se deitou aos pés dele e dormiu ali.",
+        "Onde você dormir, eu durmo.",
+        "Durma aqui esta noite.",
+        "A história não diz se ele dormiu.",
+        "A história não conta que ele acordou; ela conta que o homem estremeceu.",
+        "The story does not say that he slept.",
+        "The woman slept at his feet.",
+        "Ela, com o sono leve, se deitou.",
+    ):
+        assert _turn(guide=kept, expect=asleep) == [], kept

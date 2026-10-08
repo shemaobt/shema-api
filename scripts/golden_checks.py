@@ -470,6 +470,46 @@ def _team_reading_confirmed(text: str) -> str | None:
     return None
 
 
+_SLEEP_OR_WAKE = _her(
+    r"(?<!\p{L})(?:dorm(?:e|em|ia|iam|iu|indo|ido|ir)|adorme[cç]\p{L}*|sono"
+    r"|acord(?:a|am|ou|ado|ada|ando|ava|ar|asse|aram)|acordá-lo|asleep|slept|sleep(?:s|ing)?"
+    r"|wakes?|waking|woke|awoke|awake(?:ned|ns)?)(?!\p{L})"
+)
+_BOAZ = r"ele|o homem|o Boaz|Boaz|he|him|the man"
+_SOMEONE_ELSE = (
+    r"ela|a Rute|Rute|a mulher|a moça|a nora|a serva|a Noemi|Noemi|a sogra|eu|você|vocês|a gente"
+    r"|nós|os moços|she|her|Ruth|the woman|Naomi|I|you|we"
+)
+_A_PERSON = _her(rf"(?<!\p{{L}})(?:({_BOAZ})|(?:{_SOMEONE_ELSE}))(?!\p{{L}})")
+_BOAZ_RIGHT_AFTER = _her(rf"^\s*(?:{_BOAZ})(?!\p{{L}})")
+_THE_STORY_DOES_NOT_SAY = _her(
+    r"n[ãa]o (?:diz|fala|conta|explica|mostra|sabemos)(?!\p{L})|nunca (?:diz|fala|conta)(?!\p{L})"
+    r"|sem dizer|não está (?:escrito|na história)|(?:does not|doesn't|never|not) (?:say|tell)"
+)
+_CARRIES_HIM = _her(r"-lo$")
+_SONO = _her(r"^sono$")
+_THE_ARTICLE_BEFORE = _her(r"(?<!\p{L})o\s+$")
+
+
+def _boaz_sleeps_or_wakes(text: str) -> str | None:
+    for sentence in _SENTENCE_END.split(text):
+        for form in _SLEEP_OR_WAKE.finditer(sentence):
+            before, after = sentence[: form.start()], sentence[form.end() :]
+            if _THE_STORY_DOES_NOT_SAY.search(before):
+                continue
+            carries_him = (
+                _CARRIES_HIM.search(form[0])
+                or (not _SONO.search(form[0]) and _THE_ARTICLE_BEFORE.search(before))
+                or _BOAZ_RIGHT_AFTER.search(after)
+            )
+            nearest = None
+            for person in _A_PERSON.finditer(before):
+                nearest = "boaz" if person[1] else "someone else"
+            if carries_him or nearest != "someone else":
+                return sentence[max(0, form.start() - 60) : form.end() + 30].strip()
+    return None
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -583,6 +623,12 @@ def mechanical_checks(
         fails.append(
             "the team's reading was presented as the passage's own (the story confirms it, or "
             f'gives a sign of it): "{confirmed}"'
+        )
+    if expect.get("boaz_never_asleep") and (asleep := _boaz_sleeps_or_wakes(guide)):
+        fails.append(
+            f'the voice made Boaz sleep or wake at the threshing-floor night: "{asleep}" — P09 R19 '
+            "/ P10 R14: he lies down (3:7), trembles and twists (3:8); the text never says he "
+            "slept or woke"
         )
     if _THE_MAP.search(guide):
         fails.append("says 'o mapa' / 'the map' to the team")
