@@ -249,6 +249,12 @@ class CoverageView(BaseModel):
     beads_filled: int
 
 
+class MomentView(BaseModel):
+    at: Literal["familiarization", "internalization", "articulation", "ensaio_final"]
+    part: int | None = None
+    parts: int
+
+
 class CoverageFrame(BaseModel):
     turn_id: str
     status: Literal["settled", "failed"]
@@ -372,6 +378,7 @@ class SessionStateResponse(BaseModel):
     #: True once the session holds a Guide line, its Opening at least. The tablet asks a
     #: session's Opening only while this is false.
     opened: bool = False
+    moment: MomentView | None = None
 
 
 class SpokenSegment(BaseModel):
@@ -402,6 +409,7 @@ class TurnResponse(BaseModel):
     #: first, then the scene and its invitation. Empty on every other turn, and empty
     #: whenever the Guide did not mark the boundary exactly where it was asked for.
     segments: list[SpokenSegment] = Field(default_factory=list)
+    moment: MomentView | None = None
 
 
 class PassageView(BaseModel):

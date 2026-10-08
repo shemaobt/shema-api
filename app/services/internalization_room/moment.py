@@ -6,6 +6,9 @@ from typing import Any, Literal, NamedTuple
 
 import regex
 
+from app.db.models.internalization_room import IRSession
+from app.models.internalization_room import MomentView
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 
 _DASH = "\N{EM DASH}"
@@ -314,3 +317,17 @@ def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
             "no part has been opened yet."
         )
     return f"MOMENT: Familiarization {_DASH} the whole passage; no part has been opened yet."
+
+
+def moment_view(session: IRSession) -> MomentView | None:
+    """Where the lines the team heard last left the room, for the screen's label; none before
+    the first Guide line, for a panorama, and for a session kept before the moment was read
+    (her `teamView`, `app/api/session/route.ts`, app 18fa7c4)."""
+    guides = [message for message in session.messages or [] if message["role"] == "guide"]
+    step = guides[-1].get("moment") if guides else None
+    if step is None:
+        return None
+    moment = Moment.of(step["after"])
+    with reading_the_canon_of(session.canon_pin):
+        parts = len(scene_ids_for(session.pericope))
+    return MomentView(at=moment.at, part=moment.part, parts=parts)
