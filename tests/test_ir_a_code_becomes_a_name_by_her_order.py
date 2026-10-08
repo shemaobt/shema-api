@@ -51,8 +51,10 @@ def test_a_code_in_her_names_list_is_named_by_it_not_by_the_tail_of_its_map_line
 def test_the_woman_of_ruth_1_5_reaches_the_voice_as_the_woman_with_no_name_beside_her() -> None:
     ledger = coverage_status_block({}, "P01")
 
-    assert "the woman @ S4" in ledger
-    assert "Naomi @ S4" not in ledger, "o nome que o texto tira em 1:5 voltava ao Guia"
+    assert _labels("P01")["being:S4:B3"] == "the woman", (
+        "o nome que o texto tira em 1:5 voltava ao Guia"
+    )
+    assert ", the woman" in ledger
     assert "(Naomi)" not in ledger, (
         "o Guia lia 'הָאִשָּה (נָעֳמִי) / \"the woman\" (Naomi) @ S4', com o nome ao lado"
     )
