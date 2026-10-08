@@ -129,8 +129,9 @@ async def speak_back(
     A take with no words that is not the mother tongue is a miss, and draws the ladder's line
     whether or not it followed a cut: nothing reaches the Guide.
     """
+    language = room_language(session.language)
     handed = what_the_guide_is_handed(
-        language_code=session.language,
+        language_code=language,
         opening=opening,
         words=transcript,
         mother_tongue=mother_tongue,
@@ -139,7 +140,6 @@ async def speak_back(
     )
     if handed is None:
         return a_miss(messages, session.language)
-    language = room_language(session.language)
     outcome = await run_turn(
         transcript=handed.spoken_to_the_guide,
         coverage_state=session.coverage_state or {},

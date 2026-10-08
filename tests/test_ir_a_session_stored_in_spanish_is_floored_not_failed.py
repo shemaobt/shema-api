@@ -123,3 +123,34 @@ async def test_a_passage_turn_on_a_row_stored_in_spanish_is_told_the_rooms_langu
         "o Guia de uma passagem guardada em espanhol não era avisado da língua da sala"
     )
     assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
+
+
+@pytest.mark.parametrize(
+    ("floor", "note"),
+    [
+        ("en", "[The team spoke in their own language"),
+        ("pt", "[A equipe falou na língua materna"),
+    ],
+)
+async def test_a_mother_tongue_take_on_a_row_stored_in_spanish_reaches_the_guide_as_the_floors_note(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+    floor: str,
+    note: str,
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    the_transcriber_hears(monkeypatch, "koeti yoko vitukeovo", "ter", 0.9)
+    session = await _a_row_stored_in_spanish(db_session, PASSAGE)
+
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers={"X-Room-Key": KEY},
+        files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert guide.guide_inputs[0].startswith(note), (
+        "a nota da língua materna chegava ao Guia na língua do `es` guardado, não na da sala"
+    )
