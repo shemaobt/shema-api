@@ -650,9 +650,15 @@ async def test_withdrawing_twice_changes_nothing_the_second_time(
     assert first.status_code == 200
     stamped = (await _submission(db_session)).image_erased_at
 
+    await db_session.refresh(photo)
+    first_decision = (photo.authorized_by, photo.authorized_at)
+
     second = await client.post(path, headers=headers)
 
     assert second.status_code == 200
+    await db_session.refresh(photo)
+    assert photo.authorization_granted is False
+    assert (photo.authorized_by, photo.authorized_at) == first_decision
     assert (await _submission(db_session)).image_erased_at == stamped
     assert (await _submission(db_session)).archived_payload == (
         await _submission(db_session)

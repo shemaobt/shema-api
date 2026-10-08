@@ -164,8 +164,12 @@ def withdraw_authorization(item: Authorizable, *, by: str, at: datetime | None =
     The one direction this file writes for a person other than the one who consented: the
     coordination may **withdraw** what the team authorized and may not grant in its place, since
     granting would be the server recording a consent the team did not give. The snapshot of who
-    and when is the item's, as every decision here carries one.
+    and when is the item's, as every decision here carries one — and it is the **first**
+    refusal's: a second withdraw changes nothing, or the day the ficha shows would be the last
+    click and not the moment the authorization ended (found by the review bot on shema-api#713).
     """
+    if item.authorization_granted is False:
+        return
     item.authorization_granted = False
     item.authorized_by = by
     item.authorized_at = at or datetime.now(UTC)
