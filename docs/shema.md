@@ -1112,7 +1112,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 
 | | `coordination` | `trusted` (OBT-571) | `other` | `outside` |
 |---|---|---|---|---|
-| **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading, confirmed by Daniel on 8/oct/2026*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | a `resourceCircle` on a project in a region of its scope — reads the truth, writes nothing of coordination's | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
+| **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading, confirmed by Daniel on 8/oct/2026*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | a `resourceCircle` on a project in a region of its scope — reads the truth, writes nothing of coordination's | every other session in the console — `obtLab` (the `resourceCircle` read here until OBT-571; every project it reaches is in its own scope, where it is `trusted`) | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
 | `location`, `country` | the truth | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
 | `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | the truth | `""` | `""` |

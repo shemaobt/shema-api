@@ -3,8 +3,8 @@
 Four routes, and each declares its dependencies, calls one service and returns what it
 answers — no query here, no filter, no role check of its own, per
 [ADR 0009](../../../docs/adr/0009-routers-never-touch-the-database.md). The panel's own
-audience gate (coordination and the OBT Lab, never the Resource Circle, for the one computed
-kind) lives in ``_health_audience.py`` and is applied by
+audience gate (the health readers — coordination, the OBT Lab and, since OBT-571, the Resource
+Circle — for the one computed kind) lives in ``_health_audience.py`` and is applied by
 ``app/services/shema/list_notification_panel.py``, not here — the same split
 ``health_assessments.py`` draws and for the same reason: a rule that lives in the operation
 survives whoever calls it next.
@@ -19,8 +19,9 @@ The resource-request form's notices are addressed to the Gestor, whose grant liv
 and to whoever started a request, who may be only a project member — accounts the door admits
 and the app gate refuses. So ``door_router`` carries ``GET ""`` and ``POST /read``: every
 account at the door may call them, and the service decides what they answer — its own rows,
-and the stale readings only for the coordination and the OBT Lab (``reads_assessments``), on a
-scope that reaches nothing without a regional role. The preferences stay behind the app gate;
+and the stale readings only for the health readers (``reads_assessments`` — coordination, the
+OBT Lab and the Resource Circle since OBT-571), on a scope that reaches nothing without a
+regional role. The preferences stay behind the app gate;
 preferences are not this issue's.
 """
 

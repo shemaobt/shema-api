@@ -518,8 +518,8 @@ def readership(
     * An installation admin and — :data:`COORDINATION_EVERYWHERE`, confirmed by Daniel on
       8/oct/2026 — an ``admin`` coordinate every region: an installation admin passes every
       guard in this repository, and reading less than the guards let it reach would be a
-      stricter rule on one
-      route than on the route beside it. (The unscoped seat did too, until OBT-572.)
+      stricter rule on one route than on the route beside it. (The unscoped seat did too, until
+      OBT-572.)
     * A ``coordinator`` coordinates the regions of its own scope — GATE-04's *cada um na sua
       região*.
     * A ``resourceCircle`` **reads the truth** in the regions of its own scope and coordinates

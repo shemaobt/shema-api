@@ -163,11 +163,10 @@ def _query_as_read(query: ShemaProjectQuery, readership: Readership) -> ShemaPro
     **``sensitive`` is the truth-readers' (OBT-556; the Resource Circle too since OBT-571).** How
     many projects are withheld is told to whoever reads the truth and to nobody else (GATE-04,
     1.3: ``withheld_note``, addressed by ``reads_truth_anywhere``), and a filter on the bit would
-    hand everybody else the same number
-    as ``matched``. So for them the filter is **ignored** — the list and every other count are
-    what the same request without it answers — rather than refused like a value that is no
-    option: an empty list would say *none of these is withheld*, which is false, and a link a
-    coordinator saved still opens with its other filters applied.
+    hand everybody else the same number as ``matched``. So for them the filter is **ignored** —
+    the list and every other count are what the same request without it answers — rather than
+    refused like a value that is no option: an empty list would say *none of these is withheld*,
+    which is false, and a link a coordinator saved still opens with its other filters applied.
 
     **The health filter and order are the health audience's (OBT-553)**, ignored the same way,
     which is what this endpoint already does with a preset it does not know, and the health
@@ -189,10 +188,9 @@ def _facets_as_read(counts: ShemaFacetCounts, readership: Readership) -> ShemaFa
 
     The withheld projects' count is the truth-readers' (OBT-556, OBT-571), and the health group
     is the health readers' (OBT-553, OBT-571). A group left out is absent from ``groups`` and from
-    ``groupAll`` rather
-    than answered with zeros or ``{"na": total}``, which would be a number that lies; the console
-    reads a missing group as one it has nothing to show for. The ``locationWithheld`` bit itself
-    stays on every card — GATE-04 decided the notice, not the bit.
+    ``groupAll`` rather than answered with zeros or ``{"na": total}``, which would be a number
+    that lies; the console reads a missing group as one it has nothing to show for. The
+    ``locationWithheld`` bit itself stays on every card — GATE-04 decided the notice, not the bit.
     """
     hidden: set[str] = set()
     if not readership.reads_truth_anywhere:

@@ -9,8 +9,7 @@ addition here is the stale reading, which has no row because nothing was written
 project merely stayed quiet; it is filtered by the same audience health and needs already use
 (``_health_audience.reads_assessments`` — coordination, the OBT Lab and, since OBT-571, the
 Resource Circle) and by the caller's own ``RegionScope``, through ``browse_projects``'s stale
-preset,
-which is already scoped and already redacted.
+preset, which is already scoped and already redacted.
 
 **A project notice is worded by the console, from facts read now** (OBT-559). The five project
 kinds — health, need, field, prayer and stale — answer an empty ``title`` and ``body`` and
