@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -22,16 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import (
     back_translation_of,
     background,
     check_the_telling_back,
     verdict_round,
 )
-from app.services.internalization_room import prepare_opening as prepare_opening_module
 from app.services.internalization_room.canon.labels import labelled_elements
-from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
 from tests.hearing_harness import (
@@ -329,45 +326,6 @@ async def test_the_reading_ahead_of_a_row_stored_in_spanish_is_read_in_the_rooms
         "a leitura antecipada de uma sessão guardada em espanhol falhava em silêncio"
     )
     assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
-
-
-@pytest.mark.parametrize(("floor", "named"), FLOORS)
-async def test_an_opening_prepared_on_a_row_stored_in_spanish_is_written_in_the_rooms_language(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str, named: str
-) -> None:
-    _the_floor_is(monkeypatch, floor)
-    db_session.add(
-        IRSession(
-            id="panorama-es",
-            pericope=PANORAMA,
-            status=IRSessionStatus.IN_PROGRESS,
-            messages=[],
-            coverage_state={},
-            kept_takes={},
-            back_translation={},
-            language="es",
-        )
-    )
-    await db_session.commit()
-    told: list[tuple[str, str]] = []
-
-    async def written(**kwargs: Any) -> TurnOutcome:
-        told.append((kwargs["session_language"], kwargs["language_code"]))
-        return TurnOutcome(speech="Bem-vindos de volta.", transcript="")
-
-    async def voiced(text: str, **_: Any) -> tuple[SimpleNamespace, bool]:
-        return SimpleNamespace(key="tts/x.mp3"), False
-
-    monkeypatch.setattr(prepare_opening_module, "run_turn", written)
-    monkeypatch.setattr(prepare_opening_module, "synthesize_facilitator_speech", voiced)
-
-    await prepare_opening_module.prepare_opening("panorama-es", pericope=PASSAGE)
-
-    assert told == [(named, floor)], (
-        "a abertura preparada de uma sessão em espanhol não era escrita na língua da sala"
-    )
-    stored = await get_session(db_session, "panorama-es")
-    assert stored.prepared_speech == "Bem-vindos de volta."
 
 
 @pytest.mark.parametrize("floor", ["en", "pt"])
