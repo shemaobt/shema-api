@@ -18,12 +18,13 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import router
 from app.core.config import get_settings
 from app.core.room_enums import HaltKind
-from app.db.models.internalization_room import IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services import internalization_room as room
 from app.services.internalization_room import halt
 from app.services.internalization_room.back_translation import unheard_parts
@@ -540,3 +541,26 @@ async def test_a_missing_without_a_frase_is_counted_once_and_not_again_next_roun
         "fica de pé, um achado sem frase da rodada 1 era recontado em cada rodada seguinte, e "
         "quem somasse o campo pelo roteiro media o mesmo fato várias vezes"
     )
+
+
+async def _stretches(db: AsyncSession, session_id: str) -> list[IRSegment]:
+    result = await db.execute(select(IRSegment).where(IRSegment.session_id == session_id))
+    return list(result.scalars().all())
+
+
+@pytest.mark.parametrize("wordless", ["", "   ", "[silêncio]"])
+async def test_a_round_of_frases_with_no_words_is_refused_before_any_model_runs(
+    client, analyst, db_session, wordless
+) -> None:
+    session_id = await _a_session(client)
+    frases = [{**frase, "text": wordless} for frase in CAUSA_A_MAIS]
+
+    refused = await client.post(f"{SEAM}/round", json={"sessionId": session_id, "frases": frases})
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert analyst.answered == [], (
+        "sete frases vazias chegavam ao analista como «1. » … «7. » e o modelo levantava "
+        "sete achados de frase que nunca foi contada"
+    )
+    assert await _stretches(db_session, session_id) == [], "uma frase sem palavras virava trecho"

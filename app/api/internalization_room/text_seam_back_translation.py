@@ -26,7 +26,7 @@ from app.api.internalization_room.text_seam import (
 )
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, ValidationError, WordlessTelling
 from app.db.models.internalization_room import IRSession, IRTake
 from app.models.internalization_room import PlayedTake
 from app.models.internalization_room_text_seam import (
@@ -45,6 +45,7 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
 )
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.hearing import spoken_words_only
 from app.services.internalization_room.sessions import resolve_pericope
 from app.services.internalization_room.takes import (
     declare_rehearsal_parts,
@@ -155,6 +156,8 @@ async def play_a_round(
         raise ValidationError("a round with no frases is not a round")
     session = await room.get_session(db, payload.sessionId)
     refuse_a_panorama(session.pericope)
+    if not any(spoken_words_only(frase.text) for frase in payload.frases):
+        raise WordlessTelling()
     started = time.monotonic()
     with _collecting_model_calls() as calls:
         parts = await declared_parts_by_key(db, session.id)
