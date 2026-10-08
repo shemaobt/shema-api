@@ -953,3 +953,31 @@ async def test_a_call_with_an_effort_set_still_names_it_in_its_usage_line(
     assert _usage_line(caplog).startswith(
         "[llm-usage] guide answered on claude-fable-5-1 (rung 1 of 3) at high effort in "
     )
+
+
+def _usage_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.getMessage().startswith("[llm-usage]")]
+
+
+async def test_a_rung_that_refuses_logs_its_usage_line_as_a_refusal_not_an_answer(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingRungs("claude-fable-5-1")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(
+            system_prompt="s", user_content="u", effort="high", role="guide", settings=_settings()
+        )
+
+    refusing = [r for r in _usage_records(caplog) if r.rung == "claude-fable-5-1"]
+    (line,) = refusing
+    assert line.getMessage().startswith(
+        "[llm-usage] guide refused on claude-fable-5-1 (rung 1 of 3) at high effort in "
+    ), "o degrau que recusou aparecia na linha como se tivesse respondido"
+    assert line.outcome == "refused"
+    assert (line.input_tokens, line.output_tokens, line.cost_usd) == (10, 0, 0.0001)
