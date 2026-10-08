@@ -61,7 +61,11 @@ from app.models.shema_privacy import (
     LeavingShape,
     ShemaReader,
 )
-from app.models.shema_record import ShemaHealthAssessmentEntry, ShemaProjectRecord
+from app.models.shema_record import (
+    ShemaHealthAssessmentEntry,
+    ShemaProjectRecord,
+    ShemaStoryProgressRow,
+)
 from app.utils.shema_derivations import get_region
 
 
@@ -227,10 +231,13 @@ def free_text_as_read(
 ) -> dict[str, Any]:
     """What a record's nested free text becomes for ``reader`` — an update, or nothing.
 
-    The record's own four are reduced by the shape it is built as. Its needs and its assessments
-    arrive on it afterwards, by ``model_copy`` and not through the boundary, so their text is
-    held back here, in ``_consent.request_as_read``'s mould: a reader who reads the truth gets
-    ``{}``, and anybody else every need's description as ``""`` and the history without notes.
+    The record's own free text is reduced by the shape it is built as. Its needs, its
+    assessments, its media and its progress history arrive on it afterwards, by ``model_copy``
+    and not through the boundary, so their text is held back here, in
+    ``_consent.request_as_read``'s mould: a reader who reads the truth gets ``{}``, and anybody
+    else every need's description as ``""`` and the history without notes. **OBT-573** adds the
+    rest of Karina's question 8: every photo's and video's caption, and every story's recording
+    place — on the record's ``story_progress`` and on each copy the progress history keeps.
     """
     if reads_the_truth(project, reader):
         return {}
@@ -238,11 +245,77 @@ def free_text_as_read(
     history = record.health_history
     if history is not None:
         history = assessments_as_read(project, reader, history)
-    return {"needs_items": needs, "health_history": history}
+    return {
+        "needs_items": needs,
+        "health_history": history,
+        "media_photos": _uncaptioned(record.media_photos),
+        "media_videos": _uncaptioned(record.media_videos),
+        "story_progress": _unplaced(record.story_progress),
+        "progress_history": [
+            entry.model_copy(update={"story_progress": _unplaced(entry.story_progress)})
+            for entry in record.progress_history
+        ],
+    }
+
+
+def _uncaptioned(items: Sequence[Any] | None) -> list[Any] | None:
+    """Media items with their captions as ``""`` — a caption can say where it was taken."""
+    if items is None:
+        return None
+    return [item.model_copy(update={"caption": ""}) for item in items]
+
+
+def _unplaced(rows: Sequence[ShemaStoryProgressRow] | None) -> list[ShemaStoryProgressRow] | None:
+    """Story rows with every recording place as ``""`` — written or not, so the reduction does
+    not tell which stories had one."""
+    if rows is None:
+        return None
+    return [row.model_copy(update={"record_location": ""}) for row in rows]
 
 
 #: The one name a refused need text is given, in the client's spelling.
 NEED_TEXT: Final = "needsItems.description"
+
+#: The one name a refused recording place is given, in the client's spelling (OBT-573).
+STORY_PLACE: Final = "storyProgress.recordLocation"
+
+
+def story_text_as_written(
+    project: ShemaProject, rows: Sequence[ShemaStoryProgressRow], reader: ShemaReader
+) -> tuple[list[ShemaStoryProgressRow], bool]:
+    """``rows`` as ``reader`` may write them, and whether one types a place over an unseen one.
+
+    :func:`need_text_as_written` for the story table (OBT-573), and for the reason
+    ``docs/shema.md`` gave when it left the recording place out of OBT-556: the progress tab
+    sends the table **whole** on every save, so a reduction on the read alone would make the next
+    save erase the truth. A reader who does not read it was handed every row's place as ``""``
+    (:func:`free_text_as_read`); a row of a stored story that sends that back — or no place —
+    gets its stored place again, matched by the story's name (and, for a name written twice, in
+    the order the rows are kept). A row of a stored story that sends any place is typed over one
+    the reader cannot see, which the caller refuses — whatever the stored place was, because
+    comparing with the ``""`` the reader was given, and never with the truth, is what keeps the
+    answer from being an oracle. A story with no stored row is new, and its author sees what they
+    type: OBT-528's own exception for a create.
+    """
+    if reads_the_truth(project, reader):
+        return list(rows), False
+    stored: dict[str, list[Any]] = {}
+    for saved in project.story_progress or []:
+        stored.setdefault(saved.get("name", ""), []).append(saved.get("recordLocation"))
+    kept: list[ShemaStoryProgressRow] = []
+    typed = False
+    for row in rows:
+        places = stored.get(row.name)
+        if not places:
+            kept.append(row)
+            continue
+        place = places.pop(0)
+        if row.record_location:
+            typed = True
+            kept.append(row)
+        else:
+            kept.append(row.model_copy(update={"record_location": place}))
+    return kept, typed
 
 
 def need_text_as_written(
