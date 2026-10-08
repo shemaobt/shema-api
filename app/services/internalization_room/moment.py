@@ -27,6 +27,18 @@ NUMBER_WORDS = {
     "dez": 10,
     "onze": 11,
     "doze": 12,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
 }
 
 
@@ -34,52 +46,77 @@ def _alternatives(words: list[str]) -> str:
     return "|".join(sorted(words, key=len, reverse=True))
 
 
+def _either(portuguese: str, english: str) -> tuple[regex.Pattern[str], ...]:
+    return tuple(
+        regex.compile(rf"{_START}{line}{_AFTER}", regex.IGNORECASE)
+        for line in (portuguese, english)
+    )
+
+
 _N = rf"(\d{{1,2}}|{_alternatives(list(NUMBER_WORDS))})"
 _START = r"(?:^|(?<=[.!?…][\"'”\N{RIGHT SINGLE QUOTATION MARK}»)]*\s))"
 _LEAD_PT = r"(?:(?:agora|então|bom|ok|muito bem|mas)[,!]?\s+|não,\s+)?"
+_LEAD_EN = r"(?:(?:now|so|ok|okay|all right|alright|well|but)[,!]?\s+|no,\s+)?"
 _AFTER = r"(?=\s*(?:[.!,:;…—\N{EN DASH}]|$))"
 _PT_PART = rf"(?:cena|parte) {_N}"
-_ENTRANCE = regex.compile(
-    rf"{_START}{_LEAD_PT}vamos (?:agora )?(?:pra|para a|para|entrar na|passar (?:pra|para a)"
-    rf"|seguir (?:pra|para a)) (Internalização|Articulação) da {_PT_PART}{_AFTER}",
-    regex.IGNORECASE,
+_EN_PART = rf"(?:the )?(?:scene|part) {_N}"
+_APOSTROPHE = r"['\N{RIGHT SINGLE QUOTATION MARK}]"
+_ENTRANCE = _either(
+    rf"{_LEAD_PT}vamos (?:agora )?(?:pra|para a|para|entrar na|passar (?:pra|para a)"
+    rf"|seguir (?:pra|para a)) (Internalização|Articulação) da {_PT_PART}",
+    rf"{_LEAD_EN}let{_APOSTROPHE}s (?:now )?(?:go|move|turn)(?: on)? to (?:the )?"
+    rf"(Internalization|Articulation) of {_EN_PART}",
 )
+_WHERE_WE_ARE = _either(
+    rf"{_LEAD_PT}(?:ainda )?estamos (?:ainda )?na "
+    rf"(?:(Familiarização)|(Internalização|Articulação) da {_PT_PART})",
+    rf"{_LEAD_EN}(?:we are|we{_APOSTROPHE}re) (?:still )?in (?:the )?"
+    rf"(?:(Familiarization)|(Internalization|Articulation) of {_EN_PART})",
+)
+_FENCE = _either(
+    rf"{_LEAD_PT}(?:agora )?(?:eu )?vou dizer tudo o que deve entrar no ensaio de vocês",
+    rf"{_LEAD_EN}(?:now )?I(?: will|{_APOSTROPHE}ll) (?:say|tell you) everything that should go "
+    r"into your rehearsal",
+)
+_ENTRANCES: dict[str, tuple[str, At]] = {
+    "internalização": ("entrance", "internalization"),
+    "internalization": ("entrance", "internalization"),
+    "articulação": ("articulation_entrance", "articulation"),
+    "articulation": ("articulation_entrance", "articulation"),
+}
 
-
-FAMILIARIZATION_CLOSING = (
+FAMILIARIZATION_CLOSINGS = (
     "O que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
     "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização "
-    "da primeira cena."
+    "da primeira cena.",
+    "What caught your attention in this passage? Talk it over among yourselves. If you have any "
+    "questions, ask me. When you are ready, tell me and we will move to Internalization of the "
+    "first scene.",
 )
-
 SCENE_CLOSINGS = (
     "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
     "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
+    "What caught your attention in this scene? Talk it over among yourselves. Is this scene "
+    "clear? If you have any questions, ask me. If you have understood it, tell me and we will "
+    "go to the rehearsal.",
     "O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte ficou clara? "
     "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
+    "What caught your attention in this part? Talk it over among yourselves. Is this part clear? "
+    "If you have any questions, ask me. If you have understood it, tell me and we will go to "
+    "the rehearsal.",
 )
-
-SEND_OFF_LAST = "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
-
-_ENTRANCES: dict[str, tuple[str, At]] = {
-    "internalização": ("entrance", "internalization"),
-    "articulação": ("articulation_entrance", "articulation"),
-}
-_WHERE_WE_ARE = regex.compile(
-    rf"{_START}{_LEAD_PT}(?:ainda )?estamos (?:ainda )?na "
-    rf"(?:(Familiarização)|(Internalização|Articulação) da {_PT_PART}){_AFTER}",
-    regex.IGNORECASE,
-)
-
-_FENCE = regex.compile(
-    rf"{_START}{_LEAD_PT}(?:agora )?(?:eu )?vou dizer tudo o que deve entrar no ensaio de vocês"
-    rf"{_AFTER}",
-    regex.IGNORECASE,
+SEND_OFFS = (
+    "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final.",
+    "Now tap the orange dot at the top of the screen to open the Final Rehearsal.",
 )
 
 
 def _folded(voiced: str) -> str:
     return " ".join(unicodedata.normalize("NFC", voiced).split())
+
+
+def _found(detectors: tuple[regex.Pattern[str], ...], folded: str) -> list[regex.Match[str]]:
+    return [line for detector in detectors for line in detector.finditer(folded)]
 
 
 def _number(word: str) -> int:
@@ -145,20 +182,20 @@ class _Line(NamedTuple):
 
 def _triggers(folded: str) -> list[_Line]:
     found = []
-    for line in _ENTRANCE.finditer(folded):
+    for line in _found(_ENTRANCE, folded):
         cause, to = _ENTRANCES[line[1].lower()]
         found.append(_Line(line.start(), cause, part=_number(line[2]), to=to))
-    for line in _WHERE_WE_ARE.finditer(folded):
+    for line in _found(_WHERE_WE_ARE, folded):
         if line[1]:
             found.append(_Line(line.start(), "where_we_are", to="familiarization"))
         else:
             to = _ENTRANCES[line[2].lower()][1]
             found.append(_Line(line.start(), "where_we_are", part=_number(line[3]), to=to))
-    found += [_Line(line.start(), "fence") for line in _FENCE.finditer(folded)]
+    found += [_Line(line.start(), "fence") for line in _found(_FENCE, folded)]
     for cause, lines in (
         ("part_closing", SCENE_CLOSINGS),
-        ("familiarization_closing", (FAMILIARIZATION_CLOSING,)),
-        ("send_off", (SEND_OFF_LAST,)),
+        ("familiarization_closing", FAMILIARIZATION_CLOSINGS),
+        ("send_off", SEND_OFFS),
     ):
         for said in lines:
             if folded.endswith(said):

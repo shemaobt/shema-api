@@ -179,3 +179,49 @@ def test_her_where_we_are_line_puts_the_room_where_it_says(
     moment: dict[str, Any], voiced: str, named: dict[str, Any]
 ) -> None:
     assert _after(moment, voiced) == named, f"a voz disse onde a sala estava: {voiced!r}"
+
+
+F3_EN = (
+    "What caught your attention in this passage? Talk it over among yourselves. If you have any "
+    "questions, ask me. When you are ready, tell me and we will move to Internalization of the "
+    "first scene."
+)
+CLOSING_EN = (
+    "What caught your attention in this scene? Talk it over among yourselves. Is this scene "
+    "clear? If you have any questions, ask me. If you have understood it, tell me and we will "
+    "go to the rehearsal."
+)
+SEND_OFF_EN = "Now tap the orange dot at the top of the screen to open the Final Rehearsal."
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "heard"),
+    [
+        (FAMILIARIZATION, "Let's move to Internalization of scene 2.", SCENE_TWO_OPEN),
+        (
+            FAMILIARIZATION,
+            "Let\N{RIGHT SINGLE QUOTATION MARK}s go to the Internalization of part two.",
+            SCENE_TWO_OPEN,
+        ),
+        (SCENE_TWO_OPEN, "Let's move to Articulation of scene 2.", SCENE_TWO_PRACTISED),
+        (
+            SCENE_TWO_OPEN,
+            "Now I will say everything that should go into your rehearsal. Now you can rehearse.",
+            SCENE_TWO_FENCED,
+        ),
+        (SCENE_TWO_FENCED, "We are in Internalization of scene 2.", SCENE_TWO_OPEN),
+        (SCENE_TWO_OPEN, "We are in Familiarization.", FAMILIARIZATION),
+        (
+            FAMILIARIZATION,
+            f"First I will tell you the whole passage. {F3_EN}",
+            FAMILIARIZATION_CLOSED,
+        ),
+        (FAMILIARIZATION_CLOSED, f"In the first scene, a famine. {CLOSING_EN}", SCENE_ONE_OPEN),
+        (SCENE_TWO_OPEN, f"You told the whole passage. {SEND_OFF_EN}", ENSAIO_FINAL),
+    ],
+    ids=["I1", "I1 curly", "A1", "fence", "E1", "E1 familiarization", "F3", "closing", "send-off"],
+)
+def test_an_english_session_is_read_by_her_english_lines_the_same_way(
+    moment: dict[str, Any], voiced: str, heard: dict[str, Any]
+) -> None:
+    assert _after(moment, voiced) == heard, f"a sessão em inglês não leu a linha: {voiced!r}"
