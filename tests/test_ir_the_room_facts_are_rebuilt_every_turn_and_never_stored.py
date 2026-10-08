@@ -39,7 +39,7 @@ EARLIER_BOTH_APPROVED = f"EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1{EN}
 FAMILIARIZATION = (
     "MOMENT: Familiarization \N{EM DASH} the whole passage; no part has been opened yet."
 )
-LEDGER_MARKERS = ("EARLIER PASSAGES FOR THIS TEAM", "COVERED (engaged)", "REMAINING")
+LEDGER_MARKERS = ("EARLIER PASSAGES FOR THIS TEAM", "COVERED (engaged)", "REMAINING", "MOMENT:")
 
 
 class _Recording:
@@ -152,6 +152,7 @@ async def test_the_stored_conversation_of_a_session_holds_no_room_fact_text(
     await the_team_says(client, tablet, session_id, "turno-1")
 
     assert all("EARLIER PASSAGES FOR THIS TEAM" in system for system in agent.guide_systems)
+    assert all("MOMENT: " in system for system in agent.guide_systems)
     async with per_request() as fresh:
         stored = (await get_session(fresh, session_id)).messages
     assert len(stored) >= 3

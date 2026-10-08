@@ -22,9 +22,11 @@ FAMILIARIZATION = f"MOMENT: Familiarization {EM} the whole passage; no part has 
 class _Recording:
     def __init__(self) -> None:
         self.guide: list[str] = []
+        self.validator: list[str] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         if "corrected_response" in system_prompt:
+            self.validator.append(f"{system_prompt}\n{user_content}")
             return json.dumps({"verdict": "pass", "issues": []})
         self.guide.append(system_prompt)
         return "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira."
@@ -131,4 +133,13 @@ async def test_a_session_begun_before_the_moment_was_read_tells_the_guide_no_mom
     ledger = coverage_status_block(initial_state(P), P)
     assert recording.guide[0].partition(CACHE_BREAK)[2] == ledger, (
         "uma sessão de antes do momento ganhou um momento que ninguém leu"
+    )
+
+
+async def test_the_validator_never_reads_the_moment(recording: _Recording) -> None:
+    await _turn(_left_at({"at": "internalization", "part": 2}))
+
+    assert "MOMENT: Internalization of part 2" in recording.guide[0]
+    assert not any("MOMENT:" in read for read in recording.validator), (
+        "o Validador leu o momento, que é informação só para o Guia"
     )
