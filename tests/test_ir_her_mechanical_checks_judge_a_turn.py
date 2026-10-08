@@ -325,3 +325,87 @@ def test_a_faithful_telling_in_other_words_is_never_sent_back_nor_asked_for_the_
         "Ficou inteiro e só com o que a história conta.",
     ):
         assert _turn(guide=accepted, expect=accepts) == [], accepted
+
+
+#: The fence's two lines and item 3's microphone sentence, `src/turn/fixedLines.ts`.
+FENCE_OPEN = "Agora vou dizer tudo o que deve entrar no ensaio de vocês."
+FENCE_CLOSE = "Agora podem ensaiar."
+MIC = (
+    "Quando estiverem prontos, toquem no microfone vermelho, gravem o ensaio desta cena e "
+    "traduzam pra mim frase por frase."
+)
+#: Her live fence of 2026-09-23 23:09-37, P01-part-opening-closing turn 3.
+REAL_FENCE = (
+    f"Ótimo. {FENCE_OPEN}\n\nNo tempo em que os juízes governavam Israel, veio uma fome na terra. "
+    "Um homem de Belém de Judá saiu de lá com a mulher dele e os dois filhos, pra morar de "
+    "passagem na terra de Moabe. O nome do homem era Elimeleque. O nome da mulher dele era "
+    "Noemi. Os nomes dos dois filhos eram Malom e Quiliom. Eles eram efrateus, de Belém de Judá. "
+    f"Eles chegaram na terra de Moabe e ficaram lá.\n\n{FENCE_CLOSE} {MIC}"
+)
+FENCED = {"fenced_rehearsal": True}
+
+
+def _fenced(story: str) -> list[str]:
+    return _turn(guide=f"{FENCE_OPEN} {story} {FENCE_CLOSE} {MIC}", expect=FENCED)
+
+
+def test_the_invitation_to_rehearse_is_the_fence_opening_line_then_agora_podem_ensaiar() -> None:
+    no_fence = [
+        "the invitation to rehearse has no fenced block (opening line … 'Agora podem ensaiar.')"
+    ]
+    assert _turn(guide=REAL_FENCE, expect=FENCED) == []
+    p08 = (
+        "Primeiro, teve uma fome na terra, no tempo dos juízes. Segundo, um homem de Belém de "
+        f"Judá foi morar de passagem em Moabe.\n\n{CLOSING_TAIL}"
+    )
+    assert _turn(guide=p08, expect=FENCED) == no_fence, "o piloto P08: passos numerados, sem cerca"
+    assert _turn(guide=f"{FENCE_OPEN} {STORY}", expect=FENCED) == no_fence
+    assert _turn(guide=f"{FENCE_CLOSE} {FENCE_OPEN} {STORY}", expect=FENCED) == no_fence
+
+
+def test_nothing_but_the_story_stands_inside_the_fence_not_a_comment_nor_a_step_label() -> None:
+    def inside(words: str) -> list[str]:
+        return [f'commentary inside the fenced rehearsal block: "{words}"']
+
+    assert _fenced("Reparem que a fome veio primeiro.") == inside("Reparem")
+    assert _fenced("A história não diz por que ele foi.") == inside("A história não diz")
+    assert _fenced("Eram três coisas: a fome, a ida, a morte.") == inside("três coisas")
+    for story, hit in (
+        ("Primeiro, teve uma fome na terra. Depois, foram pra Moabe.", "Primeiro,"),
+        ("Teve uma fome. Sétimo: eles ficaram lá.", "Sétimo:"),
+        ("Teve uma fome. Se\u0301timo: eles ficaram lá.", "Sétimo:"),
+        ("Primeiro passo: teve uma fome na terra.", "Primeiro passo:"),
+        ("Passo 1, teve uma fome na terra.", "Passo 1"),
+        ("Teve uma fome. Esse é o passo um.", "passo um"),
+        ("São sete passos. Teve uma fome na terra.", "sete passos"),
+        ("Teve uma fome.\n2. Foram pra Moabe.", "2."),
+        (
+            "Primeiro Noemi falou pra elas voltarem. Segundo Rute disse que não.",
+            "primeiro … segundo",
+        ),
+        ("First, there was a famine in the land.", "First,"),
+        ("Primeiro - teve uma fome na terra.", "Primeiro -"),
+    ):
+        assert _fenced(story) == inside(hit), story
+    for story in (
+        "Primeiro ele foi a Moabe. Depois a família ficou lá.",
+        "No primeiro dia eles andaram muito. E no fim chegaram em Moabe.",
+        "Ela deu um passo pra frente e disse: não.",
+        "E ela contou passo a passo o que tinha acontecido.",
+        "Segundo o costume daquele tempo, o homem tirava a sandália. Primeiro ele foi à porta.",
+        "Na segunda-feira ela foi. Segunda-feira ela voltou.",
+        "Segunda-feira ela voltou. Primeiro ela passou na casa da sogra.",
+        "Noemi disse: primeiro, voltem pra casa da mãe de vocês.",
+        "Segundo ela, o Senhor tinha tirado tudo dela. Primeiro o marido morreu.",
+    ):
+        assert _fenced(story) == [], story
+
+
+def test_after_the_fence_closing_line_only_the_microphone_is_said() -> None:
+    after = ["commentary after the fence's closing line"]
+    fence = f"{FENCE_OPEN} {STORY} {FENCE_CLOSE} {MIC}"
+    assert _turn(guide=f"{fence} {CLOSING_TAIL}", expect=FENCED) == after, (
+        "o piloto P08: a cauda do fechamento depois da cerca"
+    )
+    assert _turn(guide=f"{fence} If you have any questions, ask me.", expect=FENCED) == after
+    assert _turn(guide=f"{fence} Lembrem da fome.", expect=FENCED) == after

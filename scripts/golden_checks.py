@@ -144,6 +144,81 @@ _THE_NOUN_DEMANDED = _her(
     r"|não é (a palavra|o termo) (certa|certo|exata|exato)"
     r"|(?<!\b(não|nem) )falt(a|ou)[^.?!]{0,40}bondade"
 )
+_FENCE_OPENS = _her(
+    r"vou dizer tudo o que deve entrar no ensaio de vocês"
+    r"|everything that should go into your rehearsal"
+)
+_FENCE_CLOSES = _her(r"agora podem ensaiar|now you can rehearse")
+_COMMENTARY_IN_THE_FENCE = _her(
+    r"\brepar(em|a)\b|\blembr(em|a)\b|a história não (conta|diz|fala)|não (fala|diz) o nome"
+    r"|de propósito|é só isso|usem as mãos|com as mãos|encen(em|ar)"
+    r"|\b(três|duas|quatro) (coisas|pedaços|partes)\b"
+)
+_COMMENTARY_AFTER_THE_FENCE = _her(
+    r"\brepar(em|a)\b|\blembr(em|a)\b|a história não (conta|diz|fala)"
+)
+_THE_TAIL_AFTER_THE_FENCE = _her(
+    r"se tiver alguma dúvida, me perguntem|se já entenderam, me digam"
+    r"|if you have any questions, ask me|if you have understood it, tell me"
+)
+_ORDINAL = (
+    r"primeir[oa]|segund[oa]|terceir[oa]|quart[oa]|quint[oa]|sext[oa]|s[ée]tim[oa]|oitav[oa]"
+    r"|non[oa]|d[ée]cim[oa]|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth"
+)
+_NUMBER_WORD = (
+    r"\d{1,2}|um|dois|tr[êe]s|quatro|cinco|seis|sete|oito|nove|dez"
+    r"|one|two|three|four|five|six|seven|eight|nine|ten"
+)
+_SENTENCE_START = r"(?:^|[.!?…]\s+|\n\s*)"
+_LABEL_MARK = r"(?:\s*[,:;—\u2013]|\s+-)"
+_STEP_LABELS = (
+    _her(rf"(?<!\p{{L}})(passo|step)\s+({_NUMBER_WORD})(?!\p{{L}})"),
+    _her(rf"(?<!\p{{L}})({_NUMBER_WORD})\s+(passos|steps)(?!\p{{L}})"),
+    _her(rf"{_SENTENCE_START}(\d{{1,2}}[.)º°])\s", 0),
+    _her(
+        rf"{_SENTENCE_START}((?:{_ORDINAL})(?:\s+(?:passo|coisa|parte|ponto|step|thing|part))?"
+        rf"{_LABEL_MARK})"
+    ),
+)
+_ORDINAL_OPENING_A_SENTENCE = _her(rf"{_SENTENCE_START}({_ORDINAL})(?![\p{{L}}-])")
+_ACCORDING_TO = _her(r"^\s+(?:o|a|os|as|ele|ela|eles|elas)(?!\p{L})")
+
+
+def _step_label_in_fence(inside: str) -> str | None:
+    text = unicodedata.normalize("NFC", inside)
+    for label in _STEP_LABELS:
+        hit = label.search(text)
+        if hit:
+            return regex.sub(r"^[.!?…\s]+", "", hit[0]).strip()
+    starts = [
+        opening[1].lower()
+        for opening in _ORDINAL_OPENING_A_SENTENCE.finditer(text)
+        if not (
+            opening[1].lower().startswith("segund") and _ACCORDING_TO.match(text[opening.end() :])
+        )
+    ]
+    return " … ".join(starts) if len(set(starts)) >= 2 else None
+
+
+def _fence_faults(guide: str) -> list[str]:
+    opens = _FENCE_OPENS.search(guide)
+    closes = _FENCE_CLOSES.search(guide)
+    if not opens or not closes or closes.start() < opens.start():
+        return [
+            "the invitation to rehearse has no fenced block (opening line … 'Agora podem ensaiar.')"
+        ]
+    faults = []
+    inside = guide[opens.start() : closes.start()]
+    commentary = _COMMENTARY_IN_THE_FENCE.search(inside)
+    said = commentary[0] if commentary else _step_label_in_fence(inside)
+    if said:
+        faults.append(f'commentary inside the fenced rehearsal block: "{said}"')
+    after = guide[closes.end() :]
+    if _COMMENTARY_AFTER_THE_FENCE.search(after) or _THE_TAIL_AFTER_THE_FENCE.search(after):
+        faults.append("commentary after the fence's closing line")
+    return faults
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -193,6 +268,8 @@ def mechanical_checks(
                 "a faithful telling in other words was not accepted (meaning, not form): "
                 f'"{refused[0]}"'
             )
+    if expect.get("fenced_rehearsal"):
+        fails.extend(_fence_faults(guide))
     if expect.get("offers_choice_final") and not _offers_choice_final(guide):
         fails.append(
             "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar no "
