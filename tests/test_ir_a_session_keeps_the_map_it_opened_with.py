@@ -21,8 +21,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import background
+from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.evidence import (
+    EvidenceMethod,
+    EvidenceObservation,
+    EvidenceResult,
+)
+from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.sessions import (
+    create_session,
+    save_comprehension,
+    session_is_done,
+)
 from tests.canon_harness import the_canon_moves_on
 from tests.opening_harness import another_tablet_of, the_tablet_opens
 from tests.release_harness import P, a_claimed_device
@@ -44,6 +59,8 @@ ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
 NAOMI_IN_THE_FIRST_SCENE = '"being_id": "B3",\n            "role_in_scene": "MOTHER_IN_LAW",'
 DROPPED_BEAD = "being:S1:B2"
 KEPT_FIRST_SILENCE_AT = 11
+AUDIT = '"high_risk_register_audit": [\n'
+KEPT_ONLY_RULE = '    {"id": "R99", "kind": "KEPT_ONLY", "note": "kept", "do_not_decide": true},\n'
 
 
 def _rewrite(tree: Path, folder: str, pericope: str, old: str, new: str) -> None:
@@ -81,6 +98,26 @@ def _the_kept_p03_has_its_own_beings(tree: Path) -> None:
             ),
             1,
         )
+    )
+
+
+def _the_kept_p03_has_a_rule_of_its_own(tree: Path) -> None:
+    _rewrite(tree, "compilation-log", "P03", AUDIT, AUDIT + KEPT_ONLY_RULE)
+
+
+def _demonstrated(*checkpoints: str) -> ComprehensionState:
+    return ComprehensionState(
+        ledger=[
+            EvidenceObservation(
+                id=f"ev-{index}",
+                unit_id=checkpoint,
+                probe_id=f"probe-{index}",
+                method=EvidenceMethod.MICRO_TELLBACK,
+                result=EvidenceResult.DEMONSTRATED,
+            )
+            for index, checkpoint in enumerate(checkpoints)
+        ],
+        practiced_scene_ids=scene_ids_for(P),
     )
 
 
@@ -244,6 +281,29 @@ async def test_a_second_tablet_joining_a_session_open_when_a_new_canon_is_publis
     )
     assert joined["coverage"] == told.json()["coverage"]
     assert "Elimelech as kept @ S1" in guide, "o segundo tablet ouviu a voz do canon novo"
+
+
+async def test_a_session_open_when_a_new_canon_is_published_is_done_only_on_its_own_canons_floor(
+    db_session, monkeypatch, tmp_path
+) -> None:
+    kept_session = await create_session(db_session, pericope=P)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_a_rule_of_its_own)
+    await create_session(db_session, pericope=P)
+    kept_session = await save_comprehension(
+        db_session,
+        kept_session,
+        _demonstrated(*(checkpoint.id for checkpoint in checkpoints_for(P))),
+    )
+    every_bead_the_new_canon_has = dict.fromkeys(element_keys(P), "engaged")
+
+    kept_session.coverage_state = every_bead_the_new_canon_has
+    short_of_its_own_rule = session_is_done(kept_session)
+    kept_session.coverage_state = every_bead_the_new_canon_has | {"preserved:R99": "engaged"}
+
+    assert short_of_its_own_rule is False, (
+        "a sessão fechou sem a equipe ter trabalhado a conta do seu próprio canon"
+    )
+    assert session_is_done(kept_session) is True
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
