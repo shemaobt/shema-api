@@ -21,7 +21,7 @@ from app.services.oral_collector.recording_service import (
     trigger=inngest.TriggerEvent(event=OCRecordingEvent.UPLOAD_CONFIRMED),
     retries=3,
 )
-async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
+async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str | None:
     """Mark a recording confirm-upload checked and published as verified, and notify.
 
     A recording the job cannot mark verified keeps its status, and its owner is told to keep
@@ -52,7 +52,7 @@ async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
         )
 
     if status is None:
-        return str(status)
+        return None
     if status != UploadStatus.VERIFIED:
         await step.run("notify-upload-refused", _notify_refused)
         return str(status)

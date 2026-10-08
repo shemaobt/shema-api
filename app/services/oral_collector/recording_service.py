@@ -690,19 +690,19 @@ async def _hand_out_blob_path(recording: OC_Recording, fmt: str) -> str:
     """The object name an upload of this recording goes to, kept as its pending object.
 
     A pending object in the same format is handed out again, so a resumed upload, a refetched
-    URL and confirm-upload agree on one name. Otherwise a recording whose audio the server
-    already holds gets a name it never used, a first upload gets the name it always had, and
+    URL and confirm-upload agree on one name. Otherwise a recording with a URL gets a name it
+    never used, so no upload writes over that URL, a first upload gets the name it always had, and
     a pending object in another format is deleted, since nothing will confirm it. A pending
     name the recording already publishes is no pending object: handed out, the upload would
     write over the live audio.
     """
-    published = blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
+    published = _published_blob_name(recording)
     pending = recording.pending_blob_name if recording.pending_blob_name != published else None
     if pending is not None and pending.endswith(_extension(fmt)):
         return pending
     if pending is not None:
         await discard_gcs_object(pending)
-    if recording.gcs_url:
+    if published is not None:
         recording.pending_blob_name = replacement_blob_path(
             recording.project_id, recording.genre_id, recording.id, fmt
         )
@@ -713,9 +713,22 @@ async def _hand_out_blob_path(recording: OC_Recording, fmt: str) -> str:
     return recording.pending_blob_name
 
 
-def _mark_first_upload_in_flight(recording: OC_Recording) -> None:
-    """`UPLOADING` means a first upload; a recording with published audio keeps its status."""
-    if not recording.gcs_url:
+def _published_blob_name(recording: OC_Recording) -> str | None:
+
+    return blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
+
+
+def _has_published_audio(recording: OC_Recording) -> bool:
+    """A URL confirm-upload accepted: a legacy row can hold a URL its upload never earned."""
+    return bool(recording.gcs_url) and recording.upload_status in (
+        UploadStatus.UPLOADED,
+        UploadStatus.VERIFIED,
+    )
+
+
+def _mark_uploading_unless_published(recording: OC_Recording) -> None:
+    """A recording with published audio keeps its status while a replacement is in flight."""
+    if not _has_published_audio(recording):
         recording.upload_status = UploadStatus.UPLOADING
 
 
@@ -753,7 +766,7 @@ async def generate_upload_url(
 
     expires_at = datetime.now(UTC) + expiry
 
-    _mark_first_upload_in_flight(recording)
+    _mark_uploading_unless_published(recording)
     await db.commit()
 
     return UploadUrlResponse(
@@ -780,7 +793,7 @@ async def publish_upload(
     object stay as they were. The previous object is deleted only after the new URL is
     committed, and a failed delete never fails the publish: the new audio is already out.
     """
-    previous = blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
+    previous = _published_blob_name(recording)
     blob_path = (
         recording.pending_blob_name
         or previous
@@ -814,11 +827,7 @@ def _is_repeated_confirm(recording: OC_Recording) -> bool:
 
     Checked again it could be refused, since a cleaning replaces the audio the app declared.
     """
-    return (
-        recording.pending_blob_name is None
-        and bool(recording.gcs_url)
-        and recording.upload_status in (UploadStatus.UPLOADED, UploadStatus.VERIFIED)
-    )
+    return recording.pending_blob_name is None and _has_published_audio(recording)
 
 
 async def confirm_upload(
@@ -830,15 +839,24 @@ async def confirm_upload(
 ) -> OC_Recording:
     recording = await get_recording(db, recording_id)
     if _is_repeated_confirm(recording):
+        if recording.upload_status == UploadStatus.UPLOADED:
+            await _send_upload_confirmed(recording, md5_hash=md5_hash, crc32c=crc32c)
         return recording
     refusal = await publish_upload(db, recording, md5_hash=md5_hash, crc32c=crc32c)
     if refusal is not None:
         raise refusal
+    await _send_upload_confirmed(recording, md5_hash=md5_hash, crc32c=crc32c)
+    return recording
+
+
+async def _send_upload_confirmed(
+    recording: OC_Recording, *, md5_hash: str | None, crc32c: str | None
+) -> None:
 
     payload = UploadConfirmedPayload(
-        recording_id=recording_id,
+        recording_id=recording.id,
         user_id=recording.user_id,
-        expected_blob_path=blob_name_from_url(recording.gcs_url or "") or "",
+        expected_blob_path=_published_blob_name(recording) or "",
         expected_size_bytes=recording.file_size_bytes,
         expected_md5_hash=md5_hash,
         expected_crc32c=crc32c,
@@ -846,8 +864,6 @@ async def confirm_upload(
     await inngest_client.send(
         inngest.Event(name=OCRecordingEvent.UPLOAD_CONFIRMED, data=payload.model_dump())
     )
-
-    return recording
 
 
 async def mark_upload_verified(
@@ -860,24 +876,46 @@ async def mark_upload_verified(
     """Mark a published upload verified, and answer the recording's upload status.
 
     A row still uploading with no pending object was confirmed before confirm-upload checked
-    anything, so it is checked and published here first; refused, it keeps its status. Any
-    row that is not uploaded is left as it is: nothing vouches for its audio.
+    anything, so it is checked and published here first. An uploaded row's published object
+    is checked again, since the previous code marked a row uploaded before checking it; before
+    `verified` no cleaning can have replaced it. Refused, a row keeps its status. Any row that
+    is not uploaded is left as it is: nothing vouches for its audio.
     """
     recording = await db.get(OC_Recording, recording_id)
     if recording is None:
         return None
     if recording.upload_status == UploadStatus.UPLOADING and recording.pending_blob_name is None:
         await publish_upload(db, recording, md5_hash=md5_hash, crc32c=crc32c)
+    elif recording.upload_status == UploadStatus.UPLOADED and not await _published_object_holds(
+        recording, md5_hash=md5_hash, crc32c=crc32c
+    ):
+        return recording.upload_status
     if recording.upload_status == UploadStatus.UPLOADED:
         recording.upload_status = UploadStatus.VERIFIED
         await db.commit()
     return recording.upload_status
 
 
-async def choose_cleaned_name(db: AsyncSession, recording_id: str) -> str:
+async def _published_object_holds(
+    recording: OC_Recording, *, md5_hash: str | None, crc32c: str | None
+) -> bool:
+
+    published = _published_blob_name(recording)
+    return published is not None and (
+        await uploaded_object_refusal(
+            published,
+            expected_size_bytes=recording.file_size_bytes or 0,
+            expected_md5_hash=md5_hash,
+            expected_crc32c=crc32c,
+        )
+        is None
+    )
+
+
+async def choose_cleaned_name(db: AsyncSession, recording_id: str) -> str | None:
     recording = await db.get(OC_Recording, recording_id)
     if recording is None:
-        raise NotFoundError("Recording not found")
+        return None
     return replacement_blob_path(
         recording.project_id, recording.genre_id, recording.id, recording.format
     )
@@ -936,7 +974,7 @@ async def generate_resumable_upload_url(
         origin=origin,
     )
 
-    _mark_first_upload_in_flight(recording)
+    _mark_uploading_unless_published(recording)
     await db.commit()
 
     return ResumableUploadUrlResponse(
@@ -949,7 +987,6 @@ async def generate_resumable_upload_url(
 
 async def _delete_recording_objects(recording: OC_Recording) -> None:
 
-    published = blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
-    for blob_name in (published, recording.pending_blob_name):
+    for blob_name in (_published_blob_name(recording), recording.pending_blob_name):
         if blob_name:
             await discard_gcs_object(blob_name)

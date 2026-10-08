@@ -86,7 +86,10 @@ async def clean_recording_fn(ctx: inngest.Context, step: inngest.Step) -> str:
 
     async def _choose_cleaned_name() -> str:
         async with AsyncSessionLocal() as db:
-            return await choose_cleaned_name(db, payload.recording_id)
+            name = await choose_cleaned_name(db, payload.recording_id)
+        if name is None:
+            raise inngest.NonRetriableError("Recording not found")
+        return name
 
     cleaned_name = await step.run("choose-cleaned-name", _choose_cleaned_name)
     previous = blob_name_from_url(verified_url or payload.gcs_url)

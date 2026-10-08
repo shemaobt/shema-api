@@ -853,6 +853,75 @@ async def test_a_replacement_started_before_this_deploy_is_still_checked_by_conf
     assert (response.status_code, response.json()["code"]) == (400, "UPLOAD_SIZE_MISMATCH")
 
 
+async def test_a_confirm_whose_event_was_lost_is_sent_again_by_the_retried_confirm_and_verified(
+    db_session: AsyncSession,
+    bucket: _Bucket,
+    client: httpx.AsyncClient,
+    sent: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.inngest_client import inngest_client
+    from app.inngest.upload_processing import process_upload_fn
+
+    await make_app(db_session, app_key=OC_APP_KEY, name="Oral Collector")
+    device, rec = await _first_upload(db_session, bucket, client)
+    device.put(await device.upload_url(rec.id), NEW_AUDIO)
+    reachable = inngest_client.send
+
+    async def _unreachable_once(event: inngest.Event) -> list[str]:
+        monkeypatch.setattr(inngest_client, "send", reachable)
+        raise ConnectionError("Inngest unreachable")
+
+    monkeypatch.setattr(inngest_client, "send", _unreachable_once)
+    with pytest.raises(ConnectionError):
+        await device.confirm(rec.id, crc32c=_crc32c(NEW_AUDIO))
+
+    retried = await device.confirm(rec.id, crc32c=_crc32c(NEW_AUDIO))
+    assert retried.status_code == 200
+    assert len(sent) == 1
+    await _run_job(process_upload_fn, sent[-1])
+
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.VERIFIED
+
+
+async def test_an_uploaded_recording_whose_object_is_missing_is_not_marked_verified_by_the_job(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    from app.inngest.upload_processing import process_upload_fn
+
+    await make_app(db_session, app_key=OC_APP_KEY, name="Oral Collector")
+    _device, rec = await _owner_and_recording(
+        db_session,
+        bucket,
+        client,
+        file_size_bytes=len(NEW_AUDIO),
+        upload_status=UploadStatus.UPLOADED,
+    )
+    rec.gcs_url = _url(_todays_name(rec))
+    await db_session.commit()
+
+    await _run_job(process_upload_fn, _queued_by_the_old_confirm(rec, NEW_AUDIO))
+
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.UPLOADED
+    told = await db_session.execute(
+        select(Notification.event_type).where(Notification.user_id == rec.user_id)
+    )
+    assert list(told.scalars()) == [OCNotificationEvent.UPLOAD_FAILED]
+
+
+async def test_a_failed_upload_with_a_url_asking_an_upload_url_goes_to_uploading_on_a_fresh_name(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
+    rec.upload_status = UploadStatus.UPLOAD_FAILED
+    await db_session.commit()
+
+    name = await device.upload_url(rec.id)
+
+    assert name != _todays_name(rec)
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.UPLOADING
+
+
 async def test_after_confirm_upload_the_job_marks_it_verified_and_notifies_keeping_its_url(
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient, sent: list
 ) -> None:
@@ -1010,6 +1079,33 @@ async def test_the_cleaning_job_writes_under_a_new_name_keeps_the_backup_and_rem
     assert stored.cleaning_status == CleaningStatus.CLEANED
 
 
+async def test_a_cleaning_of_a_recording_deleted_meanwhile_is_not_retried(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient, edge: _PublicEdge
+) -> None:
+    from app.inngest.audio_cleaning import clean_recording_fn
+
+    _device, rec = await _uploaded(db_session, bucket, client)
+    edge.cleaned_audio = b"the same story without the hiss"
+
+    async def _deleted() -> None:
+        await db_session.delete(await _row(db_session, rec.id))
+        await db_session.commit()
+
+    with pytest.raises(inngest.NonRetriableError):
+        await _run_job(
+            clean_recording_fn,
+            inngest.Event(
+                name="clean",
+                data={
+                    "recording_id": rec.id,
+                    "user_id": rec.user_id,
+                    "gcs_url": _url(_todays_name(rec)),
+                },
+            ),
+            meanwhile={"choose-cleaned-name": _deleted},
+        )
+
+
 async def test_a_previous_object_the_bucket_refuses_to_delete_does_not_fail_the_cleaning(
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient, edge: _PublicEdge
 ) -> None:
@@ -1084,6 +1180,18 @@ async def test_deleting_a_recording_with_a_pending_object_removes_the_pending_ob
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
 ) -> None:
     device, rec = await _first_upload(db_session, bucket, client)
+    device.put(await device.upload_url(rec.id), NEW_AUDIO)
+
+    response = await client.delete(f"{RECORDINGS_PREFIX}/{rec.id}", headers=device.headers)
+
+    assert response.status_code == 204
+    assert bucket.objects == {}
+
+
+async def test_deleting_a_recording_with_a_pending_replacement_removes_it_and_the_published_audio(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
     device.put(await device.upload_url(rec.id), NEW_AUDIO)
 
     response = await client.delete(f"{RECORDINGS_PREFIX}/{rec.id}", headers=device.headers)

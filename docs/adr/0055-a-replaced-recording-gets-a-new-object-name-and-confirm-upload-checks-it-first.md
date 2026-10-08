@@ -33,19 +33,25 @@ written over.
   status, the URL, the audio behind it and the pending object stay as they were. First
   uploads and replacements behave the same. A confirm with no pending object on a recording
   already `uploaded` or `verified` is a repeat of an accepted one: it answers 200 with the
-  recording as it is, checks nothing and sends no event, since a cleaning may have replaced
-  the audio the app declared. A recording still `uploading` with no pending object was
+  recording as it is and checks nothing, since a cleaning may have replaced the audio the
+  app declared. For an `uploaded` recording it sends the confirm event again, so a confirm
+  whose first event was lost still reaches `verified`; a `verified` one sends nothing. A recording still `uploading` with no pending object was
   started before this change: the name in its URL is checked, or with no URL the
   first-upload name.
-- A replacement's upload URL leaves the upload status as it is; `uploading` and
-  `upload_failed` keep meaning a first upload. So the stalled-upload sweep, the 180-day purge
-  and «clear stale recordings» never reach a recording with published audio. A replacement
+- A recording has published audio when it has a URL and is `uploaded` or `verified`. Its
+  upload URL leaves the upload status as it is; any other recording goes to `uploading`, on
+  a fresh name when it has a URL. `uploading` and `upload_failed` keep meaning audio not yet
+  accepted. So the stalled-upload sweep, the 180-day purge and «clear stale recordings»
+  never reach a recording with published audio, except a row the previous code left
+  `uploading` with a URL while replacing its audio: the sweep still fails it and the purge
+  deletes its audio. A replacement
   that is never confirmed leaves its pending object in the bucket, a known gap accepted on
   the ticket.
 - `process-upload` keeps only the verified status and its notification. It no longer writes
   the URL and no longer marks a failure, since a failure there would flag audio that is
   already published. It never marks verified, or tells the user to free device storage, for
-  a recording that is not `uploaded`. The exception is a confirm the previous code queued
+  a recording that is not `uploaded`, and checks an `uploaded` recording's object first,
+  since the previous code marked a row `uploaded` before checking it. The exception is a confirm the previous code queued
   before the deploy: that row is still `uploading` with no pending object, so the job runs
   confirm-upload's check and publish itself in the same run; refused, the row keeps its
   status and the user is told to keep the local recording.
@@ -54,6 +60,10 @@ written over.
   previous object; the backup keeps it recoverable. It repoints only while the recording's
   URL is still the one it cleaned. If a replacement was confirmed in the meantime, it deletes
   its cleaned object, leaves the URL alone and sets the cleaning status back to none.
+
+Consequence: rolling back to the previous code is unsafe once a replacement has been
+published under a new name. That code rebuilds the first-upload name, finds it deleted,
+marks the recording `upload_failed` and unlinks the real audio.
 
 Consequence: a split that downloads the recording's audio while a replacement or a cleaning
 deletes the previous object now fails with a 404 and can be asked again. Before, it split the
