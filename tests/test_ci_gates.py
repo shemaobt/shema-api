@@ -91,6 +91,7 @@ MIGRATION_FILES = {
     "test_ir_earlier_passages_migration.py",
     "test_ir_archives_migration.py",
     "test_ir_opening_claim_migration.py",
+    "test_ir_session_canon_pin_migration.py",
 }
 
 FRESH_INTERPRETER_FILES = {

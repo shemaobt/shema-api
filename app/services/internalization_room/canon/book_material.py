@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import BaseModel
 
 from app.core.canon_pin import pinned_commit
 from app.core.exceptions import ValidationError
 from app.core.served_books import SERVED_BOOKS
+from app.services.internalization_room.canon.kept import canon_path, per_canon
 from app.services.internalization_room.canon.parse_map import (
     _PERICOPE,
     SURVEYED_STATUS,
@@ -140,7 +140,7 @@ def _register_complete(book: str) -> dict[str, bool]:
     return complete
 
 
-@lru_cache(maxsize=8)
+@per_canon(maxsize=8)
 def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     """The book's withholdings: audit entries the project marked `do_not_decide`.
 
@@ -148,7 +148,7 @@ def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     not constraints, and the project's own rendered material leaves them out.
     """
     rules: list[PreservationRule] = []
-    for path in sorted(LOGS_DIR.glob(f"*-{book}-*-COMPILATION-LOG.md")):
+    for path in sorted(canon_path(LOGS_DIR).glob(f"*-{book}-*-COMPILATION-LOG.md")):
         pericope = path.name.split("-", 1)[0]
         for entry in _extract_audit(path.read_text(encoding="utf-8")):
             if not entry.get("do_not_decide"):
@@ -170,10 +170,10 @@ class SceneAbsence(BaseModel):
     text: str
 
 
-@lru_cache(maxsize=64)
+@per_canon(maxsize=64)
 def significant_absences(pericope_num: str) -> tuple[SceneAbsence, ...]:
     matches = (
-        sorted(COORDINATES_DIR.glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
+        sorted(canon_path(COORDINATES_DIR).glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
         if _PERICOPE.match(pericope_num)
         else []
     )
@@ -320,5 +320,5 @@ def story_so_far(book: str, current_pericope: str, not_worked: frozenset[str] = 
 
 
 def vendor_pin() -> str:
-    pin = Path(VENDOR / "VENDOR_PIN")
+    pin = canon_path(VENDOR) / "VENDOR_PIN"
     return pinned_commit(pin.read_text(encoding="utf-8")) if pin.exists() else "unpinned"

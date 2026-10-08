@@ -179,6 +179,7 @@ class IRSession(Base):
     opening_claimed_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(timezone=True), nullable=True
     )
+    canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class IRTeamSession(Base):
