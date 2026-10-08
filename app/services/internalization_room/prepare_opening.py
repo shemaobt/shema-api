@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room.earlier_passages import earlier_passages
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import run_turn
@@ -48,7 +48,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     try:
         async with AsyncSessionLocal() as db:
             panorama = await get_session(db, panorama_session_id)
-            spoken = panorama.language
+            spoken = room_language(panorama.language)
             if pericope is None:
                 pericope = await active_passage(db, project_id=panorama.project_id)
             if pericope is None:
