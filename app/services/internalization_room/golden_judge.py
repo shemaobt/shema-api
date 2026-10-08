@@ -76,7 +76,12 @@ _VERDICT: dict[str, Any] = {
 
 
 async def judge_session(
-    *, pericope: str, language: str, transcript: str, settings: Settings | None = None
+    *,
+    pericope: str,
+    language: str,
+    transcript: str,
+    prompt_repeats: bool = False,
+    settings: Settings | None = None,
 ) -> dict[str, Any]:
     """Her judge on one session: the Validator's map, her budget, her effort, the voice ladder.
 
@@ -90,13 +95,13 @@ async def judge_session(
     does not reach.
     """
     cfg = settings or get_settings()
-    system = cache_break_at_end(
-        render(
-            prompt_body(HER_PROMPT.read_text(encoding="utf-8")),
-            MEANING_MAP=validator_map_block(pericope, book_of(pericope)),
-            SESSION_LANGUAGE=language,
-        )
+    system = render(
+        prompt_body(HER_PROMPT.read_text(encoding="utf-8")),
+        MEANING_MAP=validator_map_block(pericope, book_of(pericope)),
+        SESSION_LANGUAGE=language,
     )
+    if prompt_repeats:
+        system = cache_break_at_end(system)
     raw = await room_agent().judge.call_agent(
         role="judge",
         system_prompt=system,
