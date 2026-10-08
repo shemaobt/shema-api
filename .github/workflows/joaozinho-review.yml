@@ -32,6 +32,9 @@ jobs:
       # so that the review still holds the merge. Into `main` a person approves and
       # the bot stays advisory: see docs/adr/0001-staging-environment.md.
       verdict_mode: ${{ github.base_ref == 'dev' && 'block' || 'comment' }}
+      # The reusable workflow's default of 30 ran out on a 23-file pull request (#667):
+      # the run ended in error_max_turns and the bot published nothing.
+      max_turns: 60
       app_id: ${{ vars.JOAOZINHO_APP_ID }}
     secrets:
       app_private_key: ${{ secrets.JOAOZINHO_APP_PRIVATE_KEY }}
