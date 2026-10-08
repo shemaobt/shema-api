@@ -473,7 +473,9 @@ def test_a_passage_the_catalogue_does_not_have_still_falls_back_to_the_canon(tmp
     named = labelled_elements("P03", catalogue_dir=catalogue)
     from_the_canon = {element.key: element.label for element in elements_for("P03")}
 
-    assert all(element.label_pt is None for element in named)
+    assert all(
+        element.label_pt is None for element in named if element.kind is not ElementKind.SCENE
+    )
     assert all(element.label_en == from_the_canon[element.key] for element in named)
 
 

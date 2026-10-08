@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.canon import titles
-from app.services.internalization_room.canon.labels import labelled_elements
+from app.services.internalization_room.canon.labels import LABELS_DIR, labelled_elements
 from app.services.internalization_room.part_names import scene_titles
 from app.services.internalization_room.sessions import create_session
 
@@ -114,4 +114,20 @@ def test_a_scene_bead_on_the_desk_carries_her_title_and_the_maps_heading(
 
     assert (bead.label_pt, bead.label_en) == (pt, en), (
         "a conta da cena no painel vinha do nosso catálogo, não da lista dela e do mapa"
+    )
+
+
+def test_a_scene_bead_of_a_passage_our_catalogue_lacks_still_carries_her_title(
+    tmp_path: Path,
+) -> None:
+    catalogue = json.loads((LABELS_DIR / "ruth.json").read_text(encoding="utf-8"))
+    del catalogue["P03"]
+    (tmp_path / "ruth.json").write_text(json.dumps(catalogue, ensure_ascii=False), encoding="utf-8")
+
+    (bead,) = [
+        one for one in labelled_elements("P03", catalogue_dir=tmp_path) if one.key == "scene:1"
+    ]
+
+    assert (bead.label_pt, bead.label_en) == ("O último apelo de Noemi", "Naomi's last appeal"), (
+        "uma passagem fora do nosso catálogo servia a cena sem o título dela"
     )
