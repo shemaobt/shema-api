@@ -402,12 +402,27 @@ async def test_a_probe_that_never_answers_is_stopped_once_the_bound_has_passed(
     hung_probe.write_text(f"#!/bin/sh\necho $$ > {pid_file}\nexec sleep 60\n")
     hung_probe.chmod(0o755)
     monkeypatch.setattr(audio_duration, "PROBE", str(hung_probe))
-    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", 0.5)
+    bound = 3600.0
+    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", bound)
     the_transcriber_hears_no_words(monkeypatch)
+    hearing_the_take = asyncio.create_task(
+        hearing.heard_speech(b"audio", language="pt", settings=settings())
+    )
 
-    speech = await hearing.heard_speech(b"audio", language="pt", settings=settings())
+    async with asyncio.timeout(30):
+        while not pid_file.exists() or not pid_file.read_text().endswith("\n"):
+            await asyncio.sleep(0.01)
+    loop = asyncio.get_running_loop()
+    loop_time = loop.time
+    monkeypatch.setattr(loop, "time", lambda: loop_time() + bound + 1)
+    try:
+        done, _ = await asyncio.wait({hearing_the_take}, timeout=10)
+        assert done, "um ffprobe travado seguia segurando a medida depois do teto"
+    finally:
+        hearing_the_take.cancel()
+        await asyncio.wait({hearing_the_take})
 
-    assert speech.take_ms is None
+    assert hearing_the_take.result().take_ms is None
     with pytest.raises(ProcessLookupError):
         os.kill(int(pid_file.read_text()), 0)
 
