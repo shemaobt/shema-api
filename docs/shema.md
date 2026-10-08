@@ -1296,7 +1296,10 @@ keeps — every row as `""`, written or not, so the reduction does not tell whic
 story table whole, so `_redaction.story_text_as_written` gives a row of a stored story, matched
 by its name, the stored place back when it is sent as `""` or without one, refuses one sent with
 any place (comparing with the `""` the reader was given, never with the truth), and writes a new
-story as typed. The captions have no write path.
+story as typed. The captions have no write path. **Known gap:** the rows have no id, so a reader
+who renames a stored story sends a new one and the old row's place goes with the row — as it
+would if they deleted it, which the progress tab already lets them do. A row id on
+`storyProgress` is what would close it.
 
 **What a withheld record holds back beyond its place — OBT-556.** The INT-12 pass found the
 record's text leaving by five doors, and the client decided on 2/out/2026 to close them all

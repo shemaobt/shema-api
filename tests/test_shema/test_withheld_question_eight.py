@@ -41,8 +41,8 @@ PLACE = "LOCAL-SIGILOSO casa do lider no vale"
 STORY = "Criacao"
 
 
-def _first(key: str):
-    return lambda record: (record.get(key) or [{}])[0]
+def _first(record: dict, key: str) -> dict:
+    return (record.get(key) or [{}])[0]
 
 
 #: Each of the seven, as a read of the record body — the history's copy of the place included.
@@ -52,15 +52,15 @@ FIELDS = {
     "needsNotes": (NEEDS, lambda r: r["needsNotes"]),
     "partnerOrg": (PARTNER, lambda r: r["partnerOrg"]),
     "statusGoal": (GOAL, lambda r: r["statusGoal"]),
-    "mediaPhotos.caption": (PHOTO, lambda r: _first("mediaPhotos")(r).get("caption")),
-    "mediaVideos.caption": (VIDEO, lambda r: _first("mediaVideos")(r).get("caption")),
+    "mediaPhotos.caption": (PHOTO, lambda r: _first(r, "mediaPhotos").get("caption")),
+    "mediaVideos.caption": (VIDEO, lambda r: _first(r, "mediaVideos").get("caption")),
     "storyProgress.recordLocation": (
         PLACE,
-        lambda r: _first("storyProgress")(r).get("recordLocation"),
+        lambda r: _first(r, "storyProgress").get("recordLocation"),
     ),
     "progressHistory.storyProgress.recordLocation": (
         PLACE,
-        lambda r: _first("storyProgress")(_first("progressHistory")(r)).get("recordLocation"),
+        lambda r: _first(_first(r, "progressHistory"), "storyProgress").get("recordLocation"),
     ),
 }
 

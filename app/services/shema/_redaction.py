@@ -49,7 +49,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from typing import Any, Final
+from typing import Any, Final, TypeVar
+
+from pydantic import BaseModel
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
@@ -185,6 +187,10 @@ def searchable_text(project: ShemaProject, reader: ShemaReader) -> str:
     return " ".join(part for part in fields if part)
 
 
+#: A model nested in a record — a media item, a story row — that :func:`_blanked` reduces.
+_Nested = TypeVar("_Nested", bound=BaseModel)
+
+
 def reads_the_truth(project: ShemaProject, reader: ShemaReader) -> bool:
     """Whether ``reader`` reads ``project`` as it is: coordination does, and so does everybody on
     a project whose place is not withheld.
@@ -248,29 +254,25 @@ def free_text_as_read(
     return {
         "needs_items": needs,
         "health_history": history,
-        "media_photos": _uncaptioned(record.media_photos),
-        "media_videos": _uncaptioned(record.media_videos),
-        "story_progress": _unplaced(record.story_progress),
+        "media_photos": _blanked(record.media_photos, "caption"),
+        "media_videos": _blanked(record.media_videos, "caption"),
+        "story_progress": _blanked(record.story_progress, "record_location"),
         "progress_history": [
-            entry.model_copy(update={"story_progress": _unplaced(entry.story_progress)})
+            entry.model_copy(
+                update={"story_progress": _blanked(entry.story_progress, "record_location")}
+            )
             for entry in record.progress_history
         ],
     }
 
 
-def _uncaptioned(items: Sequence[Any] | None) -> list[Any] | None:
-    """Media items with their captions as ``""`` — a caption can say where it was taken."""
+def _blanked(items: Sequence[_Nested] | None, field: str) -> list[_Nested] | None:
+    """``items`` with ``field`` as ``""`` on every one — a caption can say where it was taken, and
+    a story's recording place says it outright. Every item, written or not, so the reduction does
+    not tell which ones had text."""
     if items is None:
         return None
-    return [item.model_copy(update={"caption": ""}) for item in items]
-
-
-def _unplaced(rows: Sequence[ShemaStoryProgressRow] | None) -> list[ShemaStoryProgressRow] | None:
-    """Story rows with every recording place as ``""`` — written or not, so the reduction does
-    not tell which stories had one."""
-    if rows is None:
-        return None
-    return [row.model_copy(update={"record_location": ""}) for row in rows]
+    return [item.model_copy(update={field: ""}) for item in items]
 
 
 #: The one name a refused need text is given, in the client's spelling.
