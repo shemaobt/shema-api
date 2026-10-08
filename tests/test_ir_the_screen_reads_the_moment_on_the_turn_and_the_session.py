@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.hearing import HeardSpeech
 from tests.opening_harness import the_tablet_opens
-from tests.release_harness import a_claimed_device
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client
 from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
 
@@ -76,4 +76,23 @@ async def test_a_reply_that_opens_scene_two_tells_the_screen_internalization_of_
 
     assert reply["moment"] == {"at": "internalization", "part": 2, "parts": 4}, (
         "a tela ficava na Familiarização depois que a voz abriu a cena 2"
+    )
+
+
+async def test_the_session_read_says_where_the_last_reply_left_the_room_and_nothing_before_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, guide: _Guide
+) -> None:
+    _team, tablet = await a_claimed_device(db_session)
+    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+    await the_room_opens(client, tablet, opened["session_id"])
+    guide.says = "Muito bem. Vamos pra Internalização da cena 2."
+    await the_team_says(client, tablet, opened["session_id"], "segundo")
+
+    read = await client.get(
+        f"{PREFIX}/sessions/{opened['session_id']}", headers=team_headers(tablet)
+    )
+
+    assert opened["moment"] is None, "uma sessão que ainda não ouviu a voz já tinha momento"
+    assert read.json()["moment"] == {"at": "internalization", "part": 2, "parts": 4}, (
+        "o tablet que voltava para a sessão não sabia em que momento a sala estava"
     )

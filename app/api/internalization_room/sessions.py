@@ -404,6 +404,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         language=session.language,
         halt=halt.standing(session),
         opened=was_opened(session),
+        moment=moment_view(session),
     )
 
 
