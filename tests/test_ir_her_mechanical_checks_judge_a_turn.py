@@ -121,3 +121,9 @@ def test_every_fault_of_one_turn_comes_back_in_her_order() -> None:
         "says 'o mapa' / 'the map' to the team",
         "religious farewell of its own",
     ]
+
+
+def test_o_mapa_after_an_accented_letter_is_her_o_mapa_because_her_word_edge_is_ascii() -> None:
+    assert _turn(guide="No sertão mapa nenhum guiava a família.", expect={}) == [
+        "says 'o mapa' / 'the map' to the team"
+    ], "o \\b dela é ASCII: o ã não é letra pra ela, então 'o mapa' começava ali"

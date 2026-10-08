@@ -17,18 +17,26 @@ says separates the two here: the words on either side of every `\\b` below are u
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
-_REHEARSAL = re.compile(r"\bensai(em|ar|o)\b|rehears", re.IGNORECASE)
-_RUTH_AND_MAHLON = re.compile(
-    r"(Rute|Ruth)[^.]{0,40}\b(Malom|Mahlon)\b|(Malom|Mahlon)[^.]{0,40}\b(Rute|Ruth)\b",
-    re.IGNORECASE,
+import regex
+
+
+def _her(pattern: str, flags: int = regex.IGNORECASE) -> regex.Pattern[str]:
+    ascii_like_javascript = (
+        pattern.replace(r"\b", r"(?a:\b)").replace(r"\w", r"(?a:\w)").replace(r"\d", "[0-9]")
+    )
+    return regex.compile(ascii_like_javascript, flags)
+
+
+_REHEARSAL = _her(r"\bensai(em|ar|o)\b|rehears")
+_RUTH_AND_MAHLON = _her(
+    r"(Rute|Ruth)[^.]{0,40}\b(Malom|Mahlon)\b|(Malom|Mahlon)[^.]{0,40}\b(Rute|Ruth)\b"
 )
-_MARRIED = re.compile(r"casou|esposa|mulher de|married|wife", re.IGNORECASE)
-_RECORD = re.compile(r"grav", re.IGNORECASE)
-_THE_MAP = re.compile(r"\bo mapa\b|the map\b", re.IGNORECASE)
-_FAREWELL = re.compile(r"vão com deus|god bless|amém|amen\b", re.IGNORECASE)
+_MARRIED = _her(r"casou|esposa|mulher de|married|wife")
+_RECORD = _her(r"grav")
+_THE_MAP = _her(r"\bo mapa\b|the map\b")
+_FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
 
 def mechanical_checks(
