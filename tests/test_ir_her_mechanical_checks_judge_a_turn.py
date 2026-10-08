@@ -29,7 +29,6 @@ OPENS_MORE = (
     "Claro. A gente vai com calma. Eu conto de novo, passo a passo, com mais detalhe. A "
     "história começa no tempo em que os juízes governavam Israel."
 )
-#: Her closing of a scene opening and its last two sentences, `src/turn/fixedLines.ts`.
 PART_CLOSING = (
     "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
     "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
@@ -37,7 +36,6 @@ PART_CLOSING = (
 CLOSING_TAIL = (
     "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
 )
-#: The story of scene 1 her `checksTest.ts` opens a part with.
 STORY = (
     "Nos dias em que os juízes julgavam, teve uma fome na terra. Um homem de Belém de Judá foi "
     "morar de passagem nos campos de Moabe, com a mulher e os dois filhos."
@@ -190,7 +188,6 @@ def test_a_pairing_is_read_sentence_by_sentence_and_a_denial_is_never_one() -> N
     ), "o nome e o casamento em frases diferentes não são o par"
 
 
-#: Her small-gaps choice, its Ensaio Final form and the older form, from her `checksTest.ts`.
 CHOICE_FINAL = (
     "Vocês trouxeram quase tudo desta cena: a fome, a família de Belém, a ida pra Moabe. "
     "Faltaram só dois detalhes: dizer 'o marido de Noemi' e 'uns dez anos'. Querem ensaiar esta "
@@ -341,14 +338,12 @@ def test_a_faithful_telling_in_other_words_is_never_sent_back_nor_asked_for_the_
         assert _turn(guide=accepted, expect=accepts) == [], accepted
 
 
-#: The fence's two lines and item 3's microphone sentence, `src/turn/fixedLines.ts`.
 FENCE_OPEN = "Agora vou dizer tudo o que deve entrar no ensaio de vocês."
 FENCE_CLOSE = "Agora podem ensaiar."
 MIC = (
     "Quando estiverem prontos, toquem no microfone vermelho, gravem o ensaio desta cena e "
     "traduzam pra mim frase por frase."
 )
-#: Her live fence of 2026-09-23 23:09-37, P01-part-opening-closing turn 3.
 REAL_FENCE = (
     f"Ótimo. {FENCE_OPEN}\n\nNo tempo em que os juízes governavam Israel, veio uma fome na terra. "
     "Um homem de Belém de Judá saiu de lá com a mulher dele e os dois filhos, pra morar de "
@@ -430,7 +425,6 @@ PART_CLOSING_EN = (
     "clear? If you have any questions, ask me. If you have understood it, tell me and we will go "
     "to the rehearsal."
 )
-#: Her closing as approved on 2026-09-23, with "parte", and the pilot P07 near-closing.
 PART_CLOSING_0923 = PART_CLOSING.replace("nessa cena", "nessa parte").replace(
     "Essa cena", "Essa parte"
 )
@@ -438,9 +432,7 @@ P07_NEAR = (
     "Conversem entre vocês. Essa parte ficou clara? Se tiver alguma dúvida, me perguntem. Se já "
     "entenderam, me digam e a gente vai pro ensaio."
 )
-#: The reminder of her live run of 2026-09-23 22:47, P01-understand-first turn 6.
 REMINDER_MIC = "Quando vocês gravarem essa primeira cena no microfone vermelho, lembrem dele."
-#: The two replies of her live run of 2026-09-23 23:09 to "Entendi. E o que acontece com eles?"
 FENCED_REPLY = (
     "Em Moabe acontece o resto da história. Mas vocês disseram que já entenderam a primeira parte. "
     "Então vamos ensaiar ela primeiro, pra ela entrar bem antes de seguir.\n\n"
@@ -545,8 +537,6 @@ def test_the_tail_is_asked_for_only_when_the_earlier_guide_turns_left_a_part_ope
     ], "sem parte aberta a cauda não é pedida, mas a cerca nunca vem antes da palavra da equipe"
 
 
-#: Her approved send-off of 2026-09-21 (`ENSAIO-FINAL-SPEC.md` §8.1), the sentence added for a
-#: part told only aloud, and the send-off it replaced, from her `checksTest.ts`.
 SEND_OFF = (
     "Todas as cenas já estão comigo. No Ensaio Final o aplicativo junta as gravações das cenas; "
     "vocês ouvem a passagem inteira e, se ainda faltar algum detalhe, a gente acerta isso juntos. "
@@ -699,7 +689,6 @@ def test_a_new_fact_is_named_as_something_the_story_does_not_tell() -> None:
     ], "aceitar a causa nova como se fosse da história é o incidente"
 
 
-#: Her marks of the passage this team has not worked yet (P09), as her script hands them over.
 UNWORKED = json.loads(
     (Path(__file__).parent.parent / "golden/sessions/P10-earlier-passages-status.json").read_text(
         encoding="utf-8"
@@ -999,7 +988,6 @@ def test_boaz_never_sleeps_nor_wakes_at_the_threshing_floor_night() -> None:
         assert _turn(guide=kept, expect=asleep) == [], kept
 
 
-#: Her FIA lines F1, F3 and F4, approved on 2026-09-24, `src/turn/fixedLines.ts`.
 F1 = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira."
 F3 = (
     "O que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
@@ -1065,7 +1053,6 @@ def test_a_scene_of_todays_passage_is_a_cena_never_a_parte() -> None:
         assert _turn(guide=kept, expect=cena) == [], kept
 
 
-#: The kickoff her `checksTest.ts` reads the FIA moments against: F1, the passage, F3.
 KICKOFF = (
     "Bom dia. Eu sou o Facilitador Digital. Quando quiserem falar comigo, toquem no círculo; "
     f"toquem de novo quando terminarem. {F1} (a passagem inteira). Essa passagem tem quatro "
@@ -1254,8 +1241,8 @@ def _i(part: int) -> Moment:
     return Moment("internalization", part)
 
 
-def _a(part: int, fenced: bool = False) -> Moment:
-    return Moment("articulation", part, fenced=fenced)
+def _a(part: int) -> Moment:
+    return Moment("articulation", part)
 
 
 I1_LINE = "Vamos pra Internalização da cena {}."
@@ -1297,39 +1284,39 @@ def test_her_moment_starts_in_the_familiarization_and_follows_the_lines_the_voic
     assert _after(F, f"(fixture). {F3}") == FC
     assert _after(FC, CLOSE) == _i(1), "o fechamento depois do F3 abre a cena 1"
     assert _after(F, f"(fixture). {SEND_OFF_LAST}") == EF
-    assert _after(_i(2), f"(fixture). {FENCE}") == _a(2, fenced=True)
+    assert _after(_i(2), f"(fixture). {FENCE}") == _a(2)
     assert _after(_i(2), CLOSE) == _i(2), "o fechamento é a última fala da própria abertura"
-    assert _after(_a(2, fenced=True), A1_LINE.format(2)) == _a(2, fenced=True)
-    assert _after(_a(2, fenced=True), A1_LINE.format(3)) == _a(3)
-    assert _after(_a(2, fenced=True), "Estamos na Internalização da cena 2.") == _i(2)
-    assert _after(_a(2, fenced=True), "Estamos na Familiarização.") == F
+    assert _after(_a(2), A1_LINE.format(2)) == _a(2)
+    assert _after(_a(2), A1_LINE.format(3)) == _a(3)
+    assert _after(_a(2), "Estamos na Internalização da cena 2.") == _i(2)
+    assert _after(_a(2), "Estamos na Familiarização.") == F
     assert _after(FC, "Estamos na Familiarização.") == FC
     assert _after(_i(2), I1_LINE.format(9)) == _i(2), "um número fora da passagem não move nada"
     assert _after(_i(2), f"{I1_LINE.format(3)} {FENCE} {SEND_OFF_LAST}", outcome="fail_safe") == (
         _i(2)
     ), "uma fala enlatada não muda o momento"
     assert _after(_i(2), I1_LINE.format(3), outcome="corrected") == _i(3)
-    assert _after(_a(1, fenced=True), f"{I1_LINE.format(2)} (fixture) a cena. {FENCE}") == _a(
-        2, fenced=True
-    ), "o que a sala ouviu por último"
+    assert _after(_a(1), f"{I1_LINE.format(2)} (fixture) a cena. {FENCE}") == _a(2), (
+        "o que a sala ouviu por último"
+    )
 
 
 def test_her_closing_moves_on_only_when_the_part_came_back_and_never_after_the_send_off() -> None:
-    assert _after(_a(2, fenced=True), CLOSE, (2,)) == _i(3)
-    assert _after(_a(2, fenced=True), CLOSE, (1,)) == replace(
-        _a(2, fenced=True), numberless_opening=True
-    ), "reabrir a mesma cena pra entender nunca põe o próximo número na tela"
-    assert _after(_a(1, fenced=True), CLOSE, unmarked_now=True) == _i(2), "o P06 T9"
-    assert _after(_a(4, fenced=True), CLOSE, (4,)) == _a(4, fenced=True), "depois da última cena"
+    assert _after(_a(2), CLOSE, (2,)) == _i(3)
+    assert _after(_a(2), CLOSE, (1,)) == replace(_a(2), numberless_opening=True), (
+        "reabrir a mesma cena pra entender nunca põe o próximo número na tela"
+    )
+    assert _after(_a(1), CLOSE, unmarked_now=True) == _i(2), "o P06 T9"
+    assert _after(_a(4), CLOSE, (4,)) == _a(4), "depois da última cena"
     assert _after(
-        _a(1, fenced=True), f"{I1_LINE.format(2)} (fixture) a cena. {FENCE} {PART_CLOSING}", (1, 2)
-    ) == _a(2, fenced=True)
+        _a(1), f"{I1_LINE.format(2)} (fixture) a cena. {FENCE} {PART_CLOSING}", (1, 2)
+    ) == _a(2)
     old = (
         "(fixture). O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte "
         "ficou clara? Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente "
         "vai pro ensaio."
     )
-    assert _after(_a(1, fenced=True), old, (1,)) == _i(2), "o fechamento de 23/09 ainda é lido"
+    assert _after(_a(1), old, (1,)) == _i(2), "o fechamento de 23/09 ainda é lido"
     assert _after(EF, f"{I1_LINE.format(3)} (fixture) a cena. {PART_CLOSING}") == EF
     assert _after(EF, "Estamos na Articulação da cena 2.") == EF
     assert _after(EF, f"(fixture). {FENCE}") == EF
@@ -1342,7 +1329,7 @@ def test_a_scene_rehearsal_moves_her_moment_only_for_the_scene_that_is_open() ->
     assert _arriving(_i(2), 3) == _i(2), (
         "uma cena contada adiante fica guardada, o momento não muda"
     )
-    assert _arriving(_a(2, fenced=True), 2) == _a(2, fenced=True)
+    assert _arriving(_a(2), 2) == _a(2)
     assert _arriving(F, 1) == F
     assert _arriving(EF, 2) == EF
     assert _arriving(_i(2), 9) == _i(2)
@@ -1350,34 +1337,34 @@ def test_a_scene_rehearsal_moves_her_moment_only_for_the_scene_that_is_open() ->
 
 
 def test_a_numberless_opening_lets_the_next_scenes_rehearsal_move_her_moment() -> None:
-    opened = _after(_a(2, fenced=True), CLOSE)
-    assert opened == replace(_a(2, fenced=True), numberless_opening=True)
+    opened = _after(_a(2), CLOSE)
+    assert opened == replace(_a(2), numberless_opening=True)
     assert _arriving(opened, 3) == _a(3), "a cena 3 foi aberta, só o número se perdeu"
     assert _arriving(opened, 4) == opened
     assert _after(F, CLOSE) == replace(F, numberless_opening=True)
     assert _arriving(replace(F, numberless_opening=True), 1) == _a(1)
     assert _after(_i(2), CLOSE) == _i(2), "nunca na Internalização"
-    assert _after(opened, "Estamos na Articulação da cena 2.") == _a(2, fenced=True), (
+    assert _after(opened, "Estamos na Articulação da cena 2.") == _a(2), (
         "uma linha numerada diz de novo onde a sala está"
     )
     assert _after(opened, "(fixture) uma resposta.") == opened
     assert _after(replace(_i(2), numberless_opening=True), f"(fixture). {FENCE}") == replace(
-        _a(2, fenced=True), numberless_opening=True
+        _a(2), numberless_opening=True
     )
-    assert _after(_a(2, fenced=True), f"{I1_LINE.format(9)} (fixture). {PART_CLOSING}", (2,)) == (
-        opened
-    ), "um número fora da passagem não amarra nada"
+    assert _after(_a(2), f"{I1_LINE.format(9)} (fixture). {PART_CLOSING}", (2,)) == (opened), (
+        "um número fora da passagem não amarra nada"
+    )
     assert _after(
-        _a(2, fenced=True), f"Estamos na Articulação da cena 2. (fixture). {PART_CLOSING}", (2,)
-    ) == _a(2, fenced=True)
+        _a(2), f"Estamos na Articulação da cena 2. (fixture). {PART_CLOSING}", (2,)
+    ) == _a(2)
 
 
 def test_the_next_scene_is_never_opened_before_this_one_came_back_whole() -> None:
     def opened(guide: str, before: Moment | None) -> list[str]:
         return _turn(guide=guide, expect={"no_next_part": True}, moment_before=before)
 
-    assert opened(I1_LINE.format(2), _a(2, fenced=True)) == [], "reabrir a mesma cena pra entender"
-    assert opened(I1_LINE.format(3), _a(2, fenced=True)) == [
+    assert opened(I1_LINE.format(2), _a(2)) == [], "reabrir a mesma cena pra entender"
+    assert opened(I1_LINE.format(3), _a(2)) == [
         "the next scene was opened before this scene came back whole (Internalization line for "
         "scene 3)"
     ]
@@ -1401,7 +1388,7 @@ def test_the_moment_her_script_expects_after_the_reply_is_the_one_the_reply_left
         return _turn(guide=OPENS_MORE, expect={"moment_after": wanted}, moment_after=after)
 
     assert left(_i(2), "I2") == []
-    assert left(_a(3, fenced=True), ["I3", "A3"]) == []
+    assert left(_a(3), ["I3", "A3"]) == []
     assert left(FC, "F") == []
     assert left(EF, "EF") == []
     assert left(_a(2), "I3") == ["the app's moment after this reply is A2, not I3"]
@@ -1471,7 +1458,7 @@ def test_every_fault_of_one_turn_at_her_freeze_comes_back_in_her_order() -> None
         expect=expect,
         previous_guide="",
         moment_before=_i(2),
-        moment_after=_a(3, fenced=True),
+        moment_after=_a(3),
     ) == [
         "fail_safe voiced in reply to a turn that must be answered",
         "rehearsal invited on a turn where the team asked to understand first",

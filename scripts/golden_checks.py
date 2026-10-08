@@ -896,7 +896,6 @@ def _moment_line_faults(
 class Moment:
     at: str
     part: int | None = None
-    fenced: bool | None = None
     closed: bool = False
     numberless_opening: bool = False
 
@@ -926,12 +925,6 @@ def _says_where(trigger: _Trigger) -> bool:
     return not trigger.outside and (trigger.part is not None or trigger.cause == "where_we_are")
 
 
-def _articulation(moment: Moment, part: int) -> Moment:
-    if moment.at == "articulation" and moment.part == part:
-        return moment
-    return Moment("articulation", part, fenced=False)
-
-
 def _step(
     moment: Moment,
     trigger: _Trigger,
@@ -952,17 +945,17 @@ def _step(
     if trigger.cause == "entrance":
         return Moment("internalization", part)
     if trigger.cause == "articulation_entrance":
-        return _articulation(moment, part)
+        return Moment("articulation", part)
     if trigger.cause == "where_we_are":
         if trigger.to == "familiarization":
             return moment if moment.at == "familiarization" else Moment("familiarization")
         if trigger.to == "internalization":
             return Moment("internalization", part)
-        return _articulation(moment, part)
+        return Moment("articulation", part)
     if trigger.cause == "fence":
         if moment.at in ("familiarization", "ensaio_final"):
             return moment
-        return Moment("articulation", moment.part, fenced=True)
+        return Moment("articulation", moment.part)
     if trigger.cause == "part_closing":
         if moment.at in ("internalization", "ensaio_final") or earlier:
             return moment
@@ -981,11 +974,11 @@ def _room_event(moment: Moment, part: int) -> Moment:
     if moment.at == "ensaio_final":
         return moment
     if part == _scene(moment) + 1 and _numberless(moment):
-        return Moment("articulation", part, fenced=False)
+        return Moment("articulation", part)
     if moment.at == "familiarization":
         return moment
     if moment.at == "internalization" and part == moment.part:
-        return _with_numberless(Moment("articulation", part, fenced=False), _numberless(moment))
+        return _with_numberless(Moment("articulation", part), _numberless(moment))
     return moment
 
 
