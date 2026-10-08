@@ -337,11 +337,6 @@ def _judge(blockers: list[str], waived: frozenset[str]) -> None:
 async def compose_internalization_release(
     db: AsyncSession, session: IRSession
 ) -> tuple[dict[str, Any], list[str]]:
-    with reading_the_canon_of(session.canon_pin):
-        return await _composed(db, session)
-
-
-async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
     """The packet this session composes right now, and everything standing in its way.
 
     Composing and judging are two acts, and separating them is what lets the approval ask
@@ -470,6 +465,11 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     moving, and two reads of an unchanged session must carry one hash. A consumer verifying
     the fingerprint drops those seven keys and hashes the rest.
     """
+    with reading_the_canon_of(session.canon_pin):
+        return await _composed(db, session)
+
+
+async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
     blockers: list[str] = []
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
