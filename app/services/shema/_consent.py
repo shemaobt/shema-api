@@ -41,13 +41,15 @@ to the record by :func:`request_as_read` and to every write of a request or a sh
 request it was given for, so a new text arriving without one is unauthorized again
 (:func:`request_written`, :func:`need_written`) — and a submission, announced before anybody
 applies it, is authorized by its own answer (:func:`submission_reaches_prayer_wall`, OBT-554).
-Taking an authorization back is named here too (:func:`withdraws_authorization`, OBT-561),
-because *did the team stop sharing* is a question about the gate; the archive owns the erasure.
+Taking an authorization back is named here too (:func:`withdrawn_request`, OBT-561), and so is
+which archived text it covers (:func:`same_request`, OBT-576), because *what did the team stop
+sharing* is a question about the gate; the archive owns the erasure.
 """
 
 from __future__ import annotations
 
 import logging
+import unicodedata
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import date
 from typing import Any, Final, NamedTuple
@@ -378,13 +380,15 @@ def request_written(project: ShemaProject, sent: Mapping[str, Any]) -> dict[str,
     return written
 
 
-def withdraws_authorization(project: ShemaProject, sent: Mapping[str, Any]) -> bool:
-    """Whether ``sent`` takes back the authorization of the request on the wall (OBT-561).
+def withdrawn_request(project: ShemaProject, sent: Mapping[str, Any]) -> str | None:
+    """The request whose authorization ``sent`` takes back, or ``None`` (OBT-561, OBT-576).
 
     Read **before** the write lands, off the record as it stands: a request that reaches the
     wall, and a write that **states** a visibility other than ``rede`` — the team stopping the
-    sharing. Then every archived Pulse that shared a request is cleaned
-    (``_submission_archive.erase_shared_requests``).
+    sharing. What it took back is the text that was on the wall, so a withdrawal that brings a
+    new text along still names the old one; the archived Pulses that shared it in those words
+    are cleaned (``_submission_archive.erase_withdrawn_request``). ``None`` for a blank request
+    too — no Pulse shared nothing.
 
     **A new text arriving without a visibility is not a withdrawal**, although
     :func:`request_written` clears the authorization for it: the team did not stop sharing, it
@@ -392,8 +396,34 @@ def withdraws_authorization(project: ShemaProject, sent: Mapping[str, Any]) -> b
     ``is``: ``sent`` is a mapping, and a raw ``"rede"`` read as a withdrawal would erase.
     """
     if REQUEST_VISIBILITY not in sent or not reaches_prayer_wall(project):
-        return False
-    return bool(sent[REQUEST_VISIBILITY] != ShemaPrayerVisibility.REDE)
+        return None
+    if sent[REQUEST_VISIBILITY] == ShemaPrayerVisibility.REDE:
+        return None
+    return project.prayer_requests if project.prayer_requests.strip() else None
+
+
+def same_request(left: str, right: str) -> bool:
+    """Whether two texts are the same prayer request — *"exatamente igual"* (OBT-576).
+
+    Karina, via Daniel, 6/out/2026, asked whether a withdrawal also clears the Pulses that
+    shared the request in words since edited: *"Não, só do Pulso com o texto exatamente
+    igual."* Exactly equal **as the reader sees it**: the ends are not compared, because the
+    wall publishes the text stripped (:func:`shared_prayer_text`); ``\\r\\n`` and ``\\r`` are
+    the line break ``\\n`` typed elsewhere; and a letter composed or decomposed is one letter
+    (NFC). Everything else counts, character by character — a letter, its case, an accent, a
+    space or a blank line inside — so a wording the team edited is another version, and the
+    Pulse that holds it stays as the record of it.
+
+    Only what nobody can see is forgiven, and that is the private side: it erases. Deciding
+    that a text *moved* (:func:`request_written`) stays byte-strict for the same reason, since
+    there strict is what withdraws the authorization.
+    """
+    return _as_read(left) == _as_read(right)
+
+
+def _as_read(text: str) -> str:
+    """``text`` with what :func:`same_request` does not compare taken out."""
+    return unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n")).strip()
 
 
 def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:
