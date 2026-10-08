@@ -9,7 +9,8 @@ interruption. They are played through the room's **Golden doors**, `golden/sessi
 
     ACCESS_CODE=<key> uv run python scripts/golden_runner.py \\
         --base-url http://127.0.0.1:8044/api/internalization-room \\
-        [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>]
+        [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>] \\
+        [--budget-usd 20]
 
 One command is every session in `golden/sessions/`, as `npm run golden` is on her side;
 `--only` names one of them and `--script <path>` plays a script from anywhere. Per turn the
@@ -37,6 +38,10 @@ earlier run again, without playing the room.
 The exit code is the gate, by her rule: a session passes when the judge passed it and no
 mechanical check tripped. 1 when any session failed or was refused, 2 when there was
 nothing to play, 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
+
+A run stops before the next session once what it has spent reaches `--budget-usd`, or
+`GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
+is played whole and judged first. It names the sessions it did not start on stderr and exits 3.
 """
 
 from __future__ import annotations
@@ -71,6 +76,7 @@ from scripts.golden_checks import (
     moment_after_reply,
     moment_at_turn_start,
 )
+from scripts.golden_spend import OVER_BUDGET, budget_of, priced, stopped
 from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -597,6 +603,16 @@ def _seconds(values: list[int]) -> str:
     return f"{low:.0f} a {high:.0f} s (mediana ≈ {statistics.median(values) / 1000:.0f} s)"
 
 
+def _paid(results: list[SessionResult]) -> list[tuple[str, str, float | None]]:
+    calls = [call for result in results for turn in result.played for call in turn.usage]
+    calls += [call for result in results for call in result.judge_usage]
+    return [(call.role, call.rung, call.cost_usd) for call in calls]
+
+
+def _spent(results: list[SessionResult]) -> float:
+    return sum(priced(_paid(results))[0].values())
+
+
 def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str, pins: str) -> str:
     """The run's README, in the shape of hers: the verdict line, the table, the money, the clock.
 
@@ -611,15 +627,7 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
     refused = [result for result in results if result.refused]
     approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
-    by_role: dict[str, float] = {}
-    unpriced: list[str] = []
-    spent = [call for turn in played for call in turn.usage]
-    spent += [call for result in results for call in result.judge_usage]
-    for call in spent:
-        if call.cost_usd is None:
-            unpriced.append(call.rung)
-        else:
-            by_role[call.role] = by_role.get(call.role, 0.0) + call.cost_usd
+    by_role, unpriced = priced(_paid(results))
     voice = [
         sum(call.latency_ms or 0 for call in turn.usage if call.role in ("guide", "validator"))
         for turn in played
@@ -684,15 +692,25 @@ async def run(args: argparse.Namespace) -> int:
     headers = {"Authorization": f"Bearer {args.access_code}"} if args.access_code else {}
     out = Path(args.out)
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+    budget = budget_of(args)
     results: list[SessionResult] = []
+    not_started: list[str] = []
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
-        for script in scripts:
+        for position, script in enumerate(scripts):
+            if _spent(results) >= budget:
+                not_started = [later.name for later in scripts[position:]]
+                break
             results.append(
                 await play_session(
                     script, client, base_url=base_url, out=out, stamp=stamp, turns=args.turns
                 )
             )
-    return close(results, out=out, base_url=base_url, stamp=stamp)
+    exit_code = close(results, out=out, base_url=base_url, stamp=stamp)
+    if not_started:
+        message = stopped("golden", budget=budget, spent=_spent(results), not_started=not_started)
+        print(message, file=sys.stderr)
+        return OVER_BUDGET
+    return exit_code
 
 
 def exported(path: Path) -> tuple[Script, SessionResult, str]:
@@ -790,6 +808,7 @@ def main() -> int:
         "--out", default=str(REPO_ROOT / "golden/reports" / datetime.now(UTC).strftime("%Y-%m-%d"))
     )
     parser.add_argument("--turns", type=int, default=None)
+    parser.add_argument("--budget-usd", type=float, default=None)
     parser.add_argument("--stamp", default=None)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
     args = parser.parse_args()
