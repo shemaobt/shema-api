@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.services.internalization_room.canon import book_material, parse_map
+from tests.canon_harness import forget_the_canon
 
 _DISAGREEING_MAP = textwrap.dedent(
     """\
@@ -105,15 +106,9 @@ def a_passage_whose_checklist_disagrees_with_its_survey(
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
     monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    parse_map.load_map.cache_clear()
-    parse_map.load_book.cache_clear()
-    book_material.preservation_rules.cache_clear()
-    book_material._register_complete.cache_clear()
+    forget_the_canon()
     yield "V01"
-    parse_map.load_map.cache_clear()
-    parse_map.load_book.cache_clear()
-    book_material.preservation_rules.cache_clear()
-    book_material._register_complete.cache_clear()
+    forget_the_canon()
 
 
 def test_a_survey_marked_complete_does_not_open_when_its_own_checklist_is_not(
