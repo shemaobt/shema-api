@@ -42,7 +42,6 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
 
 
 LOGGER_NAME = "app.services.internalization_room.validated_turn"
-BRIDGE_LANGUAGE_LOGGER_NAME = "app.services.internalization_room.bridge_language"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 
@@ -204,41 +203,6 @@ async def test_a_correct_verdict_with_no_text_leaves_a_trace(
         assert "correct" in record.__dict__["condition"].lower()
         assert "empty" in record.__dict__["condition"].lower()
         assert "corrected_response" in record.getMessage()
-
-
-async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_words(
-    patch_agent, caplog: pytest.LogCaptureFixture
-) -> None:
-    """The counterpart of the policy test, on the recusal path instead of the exception one.
-
-    The draft is the Guide's, and the Guide can echo the team — so only the condition and a
-    count of characters are allowed onto this logger, never the drafted words themselves.
-    """
-    draft = "Tell me what you think happens next in this part of the story."
-    patch_agent(
-        FakeAgent(
-            verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
-            drafts=[draft] * (MAX_REDRAFTS + 1),
-        )
-    )
-
-    with (
-        caplog.at_level(logging.WARNING, logger=LOGGER_NAME),
-        caplog.at_level(logging.WARNING, logger=BRIDGE_LANGUAGE_LOGGER_NAME),
-    ):
-        outcome = await _a_turn("sessao-5")
-
-    assert outcome.used_fail_safe is True
-    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-
-    refusals = _refusal_records(caplog)
-    assert len(refusals) == 3
-    for record in refusals:
-        assert "off_bridge_language" in record.__dict__["condition"]
-        assert draft not in record.getMessage()
-        for value in record.__dict__.values():
-            assert draft not in str(value)
-    assert draft not in caplog.text
 
 
 async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(

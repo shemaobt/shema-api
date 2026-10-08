@@ -8,7 +8,6 @@ line between a canned answer the policy promises and a defect of ours that must 
 
 import asyncio
 import json
-import threading
 from typing import Any
 
 import httpx
@@ -16,6 +15,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room import validated_turn
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
 from tests.turn_harness import the_room_agent_is
@@ -231,9 +231,9 @@ async def test_a_bug_in_the_rooms_own_checks_is_not_dressed_up_as_an_outage(
     _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
 
     def _explodes(*_args: Any, **_kwargs: Any) -> bool:
-        raise AssertionError("a defect in the room's own bridge-language check")
+        raise AssertionError("a defect in the room's own peer-cue check")
 
-    the_room_agent_is(monkeypatch, strays_from=_explodes)
+    monkeypatch.setattr(validated_turn, "detects_peer_cue", _explodes)
     session_id = await _a_room_opening_a_passage(client)
 
     answered = await _the_room_takes_a_turn(client, session_id)
@@ -256,26 +256,3 @@ async def test_a_cancelled_turn_is_never_dressed_up_as_a_fail_safe(
 
     with pytest.raises(asyncio.CancelledError):
         await _the_room_takes_a_turn(client, session_id)
-
-
-async def test_the_bridge_language_check_runs_beside_the_event_loop_not_on_it(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
-    ran_on: list[int] = []
-
-    def _where_it_ran(text: str, language_code: str = "pt") -> bool:
-        ran_on.append(threading.get_ident())
-        return False
-
-    the_room_agent_is(monkeypatch, strays_from=_where_it_ran)
-    session_id = await _a_room_opening_a_passage(client)
-
-    answered = await _the_room_takes_a_turn(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    assert ran_on
-    assert threading.get_ident() not in ran_on, (
-        "o langdetect rodava na thread do loop: enquanto ele lia a fala, nenhum outro "
-        "pedido do servidor andava"
-    )

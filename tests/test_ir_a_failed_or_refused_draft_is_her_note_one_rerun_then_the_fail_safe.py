@@ -245,3 +245,34 @@ async def test_a_verdict_sent_back_is_redrafted_from_her_kickoff_and_her_note_wi
             "team's request deserves, using only what the map contains.)",
         },
     ], "o veredito reescrito levava a nota grudada no pontapé dela, como se fosse um só pedido"
+
+
+QUOTED = (
+    'Vocês leram: "Where you go I will go, and where you stay I will stay. Your people will '
+    'be my people and your God my God. Where you die I will die, and there I will be buried."'
+)
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        pytest.param({"verdict": "pass", "issues": []}, id="passed"),
+        pytest.param(
+            {"verdict": "correct", "issues": [], "corrected_response": QUOTED},
+            id="corrected",
+        ),
+    ],
+)
+async def test_a_reply_her_validator_let_through_is_voiced_whatever_language_it_quotes(
+    monkeypatch: pytest.MonkeyPatch, verdict: dict
+) -> None:
+    agent = the_agent_answers(monkeypatch, FakeAgent(verdicts=[verdict] * 3, drafts=[QUOTED] * 3))
+
+    outcome = await _a_turn()
+
+    assert outcome.used_fail_safe is False, (
+        "uma resposta que o Validador dela aprovou era retida por citar inglês numa sessão em "
+        "português, e a equipe ouvia a linha de segurança no lugar dela"
+    )
+    assert outcome.speech == QUOTED
+    assert agent.calls == ["guide", "validator"]

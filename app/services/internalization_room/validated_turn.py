@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -137,24 +136,6 @@ def _regenerated(raw: str, session_id: str, attempt: int) -> None:
             "attempt": attempt,
             "condition": "verdict is 'regenerate'",
         },
-    )
-
-
-def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
-    """The room's own gate rejecting spoken text: the condition and a number, never the words.
-
-    The rejected text is the Guide's draft on a `pass` verdict, or the Validator's own
-    ``corrected_response`` on a `correct` one — either way ``detail`` may never be that text
-    itself, because both can echo the team's own turn back at them, which is exactly what
-    `test_a_failed_turn_logs_its_cause_and_never_what_the_team_said` forbids of the log.
-    """
-    logger.warning(
-        "Guide draft rejected (%s) for session %s, attempt %s: %s",
-        condition,
-        session_id,
-        attempt,
-        detail,
-        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
     )
 
 
@@ -381,15 +362,6 @@ async def _voiced_after_validation(
             movements = []
         else:
             _regenerated(raw_verdict, session_id, attempt + 1)
-
-        if speech and bool(
-            await asyncio.to_thread(room_agent().strays_from, speech, language_code)
-        ):
-            issues = [*issues, {"problem": "off_bridge_language"}]
-            _draft_rejected(
-                "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
-            )
-            speech = ""
 
         if speech:
             return _timed(
