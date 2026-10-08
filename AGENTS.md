@@ -74,7 +74,9 @@ Marcia's canon — the Meaning Maps, Meaning Coordinates, Compilation Logs and e
 aliases list under `app/services/internalization_room/canon/vendor/` — moves only through
 `scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
 line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
-beside the copy. Never edit vendored files, the pin or the record by hand: `--check` holds
+beside the copy. It keeps the canon it replaces, with the element labels, under
+`canon/kept/<pin>/`: a session reads the canon it opened with until its passage is approved,
+so a kept tree may be dropped only once no open session names its pin. Never edit vendored files, the pin or the record by hand: `--check` holds
 the copy to the record, and to a clone of the compiler at the pin where
 `TRIPOD_COMPILER_REPO` names one, and `scripts/smoke_internalization_canon.py` fails on
 what the room could not serve. `canon-sync.yml` runs the sync twice a week and opens a

@@ -46,7 +46,6 @@ def the_canon_moves_on(
     tree = tmp_path / "kept" / served
     shutil.copytree(kept.CANON_DIR / "vendor", tree / "vendor")
     shutil.copytree(kept.CANON_DIR / "element-labels", tree / "element-labels")
-    shutil.copy(kept.CANON_DIR / "passage-labels.json", tree / "passage-labels.json")
     (tree / "vendor" / "VENDOR_PIN").write_text(f"pin_commit:       {served}\n")
     keeping(tree)
     record = tmp_path / f"{pin}.pin"
