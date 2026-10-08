@@ -882,3 +882,10 @@ def test_the_divine_name_is_rewritten_after_the_question_split() -> None:
         speakable_text("**YHWH** pergunta: onde você trabalhou?", "pt")
         == "Senhor Jeová pergunta. Onde você trabalhou?"
     )
+
+
+def test_the_first_d_line_is_spoken_with_a_sentence_break_where_its_dash_was() -> None:
+    assert (
+        speakable_text("Desculpa, não consegui ouvir direito — podem repetir?", "pt")
+        == "Desculpa, não consegui ouvir direito. Podem repetir?"
+    )

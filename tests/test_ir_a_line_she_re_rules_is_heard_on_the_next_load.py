@@ -546,3 +546,16 @@ def test_every_line_the_room_voices_is_there_in_both_languages() -> None:
         "uma fala que faltava numa língua virava silêncio, e a equipe não distingue isso "
         "de um tablet morto"
     )
+
+
+async def test_the_first_line_for_a_lost_sound_is_voiced_with_its_question_standing_alone(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: ElevenLabs,
+) -> None:
+    async with room_client(db_session, monkeypatch) as client:
+        _, spoken = await heard(client, "D0", "pt")
+
+    assert spoken == "voz:Desculpa, não consegui ouvir direito. Podem repetir?", (
+        "a pergunta da fala ia colada ao travessão e a voz não a entoava como pergunta"
+    )
