@@ -8,15 +8,16 @@ open it.
 
 They are vendored here, not forked. The bytes come from one commit of her repository, the pin
 records repo, branch, commit and a sha256 per file, and an edit to a vendored file is a merge
-conflict rather than a decision. Her prompts land beside ours — `prompts/vendor/` next to
-`prompts/` — because ours are derived from hers and have diverged on purpose; replacing ours
-would throw away the tickets that ported her text, and the vendoring exists so that "how does
-our Guide prompt differ from hers" is a `diff` instead of an argument.
+conflict rather than a decision. Her nine prompts sit where the room reads them, in
+`app/services/internalization_room/prompts/`, and are hers byte for byte: no copy of ours
+stands beside them, so a prompt that differs from hers is a failed `--check` and not a
+different Guide.
 
-Her five golden sessions travel the same door, at their own path, because a script that drifts
-from hers grades this room against its own homework: `scripts/golden_runner.py` plays the
-vendored copy, and a run is only comparable to her 5/5 of 2026-09-03 — vendored beside ours —
-while the bytes and the canon pin the judge's map comes from are the ones her branch names.
+Her twenty-three golden sessions and ten Back-Translation scripts travel the same door, at
+their own paths, because a script that drifts from hers grades this room against its own
+homework: `scripts/golden_runner.py` plays the vendored copy, and a run is only comparable to
+her 5/5 of 2026-09-03 — vendored beside ours — while the bytes and the canon pin the judge's
+map comes from are the ones her freeze names.
 
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,

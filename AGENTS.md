@@ -44,11 +44,12 @@ Guide's conversation is played through the **Golden doors**,
 as `Authorization: Bearer <key>`; the back-translation check through the **Text seam**, which
 reads it in `X-Access-Code`.
 Two runners, one convention: reports land under `golden/reports/<date>/`, committed, and the key
-travels as `ACCESS_CODE`. Her five session scripts are vendored at `golden/sessions/`
-under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
+travels as `ACCESS_CODE`. Her twenty-three session scripts are vendored at `golden/sessions/`
+and her ten Back-Translation scripts at `golden/bt/`, under the pin in `docs/doctrine/FREEZE_PIN`,
+beside her own 5/5 of 2026-09-03, which `docs/doctrine/DOCTRINE_PIN` holds.
 
 ```sh
-# the Guide's conversation: the five sessions, her mechanical checks, her judge, one README
+# the Guide's conversation: every session in golden/sessions/, her mechanical checks, her judge, one README
 # per run; a session passes only when the judge passed it and no check tripped, exit 1
 # otherwise. --only <name> plays one of them. The judge runs in this process on the voice
 # ladder, so it needs ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID for an identity-bound

@@ -2,7 +2,7 @@
 
 `CoverageView` answers `{engaged, surfaced, total, absence_index}`, and those aggregates are
 exactly what the product forbids putting in front of a facilitator. This route answers the
-opposite: every element of the passage, named in three languages, typed, placed in its scene,
+opposite: every element of the passage, named in two languages, typed, placed in its scene,
 and carrying its own coverage state.
 
 Three of these carry the slice.
@@ -197,9 +197,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
 ) -> None:
     """Behaviour 1 — each pilot passage serves its own count, scenes and preservation group.
 
-    P14 is a case of this and not a test of its own: one scene, and the fifth group empty.
-    Both are real passages of Ruth rather than edge cases, and asserting them twice would be
-    the same branch covered under two names.
+    P14 is a case of this and not a test of its own: the only one of the four with a single
+    scene. It is a real passage of Ruth rather than an edge case, and asserting it twice
+    would be the same branch covered under two names.
     """
     _user, project, headers = await a_facilitator(db_session, email=f"b1{pericope}@x.com")
 
@@ -228,8 +228,8 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
     absent and the names asserted distinct from each other — a facilitator has to be able to
     tell two beads apart by reading them.
 
-    What is deliberately *not* asserted is that the three languages differ. `being:B10` is
-    Rute in all three, and demanding a difference would demand a mistranslation. Nor that a
+    What is deliberately *not* asserted is that the two languages differ. `being:S1:B10` is
+    YHWH in both, and demanding a difference would demand a mistranslation. Nor that a
     name is unique across the passage: Ruth is a bead in each of P02's three scenes, told
     apart by the scene column, so the names are distinct within a scene.
     """
