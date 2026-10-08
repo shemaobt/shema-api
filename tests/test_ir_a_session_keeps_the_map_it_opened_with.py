@@ -33,6 +33,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.sessions import (
     create_session,
     save_comprehension,
@@ -45,6 +46,7 @@ from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_sp
 from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
 from tests.turn_harness import the_room_agent_is
 
+OLD_PIN = "b" * 40
 NEW_PIN = "a" * 40
 VENDORED_LINE = "Close-up and slow."
 KEPT_LINE = "THE KEPT MAP TELLS IT CLOSE AND SLOW."
@@ -304,6 +306,26 @@ async def test_a_session_open_when_a_new_canon_is_published_is_done_only_on_its_
         "a sessão fechou sem a equipe ter trabalhado a conta do seu próprio canon"
     )
     assert session_is_done(kept_session) is True
+
+
+async def test_the_release_of_a_session_open_when_a_new_canon_is_published_names_the_canon_it_worked_with(  # noqa: E501
+    db_session, monkeypatch, tmp_path
+) -> None:
+    the_canon_moves_on(monkeypatch, tmp_path, OLD_PIN)
+    kept_session = await create_session(db_session, pericope=P)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_a_rule_of_its_own)
+    newer, _ = await compose_internalization_release(
+        db_session, await create_session(db_session, pericope=P)
+    )
+
+    packet, _ = await compose_internalization_release(db_session, kept_session)
+
+    assert packet["canon_vendor_pin"] == OLD_PIN, (
+        "o pacote para o Refine nomeou um canon que a equipe nunca trabalhou"
+    )
+    assert packet["comprehension"]["total_units"] == newer["comprehension"]["total_units"] + 1, (
+        "o pacote contou as verificações do canon novo"
+    )
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(

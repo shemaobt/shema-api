@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -321,5 +320,5 @@ def story_so_far(book: str, current_pericope: str, not_worked: frozenset[str] = 
 
 
 def vendor_pin() -> str:
-    pin = Path(VENDOR / "VENDOR_PIN")
+    pin = canon_path(VENDOR) / "VENDOR_PIN"
     return pinned_commit(pin.read_text(encoding="utf-8")) if pin.exists() else "unpinned"

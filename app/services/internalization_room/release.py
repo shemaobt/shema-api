@@ -54,6 +54,7 @@ from app.services.internalization_room.back_translation import (
     untold_parts,
 )
 from app.services.internalization_room.canon.book_material import vendor_pin
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -336,6 +337,11 @@ def _judge(blockers: list[str], waived: frozenset[str]) -> None:
 async def compose_internalization_release(
     db: AsyncSession, session: IRSession
 ) -> tuple[dict[str, Any], list[str]]:
+    with reading_the_canon_of(session.canon_pin):
+        return await _composed(db, session)
+
+
+async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
     """The packet this session composes right now, and everything standing in its way.
 
     Composing and judging are two acts, and separating them is what lets the approval ask
