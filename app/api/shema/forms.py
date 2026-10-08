@@ -277,6 +277,7 @@ async def import_received(
         submission_id,
         readership=reading,
         user=user,
+        app_key=APP_KEY,
         expected_version=_expected_version(if_match),
         day=_local_day(local_day, utc_today=today),
     )

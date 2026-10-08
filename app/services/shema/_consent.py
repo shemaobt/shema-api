@@ -39,8 +39,8 @@ answered beside it: **who reads a request nobody authorized** (:data:`PRAYER_AUD
 to the record by :func:`request_as_read` and to every write of a request or a share by
 :func:`refuse_prayer_decisions`), and **what an authorization is attached to** — the
 request it was given for, so a new text arriving without one is unauthorized again
-(:func:`request_written`, :func:`need_written`) — and a submission, announced before anybody
-applies it, is authorized by its own answer (:func:`submission_reaches_prayer_wall`, OBT-554).
+(:func:`request_written`, :func:`need_written`) — and the Resource Circle hears of a request
+when an applied Pulse puts it on the wall (:func:`newly_shared_request`, OBT-554, OBT-566).
 Taking an authorization back is named here too (:func:`withdraws_authorization`, OBT-561),
 because *did the team stop sharing* is a question about the gate; the archive owns the erasure.
 """
@@ -410,20 +410,21 @@ def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:
     return written
 
 
-def submission_reaches_prayer_wall(project: ShemaProject, written: ShemaProjectUpdate) -> bool:
-    """Whether the request a submission carries may leave coordination — the prayer notice's gate.
+def newly_shared_request(project: ShemaProject, before: str) -> bool:
+    """Whether the record now shares a request it did not share — the prayer notice's gate.
 
-    **The submission authorizes its own request or nothing does.** An authorization belongs to
-    the request it was given for (:func:`request_written`), and a Pulse is announced before
-    anybody applies it, on both doors — so the record still holds the answer the *last* request
-    was given, and read alone it would lend last month's ``rede`` to a text nobody shared. The
-    visibility has to be stated in ``written``, the record write the submission carries:
-    unanswered, ``coordenacao``, or the text already on the record sent again without it, the
-    submission shared nothing, whatever the project said before.
+    Asked **after** a coordinator applied a Pulse (OBT-566), of the record as written, against
+    ``before`` — :func:`shared_prayer_text` read just ahead of that write. The record is the one
+    truth by then: :func:`request_written` has already given the Pulse's answer to the text it
+    came with, so a new text without ``rede`` left the wall rather than borrowing last month's
+    authorization, and the wall shows exactly what the network may now read. *Now on the wall
+    and not before* is a request the Resource Circle has not heard of — the first share above
+    all, which the notice at arrival, before anybody applied anything, could never see.
 
-    **And the record has to agree.** The link is the weakest credential in the system and its
-    answer is not applied until a coordinator applies it, so a leader claiming ``rede`` through
-    it cannot, by itself, make the network hear of a request. Both, because each alone answers
-    *yes* for somebody who never said it.
+    **The same request sent again is not news**, and neither is a Pulse that left the wall as it
+    was. And the link alone never reaches this: its answer is archived and waits for a
+    coordinator, so a leader claiming ``rede`` through the weakest credential in the system
+    makes the network hear of nothing until the record agrees.
     """
-    return written.prayer_visibility is ShemaPrayerVisibility.REDE and reaches_prayer_wall(project)
+    now = shared_prayer_text(project)
+    return now != "" and now != before

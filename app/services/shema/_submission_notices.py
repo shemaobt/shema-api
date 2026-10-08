@@ -15,20 +15,22 @@ that makes it safe: *route by role and region before capping*. A notice that wen
 coordinator would tell a coordinator in Oceania that a project in Africa reported, which is
 the collection read leaking one row at a time through a channel nobody audits.
 
-**Two notices, not one, and the second one has two gates.** The arrival reaches
-coordination. A prayer request inside it reaches the Resource Circle only if the submission
-**wrote one** and consent lets it leave coordination — the second is
-``app/services/shema/_consent.py``'s question and never this file's, and *an unauthorized
-prayer request is absent from all four output paths* with notifications as the fourth.
+**Two notices, at two moments.** The arrival reaches coordination when the Pulse is archived
+(:func:`notify_submission`). A prayer request inside it reaches the Resource Circle when it
+**reaches the wall** — when a coordinator applies the Pulse and the record is written
+(:func:`notify_shared_request`, OBT-566) — and only if the Pulse **wrote one** and the wall now
+shows a request it did not show before. The second is ``app/services/shema/_consent.py``'s
+question and never this file's (``newly_shared_request``), and *an unauthorized prayer request
+is absent from all four output paths* with notifications as the fourth.
 
-**The consent read is of the answer and of the record, both** (OBT-554). The notice is staged
-before anybody applies the submission, on either door, so at arrival the project's visibility
-is still the answer the *last* request was given — read alone, a project that said ``rede``
-last month would lend it to a request the team never shared. So the submission has to say
-``rede`` itself, and the record has to agree: a leader claiming it through an unauthenticated
-link cannot, by itself, make the network hear of anything. A request shared for the first time
-is therefore **never announced**: nothing fires on arrival, nothing fires when a coordinator
-applies it, and the Resource Circle finds it on the wall without being told.
+**Why at the apply and not at arrival.** At arrival nobody has applied anything, so the record
+still holds the answer the *last* request was given: OBT-554 had the notice ask both the Pulse
+and the record for ``rede``, which kept last month's consent from being lent to a text nobody
+shared — and kept the **first** share from ever being announced, because the record only says
+``rede`` once that Pulse is applied. After the apply the record is the one truth: the Pulse's
+answer has been given to its own text, and the wall shows what the network may read. A request
+already on the wall, sent again, is not news; a leader claiming ``rede`` through the link reaches
+nobody until a coordinator applies it.
 
 **No body names a place, and none names the request.** The notice is a pointer: the language,
 and that something arrived. The record read is where the truth lives, behind the scope that
@@ -52,11 +54,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaSubmission
-from app.models.shema import ShemaProjectUpdate
 from app.models.shema_privacy import ShemaReader
 from app.services import authorization_service
 from app.services.notifications import get_shema_app_id
-from app.services.shema._consent import submission_reaches_prayer_wall
+from app.services.shema._consent import newly_shared_request
 from app.services.shema._project_notices import ProjectNoticeFacts, stage_project_notice
 from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import (
@@ -106,45 +107,49 @@ async def _recipients(
     return reached
 
 
+async def _addressing(db: AsyncSession, project: ShemaProject) -> tuple[str, str]:
+    """The Shemá app's id and the project's name as the recipients may read it.
+
+    The name is not the archived copy: OBT Lab is told of an arrival and is not coordination, and
+    a sensitive project's name can name the place (OBT-560).
+    """
+    app_id = await get_shema_app_id(db)
+    language = language_name_for(project, ShemaReader.OTHER, fallback="") or "a project"
+    return app_id, language
+
+
+def _reached_nobody(project: ShemaProject, message: str, operation: str) -> None:
+    logger.warning(
+        message,
+        extra={
+            "shema_operation": operation,
+            "shema_project_id": project.id,
+            "shema_region": project.region_key.value,
+        },
+    )
+
+
 async def notify_submission(
-    db: AsyncSession,
-    project: ShemaProject,
-    submission: ShemaSubmission,
-    *,
-    app_key: str,
-    carries_prayer: bool,
-    written: ShemaProjectUpdate,
+    db: AsyncSession, project: ShemaProject, submission: ShemaSubmission, *, app_key: str
 ) -> int:
-    """Tell the people whose job this is, and answer how many were told.
+    """Tell coordination that a Pulse arrived, and answer how many were told.
 
     Staged with ``commit=False``: the caller owns the transaction and takes the commit, so the
     notices and the archive land together. Returned as a count rather than as rows because the
     number is what a test can assert and what a log line can carry, and the rows belong to the
     people they were addressed to.
 
-    ``written`` is the record write the submission carries, handed to the consent gate unread:
-    what the team answered this time is the consent the prayer notice announces.
+    Nothing here is about prayer: what the Pulse asked to share has not reached anybody yet, and
+    the Resource Circle hears of it when it does (:func:`notify_shared_request`).
     """
-    app_id = await get_shema_app_id(db)
-    # The project's name as the recipients may read it, not the archived copy: OBT Lab is told
-    # here and is not coordination, and a sensitive project's name can name the place (OBT-560).
-    language = language_name_for(project, ShemaReader.OTHER, fallback="") or "a project"
-
-    told = 0
-    arrival_recipients = await _recipients(db, app_key, ARRIVAL_ROLES, project)
-    if not arrival_recipients:
-        logger.warning(
-            "shema submission arrived and reached nobody",
-            extra={
-                "shema_operation": "notify_submission",
-                "shema_project_id": project.id,
-                "shema_region": project.region_key.value,
-            },
-        )
-    arrival = ProjectNoticeFacts(
+    app_id, language = await _addressing(db, project)
+    recipients = await _recipients(db, app_key, ARRIVAL_ROLES, project)
+    if not recipients:
+        _reached_nobody(project, "shema submission arrived and reached nobody", "notify_submission")
+    facts = ProjectNoticeFacts(
         project_id=project.id, submitted_by=submission.submitted_by.strip() or None
     )
-    for user in arrival_recipients:
+    for user in recipients:
         await stage_project_notice(
             db,
             user_id=user.id,
@@ -155,33 +160,44 @@ async def notify_submission(
                 f"{submission.submitted_by or 'A team leader'} submitted the monthly Pulse for "
                 f"{language}. Open the project to review it."
             ),
-            facts=arrival,
+            facts=facts,
         )
-        told += 1
+    return len(recipients)
 
-    if carries_prayer and submission_reaches_prayer_wall(project, written):
-        prayer_recipients = await _recipients(db, app_key, PRAYER_ROLES, project)
-        if not prayer_recipients:
-            logger.warning(
-                "shema submission carried a prayer request and reached nobody",
-                extra={
-                    "shema_operation": "notify_submission",
-                    "shema_project_id": project.id,
-                    "shema_region": project.region_key.value,
-                },
-            )
-        for user in prayer_recipients:
-            await stage_project_notice(
-                db,
-                user_id=user.id,
-                app_id=app_id,
-                event_type=PRAYER_EVENT,
-                title=f"Prayer request — {language}",
-                body=(
-                    f"The Pulse received for {language} carries a prayer request the team has "
-                    "shared with the network. Open the project to read it."
-                ),
-                facts=ProjectNoticeFacts(project_id=project.id),
-            )
-            told += 1
-    return told
+
+async def notify_shared_request(
+    db: AsyncSession, project: ShemaProject, *, app_key: str, carries_prayer: bool, before: str
+) -> int:
+    """Tell the Resource Circle that an applied Pulse put a prayer request on the wall (OBT-566).
+
+    Called by the apply, after the record write and inside its transaction: the notice lands with
+    the request it announces, or neither does. ``before`` is the wall's text for this project as
+    it stood ahead of that write, and ``carries_prayer`` whether the Pulse wrote a request at all
+    — the notice says *the Pulse received carries a prayer request*, so a Pulse that only
+    answered the visibility is not one. Answers how many were told, ``0`` when the wall did not
+    gain a request.
+    """
+    if not carries_prayer or not newly_shared_request(project, before):
+        return 0
+    app_id, language = await _addressing(db, project)
+    recipients = await _recipients(db, app_key, PRAYER_ROLES, project)
+    if not recipients:
+        _reached_nobody(
+            project,
+            "shema submission carried a prayer request and reached nobody",
+            "notify_shared_request",
+        )
+    for user in recipients:
+        await stage_project_notice(
+            db,
+            user_id=user.id,
+            app_id=app_id,
+            event_type=PRAYER_EVENT,
+            title=f"Prayer request — {language}",
+            body=(
+                f"The Pulse received for {language} carries a prayer request the team has "
+                "shared with the network. Open the project to read it."
+            ),
+            facts=ProjectNoticeFacts(project_id=project.id),
+        )
+    return len(recipients)

@@ -62,14 +62,9 @@ from app.core.exceptions import ValidationError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
-from app.services.shema._form_validation import record_update, validate_submission
+from app.services.shema._form_validation import validate_submission
 from app.services.shema._submission_notices import notify_submission
-from app.utils.shema_forms import (
-    PRAYER_FIELD,
-    PRAYER_VISIBILITY_FIELD,
-    SUBMITTED_BY_FIELD,
-    carries_prayer_request,
-)
+from app.utils.shema_forms import PRAYER_FIELD, PRAYER_VISIBILITY_FIELD, SUBMITTED_BY_FIELD
 
 #: The largest submission this server will archive.
 #:
@@ -162,14 +157,7 @@ async def archive_submission(
     db.add(submission)
     await db.flush()
 
-    await notify_submission(
-        db,
-        project,
-        submission,
-        app_key=app_key,
-        carries_prayer=carries_prayer_request(answers),
-        written=record_update(definition, answers),
-    )
+    await notify_submission(db, project, submission, app_key=app_key)
     return submission, True
 
 
