@@ -87,44 +87,6 @@ async def test_the_opening_turn_carries_no_body_at_all(client: httpx.AsyncClient
     assert opened.json()["audio_url"].startswith("/api/internalization-room/voice/")
 
 
-async def test_a_marked_opening_arrives_as_two_clips_and_now_as_the_first_of_them(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`audio_url` is the first movement once both are ready, not the whole line.
-
-    The whole line no longer holds the reply back: an app that plays only `audio_url` and
-    ignores `segments` now hears the opening's first movement, not the opening entire.
-    """
-    from app.api.internalization_room import sessions as sessions_api
-
-    async def _panorama(**_: Any) -> TurnOutcome:
-        return TurnOutcome(
-            speech="O todo da passagem.\n\nA cena e o convite.",
-            transcript="",
-            movements=["O todo da passagem.", "A cena e o convite."],
-        )
-
-    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
-
-    created = await client.post(
-        f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
-        json={"pericope": "OV", "language": "pt"},
-    )
-    session_id = created.json()["session_id"]
-
-    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
-
-    body = opened.json()
-    assert body["audio_url"].startswith("/api/internalization-room/voice/")
-    assert [segment["role"] for segment in body["segments"]] == ["panorama", "scene"]
-    urls = [segment["audio_url"] for segment in body["segments"]]
-    assert len(set(urls)) == 2, "cada movimento é sintetizado das suas próprias palavras"
-    assert body["audio_url"] == urls[0], (
-        "audio_url não era mais o primeiro movimento, com os dois já prontos"
-    )
-
-
 async def test_a_team_walking_back_in_hears_where_the_room_was(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

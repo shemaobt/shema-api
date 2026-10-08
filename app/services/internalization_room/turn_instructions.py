@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 TEAM_EVIDENCE_HEADING = (
     "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
     "The drafted response answers this. Referring to these words is not a claim about the "
@@ -30,31 +28,6 @@ VERDICT_KICKOFF = (
     "(The team heard their whole recording, told it back frase by frase, and tapped "
     "'terminei'. Speak the verdict now.)"
 )
-
-
-OPENING_MOVEMENT_MARK = "[[CENA]]"
-_MOVEMENT_MARK = re.compile(r"^[ \t]*\[\[CENA\]\][ \t]*$", re.M)
-
-
-def split_opening_movements(draft: str) -> tuple[str, list[str]]:
-    """The draft with the mark taken out, and its two movements when the mark is exact.
-
-    The text comes back mark-free whatever happens: a marker read aloud by the synthesiser
-    is the one outcome nothing downstream recovers from. The movements come back empty
-    unless the mark stands exactly once, alone on its own line, with speech on both sides —
-    a half-offered structure has to be indistinguishable from no structure at all, because
-    an opening told in one breath is what the room already does well.
-    """
-    parts = _MOVEMENT_MARK.split(draft)
-    clean = _MOVEMENT_MARK.sub("", draft).replace(OPENING_MOVEMENT_MARK, " ")
-    clean = re.sub(r"[ \t]{2,}", " ", clean)
-    clean = re.sub(r"\n{3,}", "\n\n", clean).strip()
-    if len(parts) != 2:
-        return clean, []
-    whole, scene = (part.strip() for part in parts)
-    if not whole or not scene:
-        return clean, []
-    return clean, [whole, scene]
 
 
 def opening_note(pericope_num: str, language_code: str) -> str:

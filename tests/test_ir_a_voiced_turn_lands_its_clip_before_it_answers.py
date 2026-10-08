@@ -139,18 +139,6 @@ async def test_the_clip_lands_in_the_bucket_before_the_turn_answers(
     )
 
 
-WHOLE = "O todo da passagem.\n\nA cena e o convite."
-FIRST = "O todo da passagem."
-SECOND = "A cena e o convite."
-
-
-class _ElevenlabsWhereASceneFailsAndSoDoesTheWholeLine:
-    async def post(self, *_: Any, json: dict[str, Any], **__: Any) -> SimpleNamespace:
-        if json["text"] == FIRST:
-            return SimpleNamespace(status_code=200, content=b"o todo", text="")
-        return SimpleNamespace(status_code=503, content=b"", text="busy")
-
-
 class _Bucket:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
@@ -163,30 +151,3 @@ class _Bucket:
 
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         self.objects[key] = data
-
-
-async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_line_fails(
-    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app.api.internalization_room import sessions as sessions_api
-    from app.services.internalization_room.run_turn import TurnOutcome
-
-    async def _opening(**_: Any) -> TurnOutcome:
-        return TurnOutcome(speech=WHOLE, transcript="", movements=[FIRST, SECOND])
-
-    elevenlabs = _ElevenlabsWhereASceneFailsAndSoDoesTheWholeLine()
-    store = _Bucket()
-    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
-    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
-    monkeypatch.setattr(tts, "_default_store", lambda _: store)
-    session = await create_session(db_session, language="pt", pericope="OV")
-
-    answered = await client.post(
-        f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}
-    )
-
-    assert answered.status_code == 200, answered.text[:300]
-    assert b"o todo" in store.objects.values(), (
-        "a cena falhava e o fallback da fala inteira falhava atrás dela, e o movimento já "
-        "pago à ElevenLabs nunca chegava ao bucket"
-    )

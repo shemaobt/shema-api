@@ -22,7 +22,6 @@ from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
-from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
@@ -110,111 +109,6 @@ class LongWindedAgent:
             "para peregrinar em Moabe. Ali ela perde quase tudo ao longo de dez anos, e "
             "é desse começo que vamos falar. Como vocês contariam essa primeira parte?"
         )
-
-
-class TwoMovementAgent:
-    """A Guide that marks the boundary between the whole and the first scene."""
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return (
-            "Olá, eu sou o Facilitador Digital. Nesta passagem uma família sai de Belém "
-            "por falta de comida e peregrina em Moabe, e ali perde quase tudo.\n"
-            "[[CENA]]\n"
-            "Vamos ficar no começo. Como vocês contariam essa primeira parte?"
-        )
-
-
-async def test_the_opening_is_cut_where_the_guide_marked_it(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Two movements, so the room can hand the scene back on its own and the necklace can
-    wait for it — and so each half answers to its own ceiling instead of the turn becoming
-    one long breath."""
-    the_room_agent_is(monkeypatch, turn=TwoMovementAgent())
-    session = await create_session(db_session, language="pt", pericope=P)
-
-    turn = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(),
-        opening=True,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=_settings(),
-    )
-
-    assert len(turn.outcome.movements) == 2
-    assert turn.outcome.movements[0].startswith("Olá, eu sou o Facilitador Digital.")
-    assert turn.outcome.movements[1].startswith("Vamos ficar no começo.")
-    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
-    assert "[[" not in turn.outcome.speech
-
-
-async def test_a_session_that_already_spoke_is_not_opened_twice(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A file-less POST on a live session is a re-open, not a first line.
-
-    Letting it ask for the two movements again would say the whole passage a second time and
-    pull the necklace apart under a team already working.
-    """
-    the_room_agent_is(monkeypatch, turn=TwoMovementAgent())
-    session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="abertura"
-    )
-
-    turn = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(),
-        opening=True,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=_settings(),
-    )
-
-    assert turn.outcome.movements == []
-    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
-
-
-class LongPanoramaAgent:
-    """A Guide whose first movement runs past what the panorama used to be allowed."""
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return f"{'palavra ' * 200}.\n[[CENA]]\nE agora a cena."
-
-
-async def test_a_long_opening_is_spoken_in_its_two_movements(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The mark the Guide drew is what divides the opening, and length no longer undoes it.
-
-    An opening whose whole ran past the panorama's ceiling was refused, redrafted and then
-    replaced by a fixed line, and a fail-safe carries no movements — so the two clips the
-    team was supposed to hear collapsed into one canned sentence on the exact turn the room
-    had the most to say.
-    """
-    the_room_agent_is(monkeypatch, turn=LongPanoramaAgent())
-    session = await create_session(db_session, language="pt", pericope=P)
-
-    turn = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(),
-        opening=True,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=_settings(),
-    )
-
-    assert not turn.outcome.used_fail_safe
-    assert len(turn.outcome.movements) == 2
-    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
 
 
 async def test_the_opening_may_give_the_whole_before_the_parts(

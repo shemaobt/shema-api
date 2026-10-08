@@ -384,19 +384,10 @@ class SessionStateResponse(BaseModel):
     moment: MomentView | None = None
 
 
-class SpokenSegment(BaseModel):
-    #: "panorama" first, then "scene" — the app replays the scene alone for "ouvir de novo".
-    role: str
-    audio_url: str
-
-
 class TurnResponse(BaseModel):
     session_id: str
     #: Where to fetch the line the team hears this turn, empty when `fixed_line` names it
-    #: instead. Never a splice: on an ordinary turn this is the whole line, the same one an
-    #: app that ignores `segments` has always heard. On a marked opening it is the first of
-    #: the two movements below, not the whole passage — an app playing only this url now
-    #: hears the opening's first half, never its second.
+    #: instead. Never a splice: this is the whole line.
     audio_url: str = ""
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
@@ -408,10 +399,6 @@ class TurnResponse(BaseModel):
     done: bool
     turn_id: str = ""
     classification_pending: bool = False
-    #: The session's opening cut at the boundary the Guide drew itself: the whole passage
-    #: first, then the scene and its invitation. Empty on every other turn, and empty
-    #: whenever the Guide did not mark the boundary exactly where it was asked for.
-    segments: list[SpokenSegment] = Field(default_factory=list)
     moment: MomentView | None = None
 
 

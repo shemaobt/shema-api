@@ -62,10 +62,6 @@ async def run_comprehension_turn(
 ) -> ComprehensionTurn:
     """One comprehension turn: what was heard, what it settles, and what the room says back.
 
-    Only the session's very first line is told in two movements. A file-less POST on a session
-    that has already spoken is a re-open, and repeating the panorama there would say the whole
-    passage twice and pull the necklace apart again.
-
     Every turn but the opening carries what the room heard on its outcome — the language, its
     probability, the mother-tongue decision and the take's length — so the record keeps them.
     The opening has no take, and an outcome that names none is one the room did not hear.
