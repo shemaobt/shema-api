@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 import scripts.sync_internalization_canon as canon
 from app.core.canon_pin import pinned_commit
 from tests.canon_sync_harness import SHA, Compiler, point_the_sync_at, what_is_vendored
 
+WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "canon-sync.yml"
 NEXT = "c" * 40
 FIRST_LABELS = '{"P01": "labelled for the first canon"}'
 
@@ -47,3 +49,16 @@ def test_a_re_pin_keeps_the_canon_it_replaces_under_its_pin_beside_the_labels_it
     assert what_is_vendored(tmp_path / "vendor")["meaning-map/P01-Ruth-1-1-5.md"] == (
         b"map P01 revised"
     )
+
+
+def test_the_scheduled_sync_opens_its_change_with_the_canon_it_kept() -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    (opened,) = [
+        step
+        for step in workflow["jobs"]["sync"]["steps"]
+        if step.get("uses", "").startswith("peter-evans/create-pull-request")
+    ]
+
+    assert (
+        "app/services/internalization_room/canon/kept/**" in opened["with"]["add-paths"].split()
+    ), "a mudança do sync levava o canon novo e deixava o que as sessões abertas leem"
