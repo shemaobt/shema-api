@@ -38,7 +38,7 @@ TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem intei
 
 def _after(moment: dict[str, Any], voiced: str) -> dict[str, Any]:
     heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
-    return moment_step(heard, voiced, fail_safe=False)["after"]
+    return moment_step(heard, voiced, fail_safe=False, parts=4)["after"]
 
 
 @pytest.mark.parametrize(
@@ -225,3 +225,17 @@ def test_an_english_session_is_read_by_her_english_lines_the_same_way(
     moment: dict[str, Any], voiced: str, heard: dict[str, Any]
 ) -> None:
     assert _after(moment, voiced) == heard, f"a sessão em inglês não leu a linha: {voiced!r}"
+
+
+@pytest.mark.parametrize(
+    "voiced",
+    [
+        "Vamos pra Internalização da cena 7.",
+        "Vamos pra Internalização da cena 0.",
+        "Estamos na Articulação da cena 5.",
+    ],
+)
+def test_a_scene_number_the_passage_does_not_have_moves_nothing(voiced: str) -> None:
+    assert _after(SCENE_TWO_OPEN, voiced) == SCENE_TWO_OPEN, (
+        f"uma cena que a passagem de quatro cenas não tem mudou o momento: {voiced!r}"
+    )

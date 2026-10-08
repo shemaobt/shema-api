@@ -160,13 +160,17 @@ def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment:
     return Moment.of(guides[-1]["moment"]["after"]) if guides else FAMILIARIZATION
 
 
-def moment_step(messages: list[dict[str, Any]], voiced: str, *, fail_safe: bool) -> dict[str, Any]:
+def moment_step(
+    messages: list[dict[str, Any]], voiced: str, *, fail_safe: bool, parts: int
+) -> dict[str, Any]:
     """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
     A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
     before = moment_at_turn_start(messages)
     after = before
     by: list[str] = []
     for line in [] if fail_safe else _triggers(_folded(voiced)):
+        if line.part is not None and not 1 <= line.part <= parts:
+            continue
         moved = _moved(after, line)
         if moved != after:
             by.append(line.cause)
