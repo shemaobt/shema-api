@@ -574,18 +574,6 @@ async def test_a_question_asked_on_a_pericope_before_a_zerar_is_still_in_the_inb
     assert [question["pericope"] for question in after.json()["questions"]] == [P]
 
 
-async def test_the_teams_tablet_credential_cannot_read_the_facilitator_inbox(
-    client, db_session
-) -> None:
-    team, tablet = await a_claimed_device(db_session)
-
-    refused = await client.get(
-        f"{PREFIX}/facilitator/questions", headers=team_headers(tablet), params={"team_id": team.id}
-    )
-
-    assert refused.status_code == 401
-
-
 async def test_a_zerar_of_the_panorama_archives_only_the_panoramas_sessions(
     client, db_session, per_request, room_app
 ) -> None:
