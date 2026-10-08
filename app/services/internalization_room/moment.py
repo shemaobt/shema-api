@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import regex
 
@@ -61,7 +61,15 @@ SCENE_CLOSINGS = (
 
 SEND_OFF_LAST = "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
 
-_ENTRANCES = {"internalização": "entrance", "articulação": "articulation_entrance"}
+_ENTRANCES: dict[str, tuple[str, At]] = {
+    "internalização": ("entrance", "internalization"),
+    "articulação": ("articulation_entrance", "articulation"),
+}
+_WHERE_WE_ARE = regex.compile(
+    rf"{_START}{_LEAD_PT}(?:ainda )?estamos (?:ainda )?na "
+    rf"(?:(Familiarização)|(Internalização|Articulação) da {_PT_PART}){_AFTER}",
+    regex.IGNORECASE,
+)
 
 _FENCE = regex.compile(
     rf"{_START}{_LEAD_PT}(?:agora )?(?:eu )?vou dizer tudo o que deve entrar no ensaio de vocês"
@@ -120,48 +128,63 @@ def moment_step(messages: list[dict[str, Any]], voiced: str) -> dict[str, Any]:
     before = moment_at_turn_start(messages)
     after = before
     by: list[str] = []
-    for _, cause, part in _triggers(_folded(voiced)):
-        moved = _moved(after, cause, part)
+    for line in _triggers(_folded(voiced)):
+        moved = _moved(after, line)
         if moved != after:
-            by.append(cause)
+            by.append(line.cause)
         after = moved
     return {"before": before.as_json(), "after": after.as_json(), "by": by}
 
 
-def _triggers(folded: str) -> list[tuple[int, str, int | None]]:
-    found: list[tuple[int, str, int | None]] = [
-        (line.start(), _ENTRANCES[line[1].lower()], _number(line[2]))
-        for line in _ENTRANCE.finditer(folded)
-    ]
-    found += [(line.start(), "fence", None) for line in _FENCE.finditer(folded)]
+class _Line(NamedTuple):
+    at: int
+    cause: str
+    part: int | None = None
+    to: At | None = None
+
+
+def _triggers(folded: str) -> list[_Line]:
+    found = []
+    for line in _ENTRANCE.finditer(folded):
+        cause, to = _ENTRANCES[line[1].lower()]
+        found.append(_Line(line.start(), cause, part=_number(line[2]), to=to))
+    for line in _WHERE_WE_ARE.finditer(folded):
+        if line[1]:
+            found.append(_Line(line.start(), "where_we_are", to="familiarization"))
+        else:
+            to = _ENTRANCES[line[2].lower()][1]
+            found.append(_Line(line.start(), "where_we_are", part=_number(line[3]), to=to))
+    found += [_Line(line.start(), "fence") for line in _FENCE.finditer(folded)]
     for cause, lines in (
         ("part_closing", SCENE_CLOSINGS),
         ("familiarization_closing", (FAMILIARIZATION_CLOSING,)),
         ("send_off", (SEND_OFF_LAST,)),
     ):
-        for line in lines:
-            if folded.endswith(line):
-                found.append((len(folded) - len(line), cause, None))
+        for said in lines:
+            if folded.endswith(said):
+                found.append(_Line(len(folded) - len(said), cause))
                 break
-    return sorted(found)
+    return sorted(found, key=lambda line: line.at)
 
 
-def _moved(moment: Moment, cause: str, part: int | None) -> Moment:
-    if cause == "send_off":
+def _moved(moment: Moment, line: _Line) -> Moment:
+    if line.cause == "send_off":
         return Moment(at="ensaio_final")
     if moment.at == "ensaio_final":
         return moment
-    if cause == "entrance":
-        return Moment(at="internalization", part=part)
-    if cause == "articulation_entrance":
-        same = moment.at == "articulation" and moment.part == part
-        return moment if same else Moment(at="articulation", part=part)
-    if cause == "fence":
+    if line.to == "familiarization":
+        return moment if moment.at == "familiarization" else FAMILIARIZATION
+    if line.to == "internalization":
+        return Moment(at="internalization", part=line.part)
+    if line.to == "articulation":
+        same = moment.at == "articulation" and moment.part == line.part
+        return moment if same else Moment(at="articulation", part=line.part)
+    if line.cause == "fence":
         fenced = Moment(at="articulation", part=moment.part, fenced=True)
         return moment if moment.at == "familiarization" else fenced
     if moment.at != "familiarization":
         return moment
-    if cause == "part_closing":
+    if line.cause == "part_closing":
         return Moment(at="internalization", part=1) if moment.closed else moment
     return Moment(at="familiarization", closed=True)
 

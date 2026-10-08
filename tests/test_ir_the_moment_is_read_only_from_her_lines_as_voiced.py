@@ -152,3 +152,30 @@ def test_her_fence_opening_promised_inside_another_sentence_is_not_the_fence() -
 
 def test_her_fence_opening_in_the_familiarization_sets_no_scene() -> None:
     assert _after(FAMILIARIZATION, FENCE) == FAMILIARIZATION
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced", "named"),
+    [
+        (
+            SCENE_TWO_OPEN,
+            "Estamos na Articulação da cena 2. Primeiro a gente termina essa cena; "
+            "depois vem a cena 3.",
+            SCENE_TWO_PRACTISED,
+        ),
+        (
+            {"at": "articulation", "part": 3, "fenced": True},
+            "Estamos na Internalização da cena 2.",
+            SCENE_TWO_OPEN,
+        ),
+        (SCENE_TWO_OPEN, "Estamos na Familiarização.", FAMILIARIZATION),
+        (FAMILIARIZATION_CLOSED, "Estamos na Familiarização.", FAMILIARIZATION_CLOSED),
+        (SCENE_TWO_FENCED, "Ainda estamos na Articulação da cena 2.", SCENE_TWO_FENCED),
+        (SCENE_TWO_OPEN, "Não estamos na Articulação da cena 2.", SCENE_TWO_OPEN),
+    ],
+    ids=["J1", "back to I2", "familiarization", "keeps closed", "ainda", "negated"],
+)
+def test_her_where_we_are_line_puts_the_room_where_it_says(
+    moment: dict[str, Any], voiced: str, named: dict[str, Any]
+) -> None:
+    assert _after(moment, voiced) == named, f"a voz disse onde a sala estava: {voiced!r}"
