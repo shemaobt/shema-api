@@ -12,7 +12,8 @@ conflict rather than a decision. Her eight prompts in use sit where the room rea
 `app/services/internalization_room/prompts/`, and are hers byte for byte: no copy of ours
 stands beside them, so a prompt that differs from hers is a failed `--check` and not a
 different Guide. Her ninth, the guided self-check, is retired by the production team's decision
-of 8 Oct 2026: `RETIRED_PROMPTS` names it, and `--check` fails if its file or its pin row returns.
+of 8 Oct 2026, under her delegation of 1 Oct: `RETIRED_PROMPTS` names the ruling, and `--check`
+fails if the ruling stops carrying her word or if the file or its pin row returns.
 
 Her twenty-three golden sessions and ten Back-Translation scripts travel the same door, at
 their own paths, because a script that drifts from hers grades this room against its own
@@ -126,7 +127,7 @@ HER_PROMPTS = (
 PROMPTS_DIR = "app/services/internalization_room/prompts"
 
 RETIRED_PROMPTS = {
-    "draft_check_system_prompt.md": "the production team's decision of 8 Oct 2026",
+    "draft_check_system_prompt.md": "2026-10-08-the-guided-self-check-is-retired",
 }
 
 FROZEN = {
@@ -243,12 +244,19 @@ def drift(pin: Pin, root: Path = REPO_ROOT, vendored: dict[str, str] = VENDORED)
     return drifted
 
 
-def retired_faults(pin: Pin, retired: dict[str, str], root: Path = REPO_ROOT) -> list[str]:
+def retired_faults(
+    pin: Pin, retired: dict[str, str], rulings: list[Ruling], root: Path = REPO_ROOT
+) -> list[str]:
     faults = []
+    ruled = {ruling.slug for ruling in rulings if ruling.word and ruling.written}
     for name in sorted(retired):
         path = f"{PROMPTS_DIR}/{name}"
+        if retired[name] not in ruled:
+            faults.append(
+                f"unruled: {name} — {retired[name]} carries no word of hers and where it is written"
+            )
         if (root / path).exists():
-            faults.append(f"returned: {path}")
+            faults.append(f"returned: {path} — retired by docs/doctrine/rulings/{retired[name]}.md")
         if path in pin.digests:
             faults.append(f"pinned: {path}")
     return faults
@@ -534,14 +542,14 @@ def check() -> int:
         print(NOT_A_FORK, file=sys.stderr)
         return 1
 
-    faults = retired_faults(freeze, RETIRED_PROMPTS)
+    rulings = read_rulings()
+    faults = retired_faults(freeze, RETIRED_PROMPTS, rulings)
     if faults:
         print("a prompt the production team retired is back:", file=sys.stderr)
         for line in faults:
             print(f"  {line}", file=sys.stderr)
         return 1
 
-    rulings = read_rulings()
     record = read_seam_record()
     missing = (
         unruled(pin, rulings) + seam_drift(record, model_seam()) + unnamed_rulings(record, rulings)
@@ -564,7 +572,7 @@ def check() -> int:
     inherited = sum(1 for _value, ruling in record.values() if ruling == UNRULED)
     pending = sum(1 for claims in bar.values() if claims == [PENDING])
     print(f"the vendored doctrine matches pin {freeze.commit[:12]}")
-    retired = "; ".join(f"{name}, {why}" for name, why in RETIRED_PROMPTS.items())
+    retired = "; ".join(f"{name}, ruling {why}" for name, why in RETIRED_PROMPTS.items())
     print(f"her prompts: {len(HER_PROMPTS)} in use, {len(RETIRED_PROMPTS)} retired — {retired}")
     print(f"the model seam matches its record — {inherited} of {len(record)} rows still unruled")
     print(f"the acceptance bar is {len(lines)} lines — {pending} still PENDING")

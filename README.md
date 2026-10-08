@@ -27,7 +27,7 @@ production dump and the warnings that go with it, the Hebrew text data — is in
 ## Where the rest is
 
 - [`AGENTS.md`](AGENTS.md) — how to run and check everything, in one page.
-- [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at her freeze, a pinned commit of `Tripod-Internalization`. It binds every change to this repository, and her prompts sit where the room reads them, in `app/services/internalization_room/prompts/`, byte for byte as she froze them, so a prompt that differs from hers fails `scripts/sync_doctrine.py --check`. Eight of her nine are in use; the ninth, the guided self-check, is retired by the production team's decision of 8 Oct 2026, and `RETIRED_PROMPTS` in that script names it so no one mistakes it for a live text.
+- [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at her freeze, a pinned commit of `Tripod-Internalization`. It binds every change to this repository, and her prompts sit where the room reads them, in `app/services/internalization_room/prompts/`, byte for byte as she froze them, so a prompt that differs from hers fails `scripts/sync_doctrine.py --check`. Eight of her nine are in use; the ninth, the guided self-check, is retired by the production team's decision of 8 Oct 2026, under her production-scope delegation of 1 Oct; `RETIRED_PROMPTS` in that script names the ruling in `docs/doctrine/rulings/`, so no one mistakes it for a live text.
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. It is what the words in this repository mean.
 - [`docs/adr/`](docs/adr/) — the decisions, one to a file, each with what was rejected.
 - [`docs/`](docs/) — conventions and runbooks.
