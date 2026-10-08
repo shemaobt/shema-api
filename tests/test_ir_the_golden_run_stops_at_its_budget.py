@@ -88,17 +88,18 @@ def _args(sessions: Path, out: Path, **over: Any) -> argparse.Namespace:
 async def test_a_run_past_its_budget_starts_no_further_session_and_names_them(
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 2), ("P01-b", "P01", 1), ("P02-c", "P02", 1))
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1), ("P02-c", "P02", 1))
 
-    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=5.0))
+    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=2.0))
 
     assert opened == ["P01"], (
-        "dois turnos de US$ 3 passam dos US$ 5: a segunda sessão nem abre, a terceira também"
+        "um turno de US$ 3 passa dos US$ 2: a segunda sessão nem abre, a terceira também"
     )
     assert exit_code == 3, "uma rodada parada pelo orçamento não é verde nem é uma sessão reprovada"
     assert (
-        "golden: budget US$ 5.00 reached at US$ 6.00; not started: P01-b, P02-c"
+        "golden: budget US$ 2.00 reached at US$ 3.00; not started: P01-b, P02-c"
         in capsys.readouterr().err
     )
 
@@ -283,6 +284,11 @@ async def test_a_rejudge_counts_its_judge_calls_and_stops_before_the_export_it_c
     async def _judge_that_charges(script, result, *, out, stamp, prompt_repeats) -> None:
         judged.append(script.name)
         result.judge_usage = [golden_runner.Usage("judge", "claude-fable-5-1", 1, 1, 0, 0, 1, 3.0)]
+        result.verdict = {
+            **A_VERDICT,
+            "scores": dict.fromkeys(A_VERDICT["scores"], 4),
+            "incidents": [],
+        }
 
     monkeypatch.setattr(golden_runner, "judge", _judge_that_charges)
     earlier = _earlier_run(tmp_path / "earlier", "P01-a", "P01-b", "P01-c")
@@ -300,3 +306,17 @@ async def test_a_rejudge_counts_its_judge_calls_and_stops_before_the_export_it_c
         "Rodada parada pelo orçamento de US$ 2.00, já em US$ 3.00. "
         "Sessões que não começaram: P01-b, P01-c.\n"
     ) in (out / "README.md").read_text(encoding="utf-8")
+
+
+async def test_a_session_that_failed_keeps_the_gates_one_when_the_budget_then_stops_the_run(
+    opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    the_judge_answers(monkeypatch)
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
+
+    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=2.0))
+
+    assert exit_code == 1, (
+        "a sessão reprovada é o portão: o 3 só diz que a rodada parou e que nada mais deu errado"
+    )
+    assert "not started: P01-b" in capsys.readouterr().err, "e a frase da parada sai do mesmo jeito"

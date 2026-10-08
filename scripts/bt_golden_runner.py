@@ -22,7 +22,8 @@ US$ 6-7 for five rounds — so it is never part of the test suite.
 A run over every script on the shelf stops before the next script once what it has spent
 reaches `--budget-usd`, or `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both
 are: the script in flight plays its last round first. It names the scripts it did not start on
-stderr and exits 3, as the Guide-turn runner does.
+stderr and exits 3, as the Guide-turn runner does, unless a check failed or the room refused,
+which keep their 1 and 2.
 """
 
 from __future__ import annotations
@@ -254,7 +255,7 @@ async def run(args: argparse.Namespace) -> int:
             unpriced=unpriced,
         )
         print(message, file=sys.stderr)
-        return OVER_BUDGET
+        return max(codes, default=0) or OVER_BUDGET
     return max(codes)
 
 

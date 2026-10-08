@@ -41,7 +41,8 @@ nothing to play, 0 when every session passed. DOCTRINE.md §5.2 binds the releas
 
 A run stops before the next session once what it has spent reaches `--budget-usd`, or
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
-is played whole and judged first. It names the sessions it did not start on stderr and exits 3.
+is played whole and judged first. It names the sessions it did not start on stderr and exits 3,
+unless a session failed, which keeps its 1.
 """
 
 from __future__ import annotations
@@ -756,12 +757,12 @@ def finish(
         f"Rodada parada pelo orçamento de US$ {budget:.2f}, já em US$ {spent:.2f}. "
         f"Sessões que não começaram: {', '.join(not_started)}."
     )
-    close(results, out=out, base_url=base_url, stamp=stamp, halted=halted)
+    gate = close(results, out=out, base_url=base_url, stamp=stamp, halted=halted)
     message = stopped(
         "golden", budget=budget, spent=spent, not_started=not_started, unpriced=unpriced
     )
     print(message, file=sys.stderr)
-    return OVER_BUDGET
+    return gate or OVER_BUDGET
 
 
 def exported(path: Path) -> tuple[Script, SessionResult, str]:

@@ -66,7 +66,7 @@ ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py --base-url <host>/ap
 Each run costs real model calls, so neither is part of the suite. Both stop before the next
 script once the figures the room reports for the run so far reach `--budget-usd`, or
 `GOLDEN_BUDGET_USD`, or US$ 20: the script in flight is finished and judged, the ones left are
-named on stderr, and the exit is 3. `--rejudge` counts its judge calls against the same budget.
+named on stderr, and the exit is 3 unless the gate already failed, which keeps its 1 or 2. `--rejudge` counts its judge calls against the same budget.
 Each script's closing line says what it cost, and the run ends with the total by role. The
 back-translation run is the gate on any change to the two back-translation prompts. The golden
 run is the gate on the release, not only on CI: `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the

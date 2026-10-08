@@ -57,7 +57,12 @@ def opened_with_a_call_the_table_never_priced(monkeypatch: pytest.MonkeyPatch) -
     return _room_charging(monkeypatch, WITH_ONE_UNPRICED)
 
 
-def _shelf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *scripts: tuple[str, str, int]) -> None:
+def _shelf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *scripts: tuple[str, str, int],
+    expect: dict[str, Any] | None = None,
+) -> None:
     shelf = tmp_path / "bt"
     shelf.mkdir()
     for name, pericope, rounds in scripts:
@@ -73,7 +78,7 @@ def _shelf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *scripts: tuple[str,
                             "frases": [
                                 {"clipKey": "S1", "coversFrom": 0, "coversTo": 10, "text": "Oi."}
                             ],
-                            "expect": {"conferida": True, "findings": []},
+                            "expect": expect or {"conferida": True, "findings": []},
                         }
                         for _ in range(rounds)
                     ],
@@ -175,3 +180,22 @@ async def test_the_budget_the_environment_provides_is_the_one_a_run_without_a_fl
     await bt_golden_runner.run(_args(tmp_path / "reports"))
 
     assert opened == ["P01", "P02"], "US$ 21 não chegam aos US$ 30 que o ambiente deu"
+
+
+async def test_a_failed_check_keeps_the_gates_one_when_the_budget_then_stops_the_run(
+    opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _shelf(
+        tmp_path,
+        monkeypatch,
+        ("P01-a", "P01", 2),
+        ("P02-b", "P02", 1),
+        expect={"conferida": True, "findings": [], "spoken_names_frase": 9},
+    )
+
+    exit_code = await bt_golden_runner.run(_args(tmp_path / "reports", budget_usd=5.0))
+
+    assert exit_code == 1, (
+        "um check reprovado é o portão: o 3 só diz que a rodada parou e que nada mais deu errado"
+    )
+    assert "not started: P02-b" in capsys.readouterr().err
