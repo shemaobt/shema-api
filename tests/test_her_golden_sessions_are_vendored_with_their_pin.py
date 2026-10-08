@@ -1,10 +1,11 @@
-"""Her five golden sessions are in this repo as bytes she wrote, at a commit we can name.
+"""Her twenty-three golden sessions and ten Back-Translation scripts are in this repo as bytes
+she wrote, at a commit we can name.
 
 The runner plays her scripts; a copy that drifts from hers grades this room against its own
 homework. So the scripts travel the same door as her doctrine and her prompts —
-`scripts/sync_doctrine.py`, one pin, sha256 per file — and the expected digests here were
-read off her checkout of `fia/pilot-2026-09` at the pinned commit, never off the vendored
-copy.
+`scripts/sync_doctrine.py`, the freeze pin (`FREEZE_PIN`, her `main` at 18fa7c4), sha256 per
+file — and the expected digests are written out below, never read back from the vendored
+copy. Her 5/5 of 2026-09-03 sits beside our reports under the older pin.
 """
 
 from __future__ import annotations
