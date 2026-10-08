@@ -83,10 +83,14 @@ def test_a_language_outside_the_table_keeps_the_bare_letters_rather_than_inventi
     assert speakable_text(text, language) == text
 
 
-def test_a_figure_link_in_double_square_brackets_is_not_voiced() -> None:
+def test_a_figure_link_speaks_the_words_of_its_slug_and_never_its_code() -> None:
     text = "Pensem em [[FIG_0013-Bread-house-in-Famine]] agora."
 
-    assert speakable_text(text, "pt") == "Pensem em agora."
+    assert speakable_text(text, "pt") == "Pensem em Bread house in Famine agora."
+
+
+def test_a_figure_link_with_no_slug_is_not_voiced() -> None:
+    assert speakable_text("Pensem em [[FIG_0013]] agora.", "pt") == "Pensem em agora."
 
 
 def test_a_link_followed_by_its_name_leaves_only_the_name() -> None:
@@ -178,7 +182,7 @@ _MENDED = [
     pytest.param("Veja o resto, etc., B3.", "Veja o resto, etc.", id="no-double-full-stop"),
     pytest.param("Fim... B3 e mais.", "Fim... e mais.", id="an-ellipsis-is-kept"),
     pytest.param("Um texto: B3. Outro.", "Um texto. Outro.", id="colon-before-full-stop"),
-    pytest.param("B3/B4 e B3-B4", "e", id="slash-and-hyphen-joined-codes"),
+    pytest.param("B3/B4 e B3-B4", "", id="slash-and-hyphen-joined-codes"),
     pytest.param("Naomi, B3 ,Ruth", "Naomi, Ruth", id="space-after-the-comma-kept"),
     pytest.param("Noemi\u00a0B3\u00a0chega.", "Noemi chega.", id="non-breaking-space"),
     pytest.param(
@@ -214,14 +218,34 @@ def _links_in_the_vendored_maps() -> list[str]:
     return sorted(links)
 
 
-def test_every_link_in_the_vendored_maps_is_removed() -> None:
-    links = _links_in_the_vendored_maps()
+def _named_by_its_slug(link: str) -> bool:
+    return link.startswith(("[[FIG_", "[[CB_")) and "-" in link
+
+
+def test_every_link_in_the_vendored_maps_is_removed_unless_its_slug_names_a_figure() -> None:
+    links = [link for link in _links_in_the_vendored_maps() if not _named_by_its_slug(link)]
 
     offenders = [
         link for link in links if speakable_text(f"Antes {link} depois.", "pt") != "Antes depois."
     ]
 
-    assert len(links) > 200
+    assert len(links) > 50
+    assert offenders == []
+
+
+def test_every_figure_link_in_the_vendored_maps_speaks_only_its_slug() -> None:
+    links = [link for link in _links_in_the_vendored_maps() if _named_by_its_slug(link)]
+
+    offenders = [
+        link
+        for link in links
+        if speakable_text(f"Antes {link} depois.", "pt")
+        != f"Antes {link[2:-2].split('-', 1)[1].replace('-', ' ')} depois.".replace(
+            "YHWH", "Senhor Jeová"
+        )
+    ]
+
+    assert len(links) > 50
     assert offenders == []
 
 
@@ -777,6 +801,80 @@ def test_the_words_are_voiced_in_the_order_they_were_written(text: str) -> None:
 )
 def test_a_code_inside_formatting_marks_is_not_voiced(text: str) -> None:
     assert speakable_text(text, "pt") == "Vejam agora."
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        pytest.param(
+            "[[B3-Naomi]]: Noemi pergunta: onde você trabalhou?",
+            "Noemi pergunta. Onde você trabalhou?",
+            id="the-colon-a-link-leaves-is-mended",
+        ),
+        pytest.param(
+            "[[B3-Naomi]]: onde você trabalhou?",
+            "onde você trabalhou?",
+            id="the-guard-runs-before-the-question-split",
+        ),
+    ],
+)
+def test_the_seam_a_link_leaves_is_mended_before_the_question_split(
+    text: str, expected: str
+) -> None:
+    assert speakable_text(text, "pt") == expected
+
+
+def test_a_list_of_codes_goes_with_its_commas_and_its_e() -> None:
+    assert speakable_text("As figuras B3, B4 e B5 choram.", "pt") == "As figuras choram."
+
+
+def test_a_code_with_spaces_inside_its_brackets_leaves_nothing() -> None:
+    assert speakable_text("Vejam [[ B3 ]] agora.", "pt") == "Vejam agora."
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        pytest.param("[[B3-Naomi]]: Noemi volta.", "Noemi volta.", id="at-the-start"),
+        pytest.param("Ouçam [[B3-Naomi]]: Noemi volta.", "Ouçam Noemi volta.", id="in-the-middle"),
+    ],
+)
+def test_a_link_followed_by_a_colon_and_its_name_leaves_only_the_name(
+    text: str, expected: str
+) -> None:
+    assert speakable_text(text, "pt") == expected
+
+
+def test_a_bare_code_that_opens_a_line_leaves_no_colon() -> None:
+    assert speakable_text("S2: Rute fica.", "pt") == "Rute fica."
+
+
+@pytest.mark.parametrize(
+    "text, names",
+    [
+        pytest.param(
+            "Pensem em THE_LAND_AFFLICTED_BY_FAMINE e em LAND_OF_BIRTH_UNNAMED agora.",
+            ["THE_LAND_AFFLICTED_BY_FAMINE", "LAND_OF_BIRTH_UNNAMED"],
+            id="two-places",
+        ),
+        pytest.param(
+            "Vejam OBJECT_KIND e STATES_AS_TRUE.",
+            ["OBJECT_KIND", "STATES_AS_TRUE"],
+            id="two-fields",
+        ),
+    ],
+)
+def test_an_all_caps_name_joined_by_underscores_is_never_voiced(
+    text: str, names: list[str]
+) -> None:
+    spoken = speakable_text(text, "pt")
+
+    assert [name for name in names if name in spoken] == []
+    assert "  " not in spoken
+
+
+def test_a_lone_all_caps_word_is_still_voiced() -> None:
+    assert speakable_text("LORD, YHWH e MP3 ficam.", "pt") == "LORD, Senhor Jeová e MP3 ficam."
 
 
 def test_the_divine_name_is_rewritten_after_the_question_split() -> None:

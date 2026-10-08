@@ -51,16 +51,28 @@ if not (_NUMBERED and _NAMED):
         "pattern read every number, or every capitalised word, as a code"
     )
 _SCENE = re.split(r"[^A-Z]", scene_code(1))[0]
-_CODE = rf"(?:(?:{_NUMBERED}|{_SCENE})_?[0-9]|(?:{_NAMED})_[A-Z])[A-Z0-9_]*"
+_SPACE = r"[ \t\u00a0]"
 
-#: A link that begins with a code goes whole, slug included; so does a bare code with the slug
-#: hyphen-attached or a second code joined to it by a slash. `(?<!\w)` and `(?!\w)` keep the
-#: match off the middle of a word.
-_CANON_CODE = re.compile(
-    rf"\[\[{_CODE}(?:[-|][^\]]*)?\]\]|(?<!\w){_CODE}(?:-\w+|/{_CODE})*(?!\w)",
+#: A code is one of those, or an all-caps name of two or more words joined by underscores
+#: (`THE_LAND_AFFLICTED_BY_FAMINE`, `OBJECT_KIND`) — never a lone all-caps word like `LORD`.
+_CODE = (
+    rf"(?:(?:(?:{_NUMBERED}|{_SCENE})_?[0-9]|(?:{_NAMED})_[A-Z])[A-Z0-9_]*"
+    r"|[A-Z]{2,}(?:_[A-Z0-9]+)+)"
 )
 
-_SPACE = r"[ \t\u00a0]"
+#: A figure or a cultural background is named only by its slug, so its link is voiced as the
+#: slug's words; nothing in the maps follows it with a name of its own.
+_NAMED_BY_ITS_SLUG = re.compile(r"\[\[(?:FIG|CB)_[0-9]+-([^\]]+)\]\]")
+
+#: A link that begins with a code goes whole, slug and spaces inside the brackets included, and
+#: takes the colon that introduced its name; so does a bare code with the slug hyphen-attached
+#: or a second code joined to it by a slash. A list of codes goes with its commas and its "e".
+#: `(?<!\w)` and `(?!\w)` keep the match off the middle of a word.
+_ONE_CODE = (
+    rf"\[\[{_SPACE}*{_CODE}(?:[-|][^\]]*)?{_SPACE}*\]\](?:{_SPACE}*:)?"
+    rf"|(?<!\w){_CODE}(?:-\w+|/{_CODE})*(?!\w)"
+)
+_CANON_CODE = re.compile(rf"(?:{_ONE_CODE})(?:(?:,{_SPACE}*|{_SPACE}+e{_SPACE}+)(?:{_ONE_CODE}))*")
 
 #: What a removal can leave behind, and the order `_mend` applies it in: brackets and quotes that
 #: held only the code, then the dash pairs that framed it, then a chain of marks cut down to one
@@ -82,7 +94,7 @@ _MARK_BEFORE_CLOSE = re.compile(rf"[,;:](?={_SPACE}*[.!?])|,(?={_SPACE}*[;:])")
 _MARK_AFTER_STRONG = re.compile(rf"(?<=[!?]){_SPACE}*[,;:]")
 _SPACE_RUN = re.compile(rf"{_SPACE}{{2,}}")
 _SPACE_BEFORE_MARK = re.compile(rf"{_SPACE}+(?=[,.;:!?)\]])")
-_EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,;\u2013—]+|[ \t\u00a0,;\u2013—]+$")
+_EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,;:\u2013—]+|[ \t\u00a0,;\u2013—]+$")
 
 _YHWH = re.compile(r"\bYHWH\b")
 
@@ -116,7 +128,8 @@ _SPOKEN_FORM: dict[str, str] = {
 
 
 def _mend(text: str) -> str:
-    removed = _CANON_CODE.sub("", text)
+    named = _NAMED_BY_ITS_SLUG.sub(lambda link: link[1].replace("-", " "), text)
+    removed = _CANON_CODE.sub("", named)
     if removed == text:
         return text
     mended = _EMPTY_BRACKETS.sub("", removed)
