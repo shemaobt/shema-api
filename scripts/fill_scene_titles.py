@@ -45,6 +45,11 @@ def missing(listed: dict) -> Titles:
 
 
 def with_claude(todo: Titles) -> Titles:
+    if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        lacking = ", ".join(f"{pericope} {scene}" for pericope in todo for scene in todo[pericope])
+        raise SystemExit(
+            f"ANTHROPIC_API_KEY is not set, so no Portuguese title can be filled for {lacking}"
+        )
     workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
     client = anthropic.Anthropic(
         default_headers={"anthropic-workspace-id": workspace} if workspace else None
