@@ -46,7 +46,7 @@ from app.services.internalization_room.sessions import (
 )
 from tests.baker import make_app, make_role
 from tests.canon_harness import the_canon_moves_on
-from tests.opening_harness import another_tablet_of, the_tablet_opens
+from tests.opening_harness import another_tablet_of, desk_routes, the_tablet_opens
 from tests.release_harness import P, a_claimed_device, at_the_desk, ready_session
 from tests.room_harness import (
     heard_every_part,
@@ -77,6 +77,7 @@ NAOMI_IN_THE_FIRST_SCENE = '"being_id": "B3",\n            "role_in_scene": "MOT
 DROPPED_BEAD = "being:S1:B2"
 KEPT_FIRST_SILENCE_AT = 11
 KEPT_FIRST_SCENE = "THE KEPT FIRST SCENE"
+KEPT_ELIMELECH_LABEL = "Elimelech, as the kept catalogue labels him"
 AUDIT = '"high_risk_register_audit": [\n'
 KEPT_ONLY_RULE = '    {"id": "R99", "kind": "KEPT_ONLY", "note": "kept", "do_not_decide": true},\n'
 
@@ -126,6 +127,15 @@ def _the_kept_catalogue_titles_the_first_scene_its_own_way(tree: Path) -> None:
     catalogue.write_text(json.dumps(labels, ensure_ascii=False))
 
 
+def _the_kept_p03_has_elimelech_labelled(tree: Path) -> None:
+    _the_kept_p03_has_its_own_beings(tree)
+    catalogue = tree / "element-labels" / "ruth.json"
+    labels = json.loads(catalogue.read_text(encoding="utf-8"))
+    for scene in (1, 2, 3):
+        labels["P03"][f"being:S{scene}:B2"] = {"en": KEPT_ELIMELECH_LABEL, "pt": None}
+    catalogue.write_text(json.dumps(labels, ensure_ascii=False))
+
+
 def _the_kept_p03_has_a_rule_of_its_own(tree: Path) -> None:
     _rewrite(tree, "compilation-log", "P03", AUDIT, AUDIT + KEPT_ONLY_RULE)
 
@@ -149,6 +159,28 @@ def _demonstrated(*checkpoints: str) -> ComprehensionState:
 @asynccontextmanager
 async def _handed(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
     yield db_session
+
+
+async def _the_team_works_the_bead_the_new_canon_dropped(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, session_id: str
+) -> list[str]:
+    shown: list[str] = []
+
+    async def classifier(*, system_prompt: str, **_: Any) -> str:
+        shown.append(system_prompt)
+        engaged = {"element_id": DROPPED_BEAD, "new_status": "engaged", "evidence": "Elimeleque"}
+        return json.dumps({"decisions": [engaged]})
+
+    the_room_agent_is(monkeypatch, classifier=classifier)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    await background.settle_coverage(
+        session_id=session_id,
+        turn_id="depois",
+        team_utterance="Elimeleque tinha morrido",
+        guide_response="E o que mais?",
+        pericope_num=P,
+    )
+    return shown
 
 
 class Prompts:
@@ -267,21 +299,8 @@ async def test_a_settle_of_a_session_open_when_a_new_canon_is_published_still_wo
     kept_session = await create_session(db_session, pericope=P)
     the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_its_own_beings)
     await create_session(db_session, pericope=P)
-    shown: list[str] = []
-
-    async def classifier(*, system_prompt: str, **_: Any) -> str:
-        shown.append(system_prompt)
-        engaged = {"element_id": DROPPED_BEAD, "new_status": "engaged", "evidence": "Elimeleque"}
-        return json.dumps({"decisions": [engaged]})
-
-    the_room_agent_is(monkeypatch, classifier=classifier)
-    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
-    await background.settle_coverage(
-        session_id=kept_session.id,
-        turn_id="depois",
-        team_utterance="Elimeleque tinha morrido",
-        guide_response="E o que mais?",
-        pericope_num=P,
+    shown = await _the_team_works_the_bead_the_new_canon_dropped(
+        db_session, monkeypatch, kept_session.id
     )
     await db_session.refresh(kept_session)
 
@@ -436,6 +455,29 @@ async def test_the_scenes_of_a_session_open_when_a_new_canon_is_published_keep_t
     titles = scene_titles(kept_session)
 
     assert titles[0] == KEPT_FIRST_SCENE, "a cena ganhou no meio da sessão o título do canon novo"
+
+
+async def test_the_desks_card_of_a_session_open_when_a_new_canon_is_published_strings_its_own_beads(
+    client, db_session, room_app, prompts, monkeypatch, tmp_path
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+    await the_team_says(client, tablet, opened["session_id"], "antes")
+
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_elimelech_labelled)
+    await _the_team_works_the_bead_the_new_canon_dropped(
+        db_session, monkeypatch, opened["session_id"]
+    )
+    async with desk_routes(db_session) as at_desk:
+        cards = await at_desk.get(f"/api/facilitator/teams/{team.id}/sessions", headers=desk)
+
+    assert cards.status_code == 200, cards.text[:300]
+    (card,) = cards.json()
+    beads = {bead["key"]: (bead["label_en"], bead["status"]) for bead in card["coverage"]}
+    assert beads.get(DROPPED_BEAD) == (KEPT_ELIMELECH_LABEL, "engaged"), (
+        "o cartão da Mesa desenhou o colar pelo canon novo"
+    )
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
