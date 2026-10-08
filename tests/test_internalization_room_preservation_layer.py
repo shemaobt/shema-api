@@ -62,17 +62,16 @@ WITH_LAYER = next(
 )
 
 
-#: A whole little canon of its own — one map and one Compilation Log — so the two signals can
-#: be set against each other. The real Ruth material has them agreeing everywhere, and
-#: agreement is not the same as either one being read.
 @pytest.fixture
 def a_passage_whose_survey_is_pending(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[str]:
     """A passage the project has not signed off, and whose preservation layer *is* written.
 
-    Nothing of Ruth is touched. The point of writing the layer is that the survey being
-    pending has to carry the refusal on its own.
+    A whole little canon of its own — one map and one Compilation Log — so the two signals can
+    be set against each other. The real Ruth material has them agreeing everywhere, and
+    agreement is not the same as either one being read. Nothing of Ruth is touched. The point
+    of writing the layer is that the survey being pending has to carry the refusal on its own.
     """
     maps = tmp_path / "meaning-map"
     logs = tmp_path / "compilation-log"
