@@ -20,11 +20,15 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Twelve, over a `Run tests` step measured at 6m21s on the runner with ~3700 tests
+    # Thirty: the twelve the `Run tests` step carries on its own, and eighteen for everything
+    # before it. Run 37736946025 spent 10m18s in the apt install of ffmpeg and was cancelled two
+    # minutes into a suite that then passed (ENG-1498), and one of the last forty runs was still
+    # installing at 12m41s. A hung suite is still stopped at twelve, by the step.
+    # The step's twelve is over a `Run tests` step measured at 6m21s on the runner with ~3700 tests
     # (run 36022234700), where the seven-minute ceiling set with ENG-980 over a 2m04-2m31
     # step cancelled a green run at 7m15s (ENG-1092). The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
     # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
-    timeout-minutes: 12
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

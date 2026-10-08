@@ -159,7 +159,7 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 #: ceiling to 12: at ~3700 tests the step measured 6m21s on shemaobt/shema-api#534, and a
 #: run cancelled at 7m15s was the timeout doing the wrong job.
 JOB_TIMEOUT_MINUTES = {
-    ("test.yml", "test"): 12,
+    ("test.yml", "test"): 30,
     ("checks.yml", "checks"): 10,
     ("migrations.yml", "migrations"): 7,
 }
@@ -182,6 +182,18 @@ def _the_pytest_step() -> dict:
     running = [step for step in steps if "pytest" in step.get("run", "")]
     assert len(running) == 1, f"test.yml runs pytest in {len(running)} steps"
     return running[0]
+
+
+SLOWEST_SETUP_SEEN_MINUTES = 13
+
+
+def test_a_slow_setup_cannot_use_up_the_minutes_the_tests_are_held_to() -> None:
+    job = _workflow("test.yml")["jobs"]["test"]["timeout-minutes"]
+    tests = _the_pytest_step()["timeout-minutes"]
+
+    assert job - tests >= SLOWEST_SETUP_SEEN_MINUTES, (
+        f"the job has {job} minutes and the tests {tests}: {job - tests} left for the setup"
+    )
 
 
 def test_a_hang_in_the_tests_is_stopped_at_twelve_minutes_whatever_setup_took() -> None:
