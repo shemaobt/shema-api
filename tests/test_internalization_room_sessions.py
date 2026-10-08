@@ -8,16 +8,6 @@ from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSessionStatus
 from app.services.internalization_room import halt
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.hard_stretches import note_a_hard_stretch
 from app.services.internalization_room.segments import (
@@ -29,11 +19,9 @@ from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     append_exchange,
     apply_coverage,
-    comprehension_of,
     create_session,
     get_session,
     mark_needs_person,
-    save_comprehension,
 )
 
 P = "P03"
@@ -89,57 +77,6 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
-async def test_the_coverage_floor_alone_no_longer_closes_the_session(
-    db_session: AsyncSession,
-) -> None:
-    """Coverage bookkeeping is participation, not comprehension — the very confusion the
-    bridge-language calibration exists to undo.
-
-    What held this shut was the recording-consent flag, and only by accident: the room's own
-    question was the flag's one writer, so a session that had never been asked could not
-    close. ENG-777 took the question away, and until ENG-780 the premise still had one thing
-    implementing it: a fully engaged necklace read as a rehearsed one, so the floor alone
-    could still close a session nobody had reported practicing in. With that substitution
-    gone, an untouched comprehension state keeps the passage in `needs_more_work` and the
-    floor being met changes nothing about that.
-    """
-    session = await create_session(db_session, pericope=P)
-    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-
-    session = await apply_coverage(db_session, session.id, whole)
-
-    assert session.status is IRSessionStatus.IN_PROGRESS
-
-
-def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
-    ledger = [
-        EvidenceObservation(
-            id=f"ev-{index}",
-            unit_id=checkpoint.id,
-            probe_id=f"probe-{index}",
-            method=EvidenceMethod.MICRO_TELLBACK,
-            result=EvidenceResult.DEMONSTRATED,
-        )
-        for index, checkpoint in enumerate(checkpoints_for(pericope))
-    ]
-    return ComprehensionState(
-        ledger=list(ledger),
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
-
-
-async def test_the_floor_with_evidence_and_practice_closes_the_session(
-    db_session: AsyncSession,
-) -> None:
-    session = await create_session(db_session, pericope=P)
-    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
-    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-
-    session = await apply_coverage(db_session, session.id, whole)
-
-    assert session.status is IRSessionStatus.DONE
-
-
 async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     db_session: AsyncSession,
 ) -> None:
@@ -150,15 +87,8 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     exactly why this one has to be stamped: without it a finished conversation is
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
-
-    The scenario carries calibration, evidence and practice, and `_fully_supported_comprehension`
-    is what holds it up: its `practiced_scene_ids` reports every scene, which is the one
-    thing the readiness gate reads since ENG-780 killed the engaged-scene substitution. What
-    is asserted here is unchanged either way — that the close is *stamped*, not what it
-    takes to reach one.
     """
     session = await create_session(db_session, pericope=P)
-    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
     session = await apply_coverage(db_session, session.id, whole)
@@ -188,7 +118,6 @@ async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
     would grow the conversation's length after the team had finished.
     """
     session = await create_session(db_session, pericope=P)
-    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     session = await apply_coverage(db_session, session.id, whole)
     closed_at = session.ended_at
@@ -241,34 +170,3 @@ async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: As
     assert await note_a_hard_stretch(db_session, session, told) is True
     assert session.status is IRSessionStatus.IN_PROGRESS
     assert halt.standing(session) is HaltKind.WARNING
-
-
-async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
-    db_session: AsyncSession,
-) -> None:
-    """Seventeen live sessions on this machine hold a probe purpose that is gone.
-
-    A tablet keeps the session id on disk with no expiry and reopens it: the passage it
-    was left in comes back by id, and every turn on it reads this state. A typed submodel
-    that no longer validates makes that a 500, and the app only forgets a saved id on a
-    404 — so the passage would be stuck on that tablet at every opening, with no way out
-    through the app.
-    """
-    session = await create_session(db_session, language="pt", pericope=P)
-    session.comprehension = {
-        "ledger": [],
-        "active_probe": {
-            "id": "probe-1",
-            "checkpoint_ids": ["proposition:P01:P1"],
-            "method": "micro_tellback",
-            "purpose": "initial_check",
-            "practice_scene_ids": [],
-        },
-        "practiced_scene_ids": ["S1"],
-    }
-    await db_session.commit()
-
-    state = comprehension_of(session)
-
-    assert state.active_probe is None
-    assert state.practiced_scene_ids == ["S1"]

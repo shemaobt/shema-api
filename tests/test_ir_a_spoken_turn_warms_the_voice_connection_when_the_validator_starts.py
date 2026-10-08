@@ -15,13 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import llm, usage
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import (
     append_exchange,
-    comprehension_of,
     create_session,
-    save_comprehension,
 )
 from app.services.platform import tts
 
@@ -128,12 +125,9 @@ async def client(
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession) -> IRSession:
     session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
+    return await append_exchange(
         db_session, session, team_utterance="", guide_response="Quem aparece nesta parte?"
     )
-    state = comprehension_of(session)
-    state.active_probe = ActiveProbe(id="probe-1", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
-    return await save_comprehension(db_session, session, state)
 
 
 async def test_a_spoken_turn_warms_the_elevenlabs_connection_once_when_the_validator_starts(

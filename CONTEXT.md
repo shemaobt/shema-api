@@ -162,12 +162,8 @@ What an element of the Meaning Map is. Six kinds sit in a scene of the passage �
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it; the Guide's ledger block stopped carrying it in ENG-1358, as her live ledger never prints it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it; the Guide's ledger block stopped carrying it in ENG-1358, as her live ledger never prints it — and never a scope on what a turn may move.
 _Avoid_: current scene (the retired heading of the ledger's scene line, which the ledger no longer prints; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
-
-**Invited scene** (`invited_scene_id`):
-The scene a rehearsal invitation is about: the first scene of the passage still owed a rehearsal on the turn the Guide invites, kept with the turn's record and credited when the team reports the rehearsal done. Never the **Scene pointer**, which has not settled when the invitation is spoken.
-_Avoid_: current scene, pointer, practised scene (the credit's result, not its target), Cena convidada
 
 **Coverage event** (`ir_coverage_events`):
 One recorded movement of an element from one coverage state to the next.
@@ -340,7 +336,7 @@ The file a release hands to Refine: the rehearsal, the telling-back with its fin
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Blocker**:
-One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor and comprehension readiness are facts of the ledger, never blockers). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
+One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor is a fact of the ledger, never a blocker). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
 _Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
 
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):

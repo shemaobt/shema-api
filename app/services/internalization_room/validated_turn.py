@@ -18,7 +18,6 @@ from app.services.internalization_room.turn_instructions import (
     TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
     her_block,
-    split_opening_movements,
 )
 from app.services.internalization_room.usage import (
     Spend,
@@ -54,10 +53,6 @@ class TurnOutcome:
     #: Which pre-approved line was spoken, when one was. The app ships these as audio, so a
     #: fail-safe is named rather than synthesized — no TTS bill, no network, no waiting.
     fixed_line: str = ""
-    #: The opening's two movements — the whole passage, then the scene and its invitation —
-    #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
-    #: mark was not exactly where it was asked for; `speech` always stays the whole text.
-    movements: list[str] = field(default_factory=list)
     #: The last words the Guide drafted and the last verdict the Validator gave on them, as
     #: it wrote it — empty when no draft was asked for, or when no reply could be read.
     #: They are what the record keeps of a firing, so a fail-safe can be read back later.
@@ -257,7 +252,6 @@ async def _voiced_after_validation(
     settings: Settings,
     session_id: str = "?",
     opening_instruction: str = "",
-    ask_for_movements: bool = False,
     telling_back: str = "",
     prepared_pericope: str | None = None,
     earlier_passages: str = "",
@@ -273,12 +267,6 @@ async def _voiced_after_validation(
     the kickoff's team text — and her turn loop hands that text to the Validator as what the
     team said, so with no team words the note handed to the Guide stands
     in the slot.
-
-    The movement mark is cut from the draft and never from the validated speech: the Validator
-    must judge exactly the words the team will hear, and it is told to write plain speakable
-    text, so a mark left in front of it comes back either flagged or silently dropped. When the
-    Validator returns a correction instead, the boundary the Guide drew no longer describes the
-    speech, and one clip is the honest answer.
 
     A model or provider failure — a timeout, a rejected key, credits run out, a 5xx —
     rises out of here as the `UpstreamServiceError` that `call_agent` raises it as, and
@@ -305,17 +293,13 @@ async def _voiced_after_validation(
     turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
     for attempt in range(MAX_REDRAFTS + 1):
-        draft, movements = split_opening_movements(
-            await _draft(
-                guide_prompt=speaker_system,
-                conversation=conversation,
-                turn=turn,
-                redraft_note=redraft_note,
-                settings=settings,
-            )
+        draft = await _draft(
+            guide_prompt=speaker_system,
+            conversation=conversation,
+            turn=turn,
+            redraft_note=redraft_note,
+            settings=settings,
         )
-        if not ask_for_movements:
-            movements = []
         if not draft:
             verdict: dict[str, Any] = {}
             break
@@ -360,7 +344,6 @@ async def _voiced_after_validation(
             speech = draft
         elif verdict["verdict"] == "correct":
             speech = str(verdict["corrected_response"]).strip()
-            movements = []
         else:
             _regenerated(raw_verdict, session_id, attempt + 1)
 
@@ -372,7 +355,6 @@ async def _voiced_after_validation(
                     peer_cue=detects_peer_cue(speech),
                     redrafts=attempt,
                     issues=issues,
-                    movements=movements,
                     draft=draft,
                     verdict=str(verdict["verdict"]),
                     guide_heard=turn,

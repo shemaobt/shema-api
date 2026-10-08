@@ -33,7 +33,6 @@ from app.models.internalization_room import (
     NeedsPersonResponse,
     PersonArrivedResponse,
     SessionStateResponse,
-    SpokenSegment,
     TurnResponse,
 )
 from app.services import internalization_room as room
@@ -75,113 +74,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_SEGMENT_ROLES = ("panorama", "scene")
-
-
-async def _clip_or_none(text: str, *, language: str, uploads: list[Upload]) -> str | None:
-    try:
-        entry, _ = await room.synthesize_facilitator_speech(
-            text, language=language, uploads=uploads
-        )
-    except Exception:
-        logger.warning("A movement of the opening could not be voiced; sending it whole")
-        return None
-    return entry.key
-
 
 async def _voice_the_turn(
     outcome: room.TurnOutcome,
     *,
     language: str,
     uploads: list[Upload],
-) -> tuple[SpeechKey | None, list[SpokenSegment]]:
-    """The turn's audio: the opening's two movements, or the whole line on its own.
-
-    An opening synthesizes its whole line exactly once, always: started beside its two
-    movements, awaited on the reply's path only when a movement will not synthesize — it
-    then stands in for both, with no segments — and otherwise left to finish in the
-    background, so `_say_it_again` finds it in the bucket. A refused movement so costs the
-    slowest of the three syntheses, not the movements and then the whole line in a row. A
-    turn without movements speaks only its whole line, as it always has.
-    """
+) -> SpeechKey | None:
+    """The turn's audio: its one line, or none when a fixed line names it."""
     if outcome.fixed_line:
-        return None, []
-    if not outcome.movements:
-        entry, _ = await room.synthesize_facilitator_speech(
-            outcome.speech, language=language, uploads=uploads
-        )
-        return entry, []
-
-    whole = _start_the_whole_line(outcome.speech, language)
-    parts = await asyncio.gather(
-        *(_clip_or_none(part, language=language, uploads=uploads) for part in outcome.movements)
+        return None
+    entry, _ = await room.synthesize_facilitator_speech(
+        outcome.speech, language=language, uploads=uploads
     )
-    keys = [key for key in parts if key is not None]
-    if len(keys) != len(_SEGMENT_ROLES):
-        return await whole, []
-
-    whole.add_done_callback(_log_a_whole_line_left_uncached)
-    return SpeechKey(keys[0], cached=False), [
-        SpokenSegment(role=role, audio_url=clip_url(key))
-        for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
-    ]
-
-
-_PENDING_WHOLE_LINE_TASKS: set[asyncio.Task[SpeechKey]] = set()
-
-#: The same tasks as `_PENDING_WHOLE_LINE_TASKS`, keyed by the (text, language) they were
-#: started for — `_say_it_again` needs to find the one task that matches its own turn, and
-#: a bare set cannot answer "which one", only "how many".
-_PENDING_WHOLE_LINE_BY_TEXT: dict[tuple[str, str], asyncio.Task[SpeechKey]] = {}
-
-
-def _start_the_whole_line(text: str, language: str) -> asyncio.Task[SpeechKey]:
-    """Voice an opening's whole line on a task of its own, beside its two movements.
-
-    Held in `_PENDING_WHOLE_LINE_TASKS` so nothing collects the task mid-flight — an
-    `asyncio.Task` with no other reference is fair game for the garbage collector the
-    moment the event loop looks away, and a reply that got both movements leaves it behind.
-    No `uploads` list: whether the reply will wait for this task is not known when it
-    starts, and the caller's list has already been gathered by the time a task left behind
-    finishes, so appending to it would lose the upload rather than defer it.
-    `synthesize_facilitator_speech` uploads its own clip when it is not given one, which is
-    exactly what lets `_say_it_again` find it later — and while it is still in flight,
-    `_PENDING_WHOLE_LINE_BY_TEXT` is how `_say_it_again` joins it instead of asking
-    ElevenLabs for the same words a second time.
-    """
-    task = asyncio.create_task(_the_whole_line(text, language))
-    _PENDING_WHOLE_LINE_TASKS.add(task)
-    task.add_done_callback(_PENDING_WHOLE_LINE_TASKS.discard)
-    key = (text, language)
-    _PENDING_WHOLE_LINE_BY_TEXT[key] = task
-    task.add_done_callback(partial(_forget_the_whole_line, key))
-    return task
-
-
-def _forget_the_whole_line(key: tuple[str, str], task: asyncio.Task[SpeechKey]) -> None:
-    if _PENDING_WHOLE_LINE_BY_TEXT.get(key) is task:
-        del _PENDING_WHOLE_LINE_BY_TEXT[key]
-
-
-async def _the_whole_line(text: str, language: str) -> SpeechKey:
-    entry, _ = await room.synthesize_facilitator_speech(text, language=language)
     return entry
-
-
-def _log_a_whole_line_left_uncached(task: asyncio.Task[SpeechKey]) -> None:
-    """A whole line nobody waits for fails into the log, never into the reply.
-
-    Reading `exception()` also marks the error as retrieved, so asyncio does not report it
-    again, traceback and all, when the task is collected.
-    """
-    if task.cancelled():
-        return
-    error = task.exception()
-    if error is not None:
-        logger.warning(
-            "the opening's whole line could not be cached in the background: %s",
-            type(error).__name__,
-        )
 
 
 async def _write_the_turn(
@@ -189,7 +95,6 @@ async def _write_the_turn(
     session: IRSession,
     *,
     outcome: room.TurnOutcome,
-    turn: room.ComprehensionTurn | None,
     opening: bool,
 ) -> IRSession:
     with stage("db_write"):
@@ -200,7 +105,6 @@ async def _write_the_turn(
                 guide_response=outcome.speech,
                 outcome=outcome,
                 scene=_scene_of(session),
-                state=turn.state if turn is not None else None,
                 commit=False,
             )
             return session
@@ -211,7 +115,6 @@ async def _write_the_turn(
             guide_response=outcome.speech,
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
-            state=turn.state if turn is not None else None,
             commit=False,
         )
 
@@ -674,13 +577,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
     The synthesiser is content-addressed, so the very same words usually come straight back
-    out of the bucket — except for an opening whose whole line is still being voiced in the
-    background (`_start_the_whole_line`), where the bucket is empty and a plain lookup would
-    pay ElevenLabs a second time for a clip already on its way. That case joins the pending
-    task in `_PENDING_WHOLE_LINE_BY_TEXT` instead of asking again — shielded, because an
-    `await` on another task ties this task's own cancellation to it: a team that gives up
-    on "say it again" must not reach back and cancel the opening's background synthesis,
-    which belongs to a different request and is still wanted there.
+    out of the bucket.
     """
     last = next(
         (
@@ -692,27 +589,10 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
     )
     voiced: SpeechKey | None = None
     if last:
-        joining = _PENDING_WHOLE_LINE_BY_TEXT.get((last, session.language))
-        if joining is not None:
-            try:
-                voiced = await asyncio.shield(joining)
-            except asyncio.CancelledError:
-                # The shield only guards one way. A whole line cancelled by its own opening
-                # (dropped mid-flight) reaches us as CancelledError too; that one falls back
-                # to the synthesis below. Our own cancellation still propagates.
-                current = asyncio.current_task()
-                if not joining.cancelled() or (current is not None and current.cancelling()):
-                    raise
-                voiced = None
-            except Exception:
-                voiced = None
-        if voiced is None:
-            try:
-                voiced = (
-                    await room.synthesize_facilitator_speech(last, language=session.language)
-                )[0]
-            except Exception as error:
-                logger.warning("a stored line could not be voiced again: %s", type(error).__name__)
+        try:
+            voiced = (await room.synthesize_facilitator_speech(last, language=session.language))[0]
+        except Exception as error:
+            logger.warning("a stored line could not be voiced again: %s", type(error).__name__)
     return TurnResponse(
         session_id=session.id,
         audio_url=(
@@ -943,7 +823,6 @@ async def _draft_the_turn(
         with stage("db_let_go"):
             await db.commit()
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
-    turn: room.ComprehensionTurn | None = None
     try:
         async with asyncio.timeout_at(deadline):
             if is_panorama(session.pericope):
@@ -963,7 +842,7 @@ async def _draft_the_turn(
                     speech=speech_heard,
                 )
             else:
-                turn = await room.run_comprehension_turn(
+                outcome = await room.run_comprehension_turn(
                     db,
                     session,
                     speech=speech_heard,
@@ -972,11 +851,10 @@ async def _draft_the_turn(
                     validator_prompt=validator_prompt,
                     settings=get_settings(),
                 )
-                outcome = turn.outcome
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    session = await _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening)
+    session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -1023,15 +901,11 @@ async def _draft_the_turn(
     uploads: list[Upload] = []
     try:
         with stage("voice"):
-            _, segments = await _voice_the_turn(outcome, language=session.language, uploads=uploads)
+            await _voice_the_turn(outcome, language=session.language, uploads=uploads)
     except Exception as error:
         logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
-        segments = []
     try:
         await _upload(uploads)
     except Exception as error:
         logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
-        return reply
-    if not segments:
-        return reply
-    return reply.model_copy(update={"audio_url": segments[0].audio_url, "segments": segments})
+    return reply

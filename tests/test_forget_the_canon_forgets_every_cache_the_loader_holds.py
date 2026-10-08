@@ -13,7 +13,6 @@ from typing import Any
 import pytest
 
 from app.services.internalization_room.canon import book_material, elements, labels, parse_map
-from app.services.internalization_room.comprehension import checkpoints
 from tests.canon_harness import forget_the_canon
 
 _THE_CACHES_THE_LOADER_HOLDS: dict[str, tuple[Any, Callable[[], object]]] = {
@@ -29,10 +28,6 @@ _THE_CACHES_THE_LOADER_HOLDS: dict[str, tuple[Any, Callable[[], object]]] = {
     ),
     "elements_for": (elements.elements_for, lambda: elements.elements_for("P01")),
     "scene_of": (elements.scene_of, lambda: elements.scene_of("P01")),
-    "checkpoints_for": (
-        checkpoints.checkpoints_for,
-        lambda: checkpoints.checkpoints_for("P01"),
-    ),
     "_known_pericopes": (labels._known_pericopes, lambda: labels._known_pericopes("Ruth")),
 }
 

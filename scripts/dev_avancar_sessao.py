@@ -7,42 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import (
     apply_coverage,
     is_panorama,
-    save_comprehension,
     session_is_done,
 )
 
 
 async def advance(db: AsyncSession, session: IRSession) -> None:
-    ledger = [
-        EvidenceObservation(
-            id=f"dev-{index}",
-            unit_id=checkpoint.id,
-            probe_id=f"dev-probe-{index}",
-            method=EvidenceMethod.MICRO_TELLBACK,
-            result=EvidenceResult.DEMONSTRATED,
-            note="atalho de desenvolvimento — nao e evidencia de campo",
-        )
-        for index, checkpoint in enumerate(checkpoints_for(session.pericope))
-    ]
-    state = ComprehensionState(
-        ledger=list(ledger),
-        practiced_scene_ids=scene_ids_for(session.pericope),
-    )
-    await save_comprehension(db, session, state)
     await apply_coverage(
         db,
         session.id,
