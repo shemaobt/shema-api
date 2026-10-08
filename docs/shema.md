@@ -1122,7 +1122,8 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 | `location`, `country` | the truth | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
 | `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | the truth | `""` | `""` |
-| the captions of `mediaPhotos` and `mediaVideos` (OBT-578, found in review — the authorization gates the bytes, not the leader's sentence) | the truth | the truth | `""` / `null`, the decision triple kept | — |
+| the captions of `mediaPhotos` and `mediaVideos` (OBT-578, found in review — the authorization gates the bytes, not the leader's sentence) | the truth | the truth | `""` / `null` | — |
+| `authorization.by` of `mediaPhotos` and `mediaVideos` (OBT-578 — Daniel, 8/oct/2026: on a Pulse-born photo it is the leader's own name, `submittedBy`) | the truth | the truth | `""`; `granted` and `at` kept | — |
 | `coords` | the truth | the truth | the region centroid | the region centroid |
 | `sensitiveCountry` (the ficha) | the flag | the flag | the flag | — |
 | `locationWithheld` | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed |

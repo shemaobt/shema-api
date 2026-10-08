@@ -61,7 +61,11 @@ from app.models.shema_privacy import (
     LeavingShape,
     ShemaReader,
 )
-from app.models.shema_record import ShemaHealthAssessmentEntry, ShemaProjectRecord
+from app.models.shema_record import (
+    ShemaHealthAssessmentEntry,
+    ShemaMediaAuthorization,
+    ShemaProjectRecord,
+)
 from app.utils.shema_derivations import get_region
 
 
@@ -236,9 +240,13 @@ def free_text_as_read(
     **The caption is the leader's own sentence about the photo** (OBT-578) — *a equipe no vale*
     names the place as readily as a need's description does — and it reaches the ficha whatever
     the authorization says, because the authorization gates the bytes and the caption is text.
-    So it takes the reduction the other free text takes, and the decision triple stays: who
-    authorized and when name no place. Found in review, which is why the video's caption,
-    there since BE-04, is emptied by the same line rather than by a second one.
+    So it takes the reduction the other free text takes. Found in review, which is why the
+    video's caption, there since BE-04, is emptied by the same line rather than by a second one.
+
+    **The decision's ``by`` goes with it — Daniel, 8/oct/2026.** On a Pulse-born photo it is the
+    leader's own name (``submittedBy``), and a name on a withheld record is as identifying as a
+    contact, which this reader is not handed either. ``granted`` and ``at`` stay: a boolean and
+    a day name nobody.
     """
     if reads_the_truth(project, reader):
         return {}
@@ -248,16 +256,29 @@ def free_text_as_read(
         history = assessments_as_read(project, reader, history)
     photos = record.media_photos
     if photos is not None:
-        photos = [photo.model_copy(update={"caption": ""}) for photo in photos]
+        photos = [
+            photo.model_copy(update={"caption": "", "authorization": _unnamed(photo.authorization)})
+            for photo in photos
+        ]
     videos = record.media_videos
     if videos is not None:
-        videos = [video.model_copy(update={"caption": None}) for video in videos]
+        videos = [
+            video.model_copy(
+                update={"caption": None, "authorization": _unnamed(video.authorization)}
+            )
+            for video in videos
+        ]
     return {
         "needs_items": needs,
         "health_history": history,
         "media_photos": photos,
         "media_videos": videos,
     }
+
+
+def _unnamed(decision: ShemaMediaAuthorization | None) -> ShemaMediaAuthorization | None:
+    """The decision without the name of who took it — ``None`` stays ``None`` (undecided)."""
+    return None if decision is None else decision.model_copy(update={"by": ""})
 
 
 #: The one name a refused need text is given, in the client's spelling.

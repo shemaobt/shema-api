@@ -538,8 +538,10 @@ async def test_on_a_sensitive_project_the_caption_reaches_the_coordination_and_n
     """Found in review: the caption is the leader's sentence about the photo and can name the
     place, as the four fields OBT-556 empties for the ``other`` reader can — and it reached the
     ficha whatever the authorization said, because the authorization gates the bytes. The OBT
-    Lab reads the slot with an empty caption and the decision triple; the region's coordinator
-    reads every word. A cleared project is the truth for both (next test)."""
+    Lab reads the slot with an empty caption, and the decision **without the leader's name**
+    (Daniel, 8/oct/2026: ``by`` is ``submittedBy`` on a Pulse-born photo) but with ``granted``
+    and the day; the region's coordinator reads every word. A cleared project is the truth for
+    both (next test)."""
     project = await _project(db_session, sensitive=True)
     _image_id, submission_id = await a_pulse_with_image(client, db_session, headers)
     assert (await _import(client, headers, submission_id)).status_code == 200
@@ -553,9 +555,14 @@ async def test_on_a_sensitive_project_the_caption_reaches_the_coordination_and_n
     assert lab.json()["readAs"] == "other" and lab.json()["locationWithheld"] is True
     assert DESCRIPTION not in lab.text and FILE_NAME not in lab.text
     [reduced] = lab.json()["mediaPhotos"]
-    assert reduced["caption"] == "" and reduced["authorization"]["granted"] is True
+    assert reduced["caption"] == ""
+    decision = reduced["authorization"]
+    assert set(decision) == {"granted", "by", "at"}
+    assert decision["granted"] is True and decision["by"] == "" and decision["at"] is not None
+    assert "Kuaray" not in lab.text
     assert ours.json()["readAs"] == "coordination"
-    assert [photo["caption"] for photo in ours.json()["mediaPhotos"]] == [DESCRIPTION]
+    [whole] = ours.json()["mediaPhotos"]
+    assert whole["caption"] == DESCRIPTION and whole["authorization"]["by"] == "Kuaray"
 
 
 async def test_on_a_cleared_project_the_obt_lab_reads_the_caption_whole(
@@ -570,7 +577,8 @@ async def test_on_a_cleared_project_the_obt_lab_reads_the_caption_whole(
 
     assert lab.status_code == 200, lab.text
     assert lab.json()["readAs"] == "other" and lab.json()["locationWithheld"] is False
-    assert [photo["caption"] for photo in lab.json()["mediaPhotos"]] == [DESCRIPTION]
+    [whole] = lab.json()["mediaPhotos"]
+    assert whole["caption"] == DESCRIPTION and whole["authorization"]["by"] == "Kuaray"
 
 
 # --- the withdrawal -------------------------------------------------------------------------------
