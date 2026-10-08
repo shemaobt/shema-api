@@ -279,7 +279,7 @@ async def call_agent(
             continue
         if refused is None:
             _SETTLED[rungs[0]] = model
-        spoken = _spoken_text(response)
+        spoken = "" if _refused_outright(response) else _spoken_text(response)
         if fails_on_truncation and response.stop_reason == "max_tokens":
             raise TruncatedReply(spoken)
         return spoken

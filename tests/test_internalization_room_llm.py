@@ -372,6 +372,25 @@ async def test_a_refusal_that_wrote_some_words_is_rerun_on_the_next_model(
     assert llm._SETTLED == {}
 
 
+async def test_a_second_refusal_that_wrote_some_words_stands_with_none_of_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingWithText("claude-fable-5-1", "claude-opus-5")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"]
+    assert text == "", (
+        "a segunda recusa devolvia as palavras que escreveu antes de parar, e elas seguiam "
+        "como rascunho em vez de a sala cair na linha de segurança"
+    )
+
+
 async def test_a_refusal_on_the_last_rung_has_no_next_model_to_be_rerun_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -401,6 +420,29 @@ async def test_a_refusal_on_the_last_rung_has_no_next_model_to_be_rerun_on(
         "devolver a recusa ao chamador"
     )
     assert text == ""
+
+
+async def test_a_refusal_on_the_last_rung_that_wrote_some_words_stands_with_none_of_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OnlyTheLastRungIsOpen:
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            if kwargs["model"] != "claude-opus-4-8":
+                raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+            return _reply("Quero que a gente", stop_reason="refusal", output=6)
+
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=_OnlyTheLastRungIsOpen(), options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert text == "", (
+        "a recusa da última rung devolvia as palavras que escreveu antes de parar, e elas "
+        "seguiam como rascunho para o validador"
+    )
 
 
 async def test_a_refusal_that_stood_does_not_move_the_next_call_off_the_top_rung(
