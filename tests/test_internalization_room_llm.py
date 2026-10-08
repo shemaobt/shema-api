@@ -338,6 +338,40 @@ async def test_a_refusal_is_rerun_once_and_a_second_refusal_stands(
     assert text == "", "a segunda recusa chega ao chamador como resposta vazia, e é ele quem decide"
 
 
+class RefusingWithText:
+    """Rungs that stop as a refusal after writing some words, and the ones that answer."""
+
+    def __init__(self, *refusing: str) -> None:
+        self.refusing = refusing
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if kwargs["model"] in self.refusing:
+            return _reply("Quero que a gente", stop_reason="refusal", output=6)
+        return _reply("ok")
+
+
+async def test_a_refusal_that_wrote_some_words_is_rerun_on_the_next_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingWithText("claude-fable-5-1")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"], (
+        "um degrau que parava em recusa depois de escrever algumas palavras não era perguntado "
+        "de novo no próximo modelo, e as palavras dele seguiam como rascunho"
+    )
+    assert text == "ok", "as palavras da recusa chegavam ao validador e podiam ser faladas"
+    assert llm._SETTLED == {}
+
+
 async def test_a_refusal_on_the_last_rung_has_no_next_model_to_be_rerun_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

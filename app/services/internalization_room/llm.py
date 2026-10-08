@@ -372,7 +372,7 @@ def _timed_out(model: str, *, role: str, started: float, bound_s: float) -> Upst
 
 
 def _refused_outright(response: Message) -> bool:
-    """A reply that is a refusal with nothing in it — not an answer, and not this key's fault.
+    """A reply that stopped as a refusal, whatever it wrote first — not this key's fault.
 
     Found on 2026-09-16, on the back-translation correction check: the first rung answered
     ``stop_reason: refusal`` with zero output tokens, five times in a row, in under two seconds
@@ -383,9 +383,7 @@ def _refused_outright(response: Message) -> bool:
     rung, not about the key, so the next rung is asked and nothing is settled on: the rung
     that refused stays first for the next request, which it will most likely answer.
     """
-    return response.stop_reason == "refusal" and not any(
-        block.type == "text" and block.text for block in response.content
-    )
+    return response.stop_reason == "refusal"
 
 
 def _from_the_settled_rung(rungs: list[str]) -> list[str]:
