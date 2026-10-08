@@ -17,6 +17,7 @@ its source are recorded in ``docs/divine-name-speakable-form.md``.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.services.internalization_room.canon.elements import scene_code
@@ -85,6 +86,13 @@ _EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,;\u2013—]+|[ \t\u00a0,;\u2013—]+$")
 
 _YHWH = re.compile(r"\bYHWH\b")
 
+_LETTER = re.compile(r"[^\W\d_]")
+_CLOSE = r"[\"\u201d\u2019')\]\u00bb]"
+_FIRST_LETTER = re.compile(r"^([\"\u201c\u00ab\u2018'(\[\s]*)([^\W\d_])")
+_SENTENCE_END = re.compile(rf"[.!?\u2026]+{_CLOSE}*(?=\s|\Z)")
+_ENDS_AS_QUESTION = re.compile(rf"[!?]*\?[!?]*{_CLOSE}*\Z")
+_HEAD_TERMINAL = re.compile(rf"[.!?\u2026]{_CLOSE}*\Z")
+
 _SPOKEN_FORM: dict[str, str] = {
     "pt": "Senhor Jeová",
     "en": "the LORD",
@@ -132,3 +140,83 @@ def speakable_text(text: str, language: str) -> str:
     if form is None:
         return text
     return _YHWH.sub(form, text)
+
+
+@dataclass
+class _Spans:
+    depth: int = 0
+    in_double: bool = False
+
+
+def _capitalized(text: str) -> str:
+    return _FIRST_LETTER.sub(lambda m: m[1] + m[2].upper(), text, count=1)
+
+
+def _between_digits(sentence: str, start: int, end: int) -> bool:
+    before = sentence[:start].rstrip()[-1:]
+    after = sentence[end:].lstrip()[:1]
+    return before.isnumeric() and after.isnumeric()
+
+
+def _last_separator(sentence: str, spans: _Spans) -> tuple[int, int] | None:
+    """The last cut outside quotes and parentheses, advancing `spans` over the whole sentence.
+
+    Two or more dashes in one sentence are a parenthetical pair, so no dash cuts it; a colon or
+    a semicolon after the pair still does.
+    """
+    candidates: list[tuple[int, int, bool]] = []
+    for i, char in enumerate(sentence):
+        previous, following = sentence[i - 1 : i], sentence[i + 1 : i + 2]
+        if char == '"':
+            spans.in_double = not spans.in_double
+            continue
+        if char in "\u201c\u00ab\u2018(":
+            spans.depth += 1
+            continue
+        apostrophe = char == "\u2019" and previous.isalpha() and following.isalpha()
+        if char in "\u201d\u00bb)" or (char == "\u2019" and not apostrophe):
+            spans.depth = max(0, spans.depth - 1)
+            continue
+        if spans.depth or spans.in_double:
+            continue
+        if char in ":;":
+            cut = (i, i + 1, False)
+        elif char in "\u2014\u2013":
+            cut = (i, i + 1, True)
+        elif char == "-" and previous == " " and following == " ":
+            cut = (i - 1, i + 2, True)
+        else:
+            continue
+        if not _between_digits(sentence, cut[0], cut[1]):
+            candidates.append(cut)
+    dashes = sum(dash for _, _, dash in candidates)
+    usable = [(start, end) for start, end, dash in candidates if not (dash and dashes >= 2)]
+    return usable[-1] if usable else None
+
+
+def _split_question(sentence: str, spans: _Spans) -> str:
+    cut = _last_separator(sentence, spans)
+    if cut is None or not _ENDS_AS_QUESTION.search(sentence):
+        return sentence
+    head = sentence[: cut[0]].rstrip()
+    tail = sentence[cut[1] :].lstrip()
+    if not _LETTER.search(head) or not _LETTER.search(tail) or head.endswith(","):
+        return sentence
+    statement = head if _HEAD_TERMINAL.search(head) else f"{head}."
+    return f"{statement} {_capitalized(tail)}"
+
+
+def standalone_questions(text: str) -> str:
+    """Cut a sentence that ends as a question at its last separator, so the question stands alone.
+
+    The span state — inside a quote or parentheses — runs across sentences, so a span that
+    opens in one sentence still protects the next. Words never change; only a boundary moves.
+    """
+    spans = _Spans()
+    sentences: list[str] = []
+    cursor = 0
+    for end in _SENTENCE_END.finditer(text):
+        sentences.append(_split_question(text[cursor : end.end()], spans))
+        cursor = end.end()
+    sentences.append(_split_question(text[cursor:], spans))
+    return "".join(sentences)

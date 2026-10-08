@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from app.services.internalization_room import speakable
-from app.services.internalization_room.speakable import speakable_text
+from app.services.internalization_room.speakable import speakable_text, standalone_questions
 
 _PT_CASES = [
     pytest.param("YHWH chamou Rute.", "Senhor Jeová chamou Rute.", id="mid-sentence"),
@@ -316,3 +316,178 @@ def test_a_pin_whose_maps_carry_only_one_shape_of_code_fails_the_import(
 
     with pytest.raises(RuntimeError):
         spec.loader.exec_module(module)
+
+
+_RULED_SPLITS = [
+    pytest.param(
+        "Quando estiverem prontos, a pergunta segue de pé: o que vem à cabeça de vocês quando "
+        'ouvem o nome "Rute"?',
+        "Quando estiverem prontos, a pergunta segue de pé. O que vem à cabeça de vocês quando "
+        'ouvem o nome "Rute"?',
+        id="question-after-a-colon-quoted-name-inside",
+    ),
+    pytest.param(
+        "Então, antes de tudo, eu quero que vocês conversem entre vocês: o que essa história "
+        "inteira faz vocês sentirem?",
+        "Então, antes de tudo, eu quero que vocês conversem entre vocês. O que essa história "
+        "inteira faz vocês sentirem?",
+        id="question-after-a-colon-commas-before-it-never-cut",
+    ),
+    pytest.param(
+        "Noemi pergunta: onde você trabalhou?",
+        "Noemi pergunta. Onde você trabalhou?",
+        id="reported-speech-still-a-question-the-voice-must-intone",
+    ),
+    pytest.param(
+        'Noemi pergunta: "onde você trabalhou hoje?"',
+        'Noemi pergunta. "Onde você trabalhou hoje?"',
+        id="reported-speech-in-quotes-capitalized-inside-the-quote",
+    ),
+    pytest.param(
+        "Naomi asks: where did you work?", "Naomi asks. Where did you work?", id="english"
+    ),
+    pytest.param(
+        'Naomi asks: "where did you work today?"',
+        'Naomi asks. "Where did you work today?"',
+        id="english-quoted",
+    ),
+    pytest.param(
+        "Pensem nisso — o que Noemi sentiu?", "Pensem nisso. O que Noemi sentiu?", id="em-dash"
+    ),
+    pytest.param(
+        "Pensem nisso - o que Noemi sentiu?",
+        "Pensem nisso. O que Noemi sentiu?",
+        id="spaced-hyphen",
+    ),
+    pytest.param(
+        "A colheita acabou; e agora, o que Noemi faz?",
+        "A colheita acabou. E agora, o que Noemi faz?",
+        id="semicolon",
+    ),
+    pytest.param(
+        "Primeira parte: a fome; segunda parte — a perda: o que vocês sentem?",
+        "Primeira parte: a fome; segunda parte — a perda. O que vocês sentem?",
+        id="several-separators-cut-at-the-last-one",
+    ),
+    pytest.param(
+        'Ele disse "vá!": e agora?',
+        'Ele disse "vá!" E agora?',
+        id="head-that-already-ends-with-its-own-punctuation-gets-no-second-period",
+    ),
+    pytest.param(
+        'Ele disse: "vá." — e você, o que faria?',
+        'Ele disse: "vá." — e você, o que faria?',
+        id="a-dash-led-question-after-a-closed-quote-is-already-its-own-sentence",
+    ),
+    pytest.param(
+        "Rute volta para casa com muito grão. Noemi pergunta: onde você trabalhou? Rute diz o "
+        "nome: Boaz.",
+        "Rute volta para casa com muito grão. Noemi pergunta. Onde você trabalhou? Rute diz o "
+        "nome: Boaz.",
+        id="the-question-stays-a-question-in-the-middle-of-a-turn",
+    ),
+    pytest.param(
+        "Placar 2:1 — quem ganhou?",
+        "Placar 2:1. Quem ganhou?",
+        id="a-colon-between-digits-is-a-time-not-a-separator-the-dash-after-it-still-cuts",
+    ),
+    pytest.param(
+        "Noemi — a sogra — pergunta: onde você trabalhou?",
+        "Noemi — a sogra — pergunta. Onde você trabalhou?",
+        id="a-dash-pair-is-a-parenthetical-the-colon-after-it-still-cuts",
+    ),
+    pytest.param(
+        "Rute 1\N{EN DASH}5 — o que acontece?",
+        "Rute 1\N{EN DASH}5. O que acontece?",
+        id="a-dash-range-between-digits-does-not-count-as-one-of-the-pair",
+    ),
+    pytest.param(
+        "Vocês viram isso: ela ficou?!",
+        "Vocês viram isso. Ela ficou?!",
+        id="question-bang-is-still-a-question",
+    ),
+    pytest.param(
+        "Vocês viram isso: ela ficou!?",
+        "Vocês viram isso. Ela ficou!?",
+        id="bang-question-is-still-a-question",
+    ),
+    pytest.param(
+        "Naomi asks: “where\N{RIGHT SINGLE QUOTATION MARK}s Boaz: here or there?”",
+        "Naomi asks. “Where\N{RIGHT SINGLE QUOTATION MARK}s Boaz: here or there?”",
+        id="an-apostrophe-inside-a-curly-quote-does-not-close-it-the-colon-before-the-quote-cuts",
+    ),
+    pytest.param(
+        "Naomi\N{RIGHT SINGLE QUOTATION MARK}s question: where did you work?",
+        "Naomi\N{RIGHT SINGLE QUOTATION MARK}s question. Where did you work?",
+        id="english-possessive-apostrophe-outside-any-span",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, expected", _RULED_SPLITS)
+def test_a_question_folded_after_a_separator_stands_alone(text: str, expected: str) -> None:
+    assert standalone_questions(text) == expected
+
+
+_NOT_A_FOLDED_QUESTION = [
+    'Uma coisa curiosa: o nome Belém quer dizer "casa do pão".',
+    "Ficou claro pra vocês quem são as pessoas e o que acontece? Se tiver alguma coisa que "
+    "vocês querem que eu conte de novo, me perguntem.",
+    "Vocês querem que eu repita, ou está claro?",
+    'O que vem à cabeça quando ouvem o nome "Rute"?',
+    'Ele perguntou "onde: aqui ou lá?"',
+    "Vocês lembram (a fome: em Judá)?",
+    "Rute 1\N{EN DASH}5?",
+    "Vocês leram o guarda-chuva?",
+    "Essa parte ficou clara? se sim, eu continuo.",
+    "Ficou claro pra vocês?",
+    "",
+    "Vocês chegaram às 10:30 da manhã?",
+    "Vocês chegaram às 10:30?",
+    "Lembram de Rute 1:5, onde Noemi fica só?",
+    "A sessão vai das 10:30 às 11:15, tudo bem?",
+    "Rute 1 \N{EN DASH} 5, o que acontece?",
+    "Rute 1 - 5, o que acontece?",
+    "O que Noemi — a sogra — sentiu?",
+    "Como acaba exatamente — quem faz o quê, o que nasce disso — vocês conseguem imaginar?",
+    "A família — pai, mãe e dois filhos — o que aconteceu com ela?",
+    "A família - pai, mãe e dois filhos - o que aconteceu com ela?",
+    "Pensem, — o que sentiram?",
+    "Ele perguntou \N{LEFT SINGLE QUOTATION MARK}onde: aqui ou lá?\N{RIGHT SINGLE QUOTATION MARK}",
+    'Ele disse: "fique no meu campo. Aqui: você está segura?"',
+    "Ele disse: “fique no meu campo. Aqui — você está segura?”",
+    "Ele perguntou (onde: aqui ou lá?)",
+]
+
+
+@pytest.mark.parametrize("text", _NOT_A_FOLDED_QUESTION)
+def test_a_line_with_no_question_folded_outside_quotes_and_parentheses_is_left_as_it_is(
+    text: str,
+) -> None:
+    assert standalone_questions(text) == text
+
+
+_KNOWN_LIMITS = [
+    pytest.param(
+        "Ele perguntou 'onde: aqui ou lá?'",
+        "Ele perguntou 'onde. Aqui ou lá?'",
+        id="a-straight-single-quote-is-not-a-span",
+    ),
+    pytest.param(
+        "O que vocês acham: bom ou ruim?",
+        "O que vocês acham. Bom ou ruim?",
+        id="a-head-that-is-itself-the-question-is-closed-with-a-period",
+    ),
+    pytest.param(
+        'Ele disse "vá. Noemi pergunta: onde você trabalhou?',
+        'Ele disse "vá. Noemi pergunta: onde você trabalhou?',
+        id="an-unbalanced-double-quote-suppresses-later-cuts",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, expected", _KNOWN_LIMITS)
+def test_her_known_limits_of_the_question_split_stay_as_she_pinned_them(
+    text: str, expected: str
+) -> None:
+    assert standalone_questions(text) == expected
