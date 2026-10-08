@@ -174,3 +174,90 @@ def test_a_pairing_is_read_sentence_by_sentence_and_a_denial_is_never_one() -> N
     assert (
         _turn(guide="Rute e Malom aparecem aqui. Depois o Quiliom casou.", expect=no_pairing) == []
     ), "o nome e o casamento em frases diferentes não são o par"
+
+
+#: Her small-gaps choice, its Ensaio Final form and the older form, from her `checksTest.ts`.
+CHOICE_FINAL = (
+    "Vocês trouxeram quase tudo desta cena: a fome, a família de Belém, a ida pra Moabe. "
+    "Faltaram só dois detalhes: dizer 'o marido de Noemi' e 'uns dez anos'. Querem ensaiar esta "
+    "cena mais uma vez, ou preferem seguir e acertar esses dois no Ensaio Final? Lá a gente acerta "
+    "isso juntos, e eu confiro tudo de novo com vocês."
+)
+CHOICE_FINAL_EN = (
+    "You brought almost all of this scene: the famine, the family from Bethlehem, the move to "
+    "Moab. Only two details were missing: saying 'Naomi's husband' and 'about ten years'. Do you "
+    "want to rehearse this scene once more, or go on and fix those two in the Final Rehearsal? "
+    "There we fix it together, and I check everything again with you."
+)
+CHOICE_OLD = (
+    "Faltaram só dois detalhes. Querem contar a passagem mais uma vez, ou preferem seguir pra "
+    "gravação e lembrar desses dois lá?"
+)
+
+
+def test_the_choice_of_the_second_near_complete_telling_names_the_recording_as_a_road() -> None:
+    missing = [
+        "guide did not offer the choice (contar de novo OU seguir pra gravação) on a second "
+        "near-complete telling"
+    ]
+    offers = {"offers_choice": True}
+    assert _turn(guide=CHOICE_OLD, expect=offers) == []
+    assert _turn(guide="Podem contar de novo. Ou podem seguir pra gravação.", expect=offers) == []
+    assert (
+        _turn(
+            guide="Vocês têm duas escolhas. Contar mais uma vez. Seguir pra gravação.",
+            expect=offers,
+        )
+        == []
+    )
+    assert _turn(guide="Vamos guardar isso pra acertar depois.", expect=offers) == missing, (
+        "adiar sem perguntar não é oferecer"
+    )
+    assert _turn(guide=CHOICE_FINAL, expect=offers) == missing, (
+        "sem 'grava…' não é a escolha antiga"
+    )
+
+
+def test_a_first_imperfect_telling_is_never_offered_the_recording_as_an_alternative() -> None:
+    offered = ["guide offered the recording as an alternative on a FIRST imperfect telling"]
+    first = {"no_choice_offer": True}
+    assert _turn(guide=CHOICE_OLD, expect=first) == offered
+    assert _turn(guide=CHOICE_FINAL, expect=first) == offered
+    assert (
+        _turn(guide="Faltou dizer de que clã eles eram. Ensaiem esta cena de novo.", expect=first)
+        == []
+    )
+    another_road = (
+        "Faltou dizer que eles foram de passagem. Vocês podem ensaiar de novo agora ou tirar uma "
+        "dúvida antes. Isso tudo fica pronto antes do Ensaio Final."
+    )
+    assert _turn(guide=another_road, expect=first) == [], (
+        "outra alternativa e o Ensaio Final noutra frase não são a escolha"
+    )
+
+
+def test_the_small_gaps_choice_in_its_ensaio_final_form_is_read_sentence_by_sentence() -> None:
+    missing = [
+        "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar no "
+        "Ensaio Final)"
+    ]
+    final = {"offers_choice_final": True}
+    for offered in (
+        CHOICE_FINAL,
+        CHOICE_FINAL_EN,
+        "Querem ensaiar esta cena mais uma vez? Ou preferem seguir e acertar esses dois no Ensaio "
+        "Final?",
+        "Faltou só um detalhe. Vocês têm duas escolhas. Ensaiar esta cena mais uma vez. Ou seguir, "
+        "e a gente acerta isso no Ensaio Final.",
+        "Querem ensaiar esta cena mais uma vez? Ou seguimos e acertamos isso no Ensaio Final?",
+        "Vocês têm duas escolhas. Ensaiar esta cena mais uma vez. Seguir e acertar no Ensaio "
+        "Final.",
+        "You can rehearse this scene once more or fix it in the Final Rehearsal.",
+        "Rehearse it again, or go on and fix it in the Final Rehearsal.",
+    ):
+        assert _turn(guide=offered, expect=final) == [], offered
+    assert _turn(guide=CHOICE_OLD, expect=final) == missing
+    assert (
+        _turn(guide="No Ensaio Final, lembrem do marido de Noemi e dos dez anos.", expect=final)
+        == missing
+    ), "o lembrete do Ensaio Final não é uma escolha"

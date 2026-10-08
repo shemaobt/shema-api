@@ -84,6 +84,47 @@ def _pairing_voiced(text: str) -> bool:
 
 
 _RECORD = _her(r"grav")
+_NAMES_THE_RECORDING = _her(r"grava")
+_A_CHOICE_ASKED = (
+    _her(r"\b(querem|preferem|quer|prefere|podem|pode|escolh\w*)\b[^.!?]{0,160}\bou\b"),
+    _her(r"\b(ou|Ou)\b[^.!?]{0,60}\b(podem|preferem|querem|seguir)\b[^.!?]{0,80}grava"),
+    _her(r"duas escolhas|dois caminhos|qual caminho|dois jeitos|duas op[cç][õo]es"),
+)
+_THE_RECORDING_AS_A_ROAD = _her(r"\bou\b[^.?!]{0,80}grava|grava[^.?!]{0,80}\bou\b")
+_THE_ENSAIO_FINAL = _her(r"ensaio final|final rehearsal")
+_A_CHOICE_IN_ONE_SENTENCE = (
+    _her(r"\b(querem|preferem|quer|prefere|podem|pode|escolh\w*)\b[^.!?]{0,160}\bou\b"),
+    _her(r"\bou\b[^.!?]{0,60}\b(podem|preferem|querem|segu\w*|acert\w*|continu\w*)\b"),
+    _her(
+        r"\b(do you want|would you (like|rather|prefer)|you can|you may|you could|choose)\b"
+        r"[^.!?]{0,160}\bor\b"
+    ),
+    _her(r"\bor\b[^.!?]{0,60}\b(you can|would you rather|do you prefer|go on)\b"),
+)
+_TWO_ROADS_ANNOUNCED = _her(
+    r"duas escolhas|dois caminhos|qual caminho|dois jeitos|duas op[cç][õo]es"
+    r"|two (choices|paths|ways|options)|which (path|way|road)"
+)
+
+
+def _offers_choice(text: str) -> bool:
+    return _NAMES_THE_RECORDING.search(text) is not None and any(
+        asked.search(text) for asked in _A_CHOICE_ASKED
+    )
+
+
+def _offers_choice_final(text: str) -> bool:
+    sentences = _SENTENCE_END.split(text)
+    for at, sentence in enumerate(sentences):
+        in_one = any(asked.search(sentence) for asked in _A_CHOICE_IN_ONE_SENTENCE)
+        if in_one and _THE_ENSAIO_FINAL.search(sentence):
+            return True
+        spelled_out = " ".join(sentences[at : at + 4])
+        if _TWO_ROADS_ANNOUNCED.search(sentence) and _THE_ENSAIO_FINAL.search(spelled_out):
+            return True
+    return False
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -109,6 +150,20 @@ def mechanical_checks(
         fails.append("possible Ruth↔Mahlon pairing voiced (judge must confirm)")
     if expect.get("send_off_record") and not _RECORD.search(guide):
         fails.append("send-off did not tell the team to record (gravem o ensaio)")
+    if expect.get("offers_choice") and not _offers_choice(guide):
+        fails.append(
+            "guide did not offer the choice (contar de novo OU seguir pra gravação) on a second "
+            "near-complete telling"
+        )
+    if expect.get("no_choice_offer") and (
+        _THE_RECORDING_AS_A_ROAD.search(guide) or _offers_choice_final(guide)
+    ):
+        fails.append("guide offered the recording as an alternative on a FIRST imperfect telling")
+    if expect.get("offers_choice_final") and not _offers_choice_final(guide):
+        fails.append(
+            "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar no "
+            "Ensaio Final)"
+        )
     if _THE_MAP.search(guide):
         fails.append("says 'o mapa' / 'the map' to the team")
     if _FAREWELL.search(guide):
