@@ -10,6 +10,7 @@ already does, and the stored value stays what it was.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -20,13 +21,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
+from app.services.internalization_room import (
+    back_translation_of,
+    check_the_telling_back,
+    verdict_round,
+)
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn import speech
 from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import room_client, the_room_speaks
 from tests.text_seam_harness import ScriptedAgent, the_models_answer
-from tests.turn_harness import the_room_agent_is
+from tests.turn_harness import settings, the_room_agent_is, told_stretches
 
 PANORAMA = "OV-Ruth"
 PASSAGE = "P03"
@@ -177,3 +183,74 @@ async def test_a_take_in_the_floors_language_on_a_row_stored_in_spanish_is_the_t
     assert guide.guide_inputs == [PORTUGUESE, PORTUGUESE], (
         "o português de uma sessão guardada em espanhol era lido como língua materna da equipe"
     )
+
+
+class _Models:
+    def __init__(self) -> None:
+        self.analyst: list[str] = []
+        self.validator: list[str] = []
+
+    async def turn(self, *, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            self.validator.append(system_prompt)
+            return json.dumps({"verdict": "pass", "issues": []})
+        return "Contem de novo, por favor."
+
+    async def reads(self, *, system_prompt: str, **_: Any) -> str:
+        self.analyst.append(system_prompt)
+        return json.dumps({"findings": []})
+
+
+@pytest.fixture
+def models(monkeypatch: pytest.MonkeyPatch) -> _Models:
+    seen = _Models()
+    the_room_agent_is(monkeypatch, turn=seen.turn, analyst=seen.reads)
+    return seen
+
+
+def _a_telling_back_on_a_row_stored_in_spanish() -> IRSession:
+    return IRSession(id="sessao-es", pericope=PASSAGE, project_id="equipe", language="es")
+
+
+@pytest.mark.parametrize(("floor", "named"), FLOORS)
+async def test_the_analyst_reads_a_telling_back_on_a_row_stored_in_spanish_in_the_rooms_language(
+    models: _Models, monkeypatch: pytest.MonkeyPatch, floor: str, named: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    codes = _the_codes_a_turn_was_given(monkeypatch, verdict_round, "analyse_telling_back")
+    session = _a_telling_back_on_a_row_stored_in_spanish()
+
+    await check_the_telling_back(
+        session,
+        state=back_translation_of(session),
+        told=told_stretches(),
+        takes=[],
+        settings=settings(),
+    )
+
+    assert named in models.analyst[0], (
+        "o analista lia a recontagem de uma sessão guardada em espanhol sem a língua da sala"
+    )
+    assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
+
+
+@pytest.mark.parametrize(("floor", "named"), FLOORS)
+async def test_the_verdict_on_a_row_stored_in_spanish_is_judged_in_the_rooms_language(
+    models: _Models, monkeypatch: pytest.MonkeyPatch, floor: str, named: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    codes = _the_codes_a_turn_was_given(monkeypatch, verdict_round, "run_verdict_turn")
+    session = _a_telling_back_on_a_row_stored_in_spanish()
+
+    await check_the_telling_back(
+        session,
+        state=back_translation_of(session),
+        told=[],
+        takes=[],
+        settings=settings(),
+    )
+
+    assert f"**{named}**" in models.validator[0], (
+        "o Validador do veredito de uma sessão guardada em espanhol não lia a língua da sala"
+    )
+    assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
