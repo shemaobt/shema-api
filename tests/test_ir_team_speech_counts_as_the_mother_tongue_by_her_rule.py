@@ -410,8 +410,14 @@ async def test_a_probe_that_never_answers_is_stopped_once_the_bound_has_passed(
     )
 
     async with asyncio.timeout(30):
-        while not pid_file.exists() or not pid_file.read_text().endswith("\n"):
+        while not hearing_the_take.done() and (
+            not pid_file.exists() or not pid_file.read_text().endswith("\n")
+        ):
             await asyncio.sleep(0.01)
+    assert not hearing_the_take.done(), (
+        "the take ended before the probe started: "
+        f"{hearing_the_take.exception() or hearing_the_take.result()!r}"
+    )
     loop = asyncio.get_running_loop()
     loop_time = loop.time
     monkeypatch.setattr(loop, "time", lambda: loop_time() + bound + 1)
