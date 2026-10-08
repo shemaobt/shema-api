@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -8,27 +7,7 @@ import pytest
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon import book_material, parse_map
-from tests.canon_harness import forget_the_canon
-
-A_LOG_WITH_ONE_RULE_AND_A_COMPLETE_REGISTER = (
-    "# Q01 — COMPILATION LOG\n\n"
-    + json.dumps(
-        {
-            "high_risk_register_audit": [
-                {
-                    "id": "R1",
-                    "kind": "SILENCE",
-                    "note": "The telling never says why.",
-                    "do_not_decide": True,
-                    "required_in_audit": True,
-                }
-            ],
-            "validation_checklist": {"high_risk_register_complete": True},
-        },
-        indent=2,
-    )
-    + "\n"
-)
+from tests.canon_harness import A_FABLE_LOG_WITH_A_COMPLETE_REGISTER, forget_the_canon
 
 
 @pytest.fixture
@@ -44,7 +23,7 @@ def a_second_book_that_would_walk_in_every_other_way(
         ruth_map.replace("P03", "Q01").replace("Ruth 1:15", "Fable 1:15"), encoding="utf-8"
     )
     (logs / "Q01-Fable-1-15-18-COMPILATION-LOG.md").write_text(
-        A_LOG_WITH_ONE_RULE_AND_A_COMPLETE_REGISTER, encoding="utf-8"
+        A_FABLE_LOG_WITH_A_COMPLETE_REGISTER, encoding="utf-8"
     )
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)

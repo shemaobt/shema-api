@@ -23,7 +23,6 @@ on the day the project writes those seven layers, which is exactly the day it mu
 from __future__ import annotations
 
 import json
-import textwrap
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -37,7 +36,12 @@ from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import LABELS_DIR
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
-from tests.canon_harness import forget_the_canon
+from tests.canon_harness import (
+    A_FABLE_LOG_WITH_A_LAYER,
+    A_FABLE_LOG_WITHOUT_ONE,
+    a_fable_map,
+    forget_the_canon,
+)
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 
@@ -57,73 +61,6 @@ WITH_LAYER = next(
     if any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
 )
 
-#: A whole little canon of its own — one map and one Compilation Log — so the two signals can
-#: be set against each other. The real Ruth material has them agreeing everywhere, and
-#: agreement is not the same as either one being read.
-_PENDING_MAP = textwrap.dedent(
-    """\
-    ---
-    type: "pericope"
-    pericope-num: "Q01"
-    pericope-title: "A fixture, not canon"
-    bcv: "Fable 1:1-2"
-    genre-group: "NARRATIVE"
-    genre: "HISTORICAL_NARRATIVE"
-    status: "complete"
-    sta-status: "pending"
-    ---
-
-    # Q01 — Fable 1:1-2
-
-    ## 2. Level 1 — Whole-Passage Movement
-    ### 2.1 Prose Arc
-    Someone stands somewhere, and the telling stops there.
-
-    ### 2.2 Context
-    None. This passage exists only inside this test.
-
-    ### 2.3 Emotion / Tone / Pace
-    Flat, because nothing happens.
-
-    ### 2.4 Communicative Function
-    To be refused at the door of the room.
-
-    ## 3. Level 2 — Scenes / Episodes
-
-    ### Scene 1 — The only scene (v.1-2)
-
-    **3A — Beings**
-    [[B1-Someone]] — מִישֶׁהוּ / Someone
-
-    **3B — Places**
-    [[PL1-Somewhere]] — אֵיפֹשֶׁהוּ / Somewhere
-
-    **3E — What Happens**
-    Someone stands somewhere.
-
-    **Significant Absence**
-    Nobody says why.
-    """
-)
-
-_LOG_WITH_A_LAYER = textwrap.dedent(
-    """\
-    # Q01 — COMPILATION LOG
-
-    {
-      "high_risk_register_audit": [
-        {
-          "id": "R1",
-          "kind": "SILENCE",
-          "note": "The telling never says why. Kept as it stands.",
-          "do_not_decide": true,
-          "required_in_audit": true
-        }
-      ]
-    }
-    """
-)
-
 
 @pytest.fixture
 def a_passage_whose_survey_is_pending(
@@ -131,15 +68,19 @@ def a_passage_whose_survey_is_pending(
 ) -> Iterator[str]:
     """A passage the project has not signed off, and whose preservation layer *is* written.
 
-    Nothing of Ruth is touched. The point of writing the layer is that the survey being
-    pending has to carry the refusal on its own.
+    A whole little canon of its own — one map and one Compilation Log — so the two signals can
+    be set against each other. The real Ruth material has them agreeing everywhere, and
+    agreement is not the same as either one being read. Nothing of Ruth is touched. The point
+    of writing the layer is that the survey being pending has to carry the refusal on its own.
     """
     maps = tmp_path / "meaning-map"
     logs = tmp_path / "compilation-log"
     maps.mkdir()
     logs.mkdir()
-    (maps / "Q01-Fable-1-1-2.md").write_text(_PENDING_MAP, encoding="utf-8")
-    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(_LOG_WITH_A_LAYER, encoding="utf-8")
+    (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(sta_status="pending"), encoding="utf-8")
+    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
+        A_FABLE_LOG_WITH_A_LAYER, encoding="utf-8"
+    )
 
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
@@ -157,12 +98,9 @@ def a_finished_passage_whose_log_records_no_rule(
     logs = tmp_path / "compilation-log"
     maps.mkdir()
     logs.mkdir()
-    (maps / "Q01-Fable-1-1-2.md").write_text(
-        _PENDING_MAP.replace('sta-status: "pending"', 'sta-status: "complete"'),
-        encoding="utf-8",
-    )
+    (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(), encoding="utf-8")
     (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
-        '# Q01 — COMPILATION LOG\n\n{"high_risk_register_audit": []}\n', encoding="utf-8"
+        A_FABLE_LOG_WITHOUT_ONE, encoding="utf-8"
     )
 
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
