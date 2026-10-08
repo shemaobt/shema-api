@@ -8,8 +8,8 @@ the collection composes it.
 
 **Built for the Admin's reader, like the record** (OBT-528). A pending project names the place the
 team typed, so it leaves through :class:`~app.models.shema_privacy.LeavingShape`, and the reader is
-``_scope.readership``'s answer for the caller — coordination for the Admin, on
-``COORDINATION_EVERYWHERE``'s hypothesis. Nothing here decides that the Admin reads the truth.
+``_scope.readership``'s answer for the caller — coordination for the Admin, by
+``COORDINATION_EVERYWHERE``. Nothing here decides that the Admin reads the truth.
 
 **Three reads for the whole list**, never one per project: the projects, their proposed members,
 and the requests' registered names. The name is read off the request rather than copied onto the

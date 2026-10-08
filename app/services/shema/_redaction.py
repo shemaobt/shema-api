@@ -84,7 +84,8 @@ def is_withheld(project: ShemaProject) -> bool:
 def withheld_note(records: Iterable[LeavingShape], reader: ShemaReader) -> int | None:
     """How many of ``records`` are withheld, announced to ``reader`` — or ``None``.
 
-    **Announced to coordination only** (GATE-04 1.3, OBT-528). The caller says who the
+    **Announced to whoever reads the truth** (GATE-04 1.3, OBT-528; the Resource Circle too since
+    OBT-571, which widened the reading and not the writing). The caller says who the
     announcement is for, and that is not always who the rows were built for: the Projetos screen
     announces to its own caller, and a file a coordinator exports carries rows built for
     ``outside`` with a header addressed to the coordinator (BE-14). Anybody else is told
@@ -103,7 +104,7 @@ def withheld_note(records: Iterable[LeavingShape], reader: ShemaReader) -> int |
     withheld because the rule could not be evaluated is counted exactly like one withheld
     because the flag was set, because from the reader's side they are the same fact.
     """
-    if reader is not ShemaReader.COORDINATION:
+    if not reader.reads_truth:
         return None
     total = sum(1 for record in records if record.location_withheld)
     return total or None
@@ -190,7 +191,7 @@ def reads_the_truth(project: ShemaProject, reader: ShemaReader) -> bool:
     function instead of writing the condition out (OBT-556), so the paths cannot disagree about
     when a reader is handed the reduction.
     """
-    return reader is ShemaReader.COORDINATION or not is_withheld(project)
+    return reader.reads_truth or not is_withheld(project)
 
 
 def withheld_from(project: ShemaProject, reader: ShemaReader) -> frozenset[str]:
@@ -317,7 +318,8 @@ def unwritable_fields(
 
     It answers from the **names** the payload set and never from their values, so the refusal
     is not an oracle: comparing a sent base with the stored one would tell a reader who may not
-    see it whether they guessed it. Coordination may write all of them.
+    see it whether they guessed it. Coordination may write all of them; a ``trusted`` reader
+    (OBT-571) reads the truth and is refused exactly what ``other`` is — *só não podem editar*.
     """
     if reader is ShemaReader.COORDINATION:
         return []

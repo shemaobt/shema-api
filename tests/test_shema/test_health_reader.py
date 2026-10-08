@@ -1,12 +1,12 @@
 """Who reads a team's health — OBT-553, every path a reading leaves by, per role.
 
-``GET /projects/{id}/health-assessments`` refuses the Resource Circle (BE-07), and
-``_health_audience.py`` says why: the role that sends a team a recorder does not need to know the
-team is in emotional difficulty. These tests hold the same answer on every other door — the ficha,
-the card, the search (filter, facet, order, the *atenção* preset and the card's tone), the file
-the reader exports, the notification panel and the record's own write — and hold the audience's
-answer beside it, so a reduction that reached the coordination too would fail here as loudly as a
-leak.
+``GET /projects/{id}/health-assessments`` refused the Resource Circle (BE-07) until OBT-571,
+when Daniel decided Karina's *"ver tudo"* includes a team's health: the Circle **reads** it now
+on every door — the ficha, the card, the search (filter, facet, order, the *atenção* preset and
+the card's tone), the file it exports, the notification panel — and still **files** no reading
+and **writes** no pastoral follow-up. These tests hold the readers' answer on every door and the
+audience's narrower answer on the two writes, so a reduction that reached the coordination too
+would fail here as loudly as a leak.
 
 The reading is filed by the one writer of the projection, the assessment, as an OBT Lab mentor,
 so the projection, the history and the three pastoral fields are what a real reading leaves. The
@@ -29,7 +29,12 @@ from app.models.shema_projects import ShemaProjectCard
 from app.models.shema_record import ShemaProjectRecord
 from app.models.shema_transfer import ExportedProject
 from app.services.notifications.get_shema_app_id import get_shema_app_id
-from app.services.shema._health_audience import UNREAD_HEALTH, in_health_audience
+from app.services.shema._health_audience import (
+    UNREAD_HEALTH,
+    health_as_read,
+    in_health_audience,
+    reads_team_health,
+)
 from app.services.shema._health_notice import EVENT_TYPE, TITLE, notice_body
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user, make_shema_project
 
@@ -67,6 +72,8 @@ READING = {
 }
 
 AUDIENCE = ["coordinator", "obtLab"]
+#: Who reads a team's health: the audience, and the Resource Circle since OBT-571.
+READERS = [*AUDIENCE, "resourceCircle"]
 
 READING_DAY = date(2026, 9, 10)
 
@@ -158,43 +165,32 @@ async def _version(client, headers, project_id: str) -> str:
 
 
 @pytest.mark.parametrize(
-    ("granted", "platform_admin", "reads"),
+    ("granted", "platform_admin", "files", "reads"),
     [
-        ({"resourceCircle"}, False, False),
-        ({"admin"}, False, False),
-        (set(), False, False),
-        ({"coordinator"}, False, True),
-        ({"obtLab"}, False, True),
-        ({"resourceCircle", "obtLab"}, False, True),
-        (set(), True, True),
+        ({"resourceCircle"}, False, False, True),
+        ({"admin"}, False, False, False),
+        (set(), False, False, False),
+        ({"coordinator"}, False, True, True),
+        ({"obtLab"}, False, True, True),
+        ({"resourceCircle", "obtLab"}, False, True, True),
+        (set(), True, True, True),
     ],
 )
-def test_the_health_reader_is_the_assessment_audience(
-    granted: set[str], platform_admin: bool, reads: bool
+def test_the_audience_files_and_the_readers_read(
+    granted: set[str], platform_admin: bool, files: bool, reads: bool
 ) -> None:
-    """One list, read without a query: the roles the assessment reaches, and an installation
-    admin, who passes every guard here."""
-    assert in_health_audience(granted, platform_admin=platform_admin) is reads
+    """Two lists, read without a query: the roles that file a reading and write the pastoral
+    follow-up (the audience), and the roles that read one — the audience plus the Resource Circle
+    since OBT-571. An installation admin passes both, as every guard here."""
+    assert in_health_audience(granted, platform_admin=platform_admin) is files
+    assert reads_team_health(granted, platform_admin=platform_admin) is reads
 
 
 # --- the ficha -------------------------------------------------------------------------------
 
 
-async def test_the_resource_circle_reads_no_health_on_the_record(client, assessed, circle) -> None:
-    response = await client.get(f"{PROJECTS}/{assessed}", headers=circle)
-
-    assert response.status_code == 200
-    record = response.json()
-    _assert_unread(record)
-    assert record["healthHistory"] is None
-    assert record["needsPastoralIntervention"] == "nao"
-    assert record["pastoralInterventionName"] == ""
-    assert record["pastoralInterventionWhen"] is None
-    assert _leaks(response.text) == []
-
-
-@pytest.mark.parametrize("role_key", AUDIENCE)
-async def test_the_health_audience_reads_the_health_on_the_record(
+@pytest.mark.parametrize("role_key", READERS)
+async def test_the_health_readers_read_the_health_on_the_record(
     client, db_session, shema_app, assessed, role_key
 ) -> None:
     headers = await person(db_session, shema_app, role_key)
@@ -213,16 +209,8 @@ async def test_the_health_audience_reads_the_health_on_the_record(
 # --- the card and the search -----------------------------------------------------------------
 
 
-async def test_the_resource_circle_reads_no_health_on_the_card(client, assessed, circle) -> None:
-    response = await client.get(PROJECTS, headers=circle)
-
-    assert response.status_code == 200
-    _assert_unread(_card(response.json(), assessed))
-    assert _leaks(response.text) == []
-
-
-@pytest.mark.parametrize("role_key", AUDIENCE)
-async def test_the_health_audience_reads_the_health_on_the_card(
+@pytest.mark.parametrize("role_key", READERS)
+async def test_the_health_readers_read_the_health_on_the_card(
     client, db_session, shema_app, assessed, role_key
 ) -> None:
     headers = await person(db_session, shema_app, role_key)
@@ -230,49 +218,8 @@ async def test_the_health_audience_reads_the_health_on_the_card(
     _assert_read(_card(await _page(client, headers), assessed))
 
 
-async def test_a_health_filter_from_the_resource_circle_is_ignored(
-    client, assessed, circle
-) -> None:
-    """Ignored, not answered: the same projects with and without it, whatever the team's
-    health — so no value of the filter can carve out the teams in difficulty."""
-    unfiltered = await _page(client, circle)
-
-    for value in ("critica", "atencao", "boa", "na"):
-        filtered = await _page(client, circle, health=value)
-        assert _ids(filtered) == _ids(unfiltered), value
-        assert filtered["matched"] == unfiltered["matched"] == 2
-
-
-async def test_the_resource_circle_is_given_no_health_facet(client, assessed, circle) -> None:
-    counts = (await _page(client, circle))["counts"]
-
-    assert "health" not in counts["groups"]
-    assert "health" not in counts["groupAll"]
-    assert "status" in counts["groups"]
-
-
-async def test_a_health_sort_from_the_resource_circle_falls_back_to_the_default(
-    client, assessed, circle
-) -> None:
-    by_health = await _page(client, circle, sort="health")
-
-    assert by_health["sort"] == "deadline"
-    assert _ids(by_health) == _ids(await _page(client, circle)) == [UNASSESSED, ASSESSED]
-
-
-async def test_the_attention_preset_does_not_read_health_for_the_resource_circle(
-    client, assessed, circle
-) -> None:
-    """A critical team is in *atenção* for its health; the circle's card has none, so neither
-    the preset nor its count can say which team is struggling."""
-    page = await _page(client, circle, presets="attention")
-
-    assert assessed not in _ids(page)
-    assert page["counts"]["presets"]["attention"] == 0
-
-
-@pytest.mark.parametrize("role_key", AUDIENCE)
-async def test_the_health_audience_filters_counts_and_sorts_by_health(
+@pytest.mark.parametrize("role_key", READERS)
+async def test_the_health_readers_filter_count_and_sort_by_health(
     client, db_session, shema_app, assessed, role_key
 ) -> None:
     headers = await person(db_session, shema_app, role_key)
@@ -301,14 +248,19 @@ async def _exported(client, headers) -> dict[str, Any]:
     return next(row for row in rows if row["id"] == ASSESSED)
 
 
-async def test_a_file_exported_outside_the_audience_carries_no_health(
-    client, assessed, circle
-) -> None:
-    assert (await _exported(client, circle))["overallHealth"] == "na"
+def test_a_row_exported_outside_the_readers_carries_no_health() -> None:
+    """Since OBT-571 every scoped console role reads health, so no account exports a file outside
+    the readers any more; the reduction is held at the function the export applies per row."""
+    row = ExportedProject(id="-")
+
+    unread = health_as_read(row, reads_health=False)
+    assert unread and set(unread) <= set(UNREAD_HEALTH)
+    assert all(row.model_fields[name] is not None for name in unread)
+    assert health_as_read(row, reads_health=True) == {}
 
 
-@pytest.mark.parametrize("role_key", AUDIENCE)
-async def test_the_health_audience_exports_the_overall_health(
+@pytest.mark.parametrize("role_key", READERS)
+async def test_the_health_readers_export_the_overall_health(
     client, db_session, shema_app, assessed, role_key
 ) -> None:
     headers = await person(db_session, shema_app, role_key)
@@ -341,11 +293,13 @@ async def test_a_health_notice_is_not_read_by_an_account_that_left_the_audience(
     client, db_session, shema_app
 ) -> None:
     """The notice was addressed while the account was in the audience; it is read by who the
-    account is now. The coordinator beside it, holding the same row, still reads it."""
-    circle = await _addressed(db_session, "saiu@saude.test", "resourceCircle", shema_app)
+    account is now — here an account that holds ``admin`` alone, outside the readers since the
+    Resource Circle joined them (OBT-571). The coordinator beside it, holding the same row, still
+    reads it."""
+    left_account = await _addressed(db_session, "saiu@saude.test", "admin", shema_app)
     coordinator = await _addressed(db_session, "ficou@saude.test", "coordinator", shema_app)
 
-    left = await client.get(PANEL, headers=circle)
+    left = await client.get(PANEL, headers=left_account)
     stayed = await client.get(PANEL, headers=coordinator)
 
     assert left.status_code == stayed.status_code == 200
@@ -364,12 +318,12 @@ async def test_a_health_notice_is_not_read_by_an_account_that_left_the_audience(
         {"pastoralInterventionWhen": "depois"},
     ],
 )
-async def test_the_resource_circle_may_not_write_the_pastoral_follow_up_it_cannot_read(
+async def test_the_resource_circle_may_not_write_the_pastoral_follow_up_it_reads(
     client, assessed, circle, body
 ) -> None:
-    """Não dá para editar o que não se vê: the circle reads ``nao`` and ``""`` where the team's
-    follow-up is, so a value typed over them would erase it unseen. Refused by name, and the
-    record does not move."""
+    """*Só não podem editar* (OBT-571): the circle reads the team's follow-up now and is refused
+    the write all the same — since Daniel's decision of 7/oct/2026, every project write of the
+    Circle's is refused before any field is looked at. The record does not move."""
     version = await _version(client, circle, assessed)
 
     response = await client.patch(
@@ -377,7 +331,7 @@ async def test_the_resource_circle_may_not_write_the_pastoral_follow_up_it_canno
     )
 
     assert response.status_code == 403
-    assert next(iter(body)) in response.text
+    assert "Resource Circle reads a project and does not edit it" in response.text
     assert await _version(client, circle, assessed) == version
 
 

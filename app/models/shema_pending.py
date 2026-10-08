@@ -6,9 +6,9 @@ OBT-547. Four shapes and two bodies, camelCase by alias over the house's snake_c
 **The pending project is a** :class:`~app.models.shema_privacy.LeavingShape`. It names the place
 the team typed and the base the Admin will type, so the boundary applies to it like to every
 other shape that can: the service builds it for the Admin's reader, and a reader that is not
-coordination would read the region. The Admin reads it as coordination today — that is
-``COORDINATION_EVERYWHERE``'s hypothesis (OBT-528), and removing ``admin`` from it would make this
-list read the region too, with no edit here.
+coordination would read the region. The Admin reads it as coordination — that is
+``COORDINATION_EVERYWHERE`` (OBT-528, confirmed by Daniel on 8/oct/2026), and removing ``admin``
+from it would make this list read the region too, with no edit here.
 
 **The confirmation's answer names no place.** It says which requests now point at the project,
 who joined its team, who was invited and who was left out for want of an address — the

@@ -38,7 +38,7 @@ be the number again. The card's own free text is the shape's to withhold, so the
 nothing here for it.
 
 **And a team's health is reduced the same way, before anything is counted (OBT-553).** A reader
-outside ``_health_audience.HEALTH_AUDIENCE`` gets every health field empty on the card
+outside ``_health_audience.HEALTH_READERS`` gets every health field empty on the card
 (:func:`_card_as_read`), so the tone, the health score and the *atenção* preset the pass computes
 from it cannot say which team is struggling. What the card cannot carry the search must not ask:
 :func:`_query_as_read` drops the health filter — ignored, as an unknown preset is, so no value of
@@ -61,7 +61,6 @@ from app.db.models.shema_enums import ShemaMediaKind
 from app.db.models.shema_media import ShemaMediaItem
 from app.db.models.shema_need import ShemaNeed
 from app.db.models.shema_progress import ShemaProgressEntry
-from app.models.shema_privacy import ShemaReader
 from app.models.shema_projects import (
     DEFAULT_SORT,
     ShemaFacetCounts,
@@ -161,9 +160,10 @@ def _card_as_read(card: ShemaProjectCard, readership: Readership) -> dict[str, A
 def _query_as_read(query: ShemaProjectQuery, readership: Readership) -> ShemaProjectQuery:
     """What this reader may ask the collection — without what the cards and counts withhold.
 
-    **``sensitive`` is coordination's (OBT-556).** How many projects are withheld is told to
-    coordination and to nobody else (GATE-04, 1.3: ``withheld_note``, addressed by
-    ``coordinates_anything``), and a filter on the bit would hand everybody else the same number
+    **``sensitive`` is the truth-readers' (OBT-556; the Resource Circle too since OBT-571).** How
+    many projects are withheld is told to whoever reads the truth and to nobody else (GATE-04,
+    1.3: ``withheld_note``, addressed by ``reads_truth_anywhere``), and a filter on the bit would
+    hand everybody else the same number
     as ``matched``. So for them the filter is **ignored** — the list and every other count are
     what the same request without it answers — rather than refused like a value that is no
     option: an empty list would say *none of these is withheld*, which is false, and a link a
@@ -175,7 +175,7 @@ def _query_as_read(query: ShemaProjectQuery, readership: Readership) -> ShemaPro
     the teams' health, so neither is an oracle.
     """
     update: dict[str, Any] = {}
-    if not readership.coordinates_anything:
+    if not readership.reads_truth_anywhere:
         update[SENSITIVE_GROUP] = None
     if not readership.reads_health:
         update["health"] = None
@@ -187,14 +187,15 @@ def _query_as_read(query: ShemaProjectQuery, readership: Readership) -> ShemaPro
 def _facets_as_read(counts: ShemaFacetCounts, readership: Readership) -> ShemaFacetCounts:
     """The counts this reader may read — without the groups it may not be told.
 
-    The withheld projects' count is coordination's (OBT-556), and the health group is the health
-    audience's (OBT-553). A group left out is absent from ``groups`` and from ``groupAll`` rather
+    The withheld projects' count is the truth-readers' (OBT-556, OBT-571), and the health group
+    is the health readers' (OBT-553, OBT-571). A group left out is absent from ``groups`` and from
+    ``groupAll`` rather
     than answered with zeros or ``{"na": total}``, which would be a number that lies; the console
     reads a missing group as one it has nothing to show for. The ``locationWithheld`` bit itself
     stays on every card — GATE-04 decided the notice, not the bit.
     """
     hidden: set[str] = set()
-    if not readership.coordinates_anything:
+    if not readership.reads_truth_anywhere:
         hidden.add(SENSITIVE_GROUP)
     if not readership.reads_health:
         hidden.add(_HEALTH)
@@ -312,8 +313,5 @@ async def browse_projects(
         limit=query.limit,
         offset=query.offset,
         sort=query.sort,
-        locations_withheld=withheld_note(
-            items,
-            ShemaReader.COORDINATION if readership.coordinates_anything else ShemaReader.OTHER,
-        ),
+        locations_withheld=withheld_note(items, readership.collection_reader),
     )

@@ -208,7 +208,10 @@ async def test_stale_entries_reach_coordinator_in_scope_and_nobody_else(
 
     assert any(entry.kind == "stale" and entry.project_id == project.id for entry in in_scope)
     assert not any(entry.project_id == project.id for entry in out_of_scope)
-    assert not any(entry.kind == "stale" for entry in resource_circle_panel)
+    # The Resource Circle reads a team's health since OBT-571, the stale reading included.
+    assert any(
+        entry.kind == "stale" and entry.project_id == project.id for entry in resource_circle_panel
+    )
 
 
 async def test_read_marks_a_stale_entry_seen(db_session, shema_app) -> None:

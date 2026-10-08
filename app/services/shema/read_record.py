@@ -19,7 +19,7 @@ carry is held back by ``_redaction.free_text_as_read`` instead, on the same with
 the same readers (OBT-556). The prayer request is the same shape of answer from its own owner
 (BE-09): a reader outside ``_consent.PRAYER_AUDIENCE`` gets a request nobody authorized as
 ``""``, and ``_consent.request_as_read`` is what decides it. A team's health is the third
-(OBT-553): a reader outside ``_health_audience.HEALTH_AUDIENCE`` gets every health field as a
+(OBT-553): a reader outside ``_health_audience.HEALTH_READERS`` gets every health field as a
 project nobody has assessed holds it — the projection, the history and the pastoral follow-up —
 and ``_health_audience.health_as_read`` decides it. All are asked in :func:`_record_as_read`,
 the one place this record is reduced for who reads it beyond the place, and applied **before**
@@ -181,8 +181,10 @@ def _record_as_read(
 
     **The health answer is spread last, and that order is the rule.** Both of the last two
     answer ``health_history``: the withheld record's history without its notes, and ``None`` for
-    a reader outside the health audience. A Resource Circle reading a withheld record is both,
-    and the stricter answer has to be the one that stays.
+    a reader outside the health readers. An OBT Lab reading a withheld record is the first; a
+    caller outside both lists is both, and the stricter answer has to be the one that stays.
+    Since OBT-571 the Resource Circle is neither on a project in its own scope: it reads the
+    truth and the health.
     """
     return {
         **request_as_read(project, reads_withheld=readership.withheld_prayer),

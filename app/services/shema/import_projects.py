@@ -172,7 +172,9 @@ NEEDS_KEYS = _spellings(("needs_items",))
 EXPORT_ONLY_KEYS = (
     frozenset(ExportedProject(id="-").as_row()) - RECORD_KEYS - WRITE_KEYS - {"notes"}
 )
-#: The one reading a payload may say it was built for and still carry the truth.
+#: The one reading a payload may say it was built for and still carry the whole record. Not the
+#: Resource Circle's ``trusted`` read (OBT-571): it carries the place, and still not a prayer
+#: request kept in coordination (``_consent.PRAYER_AUDIENCE``), so importing it would clear one.
 _TRUTH = ShemaReader.COORDINATION.value
 
 
@@ -332,8 +334,10 @@ def _at(record: _Record, refused: Exception) -> None:
 def _require_coordination(readership: Readership, *, user: User) -> None:
     """Refuse an importer who coordinates nothing — see the module docstring for why.
 
-    ``coordinates_anything`` is who the export's withheld count is addressed to too: one answer
-    to *who is coordination* for the file that leaves and the file that returns. A caller who
+    ``coordinates_anything`` is who imports; the export's withheld count is addressed wider
+    since OBT-571 (``collection_reader`` — the Resource Circle reads the truth too), and the
+    two parted here on purpose: a ``trusted`` read is not the whole record (a prayer request
+    kept in coordination is ``""`` to it), so only coordination writes one back. A caller who
     coordinates at all coordinates every region it reaches (``_scope.readership``), so the
     records this import can write are records it reads whole. A 403, as the ETEN ledger answers
     its own audience: the caller is being told about their own grant.

@@ -90,7 +90,7 @@ from app.models.shema_health import RECORD_FIELDS, ShemaHealthAssessmentSubmissi
 from app.models.shema_privacy import ShemaReader
 from app.services.shema import _audit
 from app.services.shema._consent import request_written, withdraws_authorization
-from app.services.shema._health_audience import require_reads_assessments
+from app.services.shema._health_audience import require_files_assessments
 from app.services.shema._health_notice import entered_critical, notify_critical
 from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
@@ -246,7 +246,7 @@ async def append_assessment(
             scope, user=user, operation="append_assessment", project_id=project_id
         )
 
-    await require_reads_assessments(db, user, app_key)
+    await require_files_assessments(db, user, app_key)
 
     before = _overall(project)
     snapshot = _audit.snapshot(project)
