@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import background
+from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -33,15 +34,19 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.release import compose_internalization_release
+from app.services.internalization_room.release import (
+    approve_release,
+    compose_internalization_release,
+)
 from app.services.internalization_room.sessions import (
     create_session,
     save_comprehension,
     session_is_done,
 )
+from tests.baker import make_app, make_role
 from tests.canon_harness import the_canon_moves_on
 from tests.opening_harness import another_tablet_of, the_tablet_opens
-from tests.release_harness import P, a_claimed_device
+from tests.release_harness import P, a_claimed_device, at_the_desk, ready_session
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
 from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
 from tests.turn_harness import the_room_agent_is
@@ -164,6 +169,13 @@ async def client(db_session: AsyncSession, per_request, monkeypatch: pytest.Monk
     the_room_speaks(monkeypatch)
     async with room_client(db_session, monkeypatch, per_request=per_request) as c:
         yield c
+
+
+@pytest.fixture()
+async def room_app(db_session: AsyncSession):
+    app = await make_app(db_session, app_key="internalization-room", name="Internalization Room")
+    await make_role(db_session, app.id, role_key="facilitator", label="Facilitator", is_system=True)
+    return app
 
 
 async def _pin_of(per_request: async_sessionmaker[AsyncSession], session_id: str) -> str | None:
@@ -325,6 +337,28 @@ async def test_the_release_of_a_session_open_when_a_new_canon_is_published_names
     )
     assert packet["comprehension"]["total_units"] == newer["comprehension"]["total_units"] + 1, (
         "o pacote contou as verificações do canon novo"
+    )
+
+
+async def test_an_approved_passage_opened_again_in_a_new_session_reads_the_canon_current_then_and_keeps_it(  # noqa: E501
+    client, db_session, room_app, prompts, monkeypatch, tmp_path
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    _, facilitator = await at_the_desk(db_session, room_app, team)
+    approved = await ready_session(db_session, project_id=team.id)
+    await approve_release(db_session, approved)
+
+    the_canon_moves_on(monkeypatch, tmp_path, OLD_PIN)
+    await archive_pericope(db_session, facilitator, project_id=team.id, pericope=P)
+    reopened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_is_told_its_own_way)
+    start = len(prompts.read)
+    await the_team_says(client, tablet, reopened["session_id"], "de novo")
+    guide, validator = prompts.since(start)
+
+    assert reopened["session_id"] != approved.id
+    assert KEPT_LINE in guide and KEPT_LINE in validator, (
+        "a nova sessão da passagem aprovada não guardou o canon com que abriu"
     )
 
 
