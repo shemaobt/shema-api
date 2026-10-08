@@ -274,7 +274,11 @@ from app.services.shema._scope import (
     visible_projects,
     within_scope,
 )
-from app.services.shema._submission_archive import MAX_PAYLOAD_BYTES, archived_answers
+from app.services.shema._submission_archive import (
+    MAX_PAYLOAD_BYTES,
+    archived_answers,
+    erase_pulse_image,
+)
 from app.services.shema._submission_notices import notify_submission
 from app.services.shema.add_intercessor import add_intercessor
 from app.services.shema.add_project_member import add_project_member
@@ -354,8 +358,10 @@ from app.services.shema.set_intercessor_consent import (
     withdraw_intercessor_consent,
 )
 from app.services.shema.set_region_scope import held_regions, set_region_scope
+from app.services.shema.store_intake_image import store_intake_image
 from app.services.shema.undo_meeting import undo_meeting
 from app.services.shema.update_intercessor import update_intercessor
+from app.services.shema.withdraw_image_authorization import withdraw_image_authorization
 from app.services.shema.withdraw_invite import withdraw_invite
 
 __all__ = [
@@ -419,6 +425,7 @@ __all__ = [
     "definition_at",
     "derive_region",
     "entered_critical",
+    "erase_pulse_image",
     "eten_report",
     "exit_url",
     "expires_on",
@@ -521,6 +528,7 @@ __all__ = [
     "shared_prayer_audio",
     "shared_prayer_text",
     "storage_key",
+    "store_intake_image",
     "unacknowledged_needs",
     "undo_meeting",
     "unwritable_fields",
@@ -530,6 +538,7 @@ __all__ = [
     "verify_intake_token",
     "visible_projects",
     "with_rolled_aggregates",
+    "withdraw_image_authorization",
     "withdraw_intercessor_consent",
     "withdraw_invite",
     "withheld_note",

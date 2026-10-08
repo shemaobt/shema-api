@@ -40,7 +40,7 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition
 from app.models.shema_forms import IntakeSubmission
 from app.services.shema._intake_tokens import verify_intake_token
-from app.services.shema._submission_archive import archive_submission
+from app.services.shema._submission_archive import archive_submission, bind_intake_image
 
 
 async def receive_submission(
@@ -80,7 +80,8 @@ async def receive_submission(
     if project is None:
         raise NotFoundError("The project this link was issued for no longer exists.")
 
-    _row, created = await archive_submission(
+    image = await bind_intake_image(db, submission.answers, link=link)
+    row, created = await archive_submission(
         db,
         project,
         definition,
@@ -89,6 +90,8 @@ async def receive_submission(
         app_key=app_key,
         link=link,
     )
+    if created and image is not None:
+        image.submission_id = row.id
     if created and link.used_at is None:
         link.used_at = datetime.now(UTC)
     await db.commit()

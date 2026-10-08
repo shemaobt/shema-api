@@ -32,10 +32,13 @@ media (BE-09, BE-14); the rule does not wait for it.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol
 
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_enums import ShemaMediaKind
+from app.db.models.shema_form import ShemaIntakeImage
+from app.db.models.shema_media import ShemaMediaItem
 from app.models.shema_privacy import ShemaAudience
 from app.models.shema_record import ShemaMediaAuthorization
 from app.services.shema._redaction import is_withheld
@@ -128,3 +131,41 @@ def recorded_decision(item: Authorizable) -> ShemaMediaAuthorization | None:
         by=item.authorized_by or "",
         at=item.authorized_at,
     )
+
+
+def pulse_photo(
+    image: ShemaIntakeImage, *, caption: str, authorized: bool, by: str, at: datetime
+) -> ShemaMediaItem:
+    """The media item a Pulse's image becomes at import — OBT-578, and the first writer of the
+    triple.
+
+    Written here and not in ``import_submission.py`` so the three authorization columns keep one
+    file that reads **and** writes them (``test_privacy_owners.py``'s glob). The leader's answer
+    to the box is the decision: ``True`` grants, under the leader's name as the Pulse carried it
+    and the day it arrived; anything else is **undecided** (``NULL``), never a refusal the server
+    invented — *absence of consent is not consent*, the gate's own rule. The object is the one
+    the upload wrote: the item keeps the intake image's key, and no copy is made.
+    """
+    return ShemaMediaItem(
+        project_id=image.project_id,
+        kind=ShemaMediaKind.PHOTO,
+        storage_key=image.storage_key,
+        file_name=image.file_name,
+        caption=caption,
+        authorization_granted=True if authorized else None,
+        authorized_by=by if authorized else None,
+        authorized_at=at if authorized else None,
+    )
+
+
+def withdraw_authorization(item: Authorizable, *, by: str, at: datetime | None = None) -> None:
+    """Record a refusal on ``item`` — the coordination taking an authorization back (OBT-578).
+
+    The one direction this file writes for a person other than the one who consented: the
+    coordination may **withdraw** what the team authorized and may not grant in its place, since
+    granting would be the server recording a consent the team did not give. The snapshot of who
+    and when is the item's, as every decision here carries one.
+    """
+    item.authorization_granted = False
+    item.authorized_by = by
+    item.authorized_at = at or datetime.now(UTC)

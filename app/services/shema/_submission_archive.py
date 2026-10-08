@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -61,10 +62,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ValidationError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
-from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
+from app.db.models.shema_form import (
+    ShemaFormDefinition,
+    ShemaIntakeImage,
+    ShemaIntakeLink,
+    ShemaSubmission,
+)
 from app.services.shema._form_validation import record_update, validate_submission
 from app.services.shema._submission_notices import notify_submission
 from app.utils.shema_forms import (
+    IMAGE_ANSWERS,
+    IMAGE_FIELD,
     PRAYER_FIELD,
     PRAYER_VISIBILITY_FIELD,
     SUBMITTED_BY_FIELD,
@@ -171,6 +179,56 @@ async def archive_submission(
         written=record_update(definition, answers),
     )
     return submission, True
+
+
+async def bind_intake_image(
+    db: AsyncSession, answers: Mapping[str, Any], *, link: ShemaIntakeLink | None
+) -> ShemaIntakeImage | None:
+    """The image the answers name, checked to be this link's and still unbound — or ``None``.
+
+    OBT-578. The ``image`` answer is the id ``store_intake_image`` handed back. It has to have
+    come through the **same** link (an id guessed, or lifted from another team's upload, is
+    refused as if it did not exist) and not yet be bound to a Pulse (a Pulse that re-sent the
+    same id would otherwise claim an image another Pulse already carries). A coordinator filing a
+    submission directly has no link and no upload: the answer is refused there, with the reason.
+    """
+    image_id = answers.get(IMAGE_FIELD)
+    if image_id is None:
+        return None
+    if link is None:
+        raise ValidationError(
+            f"{IMAGE_FIELD}: an image reaches a Pulse only through the team's own link; "
+            "a submission filed by the coordination carries none."
+        )
+    image = await db.get(ShemaIntakeImage, str(image_id))
+    if image is None or image.intake_link_id != link.id:
+        raise ValidationError(
+            f"{IMAGE_FIELD}: no image with this id was uploaded through this link"
+        )
+    if image.submission_id is not None:
+        raise ValidationError(f"{IMAGE_FIELD}: this image already belongs to a Pulse")
+    return image
+
+
+async def erase_pulse_image(db: AsyncSession, submission: ShemaSubmission, *, user: User) -> None:
+    """Take the image out of the archived Pulse that carried it — OBT-578's half of OBT-561.
+
+    Daniel, 8/oct/2026, by Karina's rule for the prayer request: withdrawing the authorization
+    of the photo removes its reference, its description and the leader's answer to the box from
+    the archived payload, and stamps who and when. **Removed, not blanked**, for the reason
+    ``erase_shared_requests`` gives: a pending Pulse applied later must neither mint the photo
+    again nor authorize it. The bytes stay in the bucket behind ``can_share_media``, which no
+    longer lets them out; ``content_hash`` keeps the hash of the bytes as they arrived.
+    """
+    body = json.loads(submission.archived_payload)
+    answers = body.get(ANSWERS_KEY)
+    if not isinstance(answers, dict) or IMAGE_FIELD not in answers:
+        return
+    for key in IMAGE_ANSWERS:
+        answers.pop(key, None)
+    submission.archived_payload = json.dumps(body, ensure_ascii=False)
+    submission.image_erased_at = datetime.now(UTC)
+    submission.image_erased_by = user.id
 
 
 async def erase_shared_requests(db: AsyncSession, project: ShemaProject, *, user: User) -> None:
