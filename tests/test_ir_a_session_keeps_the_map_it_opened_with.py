@@ -30,16 +30,28 @@ VENDORED_LINE = "Close-up and slow."
 KEPT_LINE = "THE KEPT MAP TELLS IT CLOSE AND SLOW."
 VENDORED_P01_ARC = "The passage opens wide, on a whole era,"
 KEPT_P01_ARC = "THE KEPT FIRST PASSAGE OPENS ON A WHOLE ERA,"
+VENDORED_RULE = "First oath-scene in the pilot."
+KEPT_RULE = "THE KEPT RULE: THE FIRST OATH-SCENE."
+VENDORED_SILENCE = "Naomi names no place;"
+KEPT_SILENCE = "THE KEPT SILENCE: NAOMI NAMES NO PLACE;"
+
+
+def _rewrite(tree: Path, folder: str, pericope: str, old: str, new: str) -> None:
+    (page,) = (tree / "vendor" / folder).glob(f"{pericope}-*.md")
+    page.write_text(page.read_text(encoding="utf-8").replace(old, new))
 
 
 def _the_kept_p03_is_told_its_own_way(tree: Path) -> None:
-    (page,) = (tree / "vendor" / "meaning-map").glob("P03-*.md")
-    page.write_text(page.read_text(encoding="utf-8").replace(VENDORED_LINE, KEPT_LINE))
+    _rewrite(tree, "meaning-map", "P03", VENDORED_LINE, KEPT_LINE)
 
 
 def _the_kept_p01_opens_its_own_way(tree: Path) -> None:
-    (page,) = (tree / "vendor" / "meaning-map").glob("P01-*.md")
-    page.write_text(page.read_text(encoding="utf-8").replace(VENDORED_P01_ARC, KEPT_P01_ARC))
+    _rewrite(tree, "meaning-map", "P01", VENDORED_P01_ARC, KEPT_P01_ARC)
+
+
+def _the_kept_p03_has_its_own_rule_and_silence(tree: Path) -> None:
+    _rewrite(tree, "compilation-log", "P03", VENDORED_RULE, KEPT_RULE)
+    _rewrite(tree, "meaning-coordinates", "P03", VENDORED_SILENCE, KEPT_SILENCE)
 
 
 class Prompts:
@@ -103,6 +115,27 @@ async def test_a_session_open_when_a_new_canon_is_published_still_hands_the_voic
     assert KEPT_LINE in guide, "a voz leu o mapa novo no meio da sessão"
     assert KEPT_LINE in validator, "o Validador conferiu contra o mapa novo"
     assert VENDORED_LINE not in guide and VENDORED_LINE not in validator
+
+
+async def test_a_session_open_when_a_new_canon_is_published_is_held_to_its_own_never_rules_and_silences(  # noqa: E501
+    client, db_session, prompts, monkeypatch, tmp_path
+) -> None:
+    _, tablet = await a_claimed_device(db_session)
+    _, newcomer = await a_claimed_device(db_session, email="nov@example.com")
+    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+
+    the_canon_moves_on(
+        monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_its_own_rule_and_silence
+    )
+    after = await the_tablet_opens(client, newcomer, {"pericope": P, "language": "pt"})
+    await the_team_says(client, newcomer, after["session_id"], "na nova")
+    start = len(prompts.read)
+    await the_team_says(client, tablet, opened["session_id"], "depois")
+    _, validator = prompts.since(start)
+
+    assert KEPT_RULE in validator, "o Validador conferiu contra as regras do canon novo"
+    assert KEPT_SILENCE in validator, "o Validador guardou os silêncios do canon novo"
+    assert VENDORED_RULE not in validator and VENDORED_SILENCE not in validator
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
