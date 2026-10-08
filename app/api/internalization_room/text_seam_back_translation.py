@@ -7,7 +7,8 @@ findings with their frase numbers, the spoken turn, the outcome tag and `conferi
 
 The path is the room's own, not a retelling of it: the frases are captured with the same
 service the tablet's chunks are, and the verdict is the one `terminei` reaches. Only the
-microphone and the synthesiser sit outside. Like the first door it exists only where a runner
+microphone and the synthesiser sit outside. A frase with no words in it refuses the whole round,
+as a telling with none is refused on the tablet. Like the first door it exists only where a runner
 key is configured, which production never sets.
 """
 
@@ -136,36 +137,41 @@ async def play_a_round(
     """One round of her script: the frases captured in listening order, then the verdict.
 
     Each frase is captured exactly as a chunk from a tablet is, minus the upload: the part it
-    covers, the slice inside that part, and the words. A frase carrying `supersedes` is a
-    retelling, so it replaces the stretch standing at that slice and is told a second time;
-    the standing stretch is found by the address, not by her index, because the address is
-    what the room has always addressed by.
+    covers, the slice inside that part, and the words it holds once a transcriber's annotation
+    such as `[silêncio]` is taken out, which is the text the tablet keeps and the Analyst reads.
+    A frase carrying `supersedes` is a retelling, so it replaces the stretch standing at that
+    slice and is told a second time; the standing stretch is found by the address, not by her
+    index, because the address is what the room has always addressed by.
 
     The verdict is the one `terminei` reaches, from the Analyst's reading to the Speaker's
     words, and it is voiced as text: the seam synthesizes nothing, so the clip key it records
-    is empty and only the words are kept. What it does not carry are the five answers
+    is empty and only the words are kept. What it does not carry are four of the answers
     `terminei` gives before that point — the untold-stretch halt, the untold-part halt, the
-    unheard-part halt, the empty telling-back and the cached verdict of a second press —
-    because they are about a tablet and a team. The unheard part is the one it could never meet
-    anyway: the session declares every clip listened to through before round one. A round
-    with no frases is refused here instead: read as a telling-back, it would ask the analyst to
-    compare nothing against the map, get no findings back, and report a golden round as
-    `conferida` that nobody ever told.
+    unheard-part halt and the cached verdict of a second press — because they are about a
+    tablet and a team. The unheard part is the one it could never meet anyway: the session
+    declares every clip listened to through before round one.
+
+    A round with no frases is refused here instead: read as a telling-back, it would ask the
+    analyst to compare nothing against the map, get no findings back, and report a golden
+    round as `conferida` that nobody ever told. So is a round with any frase that has no words
+    in it: 422 `WORDLESS_TELLING` naming the frases, before anything is captured.
     """
     if not payload.frases:
         raise ValidationError("a round with no frases is not a round")
     session = await room.get_session(db, payload.sessionId)
     refuse_a_panorama(session.pericope)
+    words = [spoken_words_only(frase.text) for frase in payload.frases]
+    wordless = [number for number, said in enumerate(words, start=1) if not said]
+    if wordless:
+        raise WordlessTelling(
+            f"The telling has no words in it: frases {', '.join(map(str, wordless))}"
+        )
     started = time.monotonic()
     with _collecting_model_calls() as calls:
         parts = await declared_parts_by_key(db, session.id)
         state = room.back_translation_of(session)
-        captured = [
-            await _capture(db, session, state, frase, number=number, parts=parts)
-            for number, frase in enumerate(payload.frases, start=1)
-        ]
-        if not any(captured):
-            raise WordlessTelling()
+        for number, (frase, said) in enumerate(zip(payload.frases, words, strict=True), start=1):
+            await _capture(db, session, state, frase, said, number=number, parts=parts)
 
         told = room.told_back(await room.final_segments(db, session.id))
         takes = await takes_of(db, session.id)
@@ -217,10 +223,11 @@ async def _capture(
     session: IRSession,
     state: BackTranslationState,
     frase: TextFrase,
+    words: str,
     *,
     number: int,
     parts: dict[str, IRTake],
-) -> bool:
+) -> None:
     part = parts.get(frase.clipKey)
     if part is None:
         raise NotFoundError(f"frase {number} names clip {frase.clipKey!r}, which was not declared")
@@ -236,9 +243,6 @@ async def _capture(
                 f"frase {number} supersedes a telling, and no stretch stands at "
                 f"{frase.clipKey} {frase.coversFrom}-{frase.coversTo}s"
             )
-    words = spoken_words_only(frase.text)
-    if not words:
-        return False
     await room.capture_and_note_a_hard_stretch(
         db,
         session,
@@ -251,4 +255,3 @@ async def _capture(
         replaces=retold,
         state=state,
     )
-    return True

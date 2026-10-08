@@ -13,7 +13,6 @@ the synthesiser, exactly as on the Guide's door.
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 import httpx
@@ -567,42 +566,27 @@ async def test_a_round_of_frases_with_no_words_is_refused_before_any_model_runs(
     assert await _stretches(db_session, session_id) == [], "uma frase sem palavras virava trecho"
 
 
-async def test_a_wordless_frase_among_told_ones_is_no_stretch_and_the_told_ones_stand(
-    client, analyst, db_session, monkeypatch
+async def test_a_round_with_any_wordless_frase_is_refused_whole_and_names_it(
+    client, analyst, db_session
 ) -> None:
-    seen: list[str] = []
-
-    async def the_analyst_that_keeps_what_it_is_handed(
-        *, system_prompt: str, user_content: str, **rest: Any
-    ) -> str:
-        seen.append(f"{system_prompt}\n{user_content}")
-        return await analyst(system_prompt=system_prompt, user_content=user_content, **rest)
-
-    the_room_agent_is(monkeypatch, analyst=the_analyst_that_keeps_what_it_is_handed)
     session_id = await _a_session(client)
     frases = [
-        {**frase, "text": "   " if number in (2, 5) else frase["text"]}
+        {**frase, "text": "   " if number == 2 else "[silêncio]" if number == 5 else frase["text"]}
         for number, frase in enumerate(CAUSA_A_MAIS, start=1)
     ]
 
-    result = await _a_round(client, session_id, frases)
+    refused = await client.post(f"{SEAM}/round", json={"sessionId": session_id, "frases": frases})
 
-    told_texts = [
-        frase["text"] for number, frase in enumerate(CAUSA_A_MAIS, start=1) if number not in (2, 5)
-    ]
-    told = room.told_back(await room.final_segments(db_session, session_id))
-    assert [stretch.transcript for stretch in told] == told_texts, (
-        "a frase vazia virava um trecho de transcrição vazia, lido como lacuna na tradução"
+    assert refused.status_code == 422, (
+        "a frase sem palavras era pulada em silêncio: a rodada voltava 200 e o roteiro, com a "
+        "frase 3 virando «frase 2» no veredito"
     )
-    assert len(seen) == 1
-    block = "\n".join(f"{position}. {text}" for position, text in enumerate(told_texts, start=1))
-    assert block in seen[0], (
-        "a leitura numera só o que foi contado: oito frases com duas vazias são seis linhas"
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert refused.json()["detail"].endswith("frases 2, 5")
+    assert analyst.answered == [], "o analista leu uma rodada recusada"
+    assert await _stretches(db_session, session_id) == [], (
+        "as frases contadas antes da vazia ficavam guardadas numa rodada recusada"
     )
-    assert [line for line in seen[0].splitlines() if re.fullmatch(r"\d+\.\s*", line)] == [], (
-        "o analista recebia «2. » sem nenhum texto e levantava um achado de frase vazia"
-    )
-    assert result["findings"] == []
 
 
 async def test_a_wordless_retelling_leaves_the_standing_stretch_and_counts_nothing(
@@ -619,12 +603,24 @@ async def test_a_wordless_retelling_leaves_the_standing_stretch_and_counts_nothi
         "supersedes": 2,
     }
 
-    await _a_round(client, session_id, [{**FAITHFUL_FRASE_ONE, "text": " "}, retold_third])
+    refused = await client.post(
+        f"{SEAM}/round",
+        json={
+            "sessionId": session_id,
+            "frases": [{**FAITHFUL_FRASE_ONE, "text": " "}, retold_third],
+        },
+    )
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "WORDLESS_TELLING"
 
     told = room.told_back(await room.final_segments(db_session, session_id))
     assert (told[0].transcript, told[0].tellings) == (FAITHFUL_FRASE_ONE["text"], 2), (
         "uma recontagem vazia trocava a explicação boa da equipe por um trecho sem palavras e "
         "ainda contava como a terceira vez do mesmo trecho"
+    )
+    assert (told[2].transcript, told[2].tellings) == (CAUSA_A_MAIS[2]["text"], 1), (
+        "a frase contada da rodada recusada era guardada junto com a vazia"
     )
     after = await row(db_session, session_id)
     assert halt.standing(after) is None, "a recontagem vazia levantava o pedido de uma pessoa"
