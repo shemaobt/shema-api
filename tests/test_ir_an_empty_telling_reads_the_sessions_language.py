@@ -5,11 +5,12 @@ import pytest
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import back_translation_of, check_the_telling_back
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.llm import CACHE_BREAK
+from tests.test_internalization_room_speech_placeholder_language import (
+    _EXPECTED_NOTHING_TOLD_BACK as NOTHING_TOLD_BACK,
+)
 from tests.turn_harness import settings, the_room_agent_is
-
-NOTHING_TOLD_PT = "(a equipe ainda não traduziu nada)"
-NOTHING_TOLD_EN = "(the team has not translated anything yet)"
 
 
 class _Recording:
@@ -39,10 +40,11 @@ def _session(language: str) -> IRSession:
     )
 
 
-async def test_a_portuguese_session_with_nothing_told_back_has_the_validator_read_portuguese(
-    recording: _Recording,
+@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
+async def test_a_session_with_nothing_told_back_has_the_validator_read_its_own_language(
+    recording: _Recording, language_code: str
 ) -> None:
-    session = _session("pt")
+    session = _session(language_code)
 
     await check_the_telling_back(
         session,
@@ -52,35 +54,19 @@ async def test_a_portuguese_session_with_nothing_told_back_has_the_validator_rea
         settings=settings(),
     )
 
-    assert NOTHING_TOLD_PT in recording.validator[0], (
-        "o Validador lia a nota em inglês dentro de um material em português"
+    assert NOTHING_TOLD_BACK[language_code] in recording.validator[0], (
+        "o Validador lia a nota de uma sessão em outra língua que não a dela"
     )
-    assert NOTHING_TOLD_EN not in recording.validator[0]
+    for other, sentence in NOTHING_TOLD_BACK.items():
+        if other != language_code:
+            assert sentence not in recording.validator[0]
 
 
-async def test_an_english_session_with_nothing_told_back_has_the_validator_read_english(
-    recording: _Recording,
-) -> None:
-    session = _session("en")
-
-    await check_the_telling_back(
-        session,
-        state=back_translation_of(session),
-        told=[],
-        takes=[],
-        settings=settings(),
-    )
-
-    assert NOTHING_TOLD_EN in recording.validator[0], (
-        "a sessão em inglês deixou de ler a nota em inglês"
-    )
-    assert NOTHING_TOLD_PT not in recording.validator[0]
-
-
+@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
 async def test_the_telling_back_the_session_keeps_is_the_note_in_its_own_language(
-    recording: _Recording,
+    recording: _Recording, language_code: str
 ) -> None:
-    session = _session("pt")
+    session = _session(language_code)
 
     verdict = await check_the_telling_back(
         session,
@@ -90,6 +76,6 @@ async def test_the_telling_back_the_session_keeps_is_the_note_in_its_own_languag
         settings=settings(),
     )
 
-    assert verdict.told_back == NOTHING_TOLD_PT, (
-        "o registro do turno guardava a nota em inglês de uma sessão em português"
+    assert verdict.told_back == NOTHING_TOLD_BACK[language_code], (
+        "o registro do turno guardava a nota em outra língua que não a da sessão"
     )
