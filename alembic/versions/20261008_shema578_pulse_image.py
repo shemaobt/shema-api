@@ -73,6 +73,8 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_shema_intake_images_link", "shema_intake_images", ["intake_link_id"])
+    op.create_index("ix_shema_intake_images_submission", "shema_intake_images", ["submission_id"])
+    op.create_index("ix_shema_intake_images_media_item", "shema_intake_images", ["media_item_id"])
     op.add_column(
         "shema_submissions",
         sa.Column("image_erased_at", sa.DateTime(timezone=True), nullable=True),
@@ -91,5 +93,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("shema_submissions", "image_erased_by")
     op.drop_column("shema_submissions", "image_erased_at")
+    op.drop_index("ix_shema_intake_images_media_item", table_name="shema_intake_images")
+    op.drop_index("ix_shema_intake_images_submission", table_name="shema_intake_images")
     op.drop_index("ix_shema_intake_images_link", table_name="shema_intake_images")
     op.drop_table("shema_intake_images")

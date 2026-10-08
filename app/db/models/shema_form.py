@@ -248,7 +248,11 @@ class ShemaIntakeImage(Base):
     """
 
     __tablename__ = "shema_intake_images"
-    __table_args__ = (Index("ix_shema_intake_images_link", "intake_link_id"),)
+    __table_args__ = (
+        Index("ix_shema_intake_images_link", "intake_link_id"),
+        Index("ix_shema_intake_images_submission", "submission_id"),
+        Index("ix_shema_intake_images_media_item", "media_item_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(
