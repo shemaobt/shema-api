@@ -227,10 +227,18 @@ def free_text_as_read(
 ) -> dict[str, Any]:
     """What a record's nested free text becomes for ``reader`` — an update, or nothing.
 
-    The record's own four are reduced by the shape it is built as. Its needs and its assessments
-    arrive on it afterwards, by ``model_copy`` and not through the boundary, so their text is
-    held back here, in ``_consent.request_as_read``'s mould: a reader who reads the truth gets
-    ``{}``, and anybody else every need's description as ``""`` and the history without notes.
+    The record's own four are reduced by the shape it is built as. Its needs, its assessments
+    and its media arrive on it afterwards, by ``model_copy`` and not through the boundary, so
+    their text is held back here, in ``_consent.request_as_read``'s mould: a reader who reads
+    the truth gets ``{}``, and anybody else every need's description as ``""``, the history
+    without notes, and every caption emptied.
+
+    **The caption is the leader's own sentence about the photo** (OBT-578) — *a equipe no vale*
+    names the place as readily as a need's description does — and it reaches the ficha whatever
+    the authorization says, because the authorization gates the bytes and the caption is text.
+    So it takes the reduction the other free text takes, and the decision triple stays: who
+    authorized and when name no place. Found in review, which is why the video's caption,
+    there since BE-04, is emptied by the same line rather than by a second one.
     """
     if reads_the_truth(project, reader):
         return {}
@@ -238,7 +246,18 @@ def free_text_as_read(
     history = record.health_history
     if history is not None:
         history = assessments_as_read(project, reader, history)
-    return {"needs_items": needs, "health_history": history}
+    photos = record.media_photos
+    if photos is not None:
+        photos = [photo.model_copy(update={"caption": ""}) for photo in photos]
+    videos = record.media_videos
+    if videos is not None:
+        videos = [video.model_copy(update={"caption": None}) for video in videos]
+    return {
+        "needs_items": needs,
+        "health_history": history,
+        "media_photos": photos,
+        "media_videos": videos,
+    }
 
 
 #: The one name a refused need text is given, in the client's spelling.

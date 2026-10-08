@@ -518,6 +518,61 @@ async def test_on_a_sensitive_project_an_authorized_photo_never_reaches_the_publ
     assert bucket.signed == [("shema-private", photo.storage_key)]
 
 
+# --- the caption is free text, and the ficha reduces it for the reader it reduces the rest for
+
+
+async def _lab_headers(db_session, shema_app):
+    lab = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="obtlab@pulso.test",
+        role_key="obtLab",
+        regions=[ShemaRegionKey.SOUTH_AMERICA],
+    )
+    return await auth_header(db_session, lab)
+
+
+async def test_on_a_sensitive_project_the_caption_reaches_the_coordination_and_not_the_obt_lab(
+    client, db_session, shema_app, headers, bucket
+) -> None:
+    """Found in review: the caption is the leader's sentence about the photo and can name the
+    place, as the four fields OBT-556 empties for the ``other`` reader can — and it reached the
+    ficha whatever the authorization said, because the authorization gates the bytes. The OBT
+    Lab reads the slot with an empty caption and the decision triple; the region's coordinator
+    reads every word. A cleared project is the truth for both (next test)."""
+    project = await _project(db_session, sensitive=True)
+    _image_id, submission_id = await a_pulse_with_image(client, db_session, headers)
+    assert (await _import(client, headers, submission_id)).status_code == 200
+
+    lab = await client.get(
+        f"{PROJECTS}/{project.id}", headers=await _lab_headers(db_session, shema_app)
+    )
+    ours = await client.get(f"{PROJECTS}/{project.id}", headers=headers)
+
+    assert lab.status_code == 200, lab.text
+    assert lab.json()["readAs"] == "other" and lab.json()["locationWithheld"] is True
+    assert DESCRIPTION not in lab.text and FILE_NAME not in lab.text
+    [reduced] = lab.json()["mediaPhotos"]
+    assert reduced["caption"] == "" and reduced["authorization"]["granted"] is True
+    assert ours.json()["readAs"] == "coordination"
+    assert [photo["caption"] for photo in ours.json()["mediaPhotos"]] == [DESCRIPTION]
+
+
+async def test_on_a_cleared_project_the_obt_lab_reads_the_caption_whole(
+    client, db_session, shema_app, headers, project, bucket
+) -> None:
+    _image_id, submission_id = await a_pulse_with_image(client, db_session, headers)
+    assert (await _import(client, headers, submission_id)).status_code == 200
+
+    lab = await client.get(
+        f"{PROJECTS}/{project.id}", headers=await _lab_headers(db_session, shema_app)
+    )
+
+    assert lab.status_code == 200, lab.text
+    assert lab.json()["readAs"] == "other" and lab.json()["locationWithheld"] is False
+    assert [photo["caption"] for photo in lab.json()["mediaPhotos"]] == [DESCRIPTION]
+
+
 # --- the withdrawal -------------------------------------------------------------------------------
 
 
