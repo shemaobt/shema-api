@@ -6,8 +6,10 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.sessions import get_session
 from tests.opening_harness import the_tablet_opens
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client
@@ -148,4 +150,27 @@ async def test_a_session_kept_before_the_moment_was_read_carries_none(
 
     assert read.json()["moment"] is None, (
         "uma sessão antiga aparecia na Familiarização, sem que ninguém soubesse onde estava"
+    )
+
+
+async def test_the_opening_prepared_ahead_tells_the_screen_the_familiarization(
+    client: httpx.AsyncClient, db_session: AsyncSession, guide: _Guide
+) -> None:
+    _team, tablet = await a_claimed_device(db_session)
+    session_id = (await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"}))[
+        "session_id"
+    ]
+    session = await get_session(db_session, session_id)
+    session.prepared_speech = OPENING
+    session.prepared_audio_key = (
+        f"tts/{get_settings().internalization_room_voice_id}/m/f/prepared.mp3"
+    )
+    session.prepared_pericope = P
+    await db_session.commit()
+    guide.says = "Vamos pra Internalização da cena 2."
+
+    opening = (await the_room_opens(client, tablet, session_id)).json()
+
+    assert opening["moment"] == {"at": "familiarization", "part": None, "parts": 4}, (
+        "a abertura preparada de antemão chegava à tela sem momento"
     )

@@ -929,6 +929,7 @@ async def _draft_the_turn(
             coverage=coverage_view(session),
             done=False,
             turn_id=turn_id or str(uuid.uuid4()),
+            moment=moment_view(session),
         )
         if turn_id:
             await remember_turn(
