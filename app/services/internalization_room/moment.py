@@ -7,13 +7,12 @@ from typing import Any, Literal, NamedTuple
 import regex
 
 from app.db.models.internalization_room import IRSession
-from app.models.internalization_room import MomentView
+from app.models.internalization_room import At, MomentView
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 
 _DASH = "\N{EM DASH}"
 
-At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
 Cause = Literal[
     "entrance",
     "articulation_entrance",

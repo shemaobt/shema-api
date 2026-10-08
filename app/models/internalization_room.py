@@ -249,8 +249,11 @@ class CoverageView(BaseModel):
     beads_filled: int
 
 
+At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
+
+
 class MomentView(BaseModel):
-    at: Literal["familiarization", "internalization", "articulation", "ensaio_final"]
+    at: At
     part: int | None = None
     parts: int
 
