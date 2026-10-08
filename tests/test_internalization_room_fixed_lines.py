@@ -8,6 +8,8 @@ all, and this file guards that they do not drift, alongside how the fail-safes r
 
 import hashlib
 import json
+import re
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -85,8 +87,8 @@ async def test_a_line_rendered_twice_is_written_with_its_sound_both_times(
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
 
-    await render.render(tmp_path, "pt", force=True)
-    await render.render(tmp_path, "pt", force=True)
+    await render.render(tmp_path, "pt", force=True, api_commit="0" * 40)
+    await render.render(tmp_path, "pt", force=True, api_commit="0" * 40)
 
     assert {clip.read_bytes() for clip in tmp_path.rglob("*.mp3")} == {b"\xff\xfbvoz"}, (
         "a sala devolvia ao script só a chave da fala: ele quebrava perguntando ao bucket se o "
@@ -236,17 +238,25 @@ def test_a_line_whose_text_is_unchanged_but_whose_model_changed_is_stale_under_c
 def test_a_run_without_force_re_renders_only_the_stale_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
 ) -> None:
+    sounds = iter(f"sound {n}".encode() for n in range(100))
+    elevenlabs.posts.side_effect = lambda *_, **__: SimpleNamespace(
+        status_code=200, content=next(sounds), text=""
+    )
     run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
-    before = json.loads((tmp_path / "pt" / render.MANIFEST).read_text())
+    bundle = tmp_path / "pt"
+    stale, *fresh = render.catalogue("pt")
+    kept = {name: (bundle / f"{name}.mp3").read_bytes() for name in fresh}
+    before = json.loads((bundle / render.MANIFEST).read_text())
+    manifest = dict(before, **{stale: "stale"})
+    (bundle / render.MANIFEST).write_text(json.dumps(manifest))
     elevenlabs.posts.reset_mock()
-    lines = len(render.catalogue("pt"))
 
-    change_setting(monkeypatch, "internalization_room_voice_id", "another-voice")
     run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
-    assert elevenlabs.posts.await_count == lines
-    after = json.loads((tmp_path / "pt" / render.MANIFEST).read_text())
-    assert after.keys() == before.keys()
-    assert all(after[name] != before[name] for name in before)
+
+    assert elevenlabs.posts.await_count == 1
+    assert (bundle / f"{stale}.mp3").read_bytes() not in kept.values()
+    assert {name: (bundle / f"{name}.mp3").read_bytes() for name in fresh} == kept
+    assert json.loads((bundle / render.MANIFEST).read_text()) == before
 
     elevenlabs.posts.reset_mock()
     run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
@@ -303,13 +313,12 @@ def test_after_a_run_the_apps_clip_hashes_file_matches_the_rendered_bytes(
             f"{name}.mp3": hashlib.sha256(VOICED).hexdigest() for name in render.catalogue(language)
         }
         assert written["voice_id"] == voice_for(language, settings=get_settings())
-        assert len(written["api_commit"]) == 40
-        assert int(written["api_commit"], 16) >= 0
+        assert re.fullmatch(r"[0-9a-f]{40}", written["api_commit"])
         assert written["rendered_at"].endswith("Z")
         assert written["unrendered"] == []
 
 
-def test_a_bundled_mp3_the_run_did_not_render_is_listed_as_unrendered(
+def test_a_bundled_mp3_the_run_did_not_render_is_hashed_and_listed_as_unrendered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
 ) -> None:
     (tmp_path / "pt").mkdir()
@@ -319,8 +328,56 @@ def test_a_bundled_mp3_the_run_did_not_render_is_listed_as_unrendered(
 
     written = json.loads((tmp_path / "pt" / "clip_hashes.json").read_text())
     assert written["unrendered"] == ["sem_conexao.mp3"]
-    assert "sem_conexao.mp3" not in written["clips"]
+    assert written["clips"]["sem_conexao.mp3"] == hashlib.sha256(b"approved audio").hexdigest()
     assert (tmp_path / "pt" / "sem_conexao.mp3").read_bytes() == b"approved audio"
+
+
+def test_a_run_that_cannot_name_the_api_commit_renders_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    def no_git(*_: object, **__: object) -> None:
+        raise subprocess.CalledProcessError(128, "git rev-parse HEAD")
+
+    monkeypatch.setattr(render.subprocess, "run", no_git)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt,en")
+
+    assert elevenlabs.posts.await_count == 0
+    assert list(tmp_path.rglob("*.*")) == []
+
+
+def test_a_run_that_fails_on_the_second_line_leaves_the_manifest_and_clip_hashes_true_to_disk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: SimpleNamespace,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    landed, failed = render.catalogue("pt")
+    answers = iter(
+        [
+            SimpleNamespace(status_code=200, content=b"new sound", text=""),
+            SimpleNamespace(status_code=500, content=b"", text=""),
+        ]
+    )
+    elevenlabs.posts.side_effect = lambda *_, **__: next(answers)
+
+    with pytest.raises(Exception, match="TTS request failed"):
+        run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt", "--force")
+
+    bundle = tmp_path / "pt"
+    written = json.loads((bundle / "clip_hashes.json").read_text())
+    assert written["clips"] == {
+        f"{clip.stem}.mp3": hashlib.sha256(clip.read_bytes()).hexdigest()
+        for clip in bundle.glob("*.mp3")
+    }
+    assert (bundle / f"{landed}.mp3").read_bytes() == b"new sound"
+    capsys.readouterr()
+    assert run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt", "--check") == 1
+    listed = capsys.readouterr().out
+    assert f"pt/{failed}" in listed
+    assert f"pt/{landed}" not in listed
 
 
 def test_the_clip_hashes_file_goes_to_the_directory_the_flag_names(

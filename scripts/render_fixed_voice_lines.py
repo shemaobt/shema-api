@@ -12,10 +12,15 @@ Every run is told where the app's bundle is; there is nothing here that could kn
     uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --check      # did it drift
     uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --language pt
 
-`--check` is the guard against silent freezing: edit a notice here and the manifest no
-longer matches, so it reports the drift and exits non-zero until someone renders it again.
-It covers every language the room claims. Re-rendering is a person's job: nothing in the
-suite does it, and nothing in the suite reads the bundle.
+`--check` is the guard against silent freezing: edit a notice, or change the voice or the model
+it is rendered with, and the manifest no longer matches, so it reports the drift and exits
+non-zero until someone renders it again. It covers every language the room claims.
+Re-rendering is a person's job: nothing in the suite does it, and nothing in the suite reads
+the bundle.
+
+A run also writes the app's `clip_hashes.json` beside each language's manifest, or under
+`--clip-hashes DIR/<language>/`: the sha256 of every mp3 in the folder, with the ones this run
+did not produce listed as `unrendered`. A run that cannot name the api commit renders nothing.
 
 One bundle per language, each rendered in that language's own voice. A team never hears two
 languages in one session, so a language whose notices are unwritten is not filled in from
@@ -171,17 +176,28 @@ def _api_commit() -> str:
     ).stdout.strip()
 
 
-def _write_clip_hashes(bundle: Path, language_code: str, names: list[str], into: Path) -> None:
-    rendered = {f"{name}.mp3" for name in names}
-    clips = {
-        clip: hashlib.sha256((bundle / clip).read_bytes()).hexdigest() for clip in sorted(rendered)
+def _write_clip_hashes(
+    bundle: Path,
+    language_code: str,
+    manifest: dict[str, str],
+    *,
+    api_commit: str,
+    into: Path,
+) -> None:
+    current = {
+        f"{name}.mp3"
+        for name, text in catalogue(language_code).items()
+        if manifest.get(name) == fingerprint(text, language_code=language_code)
     }
-    present = {clip.name for clip in bundle.glob("*.mp3")}
+    clips = {
+        clip.name: hashlib.sha256(clip.read_bytes()).hexdigest()
+        for clip in sorted(bundle.glob("*.mp3"))
+    }
     hashes = {
-        "api_commit": _api_commit(),
+        "api_commit": api_commit,
         "clips": clips,
         "rendered_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "unrendered": sorted(present - rendered),
+        "unrendered": sorted(clips.keys() - current),
         "voice_id": _voice_of(language_code),
     }
     into.mkdir(parents=True, exist_ok=True)
@@ -195,38 +211,49 @@ async def render(
     language_code: str,
     *,
     force: bool,
+    api_commit: str,
     client: httpx.AsyncClient | None = None,
     clip_hashes: Path | None = None,
 ) -> None:
     bundle = _bundle(out, language_code)
     bundle.mkdir(parents=True, exist_ok=True)
     manifest = {} if force else read_manifest(out, language_code)
-    for name, text in catalogue(language_code).items():
-        clip = _clip_path(out, language_code, name)
-        made_of = fingerprint(text, language_code=language_code)
-        if not force and clip.exists() and manifest.get(name) == made_of:
-            print(f"  = {language_code}/{name}")
-            continue
-        speech = await render_facilitator_speech(
-            text, language=language_code, store=_NoCache(), client=client
+    try:
+        for name, text in catalogue(language_code).items():
+            clip = _clip_path(out, language_code, name)
+            made_of = fingerprint(text, language_code=language_code)
+            if not force and clip.exists() and manifest.get(name) == made_of:
+                print(f"  = {language_code}/{name}")
+                continue
+            speech = await render_facilitator_speech(
+                text, language=language_code, store=_NoCache(), client=client
+            )
+            clip.write_bytes(speech.audio)
+            manifest[name] = made_of
+            print(f"  + {language_code}/{name}  {len(speech.audio) // 1024} KB  {text[:48]}")
+    finally:
+        (bundle / MANIFEST).write_text(
+            json.dumps(dict(sorted(manifest.items())), indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
         )
-        clip.write_bytes(speech.audio)
-        manifest[name] = made_of
-        print(f"  + {language_code}/{name}  {len(speech.audio) // 1024} KB  {text[:48]}")
-    (bundle / MANIFEST).write_text(
-        json.dumps(dict(sorted(manifest.items())), indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    hashes_into = bundle if clip_hashes is None else clip_hashes / language_code
-    _write_clip_hashes(bundle, language_code, list(catalogue(language_code)), hashes_into)
+        hashes_into = bundle if clip_hashes is None else clip_hashes / language_code
+        _write_clip_hashes(bundle, language_code, manifest, api_commit=api_commit, into=hashes_into)
 
 
 async def render_all(
     out: Path, languages: list[str], *, force: bool, clip_hashes: Path | None
 ) -> None:
+    api_commit = _api_commit()
     async with aclosing(tts._make_client()) as client:
         for language_code in languages:
-            await render(out, language_code, force=force, client=client, clip_hashes=clip_hashes)
+            await render(
+                out,
+                language_code,
+                force=force,
+                api_commit=api_commit,
+                client=client,
+                clip_hashes=clip_hashes,
+            )
 
 
 def main() -> int:

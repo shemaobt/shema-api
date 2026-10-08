@@ -61,7 +61,8 @@ INTEGRATION_GLOB = "integration/**"
 
 #: A push filter that reaches these would put every branch in the repository through four
 #: jobs on every push. The cost of the test job alone is between 6 and 56 minutes (ENG-556),
-#: so the trigger staying narrow is a property worth holding, not a detail.
+#: so the trigger staying narrow is a property worth holding, not a detail. Only `test.yml` may
+#: also name `main`, as a report that gates nothing.
 TOO_BROAD = {"**", "*", "main", "master"}
 
 #: `main` is the one branch the Test workflow alone may add: a report on the merge commit, which
