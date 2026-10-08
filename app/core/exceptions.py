@@ -243,8 +243,8 @@ class WordlessTelling(ValidationError):
     room says nothing in its place: the tablet shows its own line and asks for the telling again.
     """
 
-    def __init__(self) -> None:
-        super().__init__("The telling has no words in it")
+    def __init__(self, detail: str = "The telling has no words in it") -> None:
+        super().__init__(detail)
 
 
 class IdempotencyKeyReused(ValidationError):

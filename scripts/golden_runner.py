@@ -1,7 +1,7 @@
 """Play her golden sessions through a room by text, and leave a report directory per run.
 
 The scripts are hers, vendored byte for byte at `golden/sessions/` under the pin in
-`docs/doctrine/DOCTRINE_PIN`: the exact words the team says, turn by turn, with the room-notes
+`docs/doctrine/FREEZE_PIN`: the exact words the team says, turn by turn, with the room-notes
 her app hands the Guide — a kickoff, the team speaking their own language for N seconds, an
 interruption. They are played through the room's **Golden doors**, `golden/session` and
 `golden/turn` under the base URL, with the requests her own runner sends
@@ -9,13 +9,14 @@ interruption. They are played through the room's **Golden doors**, `golden/sessi
 
     ACCESS_CODE=<key> uv run python scripts/golden_runner.py \\
         --base-url http://127.0.0.1:8044/api/internalization-room \\
-        [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>]
+        [--only P01-understand-first] [--turns 5] [--out golden/reports/<date>] \\
+        [--budget-usd 20]
 
-One command is the five, as `npm run golden` is on her side; `--only` names one of them and
-`--script <path>` plays a script from anywhere. Per turn the runner prints the outcome, the
-wall clock and the faults her mechanical checks name, and one `[llm-usage]` line per model
-call the room reported. A session the room refuses — a pericope this canon does not hold — is
-one line of the report, not the end of the run.
+One command is every session in `golden/sessions/`, as `npm run golden` is on her side;
+`--only` names one of them and `--script <path>` plays a script from anywhere. Per turn the
+runner prints the outcome, the wall clock and the faults her mechanical checks name, and one
+`[llm-usage]` line per model call the room reported. A session the room refuses — a pericope
+this canon does not hold — is one line of the report, not the end of the run.
 
 `--out` defaults to `golden/reports/<date>/`, committed, so two runs a week apart can be
 compared by a person who was not in the room. Per session it holds `<name>.<stamp>.json`, one
@@ -37,6 +38,11 @@ earlier run again, without playing the room.
 The exit code is the gate, by her rule: a session passes when the judge passed it and no
 mechanical check tripped. 1 when any session failed or was refused, 2 when there was
 nothing to play, 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
+
+A run stops before the next session once what it has spent reaches `--budget-usd`, or
+`GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
+is played whole and judged first. It names the sessions it did not start on stderr and exits 3,
+unless a session failed, which keeps its 1.
 """
 
 from __future__ import annotations
@@ -65,7 +71,22 @@ from app.services.internalization_room.golden_judge import FLOORED, judge_sessio
 from app.services.internalization_room.prompt_blocks import earlier_passages_line
 from app.services.internalization_room.sessions import book_of
 from app.services.internalization_room.turn_instructions import opening_note
-from scripts.golden_checks import mechanical_checks
+from scripts.golden_checks import (
+    Moment,
+    mechanical_checks,
+    moment_after_reply,
+    moment_at_turn_start,
+)
+from scripts.golden_spend import (
+    OVER_BUDGET,
+    Call,
+    budget_of,
+    budgeted,
+    priced,
+    split,
+    stopped,
+    uncounted,
+)
 from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -79,6 +100,7 @@ class ScriptTurn:
     motherTongue: int | None = None
     interrupted: bool = False
     rehearsal: list[str] | None = None
+    rehearsalScene: str | None = None
     sceneRehearsals: list[str] | None = None
     expect: dict[str, Any] = field(default_factory=dict)
 
@@ -203,6 +225,7 @@ def load_script(path: Path) -> Script:
                 motherTongue=turn.get("motherTongue"),
                 interrupted=bool(turn.get("interrupted")),
                 rehearsal=turn["rehearsal"]["pieces"] if "rehearsal" in turn else None,
+                rehearsalScene=turn["rehearsal"].get("sceneId") if "rehearsal" in turn else None,
                 sceneRehearsals=turn.get("sceneRehearsals"),
                 expect=turn.get("expect", {}),
             )
@@ -346,6 +369,8 @@ async def play(
     earlier = earlier_passages_line(
         script.pericopeId, book_of(script.pericopeId), script.earlierPassages
     )
+    moment: Moment | None = None
+    heard = 2 * len(played)
     for idx, turn in enumerate(script.turns[:turns]):
         body, expected = request_for(turn, script, session_id, carried[idx])
         started = time.monotonic()
@@ -371,11 +396,34 @@ async def play(
                 if fact
             ],
         )
+        arriving = (
+            scene_ids.index(turn.rehearsalScene) + 1 if turn.rehearsalScene in scene_ids else None
+        )
+        before = moment_at_turn_start(moment, heard=heard, parts=len(scene_ids), arriving=arriving)
+        after = (
+            moment_after_reply(
+                before,
+                line.guide,
+                outcome=line.outcome,
+                parts=len(scene_ids),
+                came_back=[
+                    scene_ids.index(scene) + 1 for scene in carried[idx] or [] if scene in scene_ids
+                ],
+                unmarked_now=turn.rehearsal is not None and turn.rehearsalScene is None,
+            )
+            if before
+            else None
+        )
+        moment, heard = after, heard + 2
         line.mechanical = mechanical_checks(
             guide=line.guide,
             outcome=line.outcome,
             expect=turn.expect,
             previous_guide=previous_guide,
+            earlier_guides=[earlier_turn.guide for earlier_turn in played],
+            parts=len(scene_ids),
+            moment_before=before,
+            moment_after=after,
         )
         previous_guide = line.guide
         played.append(line)
@@ -462,6 +510,7 @@ async def play_session(
     out: Path,
     stamp: str,
     turns: int | None,
+    prompt_repeats: bool,
 ) -> SessionResult:
     """One session, opened and played, and its two files written whatever happened after turn 0.
 
@@ -496,11 +545,18 @@ async def play_session(
         )
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
-        await judge(script, result, out=out, stamp=stamp)
+        await judge(script, result, out=out, stamp=stamp, prompt_repeats=prompt_repeats)
     return result
 
 
-async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str) -> None:
+def shares_judge_prompt(script: Script, batch: list[Script]) -> bool:
+    key = (script.pericopeId, script.language)
+    return sum((other.pericopeId, other.language) == key for other in batch) > 1
+
+
+async def judge(
+    script: Script, result: SessionResult, *, out: Path, stamp: str, prompt_repeats: bool
+) -> None:
     """Her judge on the session, and its verdict written beside the transcript — or the reason not.
 
     A judge that fails — a provider down, a reply outside the shape it was bound to — is a
@@ -521,6 +577,7 @@ async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str)
                 pericope=script.pericopeId,
                 language=script.language,
                 transcript=judge_transcript(result.played),
+                prompt_repeats=prompt_repeats,
             )
         except Exception as failed:
             result.unjudged = str(failed)
@@ -565,7 +622,36 @@ def _seconds(values: list[int]) -> str:
     return f"{low:.0f} a {high:.0f} s (mediana ≈ {statistics.median(values) / 1000:.0f} s)"
 
 
-def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str, pins: str) -> str:
+def _paid(results: list[SessionResult]) -> list[Call]:
+    calls = [call for result in results for turn in result.played for call in turn.usage]
+    calls += [call for result in results for call in result.judge_usage]
+    return [
+        Call(
+            call.role,
+            call.rung,
+            call.cost_usd,
+            call.input_tokens,
+            call.output_tokens,
+            call.cache_read_tokens or 0,
+            call.cache_write_tokens or 0,
+        )
+        for call in calls
+    ]
+
+
+def _spent(results: list[SessionResult]) -> float:
+    return budgeted(_paid(results))
+
+
+def summary(
+    results: list[SessionResult],
+    *,
+    base_url: str,
+    stamp: str,
+    tip: str,
+    pins: str,
+    halted: str = "",
+) -> str:
     """The run's README, in the shape of hers: the verdict line, the table, the money, the clock.
 
     Two columns, as her reports keep them: the judge's PASS or FAIL by her rule, and the
@@ -579,15 +665,7 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
     refused = [result for result in results if result.refused]
     approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
-    by_role: dict[str, float] = {}
-    unpriced: list[str] = []
-    spent = [call for turn in played for call in turn.usage]
-    spent += [call for result in results for call in result.judge_usage]
-    for call in spent:
-        if call.cost_usd is None:
-            unpriced.append(call.rung)
-        else:
-            by_role[call.role] = by_role.get(call.role, 0.0) + call.cost_usd
+    by_role, unpriced = priced(_paid(results))
     voice = [
         sum(call.latency_ms or 0 for call in turn.usage if call.role in ("guide", "validator"))
         for turn in played
@@ -620,7 +698,6 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
     lines.append("")
     if by_role:
         total = sum(by_role.values())
-        split = " · ".join(f"{role} US$ {cost:.2f}" for role, cost in sorted(by_role.items()))
         free = (
             f"; {len(unpriced)} chamada{'s' if len(unpriced) > 1 else ''} sem preço de tabela "
             f"({', '.join(sorted(set(unpriced)))}), fora da soma"
@@ -629,7 +706,7 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         )
         lines.append(
             f"Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ {total:.2f} "
-            f"— {split}{free}."
+            f"— {split(by_role)}{free}."
         )
     else:
         lines.append("A sala não informou custo por chamada nesta rodada.")
@@ -638,6 +715,8 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
             f"Latência Guia+Validador por turno: {_seconds(voice)}; turno inteiro, com o "
             f"classificador em linha: {_seconds([turn.turnMs for turn in played])}."
         )
+    if halted:
+        lines.append(halted)
     return "\n".join(lines) + "\n"
 
 
@@ -652,15 +731,58 @@ async def run(args: argparse.Namespace) -> int:
     headers = {"Authorization": f"Bearer {args.access_code}"} if args.access_code else {}
     out = Path(args.out)
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+    budget = budget_of(args)
     results: list[SessionResult] = []
+    not_started: list[str] = []
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
-        for script in scripts:
+        for position, script in enumerate(scripts):
+            if _spent(results) >= budget:
+                not_started = [later.name for later in scripts[position:]]
+                break
             results.append(
                 await play_session(
-                    script, client, base_url=base_url, out=out, stamp=stamp, turns=args.turns
+                    script,
+                    client,
+                    base_url=base_url,
+                    out=out,
+                    stamp=stamp,
+                    turns=args.turns,
+                    prompt_repeats=shares_judge_prompt(script, scripts),
                 )
             )
-    return close(results, out=out, base_url=base_url, stamp=stamp)
+    return finish(
+        results,
+        out=out,
+        base_url=base_url,
+        stamp=stamp,
+        budget=budget,
+        not_started=not_started,
+    )
+
+
+def finish(
+    results: list[SessionResult],
+    *,
+    out: Path,
+    base_url: str,
+    stamp: str,
+    budget: float,
+    not_started: list[str],
+) -> int:
+    if not not_started:
+        return close(results, out=out, base_url=base_url, stamp=stamp)
+    unpriced = priced(_paid(results))[1]
+    spent = _spent(results)
+    halted = (
+        f"Rodada parada pelo orçamento de US$ {budget:.2f}, já em US$ {spent:.2f}. "
+        f"Sessões que não começaram: {', '.join(not_started)}."
+    )
+    gate = close(results, out=out, base_url=base_url, stamp=stamp, halted=halted)
+    message = stopped(
+        "golden", budget=budget, spent=spent, not_started=not_started, unpriced=unpriced
+    )
+    print(message, file=sys.stderr)
+    return gate or OVER_BUDGET
 
 
 def exported(path: Path) -> tuple[Script, SessionResult, str]:
@@ -695,7 +817,7 @@ async def rejudge(args: argparse.Namespace) -> int:
     """Her judge over a run already on disk, with the room left alone.
 
     A judge prompt that changes, or a rung that does, changes the verdict and not the
-    transcript; and a run's verdict can be asked for twice without paying the five sessions
+    transcript; and a run's verdict can be asked for twice without paying for the sessions
     again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
     pericope names today, and its verdict written under the same name and stamp into `--out`,
     so the file still says which transcript it judged. The mechanical column is the one the
@@ -712,37 +834,65 @@ async def rejudge(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    earlier = [
+        (path, *exported(path))
+        for path in sorted(Path(args.rejudge).glob("*.json"))
+        if not path.name.endswith(".verdict.json")
+    ]
+    if not earlier:
+        print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
+        return 2
+    to_judge = [script for _, script, result, _ in earlier if result.refused is None]
+    base_url = earlier[-1][3]
+    budget = budget_of(args)
     results: list[SessionResult] = []
-    base_url = ""
-    for path in sorted(Path(args.rejudge).glob("*.json")):
-        if path.name.endswith(".verdict.json"):
-            continue
-        script, result, base_url = exported(path)
+    not_started: list[str] = []
+    for position, (path, script, result, _) in enumerate(earlier):
+        if _spent(results) >= budget:
+            not_started = [later.name for _, later, _, _ in earlier[position:]]
+            break
         print(f"\n▶ {script.name} — judging {path.name} again")
         out.mkdir(parents=True, exist_ok=True)
         if result.refused is None:
-            await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
+            await judge(
+                script,
+                result,
+                out=out,
+                stamp=path.stem[len(script.name) + 1 :],
+                prompt_repeats=shares_judge_prompt(script, to_judge),
+            )
         results.append(result)
-    if not results:
-        print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
-        return 2
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
-    return close(results, out=out, base_url=base_url, stamp=stamp)
+    return finish(
+        results,
+        out=out,
+        base_url=base_url,
+        stamp=stamp,
+        budget=budget,
+        not_started=not_started,
+    )
 
 
-def close(results: list[SessionResult], *, out: Path, base_url: str, stamp: str) -> int:
+def close(
+    results: list[SessionResult], *, out: Path, base_url: str, stamp: str, halted: str = ""
+) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "README.md").write_text(
-        summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins()),
+        summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins(), halted=halted),
         encoding="utf-8",
     )
     passed = sum(1 for result in results if result.passed)
     for result in results:
         verdict = "REFUSED" if result.refused else ("PASS" if result.passed else "FAIL")
+        cost = sum(priced(_paid([result]))[0].values())
         print(
             f"  {verdict} · {result.name} · judge={result.judged.lower().replace('—', 'n/a')} "
-            f"· mechanical={len(result.faults)}"
+            f"· mechanical={len(result.faults)} · cost US$ {cost:.2f}"
         )
+    by_role, unpriced = priced(_paid(results))
+    if by_role or unpriced:
+        table = f" — {split(by_role)}" if by_role else ""
+        print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
     print(f"\n{passed}/{len(results)} golden sessions pass · {out / 'README.md'}")
     return 0 if passed == len(results) else 1
 
@@ -758,6 +908,7 @@ def main() -> int:
         "--out", default=str(REPO_ROOT / "golden/reports" / datetime.now(UTC).strftime("%Y-%m-%d"))
     )
     parser.add_argument("--turns", type=int, default=None)
+    parser.add_argument("--budget-usd", type=float, default=None)
     parser.add_argument("--stamp", default=None)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
     args = parser.parse_args()

@@ -2,7 +2,7 @@
 
 `CoverageView` answers `{engaged, surfaced, total, absence_index}`, and those aggregates are
 exactly what the product forbids putting in front of a facilitator. This route answers the
-opposite: every element of the passage, named in three languages, typed, placed in its scene,
+opposite: every element of the passage, named in two languages, typed, placed in its scene,
 and carrying its own coverage state.
 
 Three of these carry the slice.
@@ -220,7 +220,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     assert all(e["scene"] is not None for e in body[4:] if e not in preserved)
 
 
-async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncSession) -> None:
+async def test_every_bead_is_named_in_portuguese_and_english(
+    client, db_session: AsyncSession
+) -> None:
     """Behaviour 1 — no bead reaches the Desk as an identifier.
 
     Non-empty is not the assertion. Serving `preserved:R3` as its own label is non-empty and
@@ -228,8 +230,8 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
     absent and the names asserted distinct from each other — a facilitator has to be able to
     tell two beads apart by reading them.
 
-    What is deliberately *not* asserted is that the three languages differ. `being:B10` is
-    Rute in all three, and demanding a difference would demand a mistranslation. Nor that a
+    What is deliberately *not* asserted is that the two languages differ. `being:S1:B10` is
+    YHWH in both, and demanding a difference would demand a mistranslation. Nor that a
     name is unique across the passage: Ruth is a bead in each of P02's three scenes, told
     apart by the scene column, so the names are distinct within a scene.
     """

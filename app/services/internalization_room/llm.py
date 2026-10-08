@@ -416,6 +416,8 @@ _VOICED_ROLES = frozenset({"guide", "validator"})
 
 def _prefix_cache_ttl(role: str, settings: Settings) -> Literal["1h"] | None:
     """The cache TTL a role's prefix earns, or nothing for the API's own 5-minute default."""
+    if role == "judge":
+        return "1h"
     if role not in _VOICED_ROLES:
         return None
     return settings.internalization_room_voice_cache_ttl or None

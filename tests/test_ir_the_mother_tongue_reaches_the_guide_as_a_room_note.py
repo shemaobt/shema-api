@@ -179,7 +179,7 @@ def test_no_fixed_line_answers_the_mother_tongue_in_any_language_the_room_speaks
         "a família G seguia no catálogo depois de a Marcia a ter abolido"
     )
     assert re.findall(r"^### G(-[a-z]{2})?\.", fail_safe_utterances(), re.M) == [], (
-        "o arquivo autorado ainda carregava a seção G, que o vendorizado dela não tem"
+        "o texto das falas fixas da sala ainda carregava a seção G, que o arquivo dela não tem"
     )
 
 

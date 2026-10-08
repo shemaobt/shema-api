@@ -2,10 +2,10 @@
 
 The completion floor the design names is *every concrete element of the map — each scene,
 being, place, object, time, significant absence, **and preserved element** — engaged*. The
-passages of Ruth past the canon's edge carry no `do_not_decide` audit entry at all, so their
-coverage spine is built without a single `preserved:` bead and their comprehension pack
-without a single `preserved_element` checkpoint. Nothing refused them: the room walked them, met a
-floor that was missing its top row, and handed Refine a package claiming the floor was met.
+passage whose Compilation Log has no `do_not_decide` audit entry at all gets a coverage spine
+built without a single `preserved:` bead and a comprehension pack without a single
+`preserved_element` checkpoint. Nothing refused it: the room walked it, met a floor that was
+missing its top row, and handed Refine a package claiming the floor was met.
 
 Two tests carry the slice, in opposite directions.
 
@@ -14,10 +14,11 @@ the original code by the session being created normally.
 
 **`test_a_passage_that_carries_its_preservation_layer_still_opens`** is the counterweight,
 and is the more important of the two. A guard that overshoots takes the whole book down —
-seven passages that are walkable today, and the room with them.
+every passage that carries its layer, and the room with them.
 
-The canon is read here rather than named: a test that wrote "P08 to P14" would keep passing
-on the day the project writes those seven layers, which is exactly the day it must stop.
+The canon is read here rather than named: a test that wrote a range of passages would keep
+passing on the day the project writes a layer it had counted as missing, which is exactly the
+day it must stop.
 """
 
 from __future__ import annotations
@@ -45,9 +46,9 @@ from tests.canon_harness import (
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 
-#: The passages a team can actually be standing on today — the rest are vendored but refused
-#: by `require_walkable`. Read from the canon, like `CANON` above, so this grows with the book
-#: rather than needing an edit every time a passage opens.
+#: The passages a team can actually be standing on — any the canon vendors that
+#: `require_walkable` refuses are left out. Read from the canon, like `CANON` above, so this
+#: grows with the book rather than needing an edit every time a passage opens.
 WALKABLE = [
     meaning_map.pericope_num
     for meaning_map in load_book(ROOM_BOOK)
@@ -125,7 +126,7 @@ async def test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
-    """The counterweight: the seven that are walkable today go on being walkable, spine intact."""
+    """The counterweight: a passage that carries its layer goes on being walkable, spine intact."""
     preserved = [
         element.key for element in elements_for(WITH_LAYER) if element.kind is ElementKind.PRESERVED
     ]
@@ -191,9 +192,10 @@ def test_every_preserved_bead_of_a_walkable_passage_has_a_label(pericope_num: st
     it is either true, or the call raises first (`_text` refuses a missing key) and the
     comparison is never reached at all. Comparing against the catalogue's own keys instead
     also catches the shape that leaves `labelled_elements` silent: a walkable passage with
-    *no* catalogue entry at all takes the canon fallback (`labels.py:103`) and answers every
-    bead, preserved ones included, with `label_pt=None, label_es=None` — a real gap the
-    exception-based version could not see, caught on the PR's bot review.
+    *no* catalogue entry at all takes the canon fallback (`_from_the_canon` in `labels.py`) and
+    answers every bead, preserved ones included, with `label_pt=None` and the canon's English
+    in `label_en` — a real gap the exception-based version could not see, caught on the PR's
+    bot review.
     """
     preserved = {
         element.key
