@@ -70,12 +70,22 @@ def the_take_lasts(monkeypatch: pytest.MonkeyPatch, ms: int | None) -> None:
     monkeypatch.setattr(hearing, "measure_ms", measure)
 
 
-def the_probe_never_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+def the_probe_never_answers(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
+    started = asyncio.Event()
+
     async def measure(_: bytes) -> int | None:
+        started.set()
         await asyncio.Event().wait()
         return 25_000
 
     monkeypatch.setattr(hearing, "measure_ms", measure)
+    return started
+
+
+def the_loop_clock_passes(monkeypatch: pytest.MonkeyPatch, seconds: float) -> None:
+    loop = asyncio.get_running_loop()
+    loop_time = loop.time
+    monkeypatch.setattr(loop, "time", lambda: loop_time() + seconds)
 
 
 def the_probe_fails(monkeypatch: pytest.MonkeyPatch) -> None:
