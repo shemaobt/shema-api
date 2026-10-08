@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 from typing import Any
 
 import httpx
@@ -42,19 +41,6 @@ DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 LANGUAGE = "pt"
 
-#: The headings the correction prompt carries and the full reading does not. The double tells
-#: the two readings apart by them, the way a reader would — not by counting calls.
-CORRECTION_MARK = "## What the team told back now"
-EARLIER_MARK = "## What the team told back before"
-FINDING_MARK = "## The finding to verify"
-
-#: What this passage tells, in the words the team uses for it, and what it does not. The
-#: double judges by these: a note naming one of them is about that element, and a telling
-#: that names it states it. A test fixture, not a rule of the room — the room measures
-#: against the Meaning Map.
-WHAT_THE_STORY_TELLS = ("noemi", "rute", "orfa", "belém", "moabe", "notícia")
-WHAT_THE_STORY_DOES_NOT_TELL = ("pedido", "noras", "jerusalém")
-
 #: The swap, as the team told it: a cause that is theirs, and the news of the bread gone.
 FIRST_TELLING = "As noras pediram para voltar, e por isso Noemi saiu de Moabe."
 SECOND_TELLING = "Ela disse às duas noras que voltassem para a casa de suas mães."
@@ -64,45 +50,13 @@ THIRD_TELLING = "Rute disse que ia junto e não a deixaria."
 THE_ADDITION = "o pedido das noras para voltar"
 THE_MISSING = "a notícia do pão em Belém"
 
-#: The retelling that answers both halves at once: the cause is gone and the news is there.
-THE_SWAP_MENDED = "Noemi soube da notícia do pão em Belém e saiu de Moabe."
 #: The retelling that answers neither: the news arrived and the cause stayed.
 THE_CAUSE_STILL_THERE = "As noras pediram para voltar, e Noemi soube da notícia do pão em Belém."
-#: A retelling that answers both halves and breaks two other things doing it: Moabe is gone
-#: from this stretch, and a place the story never tells is in it.
-THE_SWAP_MENDED_BADLY = "Noemi soube da notícia do pão em Belém e foi para Jerusalém."
 
 
 @pytest.fixture(autouse=True)
 def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
     nothing_is_read_ahead(monkeypatch)
-
-
-def _names(text: str, vocabulary: tuple[str, ...]) -> set[str]:
-    folded = text.casefold()
-    return {word for word in vocabulary if word in folded}
-
-
-def _answers(kind: str, note: str, telling: str) -> bool:
-    """Whether the new telling answers one line of the finding block.
-
-    An addition is answered when what the team put in is no longer said; a missing element
-    when what the story tells is said. Two questions, one answer for the block: a swap is
-    mended only when both are true.
-
-    A note this double cannot read names nothing it knows, and answering `True` to it would
-    be a case measuring nothing at all — so it says so instead of passing quietly.
-    """
-    named = _names(
-        note, WHAT_THE_STORY_DOES_NOT_TELL if kind == "addition" else WHAT_THE_STORY_TELLS
-    )
-    assert named, (
-        f"o achado {note!r} não nomeia nada que este duplo saiba julgar: o caso passaria "
-        f"sem medir nada"
-    )
-    if kind == "addition":
-        return not (named & _names(telling, WHAT_THE_STORY_DOES_NOT_TELL))
-    return named <= _names(telling, WHAT_THE_STORY_TELLS)
 
 
 class ReaderOfTellings:
@@ -117,42 +71,11 @@ class ReaderOfTellings:
 
     def __init__(self) -> None:
         self.full_readings: list[str] = []
-        self.verifications: list[str] = []
         self.answer = '{"findings": []}'
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if CORRECTION_MARK in system_prompt:
-            self.verifications.append(system_prompt)
-            return json.dumps(self._verify(system_prompt))
         self.full_readings.append(system_prompt)
         return self.answer
-
-    def _verify(self, prompt: str) -> dict[str, Any]:
-        asked = _section(prompt, FINDING_MARK, EARLIER_MARK)
-        earlier = _section(prompt, EARLIER_MARK, CORRECTION_MARK)
-        now = _section(prompt, CORRECTION_MARK, None)
-
-        answered = [
-            _answers(kind, note, now)
-            for kind, note in re.findall(r"^- (\w+)(?: \[[^\]]*\])?: (.+)$", asked, re.M)
-        ]
-
-        findings: list[dict[str, str]] = []
-        for lost in sorted(
-            _names(earlier, WHAT_THE_STORY_TELLS) - _names(now, WHAT_THE_STORY_TELLS)
-        ):
-            findings.append({"kind": "missing", "note": f"{lost} não aparece mais neste trecho."})
-        for added in sorted(_names(now, WHAT_THE_STORY_DOES_NOT_TELL)):
-            findings.append({"kind": "addition", "note": f"{added} não é contado pela história."})
-        return {"resolved": bool(answered) and all(answered), "findings": findings}
-
-
-def _section(prompt: str, start: str, end: str | None) -> str:
-    """One block of the correction prompt, read off its heading."""
-    if start not in prompt:
-        return ""
-    body = prompt.split(start, 1)[1]
-    return body.split(end, 1)[0] if end and end in body else body
 
 
 class MemoryStore:
@@ -380,30 +303,6 @@ async def test_the_swap_reaches_the_team_as_one_thing(
     assert body["finding_kind"] == "addition"
 
 
-async def test_the_pair_is_checked_and_cleared_as_one(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
-) -> None:
-    """Acceptance 4. One retelling answers the swap, and the swap leaves whole.
-
-    The check is shown both lines and answers once. Shown only the addition, it would pass on
-    a retelling that dropped the cause and still never told the news of the bread — and the
-    missing element would be raised again next round, which is the defect by the back door.
-    """
-    session_id, first = await _the_swap_raised(client, db_session, analyst)
-
-    await _tell_that_stretch_again(client, session_id, first, saying=THE_SWAP_MENDED)
-    analyst.answer = json.dumps({"findings": []})
-    answered = await _finish(client, db_session, session_id)
-    body = answered.json()
-
-    assert analyst.verifications, "a correção tinha de ser verificada, não relida"
-    asked = _section(analyst.verifications[0], FINDING_MARK, EARLIER_MARK)
-    assert THE_ADDITION in asked
-    assert THE_MISSING in asked
-    assert body["findings_remaining"] == 0
-    assert await _findings_now(db_session, session_id) == []
-
-
 async def test_an_unresolved_pair_stays_on_the_corrected_stretch(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -442,27 +341,6 @@ async def test_a_missing_placed_after_the_frase_is_still_the_same_swap(
     assert THE_MISSING in speaker[0]
     assert body["findings_remaining"] == 1
     assert body["finding_segment_id"] == first.id
-
-
-async def test_a_pair_raised_by_a_correction_pairs_next_turn(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
-) -> None:
-    """A swap the mend itself introduced is a swap like any other.
-
-    The retelling answers both halves and, doing it, drops something only that stretch
-    carried and brings in a place the story never tells. The check reports the two on the
-    corrected stretch, and they are one frase's swap the moment the team hears about them.
-    """
-    session_id, first = await _the_swap_raised(client, db_session, analyst)
-
-    await _tell_that_stretch_again(client, session_id, first, saying=THE_SWAP_MENDED_BADLY)
-    answered = await _finish(client, db_session, session_id)
-    findings = await _findings_now(db_session, session_id)
-
-    assert len(findings) == 2, f"a verificação tinha de reportar dois achados: {findings}"
-    assert answered.json()["findings_remaining"] == 1
-    assert "moabe" in speaker[-1].casefold()
-    assert "jerusalém" in speaker[-1].casefold()
 
 
 async def test_a_resumed_tablet_is_sent_to_the_stretch_of_the_swap(

@@ -54,6 +54,7 @@ from app.services.internalization_room.back_translation import (
     untold_parts,
 )
 from app.services.internalization_room.canon.book_material import vendor_pin
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -464,6 +465,11 @@ async def compose_internalization_release(
     moving, and two reads of an unchanged session must carry one hash. A consumer verifying
     the fingerprint drops those seven keys and hashes the rest.
     """
+    with reading_the_canon_of(session.canon_pin):
+        return await _composed(db, session)
+
+
+async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
     blockers: list[str] = []
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])

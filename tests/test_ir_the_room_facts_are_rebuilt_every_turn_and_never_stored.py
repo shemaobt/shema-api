@@ -39,7 +39,12 @@ EARLIER_BOTH_APPROVED = f"EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1{EN}
 FAMILIARIZATION = (
     "MOMENT: Familiarization \N{EM DASH} the whole passage; no part has been opened yet."
 )
-LEDGER_MARKERS = ("EARLIER PASSAGES FOR THIS TEAM", "COVERED (engaged)", "REMAINING", "MOMENT:")
+LEDGER_MARKERS = (
+    "EARLIER PASSAGES FOR THIS TEAM",
+    "WORKED WITH BY THE TEAM (engaged)",
+    "NOT YET TOUCHED",
+    "MOMENT:",
+)
 
 
 class _Recording:

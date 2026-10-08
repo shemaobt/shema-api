@@ -225,8 +225,8 @@ def test_the_h_and_i_lines_say_traduzir_in_portuguese(language: str, family: Fai
 
     The count is asserted beside the words because a swap done line by line is exactly the
     edit that drops one: the H family says the same thing three ways so a second failure in
-    a row is not the same sentence, and `test_ir_the_room_asks_for_the_whole_stretch`'s
-    table of families would go red one slice later, far from here.
+    a row is not the same sentence, and `SPOKEN_FAMILIES` is the table that holds how many
+    each family has.
     """
     block = _block(_supplement(language), family, language)
     spoken = _BULLET.findall(block)

@@ -21,6 +21,9 @@ jobs:
     uses: shemaobt/.github/.github/workflows/henokinho-review.yml@main
     with:
       lens_pack: python-fastapi
+      # Raised with Joãozinho's: the reusable workflow's 40 was measured on smaller
+      # pull requests than the ones this repo now gets.
+      max_turns: 60
       app_id: ${{ vars.HENOKINHO_APP_ID }}
     secrets:
       app_private_key: ${{ secrets.HENOKINHO_APP_PRIVATE_KEY }}

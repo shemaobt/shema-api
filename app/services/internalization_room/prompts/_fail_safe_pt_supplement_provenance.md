@@ -42,8 +42,10 @@ to her, as she asked on 2026-09-04.
 exactly this text, as reserve, with 'o facilitador de vocês' ... You can enter them." and
 "E: yes, the whole sentence, as you wrote it." B, C and E moved into the authored file's own
 `B-pt`/`C-pt`/`E-pt`, byte-identical to what this supplement carried — see
-`docs/doctrine/rulings/2026-09-21-the-portuguese-b-c-and-e-lines-enter-her-file.md`. This
-supplement no longer carries them.
+`docs/doctrine/rulings/2026-09-21-the-portuguese-b-c-and-e-lines-enter-her-file.md`. They
+sit in this supplement again since her fail-safe file was vendored whole at her freeze
+(`FREEZE_PIN`, 18fa7c4; commit 97ac7de9): that file has no `-pt` block for B, C or E, so the
+supplement carries them, verbatim.
 
 ## What that means for the file
 
@@ -54,4 +56,4 @@ header has been corrected to say which it is.
 
 Whether the Portuguese B, C and E stood as written was her decision to make once she had the
 text; she made it on 2026-09-21, above. Nothing here changes the lines themselves — this
-record stays for H and I, the two families this file still carries.
+record stays for what the supplement carries: H and I, and the Portuguese B, C and E.

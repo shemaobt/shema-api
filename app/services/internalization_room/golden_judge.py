@@ -1,11 +1,11 @@
 """Her judge, reading a whole golden session and saying whether the Guide kept the doctrine.
 
-The rubric and the pass rule are hers — `prompts/vendor/golden_judge_system_prompt.md`, "the
-acceptance test that guards the app's behaviour across model and prompt changes" — and this
-module applies them as she wrote them: the prompt body between her markers, the Validator's
-map in the map slot, the session language in its slot, and her one-line request in front of
-the transcript block. It never reaches the team; `scripts/golden_runner.py` calls it once per
-session played.
+The rubric and the pass rule are hers — `prompts/golden_judge_system_prompt.md`, kept byte for
+byte at her freeze, "the acceptance test that guards the app's behaviour across model and
+prompt changes" — and this module applies them as she wrote them: the prompt body between her
+markers, the Validator's map in `{{MEANING_MAP}}`, the session language in
+`{{SESSION_LANGUAGE}}`, and her one-line request in front of the transcript block. It never
+reaches the team; `scripts/golden_runner.py` calls it once per session played.
 """
 
 from __future__ import annotations
@@ -76,7 +76,12 @@ _VERDICT: dict[str, Any] = {
 
 
 async def judge_session(
-    *, pericope: str, language: str, transcript: str, settings: Settings | None = None
+    *,
+    pericope: str,
+    language: str,
+    transcript: str,
+    prompt_repeats: bool = False,
+    settings: Settings | None = None,
 ) -> dict[str, Any]:
     """Her judge on one session: the Validator's map, her budget, her effort, the voice ladder.
 
@@ -90,13 +95,13 @@ async def judge_session(
     does not reach.
     """
     cfg = settings or get_settings()
-    system = cache_break_at_end(
-        render(
-            prompt_body(HER_PROMPT.read_text(encoding="utf-8")),
-            MEANING_MAP=validator_map_block(pericope, book_of(pericope)),
-            SESSION_LANGUAGE=language,
-        )
+    system = render(
+        prompt_body(HER_PROMPT.read_text(encoding="utf-8")),
+        MEANING_MAP=validator_map_block(pericope, book_of(pericope)),
+        SESSION_LANGUAGE=language,
     )
+    if prompt_repeats:
+        system = cache_break_at_end(system)
     raw = await room_agent().judge.call_agent(
         role="judge",
         system_prompt=system,

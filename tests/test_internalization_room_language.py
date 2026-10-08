@@ -247,50 +247,12 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
         assert not _PORTUGUESE_MARKER.search(value), value
 
 
-def test_speak_this_turn_is_english_on_every_session() -> None:
-    """SPEAK_THIS_TURN is the filler user message a verdict turn sends when it has neither an
-    opening nor a team utterance to answer — a backend-composed instruction, just missed by
-    the sweep that translated its siblings in this same file. A `pt` session must not see
-    "Fale este turno."."""
-    from app.services.internalization_room.turn_instructions import SPEAK_THIS_TURN
-
-    assert SPEAK_THIS_TURN == "Speak this turn."
-
-
 def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:
     from app.services.internalization_room.turn_instructions import VALIDATOR_USER_MESSAGE
 
     assert (
         VALIDATOR_USER_MESSAGE == "Validate the drafted response now. Return only the JSON object."
     )
-
-
-async def test_the_redraft_note_heading_the_guide_reads_is_english(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`_draft` appends the redraft note under its own heading — a section title exactly like
-    the EQUIPE/FACILITADOR labels item 3 targets, just added back the same day (c3ee0e2) it
-    removed those. Never Portuguese, whatever the session speaks (ENG-822, item 3)."""
-    from app.services.internalization_room.validated_turn import _draft
-
-    captured: dict[str, str] = {}
-
-    async def agent(*, user_content: str, **kwargs: Any) -> str:
-        captured["user_content"] = user_content
-        return "fala"
-
-    the_room_agent_is(monkeypatch, turn=agent)
-
-    await _draft(
-        guide_prompt="system",
-        conversation=[],
-        turn="algo",
-        redraft_note="Redo it.",
-        settings=get_settings(),
-    )
-
-    assert "## Rewrite note" in captured["user_content"]
-    assert "## Nota de reescrita" not in captured["user_content"]
 
 
 async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothing_is_left(
@@ -351,8 +313,8 @@ def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
     fully_engaged = merge(nothing, pericope_num=P, engaged=list(nothing))
 
     assert coverage_status_block(fully_engaged, P).endswith(
-        "REMAINING: (none — every element has been worked by the team)"
+        "  (nothing — everything in the map has been visited)"
     )
-    assert "REMAINING (not yet worked by the team, in their own words):" in (
+    assert "NOT YET TOUCHED (still deserve a visit before the session ends):" in (
         coverage_status_block(nothing, P)
     )

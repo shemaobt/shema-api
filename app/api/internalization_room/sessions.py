@@ -55,6 +55,9 @@ from app.services.internalization_room.prepare_opening import (
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    facilitator_speech_key,
+)
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
@@ -702,10 +705,22 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
             except Exception:
                 voiced = None
         if voiced is None:
-            voiced = (await room.synthesize_facilitator_speech(last, language=session.language))[0]
+            try:
+                voiced = (
+                    await room.synthesize_facilitator_speech(last, language=session.language)
+                )[0]
+            except Exception as error:
+                logger.warning("a stored line could not be voiced again: %s", type(error).__name__)
     return TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=(
+            clip_url(
+                voiced.key if voiced else facilitator_speech_key(last, language=session.language),
+                session_id=session.id,
+            )
+            if last
+            else ""
+        ),
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
@@ -738,13 +753,6 @@ async def take_turn(
     as an opening had the Guide introduce itself and lay the whole passage out a second time —
     against a probe already waiting for a free retell, which the Validator then rejected, so
     the room answered a returning team with a canned line.
-
-    The turn is voiced before any of it is written down. A probe is the room's authorization
-    to assess the answer that comes next, so committing one for a turn whose synthesis then
-    failed points that authorization at a question the team was never asked, and leaves the
-    ledger holding evidence for an exchange that was never recorded. Speaking first costs
-    nothing in the other direction: a clip reaches the team only as the handle in this
-    response, so a request that fails after synthesis hands the app nothing to play.
 
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
@@ -963,20 +971,7 @@ async def _draft_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    uploads: list[Upload] = []
-    try:
-        with stage("voice"):
-            voiced, segments = await _voice_the_turn(
-                outcome, language=session.language, uploads=uploads
-            )
-    except BaseException:
-        if uploads:
-            await _upload(uploads)
-        raise
-    session, _ = await asyncio.gather(
-        _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening),
-        _upload(uploads),
-    )
+    session = await _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -991,14 +986,20 @@ async def _draft_the_turn(
 
     reply = TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=(
+            ""
+            if outcome.fixed_line
+            else clip_url(
+                facilitator_speech_key(outcome.speech, language=session.language),
+                session_id=session.id,
+            )
+        ),
         fixed_line=outcome.fixed_line,
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         degraded=outcome.degraded,
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
-        segments=segments,
         turn_id=response_turn_id,
         classification_pending=pending,
     )
@@ -1012,4 +1013,19 @@ async def _draft_the_turn(
     nudge(team_id, "sessions")
     if lifted:
         nudge(team_id, "halts")
-    return reply
+
+    uploads: list[Upload] = []
+    try:
+        with stage("voice"):
+            _, segments = await _voice_the_turn(outcome, language=session.language, uploads=uploads)
+    except Exception as error:
+        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
+        segments = []
+    try:
+        await _upload(uploads)
+    except Exception as error:
+        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
+        return reply
+    if not segments:
+        return reply
+    return reply.model_copy(update={"audio_url": segments[0].audio_url, "segments": segments})

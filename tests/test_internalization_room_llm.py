@@ -250,6 +250,59 @@ async def test_a_rung_that_refuses_outright_hands_the_request_to_the_next(
     )
 
 
+async def test_a_fall_driven_by_a_refusal_says_it_was_a_refusal(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingMessages()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    answered = [r for r in caplog.records if getattr(r, "rung", None) == "claude-opus-5"]
+    (line,) = [r for r in answered if r.getMessage().startswith("[llm-usage]")]
+    assert line.getMessage().endswith(" — claude-fable-5-1 refused the request")
+    assert line.rung_fell_because == "claude-fable-5-1 refused the request", (
+        "the key could use the top rung and the line said it could not"
+    )
+
+
+async def test_a_call_that_fell_both_ways_names_each_rung_for_its_own_cause(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class _NoTopRungThenARefusal:
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            if kwargs["model"] == "claude-fable-5-1":
+                raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+            if kwargs["model"] == "claude-opus-5":
+                reply = _reply("", stop_reason="refusal")
+                reply.content = []
+                return reply
+            return _reply("ok")
+
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=_NoTopRungThenARefusal(), options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    (line,) = [
+        r
+        for r in caplog.records
+        if r.getMessage().startswith("[llm-usage]") and getattr(r, "rung", "") == "claude-opus-4-8"
+    ]
+    assert line.rung_fell_because == (
+        "the key cannot use claude-fable-5-1; claude-opus-5 refused the request"
+    ), "the rung that refused was written down as one the key could not use"
+
+
 class RefusingRungs:
     """Rungs that turn every request away at the door, and the ones that still answer."""
 
@@ -285,6 +338,87 @@ async def test_a_refusal_is_rerun_once_and_a_second_refusal_stands(
     assert text == "", "a segunda recusa chega ao chamador como resposta vazia, e é ele quem decide"
 
 
+class RefusingWithText:
+    """Rungs that stop as a refusal after writing some words, and the ones that answer."""
+
+    def __init__(self, *refusing: str) -> None:
+        self.refusing = refusing
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if kwargs["model"] in self.refusing:
+            return _reply("Quero que a gente", stop_reason="refusal", output=6)
+        return _reply("ok")
+
+
+async def test_a_refusal_that_wrote_some_words_is_rerun_on_the_next_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingWithText("claude-fable-5-1")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"], (
+        "um degrau que parava em recusa depois de escrever algumas palavras não era perguntado "
+        "de novo no próximo modelo, e as palavras dele seguiam como rascunho"
+    )
+    assert text == "ok", "as palavras da recusa chegavam ao validador e podiam ser faladas"
+    assert llm._SETTLED == {}
+
+
+async def test_a_second_refusal_that_wrote_some_words_stands_with_none_of_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingWithText("claude-fable-5-1", "claude-opus-5")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"]
+    assert text == "", (
+        "a segunda recusa devolvia as palavras que escreveu antes de parar, e elas seguiam "
+        "como rascunho em vez de a sala cair na linha de segurança"
+    )
+
+
+@pytest.mark.parametrize("stop_reason", ["end_turn", "max_tokens"])
+async def test_a_reply_that_did_not_stop_as_a_refusal_is_asked_once_and_kept_as_it_is(
+    monkeypatch: pytest.MonkeyPatch, stop_reason: str
+) -> None:
+    class _AnswersOnTheFirstRung:
+        def __init__(self) -> None:
+            self.asked: list[str] = []
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            self.asked.append(kwargs["model"])
+            return _reply("Quero que a gente", stop_reason=stop_reason, output=6)
+
+    messages = _AnswersOnTheFirstRung()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1"], (
+        "uma resposta que não parou em recusa foi perguntada de novo no modelo seguinte"
+    )
+    assert text == "Quero que a gente", "uma resposta que não foi recusa perdeu as palavras"
+    assert llm._SETTLED == {"claude-fable-5-1": "claude-fable-5-1"}
+
+
 async def test_a_refusal_on_the_last_rung_has_no_next_model_to_be_rerun_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -314,6 +448,29 @@ async def test_a_refusal_on_the_last_rung_has_no_next_model_to_be_rerun_on(
         "devolver a recusa ao chamador"
     )
     assert text == ""
+
+
+async def test_a_refusal_on_the_last_rung_that_wrote_some_words_stands_with_none_of_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OnlyTheLastRungIsOpen:
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            if kwargs["model"] != "claude-opus-4-8":
+                raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+            return _reply("Quero que a gente", stop_reason="refusal", output=6)
+
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=_OnlyTheLastRungIsOpen(), options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert text == "", (
+        "a recusa da última rung devolvia as palavras que escreveu antes de parar, e elas "
+        "seguiam como rascunho para o validador"
+    )
 
 
 async def test_a_refusal_that_stood_does_not_move_the_next_call_off_the_top_rung(
@@ -572,10 +729,29 @@ async def test_the_guide_and_the_validator_prefix_cache_for_an_hour_by_default(f
         )
 
 
-async def test_the_judge_and_the_classifier_stay_on_the_five_minute_cache(fake_client):
+async def test_the_judge_prefix_caches_for_an_hour_whatever_the_voice_setting_says(fake_client):
     holder = fake_client(_reply("ok"))
 
-    for role in ("judge", "analyst", "correction check", "classifier", "?"):
+    await llm.call_agent(
+        system_prompt=f"map{llm.CACHE_BREAK}",
+        user_content="u",
+        role="judge",
+        settings=_settings(internalization_room_voice_cache_ttl=""),
+    )
+
+    assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+        "type": "ephemeral",
+        "ttl": "1h",
+    }, (
+        "os scripts de uma passagem chegam com 2 a 7 minutos entre si e a entrada de 5 minutos "
+        "já tinha caído: ~19,6k tokens escritos por chamada e nenhum lido de volta"
+    )
+
+
+async def test_the_analyst_and_the_classifier_stay_on_the_five_minute_cache(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("analyst", "correction check", "classifier", "?"):
         await llm.call_agent(
             system_prompt=f"map{llm.CACHE_BREAK}turn",
             user_content="u",
@@ -741,4 +917,39 @@ def test_a_second_event_loop_builds_its_own_client_rather_than_borrowing_one(
     assert len(counted_builds) == 2, (
         "um cliente preso a um loop fechado era entregue a outro, e a conexão dele não "
         "responde fora do loop que a abriu"
+    )
+
+
+def _usage_line(caplog: pytest.LogCaptureFixture) -> str:
+    (line,) = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[llm-usage]")]
+    return line
+
+
+async def test_a_call_with_no_effort_set_names_no_effort_in_its_usage_line(
+    fake_client, caplog: pytest.LogCaptureFixture
+) -> None:
+    fake_client(_reply("ok"))
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(
+            system_prompt="s", user_content="u", effort=None, role="validator", settings=_settings()
+        )
+
+    assert _usage_line(caplog).startswith(
+        "[llm-usage] validator answered on claude-fable-5-1 (rung 1 of 3) in "
+    ), "the line read 'at None effort' for every call that runs at the model's own setting"
+
+
+async def test_a_call_with_an_effort_set_still_names_it_in_its_usage_line(
+    fake_client, caplog: pytest.LogCaptureFixture
+) -> None:
+    fake_client(_reply("ok"))
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(
+            system_prompt="s", user_content="u", effort="high", role="guide", settings=_settings()
+        )
+
+    assert _usage_line(caplog).startswith(
+        "[llm-usage] guide answered on claude-fable-5-1 (rung 1 of 3) at high effort in "
     )

@@ -28,7 +28,6 @@ class IRPromptKey(enum.StrEnum):
     COVERAGE_CLASSIFIER = "coverage_classifier"
     BOOK_PANORAMA = "book_panorama"
     BT_ANALYST = "bt_analyst"
-    BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
 
 
@@ -180,6 +179,7 @@ class IRSession(Base):
     opening_claimed_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(timezone=True), nullable=True
     )
+    canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class IRTeamSession(Base):

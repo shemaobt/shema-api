@@ -44,11 +44,12 @@ Guide's conversation is played through the **Golden doors**,
 as `Authorization: Bearer <key>`; the back-translation check through the **Text seam**, which
 reads it in `X-Access-Code`.
 Two runners, one convention: reports land under `golden/reports/<date>/`, committed, and the key
-travels as `ACCESS_CODE`. Her five session scripts are vendored at `golden/sessions/`
-under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
+travels as `ACCESS_CODE`. Her twenty-three session scripts are vendored at `golden/sessions/`
+and her ten Back-Translation scripts at `golden/bt/`, under the pin in `docs/doctrine/FREEZE_PIN`,
+beside her own 5/5 of 2026-09-03, which `docs/doctrine/DOCTRINE_PIN` holds.
 
 ```sh
-# the Guide's conversation: the five sessions, her mechanical checks, her judge, one README
+# the Guide's conversation: every session in golden/sessions/, her mechanical checks, her judge, one README
 # per run; a session passes only when the judge passed it and no check tripped, exit 1
 # otherwise. --only <name> plays one of them. The judge runs in this process on the voice
 # ladder, so it needs ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID for an identity-bound
@@ -58,15 +59,25 @@ ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/i
 GOLDEN_HTTP_TOKEN=<key> node src/golden/run.ts --http <host>/api/internalization-room [P01-opening-and-mother-tongue]
 # the judge again over a run already committed, without playing the room
 uv run python scripts/golden_runner.py --rejudge golden/reports/<date> --out golden/reports/<date>-rejulgado
-# the back-translation check, judged by her own checks; exit 1 on a failed check
+# the back-translation check, judged by her own checks; exit 1 on a failed check. It reads the
+# room's price table, so it needs a DATABASE_URL for the settings to load, in the environment or in .env
 ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py --base-url <host>/api/internalization-room/text-seam/back-translation/ --script <her-bt.json> --out golden/reports/<date>
 ```
 
-Each run costs real model calls, so neither is part of the suite. The back-translation run is
-the gate on any change to the two back-translation prompts. The golden run is the gate on the
-release, not only on CI: `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions
-must pass before anything touching prompts, turn loop, model or canvas reaches the team, and
-a green unit suite is not sufficient to ship a prompt change.
+Each run costs real model calls, so neither is part of the suite. Both stop before the next
+script once the figures the room reports for the run so far reach `--budget-usd`, or
+`GOLDEN_BUDGET_USD`, or US$ 20: the script in flight is finished and judged, the ones left are
+named on stderr, and the exit is 3 unless the gate already failed, which keeps its 1 or 2.
+`--rejudge` counts its judge calls against the same budget. A call whose rung the room's price
+table has never seen carries no figure; the budget counts it at the dearest table price for each
+kind of token and the run says how many, so a model change cannot slip under the ceiling. Reading
+that table makes the back-translation runner need a `DATABASE_URL` for the settings to load, as
+the golden runner already did. Each script's closing line says what it cost, and the run ends
+with the total by role. The back-translation run is the gate on any change to the two
+back-translation prompts. The golden run is the gate on the release, not only on CI:
+`docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions must pass before anything
+touching prompts, turn loop, model or canvas reaches the team, and a green unit suite is not
+sufficient to ship a prompt change.
 
 ## The canon
 
@@ -74,11 +85,14 @@ Marcia's canon — the Meaning Maps, Meaning Coordinates, Compilation Logs and e
 aliases list under `app/services/internalization_room/canon/vendor/` — moves only through
 `scripts/sync_internalization_canon.py --sync`, and only to a commit on her compiler's main
 line; the sync refuses anything else and writes `VENDOR_PIN` and `VENDOR_MANIFEST.json`
-beside the copy. Never edit vendored files, the pin or the record by hand: `--check` holds
-the copy to the record, and to a clone of the compiler at the pin where
-`TRIPOD_COMPILER_REPO` names one, and `scripts/smoke_internalization_canon.py` fails on
-what the room could not serve. `canon-sync.yml` runs the sync twice a week and opens a
-pull request for review when there is new canon; it never merges.
+beside the copy. It keeps the canon it replaces, with the element labels, under
+`canon/kept/<pin>/`: a session reads the canon it opened with until its passage is approved,
+so a kept tree may be dropped only once no open session names its pin. Never edit vendored
+files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
+of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
+`scripts/smoke_internalization_canon.py` fails on what the room could not serve.
+`canon-sync.yml` runs the sync twice a week and opens a pull request for review when there
+is new canon; it never merges.
 
 `pin_committed` in our `VENDOR_PIN` is the commit's UTC date, because the sync reads the
 compiler through GitHub's API, which reports the committer's time in UTC and drops the
@@ -114,7 +128,7 @@ gcloud run services describe tripod-backend-staging --region us-central1 --forma
 
 ## Where the rest is
 
-- [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at the pin in [`DOCTRINE_PIN`](docs/doctrine/DOCTRINE_PIN) and binding on every change here. Read it before touching a prompt, the turn loop or the model seam; a change to one of her artifacts needs a ruling in [`rulings/`](docs/doctrine/rulings/).
+- [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at her freeze, under the pin in [`FREEZE_PIN`](docs/doctrine/FREEZE_PIN) and binding on every change here. Read it before touching a prompt, the turn loop or the model seam; a change to one of her artifacts needs a ruling in [`rulings/`](docs/doctrine/rulings/).
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. Use its terms in code, tests and commits.
 - [`docs/adr/`](docs/adr/) — one hard-to-reverse decision each. Conventions and runbooks: [local development](docs/local-development.md), [database](docs/database.md), [API conventions](docs/api-conventions.md), [code style](docs/code-style.md), [CI](docs/ci.md), [buckets](docs/buckets.md), [the divine name, spoken](docs/divine-name-speakable-form.md), and the pinned [Sound Necklace snapshot](docs/sound_necklace_interview_package.md).
 - [`RUNNING-LOCALLY.md`](RUNNING-LOCALLY.md) — the composed API on its own port. [`http/`](http/) — request examples.

@@ -29,6 +29,7 @@ from app.services.internalization_room.back_translation import (
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
+from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -402,6 +403,7 @@ async def _minted(
         language=language,
         comprehension={},
         earlier_passages=stamp,
+        canon_pin=deployed_pin(),
     )
     db.add(session)
     await db.flush()
@@ -842,7 +844,10 @@ def session_is_done(session: IRSession) -> bool:
     to say — the Guide's send-off and a rehearsal take that was kept — and until it lands the
     floor and the practice reading close the session between them.
     """
-    return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(session)
+    with reading_the_canon_of(session.canon_pin):
+        return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(
+            session
+        )
 
 
 async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:

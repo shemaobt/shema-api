@@ -9,31 +9,25 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import TranscriptionDefect
 from app.core.stage_clock import count, stage, stopwatch
-from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
+from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession
 from app.models.internalization_room import CoverageFrame
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
-    CorrectionAhead,
-    CorrectionToVerify,
     ReadAhead,
     analyse_telling_back,
-    correction_to_verify,
-    findings_after_correction,
     rehearsed_parts,
     untold_parts,
-    verify_correction,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.segments import (
     final_segments,
     first_untold,
-    retired_segments,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -77,16 +71,17 @@ async def settle_coverage(
                     session = await get_session(db, session_id)
                 coverage_state = session.coverage_state or {}
                 classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
-                updated = await classify_coverage(
-                    coverage_state=coverage_state,
-                    team_utterance=team_utterance,
-                    guide_response=guide_response,
-                    classifier_prompt=classifier_prompt,
-                    pericope_num=pericope_num,
-                    session_language=LANGUAGE_NAMES[session.language],
-                )
-                async with AsyncSessionLocal() as db:
-                    settled = await apply_coverage(db, session_id, updated)
+                with reading_the_canon_of(session.canon_pin):
+                    updated = await classify_coverage(
+                        coverage_state=coverage_state,
+                        team_utterance=team_utterance,
+                        guide_response=guide_response,
+                        classifier_prompt=classifier_prompt,
+                        pericope_num=pericope_num,
+                        session_language=LANGUAGE_NAMES[session.language],
+                    )
+                    async with AsyncSessionLocal() as db:
+                        settled = await apply_coverage(db, session_id, updated)
             settled_frame = CoverageFrame(
                 turn_id=turn_id, status="settled", coverage=coverage_view(settled)
             )
@@ -145,16 +140,8 @@ async def read_ahead(*, session_id: str) -> None:
                 current_parts(takes), rehearsed_parts(final)
             ):
                 return
-            retired = await retired_segments(db, session_id)
-            correction = correction_to_verify(state, told, retired)
-            running: asyncio.Task[BackTranslationState | None]
             with counted_for(session_id):
-                if correction is not None:
-                    running = asyncio.create_task(
-                        _verify_and_keep(db, session, state, told, retired, takes, correction)
-                    )
-                else:
-                    running = asyncio.create_task(_read_and_keep(db, session, state, told))
+                running = asyncio.create_task(_read_and_keep(db, session, state, told))
                 _reading[session_id] = (key, running)
                 try:
                     await asyncio.wait([running])
@@ -169,16 +156,17 @@ async def _read_and_keep(
     db: AsyncSession, session: IRSession, state: BackTranslationState, told: list[IRSegment]
 ) -> BackTranslationState | None:
     try:
-        read = await analyse_telling_back(
-            segments=told,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            settings=get_settings(),
-            session_id=session.id,
-        )
+        with reading_the_canon_of(session.canon_pin):
+            read = await analyse_telling_back(
+                segments=told,
+                scope=state.scope or session.pericope,
+                pericope_num=session.pericope,
+                analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+                session_language=LANGUAGE_NAMES[session.language],
+                language_code=session.language,
+                settings=get_settings(),
+                session_id=session.id,
+            )
         if read is None:
             return None
         ahead = ReadAhead(segment_ids=[segment.id for segment in told], findings=read.findings)
@@ -186,54 +174,6 @@ async def _read_and_keep(
         kept = back_translation_of(session)
         kept.read_ahead = ahead
         await save_back_translation(db, session, kept)
-        return kept
-    except Exception:
-        logger.exception("Reading ahead failed for session %s", session.id)
-        return None
-
-
-async def _verify_and_keep(
-    db: AsyncSession,
-    session: IRSession,
-    state: BackTranslationState,
-    told: list[IRSegment],
-    retired: list[IRSegment],
-    takes: list[IRTake],
-    correction: CorrectionToVerify,
-) -> BackTranslationState | None:
-    try:
-        checked = await verify_correction(
-            findings=correction.findings,
-            earlier=correction.earlier,
-            corrected=correction.corrected,
-            chunk=correction.chunk,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
-            session_language=LANGUAGE_NAMES[session.language],
-            addresses=addresses_for(
-                told,
-                current_parts(takes),
-                scene_titles(session),
-                session.language,
-                superseded=retired,
-            ),
-            settings=get_settings(),
-            session_id=session.id,
-        )
-        if checked is None:
-            return None
-        ahead = CorrectionAhead(
-            segment_ids=[segment.id for segment in told],
-            resolved=checked.resolved,
-            findings=checked.findings,
-        )
-        await db.refresh(session)
-        kept = back_translation_of(session)
-        kept.correction_ahead = ahead
-        await save_back_translation(db, session, kept)
-        if not findings_after_correction(state.findings, checked, correction.corrected):
-            return await _read_and_keep(db, session, kept, told) or kept
         return kept
     except Exception:
         logger.exception("Reading ahead failed for session %s", session.id)
@@ -251,7 +191,6 @@ async def _joined_ahead(
     kept = None if running[1].cancelled() else running[1].result()
     if kept is not None:
         state.read_ahead = kept.read_ahead
-        state.correction_ahead = kept.correction_ahead
 
 
 async def the_reading_ahead(
@@ -259,10 +198,3 @@ async def the_reading_ahead(
 ) -> ReadAhead | None:
     await _joined_ahead(session_id, state, told)
     return state.read_ahead_of(told)
-
-
-async def the_correction_ahead(
-    session_id: str, state: BackTranslationState, told: list[IRSegment]
-) -> CorrectionAhead | None:
-    await _joined_ahead(session_id, state, told)
-    return state.correction_ahead_of(told)

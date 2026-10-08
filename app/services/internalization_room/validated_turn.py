@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -15,7 +14,6 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
-    SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
     TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
@@ -121,21 +119,23 @@ def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     )
 
 
-def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
-    """The room's own gate rejecting spoken text: the condition and a number, never the words.
+def _regenerated(raw: str, session_id: str, attempt: int) -> None:
+    """A Validator that read the draft and asked for another leaves its whole reply behind.
 
-    The rejected text is the Guide's draft on a `pass` verdict, or the Validator's own
-    ``corrected_response`` on a `correct` one — either way ``detail`` may never be that text
-    itself, because both can echo the team's own turn back at them, which is exactly what
-    `test_a_failed_turn_logs_its_cause_and_never_what_the_team_said` forbids of the log.
+    Not a refused reply: the verdict was readable, and what it decided was a redraft. The
+    `condition` field is kept so everything that already counts a Validator trace by it still
+    counts this one.
     """
     logger.warning(
-        "Guide draft rejected (%s) for session %s, attempt %s: %s",
-        condition,
+        "Validator regenerate verdict for session %s, attempt %s: %s",
         session_id,
         attempt,
-        detail,
-        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
+        raw,
+        extra={
+            "session_id": session_id,
+            "attempt": attempt,
+            "condition": "verdict is 'regenerate'",
+        },
     )
 
 
@@ -146,14 +146,8 @@ def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
     conversation, not a heading inside the question. The instructions that ride per turn —
     the opening's note — stay in that last message, which is where an
     instruction is read as this turn's and not as something said earlier.
-
-    A turn with neither — the back-translation verdict — asks for its speech in the session's
-    own language rather than sending nothing: the API refuses an empty user message, and that
-    400 would reach the team as a fail-safe line.
     """
-    if utterance:
-        return utterance
-    return opening_instruction or SPEAK_THIS_TURN
+    return utterance or opening_instruction
 
 
 async def _draft(
@@ -167,7 +161,8 @@ async def _draft(
     """Ask the Speaker for this turn, with the rewrite note behind it when there is one."""
     user_content = turn
     if redraft_note:
-        user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
+        conversation = [*conversation, Turn(role="user", text=turn)]
+        user_content = redraft_note
     draft: str = await room_agent().turn.call_agent(
         role="guide",
         system_prompt=guide_prompt,
@@ -266,6 +261,7 @@ async def _voiced_after_validation(
     telling_back: str = "",
     prepared_pericope: str | None = None,
     earlier_passages: str = "",
+    with_history: bool = True,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -300,7 +296,7 @@ async def _voiced_after_validation(
     """
     started = time.monotonic()
     spend = open_ledger()
-    conversation = _conversation_turns(messages)
+    conversation = _conversation_turns(messages) if with_history else []
     redraft_note = ""
     issues: list[dict[str, Any]] = []
     warmed_connection = False
@@ -319,6 +315,9 @@ async def _voiced_after_validation(
         )
         if not ask_for_movements:
             movements = []
+        if not draft:
+            verdict: dict[str, Any] = {}
+            break
 
         reported = her_block(TEAM_REPORTED_HEADING, telling_back)
         earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
@@ -362,16 +361,7 @@ async def _voiced_after_validation(
             speech = str(verdict["corrected_response"]).strip()
             movements = []
         else:
-            _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
-
-        if speech and bool(
-            await asyncio.to_thread(room_agent().strays_from, speech, language_code)
-        ):
-            issues = [*issues, {"problem": "off_bridge_language"}]
-            _draft_rejected(
-                "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
-            )
-            speech = ""
+            _regenerated(raw_verdict, session_id, attempt + 1)
 
         if speech:
             return _timed(

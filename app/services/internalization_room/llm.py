@@ -208,7 +208,7 @@ async def call_agent(
     ]
     messages.append({"role": "user", "content": user_content})
     client = _client(settings)
-    refused_above = False
+    refused: str | None = None
     for model in _from_the_settled_rung(rungs):
         step_down = False
         for attempt in (1, 2):
@@ -264,21 +264,22 @@ async def call_agent(
             rung_number=rungs.index(model) + 1,
             rungs=rungs,
             effort=effort,
+            refused=refused,
             latency_ms=round((time.monotonic() - started) * 1000),
         )
         _report_unfinished(response, max_output_tokens)
-        if _refused_outright(response) and model != rungs[-1] and not refused_above:
+        if _refused_outright(response) and model != rungs[-1] and refused is None:
             logger.warning(
                 "%s refused this request outright; the room asks %s instead",
                 model,
                 rungs[rungs.index(model) + 1],
                 extra={"rung": model, "next_rung": rungs[rungs.index(model) + 1]},
             )
-            refused_above = True
+            refused = model
             continue
-        if not refused_above:
+        if refused is None:
             _SETTLED[rungs[0]] = model
-        spoken = _spoken_text(response)
+        spoken = "" if _refused_outright(response) else _spoken_text(response)
         if fails_on_truncation and response.stop_reason == "max_tokens":
             raise TruncatedReply(spoken)
         return spoken
@@ -371,7 +372,7 @@ def _timed_out(model: str, *, role: str, started: float, bound_s: float) -> Upst
 
 
 def _refused_outright(response: Message) -> bool:
-    """A reply that is a refusal with nothing in it — not an answer, and not this key's fault.
+    """A reply that stopped as a refusal, whatever it wrote first — not this key's fault.
 
     Found on 2026-09-16, on the back-translation correction check: the first rung answered
     ``stop_reason: refusal`` with zero output tokens, five times in a row, in under two seconds
@@ -382,9 +383,7 @@ def _refused_outright(response: Message) -> bool:
     rung, not about the key, so the next rung is asked and nothing is settled on: the rung
     that refused stays first for the next request, which it will most likely answer.
     """
-    return response.stop_reason == "refusal" and not any(
-        block.type == "text" and block.text for block in response.content
-    )
+    return response.stop_reason == "refusal"
 
 
 def _from_the_settled_rung(rungs: list[str]) -> list[str]:
@@ -417,6 +416,8 @@ _VOICED_ROLES = frozenset({"guide", "validator"})
 
 def _prefix_cache_ttl(role: str, settings: Settings) -> Literal["1h"] | None:
     """The cache TTL a role's prefix earns, or nothing for the API's own 5-minute default."""
+    if role == "judge":
+        return "1h"
     if role not in _VOICED_ROLES:
         return None
     return settings.internalization_room_voice_cache_ttl or None
@@ -459,6 +460,7 @@ def _report_spend(
     rung_number: int,
     rungs: list[str],
     effort: Effort | None,
+    refused: str | None,
     latency_ms: int,
 ) -> None:
     """What this call cost, which rung answered it, and how long the model took.
@@ -467,8 +469,8 @@ def _report_spend(
     that silently stops matching costs the map's full price on every turn and changes nothing
     else that anyone would notice, so a run where this number is flat at zero is the symptom.
     Carrying the rung beside it is what makes a session's spend legible when the ladder moved
-    partway through it, and a rung below the first says in the line itself why it fell — the
-    only thing that steps the room down is a key that may not use the rung above. In the line
+    partway through it, and a rung below the first says in the line itself why it fell — a key
+    that may not use the rung above, or that rung turning this one request away. In the line
     and not only in its fields, because for the analyst and the correction check this is the
     only record there is: they run outside any ledger, so no turn or session summary carries
     the reason for them, and the warning the step-down writes fires once per process and
@@ -479,7 +481,7 @@ def _report_spend(
     """
     usage = response.usage
     skipped = rungs[: rung_number - 1]
-    fell_because = _fell_because(skipped)
+    fell_because = _fell_because(skipped, refused)
     cache_read = _counted(usage.cache_read_input_tokens)
     cache_write = _counted(usage.cache_creation_input_tokens)
     lifetimes = usage.cache_creation
@@ -500,13 +502,13 @@ def _report_spend(
         cache_read_tokens=cache_read,
     )
     logger.info(
-        "[llm-usage] %s answered on %s (rung %s of %s) at %s effort in %s ms, US$ %s: "
+        "[llm-usage] %s answered on %s (rung %s of %s)%s in %s ms, US$ %s: "
         "in=%s cache_read=%s cache_write=%s cache_write_5m=%s cache_write_1h=%s out=%s%s",
         role,
         model,
         rung_number,
         len(rungs),
-        effort,
+        f" at {effort} effort" if effort else "",
         latency_ms,
         cost,
         usage.input_tokens,
@@ -553,11 +555,15 @@ def _counted(tokens: int | None) -> int:
     return tokens or 0
 
 
-def _fell_because(skipped: list[str]) -> str:
+def _fell_because(skipped: list[str], refused: str | None) -> str:
     """Why the answer came from below the top of the ladder, or nothing when it did not."""
-    if not skipped:
-        return ""
-    return f"the key cannot use {', '.join(skipped)}"
+    unusable = [rung for rung in skipped if rung != refused]
+    reasons = []
+    if unusable:
+        reasons.append(f"the key cannot use {', '.join(unusable)}")
+    if refused in skipped:
+        reasons.append(f"{refused} refused the request")
+    return "; ".join(reasons)
 
 
 def _report_unfinished(response: Message, max_output_tokens: int) -> None:

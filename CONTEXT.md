@@ -29,10 +29,6 @@ _Avoid_: checker, reviewer, classifier, Analista
 The entity that checks the Guide's or the Speaker's draft speech before audio synthesis and can refuse it, triggering the safety speech.
 _Avoid_: analyst (it judges content, not speech), Validador
 
-**Correction check** (`verify_correction`):
-The call that checks whether a correction answered the finding, counting the elements the stretch carried, those still told, and those the new telling brought back. Resolved and broken are independent answers.
-_Avoid_: analyst (it reads a whole scope; this answers one finding), validator (it judges speech, not content), Verificador de correção
-
 **Team** (`project`):
 The group of translators that owns the work. In the schema the column is called `project_id`; the Desk and the backlog say team.
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
@@ -135,6 +131,14 @@ _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Soun
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
 
+**Book material**:
+What the Panorama voice reads as its standard of truth for one book: the digest of every published passage in story order, then the **Preservation notes**. Built from the vendored canon at its pin, never written by hand.
+_Avoid_: book context, overview prompt, summary
+
+**Preservation notes**:
+The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)»; Ruth has 99 at the pin 5b5c8d2.
+_Avoid_: do_not_decide (the canon's field name), spoilers, constraints
+
 **Address**:
 Where a stretch sits: the take it belongs to, and its start and end in milliseconds inside
 that one file.
@@ -154,8 +158,8 @@ What an element of the Meaning Map is. Six kinds sit in a scene of the passage �
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
-_Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
+The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it; the Guide's ledger block stopped carrying it in ENG-1358, as her live ledger never prints it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+_Avoid_: current scene (the retired heading of the ledger's scene line, which the ledger no longer prints; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):
 The scene a rehearsal invitation is about: the first scene of the passage still owed a rehearsal on the turn the Guide invites, kept with the turn's record and credited when the team reports the rehearsal done. Never the **Scene pointer**, which has not settled when the invitation is spoken.
@@ -184,11 +188,11 @@ The field of a missing finding that says whether the absent content sits before,
 _Avoid_: position, offset, Onde
 
 **Swap** (`current_findings`; *relação trocada*, in Marcia's words):
-An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again, one **Correction check** answering both — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
+An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
 _Avoid_: pair (it says there are two things), swapped relation (Marcia's phrase for the mistake, not for what the room carries), troca
 
 **Priority**:
-The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, a finding the **Correction check** put at the front keeps the front for the round that follows, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
+The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
 _Avoid_: severity, ranking, sorting (the stored list keeps the analyst's order), Prioridade
 
 **Filled silence** (`fills_silence`):
@@ -222,7 +226,7 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
+The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
 **Heard the rehearsal** (`unheard_parts`):
