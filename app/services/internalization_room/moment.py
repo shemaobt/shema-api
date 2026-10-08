@@ -203,8 +203,12 @@ def moment_step(
         return None
     after = before
     by: list[str] = []
+    earlier = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
-        if line.part is not None and not 1 <= line.part <= parts:
+        outside = line.part is not None and not 1 <= line.part <= parts
+        closing_after_another = line.cause == "part_closing" and earlier
+        earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
+        if outside or closing_after_another:
             continue
         moved = _moved(after, line)
         if moved != after:

@@ -258,3 +258,21 @@ def test_an_ordinal_inside_her_whole_line_names_the_scene(
     voiced: str, heard: dict[str, Any]
 ) -> None:
     assert _after(FAMILIARIZATION, voiced) == heard, f"a voz nomeou a cena por ordinal: {voiced!r}"
+
+
+@pytest.mark.parametrize(
+    "earlier",
+    [
+        "Vamos pra Internalização da cena 7.",
+        "Estamos na Familiarização.",
+        "Agora vou dizer tudo o que deve entrar no ensaio de vocês.",
+    ],
+    ids=["a scene the passage lacks", "where we are", "fence"],
+)
+def test_her_scene_closing_after_another_moment_line_in_the_reply_moves_nothing(
+    earlier: str,
+) -> None:
+    voiced = f"{earlier} {SCENE_ONE} {CLOSING}"
+    assert _after(FAMILIARIZATION_CLOSED, voiced) == FAMILIARIZATION_CLOSED, (
+        f"o fechamento abriu a cena 1 depois de outra linha de momento: {earlier!r}"
+    )
