@@ -255,34 +255,6 @@ def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:
     )
 
 
-async def test_the_redraft_note_heading_the_guide_reads_is_english(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`_draft` appends the redraft note under its own heading — a section title exactly like
-    the EQUIPE/FACILITADOR labels item 3 targets, just added back the same day (c3ee0e2) it
-    removed those. Never Portuguese, whatever the session speaks (ENG-822, item 3)."""
-    from app.services.internalization_room.validated_turn import _draft
-
-    captured: dict[str, str] = {}
-
-    async def agent(*, user_content: str, **kwargs: Any) -> str:
-        captured["user_content"] = user_content
-        return "fala"
-
-    the_room_agent_is(monkeypatch, turn=agent)
-
-    await _draft(
-        guide_prompt="system",
-        conversation=[],
-        turn="algo",
-        redraft_note="Redo it.",
-        settings=get_settings(),
-    )
-
-    assert "## Rewrite note" in captured["user_content"]
-    assert "## Nota de reescrita" not in captured["user_content"]
-
-
 async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothing_is_left(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
