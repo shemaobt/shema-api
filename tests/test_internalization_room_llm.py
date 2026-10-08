@@ -391,6 +391,34 @@ async def test_a_second_refusal_that_wrote_some_words_stands_with_none_of_them(
     )
 
 
+@pytest.mark.parametrize("stop_reason", ["end_turn", "max_tokens"])
+async def test_a_reply_that_did_not_stop_as_a_refusal_is_asked_once_and_kept_as_it_is(
+    monkeypatch: pytest.MonkeyPatch, stop_reason: str
+) -> None:
+    class _AnswersOnTheFirstRung:
+        def __init__(self) -> None:
+            self.asked: list[str] = []
+
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            self.asked.append(kwargs["model"])
+            return _reply("Quero que a gente", stop_reason=stop_reason, output=6)
+
+    messages = _AnswersOnTheFirstRung()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1"], (
+        "uma resposta que não parou em recusa foi perguntada de novo no modelo seguinte"
+    )
+    assert text == "Quero que a gente", "uma resposta que não foi recusa perdeu as palavras"
+    assert llm._SETTLED == {"claude-fable-5-1": "claude-fable-5-1"}
+
+
 async def test_a_refusal_on_the_last_rung_has_no_next_model_to_be_rerun_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
