@@ -126,7 +126,7 @@ services:
     # the path CLAUDE.md §7 documents, so fixing only the image would leave the boot failure
     # standing on the way almost everybody actually starts the backend.
     command: >
-      sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade heads && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade heads && mkdir -p /app/.worktrees && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude /app/.worktrees"
 
   bhsa-fetcher:
     build:
