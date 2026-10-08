@@ -236,7 +236,8 @@ async def _capture(
                 f"frase {number} supersedes a telling, and no stretch stands at "
                 f"{frase.clipKey} {frase.coversFrom}-{frase.coversTo}s"
             )
-    if not spoken_words_only(frase.text):
+    words = spoken_words_only(frase.text)
+    if not words:
         return False
     await room.capture_and_note_a_hard_stretch(
         db,
@@ -245,7 +246,7 @@ async def _capture(
         starts_ms=starts_ms,
         ends_ms=ends_ms,
         bridge_take_id=None,
-        transcript=frase.text,
+        transcript=words,
         pass_number=2 if retold is not None else 1,
         replaces=retold,
         state=state,

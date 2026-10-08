@@ -650,3 +650,31 @@ async def test_a_wordless_round_is_refused_even_when_the_session_already_has_tol
     assert refused.json()["code"] == "WORDLESS_TELLING"
     assert [stretch.id for stretch in await _stretches(db_session, session_id)] == standing
     assert len(analyst.answered) == readings, "o analista leu uma rodada que não trouxe palavras"
+
+
+async def test_a_frase_with_an_annotation_among_its_words_is_stored_and_read_without_it(
+    client, analyst, db_session, monkeypatch
+) -> None:
+    seen: list[str] = []
+
+    async def the_analyst_that_keeps_what_it_is_handed(
+        *, system_prompt: str, user_content: str, **rest: Any
+    ) -> str:
+        seen.append(f"{system_prompt}\n{user_content}")
+        return await analyst(system_prompt=system_prompt, user_content=user_content, **rest)
+
+    the_room_agent_is(monkeypatch, analyst=the_analyst_that_keeps_what_it_is_handed)
+    session_id = await _a_session(client)
+    annotated = {
+        **CAUSA_A_MAIS[2],
+        "text": "[silêncio] Noemi disse às duas noras…",
+    }
+
+    await _a_round(client, session_id, [annotated])
+
+    told = room.told_back(await room.final_segments(db_session, session_id))
+    assert [stretch.transcript for stretch in told] == ["Noemi disse às duas noras…"], (
+        "o trecho guardava a frase crua, com o colchete do transcritor como se fosse fala da equipe"
+    )
+    assert "1. Noemi disse às duas noras…" in seen[0]
+    assert "[silêncio]" not in seen[0], "o analista recebia a anotação como palavras da equipe"
