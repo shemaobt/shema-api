@@ -986,3 +986,69 @@ def test_boaz_never_sleeps_nor_wakes_at_the_threshing_floor_night() -> None:
         "Ela, com o sono leve, se deitou.",
     ):
         assert _turn(guide=kept, expect=asleep) == [], kept
+
+
+#: Her FIA lines F1, F3 and F4, approved on 2026-09-24, `src/turn/fixedLines.ts`.
+F1 = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira."
+F3 = (
+    "O que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
+    "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização da "
+    "primeira cena."
+)
+F3_EN = (
+    "What caught your attention in this passage? Talk it over among yourselves. If you have any "
+    "questions, ask me. When you are ready, tell me and we will move to Internalization of the "
+    "first scene."
+)
+F4 = (
+    "Se tiver alguma dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra "
+    "Internalização da primeira cena."
+)
+
+
+def test_the_whole_passage_asked_for_mid_session_is_told_without_f1_and_without_f3() -> None:
+    mid_session = {"no_familiarization_lines": True}
+
+    def said(line: str) -> list[str]:
+        return [
+            "the whole passage asked for mid-session was told with the Familiarization's "
+            f"{line} — D7 (a): without F1 and without F3, the moment unchanged"
+        ]
+
+    assert _turn(guide=f"(fixture) a passagem inteira. {CLOSING_TAIL}", expect=mid_session) == []
+    assert _turn(guide=f"(fixture). {F4}", expect=mid_session) == [], "o F4 sozinho não é F1 nem F3"
+    assert _turn(guide=f"{F1} (fixture)", expect=mid_session) == said("first words (F1)")
+    broken = F3.replace("? ", "?\n")
+    assert _turn(guide=f"(fixture).\n{broken} (fixture)", expect=mid_session) == said(
+        "closing (F3)"
+    )
+    assert _turn(guide=f"(fixture). {F3_EN}", expect=mid_session) == said("closing (F3)")
+
+
+def test_a_scene_of_todays_passage_is_a_cena_never_a_parte() -> None:
+    cena = {"scene_word_cena": True}
+    for spoken, words in (
+        ("Vamos abrir a primeira parte.", "primeira parte"),
+        ("Isso fica pra próxima parte.", "próxima parte"),
+        ("Nessa parte, a família sai de Belém.", "Nessa parte"),
+        ("Mas isso já é a terceira parte.", "terceira parte"),
+        ("E Rute ficou de fora dessa parte, do jeito que a história conta.", "dessa parte"),
+        ("Vamos pra primeira parte da passagem.", "primeira parte"),
+    ):
+        assert _turn(guide=spoken, expect=cena) == [
+            f'the voice called a scene of today\'s passage "parte" ("{words}") — D1 (c): "cena"'
+        ], spoken
+    for kept in (
+        "Vamos pra Internalização da cena 1.",
+        "Quando trabalharmos essa parte, vocês vão ver.",
+        "O que vem depois, a história ainda vai contar. Quando a gente trabalhar essa parte, a "
+        "gente vive isso junto.",
+        "Lembrem: na última parte…",
+        "O resto fica de fora, faz parte de outra história.",
+        "Da parte dela, nada foi dito.",
+        "No Ensaio Final vocês regravam uma parte.",
+        "Essa é a primeira parte do livro de Rute.",
+        "Essa cena é a primeira parte da noite, e ela é só movimento.",
+        "Nessa parte da história ninguém fala.",
+    ):
+        assert _turn(guide=kept, expect=cena) == [], kept

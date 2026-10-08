@@ -510,6 +510,35 @@ def _boaz_sleeps_or_wakes(text: str) -> str | None:
     return None
 
 
+_F1 = (
+    "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira.",
+    "Let's begin with Familiarization. First I will tell you the whole passage.",
+)
+_F3 = (
+    "O que chamou a atenção de vocês nessa passagem? Conversem entre vocês. Se tiver alguma "
+    "dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra Internalização da "
+    "primeira cena.",
+    "What caught your attention in this passage? Talk it over among yourselves. If you have any "
+    "questions, ask me. When you are ready, tell me and we will move to Internalization of the "
+    "first scene.",
+)
+_A_LATER_PART_OF_THE_BOOK = _her(r"quando (?:trabalharmos|a gente trabalhar) essa parte")
+_A_SCENE_CALLED_PARTE = _her(
+    r"(?<!\p{L})(?:primeira|segunda|terceira|quarta|quinta|sexta|sétima|oitava|próxima|essa"
+    r"|nessa|dessa|esta|nesta|desta) parte(?!\p{L})"
+    r"(?! d[oa] (?:livro|noite|dia|manhã|história)(?!\p{L}))"
+)
+
+
+def _familiarization_line_said(text: str) -> str | None:
+    folded = _fold(text)
+    if any(line in folded for line in _F1):
+        return "first words (F1)"
+    if any(line in folded for line in _F3):
+        return "closing (F3)"
+    return None
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -623,6 +652,17 @@ def mechanical_checks(
         fails.append(
             "the team's reading was presented as the passage's own (the story confirms it, or "
             f'gives a sign of it): "{confirmed}"'
+        )
+    if expect.get("no_familiarization_lines") and (line := _familiarization_line_said(guide)):
+        fails.append(
+            f"the whole passage asked for mid-session was told with the Familiarization's {line} — "
+            "D7 (a): without F1 and without F3, the moment unchanged"
+        )
+    if expect.get("scene_word_cena") and (
+        parte := _A_SCENE_CALLED_PARTE.search(_A_LATER_PART_OF_THE_BOOK.sub("", _fold(guide)))
+    ):
+        fails.append(
+            f'the voice called a scene of today\'s passage "parte" ("{parte[0]}") — D1 (c): "cena"'
         )
     if expect.get("boaz_never_asleep") and (asleep := _boaz_sleeps_or_wakes(guide)):
         fails.append(
