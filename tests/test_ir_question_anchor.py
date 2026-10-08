@@ -33,10 +33,9 @@ from tests.baker import (
     make_user,
 )
 
-#: A fully translated passage — pt, en and es all carry real text for every bead — because
-#: cases 1 and 2 assert the card in all three languages. `P03`, which the neighbouring test
-#: files use, is one of the ten the catalogue has only in English (see
-#: `test_ir_question_completeness.py`), so it cannot carry that assertion.
+#: A fully translated passage — pt and en both carry real text for every bead — because
+#: cases 1 and 2 assert the card in both languages. Every passage of Ruth carries both in the
+#: catalogue today, so `P01` is the first that can carry that assertion, not the only one.
 PERICOPE = "P01"
 
 DEVICE = "tablet-da-equipe-1"

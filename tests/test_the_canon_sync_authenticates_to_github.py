@@ -2,8 +2,9 @@
 
 `api.github.com/rate_limit` answers unauthenticated at 60 requests/hour, per egress IP —
 verified against the live API on 2026-09-10, and shared across every Actions runner's
-outbound address, not per-repository. A `canon` job running unauthenticated would fail on
-crowded days for a reason that has nothing to do with the vendored canon.
+outbound address, not per-repository. The `--sync` step of the `Canon sync` workflow, the one
+that reads the compiler through that API, would fail on crowded days for a reason that has
+nothing to do with the vendored canon if it ran unauthenticated.
 """
 
 from __future__ import annotations
