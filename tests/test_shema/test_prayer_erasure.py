@@ -116,22 +116,20 @@ async def test_withdrawing_removes_the_request_only_from_the_pulses_with_the_sam
 ) -> None:
     """Two Pulses shared the request in the words on the record — one of them with a stray space
     and line break at the ends — and both lose it, with the authorization it gave. The Pulse that
-    shared an earlier wording keeps it as the record of that version, and the Pulse that kept its
-    request in coordination never shared anything; both are left as they arrived."""
+    shared an earlier wording keeps it as the record of that version, and the two that kept their
+    request in coordination, in the same words or not, never shared anything; all three are left
+    as they arrived."""
     await _pulse(client, headers, prayerRequest=WITHDRAWN, prayerVisibility="rede")
     await _pulse(client, headers, prayerRequest=f"  {WITHDRAWN}\n", prayerVisibility="rede")
     await _pulse(client, headers, prayerRequest=EARLIER, prayerVisibility="rede")
+    await _pulse(client, headers, prayerRequest=WITHDRAWN, prayerVisibility="coordenacao")
     await _pulse(client, headers, prayerRequest=KEPT, prayerVisibility="coordenacao")
 
     await _withdraw(client, headers)
 
     rows = await _by_request(db_session)
     erased = [row for row in rows if row.prayer_request_erased_at is not None]
-    kept = {
-        archived_answers(row)["prayerRequest"]: row
-        for row in rows
-        if row.prayer_request_erased_at is None
-    }
+    kept = [row for row in rows if row.prayer_request_erased_at is None]
     assert len(erased) == 2
     for row in erased:
         assert WITHDRAWN not in row.archived_payload
@@ -139,10 +137,11 @@ async def test_withdrawing_removes_the_request_only_from_the_pulses_with_the_sam
         assert "prayerVisibility" not in archived_answers(row)
         assert archived_answers(row)["submittedBy"] == "Kuaray"
 
-    assert set(kept) == {EARLIER, KEPT}
-    assert archived_answers(kept[EARLIER])["prayerVisibility"] == "rede"
-    assert archived_answers(kept[KEPT])["prayerVisibility"] == "coordenacao"
-    assert all(row.prayer_request_erased_by is None for row in kept.values())
+    assert sorted(
+        (archived_answers(row)["prayerRequest"], archived_answers(row)["prayerVisibility"])
+        for row in kept
+    ) == sorted([(EARLIER, "rede"), (WITHDRAWN, "coordenacao"), (KEPT, "coordenacao")])
+    assert all(row.prayer_request_erased_by is None for row in kept)
 
 
 async def test_the_wall_still_loses_the_request_on_withdrawal(
