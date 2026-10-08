@@ -279,10 +279,10 @@ async def test_the_wheel_offers_no_passage_the_session_would_refuse(
 ) -> None:
     """A team choosing by ear must be able to enter every spoke it hears.
 
-    The only filter was a spoken line existing, so the wheel advertised all fourteen while
-    `require_walkable` refused eight of them the moment a finger landed. The refusal reached
-    the team as a broken room, and a spoke that cannot be entered is worse than one that was
-    never offered.
+    The only filter was a spoken line existing, so the wheel advertised every passage while
+    `require_walkable` refused those whose preservation layer nobody had written the moment a
+    finger landed. The refusal reached the team as a broken room, and a spoke that cannot be
+    entered is worse than one that was never offered.
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
@@ -310,7 +310,8 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
 
     A filter that overshoots empties the wheel, and the app does not read an empty wheel as a
     canon that is not ready — it reads it as a book with nothing left in it, halts, and tells
-    the team to fetch a person. Six passages walk today and all six have to survive.
+    the team to fetch a person. All fourteen passages of Ruth walk today and all fourteen have
+    to survive.
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
