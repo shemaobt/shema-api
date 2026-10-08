@@ -21,13 +21,16 @@ from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.sessions import create_session
-from tests.hearing_harness import nothing_settles
+from app.services.internalization_room.turn import speech
+from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import room_client, the_room_speaks
 from tests.text_seam_harness import ScriptedAgent, the_models_answer
 from tests.turn_harness import the_room_agent_is
 
 PANORAMA = "OV-Ruth"
+PASSAGE = "P03"
+PORTUGUESE = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 FLOORS = [("en", "English"), ("pt", "Brazilian Portuguese")]
 
@@ -91,5 +94,32 @@ async def test_a_panorama_turn_on_a_row_stored_in_spanish_is_told_the_rooms_lang
     assert opened.status_code == 200, opened.text
     assert f"**{named}**" in guide.guide_systems[0], (
         "o Guia da panorama de uma sessão guardada em espanhol não era avisado da língua da sala"
+    )
+    assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
+
+
+@pytest.mark.parametrize(("floor", "named"), FLOORS)
+async def test_a_passage_turn_on_a_row_stored_in_spanish_is_told_the_rooms_language(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+    floor: str,
+    named: str,
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    codes = _the_codes_a_turn_was_given(monkeypatch, speech, "run_turn")
+    the_transcriber_hears(monkeypatch, PORTUGUESE, floor, 0.99)
+    session = await _a_row_stored_in_spanish(db_session, PASSAGE)
+
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers={"X-Room-Key": KEY},
+        files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200, answered.text
+    assert f"**{named}**" in guide.guide_systems[0], (
+        "o Guia de uma passagem guardada em espanhol não era avisado da língua da sala"
     )
     assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"

@@ -9,7 +9,7 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.passage_turn import run_turn
 from app.services.internalization_room.validated_turn import TurnOutcome
 
@@ -139,12 +139,13 @@ async def speak_back(
     )
     if handed is None:
         return a_miss(messages, session.language)
+    language = room_language(session.language)
     outcome = await run_turn(
         transcript=handed.spoken_to_the_guide,
         coverage_state=session.coverage_state or {},
         messages=messages,
-        session_language=LANGUAGE_NAMES[session.language],
-        language_code=session.language,
+        session_language=LANGUAGE_NAMES[language],
+        language_code=language,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
         pericope_num=pericope,
