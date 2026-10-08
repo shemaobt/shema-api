@@ -481,11 +481,18 @@ async def revealed_contact(db: AsyncSession, intercessor_id: str) -> str:
     aceitado aparecer no diretório"*. ``network`` is the consent to being held and reached by the
     Pulse; ``directory`` is the consent to being looked up by the people who read the network,
     and reading one contact is looking it up. So a person who only receives the Pulse has their
-    contact shown to nobody, whoever asks. ``directory`` is never held without ``network``,
-    whose withdrawal erases the person, so the narrower gate carries the wider one. The 404 for
-    an unknown id comes first, so the two refusals cannot disagree about whether the row exists.
+    contact shown to nobody, whoever asks. **And ``network`` is still asked**, beside it: it is
+    the consent to being held at all, and nothing in the consent table makes ``directory`` imply
+    it — :func:`record_consent` reads only that the person exists, so a row that came in by any
+    path but :func:`create_person` could hold ``directory`` alone. Both, so the gate does not
+    rest on a convention about who writes the rows. The 404 for an unknown id comes first, so
+    the refusals cannot disagree about whether the row exists.
     """
     person = await _person(db, intercessor_id)
+    if not await with_consent(db, ShemaConsentContext.NETWORK, ids=[intercessor_id]):
+        raise AuthorizationError(
+            "This contact has no standing consent to be held and reached by the network."
+        )
     if not await with_consent(db, ShemaConsentContext.DIRECTORY, ids=[intercessor_id]):
         raise AuthorizationError(
             "This person has not consented to appear in the directory, so their contact is "

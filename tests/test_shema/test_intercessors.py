@@ -151,6 +151,27 @@ async def test_the_withheld_count_is_of_people_in_the_network(
     assert (await client.get(PEOPLE, headers=circle_headers)).json() == listing
 
 
+async def test_a_directory_consent_without_the_network_reveals_nothing(
+    db_session, client, shema_app
+) -> None:
+    """``network`` is the consent to being held at all, and the table does not make ``directory``
+    imply it: a row that came in by another path than the create can hold ``directory`` alone.
+    Its contact is revealed to nobody — the gate asks both, not a convention about the writers."""
+    _user, headers = await as_role(db_session, shema_app, "coordinator")
+    person = ShemaIntercessor(name="Rui Importado", country="BR", contact="rui@example.org")
+    db_session.add(person)
+    await db_session.commit()
+    granted = await client.put(
+        f"{PEOPLE}/{person.id}/consents/directory", headers=headers, json={"basis": "yes"}
+    )
+    assert granted.status_code == 200, granted.text
+
+    res = await client.get(f"{PEOPLE}/{person.id}/contact", headers=headers)
+
+    assert res.status_code == 403, res.text
+    assert "rui@example.org" not in res.text
+
+
 async def test_the_export_gate_is_the_query_and_the_shape_carries_no_contact(
     db_session, client, shema_app
 ) -> None:
