@@ -28,17 +28,26 @@ import argparse
 import asyncio
 import hashlib
 import json
+import subprocess
 import sys
+from contextlib import aclosing
+from datetime import UTC, datetime
 from pathlib import Path
+
+import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.config import get_settings
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.synthesize_facilitator_speech import (
     render_facilitator_speech,
 )
+from app.services.internalization_room.voices import voice_for
+from app.services.platform import tts
 
 MANIFEST = "manifest.json"
+CLIP_HASHES = "clip_hashes.json"
 
 #: Lines the app plays outside a turn: they are not fail-safes and do not live in the prompt,
 #: but they must be in the bundle, because the room says them before it can do anything at all.
@@ -115,8 +124,16 @@ def _clip_path(out: Path, language_code: str, name: str) -> Path:
     return _bundle(out, language_code) / f"{name}.mp3"
 
 
-def fingerprint(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+def _voice_of(language_code: str) -> str:
+    return voice_for(language_code, settings=get_settings())
+
+
+def fingerprint(text: str, *, language_code: str) -> str:
+    """What a rendered line was made from: its words, the voice that said them and the model."""
+    made_of = "\n".join(
+        (text, _voice_of(language_code), get_settings().internalization_room_tts_model)
+    )
+    return hashlib.sha256(made_of.encode("utf-8")).hexdigest()[:16]
 
 
 def read_manifest(out: Path, language_code: str) -> dict[str, str]:
@@ -133,8 +150,10 @@ def drift(out: Path, language_code: str) -> list[str]:
     for name, text in lines.items():
         if name not in recorded:
             complaints.append(f"{language_code}/{name}: never rendered")
-        elif recorded[name] != fingerprint(text):
-            complaints.append(f"{language_code}/{name}: text changed since it was rendered")
+        elif recorded[name] != fingerprint(text, language_code=language_code):
+            complaints.append(
+                f"{language_code}/{name}: text, voice or model changed since it was rendered"
+            )
         elif not _clip_path(out, language_code, name).exists():
             complaints.append(f"{language_code}/{name}: manifest lists it but the audio is missing")
     for name in recorded.keys() - lines.keys():
@@ -142,23 +161,72 @@ def drift(out: Path, language_code: str) -> list[str]:
     return complaints
 
 
-async def render(out: Path, language_code: str, *, force: bool) -> None:
+def _api_commit() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).resolve().parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _write_clip_hashes(bundle: Path, language_code: str, names: list[str], into: Path) -> None:
+    rendered = {f"{name}.mp3" for name in names}
+    clips = {
+        clip: hashlib.sha256((bundle / clip).read_bytes()).hexdigest() for clip in sorted(rendered)
+    }
+    present = {clip.name for clip in bundle.glob("*.mp3")}
+    hashes = {
+        "api_commit": _api_commit(),
+        "clips": clips,
+        "rendered_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "unrendered": sorted(present - rendered),
+        "voice_id": _voice_of(language_code),
+    }
+    into.mkdir(parents=True, exist_ok=True)
+    (into / CLIP_HASHES).write_text(
+        json.dumps(hashes, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+async def render(
+    out: Path,
+    language_code: str,
+    *,
+    force: bool,
+    client: httpx.AsyncClient | None = None,
+    clip_hashes: Path | None = None,
+) -> None:
     bundle = _bundle(out, language_code)
     bundle.mkdir(parents=True, exist_ok=True)
     manifest = {} if force else read_manifest(out, language_code)
     for name, text in catalogue(language_code).items():
         clip = _clip_path(out, language_code, name)
-        if not force and clip.exists() and manifest.get(name) == fingerprint(text):
+        made_of = fingerprint(text, language_code=language_code)
+        if not force and clip.exists() and manifest.get(name) == made_of:
             print(f"  = {language_code}/{name}")
             continue
-        speech = await render_facilitator_speech(text, language=language_code, store=_NoCache())
+        speech = await render_facilitator_speech(
+            text, language=language_code, store=_NoCache(), client=client
+        )
         clip.write_bytes(speech.audio)
-        manifest[name] = fingerprint(text)
+        manifest[name] = made_of
         print(f"  + {language_code}/{name}  {len(speech.audio) // 1024} KB  {text[:48]}")
     (bundle / MANIFEST).write_text(
         json.dumps(dict(sorted(manifest.items())), indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    hashes_into = bundle if clip_hashes is None else clip_hashes / language_code
+    _write_clip_hashes(bundle, language_code, list(catalogue(language_code)), hashes_into)
+
+
+async def render_all(
+    out: Path, languages: list[str], *, force: bool, clip_hashes: Path | None
+) -> None:
+    async with aclosing(tts._make_client()) as client:
+        for language_code in languages:
+            await render(out, language_code, force=force, client=client, clip_hashes=clip_hashes)
 
 
 def main() -> int:
@@ -170,6 +238,12 @@ def main() -> int:
         type=Path,
         required=True,
         help="the audio folder of the app checkout the bundle ships in",
+    )
+    parser.add_argument(
+        "--clip-hashes",
+        type=Path,
+        help="where each language's clip_hashes.json goes, as DIR/<language>/; "
+        "defaults to beside its manifest",
     )
     parser.add_argument(
         "--language",
@@ -191,8 +265,7 @@ def main() -> int:
         print("fixed lines match the prompt" if not complaints else "run without --check")
         return 1 if complaints else 0
 
-    for language in spoken:
-        asyncio.run(render(args.out, language, force=args.force))
+    asyncio.run(render_all(args.out, spoken, force=args.force, clip_hashes=args.clip_hashes))
     return 0
 
 

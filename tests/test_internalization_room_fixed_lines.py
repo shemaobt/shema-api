@@ -6,11 +6,12 @@ render script still bundles are the notices the room says when it cannot reach t
 all, and this file guards that they do not drift, alongside how the fail-safes rotate.
 """
 
+import hashlib
 import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -21,6 +22,34 @@ from app.services.internalization_room._default_prompts import (
 )
 from app.services.internalization_room.fail_safe import FailSafe, choose, localized
 from app.services.internalization_room.languages import ROOM_LANGUAGES
+
+VOICED = b"\xff\xfbvoz"
+
+
+@pytest.fixture
+def elevenlabs(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    from app.core.config import get_settings
+    from app.services.platform import tts
+
+    client = SimpleNamespace(
+        post=AsyncMock(return_value=SimpleNamespace(status_code=200, content=VOICED, text="")),
+        aclose=AsyncMock(),
+    )
+    factory = MagicMock(return_value=client)
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
+    monkeypatch.setattr(tts, "_make_client", factory)
+    return SimpleNamespace(client=client, factory=factory, posts=client.post)
+
+
+def run_script(monkeypatch: pytest.MonkeyPatch, *args: str) -> int:
+    monkeypatch.setattr(sys, "argv", ["render_fixed_voice_lines.py", *args])
+    return render.main()
+
+
+def change_setting(monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), name, value)
 
 
 def test_the_render_script_needs_to_be_told_where_the_bundle_is(
@@ -170,3 +199,146 @@ def test_an_unwritten_language_falls_back_to_the_authored_line() -> None:
 
     assert line
     assert name == "A0"
+
+
+def test_a_line_whose_text_is_unchanged_but_whose_voice_id_changed_is_stale_under_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: SimpleNamespace,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    change_setting(monkeypatch, "internalization_room_voice_id", "another-voice")
+
+    code = run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt", "--check")
+
+    assert code == 1
+    listed = capsys.readouterr().out
+    assert all(f"pt/{name}" in listed for name in render.catalogue("pt"))
+
+
+def test_a_line_whose_text_is_unchanged_but_whose_model_changed_is_stale_under_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: SimpleNamespace,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    change_setting(monkeypatch, "internalization_room_tts_model", "another-model")
+
+    code = run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt", "--check")
+
+    assert code == 1
+    listed = capsys.readouterr().out
+    assert all(f"pt/{name}" in listed for name in render.catalogue("pt"))
+
+
+def test_a_run_without_force_re_renders_only_the_stale_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    before = json.loads((tmp_path / "pt" / render.MANIFEST).read_text())
+    elevenlabs.posts.reset_mock()
+    lines = len(render.catalogue("pt"))
+
+    change_setting(monkeypatch, "internalization_room_voice_id", "another-voice")
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    assert elevenlabs.posts.await_count == lines
+    after = json.loads((tmp_path / "pt" / render.MANIFEST).read_text())
+    assert after.keys() == before.keys()
+    assert all(after[name] != before[name] for name in before)
+
+    elevenlabs.posts.reset_mock()
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    assert elevenlabs.posts.await_count == 0
+
+
+def test_a_run_over_pt_and_en_renders_both_languages_in_one_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    code = run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt,en")
+
+    assert code == 0
+    for language in ("pt", "en"):
+        assert (tmp_path / language / render.MANIFEST).exists()
+        for name in render.catalogue(language):
+            assert (tmp_path / language / f"{name}.mp3").read_bytes() == VOICED
+    assert elevenlabs.factory.call_count == 1
+
+
+def test_a_run_with_force_re_renders_every_line_of_every_language(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt,en")
+    elevenlabs.posts.reset_mock()
+
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt,en", "--force")
+
+    assert elevenlabs.posts.await_count == len(render.catalogue("pt")) + len(render.catalogue("en"))
+
+
+def test_the_client_of_a_run_is_closed_when_a_language_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    elevenlabs.posts.return_value = SimpleNamespace(status_code=500, content=b"", text="")
+
+    with pytest.raises(Exception, match="TTS request failed"):
+        run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt,en")
+
+    elevenlabs.client.aclose.assert_awaited_once()
+
+
+def test_after_a_run_the_apps_clip_hashes_file_matches_the_rendered_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    from app.core.config import get_settings
+    from app.services.internalization_room.voices import voice_for
+
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt,en")
+
+    for language in ("pt", "en"):
+        written = json.loads((tmp_path / language / "clip_hashes.json").read_text())
+        assert list(written) == ["api_commit", "clips", "rendered_at", "unrendered", "voice_id"]
+        assert written["clips"] == {
+            f"{name}.mp3": hashlib.sha256(VOICED).hexdigest() for name in render.catalogue(language)
+        }
+        assert written["voice_id"] == voice_for(language, settings=get_settings())
+        assert len(written["api_commit"]) == 40
+        assert int(written["api_commit"], 16) >= 0
+        assert written["rendered_at"].endswith("Z")
+        assert written["unrendered"] == []
+
+
+def test_a_bundled_mp3_the_run_did_not_render_is_listed_as_unrendered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    (tmp_path / "pt").mkdir()
+    (tmp_path / "pt" / "sem_conexao.mp3").write_bytes(b"approved audio")
+
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+
+    written = json.loads((tmp_path / "pt" / "clip_hashes.json").read_text())
+    assert written["unrendered"] == ["sem_conexao.mp3"]
+    assert "sem_conexao.mp3" not in written["clips"]
+    assert (tmp_path / "pt" / "sem_conexao.mp3").read_bytes() == b"approved audio"
+
+
+def test_the_clip_hashes_file_goes_to_the_directory_the_flag_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    bundle, elsewhere = tmp_path / "bundle", tmp_path / "elsewhere"
+
+    run_script(
+        monkeypatch,
+        "--out",
+        str(bundle),
+        "--language",
+        "pt,en",
+        "--clip-hashes",
+        str(elsewhere),
+    )
+
+    for language in ("pt", "en"):
+        assert (elsewhere / language / "clip_hashes.json").exists()
+        assert not (bundle / language / "clip_hashes.json").exists()
+        assert (bundle / language / render.MANIFEST).exists()

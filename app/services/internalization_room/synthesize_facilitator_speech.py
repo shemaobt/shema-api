@@ -99,10 +99,14 @@ def facilitator_speech_key(text: str, *, language: str | None) -> str:
 
 
 async def render_facilitator_speech(
-    text: str, *, language: str, store: SpeechStore
+    text: str,
+    *,
+    language: str,
+    store: SpeechStore,
+    client: httpx.AsyncClient | None = None,
 ) -> SynthesizedSpeech:
     speak = _in_the_rooms_voice(synthesize_speech, text, language=language, settings=None)
-    return await speak(store=store)
+    return await speak(store=store, client=client)
 
 
 def _in_the_rooms_voice(
