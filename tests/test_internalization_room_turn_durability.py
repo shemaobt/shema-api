@@ -16,13 +16,9 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.sessions import (
     append_exchange,
-    comprehension_of,
     create_session,
-    save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
 from tests.turn_harness import the_room_agent_is
@@ -136,20 +132,12 @@ def models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def target_checkpoint() -> str:
-    return next(checkpoint for checkpoint in checkpoints_for(P) if checkpoint.critical).id
-
-
-@pytest.fixture()
-async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSession:
+async def waiting_room(db_session: AsyncSession) -> IRSession:
     """A room that has asked its question and is waiting on the answer."""
     session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
+    return await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
-    state = comprehension_of(session)
-    state.active_probe = ActiveProbe(id="probe-1", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
-    return await save_comprehension(db_session, session, state)
 
 
 async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
@@ -168,23 +156,20 @@ def _guide_lines(session: IRSession) -> list[str]:
     ]
 
 
-async def test_a_turn_whose_voice_fails_is_kept_with_the_state_it_was_decided_in(
+async def test_a_turn_whose_voice_fails_is_kept_all_the_same(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     voice: _SynthesisThatCanBreak,
     models_agree: None,
     reread,
 ) -> None:
-    """The reply is stored to be heard once its sound is made, so the answer it judged is
-    spent with it, the same as on a turn the room spoke at once."""
+    """The reply is stored to be heard once its sound is made, the same as on a turn the room
+    spoke at once."""
     voice.working = False
 
     await _the_team_answers(client, waiting_room.id)
 
     session = await reread(waiting_room.id)
-    assert comprehension_of(session).active_probe is None, (
-        "a voz falhava e o turno voltava a avaliar a mesma resposta no pedido seguinte"
-    )
     assert _guide_lines(session) == [FIRST_QUESTION, GUIDE_LINE]
 
 
@@ -196,17 +181,12 @@ async def test_a_turn_the_room_did_speak_is_remembered_whole(
     reread,
 ) -> None:
     """The counterweight. A room that speaks and forgets is worse than one that remembers
-    too eagerly, so the happy path has to keep every one of the three writes.
-
-    The pair reads the comprehension write from both sides: the question nobody heard leaves
-    its probe standing, and the question the room did speak spends it.
+    too eagerly, so the happy path has to keep everything it wrote.
     """
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
     session = await reread(waiting_room.id)
-    state = comprehension_of(session)
-    assert state.active_probe is None, "o estado do turno falado tem de ficar gravado"
     assert _guide_lines(session) == [FIRST_QUESTION, GUIDE_LINE]
     assert voice.spoken == [GUIDE_LINE]
 

@@ -6,7 +6,6 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import ColumnElement, and_, case, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
@@ -32,7 +31,6 @@ from app.services.internalization_room.canon.book_material import require_walkab
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -495,12 +493,12 @@ async def _land(
     """Write ``values`` to this session's row, refusing the write if another turn got there
     first (ENG-643).
 
-    ``messages`` and ``comprehension`` are both whole-value JSON, computed from whatever the
-    caller had read off ``session`` before calling this — so a plain UPDATE would let a turn
-    that started a moment later, and committed a moment earlier, have its evidence silently
-    written over. The WHERE clause below is the guard: it only lands while ``version`` is
-    still what this ``session`` was read at, and the loser gets a raised conflict instead of
-    a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
+    ``messages`` is whole-value JSON, computed from whatever the caller had read off
+    ``session`` before calling this — so a plain UPDATE would let a turn that started a
+    moment later, and committed a moment earlier, have its evidence silently written over.
+    The WHERE clause below is the guard: it only lands while ``version`` is still what this
+    ``session`` was read at, and the loser gets a raised conflict instead of a clean-looking
+    overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
     sound necklace's own document, generalised to whichever columns the caller is writing.
 
     A Zerar is a write too, and moves ``version``: a turn that resolved the session while it was
@@ -548,7 +546,6 @@ async def append_exchange(
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
     told_back: str = "",
-    state: ComprehensionState | None = None,
     commit: bool = True,
     scene_rehearsals: list[str] | None = None,
 ) -> IRSession:
@@ -644,8 +641,6 @@ async def append_exchange(
         guide["moment"] = step.as_json()
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
-    if state is not None:
-        values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
 
 
@@ -733,27 +728,6 @@ async def apply_coverage(
     return session
 
 
-def comprehension_of(session: IRSession) -> ComprehensionState:
-    """The comprehension state, reading past a probe this build no longer knows.
-
-    The only tolerant `model_validate` in this repository, and it is here because of a
-    count: seventeen sessions on the machine that drives the room hold an `active_probe`
-    whose purpose went with the probe machinery, and a tablet reopens a passage by an id
-    it keeps on disk with no expiry. A typed submodel that will not validate makes every
-    turn on those a 500, and the app only forgets a saved id on a 404 — so the passage
-    would be stuck on that tablet at every opening, with no way out through the app.
-
-    Only the probe is dropped, and only when the whole state refuses to load. Everything
-    else that was saved is kept, and a state that still will not load raises as before.
-    """
-    stored = dict(session.comprehension or {})
-    try:
-        return ComprehensionState.model_validate(stored)
-    except PydanticValidationError:
-        stored.pop("active_probe", None)
-        return ComprehensionState.model_validate(stored)
-
-
 def was_opened(session: IRSession) -> bool:
     """Whether the session holds a Guide line: a room note or a team entry alone does not open it.
 
@@ -770,7 +744,6 @@ async def append_opening(
     guide_response: str,
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
-    state: ComprehensionState | None = None,
     commit: bool = True,
 ) -> bool:
     """The opening written as the session's first line, or dropped when the team spoke first.
@@ -798,23 +771,9 @@ async def append_opening(
         guide_response=guide_response,
         outcome=outcome,
         scene=scene,
-        state=state,
         commit=commit,
     )
     return True
-
-
-async def save_comprehension(
-    db: AsyncSession, session: IRSession, state: ComprehensionState
-) -> IRSession:
-    """Write the comprehension alone, in a commit of its own — for seeding a test's session.
-
-    No route writes a turn through this any more: the voiced route (ENG-1021) and the text
-    seam (ENG-1033) hand the state to `append_exchange(state=...)`, so the comprehension and
-    the exchange land in one guarded UPDATE and one commit. A turn written through this and
-    then `append_exchange` is the two-commit pattern both of them removed.
-    """
-    return await _land(db, session, {"comprehension": state.model_dump(mode="json")})
 
 
 def session_is_done(session: IRSession) -> bool:

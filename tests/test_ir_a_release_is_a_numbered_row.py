@@ -28,8 +28,7 @@ from app.core.enums import ProjectRole
 from app.db.models.auth import Role
 from app.db.models.internalization_room import IRRelease, IRSession
 from app.services.internalization_room import release as release_module
-from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.sessions import create_session, save_comprehension
+from app.services.internalization_room.sessions import create_session
 from tests.alembic_harness import indexes_of, run_alembic, scalar, tables_of
 from tests.baker import (
     make_app,
@@ -112,8 +111,7 @@ async def _facilitator(db: AsyncSession, room_app, project=None) -> dict[str, st
     return {"Authorization": f"Bearer {access}"}
 
 
-async def _below_the_floor_and_unpractised(db: AsyncSession, session: IRSession) -> None:
-    await save_comprehension(db, session, ComprehensionState())
+async def _below_the_floor(db: AsyncSession, session: IRSession) -> None:
     session.coverage_state = {}
     await db.commit()
 
@@ -171,7 +169,7 @@ async def test_the_team_approves_a_passage_whose_conversation_fell_short(client,
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
-    await _below_the_floor_and_unpractised(db_session, session)
+    await _below_the_floor(db_session, session)
 
     approved = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
@@ -187,7 +185,7 @@ async def test_the_desk_reads_that_passage_with_no_blocker(client, db_session, r
     """The Desk's read goes through the same gate, and a refusal there is a 409."""
     project, _credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
-    await _below_the_floor_and_unpractised(db_session, session)
+    await _below_the_floor(db_session, session)
     desk = await _facilitator(db_session, room_app, project)
 
     read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)

@@ -24,12 +24,8 @@ from app.core.config import Settings, get_settings
 from app.db.models.internalization_room import IRSession
 from app.services import internalization_room as room
 from app.services.internalization_room import hearing
-from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.sessions import (
-    append_exchange,
-    comprehension_of,
     create_session,
-    save_comprehension,
 )
 from tests.deploy_harness import deploy_env_vars
 from tests.hearing_harness import (
@@ -46,12 +42,10 @@ from tests.hearing_harness import (
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import room_client, the_room_speaks
 from tests.text_seam_harness import GOLDEN, RUNNER_KEY, ScriptedAgent, the_models_answer
-from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_room_agent_is
+from tests.turn_harness import P, settings, the_room_agent_is
 
 PORTUGUESE = "Noemi voltou para Belém com Rute no tempo da colheita"
 TERENA_AS_SPANISH = "koeti yoko vitukeovo enepone itukovo"
-INVITATION = "Agora ensaiem esta cena juntos na língua de vocês; quando terminarem, digam: pronto."
-CONVERSATION = "Contem mais sobre o que aconteceu com essas pessoas."
 
 
 def _note(seconds: int) -> str:
@@ -616,41 +610,4 @@ async def test_a_low_word_confidence_portuguese_answer_is_handed_to_the_coverage
 
     assert reply["classification_pending"] is True, (
         "uma resposta em português com confiança baixa por palavra nunca chegava ao classificador"
-    )
-
-
-async def _a_heard_turn(db_session: AsyncSession, session: IRSession) -> None:
-    speech = await hearing.heard_speech(b"audio", language=session.language, settings=settings())
-    turn = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=speech,
-        opening=False,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=settings(),
-    )
-    await save_comprehension(db_session, session, turn.state)
-    await append_exchange(
-        db_session, session, team_utterance=speech.text, guide_response=turn.outcome.speech
-    )
-
-
-async def test_a_teams_report_of_a_finished_rehearsal_heard_with_low_word_confidence_credits_the_scene_the_guide_invited(  # noqa: E501
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    the_models_answer(monkeypatch, INVITATION, None, CONVERSATION, None)
-    the_take_lasts(monkeypatch, 4_000)
-    session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="abertura"
-    )
-    the_transcriber_hears(monkeypatch, "uma mulher volta para o seu povo", "pt", 0.9)
-    await _a_heard_turn(db_session, session)
-
-    the_transcriber_hears(monkeypatch, "pronto, terminamos", "pt", 0.9, transcript_confidence=0.1)
-    await _a_heard_turn(db_session, session)
-
-    assert comprehension_of(session).practiced_scene_ids == ["S1"], (
-        "o relato de ensaio terminado ouvido com confiança baixa por palavra não creditava a cena"
     )

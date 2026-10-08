@@ -23,16 +23,6 @@ from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import background
 from app.services.internalization_room.archives import archive_pericope
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.part_names import scene_titles
@@ -42,7 +32,6 @@ from app.services.internalization_room.release import (
 )
 from app.services.internalization_room.sessions import (
     create_session,
-    save_comprehension,
     session_is_done,
 )
 from tests.baker import make_app, make_role
@@ -152,22 +141,6 @@ def _the_kept_p03_has_elimelech_labelled(tree: Path) -> None:
 
 def _the_kept_p03_has_a_rule_of_its_own(tree: Path) -> None:
     _rewrite(tree, "compilation-log", "P03", AUDIT, AUDIT + KEPT_ONLY_RULE)
-
-
-def _demonstrated(*checkpoints: str) -> ComprehensionState:
-    return ComprehensionState(
-        ledger=[
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-            )
-            for index, checkpoint in enumerate(checkpoints)
-        ],
-        practiced_scene_ids=scene_ids_for(P),
-    )
 
 
 @asynccontextmanager
@@ -357,11 +330,6 @@ async def test_a_session_open_when_a_new_canon_is_published_is_done_only_on_its_
     kept_session = await create_session(db_session, pericope=P)
     the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_a_rule_of_its_own)
     await create_session(db_session, pericope=P)
-    kept_session = await save_comprehension(
-        db_session,
-        kept_session,
-        _demonstrated(*(checkpoint.id for checkpoint in checkpoints_for(P))),
-    )
     every_bead_the_new_canon_has = dict.fromkeys(element_keys(P), "engaged")
 
     kept_session.coverage_state = every_bead_the_new_canon_has

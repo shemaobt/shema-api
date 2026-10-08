@@ -95,7 +95,6 @@ async def _write_the_turn(
     session: IRSession,
     *,
     outcome: room.TurnOutcome,
-    turn: room.ComprehensionTurn | None,
     opening: bool,
 ) -> IRSession:
     with stage("db_write"):
@@ -106,7 +105,6 @@ async def _write_the_turn(
                 guide_response=outcome.speech,
                 outcome=outcome,
                 scene=_scene_of(session),
-                state=turn.state if turn is not None else None,
                 commit=False,
             )
             return session
@@ -117,7 +115,6 @@ async def _write_the_turn(
             guide_response=outcome.speech,
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
-            state=turn.state if turn is not None else None,
             commit=False,
         )
 
@@ -826,7 +823,6 @@ async def _draft_the_turn(
         with stage("db_let_go"):
             await db.commit()
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
-    turn: room.ComprehensionTurn | None = None
     try:
         async with asyncio.timeout_at(deadline):
             if is_panorama(session.pericope):
@@ -846,7 +842,7 @@ async def _draft_the_turn(
                     speech=speech_heard,
                 )
             else:
-                turn = await room.run_comprehension_turn(
+                outcome = await room.run_comprehension_turn(
                     db,
                     session,
                     speech=speech_heard,
@@ -855,11 +851,10 @@ async def _draft_the_turn(
                     validator_prompt=validator_prompt,
                     settings=get_settings(),
                 )
-                outcome = turn.outcome
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    session = await _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening)
+    session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False

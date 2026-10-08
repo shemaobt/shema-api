@@ -18,23 +18,23 @@ from scripts.check_doctrine import SCAN_ROOTS, evaluate, scan
 from scripts.doctrine_allowlist import ALLOWLIST, AllowlistEntry, Rule
 
 
-def test_the_guard_finds_every_site_the_allowlist_already_names() -> None:
-    """Looking where the six mechanisms live, not passing on an empty scan.
+def test_the_guard_reads_the_voice_path_and_finds_nothing_left_to_allow() -> None:
+    """Looking where the six mechanisms lived, and finding none of them there.
 
-    A scanner that walked the wrong directories, or whose patterns stopped matching the
-    repo's actual spellings, would report no hits at all — and an empty allowlist would
-    then agree with it for the wrong reason. Comparing against the real allowlist instead
-    of asserting `scan()` is merely non-empty is what would have caught that.
+    With the allowlist empty, a scanner that walked the wrong directories would pass for the
+    wrong reason, so the roots are checked to be the voice path's own before a clean scan is
+    believed.
     """
-    hits = scan(SCAN_ROOTS)
-
-    assert hits, "the scan found nothing at all — it is not looking where the six mechanisms live"
-
-    _violations, stale = evaluate(hits, ALLOWLIST)
-    assert not stale, (
-        "the allowlist names sites the scan no longer confirms: "
-        f"{[(e.file, e.rule, e.text) for e in stale]}"
+    assert all(root.exists() for root in SCAN_ROOTS), "a scan root names nothing on disk"
+    assert (SCAN_ROOTS[0] / "live_turn.py").is_file(), (
+        "the scan is not looking where the voice path lives"
     )
+
+    violations, stale = evaluate(scan(SCAN_ROOTS), ALLOWLIST)
+
+    assert ALLOWLIST == [], "a row came back to an allowlist the ladder emptied"
+    assert not violations, f"a forbidden mechanism is back: {violations}"
+    assert not stale
 
 
 def test_a_mechanism_reintroduced_outside_the_allowlist_fails_with_its_doctrine_sentence(

@@ -23,7 +23,6 @@ from app.services.internalization_room.canon import (
     labels,
     parse_map,
 )
-from app.services.internalization_room.comprehension import checkpoints
 
 
 def forget_the_canon() -> None:
@@ -34,7 +33,6 @@ def forget_the_canon() -> None:
     elements.elements_for.cache_clear()
     elements.scene_of.cache_clear()
     labels._known_pericopes.cache_clear()
-    checkpoints.checkpoints_for.cache_clear()
 
 
 def the_canon_moves_on(
