@@ -193,9 +193,6 @@ APPENDIX_A = {
     "book_overview_system_prompt.md": (
         "bba4cdbdd4c2ec2c675df4efa85a187693f3c980c57d1e9db6ea064a220f8fd3"
     ),
-    "draft_check_system_prompt.md": (
-        "7bbdbd8a7be38f0f5a2a0356d9ea2c82c1c9154153fed9ca2dfce663862dcf74"
-    ),
     "fail_safe_utterances.md": "f2c73db37abb34f03cd9999bdea0caadc9a13a908829774559227772c698fddb",
     "backtranslation_analysis_system_prompt.md": (
         "ae7659d7a8facd9f43d78fa4f4178164bc6a5611e22450fcc703f36d6e372f2b"
@@ -209,7 +206,7 @@ APPENDIX_A = {
 }
 
 
-def test_her_nine_prompt_files_are_stored_at_the_fingerprints_appendix_a_lists() -> None:
+def test_her_eight_prompts_in_use_are_stored_at_the_fingerprints_appendix_a_lists() -> None:
     pinned = read_pin(FREEZE_FILE).digests
 
     for name, hers in APPENDIX_A.items():
