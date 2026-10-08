@@ -156,14 +156,16 @@ async def play_a_round(
         raise ValidationError("a round with no frases is not a round")
     session = await room.get_session(db, payload.sessionId)
     refuse_a_panorama(session.pericope)
-    if not any(spoken_words_only(frase.text) for frase in payload.frases):
-        raise WordlessTelling()
     started = time.monotonic()
     with _collecting_model_calls() as calls:
         parts = await declared_parts_by_key(db, session.id)
         state = room.back_translation_of(session)
-        for number, frase in enumerate(payload.frases, start=1):
+        captured = [
             await _capture(db, session, state, frase, number=number, parts=parts)
+            for number, frase in enumerate(payload.frases, start=1)
+        ]
+        if not any(captured):
+            raise WordlessTelling()
 
         told = room.told_back(await room.final_segments(db, session.id))
         takes = await takes_of(db, session.id)
@@ -218,7 +220,7 @@ async def _capture(
     *,
     number: int,
     parts: dict[str, IRTake],
-) -> None:
+) -> bool:
     part = parts.get(frase.clipKey)
     if part is None:
         raise NotFoundError(f"frase {number} names clip {frase.clipKey!r}, which was not declared")
@@ -234,6 +236,8 @@ async def _capture(
                 f"frase {number} supersedes a telling, and no stretch stands at "
                 f"{frase.clipKey} {frase.coversFrom}-{frase.coversTo}s"
             )
+    if not spoken_words_only(frase.text):
+        return False
     await room.capture_and_note_a_hard_stretch(
         db,
         session,
@@ -246,3 +250,4 @@ async def _capture(
         replaces=retold,
         state=state,
     )
+    return True

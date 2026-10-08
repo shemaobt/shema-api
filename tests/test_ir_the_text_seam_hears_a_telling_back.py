@@ -13,6 +13,7 @@ the synthesiser, exactly as on the Guide's door.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -564,3 +565,88 @@ async def test_a_round_of_frases_with_no_words_is_refused_before_any_model_runs(
         "sete achados de frase que nunca foi contada"
     )
     assert await _stretches(db_session, session_id) == [], "uma frase sem palavras virava trecho"
+
+
+async def test_a_wordless_frase_among_told_ones_is_no_stretch_and_the_told_ones_stand(
+    client, analyst, db_session, monkeypatch
+) -> None:
+    seen: list[str] = []
+
+    async def the_analyst_that_keeps_what_it_is_handed(
+        *, system_prompt: str, user_content: str, **rest: Any
+    ) -> str:
+        seen.append(f"{system_prompt}\n{user_content}")
+        return await analyst(system_prompt=system_prompt, user_content=user_content, **rest)
+
+    the_room_agent_is(monkeypatch, analyst=the_analyst_that_keeps_what_it_is_handed)
+    session_id = await _a_session(client)
+    frases = [
+        {**frase, "text": "   " if number in (2, 5) else frase["text"]}
+        for number, frase in enumerate(CAUSA_A_MAIS, start=1)
+    ]
+
+    result = await _a_round(client, session_id, frases)
+
+    told_texts = [
+        frase["text"] for number, frase in enumerate(CAUSA_A_MAIS, start=1) if number not in (2, 5)
+    ]
+    told = room.told_back(await room.final_segments(db_session, session_id))
+    assert [stretch.transcript for stretch in told] == told_texts, (
+        "a frase vazia virava um trecho de transcrição vazia, lido como lacuna na tradução"
+    )
+    assert len(seen) == 1
+    block = "\n".join(f"{position}. {text}" for position, text in enumerate(told_texts, start=1))
+    assert block in seen[0], (
+        "a leitura numera só o que foi contado: oito frases com duas vazias são seis linhas"
+    )
+    assert [line for line in seen[0].splitlines() if re.fullmatch(r"\d+\.\s*", line)] == [], (
+        "o analista recebia «2. » sem nenhum texto e levantava um achado de frase vazia"
+    )
+    assert result["findings"] == []
+
+
+async def test_a_wordless_retelling_leaves_the_standing_stretch_and_counts_nothing(
+    client, db_session
+) -> None:
+    session_id = await _a_session(client)
+    await _a_round(client, session_id, CAUSA_A_MAIS)
+    await _a_round(client, session_id, [FAITHFUL_FRASE_ONE])
+    retold_third = {
+        "clipKey": "S2",
+        "coversFrom": 0,
+        "coversTo": 8,
+        "text": "No caminho, Noemi disse às duas noras que voltassem para a casa das suas mães.",
+        "supersedes": 2,
+    }
+
+    await _a_round(client, session_id, [{**FAITHFUL_FRASE_ONE, "text": " "}, retold_third])
+
+    told = room.told_back(await room.final_segments(db_session, session_id))
+    assert (told[0].transcript, told[0].tellings) == (FAITHFUL_FRASE_ONE["text"], 2), (
+        "uma recontagem vazia trocava a explicação boa da equipe por um trecho sem palavras e "
+        "ainda contava como a terceira vez do mesmo trecho"
+    )
+    after = await row(db_session, session_id)
+    assert halt.standing(after) is None, "a recontagem vazia levantava o pedido de uma pessoa"
+
+
+async def test_a_wordless_round_is_refused_even_when_the_session_already_has_told_stretches(
+    client, analyst, db_session
+) -> None:
+    session_id = await _a_session(client)
+    await _a_round(client, session_id, CAUSA_A_MAIS)
+    standing = [stretch.id for stretch in await _stretches(db_session, session_id)]
+    readings = len(analyst.answered)
+
+    refused = await client.post(
+        f"{SEAM}/round",
+        json={"sessionId": session_id, "frases": [{**FAITHFUL_FRASE_ONE, "text": ""}]},
+    )
+
+    assert refused.status_code == 422, (
+        "a rodada de frases vazias passava porque a sessão já tinha trechos contados: a recusa "
+        "olhava o que está de pé na sessão e não o que a rodada trouxe"
+    )
+    assert refused.json()["code"] == "WORDLESS_TELLING"
+    assert [stretch.id for stretch in await _stretches(db_session, session_id)] == standing
+    assert len(analyst.answered) == readings, "o analista leu uma rodada que não trouxe palavras"
