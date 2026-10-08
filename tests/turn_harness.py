@@ -36,6 +36,11 @@ GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
 
+NOTHING_TOLD_BACK = {
+    "pt": "(a equipe ainda não traduziu nada)",
+    "en": "(the team has not translated anything yet)",
+}
+
 INVITATION = (
     " Now rehearse this scene together in your own language; when you have finished, come "
     "back and tell me in English what you understood."
