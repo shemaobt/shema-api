@@ -530,3 +530,141 @@ def test_the_tail_is_asked_for_only_when_the_earlier_guide_turns_left_a_part_ope
     assert after(guide=FENCED_REPLY) == [
         "the fenced block was given before the team said it was ready"
     ], "sem parte aberta a cauda não é pedida, mas a cerca nunca vem antes da palavra da equipe"
+
+
+#: Her approved send-off of 2026-09-21 (`ENSAIO-FINAL-SPEC.md` §8.1), the sentence added for a
+#: part told only aloud, and the send-off it replaced, from her `checksTest.ts`.
+SEND_OFF = (
+    "Todas as cenas já estão comigo. No Ensaio Final o aplicativo junta as gravações das cenas; "
+    "vocês ouvem a passagem inteira e, se ainda faltar algum detalhe, a gente acerta isso juntos. "
+    "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
+)
+SEND_OFF_EN = (
+    "Every scene is with me now. In the Final Rehearsal the app puts your scene recordings "
+    "together; you listen to the whole passage and, if any detail is still missing, we fix it "
+    "together. Now tap the orange dot at the top of the screen to open the Final Rehearsal."
+)
+UNRECORDED = "A cena 3 ainda não tem gravação: no Ensaio Final vocês gravam essa cena lá."
+OLD_SEND_OFF = (
+    "Ficou inteiro. Agora gravem o ensaio de vocês, na língua de vocês. Toquem no ponto laranja, "
+    "no alto da tela, e gravem a passagem cena por cena. Depois, traduzam a gravação pra mim, "
+    "frase por frase."
+)
+
+
+def test_the_invitation_to_rehearse_says_the_red_microphone_and_nothing_else_to_do() -> None:
+    invites = {"invites_microphone": True}
+    assert _turn(guide=f"{FENCE_CLOSE} {MIC}", expect=invites) == []
+    assert _turn(guide="Now you can rehearse. Tap the red microphone.", expect=invites) == []
+    assert _turn(guide=f"{FENCE_CLOSE} Ensaiem na língua de vocês.", expect=invites) == [
+        "the Guide invited the rehearsal without the red-microphone instruction"
+    ]
+    two_at_once = [
+        "the Guide asked for an oral telling-back in the same turn as the microphone (two "
+        "instructions at once)"
+    ]
+    assert _turn(guide=f"{MIC} Depois me contem em português.", expect=invites) == two_at_once
+    assert _turn(guide=f"{MIC} Then tell me back in English.", expect=invites) == two_at_once
+    assert _turn(guide=f"{MIC} E me contem o que vocês contaram.", expect=invites) == two_at_once
+
+
+def test_the_send_off_names_the_ensaio_final_and_the_orange_dot_never_the_red_microphone() -> None:
+    final = {"send_off_ensaio_final": True}
+    missing = [
+        "send-off did not send the team to the Ensaio Final by the orange dot (Ensaio Final + "
+        "ponto laranja)"
+    ]
+    assert _turn(guide=SEND_OFF, expect=final) == []
+    assert _turn(guide=SEND_OFF_EN, expect=final) == []
+    assert _turn(guide="Agora vamos para o Ensaio Final.", expect=final) == missing
+    assert _turn(guide=f"{OLD_SEND_OFF} Ou no microfone vermelho.", expect=final) == [
+        *missing,
+        "send-off named the red microphone (the 2026-09-17 incident: the passage was recorded in "
+        "the wrong place)",
+    ]
+
+
+def test_the_send_off_never_asks_for_the_passage_recorded_or_translated_again() -> None:
+    again = {"no_record_again": True}
+
+    def told(words: str) -> list[str]:
+        return [f'guide told the team to record or translate the passage again: "{words}"']
+
+    assert _turn(guide=OLD_SEND_OFF, expect=again) == told("gravem o ensaio de vocês")
+    assert _turn(guide="Toquem no ponto laranja e gravem a passagem.", expect=again) == told(
+        "gravem a passagem"
+    )
+    assert _turn(guide="Gravem o ensaio, na língua de vocês.", expect=again) == told(
+        "Gravem o ensaio"
+    )
+    assert _turn(guide="Depois, traduzam essa gravação pra mim.", expect=again) == told(
+        "traduzam essa gravação"
+    )
+    assert _turn(guide="Now record the whole passage again.", expect=again) == told(
+        "record the whole passage again"
+    )
+    assert _turn(guide="Record your rehearsal, in your own language.", expect=again) == told(
+        "Record your rehearsal"
+    )
+    assert _turn(guide="Then translate your recording for me.", expect=again) == told(
+        "translate your recording"
+    )
+    for kept in (
+        SEND_OFF,
+        SEND_OFF_EN,
+        UNRECORDED,
+        MIC,
+        "Gravem o ensaio dessa cena de novo.",
+        "Gravem o ensaio da cena 2 e traduzam pra mim frase por frase.",
+        "Tap the red microphone and record your rehearsal of this scene.",
+    ):
+        assert _turn(guide=kept, expect=again) == [], kept
+
+
+def test_the_whole_passage_is_never_asked_for_again_one_scene_still_is() -> None:
+    whole = {"no_whole_retelling_request": True}
+
+    def asked(words: str) -> list[str]:
+        return [f'guide asked for the whole passage to be told or rehearsed again: "{words}"']
+
+    for request, words in (
+        ("Muito bem. Agora contem a passagem inteira pra mim.", "contem a passagem inteira"),
+        ("Agora ensaiem a passagem toda, de uma vez só.", "ensaiem a passagem toda"),
+        ("Vocês podem contar a história inteira agora?", "podem contar a história inteira"),
+        ("Querem recontar a história toda?", "Querem recontar a história toda"),
+        ("Agora vamos ensaiar a passagem toda.", "vamos ensaiar a passagem toda"),
+        ("Agora contem tudo de novo, do começo ao fim.", "contem tudo de novo, do começo ao fim"),
+        ("Now tell me the whole passage.", "tell me the whole passage"),
+        (
+            "Now tell it all again, from beginning to end.",
+            "tell it all again, from beginning to end",
+        ),
+    ):
+        assert _turn(guide=request, expect=whole) == asked(words), request
+    for kept in (
+        "Ensaiem esta cena de novo, do começo ao fim.",
+        "Contem essa parte do começo ao fim.",
+        "Ensaiem só esta cena, não a passagem inteira.",
+        "Rehearse this scene from beginning to end.",
+        "No Ensaio Final vocês vão ouvir a passagem inteira.",
+        SEND_OFF,
+        "Primeiro eu vou contar a passagem inteira pra vocês.",
+        "First I'll tell you the whole passage.",
+        "Let me tell you the whole passage first.",
+        "Ensaiem esta cena. A passagem inteira fica pro Ensaio Final.",
+    ):
+        assert _turn(guide=kept, expect=whole) == [], kept
+
+
+def test_a_send_off_with_a_part_told_only_aloud_says_it_has_no_recording_yet() -> None:
+    unrecorded = {"send_off_names_unrecorded_scene": True}
+    for said in (
+        UNRECORDED,
+        "Scene 3 has no recording yet: in the Final Rehearsal you record that scene there.",
+        "As cenas 2 e 3 ainda não têm gravação.",
+        "a cena 2 nao tem gravacao",
+    ):
+        assert _turn(guide=said, expect=unrecorded) == [], said
+    assert _turn(guide=SEND_OFF, expect=unrecorded) == [
+        "send-off did not say that a part told only aloud has no recording yet"
+    ]

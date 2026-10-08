@@ -297,6 +297,27 @@ def _take_up_faults(guide: str, *, tail_owed: bool) -> list[str]:
     return faults
 
 
+_THE_RED_MICROPHONE = _her(r"microfone vermelho|red microphone")
+_A_TELLING_BACK_ASKED = _her(
+    r"me cont(em|a) em portugu|tell me (back )?in (english|portuguese)"
+    r"|me contem o que vocês contaram"
+)
+_THE_ORANGE_DOT = _her(r"ponto laranja|orange dot")
+_RECORD_AGAIN = _her(
+    r"gravem (a passagem|o ensaio de vocês|o ensaio(?!\s+(da|desta|dessa)\s+cena))"
+    r"|traduzam (a|essa|esta) gravação|record the (whole )?passage again"
+    r"|record your rehearsal(?! of (this|that|the) scene)"
+    r"|translate (the|your|this|that) recording"
+)
+_THE_WHOLE_PASSAGE_ASKED_FOR = _her(
+    r"(?<!\b(eu|vou|I|I will|I'll|let me|going to)\s)(?<!\p{L})(contem|recontem|ensaiem|digam"
+    r"|(querem|podem|conseguem|v[aã]o)\s+(me\s+)?(contar|recontar|ensaiar|dizer)"
+    r"|vamos\s+(recontar|ensaiar)|tell|retell|rehearse)(?!\p{L})"
+    r"(?:(?!\bcenas?\b|\bpartes?\b|\bscenes?\b|\bparts?\b)[^.?!]){0,60}?"
+    r"(passagem inteira|passagem toda|história inteira|história toda|do começo ao fim"
+    r"|whole passage|whole story|from (the )?beginning to (the )?end|from start to finish)"
+)
+_NO_RECORDING_YET = _her(r"n[ãa]o t[eê]m grava[çc][ãa]o|sem grava[çc][ãa]o|no recording")
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -358,11 +379,40 @@ def mechanical_checks(
     if expect.get("take_up_closing") or expect.get("take_up_closing_if_open"):
         tail_owed = bool(expect.get("take_up_closing")) or _left_part_open(earlier_guides)
         fails.extend(_take_up_faults(guide, tail_owed=tail_owed))
+    if expect.get("invites_microphone"):
+        if not _THE_RED_MICROPHONE.search(guide):
+            fails.append("the Guide invited the rehearsal without the red-microphone instruction")
+        if _A_TELLING_BACK_ASKED.search(guide):
+            fails.append(
+                "the Guide asked for an oral telling-back in the same turn as the microphone (two "
+                "instructions at once)"
+            )
+    if expect.get("send_off_ensaio_final"):
+        if not (_THE_ENSAIO_FINAL.search(guide) and _THE_ORANGE_DOT.search(guide)):
+            fails.append(
+                "send-off did not send the team to the Ensaio Final by the orange dot (Ensaio "
+                "Final + ponto laranja)"
+            )
+        if _THE_RED_MICROPHONE.search(guide):
+            fails.append(
+                "send-off named the red microphone (the 2026-09-17 incident: the passage was "
+                "recorded in the wrong place)"
+            )
+    if expect.get("no_record_again") and (again := _RECORD_AGAIN.search(guide)):
+        fails.append(f'guide told the team to record or translate the passage again: "{again[0]}"')
+    if expect.get("no_whole_retelling_request") and (
+        whole := _THE_WHOLE_PASSAGE_ASKED_FOR.search(guide)
+    ):
+        fails.append(
+            f'guide asked for the whole passage to be told or rehearsed again: "{whole[0]}"'
+        )
     if expect.get("offers_choice_final") and not _offers_choice_final(guide):
         fails.append(
             "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar no "
             "Ensaio Final)"
         )
+    if expect.get("send_off_names_unrecorded_scene") and not _NO_RECORDING_YET.search(guide):
+        fails.append("send-off did not say that a part told only aloud has no recording yet")
     if _THE_MAP.search(guide):
         fails.append("says 'o mapa' / 'the map' to the team")
     if _FAREWELL.search(guide):
