@@ -124,6 +124,7 @@ def _args(sessions: Path, out: Path, **over: Any) -> argparse.Namespace:
         "access_code": RUNNER_KEY,
         "stamp": STAMP,
         "rejudge": None,
+        "budget_usd": None,
     }
     return argparse.Namespace(**{**given, **over})
 
