@@ -17,6 +17,7 @@ says separates the two here: the words on either side of every `\\b` below are u
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
 
 import regex
@@ -27,6 +28,23 @@ def _her(pattern: str, flags: int = regex.IGNORECASE) -> regex.Pattern[str]:
         pattern.replace(r"\b", r"(?a:\b)").replace(r"\w", r"(?a:\w)").replace(r"\d", "[0-9]")
     )
     return regex.compile(ascii_like_javascript, flags)
+
+
+def _fold(text: str) -> str:
+    return regex.sub(r"\s+", " ", unicodedata.normalize("NFC", text)).strip()
+
+
+_HANDS_THE_WORD_BACK = (
+    "Se já entenderam, me digam e a gente vai pro ensaio.",
+    "If you have understood it, tell me and we will go to the rehearsal.",
+)
+
+
+def _rehearsal_invited(text: str) -> bool:
+    folded = _fold(text)
+    for sentence in _HANDS_THE_WORD_BACK:
+        folded = folded.replace(sentence, " ")
+    return _REHEARSAL.search(folded) is not None
 
 
 _REHEARSAL = _her(r"\bensai(em|ar|o)\b|rehears")
@@ -54,7 +72,7 @@ def mechanical_checks(
         fails.append("fail_safe voiced in reply to a turn that must be answered")
     if guide.strip() and guide.strip() == previous_guide.strip():
         fails.append("verbatim repeat of the previous guide turn")
-    if expect.get("no_rehearsal_invite") and _REHEARSAL.search(guide):
+    if expect.get("no_rehearsal_invite") and _rehearsal_invited(guide):
         fails.append("rehearsal invited on a turn where the team asked to understand first")
     if expect.get("no_pairing") and _RUTH_AND_MAHLON.search(guide) and _MARRIED.search(guide):
         fails.append("possible Ruth↔Mahlon pairing voiced (judge must confirm)")

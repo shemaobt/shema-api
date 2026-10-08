@@ -19,6 +19,19 @@ OPENS_MORE = (
     "Claro. A gente vai com calma. Eu conto de novo, passo a passo, com mais detalhe. A "
     "história começa no tempo em que os juízes governavam Israel."
 )
+#: Her closing of a scene opening and its last two sentences, `src/turn/fixedLines.ts`.
+PART_CLOSING = (
+    "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
+)
+CLOSING_TAIL = (
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio."
+)
+#: The story of scene 1 her `checksTest.ts` opens a part with.
+STORY = (
+    "Nos dias em que os juízes julgavam, teve uma fome na terra. Um homem de Belém de Judá foi "
+    "morar de passagem nos campos de Moabe, com a mulher e os dois filhos."
+)
 #: Her `expect` on turn 1 of `P01-understand-first`, verbatim.
 UNDERSTAND_FIRST = {"no_fail_safe": True, "no_rehearsal_invite": True, "opens_more": True}
 
@@ -127,3 +140,16 @@ def test_o_mapa_after_an_accented_letter_is_her_o_mapa_because_her_word_edge_is_
     assert _turn(guide="No sertão mapa nenhum guiava a família.", expect={}) == [
         "says 'o mapa' / 'the map' to the team"
     ], "o \\b dela é ASCII: o ã não é letra pra ela, então 'o mapa' começava ali"
+
+
+def test_her_closing_hands_the_word_to_the_team_and_invites_no_rehearsal() -> None:
+    assert _turn(guide=f"{STORY} {PART_CLOSING}") == [], (
+        "'a gente vai pro ensaio' entrega a palavra à equipe; não manda ensaiar"
+    )
+    broken = CLOSING_TAIL.replace("digam e", "digam\ne")
+    assert _turn(guide=f"{STORY}\n\n{broken}") == [], (
+        "a quebra de linha é um espaço pro ouvido; a frase dela é a mesma"
+    )
+    assert _turn(guide=f"{PART_CLOSING} Agora ensaiem essa parte.") == [
+        "rehearsal invited on a turn where the team asked to understand first"
+    ]
