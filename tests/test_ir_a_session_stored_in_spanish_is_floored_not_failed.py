@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -23,6 +24,7 @@ from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import (
     back_translation_of,
+    background,
     check_the_telling_back,
     verdict_round,
 )
@@ -254,3 +256,37 @@ async def test_the_verdict_on_a_row_stored_in_spanish_is_judged_in_the_rooms_lan
         "o Validador do veredito de uma sessão guardada em espanhol não lia a língua da sala"
     )
     assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"
+
+
+@asynccontextmanager
+async def _handed(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
+    yield db_session
+
+
+@pytest.mark.parametrize(("floor", "named"), FLOORS)
+async def test_the_coverage_of_a_row_stored_in_spanish_is_classified_in_the_rooms_language(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str, named: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    read: list[str] = []
+
+    async def classifier(*, system_prompt: str, **_: Any) -> str:
+        read.append(system_prompt)
+        return json.dumps({"decisions": []})
+
+    the_room_agent_is(monkeypatch, classifier=classifier)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await _a_row_stored_in_spanish(db_session, PASSAGE)
+
+    await background.settle_coverage(
+        session_id=session.id,
+        turn_id="turno-1",
+        team_utterance=PORTUGUESE,
+        guide_response="Conte de novo, por favor.",
+        pericope_num=PASSAGE,
+    )
+
+    assert read
+    assert all(named in system for system in read), (
+        "o classificador de uma sessão guardada em espanhol não lia a troca na língua da sala"
+    )
