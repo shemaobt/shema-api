@@ -220,7 +220,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     assert all(e["scene"] is not None for e in body[4:] if e not in preserved)
 
 
-async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncSession) -> None:
+async def test_every_bead_is_named_in_portuguese_and_english(
+    client, db_session: AsyncSession
+) -> None:
     """Behaviour 1 — no bead reaches the Desk as an identifier.
 
     Non-empty is not the assertion. Serving `preserved:R3` as its own label is non-empty and
