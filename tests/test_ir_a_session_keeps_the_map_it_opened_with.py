@@ -480,6 +480,25 @@ async def test_the_desks_card_of_a_session_open_when_a_new_canon_is_published_st
     )
 
 
+async def test_a_panorama_open_when_a_new_canon_is_published_tells_the_book_of_its_own_canon(
+    client, db_session, prompts, monkeypatch, tmp_path
+) -> None:
+    _, tablet = await a_claimed_device(db_session)
+    _, newcomer = await a_claimed_device(db_session, email="nov@example.com")
+    panorama = {"pericope": "OV-Ruth", "language": "pt"}
+    opened = await the_tablet_opens(client, tablet, panorama)
+
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p01_opens_its_own_way)
+    after = await the_tablet_opens(client, newcomer, panorama)
+    await the_team_says(client, newcomer, after["session_id"], "na nova")
+    start = len(prompts.read)
+    await the_team_says(client, tablet, opened["session_id"], "depois")
+    told = "\n".join(prompts.since(start))
+
+    assert KEPT_P01_ARC in told, "o panorama contou o livro pelo canon novo"
+    assert VENDORED_P01_ARC not in told
+
+
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
     client, db_session, prompts, monkeypatch, tmp_path
 ) -> None:
