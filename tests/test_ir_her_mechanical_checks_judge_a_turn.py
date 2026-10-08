@@ -10,6 +10,8 @@ dropped, none is loosened. The turns below are shaped after
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from scripts.golden_checks import mechanical_checks
@@ -684,3 +686,106 @@ def test_a_new_fact_is_named_as_something_the_story_does_not_tell() -> None:
     assert _turn(guide="Que bonito: a Noemi voltou porque estava com medo.", expect=new_fact) == [
         "guide did not name the new fact as something the story does not tell"
     ], "aceitar a causa nova como se fosse da história é o incidente"
+
+
+#: Her marks of the passage this team has not worked yet (P09), as her script hands them over.
+UNWORKED = json.loads(
+    (Path(__file__).parent.parent / "golden/sessions/P10-earlier-passages-status.json").read_text(
+        encoding="utf-8"
+    )
+)["turns"][0]["expect"]["no_recall_of_unworked"]
+TOLD_AS_STORY = {"no_recall_of_unworked": UNWORKED, "tells_as_story": True}
+
+
+def _recalled(sentence: str) -> list[str]:
+    return [
+        "the voice recalled a passage this team has not worked yet as if the team knew it "
+        f"('lembrem' / 'na última parte'): \"{sentence}\""
+    ]
+
+
+def _untold(sentence: str) -> list[str]:
+    return [
+        "the voice spoke of a passage this team has not worked yet without 'a história conta "
+        f'que…\': "{sentence}"'
+    ]
+
+
+def test_a_passage_the_team_has_not_worked_is_never_recalled_as_if_they_knew_it() -> None:
+    recall = {"no_recall_of_unworked": UNWORKED}
+    pilot = (
+        "Lembrem: na última parte, Rute passou a noite no lugar da debulha, aos pés de Boaz, e ele "
+        "fez um juramento."
+    )
+    assert _turn(guide=f"Boa pergunta. {pilot}", expect=recall) == _recalled(pilot), (
+        "a fala de abertura do piloto P10, 24/09"
+    )
+    for frame in (
+        "Na parte anterior, o homem jurou pelo Senhor.",
+        "Como vocês já sabem, à meia-noite ele se assustou.",
+    ):
+        assert _turn(guide=frame, expect=recall) == _recalled(frame), frame
+    assert _turn(guide="Lembrem que… o homem jurou pelo Senhor.", expect=recall) == _recalled(
+        "Lembrem que o homem jurou pelo Senhor."
+    ), "a reticência depois do 'que' junta, não termina a frase"
+    for kept in (
+        "Lembrem que Noemi mandou Rute ir, e a história conta que ele jurou pelo Senhor.",
+        "Lembrem da Noemi. Ele jurou pelo Senhor.",
+        "Lembrem: na última parte, Noemi mandou Rute descer à eira e deitar aos pés dele.",
+    ):
+        assert _turn(guide=kept, expect=recall) == [], kept
+    assert _turn(guide=pilot, expect={"no_recall_of_unworked": []}) == []
+
+
+def test_a_passage_the_team_has_not_worked_is_told_her_way_a_historia_conta_que() -> None:
+    implicit = "É a mesma pergunta que o homem fez pra Rute no escuro."
+    assert _turn(guide=implicit, expect=TOLD_AS_STORY) == _untold(implicit)
+    assert _turn(guide=implicit, expect={"no_recall_of_unworked": UNWORKED}) == [], (
+        "sem o tells_as_story do roteiro, só a lembrança é falta"
+    )
+    for told in (
+        "A história conta que, naquela noite, Rute pediu proteção, e o homem fez um juramento "
+        "pelo Senhor. Agora o dia está chegando.",
+        "A história conta que ele jurou pelo Senhor. E à meia-noite ele tinha acordado assustado.",
+        "A história conta que… o homem jurou pelo Senhor.",
+        "A história conta que Rute fez tudo isso. Ele disse: e agora, minha filha, não tenha medo. "
+        "Ele jurou pelo Senhor.",
+        "A história conta que a sogra perguntou: quem é você, minha filha? À meia-noite ele tinha "
+        "tremido.",
+    ):
+        assert _turn(guide=told, expect=TOLD_AS_STORY) == [], told
+    for reply, sentence in (
+        (
+            "A história conta que ela chegou em casa e a sogra perguntou: quem é você, minha "
+            f"filha? {implicit}",
+            implicit,
+        ),
+        (f"A história não conta por que ela pergunta assim. {implicit}", implicit),
+        ("A história nunca conta que ele jurou.", "A história nunca conta que ele jurou."),
+        (
+            "A história conta que ele jurou pelo Senhor. Agora o dia está chegando. À meia-noite "
+            "ele tremeu.",
+            "À meia-noite ele tremeu.",
+        ),
+        (
+            "A história conta que Rute fez tudo isso.\n\nNo meio da noite Boaz acordou assustado.",
+            "No meio da noite Boaz acordou assustado.",
+        ),
+        (
+            "A história conta que Rute fez tudo isso. É aí que a nossa passagem começa. Ele jurou "
+            "pelo Senhor.",
+            "Ele jurou pelo Senhor.",
+        ),
+        (
+            "A história conta que ele jurou pelo Senhor. Lembrem do plano de Noemi. À meia-noite "
+            "ele tremeu.",
+            "À meia-noite ele tremeu.",
+        ),
+        (f"A história conta que Rute fez tudo isso. {implicit}", implicit),
+        (
+            "Nesta passagem, a história conta que a sogra perguntou quem ela era. À meia-noite ele "
+            "tinha tremido.",
+            "À meia-noite ele tinha tremido.",
+        ),
+    ):
+        assert _turn(guide=reply, expect=TOLD_AS_STORY) == _untold(sentence), reply

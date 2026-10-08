@@ -323,6 +323,77 @@ _THE_STORY_DOES_NOT_TELL = _her(
     r"|não sabe(mos)? pela história|não vem da história|guarda (em )?silêncio"
     r"|fica (quieta|calada|em silêncio)|silêncio|de fora"
 )
+_RECALL_FRAME = _her(
+    r"(?<!\p{L})lembr(em|am|a|ar|ando|aram)(?!\p{L})|(?<!\p{L})(na|da) última parte"
+    r"|(?<!\p{L})(na|da) parte (anterior|de antes)"
+    r"|(?<!\p{L})como vocês (já )?(sabem|viram|ouviram|lembram)|(?<!\p{L})remember(?!\p{L})"
+    r"|(?<!\p{L})(in |from )?the last part|(?<!\p{L})(in |from )?the previous part"
+    r"|(?<!\p{L})as you (already )?(know|heard|saw)(?!\p{L})"
+)
+_UNNEGATED = r"(?:(?!(?<!\p{L})(?:não|nunca|jamais|not|never|doesn't|does not)(?!\p{L}))[^.?!])"
+_TELLS_AS_STORY = _her(
+    rf"(?<!\p{{L}})a história\b{_UNNEGATED}{{0,20}}?(?<!\p{{L}})conta(?!\p{{L}})[^.?!]{{0,40}}?"
+    rf"(?<!\p{{L}})que(?!\p{{L}})"
+    rf"|(?<!\p{{L}})the story\b{_UNNEGATED}{{0,20}}?(?<!\p{{L}})tells(?!\p{{L}})[^.?!]{{0,40}}?"
+    rf"(?<!\p{{L}})that(?!\p{{L}})"
+)
+_HER_FRAME_ON_AN_ELLIPSIS = _her(r"(?<!\p{L})(que|that)\s*(?:…|\.\.\.)\s+")
+_THIS_PASSAGE = _her(
+    r"(?<!\p{L})(nossa|nesta|nessa|esta|essa|desta|dessa) passagem(?!\p{L})"
+    r"|(?<!\p{L})nossa parte(?!\p{L})|(?<!\p{L})(passagem|parte) de hoje(?!\p{L})"
+    r"|(?<!\p{L})(our|this) passage(?!\p{L})|(?<!\p{L})our part(?!\p{L})"
+    r"|(?<!\p{L})today's (passage|part)(?!\p{L})"
+)
+_OPENS_ON_NOW = _her(r"^\P{L}*(agora|now)(?!\p{L})")
+_SAME_AS = _her(
+    r"(?<!\p{L})mesm[ao]s?\s+(perguntas?|palavras?|coisas?|frases?|falas?)(?!\p{L})"
+    r"|(?<!\p{L})(é|são|foi|foram)\s+(a|as|o|os)\s+mesm[ao]s?(?!\p{L})"
+    r"|(?<!\p{L})the same (questions?|words?|things?)(?!\p{L})"
+    r"|(?<!\p{L})(is|are|was|were) the same(?!\p{L})"
+)
+_PARAGRAPH_BREAK = _her(r"\n+")
+
+
+def _sentences_of(text: str) -> list[str]:
+    return _SENTENCE_END.split(_HER_FRAME_ON_AN_ELLIPSIS.sub(r"\1 ", text))
+
+
+def _recall_of_unworked(text: str, marks: list[regex.Pattern[str]]) -> str | None:
+    for sentence in _sentences_of(text):
+        frame = _RECALL_FRAME.search(sentence)
+        if not frame:
+            continue
+        for mark in marks:
+            hit = mark.search(sentence)
+            if not hit:
+                continue
+            between = sentence[min(frame.start(), hit.start()) : max(frame.start(), hit.start())]
+            if not _TELLS_AS_STORY.search(between):
+                return sentence.strip()
+    return None
+
+
+def _untold_mention_of_unworked(text: str, marks: list[regex.Pattern[str]]) -> str | None:
+    for paragraph in _PARAGRAPH_BREAK.split(text):
+        telling = False
+        for raw in _sentences_of(paragraph):
+            sentence = raw.strip()
+            if not sentence:
+                continue
+            marked = any(mark.search(sentence) for mark in marks)
+            if _TELLS_AS_STORY.search(sentence):
+                telling = not _THIS_PASSAGE.search(sentence)
+                continue
+            if telling and any(
+                back.search(sentence)
+                for back in (_OPENS_ON_NOW, _THIS_PASSAGE, _RECALL_FRAME, _SAME_AS)
+            ):
+                telling = False
+            if marked and not telling:
+                return sentence
+    return None
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -420,6 +491,18 @@ def mechanical_checks(
         fails.append("send-off did not say that a part told only aloud has no recording yet")
     if expect.get("names_new_fact") and not _THE_STORY_DOES_NOT_TELL.search(guide):
         fails.append("guide did not name the new fact as something the story does not tell")
+    if expect.get("no_recall_of_unworked"):
+        marks = [_her(mark) for mark in expect["no_recall_of_unworked"]]
+        if recalled := _recall_of_unworked(guide, marks):
+            fails.append(
+                "the voice recalled a passage this team has not worked yet as if the team knew it "
+                f"('lembrem' / 'na última parte'): \"{recalled}\""
+            )
+        if expect.get("tells_as_story") and (untold := _untold_mention_of_unworked(guide, marks)):
+            fails.append(
+                "the voice spoke of a passage this team has not worked yet without 'a história "
+                f'conta que…\': "{untold}"'
+            )
     if _THE_MAP.search(guide):
         fails.append("says 'o mapa' / 'the map' to the team")
     if _FAREWELL.search(guide):
