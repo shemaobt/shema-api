@@ -123,11 +123,12 @@ HER_PROMPTS = (
     "validator_system_prompt.md",
 )
 
+PROMPTS_DIR = "app/services/internalization_room/prompts"
+
+RETIRED_PROMPTS: dict[str, str] = {}
+
 FROZEN = {
-    **{
-        f"prompts/{name}": f"app/services/internalization_room/prompts/{name}"
-        for name in HER_PROMPTS
-    },
+    **{f"prompts/{name}": f"{PROMPTS_DIR}/{name}" for name in HER_PROMPTS},
     **{f"golden/sessions/{name}.json": f"golden/sessions/{name}.json" for name in HER_SESSIONS},
     **{f"golden/bt/{name}.json": f"golden/bt/{name}.json" for name in HER_BT_SCRIPTS},
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
@@ -238,6 +239,17 @@ def drift(pin: Pin, root: Path = REPO_ROOT, vendored: dict[str, str] = VENDORED)
         elif digest(local.read_bytes()) != pin.digests[path]:
             drifted.append(f"edited: {path}")
     return drifted
+
+
+def retired_faults(pin: Pin, retired: dict[str, str], root: Path = REPO_ROOT) -> list[str]:
+    faults = []
+    for name in sorted(retired):
+        path = f"{PROMPTS_DIR}/{name}"
+        if (root / path).exists():
+            faults.append(f"returned: {path}")
+        if path in pin.digests:
+            faults.append(f"pinned: {path}")
+    return faults
 
 
 def read_rulings(rulings_dir: Path = RULINGS_DIR) -> list[Ruling]:
@@ -518,6 +530,13 @@ def check() -> int:
         for line in faults:
             print(f"  {line}", file=sys.stderr)
         print(NOT_A_FORK, file=sys.stderr)
+        return 1
+
+    faults = retired_faults(freeze, RETIRED_PROMPTS)
+    if faults:
+        print("a prompt the production team retired is back:", file=sys.stderr)
+        for line in faults:
+            print(f"  {line}", file=sys.stderr)
         return 1
 
     rulings = read_rulings()
