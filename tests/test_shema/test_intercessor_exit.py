@@ -30,9 +30,9 @@ from app.services.shema._directory import DEAD_EXIT_LINK
 from tests.test_shema.conftest import (
     PEOPLE,
     PREFIX,
-    auth_header,
+    as_role,
     make_intercessor,
-    make_scoped_user,
+    network_routes,
 )
 
 CONTACT = "maria.santos@example.org"
@@ -43,21 +43,20 @@ def _exit(token: str) -> str:
 
 
 @pytest.fixture()
-async def circle_headers(db_session, shema_app) -> dict[str, str]:
-    user = await make_scoped_user(
-        db_session, shema_app, email="circle@exit.test", role_key="resourceCircle", regions=[]
-    )
-    return await auth_header(db_session, user)
+async def coordination_headers(db_session, shema_app) -> dict[str, str]:
+    """Whoever keeps the network: coordination writes it (OBT-574)."""
+    _user, headers = await as_role(db_session, shema_app, "coordinator")
+    return headers
 
 
 @pytest.fixture()
-async def person(client, circle_headers) -> dict:
+async def person(client, coordination_headers) -> dict:
     """One contact with all three consents, so every table that can hold them does."""
-    created = await make_intercessor(client, circle_headers, contact=CONTACT)
+    created = await make_intercessor(client, coordination_headers, contact=CONTACT)
     for context in ("directory", "partner-export"):
         res = await client.put(
             f"{PEOPLE}/{created['id']}/consents/{context}",
-            headers=circle_headers,
+            headers=coordination_headers,
             json={"basis": "said yes"},
         )
         assert res.status_code == 200, res.text
@@ -275,29 +274,17 @@ def test_the_limited_exit_routes_resolve_their_dependencies() -> None:
         assert {param.name for param in route.dependant.query_params} == set()
 
 
-async def test_every_other_network_route_refuses_a_member_without_resource_circle(
-    client, db_session, shema_app, circle_headers, person
+async def test_every_other_network_route_refuses_whoever_may_not_use_it(
+    client, db_session, shema_app, person
 ) -> None:
     """**The DoD's fifth line, other half**: the exit link opened two routes and nothing else.
-    Every route of the network still refuses every other Shemá role — never an admin, who
-    passes every guard and would make this pass with the guards deleted."""
-    target = f"{PEOPLE}/{person['id']}"
-    calls = [
-        ("GET", PEOPLE, None),
-        ("POST", PEOPLE, {"name": "X", "country": "BR", "contact": "x@example.org"}),
-        ("PATCH", target, {"name": "Y"}),
-        ("DELETE", target, None),
-        ("GET", f"{target}/contact", None),
-        ("PUT", f"{target}/consents/directory", {"basis": "yes"}),
-        ("DELETE", f"{target}/consents/directory", None),
-        ("POST", f"{target}/review", None),
-    ]
-    for role in ("coordinator", "obtLab"):
-        user = await make_scoped_user(
-            db_session, shema_app, email=f"{role}@exit.test", role_key=role, regions=[]
-        )
-        headers = await auth_header(db_session, user)
-        for method, url, body in calls:
+    Every route of the network still refuses the OBT Lab, and every write refuses the Resource
+    Circle, who reads the network and edits none of it (OBT-574) — never an admin, who passes
+    every guard and would make this pass with the guards deleted."""
+    reads, writes = network_routes(person["id"])
+    for role, routes in (("resourceCircle", writes), ("obtLab", reads + writes)):
+        _user, headers = await as_role(db_session, shema_app, role)
+        for method, url, body in routes:
             res = await client.request(method, url, headers=headers, json=body)
             assert res.status_code == 403, (role, method, url)
 

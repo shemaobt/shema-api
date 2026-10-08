@@ -12,11 +12,9 @@ the contact nor the name** — the same trade ``_scope.refuse_out_of_scope`` mak
 same reason: a log is read by more people and kept longer than a response body, so it holds
 the fact of the read and not its content.
 
-**The ``network`` consent is checked, and it is not a formality.** It is the consent to being
-held and reached at all, so a contact with no such row is one nobody agreed the platform could
-use — and reading it would be the act the row exists to authorise. The row is created with the
-person and cannot be absent for anything this module wrote; the check is what makes that true
-for anything anybody writes later.
+**Only somebody listed in the directory is revealed** (OBT-574, Karina's 4b): the gate is
+``_directory.revealed_contact``'s, beside the read it guards, as the list's is
+``listable_ids``'s.
 """
 
 from __future__ import annotations
@@ -25,11 +23,9 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
-from app.db.models.shema_consent import ShemaConsentContext
 from app.models.shema_intercessor import IntercessorContact
-from app.services.shema._directory import revealed_contact, with_consent
+from app.services.shema._directory import revealed_contact
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +42,6 @@ async def reveal_intercessor_contact(
     check's subject is read, so the two refusals cannot disagree about whether the row exists.
     """
     contact = await revealed_contact(db, intercessor_id)
-
-    if not await with_consent(db, ShemaConsentContext.NETWORK, ids=[intercessor_id]):
-        raise AuthorizationError(
-            "This contact has no standing consent to be held and reached by the network."
-        )
 
     logger.info(
         "shema intercessor contact revealed",

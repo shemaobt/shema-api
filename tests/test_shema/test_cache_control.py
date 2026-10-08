@@ -120,7 +120,8 @@ async def urls(db_session, server, shema_app, form_app) -> tuple[dict[str, str],
     assert answered.status_code == 202, answered.text
     submission_id = (await db_session.execute(select(ShemaSubmission.id))).scalar_one()
 
-    person = await make_intercessor(server, headers, contact="pessoa@example.test")
+    # Listed: a contact is revealed only to somebody in the directory (OBT-574).
+    person = await make_intercessor(server, headers, contact="pessoa@example.test", listed=True)
     exit_token = await issue_exit_link(db_session, person["id"])
 
     concrete = {

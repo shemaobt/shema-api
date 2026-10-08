@@ -15,16 +15,17 @@ already points, because ownership moved and the contract did not. ``app/api/shem
 stays BE-09's for the wall — the wave's collision rule is *create your own file*, and a router
 file is not a URL prefix.
 
-**Read access is narrower than authentication, and it is one role.** Everything here is
-``resourceCircle`` — *Intercessor*, the role whose stated responsibility (``CLAUDE.md`` §5.7)
-is *pedidos de oração, ora e compartilha com a rede*. ``obtLab``, ``coordinator`` and
-``admin`` are refused, and that is a real consequence rather than an oversight: a
-coordinator who needs the network is granted ``resourceCircle`` beside their own role,
-which this module explicitly supports — ``docs/shema.md`` §4.2 names a regional coordinator
-who is also ``resourceCircle`` as the ordinary case, and it is why grants go through
-``grant_app_role`` and never through ``scripts/grant_app_role.py``. An OR guard over two roles
-would be the capability map ``_deps.py`` spends four paragraphs refusing, for an OR this
-product has not asked for.
+**Reading and writing are two audiences** (OBT-574). Karina, via Daniel, 6/out/2026, question
+4a: *"Somente a coordenação tem acesso editar e apagar o contato do intercessor. O Resource
+Circle pode ver, mas não edita."* So the list and the one-person contact are
+:data:`~app.api.shema._deps.NetworkReader` — ``resourceCircle``, the role whose stated
+responsibility (``CLAUDE.md`` §5.7) is *pedidos de oração, ora e compartilha com a rede*, with
+``coordinator`` and ``admin`` — and every write is :data:`~app.api.shema._deps.NetworkWriter`,
+``coordinator`` and ``admin`` alone: adding, editing and erasing a contact, the one-year
+review, and recording or withdrawing a consent, which can erase the person. *Não edita* is
+read whole, as Daniel read *só não podem editar* on OBT-571. ``obtLab`` reaches nothing here.
+This is the first OR the product asked for, and ``_deps.py`` says why it is two role sets
+rather than a capability map.
 
 A platform admin passes, as they pass every guard in this repository. The cost lands on the
 tests and is stated there.
@@ -38,7 +39,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, status
 
-from app.api.shema._deps import Db, ResourceCircleUser
+from app.api.shema._deps import Db, NetworkReader, NetworkWriter
 from app.models.shema_intercessor import (
     ConsentGrant,
     IntercessorContact,
@@ -65,7 +66,7 @@ _PEOPLE = "/prayer/intercessors"
 
 
 @router.get(_PEOPLE, response_model=IntercessorDirectory)
-async def read_intercessors(user: ResourceCircleUser, db: Db) -> IntercessorDirectory:
+async def read_intercessors(user: NetworkReader, db: Db) -> IntercessorDirectory:
     """Everyone who consented to be listed — **with no contact string in the response**.
 
     The DoD's last line, as a property of the shape rather than of this handler: the
@@ -82,7 +83,7 @@ async def read_intercessors(user: ResourceCircleUser, db: Db) -> IntercessorDire
 
 @router.post(_PEOPLE, response_model=IntercessorEntry, status_code=status.HTTP_201_CREATED)
 async def create_intercessor(
-    payload: IntercessorCreate, user: ResourceCircleUser, db: Db
+    payload: IntercessorCreate, user: NetworkWriter, db: Db
 ) -> IntercessorEntry:
     """Add a contact together with the consent that lets the platform hold them.
 
@@ -95,7 +96,7 @@ async def create_intercessor(
 
 @router.patch(_PEOPLE + "/{intercessor_id}", response_model=IntercessorEntry)
 async def edit_intercessor(
-    intercessor_id: str, payload: IntercessorUpdate, user: ResourceCircleUser, db: Db
+    intercessor_id: str, payload: IntercessorUpdate, user: NetworkWriter, db: Db
 ) -> IntercessorEntry:
     """Edit a contact. ``addedAt`` has no field here and survives (FE-44 §9.6)."""
     return await update_intercessor(db, intercessor_id, payload=payload)
@@ -106,7 +107,7 @@ async def edit_intercessor(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
-async def erase_intercessor(intercessor_id: str, user: ResourceCircleUser, db: Db) -> None:
+async def erase_intercessor(intercessor_id: str, user: NetworkWriter, db: Db) -> None:
     """**Erase**, not hide: the row and its consents leave storage (``docs/shema.md`` §5.7).
 
     ``response_model=None`` is not decoration. This module carries
@@ -119,7 +120,7 @@ async def erase_intercessor(intercessor_id: str, user: ResourceCircleUser, db: D
 
 @router.post(_PEOPLE + "/{intercessor_id}/review", response_model=IntercessorEntry)
 async def mark_intercessor_reviewed(
-    intercessor_id: str, user: ResourceCircleUser, db: Db
+    intercessor_id: str, user: NetworkWriter, db: Db
 ) -> IntercessorEntry:
     """The "Revisado": this contact still belongs in the network, and its year starts again.
 
@@ -132,7 +133,7 @@ async def mark_intercessor_reviewed(
 
 @router.get(_PEOPLE + "/{intercessor_id}/contact", response_model=IntercessorContact)
 async def read_intercessor_contact(
-    intercessor_id: str, user: ResourceCircleUser, db: Db
+    intercessor_id: str, user: NetworkReader, db: Db
 ) -> IntercessorContact:
     """One contact, for one person. The service logs the read.
 
@@ -151,7 +152,7 @@ async def grant_consent(
     intercessor_id: str,
     context: ShemaConsentContext,
     payload: ConsentGrant,
-    user: ResourceCircleUser,
+    user: NetworkWriter,
     db: Db,
 ) -> IntercessorEntry:
     """Record that this person consented to one context, on a stated basis.
@@ -172,7 +173,7 @@ async def grant_consent(
 async def revoke_consent(
     intercessor_id: str,
     context: ShemaConsentContext,
-    user: ResourceCircleUser,
+    user: NetworkWriter,
     db: Db,
 ) -> None:
     """Withdraw one consent. Withdrawing ``network`` **erases the person**.
