@@ -89,6 +89,22 @@ _YHWH = re.compile(r"\bYHWH\b")
 _LETTER = re.compile(r"[^\W\d_]")
 _CLOSE = r"[\"\u201d\u2019')\]\u00bb]"
 _FIRST_LETTER = re.compile(r"^([\"\u201c\u00ab\u2018'(\[\s]*)([^\W\d_])")
+_TERMINAL_END = re.compile(rf"[.!?\u2026:;]{_CLOSE}*\Z")
+_LINE_END = re.compile(r"\r\n?")
+_WHITESPACE = re.compile(r"\s+")
+_RULE = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*\Z")
+_HEADING = re.compile(r"^\s*#{1,6}\s+(.*)\Z")
+_BULLET = re.compile(r"^\s*(?:[-*\u2022]|[0-9]{1,2}[.)])\s+(.*)\Z")
+_MARKS = (
+    (re.compile(r"\[([^\]]+)\]\([^)]*\)"), r"\1"),
+    (re.compile(r"`([^`]*)`"), r"\1"),
+    (re.compile(r"\*\*(\S(?:[^*]*?\S)?)\*\*"), r"\1"),
+    (re.compile(r"__(\S(?:[^_]*?\S)?)__"), r"\1"),
+    (re.compile(r"\*(\S(?:[^*]*?\S)?)\*"), r"\1"),
+    (re.compile(r"(^|\W)_(\S(?:[^_]*?\S)?)_(?=\W|\Z)"), r"\1\2"),
+    (re.compile(r"\*"), ""),
+    (re.compile(r"(?<![^\W_])#"), ""),
+)
 _SENTENCE_END = re.compile(rf"[.!?\u2026]+{_CLOSE}*(?=\s|\Z)")
 _ENDS_AS_QUESTION = re.compile(rf"[!?]*\?[!?]*{_CLOSE}*\Z")
 _HEAD_TERMINAL = re.compile(rf"[.!?\u2026]{_CLOSE}*\Z")
@@ -220,3 +236,35 @@ def standalone_questions(text: str) -> str:
         cursor = end.end()
     sentences.append(_split_question(text[cursor:], spans))
     return "".join(sentences)
+
+
+def _as_own_sentence(line: str) -> str:
+    sentence = _capitalized(line.strip())
+    if not sentence or _TERMINAL_END.search(sentence):
+        return sentence
+    return f"{sentence}."
+
+
+def _unmarked(line: str) -> str:
+    if _RULE.match(line):
+        return ""
+    own = False
+    if heading := _HEADING.match(line):
+        line, own = heading[1], True
+    if bullet := _BULLET.match(line):
+        line, own = bullet[1], True
+    for mark, kept in _MARKS:
+        line = mark.sub(kept, line)
+    return _as_own_sentence(line) if own else line
+
+
+def strip_markdown(text: str) -> str:
+    """Take the formatting marks off and keep every word, in its order.
+
+    A heading or a bullet is read as a sentence of its own; the lines are then joined with a
+    space, since a voice hears no line break. Tables, block quotes, HTML and strike-through are
+    left as they are, as in her rule.
+    """
+    lines = _LINE_END.sub("\n", text).split("\n")
+    joined = " ".join(_unmarked(line) for line in lines)
+    return _WHITESPACE.sub(" ", joined).strip()

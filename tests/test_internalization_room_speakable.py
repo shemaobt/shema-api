@@ -22,7 +22,11 @@ from pathlib import Path
 import pytest
 
 from app.services.internalization_room import speakable
-from app.services.internalization_room.speakable import speakable_text, standalone_questions
+from app.services.internalization_room.speakable import (
+    speakable_text,
+    standalone_questions,
+    strip_markdown,
+)
 
 _PT_CASES = [
     pytest.param("YHWH chamou Rute.", "Senhor Jeová chamou Rute.", id="mid-sentence"),
@@ -491,3 +495,92 @@ def test_her_known_limits_of_the_question_split_stay_as_she_pinned_them(
     text: str, expected: str
 ) -> None:
     assert standalone_questions(text) == expected
+
+
+_MARKED = [
+    pytest.param(
+        "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
+        "Eles saem da cidade deles, Belém de Judá, e vão morar em Moabe.",
+        id="bold-and-italic-inside-a-sentence",
+    ),
+    pytest.param(
+        "- o pai morre\n- os dois filhos casam",
+        "O pai morre. Os dois filhos casam.",
+        id="bullet-list-to-sentences",
+    ),
+    pytest.param(
+        "- O pai morre!\n- os dois filhos casam?",
+        "O pai morre! Os dois filhos casam?",
+        id="bullet-list-keeps-an-items-own-punctuation",
+    ),
+    pytest.param(
+        "* a fome\n1. a perda\n2) a volta",
+        "A fome. A perda. A volta.",
+        id="asterisk-and-numbered-bullets",
+    ),
+    pytest.param(
+        '- "voltem para casa"\n- ela ficou',
+        '"Voltem para casa". Ela ficou.',
+        id="bullet-item-starting-with-a-quote",
+    ),
+    pytest.param(
+        "## Segunda parte\nLá em Moabe, o pai morreu.",
+        "Segunda parte. Lá em Moabe, o pai morreu.",
+        id="heading-marks",
+    ),
+    pytest.param(
+        "__Noemi__ volta para _Belém_.",
+        "Noemi volta para Belém.",
+        id="double-and-single-underscores",
+    ),
+    pytest.param(
+        "o campo snake_case_name fica",
+        "o campo snake_case_name fica",
+        id="underscore-inside-a-word-stays",
+    ),
+    pytest.param(
+        "a palavra `respigar` quer dizer catar",
+        "a palavra respigar quer dizer catar",
+        id="code-marks-keep-the-content",
+    ),
+    pytest.param(
+        "veja [Rute 1](https://x.y/ruth#1) hoje", "veja Rute 1 hoje", id="link-to-its-text"
+    ),
+    pytest.param(
+        "um * só e # aqui e C# fica",
+        "um só e aqui e C# fica",
+        id="stray-asterisks-and-hashes",
+    ),
+    pytest.param(
+        "Primeira parte.\n\n\nSegunda   parte.",
+        "Primeira parte. Segunda parte.",
+        id="whitespace-runs-collapse-paragraphs-join-with-a-space",
+    ),
+    pytest.param(
+        'Ele diz: "fique no meu campo. Aqui você está segura." — Boaz, à noite…',
+        'Ele diz: "fique no meu campo. Aqui você está segura." — Boaz, à noite…',
+        id="accents-quotes-and-punctuation-untouched",
+    ),
+    pytest.param(
+        "Olá, equipe! Eu sou o Facilitador Digital.",
+        "Olá, equipe! Eu sou o Facilitador Digital.",
+        id="plain-text-is-the-identity",
+    ),
+    pytest.param(
+        "Primeira parte.\n---\nSegunda parte.\n***\n___",
+        "Primeira parte. Segunda parte.",
+        id="horizontal-rule-dropped",
+    ),
+    pytest.param(
+        "Olá equipe\nVamos começar",
+        "Olá equipe Vamos começar",
+        id="known-limit-a-plain-line-with-no-terminal-punctuation-gets-no-period",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, expected", _MARKED)
+def test_formatting_marks_never_reach_the_voice_and_every_word_stays(
+    text: str, expected: str
+) -> None:
+    assert strip_markdown(text) == expected
