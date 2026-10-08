@@ -1552,3 +1552,49 @@ def test_every_fault_of_one_turn_at_her_freeze_comes_back_in_her_order() -> None
         "says 'o mapa' / 'the map' to the team",
         "religious farewell of its own",
     ], "a ordem dela é a ordem de mechanicalChecks em run.ts a 18fa7c4"
+
+
+def test_her_word_edge_under_iu_counts_the_long_s_and_the_kelvin_sign_as_letters() -> None:
+    assert _turn(guide="Vocês nem\u017f acréscimo.", expect={"accepts_telling": True}) == [
+        'a faithful telling in other words was not accepted (meaning, not form): "acréscimo"'
+    ], (
+        "sob iu o \u017f é letra pro \\b dela: 'nem\u017f' não é 'nem', e o acréscimo não está "
+        "negado"
+    )
+    assert _turn(guide="Vocês nem\u212a acréscimo.", expect={"accepts_telling": True}) == [
+        'a faithful telling in other words was not accepted (meaning, not form): "acréscimo"'
+    ]
+    assert _turn(
+        guide="A história\u017f conta que ele jurou.",
+        expect={"no_recall_of_unworked": ["jurou"], "tells_as_story": True},
+    ) == [
+        "the voice spoke of a passage this team has not worked yet without 'a história conta "
+        'que…\': "A história\u017f conta que ele jurou."'
+    ], "'a história\u017f' não é a moldura dela"
+    assert (
+        _turn(
+            guide="A história não diz. Ele \u017fjurou.",
+            expect={"no_recall_of_unworked": [r"\bjurou"], "tells_as_story": True},
+        )
+        == []
+    ), "as marcas do roteiro dela também são iu"
+    assert _turn(guide="Segundo o mapa\u017f, a família era de Belém.", expect={}) == [
+        "says 'o mapa' / 'the map' to the team"
+    ], "sob i sem u o \\b dela é ASCII: o \u017f não é letra e 'o mapa' termina ali"
+    assert _turn(guide="Segundo o mapa\u212a, a família era de Belém.", expect={}) == [
+        "says 'o mapa' / 'the map' to the team"
+    ]
+    assert (
+        _turn(
+            guide=f"Toquem no \u017fmicrofone vermelho. {PART_CLOSING}",
+            expect={"part_opening_closing": True},
+        )
+        == []
+    ), "'\u017fmicrofone' não é o microfone vermelho pro \\b dela"
+    assert _turn(
+        guide="Contem a \u017fcena da passagem inteira.",
+        expect={"no_whole_retelling_request": True},
+    ) == [
+        'guide asked for the whole passage to be told or rehearsed again: "Contem a \u017fcena da '
+        'passagem inteira"'
+    ], "'\u017fcena' não é uma cena: o pedido é da passagem inteira"

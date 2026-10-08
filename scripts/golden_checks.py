@@ -11,10 +11,15 @@ added, none is dropped, none is loosened. These are "the cheap, unambiguous ones
 makes without a judge; the rest of her `expect` keys — `opens_more`, `names_gap`, `no_spoiler`
 — are the judge's to score.
 
-Her regexes are JavaScript's, whose `\\b`, `\\w` and `\\d` are ASCII-only with or without the `u`
-flag. `_her` compiles each one under `regex`, for her variable-width lookbehinds and `\\p{L}`,
-with those three scoped to ASCII and case folding left Unicode; `scripts/bt_golden_checks.py`
-measures what Python's Unicode `\\b` would have changed.
+Her regexes are JavaScript's. Their `\\d` is ASCII; their `\\w` and `\\b` are ASCII too,
+except that under both the `i` and `u` flags JavaScript also counts the long s (U+017F) and
+the Kelvin sign (U+212A) as word characters. `_her` compiles each one under `regex`, for her
+variable-width lookbehinds and `\\p{L}`, and builds that word class per pattern —
+`unicode=True` where hers carries `u` — with case folding left Unicode, so É still meets é.
+One difference remains, in the folding of literal letters: under IGNORECASE `regex` matches a
+literal `i` against İ (U+0130) in every pattern, and a literal `s` or `k` against the long s
+or the Kelvin sign in the patterns hers runs without `u`, where JavaScript matches neither.
+`scripts/bt_golden_checks.py` measures what Python's Unicode `\\b` would have changed.
 """
 
 from __future__ import annotations
@@ -26,11 +31,20 @@ from typing import Any
 import regex
 
 
-def _her(pattern: str, flags: int = regex.IGNORECASE) -> regex.Pattern[str]:
-    ascii_like_javascript = (
-        pattern.replace(r"\b", r"(?a:\b)").replace(r"\w", r"(?a:\w)").replace(r"\d", "[0-9]")
+def _her(
+    pattern: str, flags: int = regex.IGNORECASE, *, unicode: bool = False
+) -> regex.Pattern[str]:
+    if unicode and flags & regex.IGNORECASE:
+        word = r"(?:(?a:\w)|[\u017F\u212A])"
+        edge = rf"(?:(?<={word})(?!{word})|(?<!{word})(?={word}))"
+    else:
+        word, edge = r"(?a:\w)", r"(?a:\b)"
+    like_javascript = regex.sub(
+        r"\\[bwd]",
+        lambda escape: {r"\b": edge, r"\w": word, r"\d": "[0-9]"}[escape[0]],
+        pattern,
     )
-    return regex.compile(ascii_like_javascript, flags)
+    return regex.compile(like_javascript, flags)
 
 
 def _fold(text: str) -> str:
@@ -135,7 +149,8 @@ _SENT_BACK = _her(
     r"[^.?!]{0,40}de novo"
     r"|cont(em|ar|a) de novo,? (só )?(sem|com|até)"
     r"|ensai(em|ar) (essa|esta|a) parte de novo"
-    r"|isso (a história|a passagem) não conta(?![^.?!]*(vocês|guard|respeit|proteg|silêncio))"
+    r"|isso (a história|a passagem) não conta(?![^.?!]*(vocês|guard|respeit|proteg|silêncio))",
+    unicode=True,
 )
 _THE_NOUN_DEMANDED = _her(
     r"(?<!\b(não|nem) )(precisa|precisam|falta|faltou|tentem|coloquem|usem|ponham|botem"
@@ -145,7 +160,8 @@ _THE_NOUN_DEMANDED = _her(
     r"(falt|precisa|tem que|têm que|ficou de fora|ficou faltando)"
     r"|(?<!\p{L})(a palavra|o termo) (certa|certo|exata|exato) (é|seria|era)"
     r"|não é (a palavra|o termo) (certa|certo|exata|exato)"
-    r"|(?<!\b(não|nem) )falt(a|ou)[^.?!]{0,40}bondade"
+    r"|(?<!\b(não|nem) )falt(a|ou)[^.?!]{0,40}bondade",
+    unicode=True,
 )
 _FENCE_OPENS = _her(
     r"vou dizer tudo o que deve entrar no ensaio de vocês"
@@ -237,11 +253,13 @@ _CLOSING_TAIL = (
 _TO_THE_RED_MICROPHONE = (
     _her(
         r"(?<!\bque\s+(voc[êe]s\s+)?)(?<!\p{L})(toquem|apertem|cliquem)(?!\p{L})"
-        r"(?:(?!\bn[ãa]o\b)[^.!?]){0,30}?\bmicrofone vermelho"
+        r"(?:(?!\bn[ãa]o\b)[^.!?]){0,30}?\bmicrofone vermelho",
+        unicode=True,
     ),
     _her(
         r"(?<!\b(you|they|we|I)\s+)(?<!\p{L})(tap|press|touch|click)(?!\p{L})"
-        r"(?:(?!\bnot\b)[^.!?]){0,30}?\bred microphone"
+        r"(?:(?!\bnot\b)[^.!?]){0,30}?\bred microphone",
+        unicode=True,
     ),
 )
 
@@ -318,7 +336,8 @@ _THE_WHOLE_PASSAGE_ASKED_FOR = _her(
     r"|vamos\s+(recontar|ensaiar)|tell|retell|rehearse)(?!\p{L})"
     r"(?:(?!\bcenas?\b|\bpartes?\b|\bscenes?\b|\bparts?\b)[^.?!]){0,60}?"
     r"(passagem inteira|passagem toda|história inteira|história toda|do começo ao fim"
-    r"|whole passage|whole story|from (the )?beginning to (the )?end|from start to finish)"
+    r"|whole passage|whole story|from (the )?beginning to (the )?end|from start to finish)",
+    unicode=True,
 )
 _NO_RECORDING_YET = _her(r"n[ãa]o t[eê]m grava[çc][ãa]o|sem grava[çc][ãa]o|no recording")
 _THE_STORY_DOES_NOT_TELL = _her(
@@ -338,7 +357,8 @@ _TELLS_AS_STORY = _her(
     rf"(?<!\p{{L}})a história\b{_UNNEGATED}{{0,20}}?(?<!\p{{L}})conta(?!\p{{L}})[^.?!]{{0,40}}?"
     rf"(?<!\p{{L}})que(?!\p{{L}})"
     rf"|(?<!\p{{L}})the story\b{_UNNEGATED}{{0,20}}?(?<!\p{{L}})tells(?!\p{{L}})[^.?!]{{0,40}}?"
-    rf"(?<!\p{{L}})that(?!\p{{L}})"
+    rf"(?<!\p{{L}})that(?!\p{{L}})",
+    unicode=True,
 )
 _HER_FRAME_ON_AN_ELLIPSIS = _her(r"(?<!\p{L})(que|that)\s*(?:…|\.\.\.)\s+")
 _THIS_PASSAGE = _her(
@@ -1144,7 +1164,7 @@ def mechanical_checks(
     if expect.get("names_new_fact") and not _THE_STORY_DOES_NOT_TELL.search(guide):
         fails.append("guide did not name the new fact as something the story does not tell")
     if expect.get("no_recall_of_unworked"):
-        marks = [_her(mark) for mark in expect["no_recall_of_unworked"]]
+        marks = [_her(mark, unicode=True) for mark in expect["no_recall_of_unworked"]]
         if recalled := _recall_of_unworked(guide, marks):
             fails.append(
                 "the voice recalled a passage this team has not worked yet as if the team knew it "
