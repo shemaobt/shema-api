@@ -18,6 +18,7 @@ from app.services.internalization_room.canon.elements import (
     element_keys,
     elements_for,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 
 PANORAMA_PREFIX = "OV-"
 
@@ -172,11 +173,13 @@ def coverage_view(session: IRSession) -> CoverageView:
     up as `Math.round` rounds and never half to even as Python's `round` does.
     """
     numbers = counts(session.coverage_state or {})
+    with reading_the_canon_of(session.canon_pin):
+        absence = -1 if is_panorama(session.pericope) else absence_index(session.pericope)
     return CoverageView(
         engaged=numbers["engaged"],
         surfaced=numbers["surfaced"],
         total=numbers["total"],
-        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+        absence_index=absence,
         beads_total=BEADS_TOTAL,
         beads_filled=math.floor(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL + 0.5),
     )

@@ -24,7 +24,7 @@ from app.services.internalization_room import background
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from tests.canon_harness import the_canon_moves_on
-from tests.opening_harness import the_tablet_opens
+from tests.opening_harness import another_tablet_of, the_tablet_opens
 from tests.release_harness import P, a_claimed_device
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
 from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
@@ -43,6 +43,7 @@ BEINGS = "**3A — Beings**\n"
 ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
 NAOMI_IN_THE_FIRST_SCENE = '"being_id": "B3",\n            "role_in_scene": "MOTHER_IN_LAW",'
 DROPPED_BEAD = "being:S1:B2"
+KEPT_FIRST_SILENCE_AT = 11
 
 
 def _rewrite(tree: Path, folder: str, pericope: str, old: str, new: str) -> None:
@@ -221,6 +222,28 @@ async def test_a_settle_of_a_session_open_when_a_new_canon_is_published_still_wo
     assert kept_session.coverage_state[DROPPED_BEAD] == "engaged", (
         "a conta que o canon novo tirou foi descartada no meio da sessão"
     )
+
+
+async def test_a_second_tablet_joining_a_session_open_when_a_new_canon_is_published_sees_and_hears_its_canon(  # noqa: E501
+    client, db_session, prompts, monkeypatch, tmp_path
+) -> None:
+    team, first = await a_claimed_device(db_session)
+    second = await another_tablet_of(db_session, team)
+    opened = await the_tablet_opens(client, first, {"pericope": P, "language": "pt"})
+
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_its_own_beings)
+    told = await the_team_says(client, first, opened["session_id"], "depois")
+    joined = await the_tablet_opens(client, second, {"pericope": P, "language": "pt"})
+    start = len(prompts.read)
+    await the_team_says(client, second, joined["session_id"], "da outra")
+    guide, _ = prompts.since(start)
+
+    assert joined["session_id"] == opened["session_id"]
+    assert joined["coverage"]["absence_index"] == KEPT_FIRST_SILENCE_AT, (
+        "o segundo tablet desenhou o colar pelo canon novo"
+    )
+    assert joined["coverage"] == told.json()["coverage"]
+    assert "Elimelech as kept @ S1" in guide, "o segundo tablet ouviu a voz do canon novo"
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
