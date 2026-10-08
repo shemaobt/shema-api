@@ -25,7 +25,7 @@ from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import ElementLabelsBroken, labelled_elements
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import FLOOR, room_language
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ def scene_titles(session: IRSession) -> list[str | None]:
         )
         return []
     return [
-        element.label_pt if session.language == "pt" else element.label_en
+        element.label_pt if room_language(session.language) == "pt" else element.label_en
         for element in elements
         if element.kind is ElementKind.SCENE
     ]
