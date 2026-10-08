@@ -260,3 +260,60 @@ async def test_the_readme_of_a_stopped_run_says_it_stopped_and_names_what_it_lef
     ) in (out / "README.md").read_text(encoding="utf-8"), (
         "um README de 1/1 sem esta linha passaria por uma rodada inteira"
     )
+
+
+def _earlier_run(directory: Path, *names: str) -> Path:
+    directory.mkdir()
+    for name in names:
+        (directory / f"{name}.2026-10-07T21-13-26.json").write_text(
+            json.dumps(
+                {
+                    "name": name,
+                    "pericopeId": "P01",
+                    "language": "Brazilian Portuguese",
+                    "baseUrl": "http://room/api/internalization-room/",
+                    "sessionId": f"s-{name}",
+                    "turns": [
+                        {
+                            "idx": 0,
+                            "team": "Oi.",
+                            "guide": GUIDE_LINE,
+                            "outcome": "pass",
+                            "interrupted": False,
+                            "turnMs": 1000,
+                            "usage": [],
+                            "mechanical": [],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+    return directory
+
+
+async def test_a_rejudge_counts_its_judge_calls_and_stops_before_the_export_it_cannot_afford(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judged: list[str] = []
+
+    async def _judge_that_charges(script, result, *, out, stamp) -> None:
+        judged.append(script.name)
+        result.judge_usage = [golden_runner.Usage("judge", "claude-fable-5-1", 1, 1, 0, 0, 1, 3.0)]
+
+    monkeypatch.setattr(golden_runner, "judge", _judge_that_charges)
+    earlier = _earlier_run(tmp_path / "earlier", "P01-a", "P01-b", "P01-c")
+    out = tmp_path / "rejudged"
+
+    exit_code = await golden_runner.run(_args(earlier, out, rejudge=str(earlier), budget_usd=2.0))
+
+    assert judged == ["P01-a"], "a primeira chamada do juiz, US$ 3, já passou dos US$ 2"
+    assert exit_code == 3
+    assert (
+        "golden: budget US$ 2.00 reached at US$ 3.00; not started: P01-b, P01-c"
+        in capsys.readouterr().err
+    )
+    assert (
+        "Rodada parada pelo orçamento de US$ 2.00, já em US$ 3.00. "
+        "Sessões que não começaram: P01-b, P01-c.\n"
+    ) in (out / "README.md").read_text(encoding="utf-8")

@@ -798,22 +798,37 @@ async def rejudge(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    exports = [
+        path
+        for path in sorted(Path(args.rejudge).glob("*.json"))
+        if not path.name.endswith(".verdict.json")
+    ]
+    if not exports:
+        print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
+        return 2
+    budget = budget_of(args)
     results: list[SessionResult] = []
+    not_started: list[str] = []
     base_url = ""
-    for path in sorted(Path(args.rejudge).glob("*.json")):
-        if path.name.endswith(".verdict.json"):
-            continue
+    for position, path in enumerate(exports):
+        if _spent(results) >= budget:
+            not_started = [exported(later)[0].name for later in exports[position:]]
+            break
         script, result, base_url = exported(path)
         print(f"\n▶ {script.name} — judging {path.name} again")
         out.mkdir(parents=True, exist_ok=True)
         if result.refused is None:
             await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
         results.append(result)
-    if not results:
-        print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
-        return 2
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
-    return close(results, out=out, base_url=base_url, stamp=stamp)
+    return finish(
+        results,
+        out=out,
+        base_url=base_url,
+        stamp=stamp,
+        budget=budget,
+        not_started=not_started,
+    )
 
 
 def close(
