@@ -774,12 +774,11 @@ async def publish_upload(
 ) -> UploadNotConfirmed | None:
     """Publish the uploaded audio once the bucket holds it as declared, else say why not.
 
-    The object checked is the pending object; with none, the one the recording's URL names
-    (a repeated confirm), else today's name (an upload started before pending objects
-    existed). A refused upload changes nothing on the recording: its status, its URL, the
-    audio behind it and the pending object stay as they were. The previous object is deleted
-    only after the new URL is committed, and a failed delete never fails the publish: the new
-    audio is already out.
+    The object checked is the pending object; with none, an upload started before pending
+    objects existed: the one the recording's URL names, else today's name. A refused upload
+    changes nothing on the recording: its status, its URL, the audio behind it and the pending
+    object stay as they were. The previous object is deleted only after the new URL is
+    committed, and a failed delete never fails the publish: the new audio is already out.
     """
     previous = blob_name_from_url(recording.gcs_url) if recording.gcs_url else None
     blob_path = (
@@ -810,6 +809,18 @@ async def publish_upload(
     return None
 
 
+def _is_repeated_confirm(recording: OC_Recording) -> bool:
+    """Published audio and nothing pending: an accepted confirm sent again, answered as it is.
+
+    Checked again it could be refused, since a cleaning replaces the audio the app declared.
+    """
+    return (
+        recording.pending_blob_name is None
+        and bool(recording.gcs_url)
+        and recording.upload_status in (UploadStatus.UPLOADED, UploadStatus.VERIFIED)
+    )
+
+
 async def confirm_upload(
     db: AsyncSession,
     recording_id: str,
@@ -818,6 +829,8 @@ async def confirm_upload(
     crc32c: str | None = None,
 ) -> OC_Recording:
     recording = await get_recording(db, recording_id)
+    if _is_repeated_confirm(recording):
+        return recording
     refusal = await publish_upload(db, recording, md5_hash=md5_hash, crc32c=crc32c)
     if refusal is not None:
         raise refusal

@@ -798,6 +798,61 @@ async def test_a_repeated_confirm_upload_of_a_replaced_recording_answers_200_and
     assert again.json()["upload_status"] == UploadStatus.UPLOADED
 
 
+async def test_a_repeated_confirm_on_a_cleaned_recording_answers_200_and_keeps_the_cleaned_audio(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient, edge: _PublicEdge
+) -> None:
+    from app.inngest.audio_cleaning import clean_recording_fn
+
+    await make_app(db_session, app_key=OC_APP_KEY, name="Oral Collector")
+    device, rec = await _uploaded(db_session, bucket, client)
+    edge.cleaned_audio = b"the same story without the hiss"
+    await _run_job(
+        clean_recording_fn,
+        inngest.Event(
+            name="clean",
+            data={
+                "recording_id": rec.id,
+                "user_id": rec.user_id,
+                "gcs_url": _url(_todays_name(rec)),
+            },
+        ),
+    )
+    cleaned_url = (await _row(db_session, rec.id)).gcs_url
+
+    response = await device.confirm(rec.id, crc32c=_crc32c(OLD_AUDIO))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["gcs_url"] == cleaned_url
+    stored = await _row(db_session, rec.id)
+    assert (stored.gcs_url, stored.cleaning_status) == (cleaned_url, CleaningStatus.CLEANED)
+    assert bucket.objects[(cleaned_url or "").removeprefix(gcs_public_base())] == edge.cleaned_audio
+
+
+async def test_a_repeated_confirm_on_a_verified_recording_keeps_it_verified(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient, sent: list
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
+
+    response = await device.confirm(rec.id, crc32c=_crc32c(OLD_AUDIO))
+
+    assert (response.status_code, response.json()["upload_status"]) == (200, "verified")
+    assert (await _row(db_session, rec.id)).upload_status == UploadStatus.VERIFIED
+    assert sent == []
+
+
+async def test_a_replacement_started_before_this_deploy_is_still_checked_by_confirm_upload(
+    db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient
+) -> None:
+    device, rec = await _uploaded(db_session, bucket, client)
+    rec.upload_status = UploadStatus.UPLOADING
+    await db_session.commit()
+    device.put(_todays_name(rec), OLD_AUDIO[:5])
+
+    response = await device.confirm(rec.id)
+
+    assert (response.status_code, response.json()["code"]) == (400, "UPLOAD_SIZE_MISMATCH")
+
+
 async def test_after_confirm_upload_the_job_marks_it_verified_and_notifies_keeping_its_url(
     db_session: AsyncSession, bucket: _Bucket, client: httpx.AsyncClient, sent: list
 ) -> None:

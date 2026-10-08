@@ -31,9 +31,12 @@ written over.
   failure it answers 400 with a reason code, `UPLOAD_OBJECT_MISSING`,
   `UPLOAD_SIZE_MISMATCH` or `UPLOAD_CHECKSUM_MISMATCH`, and changes nothing: the upload
   status, the URL, the audio behind it and the pending object stay as they were. First
-  uploads and replacements behave the same. With no pending object, the name in the recording's URL is checked (a repeated
-  confirm); with no URL either, the first-upload name is checked (an upload started before
-  this change).
+  uploads and replacements behave the same. A confirm with no pending object on a recording
+  already `uploaded` or `verified` is a repeat of an accepted one: it answers 200 with the
+  recording as it is, checks nothing and sends no event, since a cleaning may have replaced
+  the audio the app declared. A recording still `uploading` with no pending object was
+  started before this change: the name in its URL is checked, or with no URL the
+  first-upload name.
 - A replacement's upload URL leaves the upload status as it is; `uploading` and
   `upload_failed` keep meaning a first upload. So the stalled-upload sweep, the 180-day purge
   and «clear stale recordings» never reach a recording with published audio. A replacement
