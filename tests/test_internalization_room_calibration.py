@@ -32,23 +32,6 @@ KEY = "sala-de-teste"
 PANORAMA = "OV"
 THE_TEAM_ANSWERS = "Uma pergunta curta de cada vez."
 PASSAGE = "P03"
-#: The method question as the ticket quotes it, in the three languages the room claims.
-#: Read from the ticket rather than from `bridge_calibration_question`, which this branch
-#: deletes: an expectation taken from the code under test agrees with it by construction.
-THE_METHOD_QUESTION = {
-    "pt": (
-        "Quando trabalharmos as passagens, qual jeito fica melhor para vocês: "
-        "contar naturalmente em português ou receber uma pergunta curta de cada vez?"
-    ),
-    "en": (
-        "When we work through the passages, which suits you better: "
-        "telling it back in your own words, or one short question at a time?"
-    ),
-    "es": (
-        "Cuando trabajemos los pasajes, ¿qué les queda mejor: "
-        "contarlo con sus propias palabras, o recibir una pregunta corta a la vez?"
-    ),
-}
 
 GUIDE_OPENING = "Bem-vindos. Vamos conhecer o livro inteiro antes de entrar nele."
 GUIDE_REPLY = "O livro começa numa fome, e uma família sai de casa por causa dela."
