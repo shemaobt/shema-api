@@ -633,7 +633,11 @@ async def append_exchange(
             guide["interrupted"] = asdict(outcome.interrupted)
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
-    guide["moment"] = moment_step(session.messages or [], guide_response)
+    guide["moment"] = moment_step(
+        session.messages or [],
+        guide_response,
+        fail_safe=outcome is not None and outcome.used_fail_safe,
+    )
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
     if state is not None:

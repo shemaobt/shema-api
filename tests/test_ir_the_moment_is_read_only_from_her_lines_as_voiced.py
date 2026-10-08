@@ -38,7 +38,7 @@ TOLD = "Vamos começar pela Familiarização. Primeiro eu conto a passagem intei
 
 def _after(moment: dict[str, Any], voiced: str) -> dict[str, Any]:
     heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
-    return moment_step(heard, voiced)["after"]
+    return moment_step(heard, voiced, fail_safe=False)["after"]
 
 
 @pytest.mark.parametrize(
