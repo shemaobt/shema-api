@@ -28,11 +28,18 @@ from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
 NEW_PIN = "a" * 40
 VENDORED_LINE = "Close-up and slow."
 KEPT_LINE = "THE KEPT MAP TELLS IT CLOSE AND SLOW."
+VENDORED_P01_ARC = "The passage opens wide, on a whole era,"
+KEPT_P01_ARC = "THE KEPT FIRST PASSAGE OPENS ON A WHOLE ERA,"
 
 
 def _the_kept_p03_is_told_its_own_way(tree: Path) -> None:
     (page,) = (tree / "vendor" / "meaning-map").glob("P03-*.md")
     page.write_text(page.read_text(encoding="utf-8").replace(VENDORED_LINE, KEPT_LINE))
+
+
+def _the_kept_p01_opens_its_own_way(tree: Path) -> None:
+    (page,) = (tree / "vendor" / "meaning-map").glob("P01-*.md")
+    page.write_text(page.read_text(encoding="utf-8").replace(VENDORED_P01_ARC, KEPT_P01_ARC))
 
 
 class Prompts:
@@ -96,6 +103,25 @@ async def test_a_session_open_when_a_new_canon_is_published_still_hands_the_voic
     assert KEPT_LINE in guide, "a voz leu o mapa novo no meio da sessão"
     assert KEPT_LINE in validator, "o Validador conferiu contra o mapa novo"
     assert VENDORED_LINE not in guide and VENDORED_LINE not in validator
+
+
+async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
+    client, db_session, prompts, monkeypatch, tmp_path
+) -> None:
+    _, tablet = await a_claimed_device(db_session)
+    _, newcomer = await a_claimed_device(db_session, email="nov@example.com")
+    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p01_opens_its_own_way)
+    after = await the_tablet_opens(client, newcomer, {"pericope": P, "language": "pt"})
+    await the_team_says(client, newcomer, after["session_id"], "na nova")
+    start = len(prompts.read)
+    await the_team_says(client, tablet, opened["session_id"], "depois")
+    guide, validator = prompts.since(start)
+
+    assert KEPT_P01_ARC in guide, "a voz contou a história até aqui pelo canon novo"
+    assert KEPT_P01_ARC in validator, "o Validador leu a história até aqui do canon novo"
+    assert VENDORED_P01_ARC not in guide and VENDORED_P01_ARC not in validator
 
 
 async def test_a_passage_first_opened_after_a_new_canon_records_it_and_reads_the_vendored_map_as_today(  # noqa: E501

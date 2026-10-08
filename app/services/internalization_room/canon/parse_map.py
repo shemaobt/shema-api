@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -287,12 +286,12 @@ def load_map(pericope_num: str) -> MeaningMap:
     return parse_map(path.read_text(encoding="utf-8"), source=path.name)
 
 
-@lru_cache(maxsize=8)
+@per_canon(maxsize=8)
 def load_book(book: str) -> tuple[MeaningMap, ...]:
     """Every vendored map of one book, in story order."""
     if not _BOOK.match(book):
         raise ValidationError(f"no vendored Meaning Maps for book {book!r}")
-    paths = sorted(MAPS_DIR.glob(f"*-{book}-*.md"))
+    paths = sorted(canon_path(MAPS_DIR).glob(f"*-{book}-*.md"))
     if not paths:
         raise ValidationError(f"no vendored Meaning Maps for book {book!r}")
     return tuple(parse_map(path.read_text(encoding="utf-8"), source=path.name) for path in paths)
