@@ -2,8 +2,8 @@
 
 The artifact carries not just the audio, but the history of how the team reached it and
 which limits still need people who understand the mother tongue: the bridge mode, the
-scenes practiced, the semantic evidence events and their open points, the telling-back
-with its findings and playback report, and every superseded attempt clearly marked.
+telling-back with its findings and playback report, and every superseded attempt clearly
+marked.
 
 The release fails closed. A blocker means the session is not ready to travel — never a
 partial artifact — because a package missing the rehearsal audio, the telling-back, the
@@ -56,13 +56,6 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.session_readiness import (
-    evaluate_session_comprehension,
-)
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
@@ -71,7 +64,6 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     back_translation_of,
-    comprehension_of,
     is_panorama,
 )
 from app.services.internalization_room.takes import current_parts, is_wav, takes_of
@@ -87,7 +79,9 @@ from app.services.internalization_room.takes import current_parts, is_wav, takes
 #: still there and no longer meaning what they said (ADR 0017). And to v0.6 with the analyst's
 #: note gone from every finding, in ``findings`` and in the superseded attempts alike: a
 #: consumer diffing the two versions finds one key gone from every finding and nothing renamed.
-SCHEMA_VERSION = "tripod.internalization-release.v0.6"
+#: And to v0.7 with the ``comprehension`` block gone, and its open points with it from
+#: ``open_questions``: the room no longer reads practice or probes (ADR 0056).
+SCHEMA_VERSION = "tripod.internalization-release.v0.7"
 
 #: The whole of what a facilitator's code can set aside, and the one place that says so. They
 #: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
@@ -474,16 +468,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
 
-    comprehension = comprehension_of(session)
     telling_back = back_translation_of(session)
-    checkpoints = list(checkpoints_for(session.pericope))
-    scene_ids = scene_ids_for(session.pericope)
-    readiness = evaluate_session_comprehension(
-        checkpoints=checkpoints,
-        scene_ids=scene_ids,
-        ledger=comprehension.ledger,
-        practiced_scene_ids=comprehension.practiced_scene_ids,
-    )
     stretches = await final_segments(db, session.id)
     told = told_back(stretches)
     replaced = await retired_segments(db, session.id)
@@ -510,21 +495,6 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
     if rehearsed and unheard:
         blockers.append("playback_did_not_cover_the_clip")
 
-    by_id = {checkpoint.id: checkpoint for checkpoint in checkpoints}
-    open_points = []
-    for point in readiness.evaluation.open_points:
-        checkpoint = by_id.get(point.unit_id)
-        open_points.append(
-            {
-                "unit_id": point.unit_id,
-                "reason": point.reason,
-                "checkpoint_kind": checkpoint.kind if checkpoint else None,
-                "scene_id": checkpoint.scene_id if checkpoint else None,
-                "source_id": checkpoint.source_id if checkpoint else None,
-                "canonical": checkpoint.canonical if checkpoint else None,
-            }
-        )
-
     questions = (
         (
             await db.execute(
@@ -546,14 +516,6 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
         "pericope": session.pericope,
         "book": load_map(session.pericope).book,
         "canon_vendor_pin": vendor_pin(),
-        "comprehension": {
-            "outcome": readiness.evaluation.outcome.value,
-            "supported_unit_ids": readiness.evaluation.supported_unit_ids,
-            "total_units": len(checkpoints),
-            "practiced_scene_ids": comprehension.practiced_scene_ids,
-            "events": [event.model_dump(mode="json") for event in comprehension.ledger],
-            "open_points": open_points,
-        },
         "audio": {
             "recording_grain": _recording_grain(parts),
             "rehearsal_takes": [_take_view(take) for take in parts],
@@ -582,8 +544,7 @@ async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any
             }
             for question in questions
         ],
-        "open_questions": len(open_points)
-        + sum(1 for question in questions if question.status.value != "resolved")
+        "open_questions": sum(1 for question in questions if question.status.value != "resolved")
         + findings_remaining(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)

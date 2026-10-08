@@ -380,17 +380,10 @@ async def test_the_release_of_a_session_open_when_a_new_canon_is_published_names
     the_canon_moves_on(monkeypatch, tmp_path, OLD_PIN)
     kept_session = await create_session(db_session, pericope=P)
     the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_a_rule_of_its_own)
-    newer, _ = await compose_internalization_release(
-        db_session, await create_session(db_session, pericope=P)
-    )
-
     packet, _ = await compose_internalization_release(db_session, kept_session)
 
     assert packet["canon_vendor_pin"] == OLD_PIN, (
         "o pacote para o Refine nomeou um canon que a equipe nunca trabalhou"
-    )
-    assert packet["comprehension"]["total_units"] == newer["comprehension"]["total_units"] + 1, (
-        "o pacote contou as verificações do canon novo"
     )
 
 

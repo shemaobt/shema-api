@@ -338,7 +338,7 @@ async def test_the_analysts_note_is_nowhere_in_the_packet(db_session: AsyncSessi
 
     assert '"note"' not in json.dumps(packet["back_translation"])
     assert THE_ANALYSTS_NOTE not in json.dumps(packet)
-    assert packet["schema_version"] == "tripod.internalization-release.v0.6"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.7"
     assert set(packet["back_translation"]["findings"][0]) == {
         "kind",
         "segment_id",

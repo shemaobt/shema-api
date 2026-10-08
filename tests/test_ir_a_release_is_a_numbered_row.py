@@ -55,7 +55,7 @@ APP_KEY = "internalization-room"
 #: What the packet says it is. One constant because the number moves for reasons that have
 #: nothing to do with this rule, and a version written into six assertions is six places to
 #: forget.
-SCHEMA_VERSION = "tripod.internalization-release.v0.6"
+SCHEMA_VERSION = "tripod.internalization-release.v0.7"
 
 REVISION = "20260910_rel01"
 PREVIOUS_REVISION = "20260910_hard01"
@@ -165,9 +165,9 @@ async def test_approving_again_with_nothing_changed_returns_the_same_release(cli
 async def test_the_team_approves_a_passage_whose_conversation_fell_short(client, db_session):
     """ADR 0037: the team's approval asks only about the telling-back and the rehearsal.
 
-    No scene practised is a fact the packet states and the floor unmet a fact of the ledger,
-    and neither is a door: a team that rehearsed through the record entry and told the passage
-    back is answered with a version, not halted for a person nobody can help.
+    The floor unmet is a fact of the ledger, and it is not a door: a team that rehearsed
+    through the record entry and told the passage back is answered with a version, not halted
+    for a person nobody can help.
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
@@ -180,9 +180,7 @@ async def test_the_team_approves_a_passage_whose_conversation_fell_short(client,
     assert approved.status_code == 200, approved.text
     assert approved.json()["version"] == 1
     assert approved.json()["blockers"] == []
-    (row,) = await releases_of(db_session, session.id)
-    assert row.packet["comprehension"]["outcome"] == "needs_more_work"
-    assert row.packet["comprehension"]["practiced_scene_ids"] == []
+    assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
 async def test_the_desk_reads_that_passage_with_no_blocker(client, db_session, room_app):
@@ -195,7 +193,7 @@ async def test_the_desk_reads_that_passage_with_no_blocker(client, db_session, r
     read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
 
     assert read.status_code == 200, read.text
-    assert read.json()["comprehension"]["outcome"] == "needs_more_work"
+    assert "comprehension" not in read.json(), "a mesa ainda lia a prática que a sala não guarda"
 
 
 async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_one(
