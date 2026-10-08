@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
 from app.db.models.internalization_room import IRSessionStatus
+from app.services.internalization_room.conversation import conversation_of
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.platform.tts import SynthesizedSpeech
@@ -142,3 +143,18 @@ async def test_an_english_failed_turn_points_to_scene_one_and_is_voiced_with_the
     ], "a linha A em inglês saía pelo nome, sem o ponteiro da cena que ela acrescenta"
     assert reply["fixed_line"] == ""
     assert reply["audio_url"]
+
+
+async def test_an_english_failed_turn_with_its_pointer_still_reads_as_unrepairable(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    the_room_agent_is(monkeypatch, turn=_DraftsInOrder(FIRST_DRAFT))
+    session = await create_session(db_session, language="en", pericope=P)
+
+    await _a_take(client, session.id)
+
+    last = conversation_of(await get_session(db_session, session.id)).turns[-1]
+    assert last.fail_safe is True
+    assert last.fail_safe_category == "unrepairable", (
+        "a linha com o ponteiro não tinha nome, e a sala de observação perdia a categoria"
+    )
