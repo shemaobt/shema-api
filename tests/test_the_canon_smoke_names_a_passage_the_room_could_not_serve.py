@@ -7,6 +7,7 @@ import pytest
 
 import scripts.smoke_internalization_canon as smoke
 from app.models.internalization_room import LabelledElement
+from app.services.internalization_room.canon import titles
 from app.services.internalization_room.canon.parse_map import MeaningMap
 
 
@@ -52,6 +53,21 @@ def test_a_scene_with_no_title_fails_and_is_named(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(smoke, "load_book", load_book)
 
     assert smoke.problems() == ["P01: scene 1 has no title"]
+
+
+def test_one_of_her_three_titles_edited_after_a_sync_fails_and_is_named(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    listed = json.loads(titles.PORTUGUESE_TITLES.read_text(encoding="utf-8"))
+    listed["scenes"]["P10"]["S2"] = "Em casa: o relato e «fique quieta»"
+    edited = tmp_path / "ui-labels.pt.json"
+    edited.write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(titles, "PORTUGUESE_TITLES", edited)
+
+    assert smoke.problems() == [
+        "P10: scene 2 is titled 'Em casa: o relato e «fique quieta»', not her approved"
+        " 'Com a sogra: a pergunta, o relato e \"fique quieta\"'"
+    ], "um título que ela aprovou à mão podia mudar numa sincronização sem nada ficar vermelho"
 
 
 @pytest.mark.parametrize(

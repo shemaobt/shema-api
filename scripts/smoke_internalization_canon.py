@@ -8,12 +8,18 @@ from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.book_material import pericope_digest
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.parse_map import VENDOR, load_book
+from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.passage_lines import offered
 
 MANIFEST = VENDOR / "VENDOR_MANIFEST.json"
 RAW_CODE = re.compile(r"(B|PL|O|TM|S|CB|FIG)[0-9]+")
 REFERENCE_LINE = re.compile(r"\*\*[^*\s][^*]*\*\*.*")
+HER_TITLES = {
+    ("P10", 2): 'Com a sogra: a pergunta, o relato e "fique quieta"',
+    ("P13", 1): "O casamento, a gravidez, o nascimento",
+    ("P13", 2): "As palavras das mulheres a Noemi",
+}
 
 
 def _wrong_with(label: str) -> str | None:
@@ -53,6 +59,9 @@ def problems() -> list[str]:
                 found.append(f"{tag}: the digest has no reference line")
             if not arc.strip():
                 found.append(f"{tag}: the digest has no arc")
+    for (tag, number), hers in HER_TITLES.items():
+        if (titled := scene_title(tag, number, "", "pt")) != hers:
+            found.append(f"{tag}: scene {number} is titled {titled!r}, not her approved {hers!r}")
     return found
 
 
