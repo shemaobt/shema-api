@@ -119,3 +119,26 @@ async def test_three_failed_turns_in_a_row_each_hear_their_own_draft_and_never_t
         "a terceira falha seguida virava a pausa E e pedia o facilitador"
     )
     assert (await get_session(db_session, session.id)).status is IRSessionStatus.IN_PROGRESS
+
+
+async def test_an_english_failed_turn_points_to_scene_one_and_is_voiced_with_the_pointer(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    voiced: list[str] = []
+
+    async def _voice_it(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
+        voiced.append(text)
+        return await _voice(text)
+
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice_it)
+    the_room_agent_is(monkeypatch, turn=_DraftsInOrder(FIRST_DRAFT))
+    session = await create_session(db_session, language="en", pericope=P)
+
+    reply = await _a_take(client, session.id)
+
+    assert voiced == [
+        "I want us to stay close to the passage here. Let's go back to this scene together"
+        " — this is the part about naomi's last appeal."
+    ], "a linha A em inglês saía pelo nome, sem o ponteiro da cena que ela acrescenta"
+    assert reply["fixed_line"] == ""
+    assert reply["audio_url"]

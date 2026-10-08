@@ -150,6 +150,14 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     return lines[index], f"{kind}{index}"
 
 
+def unrepairable(draft: int, language_code: str, first_scene: str = "") -> tuple[str, str]:
+    line, name = choose(FailSafe.UNREPAIRABLE, language_code, turn=draft)
+    if not first_scene or language_code.split("-")[0] != "en":
+        return line, name
+    pointer = first_scene[:1].lower() + first_scene[1:]
+    return f"{line.rstrip('.!?')} — this is the part about {pointer}.", ""
+
+
 def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
     """The D line for one more miss: always her first, however many came before it.
 
