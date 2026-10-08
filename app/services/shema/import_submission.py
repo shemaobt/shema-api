@@ -40,10 +40,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
-from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
+from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeImage, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, SubmissionImport
 from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
+from app.services.shema._media_sharing import pulse_photo
 from app.services.shema._progress import ProgressSource
 from app.services.shema._scope import (
     Readership,
@@ -51,10 +52,20 @@ from app.services.shema._scope import (
     refuse_out_of_scope,
     visible_projects,
 )
-from app.services.shema._submission_archive import archive_submission, archived_answers
+from app.services.shema._submission_archive import (
+    archive_submission,
+    archived_answers,
+    bind_intake_image,
+)
 from app.services.shema.read_submission import as_received, inbox_name
 from app.services.shema.save_project import save_project
-from app.utils.shema_forms import PULSE_FORM_TYPE, PULSE_KIND
+from app.utils.shema_forms import (
+    IMAGE_AUTHORIZED_FIELD,
+    IMAGE_DESCRIPTION_FIELD,
+    IMAGE_FIELD,
+    PULSE_FORM_TYPE,
+    PULSE_KIND,
+)
 
 
 async def _resolve_definition(db: AsyncSession, version: int | None) -> ShemaFormDefinition:
@@ -120,10 +131,41 @@ async def _apply(
                 from_field=submission.submitted_by or None, form_type=PULSE_FORM_TYPE
             ),
         )
+        await _mint_pulse_photo(db, submission, answers)
     except Exception:
         await db.rollback()
         raise
     await db.commit()
+
+
+async def _mint_pulse_photo(
+    db: AsyncSession, submission: ShemaSubmission, answers: dict[str, Any]
+) -> None:
+    """The Pulse's image becomes the record's photo — OBT-578, in the import's own transaction.
+
+    The ``image`` answer names the upload the link made (``store_intake_image``); here, and only
+    here, it becomes a ``shema_media_items`` row the ficha, the card and every output path
+    already read, with the description as its caption and the leader's answer to the box as
+    its authorization (``_media_sharing.pulse_photo``). Nothing is minted for an answer that
+    names no image, an image this submission does not own, or one already minted — a second
+    apply is a no-op on this too.
+    """
+    image_id = answers.get(IMAGE_FIELD)
+    if not image_id:
+        return
+    image = await db.get(ShemaIntakeImage, str(image_id))
+    if image is None or image.submission_id != submission.id or image.media_item_id is not None:
+        return
+    photo = pulse_photo(
+        image,
+        caption=str(answers.get(IMAGE_DESCRIPTION_FIELD) or ""),
+        authorized=answers.get(IMAGE_AUTHORIZED_FIELD) is True,
+        by=submission.submitted_by,
+        at=submission.received_at,
+    )
+    db.add(photo)
+    await db.flush()
+    image.media_item_id = photo.id
 
 
 async def _answered_definition(
@@ -170,6 +212,9 @@ async def import_submission(
         )
 
     definition = await _resolve_definition(db, payload_in.definition_version)
+    # An image reaches a Pulse only through the team's own link (OBT-578): with no link there
+    # is no upload for the answer to name, and the refusal says so before anything is archived.
+    await bind_intake_image(db, payload_in.answers, link=None)
     submission, created = await archive_submission(
         db,
         project,
