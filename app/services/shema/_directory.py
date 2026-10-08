@@ -78,12 +78,13 @@ from typing import Any, Final, NamedTuple
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
 from app.db.models.shema_exit_link import ShemaIntercessorExitLink
 from app.db.models.shema_intercessor import ShemaIntercessor
 from app.models.shema_intercessor import Consent, IntercessorEntry
 from app.services.common import tokens
+from app.services.shema._scope import ADMIN_ROLE, COORDINATOR_ROLE, RESOURCE_CIRCLE_ROLE
 from app.utils.shema_contacts import contact_channel, contact_hint
 from app.utils.stored_time import as_utc
 
@@ -115,6 +116,18 @@ __all__ = [
     "with_consent",
     "withdraw_consent",
 ]
+
+#: Who writes the network — adds, edits, erases, marks a review, records or withdraws a
+#: consent (OBT-574). Karina, via Daniel, 6/out/2026, question 4a: *"Somente a coordenação tem
+#: acesso editar e apagar o contato do intercessor. O Resource Circle pode ver, mas não edita."*
+#: Coordination and the Admin; *não edita* is read whole for the Circle, as Daniel read *só não
+#: podem editar* on OBT-571 — no write, on no route.
+NETWORK_WRITERS: Final = frozenset({COORDINATOR_ROLE, ADMIN_ROLE})
+
+#: Who reads it — the list and one contact at a time: the writers, who read what they edit, and
+#: the Resource Circle. The network has no region (``docs/shema.md`` §5.7), so each of them reads
+#: all of it. Written as the writers plus one, as ``_health_audience.HEALTH_READERS`` is.
+NETWORK_READERS: Final = NETWORK_WRITERS | {RESOURCE_CIRCLE_ROLE}
 
 #: How long a contact may go unused before it is due for review — the client's answer of
 #: 22/sep (4.3), *revisar depois de um ano*. Strictly more than this, measured from the latest
@@ -456,14 +469,29 @@ def _entry(
 
 
 async def revealed_contact(db: AsyncSession, intercessor_id: str) -> str:
-    """The real string, for one person, one call.
+    """The real string, for one person, one call — and only for somebody in the directory.
 
     Deliberately a **named act** with one call site rather than an attribute access that reads
     like any other. The audit line is ``reveal_intercessor_contact.py``'s, at the call, where
     the caller and the reason are in hand; logging here would record a read that a future
     in-process caller has no user for.
+
+    **The gate is here, with the read** (OBT-574), as :func:`listable_ids` is the list's: Karina,
+    via Daniel, 6/out/2026, question 4b — the contact is shown only to somebody who *"precisa ter
+    aceitado aparecer no diretório"*. ``network`` is the consent to being held and reached by the
+    Pulse; ``directory`` is the consent to being looked up by the people who read the network,
+    and reading one contact is looking it up. So a person who only receives the Pulse has their
+    contact shown to nobody, whoever asks. ``directory`` is never held without ``network``,
+    whose withdrawal erases the person, so the narrower gate carries the wider one. The 404 for
+    an unknown id comes first, so the two refusals cannot disagree about whether the row exists.
     """
-    return (await _person(db, intercessor_id)).contact
+    person = await _person(db, intercessor_id)
+    if not await with_consent(db, ShemaConsentContext.DIRECTORY, ids=[intercessor_id]):
+        raise AuthorizationError(
+            "This person has not consented to appear in the directory, so their contact is "
+            "shown to nobody."
+        )
+    return person.contact
 
 
 def leaving_person(person: ShemaIntercessor) -> LeavingPerson:

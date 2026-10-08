@@ -12,15 +12,9 @@ the contact nor the name** — the same trade ``_scope.refuse_out_of_scope`` mak
 same reason: a log is read by more people and kept longer than a response body, so it holds
 the fact of the read and not its content.
 
-**The ``directory`` consent is checked, and it is not a formality** (OBT-574). Karina, via
-Daniel, 6/out/2026, question 4b: the contact is shown only if the person *"precisa ter aceitado
-aparecer no diretório"*. ``network`` is the consent to being held and reached by the Pulse;
-``directory`` is the consent to being listed and looked up by the people who read the network,
-and reading one contact is looking it up. So somebody who only agreed to receive the Pulse has
-their contact shown to nobody, whoever asks — the list already leaves them out
-(``list_intercessors``), and this is the one-person read agreeing with it. ``directory`` is
-never held without ``network``, whose withdrawal erases the person, so the narrower check
-carries the wider one.
+**Only somebody listed in the directory is revealed** (OBT-574, Karina's 4b): the gate is
+``_directory.revealed_contact``'s, beside the read it guards, as the list's is
+``listable_ids``'s.
 """
 
 from __future__ import annotations
@@ -29,11 +23,9 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
-from app.db.models.shema_consent import ShemaConsentContext
 from app.models.shema_intercessor import IntercessorContact
-from app.services.shema._directory import revealed_contact, with_consent
+from app.services.shema._directory import revealed_contact
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +42,6 @@ async def reveal_intercessor_contact(
     check's subject is read, so the two refusals cannot disagree about whether the row exists.
     """
     contact = await revealed_contact(db, intercessor_id)
-
-    if not await with_consent(db, ShemaConsentContext.DIRECTORY, ids=[intercessor_id]):
-        raise AuthorizationError(
-            "This person has not consented to appear in the directory, so their contact is "
-            "shown to nobody."
-        )
 
     logger.info(
         "shema intercessor contact revealed",

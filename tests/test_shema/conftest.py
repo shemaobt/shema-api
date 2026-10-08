@@ -305,12 +305,14 @@ async def make_intercessor(
     contact: str = "maria.santos@example.org",
     sensitive: bool = False,
     basis: str = "verbal, at the 2026 regional gathering",
+    listed: bool = False,
 ) -> dict:
     """One network contact, through the real endpoint.
 
     Created over HTTP rather than by inserting a row, because the rule under test in most of
     these files is that a person **cannot** be stored without a recorded basis — a fixture
-    that wrote the row directly would be the one caller that proves nothing.
+    that wrote the row directly would be the one caller that proves nothing. ``listed`` adds
+    the ``directory`` consent, which the list and a revealed contact both need (OBT-574).
     """
     res = await client.post(
         PEOPLE,
@@ -324,4 +326,37 @@ async def make_intercessor(
         },
     )
     assert res.status_code == 201, res.text
-    return res.json()
+    person = res.json()
+    if listed:
+        res = await client.put(
+            f"{PEOPLE}/{person['id']}/consents/directory", headers=headers, json={"basis": "yes"}
+        )
+        assert res.status_code == 200, res.text
+    return person
+
+
+async def as_role(db_session, app, role_key: str, *, regions=None) -> tuple:
+    """A non-admin account holding one Shemá role, and the headers it signs in with."""
+    user = await make_scoped_user(
+        db_session, app, email=f"{role_key}@shema.test", role_key=role_key, regions=regions or []
+    )
+    return user, await auth_header(db_session, user)
+
+
+def network_routes(person_id: str) -> tuple[list[tuple], list[tuple]]:
+    """Every authenticated route of the network, as its reads and its writes (OBT-574)."""
+    target = f"{PEOPLE}/{person_id}"
+    reads = [("GET", PEOPLE, None), ("GET", f"{target}/contact", None)]
+    writes = [
+        (
+            "POST",
+            PEOPLE,
+            {"name": "X", "country": "BR", "contact": "x@example.org", "consentBasis": "yes"},
+        ),
+        ("PATCH", target, {"name": "Outro Nome"}),
+        ("POST", f"{target}/review", None),
+        ("PUT", f"{target}/consents/partner-export", {"basis": "yes"}),
+        ("DELETE", f"{target}/consents/directory", None),
+        ("DELETE", target, None),
+    ]
+    return reads, writes

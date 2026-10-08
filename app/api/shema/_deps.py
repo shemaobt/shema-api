@@ -14,14 +14,17 @@ over ``require_role`` that costs a query per guarded request and buys an OR nobo
 ``permissions``/``role_permissions`` are **not** the shape either (``docs/shema.md`` §4.10 —
 they exist as tables and are wired into neither guard).
 
-**The first OR, and why it is two sets and not the sibling's pair** (OBT-574). The client
-asked one: the intercessor network is read by the Resource Circle, coordination and the Admin,
-and written by coordination and the Admin alone. :data:`NetworkReader` and
-:data:`NetworkWriter` answer it with the two role sets ``app/services/shema/_scope.py`` names
-beside the vocabulary, over :data:`Granted` — the grant this module already reads once per
-request — so the OR costs no query. The sibling's pair is a map shared with its frontend and a
-database read per call; two questions do not pay for either. A third OR is the moment to
-weigh it again.
+**The network's guard is an OR, and it is two role sets, not the sibling's pair** (OBT-574).
+The client asked it: the intercessor network is read by the Resource Circle, coordination and
+the Admin, and written by coordination and the Admin alone. Role sets beside what they guard
+are how this module already answers an OR inside a service — ``HEALTH_AUDIENCE`` and
+``HEALTH_READERS`` in ``_health_audience.py``, ``PRAYER_AUDIENCE`` in ``_consent.py`` — and
+:data:`NetworkReader`/:data:`NetworkWriter` turn the network's two
+(``_directory.NETWORK_READERS``/``NETWORK_WRITERS``) into guards over :data:`Granted`. The
+sibling's pair is a map shared with its frontend; two sets do not pay for one. The grant is
+read from the table on each request, where ``require_role`` reads a cached role list — one
+indexed join on routes used a few times a day, and a writer whose grant is revoked loses the
+network at once instead of after the cache's thirty seconds.
 
 ``APP_KEY`` is named here and nowhere else in the module, which is where all eight
 applications in this repository keep theirs and where
@@ -99,12 +102,11 @@ from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
 from app.services.shema._consent import reads_withheld_requests
+from app.services.shema._directory import NETWORK_READERS, NETWORK_WRITERS
 from app.services.shema._health_audience import in_health_audience, reads_team_health
 from app.services.shema._scope import (
     ADMIN_ROLE,
     COORDINATOR_ROLE,
-    NETWORK_READERS,
-    NETWORK_WRITERS,
     OBT_LAB_ROLE,
     RESOURCE_CIRCLE_ROLE,
     Readership,
@@ -205,10 +207,11 @@ Granted = Annotated[frozenset[str], Depends(_granted)]
 def _holding(roles: frozenset[str], refusal: str) -> Any:
     """A guard admitting a holder of any of ``roles`` — the OR ``require_role`` cannot say.
 
-    Over :data:`Granted`, so it reads nothing the request has not read already, and a platform
-    admin passes first, as they pass every guard here. Chained behind ``CurrentUser`` through
-    :func:`_granted`, so an account with no role in this app is refused by the app gate with
-    the message that names the app, and only a member is asked which role it holds.
+    Over :data:`Granted`, which a handler declaring :data:`Scope` or :data:`Reading` beside it
+    shares, and a platform admin passes first, as they pass every guard here. Chained behind
+    ``CurrentUser`` through :func:`_granted`, so an account with no role in this app is refused
+    by the app gate with the message that names the app, and only a member is asked which role
+    it holds.
     """
 
     async def guard(user: CurrentUser, granted: Granted) -> User:

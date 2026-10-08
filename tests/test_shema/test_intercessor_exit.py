@@ -30,9 +30,9 @@ from app.services.shema._directory import DEAD_EXIT_LINK
 from tests.test_shema.conftest import (
     PEOPLE,
     PREFIX,
-    auth_header,
+    as_role,
     make_intercessor,
-    make_scoped_user,
+    network_routes,
 )
 
 CONTACT = "maria.santos@example.org"
@@ -45,10 +45,8 @@ def _exit(token: str) -> str:
 @pytest.fixture()
 async def coordination_headers(db_session, shema_app) -> dict[str, str]:
     """Whoever keeps the network: coordination writes it (OBT-574)."""
-    user = await make_scoped_user(
-        db_session, shema_app, email="coordination@exit.test", role_key="coordinator", regions=[]
-    )
-    return await auth_header(db_session, user)
+    _user, headers = await as_role(db_session, shema_app, "coordinator")
+    return headers
 
 
 @pytest.fixture()
@@ -277,32 +275,16 @@ def test_the_limited_exit_routes_resolve_their_dependencies() -> None:
 
 
 async def test_every_other_network_route_refuses_whoever_may_not_use_it(
-    client, db_session, shema_app, coordination_headers, person
+    client, db_session, shema_app, person
 ) -> None:
     """**The DoD's fifth line, other half**: the exit link opened two routes and nothing else.
     Every route of the network still refuses the OBT Lab, and every write refuses the Resource
     Circle, who reads the network and edits none of it (OBT-574) — never an admin, who passes
     every guard and would make this pass with the guards deleted."""
-    target = f"{PEOPLE}/{person['id']}"
-    calls = [
-        ("GET", PEOPLE, None),
-        ("POST", PEOPLE, {"name": "X", "country": "BR", "contact": "x@example.org"}),
-        ("PATCH", target, {"name": "Y"}),
-        ("DELETE", target, None),
-        ("GET", f"{target}/contact", None),
-        ("PUT", f"{target}/consents/directory", {"basis": "yes"}),
-        ("DELETE", f"{target}/consents/directory", None),
-        ("POST", f"{target}/review", None),
-    ]
-    reads = {("GET", PEOPLE), ("GET", f"{target}/contact")}
-    for role in ("resourceCircle", "obtLab"):
-        user = await make_scoped_user(
-            db_session, shema_app, email=f"{role}@exit.test", role_key=role, regions=[]
-        )
-        headers = await auth_header(db_session, user)
-        for method, url, body in calls:
-            if role == "resourceCircle" and (method, url) in reads:
-                continue
+    reads, writes = network_routes(person["id"])
+    for role, routes in (("resourceCircle", writes), ("obtLab", reads + writes)):
+        _user, headers = await as_role(db_session, shema_app, role)
+        for method, url, body in routes:
             res = await client.request(method, url, headers=headers, json=body)
             assert res.status_code == 403, (role, method, url)
 
