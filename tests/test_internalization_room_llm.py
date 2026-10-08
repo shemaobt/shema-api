@@ -625,10 +625,29 @@ async def test_the_guide_and_the_validator_prefix_cache_for_an_hour_by_default(f
         )
 
 
-async def test_the_judge_and_the_classifier_stay_on_the_five_minute_cache(fake_client):
+async def test_the_judge_prefix_caches_for_an_hour_whatever_the_voice_setting_says(fake_client):
     holder = fake_client(_reply("ok"))
 
-    for role in ("judge", "analyst", "correction check", "classifier", "?"):
+    await llm.call_agent(
+        system_prompt=f"map{llm.CACHE_BREAK}",
+        user_content="u",
+        role="judge",
+        settings=_settings(internalization_room_voice_cache_ttl=""),
+    )
+
+    assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+        "type": "ephemeral",
+        "ttl": "1h",
+    }, (
+        "os scripts de uma passagem chegam com 2 a 7 minutos entre si e a entrada de 5 minutos "
+        "já tinha caído: ~19,6k tokens escritos por chamada e nenhum lido de volta"
+    )
+
+
+async def test_the_analyst_and_the_classifier_stay_on_the_five_minute_cache(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("analyst", "correction check", "classifier", "?"):
         await llm.call_agent(
             system_prompt=f"map{llm.CACHE_BREAK}turn",
             user_content="u",

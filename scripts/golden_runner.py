@@ -500,6 +500,7 @@ async def play_session(
     out: Path,
     stamp: str,
     turns: int | None,
+    prompt_repeats: bool,
 ) -> SessionResult:
     """One session, opened and played, and its two files written whatever happened after turn 0.
 
@@ -534,11 +535,18 @@ async def play_session(
         )
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
-        await judge(script, result, out=out, stamp=stamp)
+        await judge(script, result, out=out, stamp=stamp, prompt_repeats=prompt_repeats)
     return result
 
 
-async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str) -> None:
+def shares_judge_prompt(script: Script, batch: list[Script]) -> bool:
+    key = (script.pericopeId, script.language)
+    return sum((other.pericopeId, other.language) == key for other in batch) > 1
+
+
+async def judge(
+    script: Script, result: SessionResult, *, out: Path, stamp: str, prompt_repeats: bool
+) -> None:
     """Her judge on the session, and its verdict written beside the transcript — or the reason not.
 
     A judge that fails — a provider down, a reply outside the shape it was bound to — is a
@@ -559,6 +567,7 @@ async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str)
                 pericope=script.pericopeId,
                 language=script.language,
                 transcript=judge_transcript(result.played),
+                prompt_repeats=prompt_repeats,
             )
         except Exception as failed:
             result.unjudged = str(failed)
@@ -711,7 +720,13 @@ async def run(args: argparse.Namespace) -> int:
                 break
             results.append(
                 await play_session(
-                    script, client, base_url=base_url, out=out, stamp=stamp, turns=args.turns
+                    script,
+                    client,
+                    base_url=base_url,
+                    out=out,
+                    stamp=stamp,
+                    turns=args.turns,
+                    prompt_repeats=shares_judge_prompt(script, scripts),
                 )
             )
     return finish(
@@ -798,27 +813,33 @@ async def rejudge(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    exports = [
-        path
+    earlier = [
+        (path, *exported(path))
         for path in sorted(Path(args.rejudge).glob("*.json"))
         if not path.name.endswith(".verdict.json")
     ]
-    if not exports:
+    if not earlier:
         print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
         return 2
+    to_judge = [script for _, script, result, _ in earlier if result.refused is None]
+    base_url = earlier[-1][3]
     budget = budget_of(args)
     results: list[SessionResult] = []
     not_started: list[str] = []
-    base_url = ""
-    for position, path in enumerate(exports):
+    for position, (path, script, result, _) in enumerate(earlier):
         if _spent(results) >= budget:
-            not_started = [exported(later)[0].name for later in exports[position:]]
+            not_started = [later.name for _, later, _, _ in earlier[position:]]
             break
-        script, result, base_url = exported(path)
         print(f"\n▶ {script.name} — judging {path.name} again")
         out.mkdir(parents=True, exist_ok=True)
         if result.refused is None:
-            await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
+            await judge(
+                script,
+                result,
+                out=out,
+                stamp=path.stem[len(script.name) + 1 :],
+                prompt_repeats=shares_judge_prompt(script, to_judge),
+            )
         results.append(result)
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
     return finish(

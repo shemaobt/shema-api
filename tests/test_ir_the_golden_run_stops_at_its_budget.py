@@ -297,7 +297,7 @@ async def test_a_rejudge_counts_its_judge_calls_and_stops_before_the_export_it_c
 ) -> None:
     judged: list[str] = []
 
-    async def _judge_that_charges(script, result, *, out, stamp) -> None:
+    async def _judge_that_charges(script, result, *, out, stamp, prompt_repeats) -> None:
         judged.append(script.name)
         result.judge_usage = [golden_runner.Usage("judge", "claude-fable-5-1", 1, 1, 0, 0, 1, 3.0)]
 
