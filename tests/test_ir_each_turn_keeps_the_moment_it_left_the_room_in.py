@@ -49,3 +49,15 @@ async def test_a_fixed_line_that_answered_in_the_guides_place_moves_nothing(
         "after": {"at": "familiarization"},
         "by": [],
     }, "uma linha fixa no lugar do Guia mudou o momento da sala"
+
+
+async def test_a_panorama_turn_keeps_no_moment_because_a_book_has_none(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope="OV-Ruth")
+
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="Vamos ouvir o livro de Rute."
+    )
+
+    assert "moment" not in session.messages[-1], "o panorama ganhou um momento de passagem"
