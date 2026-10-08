@@ -494,6 +494,7 @@ async def play_session(
     out: Path,
     stamp: str,
     turns: int | None,
+    prompt_repeats: bool,
 ) -> SessionResult:
     """One session, opened and played, and its two files written whatever happened after turn 0.
 
@@ -528,11 +529,23 @@ async def play_session(
         )
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
-        await judge(script, result, out=out, stamp=stamp)
+        await judge(script, result, out=out, stamp=stamp, prompt_repeats=prompt_repeats)
     return result
 
 
-async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str) -> None:
+def shares_judge_prompt(script: Script, batch: list[Script]) -> bool:
+    key = (script.pericopeId, script.language)
+    return sum((other.pericopeId, other.language) == key for other in batch) > 1
+
+
+async def judge(
+    script: Script,
+    result: SessionResult,
+    *,
+    out: Path,
+    stamp: str,
+    prompt_repeats: bool = False,
+) -> None:
     """Her judge on the session, and its verdict written beside the transcript — or the reason not.
 
     A judge that fails — a provider down, a reply outside the shape it was bound to — is a
@@ -553,6 +566,7 @@ async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str)
                 pericope=script.pericopeId,
                 language=script.language,
                 transcript=judge_transcript(result.played),
+                prompt_repeats=prompt_repeats,
             )
         except Exception as failed:
             result.unjudged = str(failed)
@@ -689,7 +703,13 @@ async def run(args: argparse.Namespace) -> int:
         for script in scripts:
             results.append(
                 await play_session(
-                    script, client, base_url=base_url, out=out, stamp=stamp, turns=args.turns
+                    script,
+                    client,
+                    base_url=base_url,
+                    out=out,
+                    stamp=stamp,
+                    turns=args.turns,
+                    prompt_repeats=shares_judge_prompt(script, scripts),
                 )
             )
     return close(results, out=out, base_url=base_url, stamp=stamp)

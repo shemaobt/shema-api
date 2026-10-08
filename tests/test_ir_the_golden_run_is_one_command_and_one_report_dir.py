@@ -183,6 +183,34 @@ async def test_a_played_session_is_judged_and_the_verdict_sits_beside_its_transc
     )
 
 
+async def test_scripts_of_one_passage_send_the_judge_prompt_marked_and_a_lone_one_does_not(
+    over_the_seam, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    _script(sessions, "P01-a", "P01", [{"team": "Oi."}])
+    _script(sessions, "P01-b", "P01", [{"team": "Oi."}])
+
+    await golden_runner.run(_args(sessions, tmp_path / "pair"))
+
+    assert [llm.CACHE_BREAK in asked["system_prompt"] for asked in judge.asked] == [True, True], (
+        "o segundo script da passagem relia ~19,6k tokens a preço cheio porque o primeiro não "
+        "deixou nada no cache"
+    )
+
+    lone = the_judge_answers(monkeypatch)
+    only = tmp_path / "only"
+    only.mkdir()
+    _script(only, "P01-a", "P01", [{"team": "Oi."}])
+
+    await golden_runner.run(_args(only, tmp_path / "alone"))
+
+    assert [llm.CACHE_BREAK in asked["system_prompt"] for asked in lone.asked] == [False], (
+        "um script sozinho na passagem escrevia no cache a preço de escrita e ninguém lia"
+    )
+
+
 async def test_a_session_the_room_refused_after_it_played_is_not_judged(
     over_the_seam, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
