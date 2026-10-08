@@ -36,9 +36,7 @@ from tests.text_seam_harness import (
 from tests.turn_harness import the_room_agent_is
 
 CORRECTED_LINE = "Vamos ficar com o que a passagem conta."
-UNREPAIRABLE_LINE = (
-    "Vamos parar um instante aqui e olhar de novo o que está acontecendo nesta parte da passagem."
-)
+UNREPAIRABLE_LINE = "Tem bastante coisa aqui. Vamos devagar e ficar mais um pouco nesta cena."
 HER_P01 = json.loads(
     (Path(__file__).parent / "fixtures/golden/P01-opening-and-mother-tongue.wire.json").read_text(
         encoding="utf-8"

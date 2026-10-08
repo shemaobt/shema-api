@@ -43,7 +43,7 @@ from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.nudge_channel import nudge
@@ -866,7 +866,7 @@ async def _answer_the_turn(
         if stt is not None:
             await stop_hearing(stt)
         raise
-    _remember_language(session_id, session.language, project_id)
+    _remember_language(session_id, room_language(session.language), project_id)
 
     if file is not None and stt is None:
         audio_bytes = await _read_capped_audio(file)
@@ -875,7 +875,7 @@ async def _answer_the_turn(
                 audio_bytes,
                 filename=file.filename,
                 mime_type=file.content_type,
-                language=session.language,
+                language=room_language(session.language),
                 cut=cut,
             )
         )
@@ -948,10 +948,11 @@ async def _draft_the_turn(
         async with asyncio.timeout_at(deadline):
             if is_panorama(session.pericope):
                 book = book_of(session.pericope)
+                language = room_language(session.language)
                 outcome = await room.run_panorama_turn(
                     messages=session.messages or [],
-                    session_language=LANGUAGE_NAMES[session.language],
-                    language_code=session.language,
+                    session_language=LANGUAGE_NAMES[language],
+                    language_code=language,
                     panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
                     validator_prompt=validator_prompt,
                     book=book,

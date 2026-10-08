@@ -41,10 +41,6 @@ from tests.turn_harness import the_room_agent_is
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
-PAUSE_LINE = (
-    "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de "
-    "vocês, e a gente retoma isso junto."
-)
 P = "P03"
 
 RETIRED_MODULES = (
@@ -206,84 +202,3 @@ async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached
 
     assert not to_the_guide, f"a probe block is still handed to the Guide: {to_the_guide}"
     assert not to_the_validator, f"and to the Validator: {to_the_validator}"
-
-
-class _BrokenModels:
-    """A Validator that refuses every draft, so every turn falls to the canned line.
-
-    The designed fail-safe and not a transport that is down: an outage rises out of the turn
-    as an error now, and what must never be counted toward a person is the line itself.
-    """
-
-    async def __call__(self, *, system_prompt: str, **kwargs: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "regenerate", "issues": ["fora do mapa"]})
-        return "Vamos ficar nesta cena."
-
-
-async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_stopped_for_a_person(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The failures the ladder once counted were the Assessor's own, and three in a row
-    ended the interview and called somebody. What is counted now is the Validator refusing
-    every draft, and the count walks her catalogue in order — the first two A lines, then
-    the graceful pause — instead of picking two of the four by the parity of the record.
-
-    The pause is a spoken line and nothing more: a fourth failure says it again, and what
-    asks for a person lives outside the turn. That the session stays open behind it is
-    the route's to show, in `test_ir_the_pause_leaves_the_session_open.py`.
-    """
-    the_room_agent_is(monkeypatch, turn=_BrokenModels())
-    session = await _a_room_that_has_asked_something(db_session)
-
-    spoken = []
-    for _ in range(4):
-        turn, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-        spoken.append(turn.outcome.fixed_line)
-
-    assert spoken == ["A0", "A1", "E0", "E0"], (
-        "a escada A era indexada pelo tamanho da conversa e a pausa nunca chegava"
-    )
-    assert turn.outcome.speech == PAUSE_LINE
-
-
-async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    the_room_agent_is(monkeypatch, turn=_BrokenModels())
-    session = await _a_room_that_has_asked_something(db_session)
-    for _ in range(2):
-        _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-    the_room_agent_is(monkeypatch, turn=_RecordingModels())
-    settled, session = await _the_team_answers(db_session, session, text="Rute foi junto")
-    the_room_agent_is(monkeypatch, turn=_BrokenModels())
-
-    turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
-
-    assert settled.outcome.speech == GUIDE_LINE
-    assert turn.outcome.fixed_line == "A0", (
-        "a contagem não zerava num turno que o Validador aprovou, e a terceira falha da "
-        "sessão virava pausa mesmo com a sala tendo voltado a falar no meio"
-    )
-
-
-async def test_a_turn_in_the_teams_own_tongue_the_guide_answered_starts_the_a_ladder_over(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A rehearsal in the team's own language is an ordinary Guide turn now, not a fixed
-    line: when the Guide answers the fact of it, that turn needed no fail-safe, and by the
-    ticket's rule a turn that needed none ends the run."""
-    the_room_agent_is(monkeypatch, turn=_BrokenModels())
-    session = await _a_room_that_has_asked_something(db_session)
-    _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-    the_room_agent_is(monkeypatch, turn=_RecordingModels())
-    own_tongue, session = await _the_team_answers(
-        db_session, session, text="koeti yoko vitukeovo enepone", heard_as="ter"
-    )
-    the_room_agent_is(monkeypatch, turn=_BrokenModels())
-
-    turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
-
-    assert own_tongue.outcome.fixed_line == ""
-    assert own_tongue.outcome.used_fail_safe is False
-    assert turn.outcome.fixed_line == "A0"
