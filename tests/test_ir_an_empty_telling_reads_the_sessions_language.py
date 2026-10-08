@@ -7,10 +7,7 @@ from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import back_translation_of, check_the_telling_back
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.llm import CACHE_BREAK
-from tests.test_internalization_room_speech_placeholder_language import (
-    _EXPECTED_NOTHING_TOLD_BACK as NOTHING_TOLD_BACK,
-)
-from tests.turn_harness import settings, the_room_agent_is
+from tests.turn_harness import NOTHING_TOLD_BACK, settings, the_room_agent_is
 
 
 class _Recording:
