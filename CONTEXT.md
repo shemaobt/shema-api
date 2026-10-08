@@ -119,6 +119,10 @@ _Avoid_: granularity, mode, shape, Granularidade
 The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the room removes it from the text before the Voice speaks it, and the stored line keeps it.
 _Avoid_: id, tag, link, slug
 
+**Speakable text**:
+The voiced text: a line as the Voice receives it, with its formatting marks and canon codes gone, each folded question standing as its own sentence and the divine name in its spoken form. Words are never added, dropped or reordered, and the stored line keeps the Guide's own form.
+_Avoid_: TTS text, clean text, sanitized text
+
 **Meaning Map**:
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
 _Avoid_: answer key, base text, Mapa de Sentido
