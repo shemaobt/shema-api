@@ -33,6 +33,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.opening_harness import ask_for_the_opening
@@ -130,7 +131,7 @@ class _RecordingVoice:
 
     @staticmethod
     def key_of(text: str) -> str:
-        return f"tts/voice/{len(text)}.mp3"
+        return facilitator_speech_key(text, language="pt")
 
 
 @pytest.fixture()
@@ -149,11 +150,12 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
 
     late = await ask_for_the_opening(client, session.id)
     assert late.status_code == 200, late.text[:300]
-    assert late.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING))
+    opening = clip_url(_RecordingVoice.key_of(OPENING), session_id=session.id)
+    assert late.json()["audio_url"] == opening
 
     again = await ask_for_the_opening(client, session.id)
     assert again.status_code == 200, again.text[:300]
-    assert again.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING)), (
+    assert again.json()["audio_url"] == opening, (
         "o reenvio da abertura era respondido pelo _say_it_again com a fala do turno da equipe"
     )
     assert TEAM_TURN_LINE not in voice.spoken

@@ -395,15 +395,15 @@ class _EmptyBucket:
         return None
 
 
-async def test_a_broken_voice_is_answered_the_same_way_as_a_broken_microphone(
+async def test_a_broken_voice_keeps_the_turn_that_an_outage_on_the_way_in_never_makes(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
     spoken: list[str],
 ) -> None:
-    """ElevenLabs speaks the turn as well as it hears one: a dropped connection on the way
-    out gets the same 502 and the same intact session as an outage on the way in, never the
-    turn rendered as an utterance nobody heard finish."""
+    """A dropped connection to ElevenLabs on the way out comes after the turn was stored, so
+    the turn stands and its reply is voiced when it is asked for; an outage on the way in
+    still leaves nothing."""
     from app.core.config import get_settings
     from app.services.internalization_room.synthesize_facilitator_speech import (
         synthesize_facilitator_speech as real_synthesize_facilitator_speech,
@@ -430,17 +430,16 @@ async def test_a_broken_voice_is_answered_the_same_way_as_a_broken_microphone(
 
     answered = await _the_team_answers(client, session_id)
 
-    assert answered.status_code == 502, (
-        f"uma queda no ElevenLabs ao falar virava 500, não 502: {answered.text[:300]}"
+    assert answered.status_code == 200, (
+        f"uma queda no ElevenLabs ao falar perdia o turno inteiro: {answered.text[:300]}"
     )
-    body = answered.json()
-    assert body["code"] == "UPSTREAM_ERROR"
     assert spoken == spoken_before, "uma fala que falhou não entra na lista do que foi dito"
     after = await get_session(db_session, session_id)
     assert after.status == status_before, "a queda do TTS não muda o estado da sessão"
-    assert list(after.messages or []) == messages_before, (
-        "um turno que não terminou de falar não grava exchange nenhuma"
-    )
+    assert [m["text"] for m in (after.messages or [])[len(messages_before) :]] == [
+        TEAM_ANSWER,
+        GUIDE_LINE,
+    ], "a voz caiu e a troca que o Guia já tinha validado não ficou gravada"
 
 
 async def test_a_failed_turn_logs_its_cause_and_never_what_the_team_said(

@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import sessions as sessions_api
 from app.db.models.internalization_room import IRTurn
 from app.services.internalization_room.sessions import create_session, get_session
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.opening_harness import ask_for_the_opening
@@ -32,7 +33,7 @@ from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
 
 OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
-VOICED_AS = "tts/voice/abertura.mp3"
+VOICED_AS = facilitator_speech_key(OPENING, language="pt")
 
 
 class _GuideStillThinking:
@@ -159,7 +160,7 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
 
     assert first.cancelled()
     assert resent.status_code == 200, resent.text[:300]
-    assert resent.json()["audio_url"] == clip_url(VOICED_AS)
+    assert resent.json()["audio_url"] == clip_url(VOICED_AS, session_id=session.id)
 
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)

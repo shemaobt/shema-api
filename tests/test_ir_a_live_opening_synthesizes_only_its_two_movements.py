@@ -14,6 +14,7 @@ import logging
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -497,7 +498,7 @@ def _clip_behind(audio_url: str, bucket: _Bucket) -> bytes | None:
     from app.core.config import get_settings
     from app.services.internalization_room.voice_handles import from_handle
 
-    key = from_handle(audio_url.rsplit("/", 1)[-1], settings=get_settings())
+    key = from_handle(urlsplit(audio_url).path.rsplit("/", 1)[-1], settings=get_settings())
     return bucket.objects.get(key) if key else None
 
 

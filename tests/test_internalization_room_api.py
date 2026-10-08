@@ -14,6 +14,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.run_turn import TurnOutcome
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.platform.tts import SynthesizedSpeech
 
 PREFIX = "/api/internalization-room"
@@ -48,7 +49,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             mime_type="audio/mpeg",
             etag="e",
             cached=False,
-            key=(f"tts/{get_settings().internalization_room_voice_id}/m/f/{abs(hash(_text))}.mp3"),
+            key=facilitator_speech_key(_text, language="pt"),
         )
         return entry, False
 

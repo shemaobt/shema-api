@@ -14,7 +14,6 @@ process would never see.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -34,6 +33,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     get_session,
 )
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.internalization_room.turn_dedup import remember_turn
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
@@ -94,7 +94,7 @@ def _dead_after() -> timedelta:
 
 
 def _clip_of(text: str) -> str:
-    return f"tts/voice/{hashlib.sha256(text.encode()).hexdigest()[:16]}.mp3"
+    return facilitator_speech_key(text, language="pt")
 
 
 class _Voice:
@@ -346,7 +346,7 @@ async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_
         )
 
     assert again.status_code == 200, again.text[:300]
-    assert again.json()["audio_url"] == clip_url(_clip_of(OPENING))
+    assert again.json()["audio_url"] == clip_url(_clip_of(OPENING), session_id=session.id)
     assert await _conversation(rival_factory, session.id) == [("guide", OPENING)]
 
 
@@ -485,7 +485,7 @@ async def test_a_no_audio_request_with_a_new_turn_id_on_a_session_with_messages_
         again = await ask_for_the_opening(tablet, session.id, "volta")
 
     assert again.status_code == 200, again.text[:300]
-    assert again.json()["audio_url"] == clip_url(_clip_of(REPLY))
+    assert again.json()["audio_url"] == clip_url(_clip_of(REPLY), session_id=session.id)
     assert guide.asked == asked, "voltar a uma sessao com conversa chamou o Guia"
     assert await _conversation(rival_factory, session.id) == conversation
 
