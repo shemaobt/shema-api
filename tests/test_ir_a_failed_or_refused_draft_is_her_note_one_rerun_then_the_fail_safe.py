@@ -10,7 +10,16 @@ from app.services.internalization_room import llm
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.run_turn import run_turn
-from tests.turn_harness import GUIDE, VALIDATOR, FakeAgent, P, settings, the_agent_answers
+from app.services.internalization_room.verdict_turn import run_verdict_turn
+from tests.turn_harness import (
+    GUIDE,
+    SPEAKER,
+    VALIDATOR,
+    FakeAgent,
+    P,
+    settings,
+    the_agent_answers,
+)
 
 REGENERATE = {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}
 PASS = {"verdict": "pass", "issues": []}
@@ -202,3 +211,37 @@ async def test_a_send_back_with_three_issues_is_one_redraft_with_her_note_as_its
         "a nota ia colada às palavras da equipe, sob '## Rewrite note', na mesma mensagem; "
         "no app dela é uma mensagem própria, depois do que a equipe disse"
     )
+
+
+async def test_a_verdict_sent_back_is_redrafted_from_her_kickoff_and_her_note_with_no_history(
+    the_wire,
+) -> None:
+    wire = the_wire(TheWire(verdicts=[{"verdict": "regenerate", "issues": []}, PASS]))
+
+    await run_verdict_turn(
+        findings_text='[{"kind": "addition", "frase": 1}]',
+        scope="P02",
+        pericope_num="P02",
+        messages=[{"role": "guide", "text": "Contem de volta o que ouviram."}],
+        telling_back="1. Noemi voltou com as noras.",
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        session_language="Brazilian Portuguese",
+        language_code="pt",
+        settings=settings(),
+    )
+
+    _, redraft = wire.guide_requests
+    assert redraft["messages"] == [
+        {
+            "role": "user",
+            "content": "(The team heard their whole recording, told it back frase by frase, "
+            "and tapped 'terminei'. Speak the verdict now.)",
+        },
+        {
+            "role": "user",
+            "content": "(internal redraft note — the previous draft carried something the map "
+            "does not support: ungrounded content. Redraft the same answer, as fully as the "
+            "team's request deserves, using only what the map contains.)",
+        },
+    ], "o veredito reescrito levava a nota grudada no pontapé dela, como se fosse um só pedido"
