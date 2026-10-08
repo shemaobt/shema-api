@@ -50,18 +50,18 @@ def load_prompt(key: IRPromptKey) -> str:
 def fail_safe_utterances() -> str:
     """App-side strings, not a model call — kept beside the prompts they replace.
 
-    The authored file is concatenated with our own supplements, one per language, kept in
-    files of their own so that a language is added or dropped without touching the authored
-    text. That text is not the project's vendored copy either: it carries the X family
-    beyond it, hers by the ruling of 2026-09-15; the G family it also carried was ours and
-    went on her word, in the ruling of 2026-09-16. Order matters only in that the reader
-    prefers a language-tagged block, and each section has at most one per language.
+    Her file comes first, byte for byte as she froze it. Our own supplements, one per language,
+    are concatenated after it, kept in files of their own so that a language is added or
+    dropped without touching hers. They carry what hers does not: the H and I lines, for
+    situations she has not written, and the Portuguese B, C and E she confirmed on 2026-09-21.
+    Order matters only in that the reader prefers a language-tagged block, and each section
+    has at most one per language.
 
     **Named off the languages the room claims, never globbed.** A glob made being read the
-    default: the Spanish draft sat beside the authored file marked "nothing here has been
-    approved to be spoken to a team" and was spoken anyway, to anyone who asked for the
-    language. Claiming a language is the deliberate act, and this follows it — a draft for a
-    language the room does not offer stays in the repository and reaches no mouth.
+    default: the Spanish draft sat beside her file marked "nothing here has been approved to
+    be spoken to a team" and was spoken anyway, to anyone who asked for the language. Claiming
+    a language is the deliberate act, and this follows it — a draft for a language the room
+    does not offer reaches no mouth.
     """
     parts = [(_PROMPTS_DIR / "fail_safe_utterances.md").read_text(encoding="utf-8")]
     for language_code in ROOM_LANGUAGES:
