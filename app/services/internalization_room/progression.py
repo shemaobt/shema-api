@@ -183,8 +183,8 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
     """Which passages each of these teams has finished a session on. One statement.
 
     Two facts and both are required, because they are different facts. A ``done`` status is
-    ``session_is_done`` having become true — the coverage floor and the comprehension gate,
-    written once in ``apply_coverage`` — and that gate is what the room reads to let a team
+    ``session_is_done`` having become true — the coverage floor, written once in
+    ``apply_coverage`` — and that gate is what the room reads to let a team
     *into* the rehearsal. It is not what finishes a passage: a team can reach it and stop, and
     the ledger informs, it never ends the conversation (`DOCTRINE.md` §4). What ends it is the
     rehearsal itself arriving — a kept ``ensaio`` take on that same session. "O fecho ('gravem

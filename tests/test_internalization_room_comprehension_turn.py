@@ -28,7 +28,6 @@ from app.services.internalization_room.sessions import (
     comprehension_of,
     create_session,
     save_comprehension,
-    session_is_done,
 )
 from tests.turn_harness import the_room_agent_is
 
@@ -391,22 +390,6 @@ _UNUSABLE_SPEECH = (
     ),
     HeardSpeech(),
 )
-
-
-async def test_a_scene_worked_to_its_last_bead_is_not_a_mother_tongue_rehearsal(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    """Engagement is the ledger painting beads; rehearsal is what the team reports.
-
-    Marcia's answer 8: the ledger informs, it never ends the conversation (DOCTRINE.md §4).
-    A necklace can go fully engaged through the bridge language alone, so a scene worked to
-    its last bead without the team ever switching into their own language stays a passage
-    still owed its first rehearsal — the gate keeps waiting on the report, not the beads."""
-    session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
-
-    await _say(db_session, session, "acho que já falamos de tudo")
-
-    assert not session_is_done(session)
 
 
 _THE_INVITATION_FOR_THE_LAST_TWO_SCENES = (

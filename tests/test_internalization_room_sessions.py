@@ -89,28 +89,6 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
-async def test_the_coverage_floor_alone_no_longer_closes_the_session(
-    db_session: AsyncSession,
-) -> None:
-    """Coverage bookkeeping is participation, not comprehension — the very confusion the
-    bridge-language calibration exists to undo.
-
-    What held this shut was the recording-consent flag, and only by accident: the room's own
-    question was the flag's one writer, so a session that had never been asked could not
-    close. ENG-777 took the question away, and until ENG-780 the premise still had one thing
-    implementing it: a fully engaged necklace read as a rehearsed one, so the floor alone
-    could still close a session nobody had reported practicing in. With that substitution
-    gone, an untouched comprehension state keeps the passage in `needs_more_work` and the
-    floor being met changes nothing about that.
-    """
-    session = await create_session(db_session, pericope=P)
-    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-
-    session = await apply_coverage(db_session, session.id, whole)
-
-    assert session.status is IRSessionStatus.IN_PROGRESS
-
-
 def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
     ledger = [
         EvidenceObservation(
