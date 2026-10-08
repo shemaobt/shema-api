@@ -153,3 +153,24 @@ def test_her_closing_hands_the_word_to_the_team_and_invites_no_rehearsal() -> No
     assert _turn(guide=f"{PART_CLOSING} Agora ensaiem essa parte.") == [
         "rehearsal invited on a turn where the team asked to understand first"
     ]
+
+
+def test_a_pairing_is_read_sentence_by_sentence_and_a_denial_is_never_one() -> None:
+    pairing = ["possible Ruth↔Mahlon pairing voiced (judge must confirm)"]
+    no_pairing = {"no_pairing": True}
+    assert _turn(guide="E o Quiliom pegou a Orfa como mulher.", expect=no_pairing) == pairing
+    assert _turn(guide="Ela não fala se Rute casou com Malom.", expect=no_pairing) == [], (
+        "negar o par é o Guia recusando o par, não dizendo"
+    )
+    assert _turn(guide="The story does not say Ruth married Mahlon.", expect=no_pairing) == []
+    asked_back = "Rute casou com Malom ou com Quiliom? A história não diz qual."
+    assert _turn(guide=asked_back, expect=no_pairing) == [], (
+        "a negação noutra frase do turno também recusa o par"
+    )
+    assert (
+        _turn(guide="Malom e Quiliom pegaram mulheres de Moabe, Orfa e Rute.", expect=no_pairing)
+        == []
+    ), "a lista do mapa, os dois filhos e as duas mulheres, não é par"
+    assert (
+        _turn(guide="Rute e Malom aparecem aqui. Depois o Quiliom casou.", expect=no_pairing) == []
+    ), "o nome e o casamento em frases diferentes não são o par"

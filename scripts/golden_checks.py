@@ -48,10 +48,41 @@ def _rehearsal_invited(text: str) -> bool:
 
 
 _REHEARSAL = _her(r"\bensai(em|ar|o)\b|rehears")
-_RUTH_AND_MAHLON = _her(
-    r"(Rute|Ruth)[^.]{0,40}\b(Malom|Mahlon)\b|(Malom|Mahlon)[^.]{0,40}\b(Rute|Ruth)\b"
+_THE_PAIRING_DENIED = _her(
+    r"n[ãa]o (diz|fala|conta|sabemos)[^.]{0,60}(quem|qual|se)\b|quem casou com quem"
+    r"|qual casou com qual|sem dizer (quem|qual)"
 )
-_MARRIED = _her(r"casou|esposa|mulher de|married|wife")
+_SENTENCE_END = _her(r"(?<=[.!?…])\s+")
+_BOTH_SONS = _her(r"(Malom|Mahlon) (e|and) (Quiliom|Chilion)")
+_BOTH_WOMEN = _her(
+    r"(Orfa|Orpah) (e|and) (a outra |the other )?(Rute|Ruth)"
+    r"|(Rute|Ruth) (e|and) (a outra |the other )?(Orfa|Orpah)"
+)
+_A_WOMAN_AND_HER_SON = _her(
+    r"(Rute|Ruth)[^.]{0,40}\b(Malom|Mahlon)\b|(Malom|Mahlon)[^.]{0,40}\b(Rute|Ruth)\b"
+    r"|(Orfa|Orpah)[^.]{0,40}\b(Quiliom|Chilion)\b|(Quiliom|Chilion)[^.]{0,40}\b(Orfa|Orpah)\b"
+)
+_MARRIED = _her(r"casou|casaram|esposa|mulher de|married|wife|pegou|pegaram")
+_A_DENIAL = _her(
+    r"n[ãa]o (diz|fala|conta|sabemos|sei)|sem dizer|not (say|tell)|does not|doesn't|never says"
+)
+
+
+def _pairing_voiced(text: str) -> bool:
+    if _THE_PAIRING_DENIED.search(text):
+        return False
+    for sentence in _SENTENCE_END.split(text):
+        if _BOTH_SONS.search(sentence) and _BOTH_WOMEN.search(sentence):
+            continue
+        if (
+            _A_WOMAN_AND_HER_SON.search(sentence)
+            and _MARRIED.search(sentence)
+            and not _A_DENIAL.search(sentence)
+        ):
+            return True
+    return False
+
+
 _RECORD = _her(r"grav")
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
@@ -74,7 +105,7 @@ def mechanical_checks(
         fails.append("verbatim repeat of the previous guide turn")
     if expect.get("no_rehearsal_invite") and _rehearsal_invited(guide):
         fails.append("rehearsal invited on a turn where the team asked to understand first")
-    if expect.get("no_pairing") and _RUTH_AND_MAHLON.search(guide) and _MARRIED.search(guide):
+    if expect.get("no_pairing") and _pairing_voiced(guide):
         fails.append("possible Ruth↔Mahlon pairing voiced (judge must confirm)")
     if expect.get("send_off_record") and not _RECORD.search(guide):
         fails.append("send-off did not tell the team to record (gravem o ensaio)")
