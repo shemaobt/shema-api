@@ -687,7 +687,7 @@ async def test_the_resource_circle_no_longer_works_the_needs(client, db_session,
 
     assert response.status_code == 403, response.text
     await db_session.refresh(row)
-    assert row.prayer_shared is True and row.status.value != "in-progress"
+    assert (row.prayer_shared, row.status.value) == (True, "open")
     assert texts(await wall(client, circle)) == {SHARED_NEED}
 
 
