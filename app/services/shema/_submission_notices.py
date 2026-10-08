@@ -125,6 +125,7 @@ async def _tell(
     title: str,
     body: str,
     facts: ProjectNoticeFacts,
+    operation: str,
     nobody: str,
 ) -> int:
     """Stage one notice for every holder of ``roles`` who reaches ``project``; answer how many.
@@ -142,7 +143,7 @@ async def _tell(
         logger.warning(
             nobody,
             extra={
-                "shema_operation": event_type,
+                "shema_operation": operation,
                 "shema_project_id": project.id,
                 "shema_region": project.region_key.value,
             },
@@ -183,6 +184,7 @@ async def notify_submission(
         facts=ProjectNoticeFacts(
             project_id=project.id, submitted_by=submission.submitted_by.strip() or None
         ),
+        operation="notify_submission",
         nobody="shema submission arrived and reached nobody",
     )
 
@@ -207,5 +209,6 @@ async def notify_shared_request(db: AsyncSession, project: ShemaProject, *, app_
             "shared with the network. Open the project to read it."
         ),
         facts=ProjectNoticeFacts(project_id=project.id),
+        operation="notify_shared_request",
         nobody="shema submission carried a prayer request and reached nobody",
     )
