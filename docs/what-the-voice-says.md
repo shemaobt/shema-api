@@ -64,8 +64,12 @@ Each is pinned by a test, so a change to it is seen, not because it is the wante
 - A preposition or a noun the code completed is left with nothing after it, since no word is
   invented and none is dropped: "In B3 and B4, Naomi weeps." → "In, Naomi weeps.";
   "(cenas B1–B5)" → "(cenas)" (ours).
-- A joiner between a word and a code is the word's, so it stays when the code at the end of a
-  list goes: "Noemi, Rute e B3." → "Noemi, Rute e." (ours).
+- A joiner between a word and a code is the word's, so it stays wherever the code goes (ours):
+  at the end of a list, "Noemi, Rute e B3." → "Noemi, Rute e."; opening a sentence or a
+  bracket, "B3, B4 e Noemi choram." → "e Noemi choram." and "Rute fica (B3, B4 e Noemi)." →
+  "Rute fica (e Noemi)."; on both sides of a code, "Noemi e B3 e Rute saem." → "Noemi e e Rute
+  saem." and "Go to B3 to see it." → "Go to to see it."; and the code's comma between two
+  joiners stays with them, "Noemi e B3, e Rute." → "Noemi e, e Rute."
 
 ## The divine-name table
 
