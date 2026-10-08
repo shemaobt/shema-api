@@ -8,7 +8,7 @@ from app.core.served_books import SERVED_BOOKS
 from app.services.internalization_room.canon.book_material import pericope_digest
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.parse_map import VENDOR, load_book
-from app.services.internalization_room.canon.titles import scene_title
+from app.services.internalization_room.canon.titles import portuguese_titles, scene_title
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.passage_lines import offered
 
@@ -54,6 +54,13 @@ def problems() -> list[str]:
                 for scene in meaning_map.scenes
                 if not scene.title.strip()
             )
+            keyed = sorted(portuguese_titles().get(tag, {}), key=lambda key: int(key[1:]))
+            scenes = [f"S{scene.number}" for scene in meaning_map.scenes]
+            if keyed != scenes:
+                found.append(
+                    f"{tag}: her Portuguese titles name {', '.join(keyed)}, "
+                    f"but the map's scenes are {', '.join(scenes)}"
+                )
             reference, arc, *_ = pericope_digest(meaning_map).split("\n")
             if not REFERENCE_LINE.fullmatch(reference):
                 found.append(f"{tag}: the digest has no reference line")

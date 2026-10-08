@@ -12,8 +12,11 @@ PORTUGUESE_TITLES = CANON_DIR / "ui-labels.pt.json"
 def scene_title(pericope_num: str, number: int | None, heading: str, language: str) -> str:
     if language != "pt":
         return heading
-    titles = _portuguese(canon_path(PORTUGUESE_TITLES))
-    return titles.get(pericope_num, {}).get(f"S{number}") or heading
+    return portuguese_titles().get(pericope_num, {}).get(f"S{number}") or heading
+
+
+def portuguese_titles() -> dict[str, dict[str, str]]:
+    return _portuguese(canon_path(PORTUGUESE_TITLES))
 
 
 @lru_cache(maxsize=8)
