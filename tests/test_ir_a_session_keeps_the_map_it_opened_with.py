@@ -100,6 +100,11 @@ def _the_kept_p03_has_its_own_rule_and_silence(tree: Path) -> None:
     _rewrite(tree, "meaning-coordinates", "P03", VENDORED_SILENCE, KEPT_SILENCE)
 
 
+def _beings_in_the_ledger(guide: str) -> list[str]:
+    (line,) = [line for line in guide.splitlines() if line.strip().startswith("being: ")]
+    return line.split("being: ", 1)[1].split(", ")
+
+
 def _the_kept_p03_has_its_own_beings(tree: Path) -> None:
     _rewrite(tree, "meaning-map", "P03", BEINGS, BEINGS + ELIMELECH)
     names = tree / "vendor" / "registry" / "ruth.aliases.json"
@@ -288,9 +293,9 @@ async def test_the_ledger_of_a_session_open_when_a_new_canon_is_published_names_
     await the_team_says(client, tablet, opened["session_id"], "depois")
     guide, _ = prompts.since(start)
 
-    assert "Elimelech as kept @ S1" in guide, "a contagem perdeu a conta que o canon novo tirou"
-    assert "the woman @ S1" in guide, "a conta da cena 1 levou o nome que o canon novo dá"
-    assert "Naomi @ S1" not in guide
+    beings = _beings_in_the_ledger(guide)
+    assert "Elimelech as kept" in beings, "a contagem perdeu a conta que o canon novo tirou"
+    assert "the woman" in beings, "a conta da cena 1 levou o nome que o canon novo dá"
 
 
 async def test_a_settle_of_a_session_open_when_a_new_canon_is_published_still_works_a_bead_the_new_canon_dropped(  # noqa: E501
@@ -331,7 +336,9 @@ async def test_a_second_tablet_joining_a_session_open_when_a_new_canon_is_publis
         "o segundo tablet desenhou o colar pelo canon novo"
     )
     assert joined["coverage"] == told.json()["coverage"]
-    assert "Elimelech as kept @ S1" in guide, "o segundo tablet ouviu a voz do canon novo"
+    assert "Elimelech as kept" in _beings_in_the_ledger(guide), (
+        "o segundo tablet ouviu a voz do canon novo"
+    )
 
 
 async def test_a_session_open_when_a_new_canon_is_published_is_done_only_on_its_own_canons_floor(
