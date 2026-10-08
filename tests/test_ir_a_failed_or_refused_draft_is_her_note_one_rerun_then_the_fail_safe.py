@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
+from app.services.internalization_room import llm
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.run_turn import run_turn
@@ -11,7 +16,82 @@ REGENERATE = {"verdict": "regenerate", "issues": [{"problem": "imported_knowledg
 PASS = {"verdict": "pass", "issues": []}
 
 
+def _is_validator(request: dict[str, Any]) -> bool:
+    system = request["system"]
+    text = system if isinstance(system, str) else "".join(block["text"] for block in system)
+    return "corrected_response" in text
+
+
+class TheWire:
+    """The Anthropic client the room talks to, answering from what each request is."""
+
+    def __init__(self, *, refusing: tuple[str, ...] = (), verdicts: list[dict] | None = None):
+        self.refusing = refusing
+        self.verdicts = verdicts or [PASS]
+        self.requests: list[dict[str, Any]] = []
+
+    @property
+    def guide_requests(self) -> list[dict[str, Any]]:
+        return [request for request in self.requests if not _is_validator(request)]
+
+    @property
+    def validator_requests(self) -> list[dict[str, Any]]:
+        return [request for request in self.requests if _is_validator(request)]
+
+    async def create(self, **request: Any) -> SimpleNamespace:
+        self.requests.append(request)
+        if _is_validator(request):
+            asked = len(self.validator_requests)
+            text = json.dumps(self.verdicts[min(asked, len(self.verdicts)) - 1])
+            stop_reason = "end_turn"
+        elif request["model"] in self.refusing:
+            text, stop_reason = "", "refusal"
+        else:
+            text, stop_reason = "Ensaiem essa parte entre vocês.", "end_turn"
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=text)] if text else [],
+            stop_reason=stop_reason,
+            model=request["model"],
+            usage=SimpleNamespace(
+                input_tokens=10,
+                output_tokens=5,
+                cache_read_input_tokens=0,
+                cache_creation_input_tokens=0,
+                cache_creation=None,
+            ),
+        )
+
+
+@pytest.fixture
+def the_wire(monkeypatch: pytest.MonkeyPatch):
+    def _install(wire: TheWire) -> TheWire:
+        monkeypatch.setattr(
+            llm.anthropic,
+            "AsyncAnthropic",
+            lambda **options: SimpleNamespace(messages=wire, options=options),
+        )
+        return wire
+
+    llm._SETTLED.clear()
+    yield _install
+    llm._SETTLED.clear()
+
+
 async def _a_turn():
+    return await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="A fome chegou e eles partiram.",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=settings(),
+    )
+
+
+async def _a_turn_on_the_wire():
     return await run_turn(
         session_language="Portuguese",
         language_code="pt",
@@ -56,3 +136,21 @@ async def test_an_empty_draft_is_the_fail_safe_at_once_and_never_reaches_the_val
     )
     assert outcome.draft == ""
     assert outcome.verdict == ""
+
+
+async def test_a_voice_refused_twice_is_rerun_once_then_the_fail_safe_with_no_third_model(
+    the_wire,
+) -> None:
+    wire = the_wire(TheWire(refusing=("claude-fable-5-1", "claude-opus-5")))
+
+    outcome = await _a_turn_on_the_wire()
+
+    assert [request["model"] for request in wire.guide_requests] == [
+        "claude-fable-5-1",
+        "claude-opus-5",
+    ], "a recusa que ficou de pé era redigida de novo, e cada reescrita pedia mais dois modelos"
+    assert wire.validator_requests == [], (
+        "a resposta vazia da recusa ia ao Validador como se fosse um rascunho"
+    )
+    assert outcome.used_fail_safe is True
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
