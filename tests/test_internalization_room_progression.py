@@ -27,7 +27,6 @@ is ENG-482.
 from __future__ import annotations
 
 import itertools
-import textwrap
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -56,7 +55,12 @@ from tests.baker import (
     make_language,
     make_project,
 )
-from tests.canon_harness import forget_the_canon
+from tests.canon_harness import (
+    A_FABLE_LOG_WITH_A_LAYER,
+    A_FABLE_LOG_WITHOUT_ONE,
+    a_fable_map,
+    forget_the_canon,
+)
 
 _codes = itertools.count()
 
@@ -67,62 +71,6 @@ ENGAGED = CoverageStatus.ENGAGED.value
 #: naming fourteen would keep passing on the day a fifteenth is vendored.
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
-
-
-def _a_fable_map(number: int) -> str:
-    return textwrap.dedent(
-        f"""\
-        ---
-        type: "pericope"
-        pericope-num: "Q0{number}"
-        pericope-title: "A fixture, not canon"
-        bcv: "Fable 1:{number}-{number + 1}"
-        genre-group: "NARRATIVE"
-        genre: "HISTORICAL_NARRATIVE"
-        status: "complete"
-        sta-status: "complete"
-        ---
-
-        # Q0{number} — Fable 1:{number}-{number + 1}
-
-        ## 2. Level 1 — Whole-Passage Movement
-        ### 2.1 Prose Arc
-        Someone stands somewhere, and the telling stops there.
-
-        ### 2.2 Context
-        None. This passage exists only inside this test.
-
-        ### 2.3 Emotion / Tone / Pace
-        Flat, because nothing happens.
-
-        ### 2.4 Communicative Function
-        To be walked, or to be refused at the door of the room.
-
-        ## 3. Level 2 — Scenes / Episodes
-
-        ### Scene 1 — The only scene (v.{number}-{number + 1})
-
-        **3A — Beings**
-        [[B1-Someone]] — מִישֶׁהוּ / Someone
-
-        **3B — Places**
-        [[PL1-Somewhere]] — אֵיפֹשֶׁהוּ / Somewhere
-
-        **3E — What Happens**
-        Someone stands somewhere.
-
-        **Significant Absence**
-        Nobody says why.
-        """
-    )
-
-
-_A_FABLE_LOG_WITH_A_LAYER = (
-    "# COMPILATION LOG\n\n"
-    '{"high_risk_register_audit": [{"id": "R1", "kind": "SILENCE", '
-    '"note": "The telling never says why.", "do_not_decide": true}]}\n'
-)
-_A_FABLE_LOG_WITHOUT_ONE = '# COMPILATION LOG\n\n{"high_risk_register_audit": []}\n'
 
 
 @pytest.fixture
@@ -136,9 +84,9 @@ def a_book_whose_walkable_passages_end_before_it_does(
     layers = {1: True, 2: False, 3: True, 4: False}
     for number, carries_its_layer in layers.items():
         stem = f"Q0{number}-Fable-1-{number}-{number + 1}"
-        (maps / f"{stem}.md").write_text(_a_fable_map(number), encoding="utf-8")
+        (maps / f"{stem}.md").write_text(a_fable_map(number), encoding="utf-8")
         (logs / f"{stem}-COMPILATION-LOG.md").write_text(
-            _A_FABLE_LOG_WITH_A_LAYER if carries_its_layer else _A_FABLE_LOG_WITHOUT_ONE,
+            A_FABLE_LOG_WITH_A_LAYER if carries_its_layer else A_FABLE_LOG_WITHOUT_ONE,
             encoding="utf-8",
         )
 
