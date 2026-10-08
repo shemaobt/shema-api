@@ -1,15 +1,15 @@
-"""What the team hears: YHWH is voiced as a name, and no canon code is voiced at all.
+"""What the team hears: the voiced text, made speakable by four rewrites in a fixed order.
 
-The first bug: the maps and the Guide write the tetragrammaton as the four consonants "YHWH",
-and a voice engine spells letters it cannot pronounce. Nothing between a validated line and
-the platform touched that shape until this module ran ahead of the TTS call.
-
-The second (ENG-1337): the same maps carry codes — `B3`, `FIG_0013`, `[[B3-Naomi]]` — and the
-Guide quotes them, so the voice read letters and numbers aloud. A code is removed, never
-replaced by its label. The sweeps read the vendored maps and the label catalogues from disk, so
-what counts as a code is the canon's own list and no expected value comes from the module under
-test; each sweep is one case that names its offenders, as the house does for a list too long to
-be a parametrize. A word that only looks like a code (`MP3`, `CO2`) is spoken.
+Formatting marks come off and every word stays; the canon codes the maps carry — `B3`,
+`FIG_0013`, `[[B3-Naomi]]` — are removed and the seam they leave is mended; a question folded
+after a colon, a semicolon or a dash stands alone; and "YHWH" is voiced as a name, never as
+four letters. The first, third and fourth are Marcia's (her speakableTest.ts, ported case for
+case, her known limits and invariants included); the second is ours and runs between her first
+and second, and each of its seams has its case. The sweeps read the vendored maps and the label
+catalogues from disk, so what counts as a code is the canon's own list and no expected value
+comes from the module under test; each sweep is one case that names its offenders, as the
+house does for a list too long to be a parametrize. A word that only looks like a code (`MP3`,
+`CO2`) is spoken.
 """
 
 from __future__ import annotations
@@ -229,8 +229,13 @@ def test_every_link_in_the_vendored_maps_is_removed_unless_its_slug_names_a_figu
         link for link in links if speakable_text(f"Antes {link} depois.", "pt") != "Antes depois."
     ]
 
-    assert len(links) > 50
+    assert len(links) > 90
     assert offenders == []
+
+
+def _the_slug_spoken(link: str) -> str:
+    _, slug = link[2:-2].split("-", 1)
+    return " ".join("Senhor Jeová" if word == "YHWH" else word for word in slug.split("-"))
 
 
 def test_every_figure_link_in_the_vendored_maps_speaks_only_its_slug() -> None:
@@ -240,12 +245,10 @@ def test_every_figure_link_in_the_vendored_maps_speaks_only_its_slug() -> None:
         link
         for link in links
         if speakable_text(f"Antes {link} depois.", "pt")
-        != f"Antes {link[2:-2].split('-', 1)[1].replace('-', ' ')} depois.".replace(
-            "YHWH", "Senhor Jeová"
-        )
+        != f"Antes {_the_slug_spoken(link)} depois."
     ]
 
-    assert len(links) > 50
+    assert len(links) > 130
     assert offenders == []
 
 
@@ -463,33 +466,61 @@ def test_a_question_folded_after_a_separator_stands_alone(text: str, expected: s
 
 
 _NOT_A_FOLDED_QUESTION = [
-    'Uma coisa curiosa: o nome Belém quer dizer "casa do pão".',
-    "Ficou claro pra vocês quem são as pessoas e o que acontece? Se tiver alguma coisa que "
-    "vocês querem que eu conte de novo, me perguntem.",
-    "Vocês querem que eu repita, ou está claro?",
-    'O que vem à cabeça quando ouvem o nome "Rute"?',
-    'Ele perguntou "onde: aqui ou lá?"',
-    "Vocês lembram (a fome: em Judá)?",
-    "Rute 1\N{EN DASH}5?",
-    "Vocês leram o guarda-chuva?",
-    "Essa parte ficou clara? se sim, eu continuo.",
-    "Ficou claro pra vocês?",
-    "",
-    "Vocês chegaram às 10:30 da manhã?",
-    "Vocês chegaram às 10:30?",
-    "Lembram de Rute 1:5, onde Noemi fica só?",
-    "A sessão vai das 10:30 às 11:15, tudo bem?",
-    "Rute 1 \N{EN DASH} 5, o que acontece?",
-    "Rute 1 - 5, o que acontece?",
-    "O que Noemi — a sogra — sentiu?",
-    "Como acaba exatamente — quem faz o quê, o que nasce disso — vocês conseguem imaginar?",
-    "A família — pai, mãe e dois filhos — o que aconteceu com ela?",
-    "A família - pai, mãe e dois filhos - o que aconteceu com ela?",
-    "Pensem, — o que sentiram?",
-    "Ele perguntou \N{LEFT SINGLE QUOTATION MARK}onde: aqui ou lá?\N{RIGHT SINGLE QUOTATION MARK}",
-    'Ele disse: "fique no meu campo. Aqui: você está segura?"',
-    "Ele disse: “fique no meu campo. Aqui — você está segura?”",
-    "Ele perguntou (onde: aqui ou lá?)",
+    pytest.param(
+        'Uma coisa curiosa: o nome Belém quer dizer "casa do pão".', id="a-colon-in-a-statement"
+    ),
+    pytest.param(
+        "Ficou claro pra vocês quem são as pessoas e o que acontece? Se tiver alguma coisa que "
+        "vocês querem que eu conte de novo, me perguntem.",
+        id="a-question-then-a-statement",
+    ),
+    pytest.param("Vocês querem que eu repita, ou está claro?", id="a-comma-never-cuts"),
+    pytest.param(
+        'O que vem à cabeça quando ouvem o nome "Rute"?', id="a-question-ending-in-a-quote"
+    ),
+    pytest.param('Ele perguntou "onde: aqui ou lá?"', id="a-colon-inside-double-quotes"),
+    pytest.param("Vocês lembram (a fome: em Judá)?", id="a-colon-inside-parentheses"),
+    pytest.param("Rute 1\N{EN DASH}5?", id="a-range-with-no-letter-after-it"),
+    pytest.param("Vocês leram o guarda-chuva?", id="a-hyphen-inside-a-word"),
+    pytest.param(
+        "Essa parte ficou clara? se sim, eu continuo.", id="a-question-followed-by-lowercase"
+    ),
+    pytest.param("Ficou claro pra vocês?", id="a-plain-question"),
+    pytest.param("", id="empty"),
+    pytest.param("Vocês chegaram às 10:30 da manhã?", id="a-time"),
+    pytest.param("Vocês chegaram às 10:30?", id="a-time-at-the-end"),
+    pytest.param("Lembram de Rute 1:5, onde Noemi fica só?", id="a-verse-reference"),
+    pytest.param("A sessão vai das 10:30 às 11:15, tudo bem?", id="two-times"),
+    pytest.param("Rute 1 \N{EN DASH} 5, o que acontece?", id="a-spaced-en-dash-range"),
+    pytest.param("Rute 1 - 5, o que acontece?", id="a-spaced-hyphen-range"),
+    pytest.param("O que Noemi — a sogra — sentiu?", id="a-dash-pair"),
+    pytest.param(
+        "Como acaba exatamente — quem faz o quê, o que nasce disso — vocês conseguem imaginar?",
+        id="a-dash-pair-inside-the-question",
+    ),
+    pytest.param(
+        "A família — pai, mãe e dois filhos — o que aconteceu com ela?",
+        id="a-dash-pair-before-the-question",
+    ),
+    pytest.param(
+        "A família - pai, mãe e dois filhos - o que aconteceu com ela?",
+        id="a-spaced-hyphen-pair-before-the-question",
+    ),
+    pytest.param("Pensem, — o que sentiram?", id="a-head-ending-with-a-comma"),
+    pytest.param(
+        "Ele perguntou \N{LEFT SINGLE QUOTATION MARK}onde: aqui ou "
+        "lá?\N{RIGHT SINGLE QUOTATION MARK}",
+        id="a-colon-inside-curly-single-quotes",
+    ),
+    pytest.param(
+        'Ele disse: "fique no meu campo. Aqui: você está segura?"',
+        id="a-quote-spanning-a-sentence-end",
+    ),
+    pytest.param(
+        "Ele disse: “fique no meu campo. Aqui — você está segura?”",
+        id="a-curly-quote-spanning-a-sentence-end",
+    ),
+    pytest.param("Ele perguntou (onde: aqui ou lá?)", id="a-question-inside-parentheses"),
 ]
 
 
@@ -722,29 +753,55 @@ def test_a_real_guide_turn_changes_only_at_the_ruled_split(text: str, expected: 
 
 
 _CORPUS = [
-    _TURNO_2,
-    _TURNO_8,
-    _TURNO_10,
-    _TURNO_12,
-    _TURNO_13,
-    "Quando estiverem prontos, a pergunta segue de pé: o que vem à cabeça de vocês quando ouvem "
-    'o nome "Rute"?',
-    'Noemi pergunta: "onde você trabalhou hoje?"',
-    "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
-    "- o pai morre\n- os dois filhos casam",
-    "## Segunda parte\n* a fome\n1. a perda — o que vocês sentem?\n\n__Noemi__ volta para "
-    "_Belém_ com `Rute`; e [Boaz](1) — onde está?",
-    "Primeira parte: a fome; segunda parte — a perda: o que vocês sentem?",
-    "um * só e # aqui e C# fica snake_case_name",
-    "Vocês chegaram às 10:30 da manhã? Lembram de Rute 1:5, onde Noemi fica só? Placar 2:1 — "
-    "quem ganhou?",
-    "O que Noemi — a sogra — sentiu? Noemi — a sogra — pergunta: onde você trabalhou? Pensem, "
-    "— o que sentiram?",
-    "Naomi asks: “where\N{RIGHT SINGLE QUOTATION MARK}s Boaz: here or there?” "
-    "Naomi\N{RIGHT SINGLE QUOTATION MARK}s question: where did you work? Ele "
-    "perguntou \N{LEFT SINGLE QUOTATION MARK}onde: aqui ou lá?\N{RIGHT SINGLE QUOTATION MARK}",
-    'Ele disse: "fique no meu campo. Aqui: você está segura?" Vocês viram isso: ela ficou?!',
-    "Primeira parte.\n---\nSegunda parte: o que vocês sentem?",
+    pytest.param(_TURNO_2, id="turno-2"),
+    pytest.param(_TURNO_8, id="turno-8"),
+    pytest.param(_TURNO_10, id="turno-10"),
+    pytest.param(_TURNO_12, id="turno-12"),
+    pytest.param(_TURNO_13, id="turno-13"),
+    pytest.param(
+        "Quando estiverem prontos, a pergunta segue de pé: o que vem à cabeça de vocês quando "
+        'ouvem o nome "Rute"?',
+        id="a-folded-question-with-a-quoted-name",
+    ),
+    pytest.param('Noemi pergunta: "onde você trabalhou hoje?"', id="a-folded-question-in-quotes"),
+    pytest.param(
+        "Eles saem da cidade deles, **Belém de Judá**, e vão morar em *Moabe*.",
+        id="bold-and-italic",
+    ),
+    pytest.param("- o pai morre\n- os dois filhos casam", id="a-bullet-list"),
+    pytest.param(
+        "## Segunda parte\n* a fome\n1. a perda — o que vocês sentem?\n\n__Noemi__ volta para "
+        "_Belém_ com `Rute`; e [Boaz](1) — onde está?",
+        id="every-mark-at-once",
+    ),
+    pytest.param(
+        "Primeira parte: a fome; segunda parte — a perda: o que vocês sentem?",
+        id="several-separators",
+    ),
+    pytest.param("um * só e # aqui e C# fica snake_case_name", id="stray-marks-and-snake-case"),
+    pytest.param(
+        "Vocês chegaram às 10:30 da manhã? Lembram de Rute 1:5, onde Noemi fica só? Placar 2:1 — "
+        "quem ganhou?",
+        id="times-and-verse-references",
+    ),
+    pytest.param(
+        "O que Noemi — a sogra — sentiu? Noemi — a sogra — pergunta: onde você trabalhou? Pensem, "
+        "— o que sentiram?",
+        id="dash-pairs-and-a-comma-head",
+    ),
+    pytest.param(
+        "Naomi asks: “where\N{RIGHT SINGLE QUOTATION MARK}s Boaz: here or there?” "
+        "Naomi\N{RIGHT SINGLE QUOTATION MARK}s question: where did you work? Ele "
+        "perguntou \N{LEFT SINGLE QUOTATION MARK}onde: aqui ou lá?\N{RIGHT SINGLE QUOTATION MARK}",
+        id="curly-quotes-and-apostrophes",
+    ),
+    pytest.param(
+        'Ele disse: "fique no meu campo. Aqui: você está segura?" Vocês viram isso: ela ficou?!',
+        id="a-quote-spanning-a-sentence-end",
+    ),
+    pytest.param(
+        "Primeira parte.\n---\nSegunda parte: o que vocês sentem?", id="a-horizontal-rule"
+    ),
 ]
 
 
@@ -851,16 +908,99 @@ def test_a_first_line_that_held_only_a_code_leaves_no_full_stop(text: str) -> No
 
 
 @pytest.mark.parametrize(
-    "text, expected",
+    "text, language, expected",
     [
-        pytest.param("[[B3-Naomi]]: Noemi volta.", "Noemi volta.", id="at-the-start"),
-        pytest.param("Ouçam [[B3-Naomi]]: Noemi volta.", "Ouçam Noemi volta.", id="in-the-middle"),
+        pytest.param(
+            "[[B3-Naomi]]: Noemi volta.",
+            "pt",
+            "Noemi volta.",
+            id="a-link-that-opens-the-sentence-takes-its-colon",
+        ),
+        pytest.param(
+            "Ouçam [[B3-Naomi]]: Noemi volta.",
+            "pt",
+            "Ouçam: Noemi volta.",
+            id="a-colon-in-the-middle-of-a-sentence-stays",
+        ),
+        pytest.param(
+            "Na cena [[B3-Naomi-returns]]: o que Noemi diz?",
+            "pt",
+            "Na cena. O que Noemi diz?",
+            id="a-colon-that-introduces-a-question-still-cuts",
+        ),
+        pytest.param("Naomi [[B3]]: where?", "en", "Naomi. Where?", id="the-same-in-english"),
     ],
 )
-def test_a_link_followed_by_a_colon_and_its_name_leaves_only_the_name(
-    text: str, expected: str
+def test_a_link_takes_the_colon_only_when_it_opened_the_sentence(
+    text: str, language: str, expected: str
 ) -> None:
+    assert speakable_text(text, language) == expected
+
+
+_A_CODE_THAT_OPENS_A_SENTENCE = [
+    pytest.param("B3 - Noemi chora?", "Noemi chora?", id="before-a-spaced-hyphen"),
+    pytest.param("Noemi volta. B3: Rute fica.", "Noemi volta. Rute fica.", id="after-a-full-stop"),
+    pytest.param("Noemi volta. B3? Quem?", "Noemi volta. Quem?", id="before-a-question-mark"),
+    pytest.param(
+        "- B3: Noemi volta\n- B4: Rute fica.",
+        "Noemi volta. Rute fica.",
+        id="a-list-of-scenes",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, expected", _A_CODE_THAT_OPENS_A_SENTENCE)
+def test_a_code_that_opens_a_sentence_leaves_no_mark_behind(text: str, expected: str) -> None:
     assert speakable_text(text, "pt") == expected
+
+
+def test_a_code_before_a_closing_spaced_hyphen_leaves_no_hyphen() -> None:
+    assert speakable_text("Rute vê Boaz - B13.", "pt") == "Rute vê Boaz."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("Noemi — B3, a sogra — o que sentiu?", id="a-code-after-the-opening-dash"),
+        pytest.param("Noemi — a sogra, B3 — o que sentiu?", id="a-code-before-the-closing-dash"),
+    ],
+)
+def test_a_seam_inside_a_dash_pair_keeps_the_pair(text: str) -> None:
+    assert speakable_text(text, "pt") == "Noemi — a sogra — o que sentiu?"
+
+
+_A_LIST_OR_A_RANGE_OF_CODES = [
+    pytest.param("In B3 and B4, Naomi weeps.", "en", "In, Naomi weeps.", id="and"),
+    pytest.param("As cenas B3 a B5 choram.", "pt", "As cenas choram.", id="a-range-with-a"),
+    pytest.param("The scenes B3 to B5 weep.", "en", "The scenes weep.", id="a-range-with-to"),
+    pytest.param(
+        "As cenas B1\N{EN DASH}B5 choram.", "pt", "As cenas choram.", id="a-range-with-an-en-dash"
+    ),
+    pytest.param("As cenas B1-B5 choram.", "pt", "As cenas choram.", id="a-range-with-a-hyphen"),
+    pytest.param(
+        "Leiam Rute 1:1\N{EN DASH}5 (B1\N{EN DASH}B5).",
+        "pt",
+        "Leiam Rute 1:1\N{EN DASH}5.",
+        id="a-range-alone-in-parentheses",
+    ),
+    pytest.param(
+        "Leiam Rute 1:1\N{EN DASH}5 (cenas B1\N{EN DASH}B5).",
+        "pt",
+        "Leiam Rute 1:1\N{EN DASH}5 (cenas).",
+        id="a-range-beside-a-word-in-parentheses",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, language, expected", _A_LIST_OR_A_RANGE_OF_CODES)
+def test_a_list_or_a_range_of_codes_goes_whole(text: str, language: str, expected: str) -> None:
+    assert speakable_text(text, language) == expected
+
+
+def test_a_figure_link_with_spaces_inside_its_brackets_speaks_its_slug() -> None:
+    assert (
+        speakable_text("Veja [[ FIG_0013-Bread-house ]] agora.", "pt") == "Veja Bread house agora."
+    )
 
 
 def test_a_bare_code_that_opens_a_line_leaves_no_colon() -> None:
@@ -906,4 +1046,44 @@ def test_the_first_d_line_is_spoken_with_a_sentence_break_where_its_dash_was() -
     assert (
         speakable_text("Desculpa, não consegui ouvir direito — podem repetir?", "pt")
         == "Desculpa, não consegui ouvir direito. Podem repetir?"
+    )
+
+
+_LINES_THAT_LOSE_A_CODE = [
+    pytest.param(case.values[0], id=case.id)
+    for case in (*_MENDED, *_A_CODE_THAT_OPENS_A_SENTENCE, *_A_LIST_OR_A_RANGE_OF_CODES)
+]
+
+
+@pytest.mark.parametrize("text", _LINES_THAT_LOSE_A_CODE)
+def test_a_line_that_lost_its_codes_made_speakable_again_comes_back_equal(text: str) -> None:
+    once = speakable_text(text, "pt")
+
+    assert speakable_text(once, "pt") == once
+
+
+_KNOWN_LIMITS_OF_THE_VOICED_TEXT = [
+    pytest.param("Em 2*2 dias.", "pt", "Em 22 dias.", id="a-multiplication-asterisk-is-dropped"),
+    pytest.param(
+        "The YHWH-given land.",
+        "en",
+        "The the LORD-given land.",
+        id="an-article-before-the-divine-name-is-doubled",
+    ),
+]
+
+
+@pytest.mark.parametrize("text, language, expected", _KNOWN_LIMITS_OF_THE_VOICED_TEXT)
+def test_the_known_limits_of_the_voiced_text_stay_as_pinned(
+    text: str, language: str, expected: str
+) -> None:
+    assert speakable_text(text, language) == expected
+
+
+def test_a_language_outside_the_table_loses_its_marks_and_its_folded_questions_but_not_yhwh() -> (
+    None
+):
+    assert (
+        speakable_text("**Noemí** pregunta: ¿dónde trabajaste hoy? YHWH lo sabe.", "es")
+        == "Noemí pregunta. ¿dónde trabajaste hoy? YHWH lo sabe."
     )

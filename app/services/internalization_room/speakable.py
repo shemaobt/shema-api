@@ -62,23 +62,28 @@ _CODE = (
 
 #: A figure or a cultural background is named only by its slug, so its link is voiced as the
 #: slug's words; nothing in the maps follows it with a name of its own.
-_NAMED_BY_ITS_SLUG = re.compile(r"\[\[(?:FIG|CB)_[0-9]+-([^\]]+)\]\]")
+_NAMED_BY_ITS_SLUG = re.compile(rf"\[\[{_SPACE}*(?:FIG|CB)_[0-9]+-([^\]]+?){_SPACE}*\]\]")
 
-#: A link that begins with a code goes whole, slug and spaces inside the brackets included, and
-#: takes the colon that introduced its name; so does a bare code with the slug hyphen-attached
-#: or a second code joined to it by a slash. A list of codes goes with its commas and its "e".
+#: A link that begins with a code goes whole, slug and spaces inside the brackets included; so
+#: does a bare code with the slug hyphen-attached or a second code joined to it by a slash.
 #: `(?<!\w)` and `(?!\w)` keep the match off the middle of a word.
 _ONE_CODE = (
-    rf"\[\[{_SPACE}*{_CODE}{_SPACE}*(?:[-|][^\]]*)?\]\](?:{_SPACE}*:)?"
+    rf"\[\[{_SPACE}*{_CODE}{_SPACE}*(?:[-|][^\]]*)?\]\]"
     rf"|(?<!\w){_CODE}(?:-\w+|/{_CODE})*(?!\w)"
 )
-_CANON_CODE = re.compile(rf"(?:{_ONE_CODE})(?:(?:,{_SPACE}*|{_SPACE}+e{_SPACE}+)(?:{_ONE_CODE}))*")
+
+#: A list of codes goes with its commas and its "e" or "and", and a range with its "a", "to"
+#: or en dash, so nothing is left to join when every code is gone.
+_JOINER = rf"(?:,{_SPACE}*|{_SPACE}+(?:e|and|a|to){_SPACE}+|{_SPACE}*\u2013{_SPACE}*)"
+_CANON_CODE = re.compile(rf"(?:{_ONE_CODE})(?:{_JOINER}(?:{_ONE_CODE}))*")
 
 #: What a removal can leave behind, and the order `_mend` applies it in: brackets and quotes that
-#: held only the code, then the dash pairs that framed it, then a chain of marks cut down to one
-#: (a weak mark before a strong one goes, then a weak mark after `!` or `?`),
-#: then the spaces, and last a full stop doubled by the abbreviation's own. The order matters: the
-#: spaces are collapsed before the stops are, so the earlier steps can leave them for it.
+#: held only the code, then the dash pairs that framed it and the comma it left inside a pair it
+#: did not frame, then a chain of marks cut down to one (a weak mark before a strong one goes,
+#: then a weak mark after `!` or `?`), then any mark left where a sentence now starts, then the
+#: spaces, and last a full stop doubled by the abbreviation's own. The order matters: the
+#: spaces are collapsed before the stops are, so the earlier steps can leave them for it, and
+#: the comma inside a pair goes before a dash beside a mark would take the pair's dash with it.
 _EMPTY_BRACKETS = re.compile(
     rf"\({_SPACE}*[,;/\u2013—-]*{_SPACE}*\)|\[{_SPACE}*[,;/\u2013—-]*{_SPACE}*\]"
 )
@@ -88,34 +93,65 @@ _EMPTY_QUOTES = re.compile(
 _DOUBLED_STOP = re.compile(r"(?<!\.)\.{2}(?!\.)")
 _DASH = r"(?:[\u2013—]|(?<!\S)-(?!\S))"
 _DASH_PAIR = re.compile(rf"{_DASH}\s*{_DASH}")
-_DASH_BEFORE_CLOSE = re.compile(rf"{_SPACE}*[\u2013—]{_SPACE}*(?=[.,;:!?]|$)")
+_COMMA_AFTER_A_DASH = re.compile(rf"(?<=[\u2013—-]){_SPACE}+,")
+_COMMA_BEFORE_A_DASH = re.compile(rf",{_SPACE}{{2,}}(?={_DASH})")
+_DASH_BEFORE_CLOSE = re.compile(rf"{_SPACE}*{_DASH}{_SPACE}*(?=[.,;:!?]|$)")
 _MARKS_BEFORE_COMMA = re.compile(rf"[,;:]{_SPACE}*,")
 _MARK_BEFORE_CLOSE = re.compile(rf"[,;:](?={_SPACE}*[.!?])|,(?={_SPACE}*[;:])")
 _MARK_AFTER_STRONG = re.compile(rf"(?<=[!?]){_SPACE}*[,;:]")
 _SPACE_RUN = re.compile(rf"{_SPACE}{{2,}}")
 _SPACE_BEFORE_MARK = re.compile(rf"{_SPACE}+(?=[,.;:!?)\]])")
-_EDGE_DEBRIS = re.compile(r"^[ \t\u00a0,.;:\u2013—]+|[ \t\u00a0,;\u2013—]+$")
+_EDGE_SPACE = re.compile(rf"^{_SPACE}+|(?:{_SPACE}|[,;\u2013—]|(?<!\S)-)+$")
 
 _YHWH = re.compile(r"\bYHWH\b")
 
-_LETTER = re.compile(r"[^\W\d_]")
+#: A letter in any script: a word character that is neither a digit nor an underscore.
+_LETTER_CLASS = r"[^\W\d_]"
+_LETTER = re.compile(_LETTER_CLASS)
 _CLOSE = r"[\"\u201d\u2019')\]\u00bb]"
-_FIRST_LETTER = re.compile(r"^([\"\u201c\u00ab\u2018'(\[\s]*)([^\W\d_])")
+_OPENERS = "\u201c\u00ab\u2018("
+_CLOSERS = "\u201d\u00bb)"
+_APOSTROPHE = "\u2019"
+_FIRST_LETTER = re.compile(rf"^([\"\u201c\u00ab\u2018'(\[\s]*)({_LETTER_CLASS})")
+
+#: Where a sentence starts — the text's edge, or past a sentence end and its space — any mark
+#: a removed code left is read as nothing: a lone `.` but never an ellipsis, a `:`, a `?`, a
+#: dash or a spaced hyphen.
+_OPENING_DEBRIS = re.compile(
+    rf"(^|[.!?\u2026]{_CLOSE}*{_SPACE})"
+    rf"(?:{_SPACE}*(?:[,;:!?\u2013—]|\.(?![.\w])|-(?!\S)))+"
+)
+
 _TERMINAL_END = re.compile(rf"[.!?\u2026:;]{_CLOSE}*\Z")
 _LINE_END = re.compile(r"\r\n?")
 _WHITESPACE = re.compile(r"\s+")
-_RULE = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*\Z")
+_HORIZONTAL_RULE = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*\Z")
 _HEADING = re.compile(r"^\s*#{1,6}\s+(.*)\Z")
 _BULLET = re.compile(r"^\s*(?:[-*\u2022]|[0-9]{1,2}[.)])\s+(.*)\Z")
+
+#: The formatting marks, in the order they come off. A link keeps its text and drops its url,
+#: and a code span keeps its content, before any asterisk or underscore is read.
+_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_CODE_SPAN = re.compile(r"`([^`]*)`")
+#: Bold before italic, so `**word**` is never read as an italic pair around `*word*`.
+_BOLD = re.compile(r"\*\*(\S(?:[^*]*?\S)?)\*\*")
+_BOLD_UNDERSCORES = re.compile(r"__(\S(?:[^_]*?\S)?)__")
+_ITALIC = re.compile(r"\*(\S(?:[^*]*?\S)?)\*")
+#: An underscore pair only when it wraps a word or a phrase, never inside `snake_case`.
+_ITALIC_UNDERSCORES = re.compile(r"(^|\W)_(\S(?:[^_]*?\S)?)_(?=\W|\Z)")
+#: Last, every asterisk the pairs left (an asterisk is never part of a word), and a `#` unless
+#: it is glued to a letter or a digit (`C#` stays).
+_STRAY_ASTERISK = re.compile(r"\*")
+_STRAY_HASH = re.compile(r"(?<![^\W_])#")
 _MARKS = (
-    (re.compile(r"\[([^\]]+)\]\([^)]*\)"), r"\1"),
-    (re.compile(r"`([^`]*)`"), r"\1"),
-    (re.compile(r"\*\*(\S(?:[^*]*?\S)?)\*\*"), r"\1"),
-    (re.compile(r"__(\S(?:[^_]*?\S)?)__"), r"\1"),
-    (re.compile(r"\*(\S(?:[^*]*?\S)?)\*"), r"\1"),
-    (re.compile(r"(^|\W)_(\S(?:[^_]*?\S)?)_(?=\W|\Z)"), r"\1\2"),
-    (re.compile(r"\*"), ""),
-    (re.compile(r"(?<![^\W_])#"), ""),
+    (_LINK, r"\1"),
+    (_CODE_SPAN, r"\1"),
+    (_BOLD, r"\1"),
+    (_BOLD_UNDERSCORES, r"\1"),
+    (_ITALIC, r"\1"),
+    (_ITALIC_UNDERSCORES, r"\1\2"),
+    (_STRAY_ASTERISK, ""),
+    (_STRAY_HASH, ""),
 )
 _SENTENCE_END = re.compile(rf"[.!?\u2026]+{_CLOSE}*(?=\s|\Z)")
 _ENDS_AS_QUESTION = re.compile(rf"[!?]*\?[!?]*{_CLOSE}*\Z")
@@ -135,14 +171,17 @@ def _mend(text: str) -> str:
     mended = _EMPTY_BRACKETS.sub("", removed)
     mended = _EMPTY_QUOTES.sub("", mended)
     mended = _DASH_PAIR.sub(" ", mended)
+    mended = _COMMA_AFTER_A_DASH.sub("", mended)
+    mended = _COMMA_BEFORE_A_DASH.sub(" ", mended)
     mended = _DASH_BEFORE_CLOSE.sub("", mended)
     mended = _MARKS_BEFORE_COMMA.sub(", ", mended)
     mended = _MARK_BEFORE_CLOSE.sub("", mended)
     mended = _MARK_AFTER_STRONG.sub("", mended)
+    mended = _OPENING_DEBRIS.sub(r"\1", mended)
     mended = _SPACE_RUN.sub(" ", mended)
     mended = _SPACE_BEFORE_MARK.sub("", mended)
     mended = _DOUBLED_STOP.sub(".", mended)
-    return _EDGE_DEBRIS.sub("", mended)
+    return _EDGE_SPACE.sub("", mended)
 
 
 def speakable_text(text: str, language: str) -> str:
@@ -191,11 +230,15 @@ def _last_separator(sentence: str, spans: _Spans) -> tuple[int, int] | None:
         if char == '"':
             spans.in_double = not spans.in_double
             continue
-        if char in "\u201c\u00ab\u2018(":
+        if char in _OPENERS:
             spans.depth += 1
             continue
-        apostrophe = char == "\u2019" and previous.isalpha() and following.isalpha()
-        if char in "\u201d\u00bb)" or (char == "\u2019" and not apostrophe):
+        apostrophe = (
+            char == _APOSTROPHE
+            and _LETTER.fullmatch(previous) is not None
+            and _LETTER.fullmatch(following) is not None
+        )
+        if char in _CLOSERS or (char == _APOSTROPHE and not apostrophe):
             spans.depth = max(0, spans.depth - 1)
             continue
         if spans.depth or spans.in_double:
@@ -251,7 +294,7 @@ def _as_own_sentence(line: str) -> str:
 
 
 def _unmarked(line: str) -> str:
-    if _RULE.match(line):
+    if _HORIZONTAL_RULE.match(line):
         return ""
     own = False
     if heading := _HEADING.match(line):
