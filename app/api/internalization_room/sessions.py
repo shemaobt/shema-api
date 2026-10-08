@@ -863,7 +863,7 @@ async def _answer_the_turn(
         if stt is not None:
             await stop_hearing(stt)
         raise
-    _remember_language(session_id, session.language, project_id)
+    _remember_language(session_id, room_language(session.language), project_id)
 
     if file is not None and stt is None:
         audio_bytes = await _read_capped_audio(file)
@@ -872,7 +872,7 @@ async def _answer_the_turn(
                 audio_bytes,
                 filename=file.filename,
                 mime_type=file.content_type,
-                language=session.language,
+                language=room_language(session.language),
                 cut=cut,
             )
         )

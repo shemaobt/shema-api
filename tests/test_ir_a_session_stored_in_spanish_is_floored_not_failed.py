@@ -154,3 +154,26 @@ async def test_a_mother_tongue_take_on_a_row_stored_in_spanish_reaches_the_guide
     assert guide.guide_inputs[0].startswith(note), (
         "a nota da língua materna chegava ao Guia na língua do `es` guardado, não na da sala"
     )
+
+
+async def test_a_take_in_the_floors_language_on_a_row_stored_in_spanish_is_the_teams_answer(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.99)
+    session = await _a_row_stored_in_spanish(db_session, PASSAGE)
+
+    for _ in range(2):
+        answered = await tablet.post(
+            f"{PREFIX}/sessions/{session.id}/turns",
+            headers={"X-Room-Key": KEY},
+            files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
+        )
+        assert answered.status_code == 200, answered.text
+
+    assert guide.guide_inputs == [PORTUGUESE, PORTUGUESE], (
+        "o português de uma sessão guardada em espanhol era lido como língua materna da equipe"
+    )
