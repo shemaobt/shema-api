@@ -34,6 +34,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.part_names import scene_titles
 from app.services.internalization_room.release import (
     approve_release,
     compose_internalization_release,
@@ -75,6 +76,7 @@ ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
 NAOMI_IN_THE_FIRST_SCENE = '"being_id": "B3",\n            "role_in_scene": "MOTHER_IN_LAW",'
 DROPPED_BEAD = "being:S1:B2"
 KEPT_FIRST_SILENCE_AT = 11
+KEPT_FIRST_SCENE = "THE KEPT FIRST SCENE"
 AUDIT = '"high_risk_register_audit": [\n'
 KEPT_ONLY_RULE = '    {"id": "R99", "kind": "KEPT_ONLY", "note": "kept", "do_not_decide": true},\n'
 
@@ -115,6 +117,13 @@ def _the_kept_p03_has_its_own_beings(tree: Path) -> None:
             1,
         )
     )
+
+
+def _the_kept_catalogue_titles_the_first_scene_its_own_way(tree: Path) -> None:
+    catalogue = tree / "element-labels" / "ruth.json"
+    labels = json.loads(catalogue.read_text(encoding="utf-8"))
+    labels["P03"]["scene:1"]["en"] = KEPT_FIRST_SCENE
+    catalogue.write_text(json.dumps(labels, ensure_ascii=False))
 
 
 def _the_kept_p03_has_a_rule_of_its_own(tree: Path) -> None:
@@ -411,6 +420,22 @@ async def test_the_reading_ahead_of_a_session_open_when_a_new_canon_is_published
 
     assert KEPT_LINE in analyst.shown[-1], "a leitura antecipada leu o mapa novo"
     assert VENDORED_LINE not in analyst.shown[-1]
+
+
+async def test_the_scenes_of_a_session_open_when_a_new_canon_is_published_keep_the_titles_it_opened_with(  # noqa: E501
+    db_session, monkeypatch, tmp_path
+) -> None:
+    kept_session = await create_session(db_session, pericope=P, language="en")
+    the_canon_moves_on(
+        monkeypatch,
+        tmp_path,
+        NEW_PIN,
+        keeping=_the_kept_catalogue_titles_the_first_scene_its_own_way,
+    )
+
+    titles = scene_titles(kept_session)
+
+    assert titles[0] == KEPT_FIRST_SCENE, "a cena ganhou no meio da sessão o título do canon novo"
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(
