@@ -279,3 +279,49 @@ def test_a_send_off_her_script_wants_scene_by_scene_says_so() -> None:
     assert _turn(guide="Agora gravem a passagem inteira.", expect=by_scene) == [
         "send-off did not tell the team to record scene by scene"
     ]
+
+
+def test_a_faithful_telling_in_other_words_is_never_sent_back_nor_asked_for_the_noun() -> None:
+    accepts = {"accepts_telling": True}
+
+    def refused(words: str) -> list[str]:
+        return [
+            f'a faithful telling in other words was not accepted (meaning, not form): "{words}"'
+        ]
+
+    assert _turn(guide="Isso é acréscimo da equipe.", expect=accepts) == refused("acréscimo")
+    assert _turn(guide="Vamos contar essa parte de novo.", expect=accepts) == refused(
+        "Vamos contar essa parte de novo"
+    )
+    assert _turn(guide="Contem de novo, sem a fome.", expect=accepts) == refused(
+        "Contem de novo, sem"
+    )
+    assert _turn(guide="Ensaiem essa parte de novo.", expect=accepts) == refused(
+        "Ensaiem essa parte de novo"
+    )
+    assert _turn(guide="Isso a história não conta.", expect=accepts) == refused(
+        "Isso a história não conta"
+    )
+    assert _turn(guide="Falta a palavra que o mapa usa.", expect=accepts) == [
+        *refused("Falta a palavra"),
+        "says 'o mapa' / 'the map' to the team",
+    ]
+    assert _turn(guide="A bondade fiel ficou de fora.", expect=accepts) == refused(
+        "bondade fiel ficou de fora"
+    )
+    assert _turn(guide="A palavra certa é bondade fiel.", expect=accepts) == refused(
+        "A palavra certa é"
+    )
+    assert _turn(guide="Não é a palavra exata.", expect=accepts) == refused("Não é a palavra exata")
+    assert _turn(guide="Faltou só a bondade.", expect=accepts) == refused("Faltou só a bondade")
+    for accepted in (
+        "Isso não é acréscimo, é a história.",
+        "Ficou inteiro, sem acréscimo.",
+        "Vocês não precisam contar de novo.",
+        "Querem que eu conte de novo, mais devagar?",
+        "Isso a história não conta, e vocês guardaram esse silêncio.",
+        "Vocês não precisam usar a palavra bondade fiel.",
+        "Gostei da palavra que vocês usaram.",
+        "Ficou inteiro e só com o que a história conta.",
+    ):
+        assert _turn(guide=accepted, expect=accepts) == [], accepted

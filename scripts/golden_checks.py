@@ -126,6 +126,24 @@ def _offers_choice_final(text: str) -> bool:
 
 
 _SCENE_BY_SCENE = _her(r"cena por cena|por cena|parte por parte")
+_SENT_BACK = _her(
+    r"(?<!\b(não|sem|nenhum|nem)\b[^.?!:;,]{0,30})acréscimo"
+    r"|(?<!\b(não|nem) )(vamos|podem|querem|precisam|têm que|tem que) (contar|ensaiar)"
+    r"[^.?!]{0,40}de novo"
+    r"|cont(em|ar|a) de novo,? (só )?(sem|com|até)"
+    r"|ensai(em|ar) (essa|esta|a) parte de novo"
+    r"|isso (a história|a passagem) não conta(?![^.?!]*(vocês|guard|respeit|proteg|silêncio))"
+)
+_THE_NOUN_DEMANDED = _her(
+    r"(?<!\b(não|nem) )(precisa|precisam|falta|faltou|tentem|coloquem|usem|ponham|botem"
+    r"|tem que|têm que|onde (está|fica)|cadê)[^.?!]{0,40}(?<!\p{L})"
+    r'(a palavra|o substantivo|o termo|["“]?bondade fiel)'
+    r"|(?<!\p{L})(a palavra|o termo|bondade fiel)[^.?!]{0,30}(?<!\b(não|nem) )"
+    r"(falt|precisa|tem que|têm que|ficou de fora|ficou faltando)"
+    r"|(?<!\p{L})(a palavra|o termo) (certa|certo|exata|exato) (é|seria|era)"
+    r"|não é (a palavra|o termo) (certa|certo|exata|exato)"
+    r"|(?<!\b(não|nem) )falt(a|ou)[^.?!]{0,40}bondade"
+)
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -168,6 +186,13 @@ def mechanical_checks(
             )
     if expect.get("send_off_scene_by_scene") and not _SCENE_BY_SCENE.search(guide):
         fails.append("send-off did not tell the team to record scene by scene")
+    if expect.get("accepts_telling"):
+        refused = _SENT_BACK.search(guide) or _THE_NOUN_DEMANDED.search(guide)
+        if refused:
+            fails.append(
+                "a faithful telling in other words was not accepted (meaning, not form): "
+                f'"{refused[0]}"'
+            )
     if expect.get("offers_choice_final") and not _offers_choice_final(guide):
         fails.append(
             "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar no "
