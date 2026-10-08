@@ -41,6 +41,30 @@ NUMBER_WORDS = {
     "twelve": 12,
 }
 
+ORDINALS = {
+    "primeira": 1,
+    "segunda": 2,
+    "terceira": 3,
+    "quarta": 4,
+    "quinta": 5,
+    "sexta": 6,
+    "sétima": 7,
+    "oitava": 8,
+    "nona": 9,
+    "décima": 10,
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+}
+LAST = ("última", "last")
+
 
 def _alternatives(words: list[str]) -> str:
     return "|".join(sorted(words, key=len, reverse=True))
@@ -58,8 +82,9 @@ _START = r"(?:^|(?<=[.!?…][\"'”\N{RIGHT SINGLE QUOTATION MARK}»)]*\s))"
 _LEAD_PT = r"(?:(?:agora|então|bom|ok|muito bem|mas)[,!]?\s+|não,\s+)?"
 _LEAD_EN = r"(?:(?:now|so|ok|okay|all right|alright|well|but)[,!]?\s+|no,\s+)?"
 _AFTER = r"(?=\s*(?:[.!,:;…—\N{EN DASH}]|$))"
-_PT_PART = rf"(?:cena|parte) {_N}"
-_EN_PART = rf"(?:the )?(?:scene|part) {_N}"
+_ORD = rf"({_alternatives([*ORDINALS, *LAST])})"
+_PT_PART = rf"(?:(?:cena|parte) {_N}|{_ORD} (?:cena|parte))"
+_EN_PART = rf"(?:(?:the )?(?:scene|part) {_N}|the {_ORD} (?:scene|part))"
 _APOSTROPHE = r"['\N{RIGHT SINGLE QUOTATION MARK}]"
 _ENTRANCE = _either(
     rf"{_LEAD_PT}vamos (?:agora )?(?:pra|para a|para|entrar na|passar (?:pra|para a)"
@@ -119,8 +144,11 @@ def _found(detectors: tuple[regex.Pattern[str], ...], folded: str) -> list[regex
     return [line for detector in detectors for line in detector.finditer(folded)]
 
 
-def _number(word: str) -> int:
-    return int(word) if word.isdigit() else NUMBER_WORDS[word.lower()]
+def _number(said: str | None, ordinal: str | None, parts: int) -> int:
+    if said is not None:
+        return int(said) if said.isdigit() else NUMBER_WORDS[said.lower()]
+    named = (ordinal or "").lower()
+    return parts if named in LAST else ORDINALS[named]
 
 
 @dataclass(frozen=True)
@@ -168,7 +196,7 @@ def moment_step(
     before = moment_at_turn_start(messages)
     after = before
     by: list[str] = []
-    for line in [] if fail_safe else _triggers(_folded(voiced)):
+    for line in [] if fail_safe else _triggers(_folded(voiced), parts):
         if line.part is not None and not 1 <= line.part <= parts:
             continue
         moved = _moved(after, line)
@@ -185,17 +213,19 @@ class _Line(NamedTuple):
     to: At | None = None
 
 
-def _triggers(folded: str) -> list[_Line]:
+def _triggers(folded: str, parts: int) -> list[_Line]:
     found = []
     for line in _found(_ENTRANCE, folded):
         cause, to = _ENTRANCES[line[1].lower()]
-        found.append(_Line(line.start(), cause, part=_number(line[2]), to=to))
+        part = _number(line[2], line[3], parts)
+        found.append(_Line(line.start(), cause, part=part, to=to))
     for line in _found(_WHERE_WE_ARE, folded):
         if line[1]:
             found.append(_Line(line.start(), "where_we_are", to="familiarization"))
         else:
             to = _ENTRANCES[line[2].lower()][1]
-            found.append(_Line(line.start(), "where_we_are", part=_number(line[3]), to=to))
+            part = _number(line[3], line[4], parts)
+            found.append(_Line(line.start(), "where_we_are", part=part, to=to))
     found += [_Line(line.start(), "fence") for line in _found(_FENCE, folded)]
     for cause, lines in (
         ("part_closing", SCENE_CLOSINGS),

@@ -239,3 +239,22 @@ def test_a_scene_number_the_passage_does_not_have_moves_nothing(voiced: str) -> 
     assert _after(SCENE_TWO_OPEN, voiced) == SCENE_TWO_OPEN, (
         f"uma cena que a passagem de quatro cenas não tem mudou o momento: {voiced!r}"
     )
+
+
+@pytest.mark.parametrize(
+    ("voiced", "heard"),
+    [
+        ("Vamos pra Internalização da segunda cena.", SCENE_TWO_OPEN),
+        ("Now let's go to the Internalization of the second scene.", SCENE_TWO_OPEN),
+        ("Agora vamos pra Internalização da última parte.", {"at": "internalization", "part": 4}),
+        (
+            "So, let's move to Articulation of the last scene.",
+            {"at": "articulation", "part": 4, "fenced": False},
+        ),
+        ("Estamos na Articulação da segunda cena.", SCENE_TWO_PRACTISED),
+    ],
+)
+def test_an_ordinal_inside_her_whole_line_names_the_scene(
+    voiced: str, heard: dict[str, Any]
+) -> None:
+    assert _after(FAMILIARIZATION, voiced) == heard, f"a voz nomeou a cena por ordinal: {voiced!r}"
