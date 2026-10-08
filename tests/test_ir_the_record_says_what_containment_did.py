@@ -95,6 +95,7 @@ async def test_a_passing_turn_is_recorded_as_a_pass_with_its_redrafts(
     assert session.messages[-1] == {
         "role": "guide",
         "at": ANY,
+        "moment": ANY,
         "text": "isso mesmo",
         "outcome": "pass",
         "redrafts": 0,
@@ -119,6 +120,7 @@ async def test_a_mended_turn_is_recorded_as_corrected(db_session: AsyncSession) 
     assert session.messages[-1] == {
         "role": "guide",
         "at": ANY,
+        "moment": ANY,
         "text": "isso mesmo",
         "outcome": "corrected",
         "redrafts": 1,
@@ -153,6 +155,7 @@ async def test_a_fail_safe_is_recorded_with_everything_her_spec_asks_for(
     assert session.messages[-1] == {
         "role": "guide",
         "at": ANY,
+        "moment": ANY,
         "text": "Vamos com calma.",
         "outcome": "fail_safe",
         "redrafts": 2,
@@ -211,6 +214,7 @@ async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
     assert reread.messages[-1] == {
         "role": "guide",
         "at": ANY,
+        "moment": ANY,
         "text": DRAFT,
         "outcome": "pass",
         "redrafts": 0,

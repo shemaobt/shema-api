@@ -45,6 +45,7 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
+from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
@@ -403,6 +404,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         language=session.language,
         halt=halt.standing(session),
         opened=was_opened(session),
+        moment=moment_view(session),
     )
 
 
@@ -725,6 +727,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         turn_id=turn_id or "",
+        moment=moment_view(session),
     )
 
 
@@ -926,6 +929,7 @@ async def _draft_the_turn(
             coverage=coverage_view(session),
             done=False,
             turn_id=turn_id or str(uuid.uuid4()),
+            moment=moment_view(session),
         )
         if turn_id:
             await remember_turn(
@@ -1003,6 +1007,7 @@ async def _draft_the_turn(
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         turn_id=response_turn_id,
         classification_pending=pending,
+        moment=moment_view(session),
     )
     lifted = halted and session.status is not IRSessionStatus.NEEDS_PERSON
     with stage("db_write"):

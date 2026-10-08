@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings
-from app.services.internalization_room.fail_safe import validation_ladder
+from app.services.internalization_room.fail_safe import unrepairable
 from app.services.internalization_room.llm import TruncatedReply, Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
@@ -262,6 +262,7 @@ async def _voiced_after_validation(
     prepared_pericope: str | None = None,
     earlier_passages: str = "",
     with_history: bool = True,
+    first_scene: str = "",
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -385,7 +386,7 @@ async def _voiced_after_validation(
         redraft_note = _redraft_note(issues)
     logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
 
-    speech, line = validation_ladder(messages, language_code)
+    speech, line = unrepairable(attempt + 1, language_code, first_scene)
     return _timed(
         TurnOutcome(
             speech=speech,
