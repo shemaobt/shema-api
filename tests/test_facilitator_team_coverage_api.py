@@ -560,7 +560,7 @@ async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     body = response.json()
     assert body, "a passagem sem catalogo respondeu vazia em vez de vir do canon"
     assert all(bead["label_en"] for bead in body)
-    assert all(bead["label_pt"] is None for bead in body)
+    assert all(bead["label_pt"] is None for bead in body if bead["kind"] != "scene")
 
 
 async def test_a_pericope_outside_the_book_is_refused(client, db_session: AsyncSession) -> None:

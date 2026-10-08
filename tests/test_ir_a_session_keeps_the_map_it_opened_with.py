@@ -123,11 +123,11 @@ def _the_kept_p03_has_its_own_beings(tree: Path) -> None:
     )
 
 
-def _the_kept_catalogue_titles_the_first_scene_its_own_way(tree: Path) -> None:
-    catalogue = tree / "element-labels" / "ruth.json"
-    labels = json.loads(catalogue.read_text(encoding="utf-8"))
-    labels["P03"]["scene:1"]["en"] = KEPT_FIRST_SCENE
-    catalogue.write_text(json.dumps(labels, ensure_ascii=False))
+def _the_kept_titles_name_the_first_scene_their_own_way(tree: Path) -> None:
+    listed = tree / "ui-labels.pt.json"
+    titles = json.loads(listed.read_text(encoding="utf-8"))
+    titles["scenes"]["P03"]["S1"] = KEPT_FIRST_SCENE
+    listed.write_text(json.dumps(titles, ensure_ascii=False), encoding="utf-8")
 
 
 def _the_kept_p03_has_elimelech_labelled(tree: Path) -> None:
@@ -422,12 +422,12 @@ async def test_the_reading_ahead_of_a_session_open_when_a_new_canon_is_published
 async def test_the_scenes_of_a_session_open_when_a_new_canon_is_published_keep_the_titles_it_opened_with(  # noqa: E501
     db_session, monkeypatch, tmp_path
 ) -> None:
-    kept_session = await create_session(db_session, pericope=P, language="en")
+    kept_session = await create_session(db_session, pericope=P, language="pt")
     the_canon_moves_on(
         monkeypatch,
         tmp_path,
         NEW_PIN,
-        keeping=_the_kept_catalogue_titles_the_first_scene_its_own_way,
+        keeping=_the_kept_titles_name_the_first_scene_their_own_way,
     )
 
     titles = scene_titles(kept_session)
