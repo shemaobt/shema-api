@@ -61,3 +61,22 @@ async def test_a_panorama_turn_keeps_no_moment_because_a_book_has_none(
     )
 
     assert "moment" not in session.messages[-1], "o panorama ganhou um momento de passagem"
+
+
+async def test_a_session_begun_before_the_moment_was_read_goes_on_with_no_moment(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    session.messages = [{"role": "guide", "text": OPENING, "at": "2026-10-01T12:00:00+00:00"}]
+    await db_session.commit()
+
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="estamos prontos",
+        guide_response="Vamos pra Internalização da cena 1.",
+    )
+
+    assert "moment" not in session.messages[-1], (
+        "uma sessão de antes do momento ganhou um momento a partir do meio da conversa"
+    )

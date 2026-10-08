@@ -183,17 +183,24 @@ class Moment:
 FAMILIARIZATION = Moment(at="familiarization")
 
 
-def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment:
+def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment | None:
+    """Where the last guide entry left the room; the Familiarization for a conversation still
+    empty, and none for a session whose turns were kept before the moment was read."""
     guides = [message for message in messages if message["role"] == "guide"]
-    return Moment.of(guides[-1]["moment"]["after"]) if guides else FAMILIARIZATION
+    if not guides:
+        return FAMILIARIZATION
+    step = guides[-1].get("moment")
+    return None if step is None else Moment.of(step["after"])
 
 
 def moment_step(
     messages: list[dict[str, Any]], voiced: str, *, fail_safe: bool, parts: int
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Her MomentStep: where the lines this reply voiced leave the moment the turn began in.
     A fixed line that answered in the Guide's place moves nothing (moment.ts:270)."""
     before = moment_at_turn_start(messages)
+    if before is None:
+        return None
     after = before
     by: list[str] = []
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
@@ -265,6 +272,8 @@ def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
     """Her MOMENT fact (`src/turn/moment.ts` renderMoment, app 18fa7c4): where the room is,
     read from the lines the team heard — information for the Guide, never an instruction."""
     moment = moment_at_turn_start(messages)
+    if moment is None:
+        return ""
     parts = len(scene_ids_for(pericope_num))
     if moment.at == "internalization":
         return f"MOMENT: Internalization of part {moment.part} of {parts} {_DASH} the part is open."

@@ -121,3 +121,14 @@ async def test_in_a_scenes_articulation_the_guide_hears_whether_its_block_was_gi
     assert recording.guide[0].endswith(f"\n\n{fact}"), (
         "o Guia não sabia que a cena 2 estava na Articulação"
     )
+
+
+async def test_a_session_begun_before_the_moment_was_read_tells_the_guide_no_moment(
+    recording: _Recording,
+) -> None:
+    await _turn([{"role": "guide", "text": "Vamos pra Internalização da cena 2."}])
+
+    ledger = coverage_status_block(initial_state(P), P)
+    assert recording.guide[0].partition(CACHE_BREAK)[2] == ledger, (
+        "uma sessão de antes do momento ganhou um momento que ninguém leu"
+    )
