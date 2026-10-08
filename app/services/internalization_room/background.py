@@ -22,7 +22,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.segments import (
@@ -78,7 +78,7 @@ async def settle_coverage(
                         guide_response=guide_response,
                         classifier_prompt=classifier_prompt,
                         pericope_num=pericope_num,
-                        session_language=LANGUAGE_NAMES[session.language],
+                        session_language=LANGUAGE_NAMES[room_language(session.language)],
                     )
                     async with AsyncSessionLocal() as db:
                         settled = await apply_coverage(db, session_id, updated)
@@ -156,14 +156,15 @@ async def _read_and_keep(
     db: AsyncSession, session: IRSession, state: BackTranslationState, told: list[IRSegment]
 ) -> BackTranslationState | None:
     try:
+        language = room_language(session.language)
         with reading_the_canon_of(session.canon_pin):
             read = await analyse_telling_back(
                 segments=told,
                 scope=state.scope or session.pericope,
                 pericope_num=session.pericope,
                 analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-                session_language=LANGUAGE_NAMES[session.language],
-                language_code=session.language,
+                session_language=LANGUAGE_NAMES[language],
+                language_code=language,
                 settings=get_settings(),
                 session_id=session.id,
             )
