@@ -45,6 +45,7 @@ def _turn(**over: Any) -> list[str]:
         "expect": UNDERSTAND_FIRST,
         "previous_guide": "Oi, Daniel, oi, Suzuki! Bem-vindos, equipe Terena.",
         "earlier_guides": ["Oi, Daniel, oi, Suzuki! Bem-vindos, equipe Terena."],
+        "parts": 4,
     }
     return mechanical_checks(**{**played, **over})
 
@@ -1052,3 +1053,183 @@ def test_a_scene_of_todays_passage_is_a_cena_never_a_parte() -> None:
         "Nessa parte da história ninguém fala.",
     ):
         assert _turn(guide=kept, expect=cena) == [], kept
+
+
+#: The kickoff her `checksTest.ts` reads the FIA moments against: F1, the passage, F3.
+KICKOFF = (
+    "Bom dia. Eu sou o Facilitador Digital. Quando quiserem falar comigo, toquem no círculo; "
+    f"toquem de novo quando terminarem. {F1} (a passagem inteira). Essa passagem tem quatro "
+    "cenas. Cena 1: (fixture). Cena 2: (fixture). Cena 3: (fixture). Cena 4: (fixture).\n\n"
+    f"{F3}"
+)
+FAMILIARIZATION = {"familiarization_entrance": True, "familiarization_closing": True}
+NO_F3 = (
+    "the Familiarization turn does not end with its closing, said whole ('O que chamou a atenção "
+    "de vocês nessa passagem? … a gente vai pra Internalização da primeira cena.')"
+)
+
+
+def _in_four_scenes(guide: str, **expect: Any) -> list[str]:
+    return _turn(guide=guide, expect=expect, parts=4)
+
+
+def test_the_familiarization_opens_with_f1_and_ends_with_f3_said_whole() -> None:
+    assert _turn(guide=KICKOFF, expect=FAMILIARIZATION) == []
+    assert _turn(guide=f"(fixture). {F3_EN}", expect={"familiarization_closing": True}) == []
+    assert _turn(guide=F3, expect=FAMILIARIZATION) == [
+        "the Familiarization turn does not carry its first words, word for word ('Vamos começar "
+        "pela Familiarização. Primeiro eu conto a passagem inteira.')"
+    ]
+    draft = F3.replace("nessa passagem", "nessa história")
+    assert _turn(guide=draft, expect={"familiarization_closing": True}) == [NO_F3], (
+        "o rascunho dizia 'nessa história'"
+    )
+    assert _turn(guide=f"{F3} Vamos lá?", expect={"familiarization_closing": True}) == [NO_F3]
+
+
+def test_a_take_up_in_the_familiarization_ends_with_f4() -> None:
+    tail = {"familiarization_tail": True}
+    assert _turn(guide=f"Boa pergunta. (fixture). {F4}", expect=tail) == []
+    assert _turn(guide=f"(fixture). {F3}", expect=tail) == [], "o F3 também termina com o F4"
+    assert _turn(guide=f"(fixture). {CLOSING_TAIL}", expect=tail) == [
+        "the take-up in the Familiarization does not end with its closing's last two sentences "
+        "('Se tiver alguma dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai "
+        "pra Internalização da primeira cena.')"
+    ], "a cauda do fechamento da cena não é o F4"
+
+
+def test_no_scene_is_opened_in_the_familiarization_before_the_teams_word() -> None:
+    def opened(words: str) -> list[str]:
+        return [f'a scene was opened in the Familiarization, before the team\'s word: "{words}"']
+
+    p10_turn_3 = (
+        "Vocês viram bem: (fixture). Guardem isso na cabeça enquanto a gente vai por cenas. "
+        f"Vamos pra Internalização da cena 1. (fixture) a cena. {F4}"
+    )
+    assert _in_four_scenes(p10_turn_3, familiarization_tail=True) == opened(
+        "Vamos pra Internalização da cena 1. (fixture) a cena. Se tiv"
+    ), "o piloto P10, turno 3: respondeu e abriu a cena 1 no mesmo turno"
+    assert _in_four_scenes(
+        f"(fixture). {FENCE_OPEN} (fixture). {FENCE_CLOSE} {F4}", familiarization_tail=True
+    ) == opened(FENCE_OPEN)
+    assert _in_four_scenes(f"(fixture) a cena. {PART_CLOSING}", familiarization_closing=True) == [
+        NO_F3,
+        *opened("the part-opening closing"),
+    ]
+    assert _in_four_scenes(f"(fixture). {FENCE_CLOSE} {F4}", familiarization_tail=True) == opened(
+        "a call to rehearse"
+    )
+    assert _in_four_scenes(KICKOFF, **FAMILIARIZATION) == [], (
+        "o '…pra Internalização da primeira cena.' do F3 não abre cena nenhuma"
+    )
+
+
+def test_a_scene_opening_carries_its_numbered_internalization_line_and_no_other() -> None:
+    no_line = (
+        "the scene opening does not carry its numbered Internalization line, word for word "
+        "('Vamos pra Internalização da cena 2.')"
+    )
+    assert _in_four_scenes("Vamos pra Internalização da cena 2. (fixture)", part_entrance=2) == []
+    assert _in_four_scenes("Let's move to Internalization of scene 2.", part_entrance=2) == []
+    assert _in_four_scenes("Agora vamos pra Internalização da segunda cena.", part_entrance=2) == [
+        no_line
+    ], "o detector lê o ordinal, a checagem quer as palavras aprovadas"
+    assert _in_four_scenes("Vamos pra Internalização da cena 3.", part_entrance=2) == [
+        no_line,
+        "an Internalization line names another scene than the one being opened (2): 3",
+    ]
+    assert _in_four_scenes(
+        "Vamos pra Internalização da cena 2. Agora vamos pra Internalização da última parte.",
+        part_entrance=2,
+    ) == ["an Internalization line names another scene than the one being opened (2): 4"], (
+        "a última parte é a cena K da passagem"
+    )
+    assert _in_four_scenes(
+        "Vamos pra Internalização da cena 2. Vamos pra Internalização da cena 7.", part_entrance=2
+    ) == ["an Internalization line names another scene than the one being opened (2): 7"], (
+        "um número fora da passagem ainda é lido, e relatado"
+    )
+    for not_a_line in (
+        "Vamos pra Internalização da cena 2. E depois vamos pra Internalização da cena 3.",
+        "Vamos pra Internalização da cena 2. Vamos pra Internalização da cena 3 e depois da 4.",
+        "Vamos pra Internalização da cena 2. Vamos pra Internalização da cena 3?",
+        "Vamos pra Internalização da cena 2. Depois vamos pra Internalização da cena 3.",
+        "Vamos pra Internalização da cena 2. Não vamos pra Internalização da cena 3 ainda.",
+        "Vamos pra Internalização da cena 2. Mas isso já é a terceira parte.",
+    ):
+        assert _in_four_scenes(not_a_line, part_entrance=2) == [], not_a_line
+    for tolerated in (
+        "Vamos pra Internalização da cena 2. Então, vamos pra Internalização da cena 3.",
+        "Vamos pra Internalização da cena 2. Agora vamos pra Internalização da cena 3, o verso 14.",
+        "Vamos pra Internalização da cena 2. Vamos para a Internalização da parte três.",
+        "Vamos pra Internalização da cena 2. Let\u2019s go to the Internalization of part three.",
+    ):
+        assert _in_four_scenes(tolerated, part_entrance=2) == [
+            "an Internalization line names another scene than the one being opened (2): 3"
+        ], tolerated
+
+
+def test_the_first_fence_of_a_scene_follows_its_articulation_line() -> None:
+    no_line = (
+        "the first fence of scene 2 does not follow its Articulation line, word for word ('Vamos "
+        "pra Articulação da cena 2.' right before 'Agora vou dizer tudo o que deve entrar no "
+        "ensaio de vocês.')"
+    )
+    assert (
+        _in_four_scenes(
+            f"Vamos pra Articulação da cena 2. {FENCE_OPEN} (fixture)", articulation_entrance=2
+        )
+        == []
+    )
+    english = (
+        "Let's move to Articulation of scene 2.\nNow I will say everything that should go into "
+        "your rehearsal."
+    )
+    assert _in_four_scenes(english, articulation_entrance=2) == []
+    assert _in_four_scenes(
+        f"Vamos pra Articulação da cena 2. (fixture) um comentário. {FENCE_OPEN}",
+        articulation_entrance=2,
+    ) == [no_line]
+    assert _in_four_scenes("Vamos pra Articulação da cena 2.", articulation_entrance=2) == [no_line]
+    assert _in_four_scenes(
+        f"Vamos pra Articulação da cena 3. {FENCE_OPEN}", articulation_entrance=2
+    ) == [
+        no_line,
+        "an Articulation line names another scene than the one being rehearsed (2): 3",
+    ]
+
+
+def test_the_reply_says_where_the_team_is_in_her_words_and_names_no_other_moment() -> None:
+    j1 = (
+        "Estamos na Articulação da cena 2. Primeiro a gente termina essa cena; depois vem a cena "
+        f"3. (fixture) {FENCE_OPEN} (fixture) {FENCE_CLOSE}"
+    )
+    assert _in_four_scenes(j1, where_we_are=2) == [], "o J1 (ii): 'depois vem a cena 3' não é linha"
+    assert _in_four_scenes("Estamos na Internalização da cena 1.", where_we_are=1) == []
+    assert _in_four_scenes("We are in Articulation of scene 2.", where_we_are=2) == []
+    assert _in_four_scenes("Estamos na Familiarização. (fixture)", where_we_are="F") == []
+    assert _in_four_scenes("Ainda estamos na Articulação da cena 2.", where_we_are=2) == [
+        "the reply does not say where the team is, word for word ('Estamos na Articulação da "
+        "cena 2.' or 'Estamos na Internalização da cena 2.')"
+    ], "o 'Ainda estamos' do rascunho é tolerância do detector, não as palavras aprovadas"
+    assert _in_four_scenes("Estamos na Articulação da cena 2.", where_we_are="F") == [
+        "the reply does not say where the team is, word for word ('Estamos na Familiarização.')",
+        "a where-we-are line names another moment or scene than the one the team is in (F): 2",
+    ]
+    assert _in_four_scenes("Estamos na Familiarização.", where_we_are=2) == [
+        "the reply does not say where the team is, word for word ('Estamos na Articulação da "
+        "cena 2.' or 'Estamos na Internalização da cena 2.')",
+        "a where-we-are line names another moment or scene than the one the team is in (2): F",
+    ]
+
+
+def test_no_where_we_are_line_is_said_after_the_send_off() -> None:
+    assert _in_four_scenes(SEND_OFF, no_where_we_are=True) == []
+    assert _in_four_scenes("Não estamos na Articulação da cena 2.", no_where_we_are=True) == []
+    assert _in_four_scenes(
+        "Não, ainda estamos na Internalização da cena 2. We're still in Familiarization.",
+        no_where_we_are=True,
+    ) == ["a where-we-are line was said after the send-off (2, F)"]
+    assert _in_four_scenes(
+        "We are in Familiarization. Estamos na Articulação da cena 2.", no_where_we_are=True
+    ) == ["a where-we-are line was said after the send-off (F, 2)"], "na ordem em que a sala ouviu"

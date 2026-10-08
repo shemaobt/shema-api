@@ -335,3 +335,38 @@ async def test_her_take_up_check_reads_every_guide_turn_the_runner_played_before
         "sentences ('Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente "
         "vai pro ensaio.')"
     ], "a parte aberta dois turnos antes só se vê lendo todas as falas do Guia, não só a última"
+
+
+async def test_the_last_scene_her_moment_lines_name_is_the_last_scene_of_the_passage_played(
+    seam, tmp_path, monkeypatch
+) -> None:
+    the_models_answer(
+        monkeypatch,
+        GUIDE_LINE,
+        None,
+        "Vamos pra Internalização da cena 2. Agora vamos pra Internalização da última parte.",
+        None,
+    )
+    path = tmp_path / "P01-the-last-part.json"
+    path.write_text(
+        json.dumps(
+            {
+                "name": "P01-the-last-part",
+                "pericopeId": "P01",
+                "language": "Brazilian Portuguese",
+                "why": "an ordinal the detector reads against the passage's scenes",
+                "turns": [
+                    {"kickoff": True},
+                    {"team": "Pode abrir a cena 2.", "expect": {"part_entrance": 2}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    script = load_script(path)
+    played: list[Played] = []
+    await play(script, seam, session_id=await open_session(script, seam), played=played)
+
+    assert played[1].mechanical == [
+        "an Internalization line names another scene than the one being opened (2): 4"
+    ], "a 'última parte' de Rute 1:1-5 é a cena 4; sem as cenas da passagem virava a cena 12"

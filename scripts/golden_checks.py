@@ -18,6 +18,7 @@ says separates the two here: the words on either side of every `\\b` below are u
 from __future__ import annotations
 
 import unicodedata
+from dataclasses import dataclass
 from typing import Any
 
 import regex
@@ -539,6 +540,332 @@ def _familiarization_line_said(text: str) -> str | None:
     return None
 
 
+_F4 = (
+    "Se tiver alguma dúvida, me perguntem. Quando estiverem prontos, me digam e a gente vai pra "
+    "Internalização da primeira cena.",
+    "If you have any questions, ask me. When you are ready, tell me and we will move to "
+    "Internalization of the first scene.",
+)
+_FENCE_OPENING = "Agora vou dizer tudo o que deve entrar no ensaio de vocês."
+_FENCE_OPENING_EN = "Now I will say everything that should go into your rehearsal."
+_SEND_OFF_LAST = (
+    "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final.",
+    "Now tap the orange dot at the top of the screen to open the Final Rehearsal.",
+)
+_PART_CLOSING_0923 = (
+    "O que chamou a atenção de vocês nessa parte? Conversem entre vocês. Essa parte ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
+    "What caught your attention in this part? Talk it over among yourselves. Is this part clear? "
+    "If you have any questions, ask me. If you have understood it, tell me and we will go to the "
+    "rehearsal.",
+)
+_MOMENT_NAMES = {
+    "pt": {"internalization": "Internalização", "articulation": "Articulação"},
+    "en": {"internalization": "Internalization", "articulation": "Articulation"},
+}
+_NUMBER_WORDS = {
+    "um": 1,
+    "uma": 1,
+    "dois": 2,
+    "duas": 2,
+    "três": 3,
+    "quatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "sete": 7,
+    "oito": 8,
+    "nove": 9,
+    "dez": 10,
+    "onze": 11,
+    "doze": 12,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+_ORDINALS = {
+    "primeira": 1,
+    "segunda": 2,
+    "terceira": 3,
+    "quarta": 4,
+    "quinta": 5,
+    "sexta": 6,
+    "sétima": 7,
+    "oitava": 8,
+    "nona": 9,
+    "décima": 10,
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+}
+_THE_LAST = ("última", "last")
+
+
+def _longest_first(words: list[str]) -> str:
+    return "|".join(sorted(words, key=len, reverse=True))
+
+
+_N = rf"(\d{{1,2}}|{_longest_first(list(_NUMBER_WORDS))})"
+_ORD = rf"({_longest_first([*_ORDINALS, *_THE_LAST])})"
+_LINE_START = r"(?:^|(?<=[.!?…][\"'”\u2019»)]*\s))"
+_LEAD_PT = r"(?:(?:agora|então|bom|ok|muito bem|mas)[,!]?\s+|não,\s+)?"
+_LEAD_EN = r"(?:(?:now|so|ok|okay|all right|alright|well|but)[,!]?\s+|no,\s+)?"
+_LINE_END = r"(?=\s*(?:[.!,:;…—\u2013]|$))"
+_PT_PART = rf"(?:(?:cena|parte) {_N}|{_ORD} (?:cena|parte))"
+_EN_PART = rf"(?:(?:the )?(?:scene|part) {_N}|the {_ORD} (?:scene|part))"
+_ENTRANCES = (
+    _her(
+        rf"{_LINE_START}{_LEAD_PT}vamos (?:agora )?(?:pra|para a|para|entrar na"
+        r"|passar (?:pra|para a)|seguir (?:pra|para a)) (Internalização|Articulação) da "
+        rf"{_PT_PART}{_LINE_END}"
+    ),
+    _her(
+        rf"{_LINE_START}{_LEAD_EN}let['\u2019]s (?:now )?(?:go|move|turn)(?: on)? to (?:the )?"
+        rf"(Internalization|Articulation) of {_EN_PART}{_LINE_END}"
+    ),
+)
+_WHERE_WE_ARE = (
+    _her(
+        rf"{_LINE_START}{_LEAD_PT}(?:ainda )?estamos (?:ainda )?na (?:(Familiarização)"
+        rf"|(Internalização|Articulação) da {_PT_PART}){_LINE_END}"
+    ),
+    _her(
+        rf"{_LINE_START}{_LEAD_EN}(?:we are|we['\u2019]re) (?:still )?in (?:the )?"
+        rf"(?:(Familiarization)|(Internalization|Articulation) of {_EN_PART}){_LINE_END}"
+    ),
+)
+_FENCE_LINES = (
+    _her(
+        rf"{_LINE_START}{_LEAD_PT}(?:agora )?(?:eu )?vou dizer tudo o que deve entrar no ensaio de "
+        rf"vocês{_LINE_END}"
+    ),
+    _her(
+        rf"{_LINE_START}{_LEAD_EN}(?:now )?I(?: will|['\u2019]ll) (?:say|tell you) everything that "
+        rf"should go into your rehearsal{_LINE_END}"
+    ),
+)
+
+
+@dataclass(frozen=True)
+class _Trigger:
+    at: int
+    cause: str
+    part: int | None = None
+    to: str | None = None
+    outside: bool = False
+
+
+def _number_of(word: str) -> int | None:
+    if regex.fullmatch(r"[0-9]{1,2}", word):
+        return int(word)
+    return _NUMBER_WORDS.get(unicodedata.normalize("NFC", word).lower())
+
+
+def _ordinal_of(word: str, parts: int) -> int | None:
+    folded = unicodedata.normalize("NFC", word).lower()
+    return parts if folded in _THE_LAST else _ORDINALS.get(folded)
+
+
+def _moment_of(name: str) -> str:
+    return "internalization" if name.lower().startswith("intern") else "articulation"
+
+
+def _moment_triggers(text: str, parts: int) -> list[_Trigger]:
+    folded = _fold(text)
+    found: list[_Trigger] = []
+
+    def numbered(at: int, cause: str, to: str, number: str | None, ordinal: str | None) -> None:
+        if number is not None:
+            part = _number_of(number)
+        elif ordinal is not None:
+            part = _ordinal_of(ordinal, parts)
+        else:
+            part = None
+        if part is not None:
+            found.append(_Trigger(at, cause, part, to, not 1 <= part <= parts))
+
+    for line in _ENTRANCES:
+        for heard in line.finditer(folded):
+            to = _moment_of(heard[1])
+            cause = "entrance" if to == "internalization" else "articulation_entrance"
+            numbered(heard.start(), cause, to, heard[2], heard[3])
+    for line in _WHERE_WE_ARE:
+        for heard in line.finditer(folded):
+            if heard[1]:
+                found.append(_Trigger(heard.start(), "where_we_are", to="familiarization"))
+            else:
+                numbered(heard.start(), "where_we_are", _moment_of(heard[2]), heard[3], heard[4])
+    for line in _FENCE_LINES:
+        found.extend(_Trigger(heard.start(), "fence") for heard in line.finditer(folded))
+    for lines, cause in (
+        ((*_PART_CLOSING, *_PART_CLOSING_0923), "part_closing"),
+        (_F3, "familiarization_closing"),
+        (_SEND_OFF_LAST, "send_off"),
+    ):
+        last = next((line for line in lines if folded.endswith(line)), None)
+        if last is not None:
+            found.append(_Trigger(len(folded) - len(last), cause))
+    return sorted(found, key=lambda trigger: trigger.at)
+
+
+def _numbered_lines(text: str, parts: int, cause: str) -> list[int | str]:
+    return [
+        "F" if trigger.to == "familiarization" else trigger.part
+        for trigger in _moment_triggers(text, parts)
+        if trigger.cause == cause
+    ]
+
+
+def _entrance_line(lang: str, to: str, part: object) -> str:
+    name = _MOMENT_NAMES[lang][to]
+    return (
+        f"Vamos pra {name} da cena {part}."
+        if lang == "pt"
+        else f"Let's move to {name} of scene {part}."
+    )
+
+
+def _where_we_are_line(lang: str, at: str, part: object = None) -> str:
+    if at == "familiarization":
+        return "Estamos na Familiarização." if lang == "pt" else "We are in Familiarization."
+    name = _MOMENT_NAMES[lang][at]
+    return (
+        f"Estamos na {name} da cena {part}."
+        if lang == "pt"
+        else f"We are in {name} of scene {part}."
+    )
+
+
+def _says(text: str, lines: list[str]) -> bool:
+    folded = _fold(text)
+    return any(line in folded for line in lines)
+
+
+def _opens_a_scene(text: str, parts: int) -> str | None:
+    folded = _fold(text)
+    entrance = next(
+        (
+            trigger
+            for trigger in _moment_triggers(folded, parts)
+            if trigger.cause in ("entrance", "articulation_entrance")
+        ),
+        None,
+    )
+    if entrance is not None:
+        return folded[entrance.at : entrance.at + 60]
+    if _FENCE_OPENS.search(folded):
+        return _FENCE_OPENING
+    if _ends_with(folded, _PART_CLOSING):
+        return "the part-opening closing"
+    if _calls_to_rehearse(folded):
+        return "a call to rehearse"
+    return None
+
+
+def _moment_line_faults(guide: str, expect: dict[str, Any], parts: int) -> list[str]:
+    faults = []
+    scenes = parts or 12
+    if expect.get("familiarization_entrance") and not _says(guide, list(_F1)):
+        faults.append(
+            "the Familiarization turn does not carry its first words, word for word ('Vamos "
+            "começar pela Familiarização. Primeiro eu conto a passagem inteira.')"
+        )
+    if expect.get("familiarization_closing") and not _ends_with(guide, _F3):
+        faults.append(
+            "the Familiarization turn does not end with its closing, said whole ('O que chamou a "
+            "atenção de vocês nessa passagem? … a gente vai pra Internalização da primeira cena.')"
+        )
+    if expect.get("familiarization_tail") and not _ends_with(guide, _F4):
+        faults.append(
+            "the take-up in the Familiarization does not end with its closing's last two sentences "
+            "('Se tiver alguma dúvida, me perguntem. Quando estiverem prontos, me digam e a gente "
+            "vai pra Internalização da primeira cena.')"
+        )
+    if (expect.get("familiarization_closing") or expect.get("familiarization_tail")) and (
+        opened := _opens_a_scene(guide, scenes)
+    ):
+        faults.append(
+            f'a scene was opened in the Familiarization, before the team\'s word: "{opened}"'
+        )
+    if (part := expect.get("part_entrance")) is not None:
+        if not _says(
+            guide, [_entrance_line(lang, "internalization", part) for lang in ("pt", "en")]
+        ):
+            faults.append(
+                "the scene opening does not carry its numbered Internalization line, word for word "
+                f"('Vamos pra Internalização da cena {part}.')"
+            )
+        if wrong := [n for n in _numbered_lines(guide, scenes, "entrance") if n != part]:
+            faults.append(
+                "an Internalization line names another scene than the one being opened "
+                f"({part}): {', '.join(map(str, wrong))}"
+            )
+    if (part := expect.get("articulation_entrance")) is not None:
+        before_the_fence = [
+            f"{_entrance_line('pt', 'articulation', part)} {_FENCE_OPENING}",
+            f"{_entrance_line('en', 'articulation', part)} {_FENCE_OPENING_EN}",
+        ]
+        if not _says(guide, before_the_fence):
+            faults.append(
+                f"the first fence of scene {part} does not follow its Articulation line, word for "
+                f"word ('Vamos pra Articulação da cena {part}.' right before 'Agora vou dizer tudo "
+                "o que deve entrar no ensaio de vocês.')"
+            )
+        if wrong := [
+            n for n in _numbered_lines(guide, scenes, "articulation_entrance") if n != part
+        ]:
+            faults.append(
+                "an Articulation line names another scene than the one being rehearsed "
+                f"({part}): {', '.join(map(str, wrong))}"
+            )
+    if (where := expect.get("where_we_are")) is not None:
+        if where == "F":
+            said = _says(
+                guide, [_where_we_are_line(lang, "familiarization") for lang in ("pt", "en")]
+            )
+            line = "'Estamos na Familiarização.'"
+        else:
+            said = _says(
+                guide,
+                [
+                    _where_we_are_line(lang, at, where)
+                    for at in ("articulation", "internalization")
+                    for lang in ("pt", "en")
+                ],
+            )
+            line = (
+                f"'Estamos na Articulação da cena {where}.' or 'Estamos na Internalização da cena "
+                f"{where}.'"
+            )
+        if not said:
+            faults.append(f"the reply does not say where the team is, word for word ({line})")
+        if wrong := [n for n in _numbered_lines(guide, scenes, "where_we_are") if n != where]:
+            faults.append(
+                "a where-we-are line names another moment or scene than the one the team is in "
+                f"({where}): {', '.join(map(str, wrong))}"
+            )
+    if expect.get("no_where_we_are") and (said := _numbered_lines(guide, scenes, "where_we_are")):
+        faults.append(
+            f"a where-we-are line was said after the send-off ({', '.join(map(str, said))})"
+        )
+    return faults
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -550,6 +877,7 @@ def mechanical_checks(
     expect: dict[str, Any],
     previous_guide: str,
     earlier_guides: list[str],
+    parts: int,
 ) -> list[str]:
     """Every fault of one turn the runner can name without a judge, in her words and order.
 
@@ -653,6 +981,7 @@ def mechanical_checks(
             "the team's reading was presented as the passage's own (the story confirms it, or "
             f'gives a sign of it): "{confirmed}"'
         )
+    fails.extend(_moment_line_faults(guide, expect, parts))
     if expect.get("no_familiarization_lines") and (line := _familiarization_line_said(guide)):
         fails.append(
             f"the whole passage asked for mid-session was told with the Familiarization's {line} — "
