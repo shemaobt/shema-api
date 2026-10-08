@@ -311,6 +311,26 @@ async def test_an_image_already_bound_to_a_pulse_cannot_be_claimed_again(
     assert "already belongs" in response.json()["detail"]
 
 
+async def test_the_same_pulse_sent_twice_is_still_one_pulse_image_included(
+    client, db_session, headers, project, bucket
+) -> None:
+    """Found by the review bot: a leader's phone that times out and retries the same body must
+    get the 202 again, as ``archive_submission`` promises for every replay — not a 400 saying the
+    image already belongs to a Pulse, which it does: to this one."""
+    link = await a_link(client, headers)
+    stored = await upload(client, link["token"])
+    body = {"definitionVersion": 1, "answers": answers(image=stored.json()["id"])}
+    first = await client.post(f"{PREFIX}/intake/{link['token']}", json=body)
+    assert first.status_code == 202, first.text
+
+    again = await client.post(f"{PREFIX}/intake/{link['token']}", json=body)
+
+    assert again.status_code == 202, again.text
+    submission = await _submission(db_session)
+    image = await db_session.get(ShemaIntakeImage, stored.json()["id"])
+    assert image is not None and image.submission_id == submission.id
+
+
 async def test_a_coordinator_filing_directly_carries_no_image(
     client, db_session, headers, project, bucket
 ) -> None:

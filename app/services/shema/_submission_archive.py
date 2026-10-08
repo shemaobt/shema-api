@@ -182,15 +182,24 @@ async def archive_submission(
 
 
 async def bind_intake_image(
-    db: AsyncSession, answers: Mapping[str, Any], *, link: ShemaIntakeLink | None
+    db: AsyncSession,
+    answers: Mapping[str, Any],
+    *,
+    link: ShemaIntakeLink | None,
+    payload: bytes | None = None,
 ) -> ShemaIntakeImage | None:
-    """The image the answers name, checked to be this link's and still unbound — or ``None``.
+    """The image the answers name, checked to be this link's and this Pulse's — or ``None``.
 
     OBT-578. The ``image`` answer is the id ``store_intake_image`` handed back. It has to have
     come through the **same** link (an id guessed, or lifted from another team's upload, is
-    refused as if it did not exist) and not yet be bound to a Pulse (a Pulse that re-sent the
-    same id would otherwise claim an image another Pulse already carries). A coordinator filing a
-    submission directly has no link and no upload: the answer is refused there, with the reason.
+    refused as if it did not exist) and be bound to no Pulse — or to the Pulse these very bytes
+    already archived. A different Pulse re-sending the same id would otherwise claim an image
+    another Pulse already carries; the **same** Pulse sent again is the replay
+    :func:`archive_submission` promises to be a no-op, and it carries the id it was given (found
+    by the review bot on shema-api#713). *Same* is decided the way the archive decides it, by
+    :func:`content_hash` of ``payload``, and asked **before** anything is archived, so a refusal
+    archives nothing. A coordinator filing a submission directly has no link and no upload: the
+    answer is refused there, with the reason.
     """
     image_id = answers.get(IMAGE_FIELD)
     if image_id is None:
@@ -205,9 +214,23 @@ async def bind_intake_image(
         raise ValidationError(
             f"{IMAGE_FIELD}: no image with this id was uploaded through this link"
         )
-    if image.submission_id is not None:
+    if image.submission_id is not None and not await _is_a_replay(db, image, link, payload):
         raise ValidationError(f"{IMAGE_FIELD}: this image already belongs to a Pulse")
     return image
+
+
+async def _is_a_replay(
+    db: AsyncSession, image: ShemaIntakeImage, link: ShemaIntakeLink, payload: bytes | None
+) -> bool:
+    """Whether the Pulse ``image`` is bound to is these same bytes, for this same project."""
+    if payload is None:
+        return False
+    bound = await db.get(ShemaSubmission, image.submission_id)
+    return (
+        bound is not None
+        and bound.project_id == link.project_id
+        and bound.content_hash == content_hash(payload)
+    )
 
 
 async def erase_pulse_image(db: AsyncSession, submission: ShemaSubmission, *, user: User) -> None:

@@ -80,7 +80,7 @@ async def receive_submission(
     if project is None:
         raise NotFoundError("The project this link was issued for no longer exists.")
 
-    image = await bind_intake_image(db, submission.answers, link=link)
+    image = await bind_intake_image(db, submission.answers, link=link, payload=payload_bytes)
     row, created = await archive_submission(
         db,
         project,
