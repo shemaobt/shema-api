@@ -1112,7 +1112,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 
 | | `coordination` | `other` | `outside` |
 |---|---|---|---|
-| **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading — to confirm with Daniel*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
+| **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading, confirmed by Daniel on 8/oct/2026*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | every other session in the console: `obtLab`, `resourceCircle` | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
 | `location`, `country` | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | `""` | `""` |
 | `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | `""` | `""` |
@@ -1132,8 +1132,9 @@ services ask per project (`reader_of(region_key)`), and `app/api/shema/_deps.py`
 as `Reading`, exactly as it hands down `Scope`. A `coordinator` is coordination **in the regions
 of its own scope** and `other` anywhere else it reaches. Region rows are per account and not per
 role, so an account holding `coordinator` and `obtLab` is coordination wherever it reaches; the
-org chart is not consulted. The `admin` hypothesis is one line — `COORDINATION_EVERYWHERE` — and
-undoing it is deleting `admin` from it. `visible_projects` is untouched: who may **reach** a
+org chart is not consulted. The `admin`'s coordination is one line — `COORDINATION_EVERYWHERE`,
+a hypothesis of OBT-528's until Daniel confirmed it on 8/oct/2026 — and undoing it is deleting
+`admin` from it. `visible_projects` is untouched: who may **reach** a
 project and who may read its **place** are two questions.
 
 **Who builds a shape for it.** Only the two reads of the console: the Projetos screen's cards
@@ -2036,7 +2037,7 @@ gains a project **pending confirmation**, and the Admin confirms or discards it.
   composes, and decides them through `_scope.filed_projects`.
 - **Only the Admin reads and decides**, behind `AdminUser`, with the standing read fresh on each
   act (`_grant_rules.require_admin_in`). The list is built for the Admin's reader
-  (`readership`): the place as typed, on `COORDINATION_EVERYWHERE`'s hypothesis (§6.4).
+  (`readership`): the place as typed, by `COORDINATION_EVERYWHERE` (§6.4).
 - **Confirming** applies the Admin's adjustments and the flag — `sensitiveCountry` has no default
   in the body, so a client that forgets it is refused rather than read as *not sensitive*; a
   `languageCode`, `location` or `team` left out keeps what was filed (`model_fields_set`, as the

@@ -127,8 +127,8 @@ class ShemaReader(enum.StrEnum):
 
     * ``coordination`` reads the truth of a sensitive place: a
       ``coordinator`` on a project in a region of their scope, the ``admin`` (the issue's
-      reading, to confirm with Daniel) and an installation admin. ``app/services/shema/_scope.py``
-      derives it; nothing else does.
+      reading, confirmed by Daniel on 8/oct/2026) and an installation admin.
+      ``app/services/shema/_scope.py`` derives it; nothing else does.
     * ``other`` is every other signed-in reader of the console — ``obtLab``, ``resourceCircle`` —
       and reads the region in place of the country, the ficha included.
     * ``outside`` is whatever leaves the system: the export, the ETEN report, the Pulse, the
