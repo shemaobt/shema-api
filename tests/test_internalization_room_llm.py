@@ -11,6 +11,7 @@ from pydantic import ValidationError as PydanticValidationError
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError
 from app.services.internalization_room import llm
+from app.services.internalization_room.usage import open_ledger
 
 
 def _settings(**overrides: Any) -> Settings:
@@ -953,3 +954,133 @@ async def test_a_call_with_an_effort_set_still_names_it_in_its_usage_line(
     assert _usage_line(caplog).startswith(
         "[llm-usage] guide answered on claude-fable-5-1 (rung 1 of 3) at high effort in "
     )
+
+
+def _usage_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.getMessage().startswith("[llm-usage]")]
+
+
+async def test_a_rung_that_refuses_logs_its_usage_line_as_a_refusal_not_an_answer(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingRungs("claude-fable-5-1")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(
+            system_prompt="s", user_content="u", effort="high", role="guide", settings=_settings()
+        )
+
+    refusing = [r for r in _usage_records(caplog) if r.rung == "claude-fable-5-1"]
+    (line,) = refusing
+    assert line.getMessage().startswith(
+        "[llm-usage] guide refused on claude-fable-5-1 (rung 1 of 3) at high effort in "
+    ), "the rung that refused read in its own line as one that had answered"
+    assert line.outcome == "refused"
+    assert (line.input_tokens, line.output_tokens, line.cost_usd) == (10, 0, 0.0001)
+
+
+async def test_a_refusal_that_wrote_some_words_is_logged_as_a_refusal_with_its_tokens_counted(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingWithText("claude-fable-5-1")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+    spend = open_ledger()
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    (line,) = [r for r in _usage_records(caplog) if r.rung == "claude-fable-5-1"]
+    assert line.getMessage().startswith("[llm-usage] ? refused on claude-fable-5-1 (rung 1 of 3)")
+    assert line.getMessage().endswith(
+        ": in=10 cache_read=0 cache_write=0 cache_write_5m=0 cache_write_1h=0 out=6"
+    )
+    assert line.outcome == "refused"
+    assert (line.input_tokens, line.output_tokens, line.cost_usd) == (10, 6, 0.0004)
+    assert (spend.calls, spend.input_tokens, spend.output_tokens, spend.cost_usd) == (
+        2,
+        20,
+        6,
+        0.00045,
+    ), "a rung that refused dropped out of the session's count"
+
+
+async def test_the_rung_that_answers_after_a_refusal_keeps_the_line_it_always_had(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingRungs("claude-fable-5-1")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(
+            system_prompt="s", user_content="u", effort="high", role="guide", settings=_settings()
+        )
+
+    (line,) = [r for r in _usage_records(caplog) if r.rung == "claude-opus-5"]
+    assert line.getMessage().startswith(
+        "[llm-usage] guide answered on claude-opus-5 (rung 2 of 3) at high effort in "
+    ), "the rung that answered was reported as a refusal because the one above it refused"
+    assert line.getMessage().endswith(
+        ", US$ 5e-05: in=10 cache_read=0 cache_write=0 cache_write_5m=0 cache_write_1h=0 out=0"
+        " — claude-fable-5-1 refused the request"
+    )
+    assert line.outcome == "ok"
+
+
+async def test_a_refusal_on_the_last_rung_is_logged_as_a_refusal_too(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class _OnlyTheLastRungIsOpen:
+        async def create(self, **kwargs: Any) -> SimpleNamespace:
+            if kwargs["model"] != "claude-opus-4-8":
+                raise anthropic.NotFoundError("nope", response=_status(404), body=None)
+            return _reply("Quero que a gente", stop_reason="refusal", output=6)
+
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=_OnlyTheLastRungIsOpen(), options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    (line,) = [r for r in _usage_records(caplog) if r.rung == "claude-opus-4-8"]
+    assert line.getMessage().startswith("[llm-usage] ? refused on claude-opus-4-8 (rung 3 of 3)"), (
+        "the last rung had no next model to be rerun on, and its refusal read as an answer"
+    )
+    assert line.outcome == "refused"
+    assert (line.input_tokens, line.output_tokens, line.cost_usd) == (10, 6, 0.0002)
+
+
+async def test_two_refusals_in_a_row_are_both_logged_as_refusals(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    messages = RefusingRungs("claude-fable-5-1", "claude-opus-5")
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    lines = _usage_records(caplog)
+    assert [(r.rung, r.outcome) for r in lines] == [
+        ("claude-fable-5-1", "refused"),
+        ("claude-opus-5", "refused"),
+    ], "a refusal that stood read as an answer because the rung above it had refused first"
+    assert lines[1].getMessage().startswith("[llm-usage] ? refused on claude-opus-5 (rung 2 of 3)")
