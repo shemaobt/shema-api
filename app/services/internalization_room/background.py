@@ -156,16 +156,17 @@ async def _read_and_keep(
     db: AsyncSession, session: IRSession, state: BackTranslationState, told: list[IRSegment]
 ) -> BackTranslationState | None:
     try:
-        read = await analyse_telling_back(
-            segments=told,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            settings=get_settings(),
-            session_id=session.id,
-        )
+        with reading_the_canon_of(session.canon_pin):
+            read = await analyse_telling_back(
+                segments=told,
+                scope=state.scope or session.pericope,
+                pericope_num=session.pericope,
+                analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+                session_language=LANGUAGE_NAMES[session.language],
+                language_code=session.language,
+                settings=get_settings(),
+                session_id=session.id,
+            )
         if read is None:
             return None
         ahead = ReadAhead(segment_ids=[segment.id for segment in told], findings=read.findings)
