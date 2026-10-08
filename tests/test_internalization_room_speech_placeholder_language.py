@@ -26,7 +26,7 @@ from app.services.internalization_room.classify_coverage import classify_coverag
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.languages import LANGUAGE_NAMES, ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import run_turn
-from tests.turn_harness import the_room_agent_is
+from tests.turn_harness import NOTHING_TOLD_BACK, the_room_agent_is
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -55,11 +55,6 @@ _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
     "pt": "(a equipe ainda não falou)",
     "en": "(the team has not spoken yet)",
     "es": "(el equipo aún no ha hablado)",
-}
-
-_EXPECTED_NOTHING_TOLD_BACK = {
-    "pt": "(a equipe ainda não traduziu nada)",
-    "en": "(the team has not translated anything yet)",
 }
 
 
@@ -172,8 +167,8 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
     )
 
     system = captured["system"]
-    assert _EXPECTED_NOTHING_TOLD_BACK[language_code] in system
-    for other, sentence in _EXPECTED_NOTHING_TOLD_BACK.items():
+    assert NOTHING_TOLD_BACK[language_code] in system
+    for other, sentence in NOTHING_TOLD_BACK.items():
         if other != language_code:
             assert sentence not in system
 
@@ -195,5 +190,5 @@ async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
     )
 
     system = captured["system"]
-    assert _EXPECTED_NOTHING_TOLD_BACK["en"] in system
-    assert _EXPECTED_NOTHING_TOLD_BACK["pt"] not in system
+    assert NOTHING_TOLD_BACK["en"] in system
+    assert NOTHING_TOLD_BACK["pt"] not in system

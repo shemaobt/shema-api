@@ -155,6 +155,39 @@ async def test_a_regenerate_verdict_leaves_the_whole_reply(
         assert "claims_to_see_the_screen" in record.getMessage()
 
 
+async def test_a_regenerate_verdict_is_logged_as_a_regenerate_not_as_a_refused_reply(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "regenerate", "issues": [{"problem": "off_topic"}]}]
+            * (MAX_REDRAFTS + 1)
+        )
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await _a_turn("sessao-9")
+
+    messages = [record.getMessage() for record in _refusal_records(caplog)]
+    assert [message.split(":")[0] for message in messages] == [
+        "Validator regenerate verdict for session sessao-9, attempt 1",
+        "Validator regenerate verdict for session sessao-9, attempt 2",
+        "Validator regenerate verdict for session sessao-9, attempt 3",
+    ], "a readable regenerate was logged as 'Validator reply refused', the unreadable reply's line"
+
+
+async def test_an_unreadable_reply_is_still_logged_as_a_refused_reply(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(FakeAgent(verdicts=[{"ok": True}]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await _a_turn("sessao-10")
+
+    (record,) = _refusal_records(caplog)
+    assert record.getMessage().startswith("Validator reply refused (")
+
+
 async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
