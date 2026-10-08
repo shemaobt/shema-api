@@ -32,7 +32,12 @@ from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn import speech
 from tests.hearing_harness import nothing_settles, the_transcriber_hears
 from tests.release_harness import KEY, PREFIX
-from tests.room_harness import room_client, the_room_speaks
+from tests.room_harness import (
+    rehearsed_in_parts,
+    room_client,
+    the_analyst_is_scripted,
+    the_room_speaks,
+)
 from tests.text_seam_harness import ScriptedAgent, the_models_answer
 from tests.turn_harness import settings, the_room_agent_is, told_stretches
 
@@ -290,3 +295,24 @@ async def test_the_coverage_of_a_row_stored_in_spanish_is_classified_in_the_room
     assert all(named in system for system in read), (
         "o classificador de uma sessão guardada em espanhol não lia a troca na língua da sala"
     )
+
+
+@pytest.mark.parametrize(("floor", "named"), FLOORS)
+async def test_the_reading_ahead_of_a_row_stored_in_spanish_is_read_in_the_rooms_language(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str, named: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    analyst = the_analyst_is_scripted(monkeypatch)
+    codes = _the_codes_a_turn_was_given(monkeypatch, background, "analyse_telling_back")
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session, _ = await rehearsed_in_parts(db_session, 1)
+    session.language = "es"
+    await db_session.commit()
+
+    await background.read_ahead(session_id=session.id)
+
+    assert analyst.shown
+    assert all(named in system for system in analyst.shown), (
+        "a leitura antecipada de uma sessão guardada em espanhol falhava em silêncio"
+    )
+    assert codes == [floor], "o código da língua seguia o `es` guardado enquanto o nome era outro"

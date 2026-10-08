@@ -156,14 +156,15 @@ async def _read_and_keep(
     db: AsyncSession, session: IRSession, state: BackTranslationState, told: list[IRSegment]
 ) -> BackTranslationState | None:
     try:
+        language = room_language(session.language)
         with reading_the_canon_of(session.canon_pin):
             read = await analyse_telling_back(
                 segments=told,
                 scope=state.scope or session.pericope,
                 pericope_num=session.pericope,
                 analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-                session_language=LANGUAGE_NAMES[session.language],
-                language_code=session.language,
+                session_language=LANGUAGE_NAMES[language],
+                language_code=language,
                 settings=get_settings(),
                 session_id=session.id,
             )
