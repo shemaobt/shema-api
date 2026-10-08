@@ -97,8 +97,8 @@ _WORD_JOINER = rf"(?:e|and)(?={_SPACE})"
 #: What a removal can leave beside its seam, in the order `_mend` reads it. Brackets and quotes
 #: that held only the code go with it. Two dashes around it go too when they framed it, but when
 #: the first one closes a pair already opened, only the code's own second dash goes; whether a
-#: dash opens or closes a pair is counted among the dashes of its quote or bracket, or, outside
-#: one, among those her question split reads in the sentence (never one between digits). A
+#: dash opens or closes a pair is counted among the dashes of its sentence that sit in the same
+#: quote or bracket, or in none, as her question split reads them (never one between digits). A
 #: comma left between the code and a dash goes. Between a mark and a joiner, the survivors keep
 #: the joiner: a comma after the code goes when a mark stands before it, a colon included, and
 #: a comma before the code goes when an "e" or an "and" follows it, while a colon or a semicolon
@@ -113,6 +113,7 @@ _ENCLOSED = re.compile(
     rf"[(\[]{_SPACE}*[,;/\u2013—-]*{_SPACE}*{_SEAM}{_SPACE}*[,;/\u2013—-]*{_SPACE}*[)\]]"
     rf"|\"{_SPACE}*{_SEAM}{_SPACE}*\"|\u201c{_SPACE}*{_SEAM}{_SPACE}*\u201d"
     rf"|\u00ab{_SPACE}*{_SEAM}{_SPACE}*\u00bb|\u2018{_SPACE}*{_SEAM}{_SPACE}*\u2019"
+    rf"|'{_SPACE}*{_SEAM}{_SPACE}*'"
 )
 _FRAMED = re.compile(rf"({_DASH}){_SPACE}*{_SEAM}{_SPACE}*{_DASH}")
 _COMMA_BEFORE_A_DASH = re.compile(rf",{_SPACE}*{_SEAM}(?={_SPACE}*{_DASH})")
@@ -192,14 +193,14 @@ _SPOKEN_FORM: dict[str, str] = {
 
 
 def _pairing_dashes(text: str) -> dict[int, int]:
-    """Each dash's place among the dashes of its quote or bracket, or else of its sentence."""
+    """Each dash's place among its sentence's dashes in the same quote or bracket, or in none."""
     spans = _Spans()
     places: dict[int, int] = {}
     counts: Counter[tuple[int, int | None]] = Counter()
     for start, sentence in _sentences(text):
         for cut, _, dash, span in _cuts(sentence, spans, start):
             if dash:
-                group = (start if span is None else -1, span)
+                group = (start, span)
                 places[start + cut + (sentence[cut] == " ")] = counts[group]
                 counts[group] += 1
     return places

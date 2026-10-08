@@ -634,6 +634,20 @@ _SEAMS = [
         "Naomi — the mother-in-law — what did she feel?",
         id="english-a-code-after-the-opening-dash",
     ),
+    pytest.param(
+        f"{_LEFT_QUOTE}Não vá — disse ela. Fique — B3 — comigo.{_RIGHT_QUOTE}",
+        "pt",
+        f"{_LEFT_QUOTE}Não vá — disse ela. Fique comigo.{_RIGHT_QUOTE}",
+        id="a-framed-code-in-the-second-sentence-of-a-quote",
+    ),
+    pytest.param(
+        f"{_LEFT_QUOTE}Não vá — disse ela.{_RIGHT_QUOTE} "
+        f"{_LEFT_QUOTE}Fique — B3 — comigo.{_RIGHT_QUOTE}",
+        "pt",
+        f"{_LEFT_QUOTE}Não vá — disse ela.{_RIGHT_QUOTE} {_LEFT_QUOTE}Fique comigo.{_RIGHT_QUOTE}",
+        id="a-framed-code-in-a-second-quote",
+    ),
+    pytest.param("Ela 'B3' chega.", "pt", "Ela chega.", id="empty-straight-single-quotes"),
 ]
 
 
