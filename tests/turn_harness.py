@@ -36,6 +36,11 @@ GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
 
+NOTHING_TOLD_BACK = {
+    "pt": "(a equipe ainda não traduziu nada)",
+    "en": "(the team has not translated anything yet)",
+}
+
 INVITATION = (
     " Now rehearse this scene together in your own language; when you have finished, come "
     "back and tell me in English what you understood."
@@ -138,10 +143,6 @@ DESTINATIONS = {
     "Ouçam a gravação": "listen to their own recording once more",
     "no WhatsApp": "on WhatsApp",
 }
-
-#: The prompt's own promise of a next round, spliced into every closing but the checked one.
-#: That turn has no next round, so this and it may not both reach the Speaker on the same turn.
-CONTINUES_TELLING_BACK = "finish the telling-back again"
 
 _ATTRIBUTION = re.compile(r"[Vv]ocê contou que ([^.?!]+)")
 _PROPER_NAME = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕ][\wáéíóúâêôãõç]+")

@@ -1,4 +1,4 @@
-"""One round of the telling-back check: from the correction to the words the Speaker says.
+"""One round of the telling-back check: from the reading to the words the Speaker says.
 
 The route pressed `terminei` and the text seam plays a round of frases; they are the same
 question asked from two places, and this is the one answer. It was the body of the route, so
@@ -20,25 +20,22 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.exceptions import UnreadableReply, UpstreamServiceError
+from app.core.exceptions import UnreadableReply
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
+    Nuance,
     VoicedVerdict,
     analyse_telling_back,
-    correction_to_verify,
     current_findings,
-    findings_after_correction,
     findings_block,
     findings_on_stretches_that_count,
     findings_remaining,
     segments_block,
     the_finding_that_leads,
-    verify_correction,
-    with_the_whole_stretch_asked_for,
 )
-from app.services.internalization_room.background import the_correction_ahead, the_reading_ahead
+from app.services.internalization_room.background import the_reading_ahead
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
@@ -65,10 +62,9 @@ class TellingBackVerdict:
 
     finding: Finding | None
     current: list[Finding]
-    #: What the model answered *this* round — the whole reading, or what the Correction check
-    #: raised. Distinct from the standing list, which carries findings forward across rounds:
-    #: a measurement of this round's reply read off the standing list counts an earlier round's
-    #: answer again every time.
+    #: What the model answered *this* round. Distinct from the standing list, which carries
+    #: findings forward across rounds: a measurement of this round's reply read off the standing
+    #: list counts an earlier round's answer again every time.
     read_this_round: list[Finding]
     said: str
     outcome: TurnOutcome
@@ -83,17 +79,10 @@ async def check_the_telling_back(
     *,
     state: BackTranslationState,
     told: list[IRSegment],
-    retired: list[IRSegment],
     takes: list[IRTake],
     settings: Settings,
 ) -> TellingBackVerdict:
     """Read what the team told back, settle the findings, and voice one of them.
-
-    Three readings are possible and exactly one runs. A retelling that answers the standing
-    finding is a **Correction check** about one stretch. A telling-back with something new in
-    it is a whole reading. And a list the verifications alone emptied gets the closing reading
-    that decides `checked`, because a verification answers the finding it was shown and has
-    never measured the set.
 
     Nothing is saved on a reading that could not be made: `checked` strikes the passage off
     the wheel for good, so a passage blessed because the analyst was unreachable would be
@@ -109,35 +98,14 @@ async def check_the_telling_back(
     else it decides.
     """
     read_this_round: list[Finding] = []
+    nuances: list[Nuance] = []
     addresses = addresses_for(
         told,
         current_parts(takes),
         scene_titles(session),
         session.language,
-        superseded=retired,
     )
-    correction = correction_to_verify(state, told, retired)
-    if correction is not None:
-        verified = await the_correction_ahead(session.id, state, told) or await verify_correction(
-            findings=correction.findings,
-            earlier=correction.earlier,
-            corrected=correction.corrected,
-            chunk=correction.chunk,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
-            session_language=LANGUAGE_NAMES[session.language],
-            addresses=addresses,
-            settings=settings,
-            session_id=session.id,
-        )
-        if verified is None:
-            raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
-        read_this_round = verified.findings
-        state.findings = findings_after_correction(state.findings, verified, correction.corrected)
-        state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = True
-    elif not state.already_analysed(told):
+    if not state.already_analysed(told):
         read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
@@ -151,37 +119,20 @@ async def check_the_telling_back(
         if read is None:
             raise UnreadableReply("a resposta do analista não pôde ser lida")
         read_this_round = read.findings
+        nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = False
 
     state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in told))
-
-    if not state.findings and state.verified_since_whole_reading:
-        closing = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
-            segments=told,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
-            settings=settings,
-            session_id=session.id,
-        )
-        if closing is None:
-            raise UpstreamServiceError("a leitura final da tradução não pôde ser feita agora")
-        read_this_round = closing.findings
-        state.findings = closing.findings
-        state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = False
 
     current = current_findings(state)
     finding = the_finding_that_leads(state)
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
-    told_back = segments_block(told)
+    told_back = segments_block(told, session.language)
     outcome = await run_verdict_turn(
-        findings_text=findings_block(current, addresses),
+        findings_text=findings_block(current or nuances[:1], addresses),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],
@@ -194,12 +145,7 @@ async def check_the_telling_back(
         session_id=session.id,
     )
 
-    said = with_the_whole_stretch_asked_for(
-        outcome.speech,
-        finding,
-        session.language,
-        used_fail_safe=outcome.used_fail_safe,
-    )
+    said = outcome.speech
     return TellingBackVerdict(
         finding=finding,
         current=current,

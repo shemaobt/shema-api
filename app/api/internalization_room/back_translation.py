@@ -15,6 +15,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
@@ -370,17 +371,16 @@ async def _finished(
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
-    retired = await room.retired_segments(db, session.id)
     with stage("db_let_go"):
         await db.commit()
-    verdict = await room.check_the_telling_back(
-        session,
-        state=state,
-        told=told,
-        retired=retired,
-        takes=takes,
-        settings=get_settings(),
-    )
+    with reading_the_canon_of(session.canon_pin):
+        verdict = await room.check_the_telling_back(
+            session,
+            state=state,
+            told=told,
+            takes=takes,
+            settings=get_settings(),
+        )
     with stage("voice"):
         voiced = (
             None

@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import BaseModel
 
 from app.core.canon_pin import pinned_commit
 from app.core.exceptions import ValidationError
 from app.core.served_books import SERVED_BOOKS
+from app.services.internalization_room.canon.kept import canon_path, per_canon
 from app.services.internalization_room.canon.parse_map import (
     _PERICOPE,
     SURVEYED_STATUS,
@@ -140,7 +140,7 @@ def _register_complete(book: str) -> dict[str, bool]:
     return complete
 
 
-@lru_cache(maxsize=8)
+@per_canon(maxsize=8)
 def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     """The book's withholdings: audit entries the project marked `do_not_decide`.
 
@@ -148,7 +148,7 @@ def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     not constraints, and the project's own rendered material leaves them out.
     """
     rules: list[PreservationRule] = []
-    for path in sorted(LOGS_DIR.glob(f"*-{book}-*-COMPILATION-LOG.md")):
+    for path in sorted(canon_path(LOGS_DIR).glob(f"*-{book}-*-COMPILATION-LOG.md")):
         pericope = path.name.split("-", 1)[0]
         for entry in _extract_audit(path.read_text(encoding="utf-8")):
             if not entry.get("do_not_decide"):
@@ -170,10 +170,10 @@ class SceneAbsence(BaseModel):
     text: str
 
 
-@lru_cache(maxsize=64)
+@per_canon(maxsize=64)
 def significant_absences(pericope_num: str) -> tuple[SceneAbsence, ...]:
     matches = (
-        sorted(COORDINATES_DIR.glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
+        sorted(canon_path(COORDINATES_DIR).glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
         if _PERICOPE.match(pericope_num)
         else []
     )
@@ -238,9 +238,9 @@ def require_walkable(meaning_map: MeaningMap) -> None:
     and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
     passage; running costs Refine a false assurance, which is the more expensive of the two.
 
-    The three signals are read separately on purpose. Ruth's passages past the edge happen to
-    carry both — no preservation layer *and* a pending survey — but agreement is not either
-    one being read, and a layer written before the survey closes would otherwise walk.
+    The three signals are read separately on purpose. A passage the project has not finished
+    tends to lack both — no preservation layer *and* a pending survey — but agreement is not
+    either one being read, and a layer written before the survey closes would otherwise walk.
     """
     reason = unwalkable(meaning_map)
     if reason is not None:
@@ -284,7 +284,19 @@ def build_book_material(book: str) -> str:
     )
 
 
-def story_so_far(book: str, current_pericope: str) -> str:
+NOT_WORKED_NOTICE = (
+    "(This team has not worked this passage yet. If you speak of anything below, tell it as "
+    "the story's — 'a história conta que…' (English sessions: 'the story tells that…') — only "
+    "what is needed, in a few words; never 'lembrem', never 'na última parte'.)"
+)
+
+
+def _with_notice(digest: str) -> str:
+    heading, _, rest = digest.partition("\n")
+    return f"{heading}\n{NOT_WORKED_NOTICE}\n{rest}"
+
+
+def story_so_far(book: str, current_pericope: str, not_worked: frozenset[str] = frozenset()) -> str:
     """Digests of strictly earlier passages only.
 
     The cut happens at the source, not in the prompt, so a later disclosure (who married whom
@@ -294,16 +306,19 @@ def story_so_far(book: str, current_pericope: str) -> str:
     earlier = [m for m in load_book(book) if m.pericope_num < current_pericope]
     if not earlier:
         return ""
-    digests = "\n\n".join(pericope_digest(m) for m in earlier)
+    digests = "\n\n".join(
+        _with_notice(pericope_digest(m)) if m.pericope_num in not_worked else pericope_digest(m)
+        for m in earlier
+    )
     return (
         "---\n\n# THE STORY SO FAR (earlier passages of this book — map-authored)\n"
         "Digests of this book's earlier passages, extracted verbatim from their own Meaning "
         "Maps. Grounded material: it may be used to answer the team's questions about the story "
         "so far and to situate the current passage in the book. Nothing beyond these "
-        f"passages and the current map exists.\n\n{digests}\n"
+        f"passages and the current map exists.\n\n{digests}"
     )
 
 
 def vendor_pin() -> str:
-    pin = Path(VENDOR / "VENDOR_PIN")
+    pin = canon_path(VENDOR) / "VENDOR_PIN"
     return pinned_commit(pin.read_text(encoding="utf-8")) if pin.exists() else "unpinned"

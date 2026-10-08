@@ -33,6 +33,7 @@ from app.core.exceptions import UpstreamServiceError
 from app.core.stage_clock import stage
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import TurnResponse
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.hearing import HeardSpeech, stop_hearing
 from app.services.internalization_room.turn_dedup import answered_turn, remember_turn
 
@@ -85,7 +86,8 @@ async def answer_around_the_opening(
         deadline = asyncio.get_running_loop().time() + bound_s
     speech_heard = await hearing if hearing is not None else HeardSpeech()
     if not opening:
-        return await draft(speech_heard=speech_heard, turn_id=turn_id, deadline=deadline)
+        with reading_the_canon_of(session.canon_pin):
+            return await draft(speech_heard=speech_heard, turn_id=turn_id, deadline=deadline)
 
     session_id, claimed_as = session.id, turn_id or str(uuid.uuid4())
     if not await _claim(db, session_id, claimed_as, bound_s):
@@ -96,7 +98,8 @@ async def answer_around_the_opening(
             raise UpstreamServiceError("a abertura desta sessão não chegou")
         return joined
     try:
-        return await draft(speech_heard=speech_heard, turn_id=claimed_as, deadline=deadline)
+        with reading_the_canon_of(session.canon_pin):
+            return await draft(speech_heard=speech_heard, turn_id=claimed_as, deadline=deadline)
     except BaseException:
         await db.rollback()
         await _release(session_id, claimed_as)

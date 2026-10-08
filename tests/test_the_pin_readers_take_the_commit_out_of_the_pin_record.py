@@ -33,3 +33,9 @@ def test_the_golden_report_names_the_canon_by_its_commit_and_not_by_the_records_
     a_vendor_pinned_by_a_record: None,
 ) -> None:
     assert golden_runner._pins().endswith("cânon `cafef00`")
+
+
+def test_the_golden_report_names_her_freeze_for_the_scripts_and_the_doctrine() -> None:
+    assert golden_runner._pins().startswith("roteiros e doutrina no pin `18fa7c4` · "), (
+        "o cabeçalho citava o pin dos relatórios dela de 3 de setembro, não o congelamento"
+    )

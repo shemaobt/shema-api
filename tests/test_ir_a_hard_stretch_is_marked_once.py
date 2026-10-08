@@ -31,7 +31,6 @@ from app.db.models.internalization_room import (
 )
 from app.services.internalization_room import halt
 from app.services.internalization_room import sessions as room
-from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from tests.baker import (
     grant_facilitator_app_role,
@@ -463,7 +462,6 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
     that makes a hard stretch. Nothing about the crossing may reach either prompt.
     """
     from app.services.internalization_room import back_translation as service
-    from app.services.internalization_room.back_translation import Finding, FindingKind
     from app.services.internalization_room.prompts import get_prompt_text
     from app.services.internalization_room.segments import capture_segment
 
@@ -494,7 +492,6 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
         bridge_take_id="retro-2",
         transcript="e Rute foi com ela",
     )
-    finding = Finding(kind=FindingKind.MISSING, note="a colheita da cevada", segment_id=earlier.id)
 
     async def _both_prompts() -> list[tuple[str, str]]:
         said.clear()
@@ -504,20 +501,10 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
             pericope_num=P,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
         )
-        await service.verify_correction(
-            findings=[finding],
-            earlier=earlier,
-            corrected=corrected,
-            chunk=1,
-            scope=P,
-            pericope_num=P,
-            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
-            addresses=Addresses(),
-        )
         return list(said)
 
     plain = await _both_prompts()
-    assert len(plain) == 2, "o analista e a verificação da correção, um prompt cada"
+    assert len(plain) == 1, "o analista, um prompt"
 
     earlier.tellings = RETELLS_BEFORE_A_WARNING
     corrected.tellings = RETELLS_BEFORE_A_WARNING

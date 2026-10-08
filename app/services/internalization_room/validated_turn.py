@@ -15,7 +15,6 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
     EARLIER_PASSAGES_HEADING,
-    SPEAK_THIS_TURN,
     TEAM_EVIDENCE_HEADING,
     TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
@@ -121,6 +120,26 @@ def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     )
 
 
+def _regenerated(raw: str, session_id: str, attempt: int) -> None:
+    """A Validator that read the draft and asked for another leaves its whole reply behind.
+
+    Not a refused reply: the verdict was readable, and what it decided was a redraft. The
+    `condition` field is kept so everything that already counts a Validator trace by it still
+    counts this one.
+    """
+    logger.warning(
+        "Validator regenerate verdict for session %s, attempt %s: %s",
+        session_id,
+        attempt,
+        raw,
+        extra={
+            "session_id": session_id,
+            "attempt": attempt,
+            "condition": "verdict is 'regenerate'",
+        },
+    )
+
+
 def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
     """The room's own gate rejecting spoken text: the condition and a number, never the words.
 
@@ -146,14 +165,8 @@ def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
     conversation, not a heading inside the question. The instructions that ride per turn —
     the opening's note — stay in that last message, which is where an
     instruction is read as this turn's and not as something said earlier.
-
-    A turn with neither — the back-translation verdict — asks for its speech in the session's
-    own language rather than sending nothing: the API refuses an empty user message, and that
-    400 would reach the team as a fail-safe line.
     """
-    if utterance:
-        return utterance
-    return opening_instruction or SPEAK_THIS_TURN
+    return utterance or opening_instruction
 
 
 async def _draft(
@@ -264,21 +277,14 @@ async def _voiced_after_validation(
     opening_instruction: str = "",
     ask_for_movements: bool = False,
     telling_back: str = "",
-    mother_tongue: bool = False,
     prepared_pericope: str | None = None,
     earlier_passages: str = "",
+    with_history: bool = True,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
-
-    `mother_tongue` is the one case where `transcript` is not the team's own words in the
-    session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. That note stays out of the Validator's
-    `{{TEAM_EVIDENCE}}`, which is quoted evidence of what the team *said*, under a heading no
-    prompt tells it to read as a fact about the room rather than speech. Let in, the slot
-    would credit the team with a sentence in the session language it never spoke.
 
     The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
     the kickoff's team text — and her turn loop hands that text to the Validator as what the
@@ -308,7 +314,7 @@ async def _voiced_after_validation(
     """
     started = time.monotonic()
     spend = open_ledger()
-    conversation = _conversation_turns(messages)
+    conversation = _conversation_turns(messages) if with_history else []
     redraft_note = ""
     issues: list[dict[str, Any]] = []
     warmed_connection = False
@@ -335,10 +341,7 @@ async def _voiced_after_validation(
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
             EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
-            TEAM_EVIDENCE=her_block(
-                TEAM_EVIDENCE_HEADING,
-                "" if mother_tongue else transcript or opening_instruction,
-            ),
+            TEAM_EVIDENCE=her_block(TEAM_EVIDENCE_HEADING, transcript or opening_instruction),
             DRAFTED_RESPONSE=draft,
         )
         if not warmed_connection:
@@ -373,7 +376,7 @@ async def _voiced_after_validation(
             speech = str(verdict["corrected_response"]).strip()
             movements = []
         else:
-            _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
+            _regenerated(raw_verdict, session_id, attempt + 1)
 
         if speech and bool(
             await asyncio.to_thread(room_agent().strays_from, speech, language_code)

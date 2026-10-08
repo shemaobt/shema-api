@@ -8,22 +8,31 @@ open it.
 
 They are vendored here, not forked. The bytes come from one commit of her repository, the pin
 records repo, branch, commit and a sha256 per file, and an edit to a vendored file is a merge
-conflict rather than a decision. Her prompts land beside ours — `prompts/vendor/` next to
-`prompts/` — because ours are derived from hers and have diverged on purpose; replacing ours
-would throw away the tickets that ported her text, and the vendoring exists so that "how does
-our Guide prompt differ from hers" is a `diff` instead of an argument.
+conflict rather than a decision. Her nine prompts sit where the room reads them, in
+`app/services/internalization_room/prompts/`, and are hers byte for byte: no copy of ours
+stands beside them, so a prompt that differs from hers is a failed `--check` and not a
+different Guide.
 
-Her five golden sessions travel the same door, at their own path, because a script that drifts
-from hers grades this room against its own homework: `scripts/golden_runner.py` plays the
-vendored copy, and a run is only comparable to her 5/5 of 2026-09-03 — vendored beside ours —
-while the bytes and the canon pin the judge's map comes from are the ones her branch names.
+Her twenty-three golden sessions and ten Back-Translation scripts travel the same door, at
+their own paths, because a script that drifts from hers grades this room against its own
+homework: `scripts/golden_runner.py` plays the vendored copy, and a run is only comparable to
+her 5/5 of 2026-09-03 — vendored beside ours — while the bytes and the canon pin the judge's
+map comes from are the ones her freeze names.
 
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,
-when she has ruled. Point it at a checkout of `fia/pilot-2026-09`.
+when she has ruled. Point it at a checkout of her repository.
+
+Two pins, two commits. `DOCTRINE_PIN` is her pilot branch, `fia/pilot-2026-09`, and holds her
+2026-09-03 golden reports. `FREEZE_PIN` is her `main` at the freeze and holds the doctrine, her
+prompts, her sessions and the Back-Translation scripts.
 
     uv run python scripts/sync_doctrine.py --check             # offline; CI runs this
     uv run python scripts/sync_doctrine.py --sync --from ~/src/Tripod-Internalization
+    uv run python scripts/sync_doctrine.py --sync --freeze --from ~/src/Tripod-Internalization
+
+The first, on `fia/pilot-2026-09`, rewrites `DOCTRINE_PIN`; the second, on `main`, rewrites
+`FREEZE_PIN`.
 """
 
 from __future__ import annotations
@@ -44,7 +53,6 @@ BRANCH = "fia/pilot-2026-09"
 
 #: Her path in `Tripod-Internalization` → the path it is vendored to here.
 VENDORED = {
-    "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
     "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
     "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
         "golden/reports/2026-09-03/J01-frame-before-elicit.md"
@@ -123,6 +131,7 @@ FROZEN = {
     **{f"golden/sessions/{name}.json": f"golden/sessions/{name}.json" for name in HER_SESSIONS},
     **{f"golden/bt/{name}.json": f"golden/bt/{name}.json" for name in HER_BT_SCRIPTS},
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
+    "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
 }
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"
@@ -144,7 +153,7 @@ GOVERNED = ("ladder", "max_output_tokens", "effort", "thinks")
 UNRULED = "unruled"
 
 BAR_FILE = REPO_ROOT / "docs/doctrine/ACCEPTANCE_BAR"
-DOCTRINE = REPO_ROOT / VENDORED["docs/DOCTRINE.md"]
+DOCTRINE = REPO_ROOT / FROZEN["docs/DOCTRINE.md"]
 
 #: The second column of a bar row this repo does not hold today. Counted out loud rather than
 #: left out, because a line missing from the record reads as a line nobody had to think about.
@@ -257,6 +266,10 @@ def unruled(pin: Pin, rulings: list[Ruling]) -> list[str]:
     A re-sync rewrites every sha in the pin, so drift alone can never catch one: the bytes
     and their record move together. What cannot move quietly is the commit — so a pin naming
     a commit no ruling names is the re-sync nobody recorded her word for.
+
+    Only `DOCTRINE_PIN` is asked for a ruling. `FREEZE_PIN` moves without one: the freeze is
+    her word, so the doctrine, her prompts and her sessions move with it as her prompts already
+    did, and the freeze commit is not a commit a ruling has to name.
     """
     faults = []
     if not any(ruling.pin == pin.commit for ruling in rulings):
@@ -492,7 +505,7 @@ def check() -> int:
     pin = read_pin()
     faults = drift(pin)
     if faults:
-        print(f"the vendored doctrine drifted from pin {pin.commit[:12]}:", file=sys.stderr)
+        print(f"her reports of 2026-09-03 drifted from pin {pin.commit[:12]}:", file=sys.stderr)
         for line in faults:
             print(f"  {line}", file=sys.stderr)
         print(NOT_A_FORK, file=sys.stderr)
@@ -529,7 +542,7 @@ def check() -> int:
 
     inherited = sum(1 for _value, ruling in record.values() if ruling == UNRULED)
     pending = sum(1 for claims in bar.values() if claims == [PENDING])
-    print(f"the vendored doctrine matches pin {pin.commit[:12]}")
+    print(f"the vendored doctrine matches pin {freeze.commit[:12]}")
     print(f"the model seam matches its record — {inherited} of {len(record)} rows still unruled")
     print(f"the acceptance bar is {len(lines)} lines — {pending} still PENDING")
     return 0

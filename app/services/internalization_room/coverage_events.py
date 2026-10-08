@@ -8,6 +8,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRCoverageEvent, IRSession
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     initial_state,
@@ -276,10 +277,12 @@ async def necklaces_of(
     no retelling of them. It is answered with nothing rather than refused, because a panorama
     is a conversation the team really held and dropping it would hide it from their history.
     """
-    spines = {
-        session.id: ({} if is_panorama(session.pericope) else initial_state(session.pericope))
-        for session in sessions
-    }
+    spines: dict[str, dict[str, str]] = {}
+    for session in sessions:
+        with reading_the_canon_of(session.canon_pin):
+            spines[session.id] = (
+                {} if is_panorama(session.pericope) else initial_state(session.pericope)
+            )
     if not spines:
         return {}
 

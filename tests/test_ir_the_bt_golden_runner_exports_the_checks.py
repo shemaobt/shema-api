@@ -167,7 +167,11 @@ def _her_script(tmp_path: Path, *, expect: dict[str, Any], rounds: int = 2) -> P
 
 def _args(script: Path, out: Path) -> argparse.Namespace:
     return argparse.Namespace(
-        base_url=BASE_URL, script=str(script), out=str(out), access_code=RUNNER_KEY
+        base_url=BASE_URL,
+        script=str(script),
+        out=str(out),
+        access_code=RUNNER_KEY,
+        budget_usd=None,
     )
 
 
@@ -255,7 +259,11 @@ async def test_with_no_script_named_the_runner_plays_every_bt_script_on_the_shel
     )
     monkeypatch.setattr(bt_golden_runner, "BT_DIR", shelf)
     args = argparse.Namespace(
-        base_url=BASE_URL, script=None, out=str(tmp_path / "reports"), access_code=RUNNER_KEY
+        base_url=BASE_URL,
+        script=None,
+        out=str(tmp_path / "reports"),
+        access_code=RUNNER_KEY,
+        budget_usd=None,
     )
 
     await bt_golden_runner.run(args)

@@ -18,15 +18,10 @@ from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room import llm
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
-    Finding,
-    FindingKind,
     analyse_telling_back,
-    verify_correction,
 )
-from app.services.internalization_room.part_names import Addresses
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
-CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
 P = "P03"
 
 
@@ -106,27 +101,6 @@ async def test_the_analyst_reads_the_telling_back_on_the_analysis_ladder(
     )
 
 
-async def test_the_correction_check_reads_on_the_analysis_ladder(recording_client) -> None:
-    messages = recording_client(json.dumps({"resolved": True, "findings": []}))
-
-    await verify_correction(
-        findings=[Finding(kind=FindingKind.MISSING, note="a fome nao foi contada")],
-        earlier=_segment(1, "Eles partiram."),
-        corrected=_segment(2, "A fome chegou e eles partiram."),
-        chunk=1,
-        scope="1-5",
-        pericope_num=P,
-        correction_prompt=CORRECTION,
-        addresses=Addresses(),
-        settings=_settings(tripod_analysis_model="modelo-de-analise-sob-teste"),
-    )
-
-    assert messages.calls[0]["model"] == "modelo-de-analise-sob-teste", (
-        "a checagem de correção decide se um trecho regravado responde ao achado, e lia isso "
-        "no modelo da voz em vez do papel de análise"
-    )
-
-
 async def test_the_analysis_ladder_starts_where_the_voice_ladder_does(recording_client) -> None:
     """The ladder shipped for analysis, with nothing overridden.
 
@@ -191,25 +165,4 @@ async def test_an_analyst_reply_cut_at_its_ceiling_gives_no_verdict_that_round(
     assert analysis is None, (
         "um corte no teto virava uma análise sem achados, e a equipe ouvia que o trabalho "
         "estava conferido sem que o analista tivesse terminado de ler"
-    )
-
-
-async def test_the_correction_checks_ceiling_holds_the_thinking_too(recording_client) -> None:
-    messages = recording_client(json.dumps({"resolved": True, "findings": []}))
-
-    await verify_correction(
-        findings=[Finding(kind=FindingKind.MISSING, note="a fome nao foi contada")],
-        earlier=_segment(1, "Eles partiram."),
-        corrected=_segment(2, "A fome chegou e eles partiram."),
-        chunk=1,
-        scope="1-5",
-        pericope_num=P,
-        correction_prompt=CORRECTION,
-        addresses=Addresses(),
-        settings=_settings(),
-    )
-
-    assert messages.calls[0]["max_tokens"] >= 4096, (
-        "1500 deixava a checagem voltar vazia, e uma correção que ninguém conseguiu ler "
-        "conta como não resolvida — a equipe regrava o trecho que já tinha consertado"
     )
