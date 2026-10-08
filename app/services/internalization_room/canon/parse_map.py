@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.core.exceptions import ValidationError
 from app.core.served_books import ROOM_BOOK as ROOM_BOOK
+from app.services.internalization_room.canon.kept import canon_path, per_canon
 
 VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
@@ -275,11 +276,11 @@ _PERICOPE = re.compile(r"^[A-Za-z]{1,4}\d{1,3}$")
 _BOOK = re.compile(r"^[A-Za-z][A-Za-z0-9 '-]{0,60}$")
 
 
-@lru_cache(maxsize=64)
+@per_canon(maxsize=64)
 def load_map(pericope_num: str) -> MeaningMap:
     if not _PERICOPE.match(pericope_num):
         raise ValidationError(f"no vendored Meaning Map for {pericope_num}")
-    matches = sorted(MAPS_DIR.glob(f"{pericope_num}-*.md"))
+    matches = sorted(canon_path(MAPS_DIR).glob(f"{pericope_num}-*.md"))
     if not matches:
         raise ValidationError(f"no vendored Meaning Map for {pericope_num}")
     path = matches[0]

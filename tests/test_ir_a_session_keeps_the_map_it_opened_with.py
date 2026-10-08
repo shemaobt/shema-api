@@ -78,6 +78,26 @@ async def _pin_of(per_request: async_sessionmaker[AsyncSession], session_id: str
         return await fresh.scalar(select(IRSession.canon_pin).where(IRSession.id == session_id))
 
 
+async def test_a_session_open_when_a_new_canon_is_published_still_hands_the_voice_and_the_validator_its_own_map(  # noqa: E501
+    client, db_session, prompts, monkeypatch, tmp_path
+) -> None:
+    _, tablet = await a_claimed_device(db_session)
+    _, newcomer = await a_claimed_device(db_session, email="nov@example.com")
+    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+    await the_team_says(client, tablet, opened["session_id"], "antes")
+
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_is_told_its_own_way)
+    after = await the_tablet_opens(client, newcomer, {"pericope": P, "language": "pt"})
+    await the_team_says(client, newcomer, after["session_id"], "na nova")
+    start = len(prompts.read)
+    await the_team_says(client, tablet, opened["session_id"], "depois")
+    guide, validator = prompts.since(start)
+
+    assert KEPT_LINE in guide, "a voz leu o mapa novo no meio da sessão"
+    assert KEPT_LINE in validator, "o Validador conferiu contra o mapa novo"
+    assert VENDORED_LINE not in guide and VENDORED_LINE not in validator
+
+
 async def test_a_passage_first_opened_after_a_new_canon_records_it_and_reads_the_vendored_map_as_today(  # noqa: E501
     client, db_session, per_request, prompts, monkeypatch, tmp_path
 ) -> None:
