@@ -71,6 +71,19 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 prepared_pericope=pericope,
                 earlier_passages=stamp,
             )
+            if outcome.used_fail_safe and not outcome.draft:
+                logger.warning(
+                    "Prepared opening fell to the fail-safe on an empty draft for session %s, "
+                    "pericope %s: the Validator never saw it",
+                    panorama_session_id,
+                    pericope,
+                    extra={
+                        "session_id": panorama_session_id,
+                        "pericope": pericope,
+                        "reason": "empty draft",
+                    },
+                )
+                return
             if outcome.used_fail_safe:
                 reason = (
                     ", ".join(str(issue.get("problem", "?")) for issue in outcome.issues)
