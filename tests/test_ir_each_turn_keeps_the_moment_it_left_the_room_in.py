@@ -80,3 +80,28 @@ async def test_a_session_begun_before_the_moment_was_read_goes_on_with_no_moment
     assert "moment" not in session.messages[-1], (
         "uma sessão de antes do momento ganhou um momento a partir do meio da conversa"
     )
+
+
+async def test_a_telling_back_verdict_keeps_the_moment_the_room_was_in(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    session = await append_exchange(db_session, session, team_utterance="", guide_response=OPENING)
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="estamos prontos",
+        guide_response="Vamos pra Internalização da cena 2.",
+    )
+
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="",
+        guide_response="Vocês contaram tudo dessa parte.",
+        told_back="[1] Noemi voltou.",
+    )
+
+    assert session.messages[-1]["moment"]["after"] == {"at": "internalization", "part": 2}, (
+        "o veredito da retroverificação apagou o momento, e a sessão virou uma sessão antiga"
+    )
