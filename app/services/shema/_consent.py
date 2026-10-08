@@ -385,21 +385,19 @@ def withdrawn_request(project: ShemaProject, sent: Mapping[str, Any]) -> str | N
 
     Read **before** the write lands, off the record as it stands: a request that reaches the
     wall, and a write that **states** a visibility other than ``rede`` — the team stopping the
-    sharing. What it took back is the text that was on the wall, so a withdrawal that brings a
-    new text along still names the old one; the archived Pulses that shared it in those words
-    are cleaned (``_submission_archive.erase_withdrawn_request``). ``None`` for a blank request
-    too — no Pulse shared nothing.
+    sharing. What it took back is the text that was on the wall (:func:`shared_prayer_text`), so
+    a withdrawal that brings a new text along still names the old one; the archived Pulses that
+    shared it in those words are cleaned (``_submission_archive.erase_withdrawn_request``).
+    ``None`` for a blank request too — no Pulse shared nothing.
 
     **A new text arriving without a visibility is not a withdrawal**, although
     :func:`request_written` clears the authorization for it: the team did not stop sharing, it
     wrote something new, and nothing it shared before is taken back. Compared with ``==``, not
     ``is``: ``sent`` is a mapping, and a raw ``"rede"`` read as a withdrawal would erase.
     """
-    if REQUEST_VISIBILITY not in sent or not reaches_prayer_wall(project):
+    if REQUEST_VISIBILITY not in sent or sent[REQUEST_VISIBILITY] == ShemaPrayerVisibility.REDE:
         return None
-    if sent[REQUEST_VISIBILITY] == ShemaPrayerVisibility.REDE:
-        return None
-    return project.prayer_requests if project.prayer_requests.strip() else None
+    return shared_prayer_text(project) or None
 
 
 def same_request(left: str, right: str) -> bool:

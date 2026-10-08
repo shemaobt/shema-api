@@ -132,10 +132,10 @@ async def test_withdrawing_removes_the_request_only_from_the_pulses_with_the_sam
     kept = [row for row in rows if row.prayer_request_erased_at is None]
     assert len(erased) == 2
     for row in erased:
+        answers = archived_answers(row)
         assert WITHDRAWN not in row.archived_payload
-        assert "prayerRequest" not in archived_answers(row)
-        assert "prayerVisibility" not in archived_answers(row)
-        assert archived_answers(row)["submittedBy"] == "Kuaray"
+        assert answers.keys().isdisjoint({"prayerRequest", "prayerVisibility"})
+        assert answers["submittedBy"] == "Kuaray"
 
     assert sorted(
         (archived_answers(row)["prayerRequest"], archived_answers(row)["prayerVisibility"])
@@ -307,21 +307,24 @@ async def test_a_health_reading_that_takes_the_authorization_back_removes_it_too
 
 
 @pytest.mark.parametrize(
-    ("sent", "withdraws"),
+    ("sent", "expected"),
     [
-        ({"prayer_visibility": ShemaPrayerVisibility.COORDENACAO}, True),
-        ({"prayer_visibility": None}, True),
-        ({"prayer_visibility": ShemaPrayerVisibility.COORDENACAO, "prayer_requests": "novo"}, True),
-        ({"prayer_visibility": ShemaPrayerVisibility.REDE}, False),
-        ({"prayer_visibility": "rede"}, False),
-        ({"prayer_requests": "um pedido novo"}, False),
+        ({"prayer_visibility": ShemaPrayerVisibility.COORDENACAO}, WITHDRAWN),
+        ({"prayer_visibility": None}, WITHDRAWN),
+        (
+            {"prayer_visibility": ShemaPrayerVisibility.COORDENACAO, "prayer_requests": "novo"},
+            WITHDRAWN,
+        ),
+        ({"prayer_visibility": ShemaPrayerVisibility.REDE}, None),
+        ({"prayer_visibility": "rede"}, None),
+        ({"prayer_requests": "um pedido novo"}, None),
     ],
 )
-async def test_only_a_stated_visibility_other_than_rede_withdraws(project, sent, withdraws) -> None:
+async def test_only_a_stated_visibility_other_than_rede_withdraws(project, sent, expected) -> None:
     """The gate reads the value, not its type: a raw ``"rede"`` is a restatement, and reading it
     as a withdrawal would erase. What a withdrawal names is the text that was on the wall, even
     when a new one arrives with it."""
-    assert withdrawn_request(project, sent) == (WITHDRAWN if withdraws else None)
+    assert withdrawn_request(project, sent) == expected
 
 
 async def test_a_blank_request_withdraws_nothing_to_compare(project) -> None:
