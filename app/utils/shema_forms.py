@@ -66,6 +66,12 @@ class ShemaFieldType(enum.StrEnum):
     CHOICE = "choice"
     PERIOD = "period"
     PROGRESS_ROWS = "progressRows"
+    #: The id of an image the leader uploaded through the same link (OBT-578) — the bytes go
+    #: to the bucket, the answer is the pointer. Optional, one per Pulse.
+    IMAGE = "image"
+    #: A box: ``true`` or ``false``. Written for the authorization of the image's use; absent
+    #: and ``false`` both mean *nothing was authorized* (``docs/shema.md`` §7.4's rule, again).
+    CHECKBOX = "checkbox"
 
 
 class SpecField(BaseModel):
@@ -243,11 +249,47 @@ PULSE_FIELDS: Final[tuple[FormField, ...]] = (
         column="prayer_visibility",
         options=("coordenacao", "rede"),
     ),
+    #: **The image, its description and the authorization of its use** (OBT-578 — Karina, via
+    #: Daniel, 6/oct/2026). One image per Pulse, by her singular and by Daniel's approval of
+    #: 8/oct/2026. None of the three maps to a column: the bytes are in the bucket, and the
+    #: import mints the record's media item from the three answers together, carrying the
+    #: leader's answer to the box as the item's authorization — so without it the photo reaches
+    #: no output, exactly as a photo nobody authorized on the record (``_media_sharing.py``).
+    FormField(
+        key="image",
+        type=ShemaFieldType.IMAGE,
+        required=False,
+        label_key="forms_q_image",
+    ),
+    FormField(
+        key="imageDescription",
+        type=ShemaFieldType.LONG_TEXT,
+        required=False,
+        label_key="forms_q_image_description",
+        max_length=1000,
+    ),
+    FormField(
+        key="imageAuthorized",
+        type=ShemaFieldType.CHECKBOX,
+        required=False,
+        label_key="forms_q_image_authorization",
+    ),
 )
 
 #: Every field spec this module publishes, by kind. One entry today, and the shape is what
 #: lets a second instrument arrive without a second validator.
 FORM_FIELDS: Final[dict[str, tuple[FormField, ...]]] = {PULSE_KIND: PULSE_FIELDS}
+
+#: The three questions OBT-578 added, by key — the image's pointer, its description and the
+#: leader's authorization of its use. None maps to a column: the import reads them off the
+#: archived answers and mints the media item (``import_submission.py``), and the archive's
+#: erasure removes exactly these three (``_submission_archive.erase_pulse_image``).
+IMAGE_FIELD: Final = "image"
+IMAGE_DESCRIPTION_FIELD: Final = "imageDescription"
+IMAGE_AUTHORIZED_FIELD: Final = "imageAuthorized"
+IMAGE_ANSWERS: Final = (IMAGE_FIELD, IMAGE_DESCRIPTION_FIELD, IMAGE_AUTHORIZED_FIELD)
+#: The longest description of the image. Shorter than ``MAX_FREE_TEXT``: it is a caption.
+MAX_IMAGE_DESCRIPTION = 1000
 
 
 def field_specs(kind: str) -> list[dict[str, Any]]:

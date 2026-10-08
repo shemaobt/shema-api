@@ -85,6 +85,14 @@ def _fault(field: SpecField, answer: Any) -> str | None:
         if not isinstance(answer, str) or not _PERIOD.match(answer):
             return f"{key}: {answer!r} is not a YYYY-MM month"
         return None
+    if kind == ShemaFieldType.IMAGE:
+        if not isinstance(answer, str) or not answer.strip():
+            return f"{key}: an image is answered by the id the upload returned"
+        return None
+    if kind == ShemaFieldType.CHECKBOX:
+        if not isinstance(answer, bool):
+            return f"{key}: a box is answered true or false"
+        return None
     if kind == ShemaFieldType.PROGRESS_ROWS:
         if not isinstance(answer, list):
             return f"{key}: expected a list of progress rows"
