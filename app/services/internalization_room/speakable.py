@@ -17,7 +17,10 @@ recorded in ``docs/what-the-voice-says.md``.
 from __future__ import annotations
 
 import re
+from bisect import bisect_left, bisect_right
+from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from app.services.internalization_room.canon.elements import scene_code
@@ -73,10 +76,11 @@ _ONE_CODE = (
     rf"|(?<!\w){_CODE}(?:-\w+|/{_CODE})*(?!\w)"
 )
 
-#: A list of codes goes with its commas and its "e" or "and", and a range with its "a", "to",
-#: dash or spaced hyphen, so nothing is left to join when every code is gone.
+#: Between two codes, and only there, the joiner goes with them: the commas of a list and its
+#: "e" or "and" (a serial comma included), and the "a", "to", dash or spaced hyphen of a range.
+#: A joiner between a code and a word is the word's, and stays.
 _JOINER = (
-    rf"(?:,{_SPACE}*|{_SPACE}+(?:e|and|a|to){_SPACE}+|{_SPACE}*[\u2013—]{_SPACE}*"
+    rf"(?:,{_SPACE}*(?:e|and){_SPACE}+|,{_SPACE}*|{_SPACE}+(?:e|and|a|to){_SPACE}+|{_SPACE}*[\u2013—]{_SPACE}*"
     rf"|{_SPACE}+-{_SPACE}+)"
 )
 _CANON_CODE = re.compile(rf"(?:{_ONE_CODE})(?:{_JOINER}(?:{_ONE_CODE}))*")
@@ -87,19 +91,22 @@ _SEAM = "\x00"
 _SEAMS_IN_A_ROW = re.compile(rf"{_SEAM}(?:{_SPACE}*{_SEAM})+")
 
 _DASH = r"(?:[\u2013—]|(?<!\S)-(?!\S))"
-_DASH_CHARACTER = re.compile(_DASH)
 _WEAK_MARK = r"[,;:]"
 _WORD_JOINER = rf"(?:e|and)(?={_SPACE})"
 
 #: What a removal can leave beside its seam, in the order `_mend` reads it. Brackets and quotes
 #: that held only the code go with it. Two dashes around it go too when they framed it, but when
-#: the first one closes a pair the sentence already opened, only the code's own second dash goes.
-#: A comma left between the code and a dash goes. Between two joiners, the survivors keep the one
-#: they had between them. Where the code opened a sentence — at the text's edge or past a
-#: sentence end — any mark it left goes, a full stop included but never an ellipsis; where it
-#: opened a clause — after a colon, a dash, an opening quote or bracket — the weak marks and the
-#: joiner it left go. Last, a weak mark before a strong one goes, a weak mark after `!` or `?`
-#: goes, a dash before a closing mark goes, and a full stop doubled across the seam is read once.
+#: the first one closes a pair the sentence already opened, only the code's own second dash goes;
+#: whether a dash opens or closes a pair is read as her question split reads it, outside quotes
+#: and parentheses and never between digits. A comma left between the code and a dash goes.
+#: Between a mark and a joiner, the survivors keep the joiner: a comma after the code goes when
+#: a mark stands before it, a colon included, and a mark before the code goes when an "e" or an
+#: "and" follows it. Where the code opened a sentence — at the text's edge or past a sentence
+#: end — any mark it left goes, a full stop included but never an ellipsis; where it opened a
+#: clause — after a colon, a dash, an opening quote or bracket — the weak marks it left go, and
+#: so does a code right behind it with its own marks; a word is never taken. Last, a weak mark
+#: before a strong one or a closer goes, a weak mark after `!` or `?` goes, a dash before a
+#: closing mark goes, and a full stop doubled across the seam is read once.
 _ENCLOSED = re.compile(
     rf"[(\[]{_SPACE}*[,;/\u2013—-]*{_SPACE}*{_SEAM}{_SPACE}*[,;/\u2013—-]*{_SPACE}*[)\]]"
     rf"|\"{_SPACE}*{_SEAM}{_SPACE}*\"|\u201c{_SPACE}*{_SEAM}{_SPACE}*\u201d"
@@ -108,18 +115,18 @@ _ENCLOSED = re.compile(
 _FRAMED = re.compile(rf"({_DASH}){_SPACE}*{_SEAM}{_SPACE}*{_DASH}")
 _COMMA_BEFORE_A_DASH = re.compile(rf",{_SPACE}*{_SEAM}(?={_SPACE}*{_DASH})")
 _BETWEEN_JOINERS = re.compile(
-    rf"(?P<left>,|[;:]|(?<=\s)(?:e|and)){_SPACE}*{_SEAM}{_SPACE}*(?P<right>,|{_WORD_JOINER})"
+    rf"(?P<left>,|[;:]){_SPACE}*{_SEAM}{_SPACE}*(?P<right>,|{_WORD_JOINER})"
 )
 _SENTENCE_OPENING = re.compile(
-    rf"(?:^|(?<=[.!?\u2026]{_SPACE})|(?<=[.!?\u2026]{_CLOSE}{_SPACE})){_SEAM}"
-    rf"(?:{_SPACE}*(?:[,;:!?\u2013—]|\.(?![.\w])|-(?!\S)|{_WORD_JOINER}))+"
+    rf"(?:^|(?<=[.!?\u2026])|(?<=[.!?\u2026]{_SPACE})|(?<=[.!?\u2026]{_CLOSE}{_SPACE})){_SEAM}"
+    rf"(?:{_SPACE}*(?:[,;:!?\u2013—]|\.(?![.\w])|-(?!\S)|{_SEAM}))+"
 )
 _CLAUSE_OPENING = re.compile(
     rf"(?:(?<=[(\[\u201c\u00ab\u2018\"])|(?<=[:;\u2013—]{_SPACE})|(?<=\s-{_SPACE})){_SEAM}"
-    rf"(?:{_SPACE}*(?:{_WEAK_MARK}|-(?!\S)|{_WORD_JOINER}))+"
+    rf"(?:{_SPACE}*(?:{_WEAK_MARK}|-(?!\S)|{_SEAM}))+"
 )
 _WEAK_BEFORE_STRONG = re.compile(
-    rf"{_WEAK_MARK}{_SPACE}*{_SEAM}(?={_SPACE}*[.!?])|,{_SPACE}*{_SEAM}(?={_SPACE}*[;:])"
+    rf"{_WEAK_MARK}{_SPACE}*{_SEAM}(?={_SPACE}*(?:[.!?]|{_CLOSE}))|,{_SPACE}*{_SEAM}(?={_SPACE}*[;:])"
 )
 _WEAK_AFTER_STRONG = re.compile(rf"{_SEAM}({_SPACE}*[!?]){_SPACE}*{_WEAK_MARK}")
 _DASH_BEFORE_CLOSE = re.compile(rf"{_DASH}{_SPACE}*{_SEAM}(?={_SPACE}*(?:[.,;:!?]|$))")
@@ -184,20 +191,32 @@ _SPOKEN_FORM: dict[str, str] = {
 }
 
 
-def _opens_a_pair(text: str, dash_at: int) -> bool:
-    sentence = _SENTENCE_END.split(text[:dash_at])[-1]
-    return len(_DASH_CHARACTER.findall(sentence)) % 2 == 0
+def _pairing_dashes(text: str) -> tuple[list[int], list[int]]:
+    spans = _Spans()
+    starts: list[int] = []
+    dashes: list[int] = []
+    for start, sentence in _sentences(text):
+        starts.append(start)
+        dashes.extend(
+            start + cut + (sentence[cut] == " ")
+            for cut, _, dash in _separators(sentence, spans)
+            if dash
+        )
+    return starts, dashes
 
 
-def _unframed(seam: re.Match[str]) -> str:
-    if _opens_a_pair(seam.string, seam.start()):
+def _unframed(starts: list[int], dashes: list[int], seam: re.Match[str]) -> str:
+    dash_at = seam.start(1)
+    sentence_start = starts[bisect_right(starts, dash_at) - 1]
+    before = bisect_left(dashes, dash_at) - bisect_left(dashes, sentence_start)
+    if before % 2 == 0:
         return f" {_SEAM} "
     return f"{seam[1]} {_SEAM}"
 
 
 def _one_joiner(seam: re.Match[str]) -> str:
-    if seam["right"] == "," and seam["left"] == ",":
-        return f",{_SEAM}"
+    if seam["right"] == ",":
+        return f"{seam['left']}{_SEAM}"
     return f"{_SEAM}{seam['right']}"
 
 
@@ -212,7 +231,7 @@ def _mend(text: str) -> str:
     if _SEAM not in marked:
         return named
     mended = _ENCLOSED.sub(_SEAM, marked)
-    mended = _FRAMED.sub(_unframed, mended)
+    mended = _FRAMED.sub(partial(_unframed, *_pairing_dashes(mended)), mended)
     mended = _COMMA_BEFORE_A_DASH.sub(_SEAM, mended)
     mended = _BETWEEN_JOINERS.sub(_one_joiner, mended)
     mended = _SENTENCE_OPENING.sub(_SEAM, mended)
@@ -237,7 +256,7 @@ def speakable_text(text: str, language: str) -> str:
     prompts already carry the rule in the same language. A language outside that table keeps
     the bare letters rather than guessing at a form the pilot does not speak.
     """
-    text = standalone_questions(_mend(strip_markdown(text)))
+    text = standalone_questions(_mend(strip_markdown(text.replace(_SEAM, ""))))
     form = _SPOKEN_FORM.get(language)
     if form is None:
         return text
@@ -260,11 +279,10 @@ def _between_digits(sentence: str, start: int, end: int) -> bool:
     return before.isnumeric() and after.isnumeric()
 
 
-def _last_separator(sentence: str, spans: _Spans) -> tuple[int, int] | None:
-    """The last cut outside quotes and parentheses, advancing `spans` over the whole sentence.
+def _separators(sentence: str, spans: _Spans) -> list[tuple[int, int, bool]]:
+    """Every colon, semicolon or dash outside quotes and parentheses, advancing `spans`.
 
-    Two or more dashes in one sentence are a parenthetical pair, so no dash cuts it; a colon or
-    a semicolon after the pair still does.
+    A separator between two digits is a time, a verse or a range, never a separator.
     """
     candidates: list[tuple[int, int, bool]] = []
     for i, char in enumerate(sentence):
@@ -295,6 +313,16 @@ def _last_separator(sentence: str, spans: _Spans) -> tuple[int, int] | None:
             continue
         if not _between_digits(sentence, cut[0], cut[1]):
             candidates.append(cut)
+    return candidates
+
+
+def _last_separator(sentence: str, spans: _Spans) -> tuple[int, int] | None:
+    """The last cut of a sentence, advancing `spans` over the whole of it.
+
+    Two or more dashes in one sentence are a parenthetical pair, so no dash cuts it; a colon or
+    a semicolon after the pair still does.
+    """
+    candidates = _separators(sentence, spans)
     dashes = sum(dash for _, _, dash in candidates)
     usable = [(start, end) for start, end, dash in candidates if not (dash and dashes >= 2)]
     return usable[-1] if usable else None
@@ -319,13 +347,15 @@ def standalone_questions(text: str) -> str:
     opens in one sentence still protects the next. Words never change; only a boundary moves.
     """
     spans = _Spans()
-    sentences: list[str] = []
+    return "".join(_split_question(sentence, spans) for _, sentence in _sentences(text))
+
+
+def _sentences(text: str) -> Iterator[tuple[int, str]]:
     cursor = 0
     for end in _SENTENCE_END.finditer(text):
-        sentences.append(_split_question(text[cursor : end.end()], spans))
+        yield cursor, text[cursor : end.end()]
         cursor = end.end()
-    sentences.append(_split_question(text[cursor:], spans))
-    return "".join(sentences)
+    yield cursor, text[cursor:]
 
 
 def _as_own_sentence(line: str) -> str:

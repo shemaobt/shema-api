@@ -162,7 +162,7 @@ _SEAMS = [
     pytest.param("Rute vê Boaz, B13.", "pt", "Rute vê Boaz.", id="comma-before-full-stop"),
     pytest.param("Rute vê Boaz — B13.", "pt", "Rute vê Boaz.", id="dash-before-full-stop"),
     pytest.param("Rute vê Boaz - B13.", "pt", "Rute vê Boaz.", id="spaced-hyphen-before-full-stop"),
-    pytest.param("Ela disse: B3, e saiu.", "pt", "Ela disse, e saiu.", id="colon-then-comma"),
+    pytest.param("Ela disse: B3, e saiu.", "pt", "Ela disse: e saiu.", id="colon-then-comma"),
     pytest.param("Ela, B3!, volta.", "pt", "Ela! volta.", id="comma-bang-comma"),
     pytest.param('Ele disse "B3" ontem.', "pt", "Ele disse ontem.", id="empty-straight-quotes"),
     pytest.param(
@@ -189,7 +189,7 @@ _SEAMS = [
         id="empty-single-curly-quotes",
     ),
     pytest.param("Veja o resto, etc., B3.", "pt", "Veja o resto, etc.", id="no-double-full-stop"),
-    pytest.param("Fim... B3 e mais.", "pt", "Fim... mais.", id="an-ellipsis-is-kept"),
+    pytest.param("Fim... B3 e mais.", "pt", "Fim... e mais.", id="an-ellipsis-is-kept"),
     pytest.param(
         "Fim. B3... e mais.", "pt", "Fim. ... e mais.", id="an-ellipsis-after-a-code-is-kept"
     ),
@@ -249,10 +249,13 @@ _SEAMS = [
         f"Leiam Rute 1:1{_EN_DASH}5 (cenas).",
         id="a-range-beside-a-word-in-parentheses",
     ),
-    pytest.param("B3, B4 e Noemi choram.", "pt", "Noemi choram.", id="a-mixed-list-that-opens"),
+    pytest.param("B3, B4 e Noemi choram.", "pt", "e Noemi choram.", id="a-mixed-list-that-opens"),
     pytest.param("Noemi, B3 e Rute", "pt", "Noemi e Rute", id="a-mixed-list-keeps-its-e"),
     pytest.param(
-        "Rute fica (B3, B4 e Noemi).", "pt", "Rute fica (Noemi).", id="a-mixed-list-in-parentheses"
+        "Rute fica (B3, B4 e Noemi).",
+        "pt",
+        "Rute fica (e Noemi).",
+        id="a-mixed-list-in-parentheses",
     ),
     pytest.param(
         "Vejam [[ B3 ]] agora.", "pt", "Vejam agora.", id="seam-b-a-code-spaced-in-brackets"
@@ -356,12 +359,100 @@ _SEAMS = [
         "Noemi falou. — Voltem, minhas filhas.",
         id="a-dialogue-dash-elsewhere-is-kept",
     ),
+    pytest.param(
+        "Ela sabe? B3, e saiu.",
+        "pt",
+        "Ela sabe? e saiu.",
+        id="a-joiner-after-a-code-that-opens-a-sentence-stays",
+    ),
+    pytest.param(
+        "Fim. B3, e então saiu.", "pt", "Fim. e então saiu.", id="a-joiner-before-a-word-stays"
+    ),
+    pytest.param(
+        "Ela disse: — B3, e saiu.",
+        "pt",
+        "Ela disse: — e saiu.",
+        id="a-joiner-after-a-code-that-opens-a-clause-stays",
+    ),
+    pytest.param("B3, e B4 chegam.", "pt", "chegam.", id="a-serial-comma-between-two-codes"),
+    pytest.param(
+        "Noemi. B3, e B4 chegam.", "pt", "Noemi. chegam.", id="a-serial-comma-after-a-full-stop"
+    ),
+    pytest.param(
+        "Noemi, Rute e B3.",
+        "pt",
+        "Noemi, Rute e.",
+        id="a-joiner-before-a-code-that-ends-a-list-stays",
+    ),
+    pytest.param(
+        "Ela leu \N{LEFT DOUBLE QUOTATION MARK}a — b\N{RIGHT DOUBLE QUOTATION MARK} e — B3 — saiu.",
+        "pt",
+        "Ela leu \N{LEFT DOUBLE QUOTATION MARK}a — b\N{RIGHT DOUBLE QUOTATION MARK} e saiu.",
+        id="a-dash-inside-quotes-is-not-one-of-the-pair",
+    ),
+    pytest.param(
+        "Leia 1\N{EN DASH}5 e — B3 — o que vê?",
+        "pt",
+        "Leia 1\N{EN DASH}5 e o que vê?",
+        id="a-range-dash-between-digits-is-not-one-of-the-pair",
+    ),
+    pytest.param(
+        "Ela (Noemi, B3) chega.", "pt", "Ela (Noemi) chega.", id="a-comma-before-a-closing-bracket"
+    ),
+    pytest.param(
+        "Ela \N{LEFT DOUBLE QUOTATION MARK}Noemi, B3\N{RIGHT DOUBLE QUOTATION MARK} chega.",
+        "pt",
+        "Ela \N{LEFT DOUBLE QUOTATION MARK}Noemi\N{RIGHT DOUBLE QUOTATION MARK} chega.",
+        id="a-comma-before-a-closing-quote",
+    ),
+    pytest.param(
+        "Rute (1\N{EN DASH}5, B3) fica.",
+        "pt",
+        "Rute (1\N{EN DASH}5) fica.",
+        id="a-comma-after-a-range-before-a-closing-bracket",
+    ),
+    pytest.param(
+        "Vejam: B3, o que acontece?",
+        "pt",
+        "Vejam. O que acontece?",
+        id="a-colon-wins-over-the-codes-comma",
+    ),
+    pytest.param(
+        "Pensem:\n- B3, o que Noemi sente?",
+        "pt",
+        "Pensem. O que Noemi sente?",
+        id="a-colon-wins-over-the-codes-comma-in-a-list",
+    ),
+    pytest.param("Ela fala?B3, Fim.", "pt", "Ela fala? Fim.", id="a-code-glued-to-a-question-mark"),
+    pytest.param("B3; B4 chegam.", "pt", "chegam.", id="two-codes-apart-that-open-a-sentence"),
+    pytest.param(
+        "Noemi. B3; B4 chegam.", "pt", "Noemi. chegam.", id="two-codes-apart-after-a-full-stop"
+    ),
+    pytest.param("Noemi; B3; B4; Rute.", "pt", "Noemi; Rute.", id="two-codes-apart-in-a-clause"),
+    pytest.param("B3: B4: Rute fica.", "pt", "Rute fica.", id="two-codes-each-with-its-colon"),
 ]
 
 
 @pytest.mark.parametrize("text, language, expected", _SEAMS)
 def test_the_seam_where_a_code_stood_is_mended(text: str, language: str, expected: str) -> None:
     assert speakable_text(text, language) == expected
+
+
+_SEAM_INPUTS = [pytest.param(*case.values[:2], id=case.id) for case in _SEAMS]
+
+
+def _words_the_mend_keeps(text: str) -> list[str]:
+    named = speakable._NAMED_BY_ITS_SLUG.sub(
+        lambda link: link[1].replace("-", " "), strip_markdown(text)
+    )
+    return sorted(_words_in_order(speakable._CANON_CODE.sub(" ", named)))
+
+
+@pytest.mark.parametrize("text, language", _SEAM_INPUTS)
+def test_the_mend_drops_no_word_but_the_codes_and_the_joiners_between_them(
+    text: str, language: str
+) -> None:
+    assert sorted(_words_in_order(speakable_text(text, language))) == _words_the_mend_keeps(text)
 
 
 @pytest.mark.parametrize("text, language, expected", _SEAMS)
@@ -1098,3 +1189,14 @@ def test_a_language_outside_the_table_loses_its_marks_and_its_folded_questions_b
         speakable_text("**Noemí** pregunta: ¿dónde trabajaste hoy? YHWH lo sabe.", "es")
         == "Noemí pregunta. ¿dónde trabajaste hoy? YHWH lo sabe."
     )
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        pytest.param("Texto \x00 com nulo.", "Texto com nulo.", id="alone"),
+        pytest.param("Fim. \x00, e mais.", "Fim. , e mais.", id="before-a-joiner"),
+    ],
+)
+def test_a_null_character_in_the_text_is_never_read_as_a_seam(text: str, expected: str) -> None:
+    assert speakable_text(text, "pt") == expected
