@@ -77,7 +77,16 @@ from scripts.golden_checks import (
     moment_after_reply,
     moment_at_turn_start,
 )
-from scripts.golden_spend import OVER_BUDGET, budget_of, priced, split, stopped, uncounted
+from scripts.golden_spend import (
+    OVER_BUDGET,
+    Call,
+    budget_of,
+    budgeted,
+    priced,
+    split,
+    stopped,
+    uncounted,
+)
 from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -613,14 +622,25 @@ def _seconds(values: list[int]) -> str:
     return f"{low:.0f} a {high:.0f} s (mediana ≈ {statistics.median(values) / 1000:.0f} s)"
 
 
-def _paid(results: list[SessionResult]) -> list[tuple[str, str, float | None]]:
+def _paid(results: list[SessionResult]) -> list[Call]:
     calls = [call for result in results for turn in result.played for call in turn.usage]
     calls += [call for result in results for call in result.judge_usage]
-    return [(call.role, call.rung, call.cost_usd) for call in calls]
+    return [
+        Call(
+            call.role,
+            call.rung,
+            call.cost_usd,
+            call.input_tokens,
+            call.output_tokens,
+            call.cache_read_tokens or 0,
+            call.cache_write_tokens or 0,
+        )
+        for call in calls
+    ]
 
 
 def _spent(results: list[SessionResult]) -> float:
-    return sum(priced(_paid(results))[0].values())
+    return budgeted(_paid(results))
 
 
 def summary(
@@ -751,8 +771,8 @@ def finish(
 ) -> int:
     if not not_started:
         return close(results, out=out, base_url=base_url, stamp=stamp)
-    by_role, unpriced = priced(_paid(results))
-    spent = sum(by_role.values())
+    unpriced = priced(_paid(results))[1]
+    spent = _spent(results)
     halted = (
         f"Rodada parada pelo orçamento de US$ {budget:.2f}, já em US$ {spent:.2f}. "
         f"Sessões que não começaram: {', '.join(not_started)}."
@@ -864,13 +884,15 @@ def close(
     passed = sum(1 for result in results if result.passed)
     for result in results:
         verdict = "REFUSED" if result.refused else ("PASS" if result.passed else "FAIL")
+        cost = sum(priced(_paid([result]))[0].values())
         print(
             f"  {verdict} · {result.name} · judge={result.judged.lower().replace('—', 'n/a')} "
-            f"· mechanical={len(result.faults)} · cost US$ {_spent([result]):.2f}"
+            f"· mechanical={len(result.faults)} · cost US$ {cost:.2f}"
         )
     by_role, unpriced = priced(_paid(results))
-    if by_role:
-        print(f"\ncost US$ {sum(by_role.values()):.2f} — {split(by_role)}{uncounted(unpriced)}")
+    if by_role or unpriced:
+        table = f" — {split(by_role)}" if by_role else ""
+        print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
     print(f"\n{passed}/{len(results)} golden sessions pass · {out / 'README.md'}")
     return 0 if passed == len(results) else 1
 

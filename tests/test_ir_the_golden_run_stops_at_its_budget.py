@@ -23,7 +23,7 @@ STAMP = "2026-10-08T12-00-00"
 
 
 PRICED = [charged_call("guide", 2.0), charged_call("validator", 1.0)]
-WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None)]
+WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None, input_tokens=0, output_tokens=0)]
 
 
 def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]]) -> list[str]:
@@ -207,11 +207,11 @@ async def test_the_total_and_the_stop_say_how_many_calls_the_budget_could_not_se
     shown = capsys.readouterr()
     assert (
         "golden: budget US$ 5.00 reached at US$ 6.00; not started: P01-b; "
-        "the budget did not count 2 calls with no price\n"
+        "2 calls had no table price; the budget counted them at the highest table price\n"
     ) in shown.err, "um modelo fora da tabela não pode furar o teto sem que ninguém seja avisado"
     assert (
         "\ncost US$ 6.00 — guide US$ 4.00 · validator US$ 2.00; "
-        "the budget did not count 2 calls with no price\n"
+        "2 calls had no table price; the budget counted them at the highest table price\n"
     ) in shown.out
 
 
@@ -226,7 +226,10 @@ async def test_one_call_the_budget_could_not_see_is_a_call_and_not_calls(
 
     await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=100.0))
 
-    assert "the budget did not count 1 call with no price\n" in capsys.readouterr().out
+    assert (
+        "1 call had no table price; the budget counted it at the highest table price\n"
+        in capsys.readouterr().out
+    )
 
 
 async def test_the_readme_of_a_stopped_run_says_it_stopped_and_names_what_it_left(
@@ -320,3 +323,51 @@ async def test_a_session_that_failed_keeps_the_gates_one_when_the_budget_then_st
         "a sessão reprovada é o portão: o 3 só diz que a rodada parou e que nada mais deu errado"
     )
     assert "not started: P01-b" in capsys.readouterr().err, "e a frase da parada sai do mesmo jeito"
+
+
+async def test_an_unpriced_rung_is_budgeted_at_the_dearest_price_and_still_stops_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    unpriced = [charged_call("guide", None, input_tokens=1_000_000, output_tokens=100_000)]
+    opened = _room_charging(monkeypatch, unpriced)
+    the_judge_answers(monkeypatch)
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
+
+    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=5.0))
+
+    shown = capsys.readouterr()
+    assert opened == ["P01"], (
+        "um milhão de tokens de entrada a US$ 10 e cem mil de saída a US$ 50 por milhão são "
+        "US$ 15, e uma rodada cega ao próprio modelo não pode seguir como se fosse de graça"
+    )
+    sentence = "1 call had no table price; the budget counted it at the highest table price"
+    assert f"reached at US$ 15.00; not started: P01-b; {sentence}\n" in shown.err
+    assert f"\ncost US$ 0.00; {sentence}\n" in shown.out, (
+        "o total diz o aviso mesmo quando nenhuma chamada teve preço"
+    )
+
+
+async def test_an_unpriced_rungs_cache_tokens_are_budgeted_at_the_dearest_read_and_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    unpriced = [
+        charged_call(
+            "guide",
+            None,
+            input_tokens=0,
+            output_tokens=0,
+            cache_read_tokens=1_000_000,
+            cache_write_tokens=100_000,
+        )
+    ]
+    opened = _room_charging(monkeypatch, unpriced)
+    the_judge_answers(monkeypatch)
+    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
+
+    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=2.4))
+
+    assert opened == ["P01"]
+    assert "reached at US$ 2.50;" in capsys.readouterr().err, (
+        "um milhão lido a US$ 0.50 e cem mil escritos por uma hora a US$ 20 são US$ 2.50, "
+        "os preços mais altos da tabela para cada tipo de token de cache"
+    )

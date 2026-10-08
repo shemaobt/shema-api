@@ -2,8 +2,10 @@
 
 The price of a call is the room's own, written on the `[llm-usage]` line it reports; this
 module only adds those figures up, so there is no second price table to drift from the
-first. A call the table never priced carries no figure and is counted out loud and left out
-of the sum, in the README's total and in the budget alike.
+first. A call the table never priced carries no figure: the README's total leaves it out and
+says so, and the budget counts it at the dearest price the table holds for each kind of token,
+because a run that gates a model change is the run most likely to meet a rung the table has
+not seen, and a ceiling blind to it would never fire.
 """
 
 from __future__ import annotations
@@ -11,6 +13,9 @@ from __future__ import annotations
 import argparse
 import os
 from collections.abc import Iterable
+from typing import NamedTuple
+
+from app.services.internalization_room.usage import LIST_PRICES
 
 OVER_BUDGET = 3
 BUDGET_ENV = "GOLDEN_BUDGET_USD"
@@ -23,15 +28,48 @@ def budget_of(args: argparse.Namespace) -> float:
     return float(os.environ.get(BUDGET_ENV, DEFAULT_BUDGET_USD))
 
 
-def priced(calls: Iterable[tuple[str, str, float | None]]) -> tuple[dict[str, float], list[str]]:
+class Call(NamedTuple):
+    role: str
+    rung: str
+    cost_usd: float | None
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+
+
+def priced(calls: Iterable[Call]) -> tuple[dict[str, float], list[str]]:
     by_role: dict[str, float] = {}
     unpriced: list[str] = []
-    for role, rung, cost_usd in calls:
-        if cost_usd is None:
-            unpriced.append(rung)
+    for call in calls:
+        if call.cost_usd is None:
+            unpriced.append(call.rung)
         else:
-            by_role[role] = by_role.get(role, 0.0) + cost_usd
+            by_role[call.role] = by_role.get(call.role, 0.0) + call.cost_usd
     return by_role, unpriced
+
+
+def budgeted(calls: list[Call]) -> float:
+    by_role, _ = priced(calls)
+    prices = LIST_PRICES.values()
+    dearest = (
+        max(price.input for price in prices),
+        max(price.output for price in prices),
+        max(price.cache_read for price in prices),
+        max(price.cache_write_1h for price in prices),
+    )
+    guessed = sum(
+        (
+            call.input_tokens * dearest[0]
+            + call.output_tokens * dearest[1]
+            + call.cache_read_tokens * dearest[2]
+            + call.cache_write_tokens * dearest[3]
+        )
+        / 1_000_000
+        for call in calls
+        if call.cost_usd is None
+    )
+    return sum(by_role.values()) + guessed
 
 
 def split(by_role: dict[str, float]) -> str:
@@ -41,8 +79,11 @@ def split(by_role: dict[str, float]) -> str:
 def uncounted(unpriced: list[str]) -> str:
     if not unpriced:
         return ""
-    plural = "s" if len(unpriced) > 1 else ""
-    return f"; the budget did not count {len(unpriced)} call{plural} with no price"
+    many = len(unpriced) > 1
+    return (
+        f"; {len(unpriced)} call{'s' if many else ''} had no table price; "
+        f"the budget counted {'them' if many else 'it'} at the highest table price"
+    )
 
 
 def stopped(

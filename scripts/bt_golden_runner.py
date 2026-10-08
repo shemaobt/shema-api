@@ -42,7 +42,16 @@ from typing import Any
 import httpx
 
 from scripts.bt_golden_checks import check_round
-from scripts.golden_spend import OVER_BUDGET, budget_of, priced, split, stopped, uncounted
+from scripts.golden_spend import (
+    OVER_BUDGET,
+    Call,
+    budget_of,
+    budgeted,
+    priced,
+    split,
+    stopped,
+    uncounted,
+)
 
 BT_DIR = Path(__file__).resolve().parent.parent / "golden/bt"
 
@@ -234,23 +243,24 @@ async def run(args: argparse.Namespace) -> int:
     budget = budget_of(args)
     paths = scripts_to_play(args)
     codes: list[int] = []
-    paid: list[tuple[str, str, float | None]] = []
+    paid: list[Call] = []
     not_started: list[str] = []
     for position, path in enumerate(paths):
-        if sum(priced(paid)[0].values()) >= budget:
+        if budgeted(paid) >= budget:
             not_started = [later.stem for later in paths[position:]]
             break
         code, played = await play_script(path, args)
         codes.append(code)
         paid += _paid(played)
     by_role, unpriced = priced(paid)
-    if by_role:
-        print(f"\ncost US$ {sum(by_role.values()):.2f} — {split(by_role)}{uncounted(unpriced)}")
+    if by_role or unpriced:
+        table = f" — {split(by_role)}" if by_role else ""
+        print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
     if not_started:
         message = stopped(
             "bt golden",
             budget=budget,
-            spent=sum(by_role.values()),
+            spent=budgeted(paid),
             not_started=not_started,
             unpriced=unpriced,
         )
@@ -259,9 +269,19 @@ async def run(args: argparse.Namespace) -> int:
     return max(codes)
 
 
-def _paid(played: list[Played]) -> list[tuple[str, str, float | None]]:
+def _paid(played: list[Played]) -> list[Call]:
     return [
-        (call["role"], call["rung"], call["cost_usd"]) for line in played for call in line.usage
+        Call(
+            call["role"],
+            call["rung"],
+            call["cost_usd"],
+            call["input_tokens"],
+            call["output_tokens"],
+            call["cache_read_tokens"] or 0,
+            call["cache_write_tokens"] or 0,
+        )
+        for line in played
+        for call in line.usage
     ]
 
 

@@ -21,7 +21,7 @@ from tests.golden_spend_harness import charged_call, the_room_answers
 BASE_URL = "http://room/api/internalization-room/text-seam/back-translation/"
 
 PRICED = [charged_call("analyst", 2.0), charged_call("speaker", 1.0)]
-WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None)]
+WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None, input_tokens=0, output_tokens=0)]
 
 
 def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]]) -> list[str]:
@@ -152,11 +152,11 @@ async def test_the_total_and_the_stop_say_how_many_calls_the_budget_could_not_se
     shown = capsys.readouterr()
     assert (
         "bt golden: budget US$ 5.00 reached at US$ 6.00; not started: P02-b; "
-        "the budget did not count 2 calls with no price\n"
+        "2 calls had no table price; the budget counted them at the highest table price\n"
     ) in shown.err
     assert (
         "\ncost US$ 6.00 — analyst US$ 4.00 · speaker US$ 2.00; "
-        "the budget did not count 2 calls with no price\n"
+        "2 calls had no table price; the budget counted them at the highest table price\n"
     ) in shown.out
 
 
@@ -199,3 +199,22 @@ async def test_a_failed_check_keeps_the_gates_one_when_the_budget_then_stops_the
         "um check reprovado é o portão: o 3 só diz que a rodada parou e que nada mais deu errado"
     )
     assert "not started: P02-b" in capsys.readouterr().err
+
+
+async def test_an_unpriced_rung_is_budgeted_at_the_dearest_price_and_still_stops_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    unpriced = [charged_call("analyst", None, input_tokens=1_000_000, output_tokens=100_000)]
+    opened = _room_charging(monkeypatch, unpriced)
+    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 1))
+
+    await bt_golden_runner.run(_args(tmp_path / "reports", budget_usd=5.0))
+
+    shown = capsys.readouterr()
+    assert opened == ["P01"], (
+        "um milhão de tokens de entrada a US$ 10 e cem mil de saída a US$ 50 por milhão são "
+        "US$ 15, e uma rodada cega ao próprio modelo não pode seguir como se fosse de graça"
+    )
+    sentence = "1 call had no table price; the budget counted it at the highest table price"
+    assert f"reached at US$ 15.00; not started: P02-b; {sentence}\n" in shown.err
+    assert f"\ncost US$ 0.00; {sentence}\n" in shown.out

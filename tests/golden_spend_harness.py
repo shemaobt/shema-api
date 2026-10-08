@@ -15,14 +15,16 @@ def charged_call(
     *,
     input_tokens: int = 1000,
     output_tokens: int = 50,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
 ) -> dict[str, Any]:
     return {
         "role": role,
         "rung": "claude-fable-5-1",
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_write_tokens": cache_write_tokens,
         "latency_ms": 1000,
         "cost_usd": cost,
     }
