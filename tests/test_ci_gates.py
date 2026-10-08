@@ -148,7 +148,7 @@ def test_the_test_workflow_runs_on_a_push_to_main_and_the_other_gates_stay_narro
     assert {"main", INTEGRATION_GLOB} <= pushed["test.yml"], pushed["test.yml"]
     for filename, branches in pushed.items():
         assert not branches & ALWAYS_TOO_BROAD, f"{filename} would run on every push: {branches}"
-    for filename in ("checks.yml", "migrations.yml"):
+    for filename in GATES.keys() - {"test.yml"}:
         assert not pushed[filename] & TOO_BROAD, f"{filename} would run on main: {pushed[filename]}"
 
 

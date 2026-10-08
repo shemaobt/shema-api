@@ -19,8 +19,10 @@ Re-rendering is a person's job: nothing in the suite does it, and nothing in the
 the bundle.
 
 A run also writes the app's `clip_hashes.json` beside each language's manifest, or under
-`--clip-hashes DIR/<language>/`: the sha256 of every mp3 in the folder, with the ones this run
-did not produce listed as `unrendered`. A run that cannot name the api commit renders nothing.
+`--clip-hashes DIR/<language>/`: the sha256 of every mp3 in the folder, with the ones the manifest
+does not vouch for as current listed as `unrendered`: a line that failed, or a clip approved by
+hand like `sem_conexao.mp3`, but not a line skipped because it was already up to date.
+A run that cannot name the api commit renders nothing.
 
 One bundle per language, each rendered in that language's own voice. A team never hears two
 languages in one session, so a language whose notices are unwritten is not filled in from
