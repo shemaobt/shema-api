@@ -177,6 +177,19 @@ def test_a_hung_job_turns_red_instead_of_staying_pending_for_hours(
     assert timeout == minutes, f"{filename}:{job} timeout-minutes is {timeout}, not {minutes}"
 
 
+def _the_pytest_step() -> dict:
+    steps = _workflow("test.yml")["jobs"]["test"]["steps"]
+    running = [step for step in steps if "pytest" in step.get("run", "")]
+    assert len(running) == 1, f"test.yml runs pytest in {len(running)} steps"
+    return running[0]
+
+
+def test_a_hang_in_the_tests_is_stopped_at_twelve_minutes_whatever_setup_took() -> None:
+    timeout = _the_pytest_step().get("timeout-minutes")
+
+    assert timeout == 12, f"the pytest step's timeout-minutes is {timeout}, not 12"
+
+
 def _checks_steps() -> list[dict]:
     jobs = _workflow("checks.yml")["jobs"]
     assert "checks" in jobs, f"checks.yml defines {sorted(jobs)}, not a single `checks` job"
