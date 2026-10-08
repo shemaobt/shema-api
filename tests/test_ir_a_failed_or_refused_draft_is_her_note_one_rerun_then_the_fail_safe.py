@@ -154,3 +154,51 @@ async def test_a_voice_refused_twice_is_rerun_once_then_the_fail_safe_with_no_th
     )
     assert outcome.used_fail_safe is True
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+
+
+async def test_a_send_back_with_three_issues_is_one_redraft_with_her_note_as_its_own_message(
+    the_wire,
+) -> None:
+    sent_back = {
+        "verdict": "regenerate",
+        "issues": [
+            {
+                "problem": "imported_knowledge",
+                "claim": "Rute era moabita",
+                "explanation": "o mapa não diz de que povo ela era",
+            },
+            {
+                "problem": "invented_detail",
+                "claim": "Noemi chorou",
+                "explanation": "não há choro no mapa",
+            },
+            {
+                "problem": "altered_tone",
+                "claim": "disse com raiva",
+                "explanation": "o mapa a deixa calma",
+            },
+        ],
+    }
+    wire = the_wire(TheWire(verdicts=[sent_back, PASS]))
+
+    outcome = await _a_turn_on_the_wire()
+
+    assert outcome.redrafts == 1
+    first, redraft = wire.guide_requests
+    assert first["messages"] == [
+        {"role": "user", "content": "A fome chegou e eles partiram."},
+    ]
+    assert redraft["messages"] == [
+        {"role": "user", "content": "A fome chegou e eles partiram."},
+        {
+            "role": "user",
+            "content": "(internal redraft note — the previous draft carried something the map "
+            "does not support: imported_knowledge: Rute era moabita — o mapa não diz de que "
+            "povo ela era; invented_detail: Noemi chorou — não há choro no mapa; altered_tone: "
+            "disse com raiva — o mapa a deixa calma. Redraft the same answer, as fully as the "
+            "team's request deserves, using only what the map contains.)",
+        },
+    ], (
+        "a nota ia colada às palavras da equipe, sob '## Rewrite note', na mesma mensagem; "
+        "no app dela é uma mensagem própria, depois do que a equipe disse"
+    )

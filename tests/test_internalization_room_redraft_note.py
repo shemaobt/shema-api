@@ -170,7 +170,7 @@ async def test_a_portuguese_session_sent_back_reads_her_english_note(patch_agent
 
     await _portuguese_turn()
 
-    assert agent.guide_inputs[1].split("## Rewrite note", 1)[1].strip() == (
+    assert agent.guide_inputs[1] == (
         "(internal redraft note — the previous draft carried something the map does not "
         "support: imported_knowledge: Rute era moabita — The map never names her people.. "
         "Redraft the same answer, as fully as the team's request deserves, using only what "
@@ -189,7 +189,7 @@ async def test_a_draft_blanked_for_leaving_the_language_gets_no_note_about_the_l
 
     await _portuguese_turn()
 
-    assert agent.guide_inputs[1].split("## Rewrite note", 1)[1].strip() == (
+    assert agent.guide_inputs[1] == (
         "(internal redraft note — the previous draft carried something the map does not "
         "support: off_bridge_language. Redraft the same answer, as fully as the team's "
         "request deserves, using only what the map contains.)"

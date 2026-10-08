@@ -180,7 +180,8 @@ async def _draft(
     """Ask the Speaker for this turn, with the rewrite note behind it when there is one."""
     user_content = turn
     if redraft_note:
-        user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
+        conversation = [*conversation, Turn(role="user", text=turn)]
+        user_content = redraft_note
     draft: str = await room_agent().turn.call_agent(
         role="guide",
         system_prompt=guide_prompt,
