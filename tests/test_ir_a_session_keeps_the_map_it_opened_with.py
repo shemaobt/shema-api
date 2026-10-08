@@ -10,6 +10,8 @@ the voice and the Validator were handed.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -18,12 +20,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
+from app.services.internalization_room import background
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.sessions import create_session
 from tests.canon_harness import the_canon_moves_on
 from tests.opening_harness import the_tablet_opens
 from tests.release_harness import P, a_claimed_device
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
 from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
+from tests.turn_harness import the_room_agent_is
 
 NEW_PIN = "a" * 40
 VENDORED_LINE = "Close-up and slow."
@@ -34,6 +39,10 @@ VENDORED_RULE = "First oath-scene in the pilot."
 KEPT_RULE = "THE KEPT RULE: THE FIRST OATH-SCENE."
 VENDORED_SILENCE = "Naomi names no place;"
 KEPT_SILENCE = "THE KEPT SILENCE: NAOMI NAMES NO PLACE;"
+BEINGS = "**3A — Beings**\n"
+ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
+NAOMI_IN_THE_FIRST_SCENE = '"being_id": "B3",\n            "role_in_scene": "MOTHER_IN_LAW",'
+DROPPED_BEAD = "being:S1:B2"
 
 
 def _rewrite(tree: Path, folder: str, pericope: str, old: str, new: str) -> None:
@@ -52,6 +61,31 @@ def _the_kept_p01_opens_its_own_way(tree: Path) -> None:
 def _the_kept_p03_has_its_own_rule_and_silence(tree: Path) -> None:
     _rewrite(tree, "compilation-log", "P03", VENDORED_RULE, KEPT_RULE)
     _rewrite(tree, "meaning-coordinates", "P03", VENDORED_SILENCE, KEPT_SILENCE)
+
+
+def _the_kept_p03_has_its_own_beings(tree: Path) -> None:
+    _rewrite(tree, "meaning-map", "P03", BEINGS, BEINGS + ELIMELECH)
+    names = tree / "vendor" / "registry" / "ruth.aliases.json"
+    names.write_text(
+        names.read_text(encoding="utf-8").replace(
+            '"english": "Elimelech",', '"english": "Elimelech as kept",'
+        )
+    )
+    (coordinates,) = (tree / "vendor" / "meaning-coordinates").glob("P03-*.md")
+    coordinates.write_text(
+        coordinates.read_text(encoding="utf-8").replace(
+            NAOMI_IN_THE_FIRST_SCENE,
+            NAOMI_IN_THE_FIRST_SCENE.replace(
+                "\n", '\n            "referential_form": "STRIPPED_TO_HA_ISHAH",\n', 1
+            ),
+            1,
+        )
+    )
+
+
+@asynccontextmanager
+async def _handed(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
+    yield db_session
 
 
 class Prompts:
@@ -136,6 +170,57 @@ async def test_a_session_open_when_a_new_canon_is_published_is_held_to_its_own_n
     assert KEPT_RULE in validator, "o Validador conferiu contra as regras do canon novo"
     assert KEPT_SILENCE in validator, "o Validador guardou os silêncios do canon novo"
     assert VENDORED_RULE not in validator and VENDORED_SILENCE not in validator
+
+
+async def test_the_ledger_of_a_session_open_when_a_new_canon_is_published_names_its_own_beings(
+    client, db_session, prompts, monkeypatch, tmp_path
+) -> None:
+    _, tablet = await a_claimed_device(db_session)
+    _, newcomer = await a_claimed_device(db_session, email="nov@example.com")
+    opened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_its_own_beings)
+    after = await the_tablet_opens(client, newcomer, {"pericope": P, "language": "pt"})
+    await the_team_says(client, newcomer, after["session_id"], "na nova")
+    start = len(prompts.read)
+    await the_team_says(client, tablet, opened["session_id"], "depois")
+    guide, _ = prompts.since(start)
+
+    assert "Elimelech as kept @ S1" in guide, "a contagem perdeu a conta que o canon novo tirou"
+    assert "the woman @ S1" in guide, "a conta da cena 1 levou o nome que o canon novo dá"
+    assert "Naomi @ S1" not in guide
+
+
+async def test_a_settle_of_a_session_open_when_a_new_canon_is_published_still_works_a_bead_the_new_canon_dropped(  # noqa: E501
+    db_session, monkeypatch, tmp_path
+) -> None:
+    kept_session = await create_session(db_session, pericope=P)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_its_own_beings)
+    await create_session(db_session, pericope=P)
+    shown: list[str] = []
+
+    async def classifier(*, system_prompt: str, **_: Any) -> str:
+        shown.append(system_prompt)
+        engaged = {"element_id": DROPPED_BEAD, "new_status": "engaged", "evidence": "Elimeleque"}
+        return json.dumps({"decisions": [engaged]})
+
+    the_room_agent_is(monkeypatch, classifier=classifier)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    await background.settle_coverage(
+        session_id=kept_session.id,
+        turn_id="depois",
+        team_utterance="Elimeleque tinha morrido",
+        guide_response="E o que mais?",
+        pericope_num=P,
+    )
+    await db_session.refresh(kept_session)
+
+    assert any(DROPPED_BEAD in offer for offer in shown), (
+        "o classificador não viu a conta do canon da sessão"
+    )
+    assert kept_session.coverage_state[DROPPED_BEAD] == "engaged", (
+        "a conta que o canon novo tirou foi descartada no meio da sessão"
+    )
 
 
 async def test_the_story_so_far_of_a_session_open_when_a_new_canon_is_published_is_its_own_canons(

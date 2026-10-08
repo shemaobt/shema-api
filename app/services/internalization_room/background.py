@@ -18,6 +18,7 @@ from app.services.internalization_room.back_translation import (
     rehearsed_parts,
     untold_parts,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
@@ -70,16 +71,17 @@ async def settle_coverage(
                     session = await get_session(db, session_id)
                 coverage_state = session.coverage_state or {}
                 classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
-                updated = await classify_coverage(
-                    coverage_state=coverage_state,
-                    team_utterance=team_utterance,
-                    guide_response=guide_response,
-                    classifier_prompt=classifier_prompt,
-                    pericope_num=pericope_num,
-                    session_language=LANGUAGE_NAMES[session.language],
-                )
-                async with AsyncSessionLocal() as db:
-                    settled = await apply_coverage(db, session_id, updated)
+                with reading_the_canon_of(session.canon_pin):
+                    updated = await classify_coverage(
+                        coverage_state=coverage_state,
+                        team_utterance=team_utterance,
+                        guide_response=guide_response,
+                        classifier_prompt=classifier_prompt,
+                        pericope_num=pericope_num,
+                        session_language=LANGUAGE_NAMES[session.language],
+                    )
+                    async with AsyncSessionLocal() as db:
+                        settled = await apply_coverage(db, session_id, updated)
             settled_frame = CoverageFrame(
                 turn_id=turn_id, status="settled", coverage=coverage_view(settled)
             )

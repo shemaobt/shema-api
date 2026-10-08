@@ -6,6 +6,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from app.services.internalization_room.canon.kept import canon_path, per_canon
 from app.services.internalization_room.canon.parse_map import VENDOR, MeaningMap, Scene
 
 logger = logging.getLogger(__name__)
@@ -29,9 +30,9 @@ _RETIRED_OR_RESERVED = re.compile(r"\[(retired|reserved)", re.I)
 _RETIRED_KEY = re.compile(r"_RETIRED$", re.I)
 
 
-@lru_cache(maxsize=8)
+@per_canon(maxsize=8)
 def _names_list(book: str) -> dict[str, dict]:
-    path = REGISTRY_DIR / f"{book.lower()}.aliases.json"
+    path = canon_path(REGISTRY_DIR) / f"{book.lower()}.aliases.json"
     entities: dict[str, dict] = json.loads(path.read_text(encoding="utf-8"))["entities"]
     return entities
 
@@ -44,9 +45,9 @@ def _passage_labels() -> dict[str, dict[str, dict[str, str]]]:
     return labels
 
 
-@lru_cache(maxsize=64)
+@per_canon(maxsize=64)
 def _beings_by_scene(pericope_num: str) -> dict[int, list[dict]]:
-    path = next(COORDINATES_DIR.glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
+    path = next(canon_path(COORDINATES_DIR).glob(f"{pericope_num}-*-MEANING-COORDINATES.md"))
     fenced = path.read_text(encoding="utf-8").split("```json\n", 1)[1].split("\n```", 1)[0]
     coordinates = json.loads(fenced)
     return {
