@@ -32,6 +32,7 @@ from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
 from app.services.internalization_room.canon.kept import canon_path
 from app.services.internalization_room.canon.parse_map import load_book
+from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.coverage import CoverageStatus
 
 LABELS_DIR = Path(__file__).parent / "element-labels"
@@ -111,7 +112,9 @@ def labelled_elements(
         )
 
     return [
-        LabelledElement(
+        _scene(pericope_num, element)
+        if element.kind is ElementKind.SCENE
+        else LabelledElement(
             key=element.key,
             kind=element.kind,
             scene=element.scene,
@@ -124,6 +127,16 @@ def labelled_elements(
         )
         for element in elements
     ]
+
+
+def _scene(pericope_num: str, element: Element) -> LabelledElement:
+    return LabelledElement(
+        key=element.key,
+        kind=element.kind,
+        scene=element.scene,
+        label_pt=scene_title(pericope_num, element.scene, element.label, "pt"),
+        label_en=element.label,
+    )
 
 
 def _from_the_canon(element: Element) -> LabelledElement:
