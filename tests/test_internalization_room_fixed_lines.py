@@ -354,7 +354,7 @@ def test_a_run_that_fails_on_the_second_line_leaves_the_manifest_and_clip_hashes
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
-    landed, failed = render.catalogue("pt")
+    landed, failed, *_ = render.catalogue("pt")
     answers = iter(
         [
             SimpleNamespace(status_code=200, content=b"new sound", text=""),
@@ -399,3 +399,27 @@ def test_the_clip_hashes_file_goes_to_the_directory_the_flag_names(
         assert (elsewhere / language / "clip_hashes.json").exists()
         assert not (bundle / language / "clip_hashes.json").exists()
         assert (bundle / language / render.MANIFEST).exists()
+
+
+def test_a_write_interrupted_on_a_line_whose_audio_was_missing_leaves_check_naming_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    elevenlabs: SimpleNamespace,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    missing, *_ = render.catalogue("pt")
+    (tmp_path / "pt" / f"{missing}.mp3").unlink()
+
+    def interrupted(self: Path, data: bytes) -> int:
+        self.open("wb").write(data[:2])
+        raise OSError("interrupted")
+
+    monkeypatch.setattr(Path, "write_bytes", interrupted)
+    with pytest.raises(OSError, match="interrupted"):
+        run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
+    monkeypatch.undo()
+
+    capsys.readouterr()
+    assert run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt", "--check") == 1
+    assert f"pt/{missing}" in capsys.readouterr().out

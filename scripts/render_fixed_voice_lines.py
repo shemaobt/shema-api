@@ -225,6 +225,7 @@ async def render(
             if not force and clip.exists() and manifest.get(name) == made_of:
                 print(f"  = {language_code}/{name}")
                 continue
+            manifest.pop(name, None)
             speech = await render_facilitator_speech(
                 text, language=language_code, store=_NoCache(), client=client
             )
