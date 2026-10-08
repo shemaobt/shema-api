@@ -52,6 +52,7 @@ if not (_NUMBERED and _NAMED):
     )
 _SCENE = re.split(r"[^A-Z]", scene_code(1))[0]
 _SPACE = r"[ \t\u00a0]"
+_CLOSE = r"[\"\u201d\u2019')\]\u00bb]"
 
 #: A code is one of those, or an all-caps name of two or more words joined by underscores
 #: (`THE_LAND_AFFLICTED_BY_FAMINE`, `OBJECT_KIND`) — never a lone all-caps word like `LORD`.
@@ -72,55 +73,75 @@ _ONE_CODE = (
     rf"|(?<!\w){_CODE}(?:-\w+|/{_CODE})*(?!\w)"
 )
 
-#: A list of codes goes with its commas and its "e" or "and", and a range with its "a", "to"
-#: or en dash, so nothing is left to join when every code is gone.
-_JOINER = rf"(?:,{_SPACE}*|{_SPACE}+(?:e|and|a|to){_SPACE}+|{_SPACE}*\u2013{_SPACE}*)"
+#: A list of codes goes with its commas and its "e" or "and", and a range with its "a", "to",
+#: dash or spaced hyphen, so nothing is left to join when every code is gone.
+_JOINER = (
+    rf"(?:,{_SPACE}*|{_SPACE}+(?:e|and|a|to){_SPACE}+|{_SPACE}*[\u2013—]{_SPACE}*"
+    rf"|{_SPACE}+-{_SPACE}+)"
+)
 _CANON_CODE = re.compile(rf"(?:{_ONE_CODE})(?:{_JOINER}(?:{_ONE_CODE}))*")
 
-#: What a removal can leave behind, and the order `_mend` applies it in: brackets and quotes that
-#: held only the code, then the dash pairs that framed it and the comma it left inside a pair it
-#: did not frame, then a chain of marks cut down to one (a weak mark before a strong one goes,
-#: then a weak mark after `!` or `?`), then any mark left where a sentence now starts, then the
-#: spaces, and last a full stop doubled by the abbreviation's own. The order matters: the
-#: spaces are collapsed before the stops are, so the earlier steps can leave them for it, and
-#: the comma inside a pair goes before a dash beside a mark would take the pair's dash with it.
-_EMPTY_BRACKETS = re.compile(
-    rf"\({_SPACE}*[,;/\u2013—-]*{_SPACE}*\)|\[{_SPACE}*[,;/\u2013—-]*{_SPACE}*\]"
-)
-_EMPTY_QUOTES = re.compile(
-    rf"\"{_SPACE}*\"|\u201c{_SPACE}*\u201d|\u00ab{_SPACE}*\u00bb|\u2018{_SPACE}*\u2019"
-)
-_DOUBLED_STOP = re.compile(r"(?<!\.)\.{2}(?!\.)")
+#: Where a code was removed. No text the room voices carries it, so every mend below is anchored
+#: to it and reaches only the seam a code left: a mark with no seam beside it is never touched.
+_SEAM = "\x00"
+_SEAMS_IN_A_ROW = re.compile(rf"{_SEAM}(?:{_SPACE}*{_SEAM})+")
+
 _DASH = r"(?:[\u2013—]|(?<!\S)-(?!\S))"
-_DASH_PAIR = re.compile(rf"{_DASH}\s*{_DASH}")
-_COMMA_AFTER_A_DASH = re.compile(rf"(?<=[\u2013—-]){_SPACE}+,")
-_COMMA_BEFORE_A_DASH = re.compile(rf",{_SPACE}{{2,}}(?={_DASH})")
-_DASH_BEFORE_CLOSE = re.compile(rf"{_SPACE}*{_DASH}{_SPACE}*(?=[.,;:!?]|$)")
-_MARKS_BEFORE_COMMA = re.compile(rf"[,;:]{_SPACE}*,")
-_MARK_BEFORE_CLOSE = re.compile(rf"[,;:](?={_SPACE}*[.!?])|,(?={_SPACE}*[;:])")
-_MARK_AFTER_STRONG = re.compile(rf"(?<=[!?]){_SPACE}*[,;:]")
-_SPACE_RUN = re.compile(rf"{_SPACE}{{2,}}")
-_SPACE_BEFORE_MARK = re.compile(rf"{_SPACE}+(?=[,.;:!?)\]])")
-_EDGE_SPACE = re.compile(rf"^{_SPACE}+|(?:{_SPACE}|[,;\u2013—]|(?<!\S)-)+$")
+_DASH_CHARACTER = re.compile(_DASH)
+_WEAK_MARK = r"[,;:]"
+_WORD_JOINER = rf"(?:e|and)(?={_SPACE})"
+
+#: What a removal can leave beside its seam, in the order `_mend` reads it. Brackets and quotes
+#: that held only the code go with it. Two dashes around it go too when they framed it, but when
+#: the first one closes a pair the sentence already opened, only the code's own second dash goes.
+#: A comma left between the code and a dash goes. Between two joiners, the survivors keep the one
+#: they had between them. Where the code opened a sentence — at the text's edge or past a
+#: sentence end — any mark it left goes, a full stop included but never an ellipsis; where it
+#: opened a clause — after a colon, a dash, an opening quote or bracket — the weak marks and the
+#: joiner it left go. Last, a weak mark before a strong one goes, a weak mark after `!` or `?`
+#: goes, a dash before a closing mark goes, and a full stop doubled across the seam is read once.
+_ENCLOSED = re.compile(
+    rf"[(\[]{_SPACE}*[,;/\u2013—-]*{_SPACE}*{_SEAM}{_SPACE}*[,;/\u2013—-]*{_SPACE}*[)\]]"
+    rf"|\"{_SPACE}*{_SEAM}{_SPACE}*\"|\u201c{_SPACE}*{_SEAM}{_SPACE}*\u201d"
+    rf"|\u00ab{_SPACE}*{_SEAM}{_SPACE}*\u00bb|\u2018{_SPACE}*{_SEAM}{_SPACE}*\u2019"
+)
+_FRAMED = re.compile(rf"({_DASH}){_SPACE}*{_SEAM}{_SPACE}*{_DASH}")
+_COMMA_BEFORE_A_DASH = re.compile(rf",{_SPACE}*{_SEAM}(?={_SPACE}*{_DASH})")
+_BETWEEN_JOINERS = re.compile(
+    rf"(?P<left>,|[;:]|(?<=\s)(?:e|and)){_SPACE}*{_SEAM}{_SPACE}*(?P<right>,|{_WORD_JOINER})"
+)
+_SENTENCE_OPENING = re.compile(
+    rf"(?:^|(?<=[.!?\u2026]{_SPACE})|(?<=[.!?\u2026]{_CLOSE}{_SPACE})){_SEAM}"
+    rf"(?:{_SPACE}*(?:[,;:!?\u2013—]|\.(?![.\w])|-(?!\S)|{_WORD_JOINER}))+"
+)
+_CLAUSE_OPENING = re.compile(
+    rf"(?:(?<=[(\[\u201c\u00ab\u2018\"])|(?<=[:;\u2013—]{_SPACE})|(?<=\s-{_SPACE})){_SEAM}"
+    rf"(?:{_SPACE}*(?:{_WEAK_MARK}|-(?!\S)|{_WORD_JOINER}))+"
+)
+_WEAK_BEFORE_STRONG = re.compile(
+    rf"{_WEAK_MARK}{_SPACE}*{_SEAM}(?={_SPACE}*[.!?])|,{_SPACE}*{_SEAM}(?={_SPACE}*[;:])"
+)
+_WEAK_AFTER_STRONG = re.compile(rf"{_SEAM}({_SPACE}*[!?]){_SPACE}*{_WEAK_MARK}")
+_DASH_BEFORE_CLOSE = re.compile(rf"{_DASH}{_SPACE}*{_SEAM}(?={_SPACE}*(?:[.,;:!?]|$))")
+_DOUBLED_STOP = re.compile(rf"(?<=\.){_SPACE}*{_SEAM}{_SPACE}*\.(?!\.)")
+_SEAM_AT_AN_EDGE = re.compile(
+    rf"^{_SPACE}*{_SEAM}{_SPACE}*|{_SPACE}*{_SEAM}{_SPACE}*$"
+    rf"|(?<=[(\[\u201c\u00ab\u2018\"]){_SPACE}*{_SEAM}{_SPACE}*"
+)
+_SEAM_BEFORE_A_MARK = re.compile(
+    rf"(?P<before>.?){_SPACE}*{_SEAM}{_SPACE}*(?=[,.;:!?)\]\u201d\u00bb\"\u2019])"
+)
+_SEAM_BETWEEN_WORDS = re.compile(rf"{_SPACE}*{_SEAM}{_SPACE}*")
 
 _YHWH = re.compile(r"\bYHWH\b")
 
 #: A letter in any script: a word character that is neither a digit nor an underscore.
 _LETTER_CLASS = r"[^\W\d_]"
 _LETTER = re.compile(_LETTER_CLASS)
-_CLOSE = r"[\"\u201d\u2019')\]\u00bb]"
 _OPENERS = "\u201c\u00ab\u2018("
 _CLOSERS = "\u201d\u00bb)"
 _APOSTROPHE = "\u2019"
 _FIRST_LETTER = re.compile(rf"^([\"\u201c\u00ab\u2018'(\[\s]*)({_LETTER_CLASS})")
-
-#: Where a sentence starts — the text's edge, or past a sentence end and its space — any mark
-#: a removed code left is read as nothing: a lone `.` but never an ellipsis, a `:`, a `?`, a
-#: dash or a spaced hyphen.
-_OPENING_DEBRIS = re.compile(
-    rf"(^|[.!?\u2026]{_CLOSE}*{_SPACE})"
-    rf"(?:{_SPACE}*(?:[,;:!?\u2013—]|\.(?![.\w])|-(?!\S)))+"
-)
 
 _TERMINAL_END = re.compile(rf"[.!?\u2026:;]{_CLOSE}*\Z")
 _LINE_END = re.compile(r"\r\n?")
@@ -163,25 +184,46 @@ _SPOKEN_FORM: dict[str, str] = {
 }
 
 
+def _opens_a_pair(text: str, dash_at: int) -> bool:
+    sentence = _SENTENCE_END.split(text[:dash_at])[-1]
+    return len(_DASH_CHARACTER.findall(sentence)) % 2 == 0
+
+
+def _unframed(seam: re.Match[str]) -> str:
+    if _opens_a_pair(seam.string, seam.start()):
+        return f" {_SEAM} "
+    return f"{seam[1]} {_SEAM}"
+
+
+def _one_joiner(seam: re.Match[str]) -> str:
+    if seam["right"] == "," and seam["left"] == ",":
+        return f",{_SEAM}"
+    return f"{_SEAM}{seam['right']}"
+
+
+def _closed_up(seam: re.Match[str]) -> str:
+    before = seam["before"]
+    return f"{before} " if before and before in ".!?\u2026" else before
+
+
 def _mend(text: str) -> str:
     named = _NAMED_BY_ITS_SLUG.sub(lambda link: link[1].replace("-", " "), text)
-    removed = _CANON_CODE.sub("", named)
-    if removed == text:
-        return text
-    mended = _EMPTY_BRACKETS.sub("", removed)
-    mended = _EMPTY_QUOTES.sub("", mended)
-    mended = _DASH_PAIR.sub(" ", mended)
-    mended = _COMMA_AFTER_A_DASH.sub("", mended)
-    mended = _COMMA_BEFORE_A_DASH.sub(" ", mended)
-    mended = _DASH_BEFORE_CLOSE.sub("", mended)
-    mended = _MARKS_BEFORE_COMMA.sub(", ", mended)
-    mended = _MARK_BEFORE_CLOSE.sub("", mended)
-    mended = _MARK_AFTER_STRONG.sub("", mended)
-    mended = _OPENING_DEBRIS.sub(r"\1", mended)
-    mended = _SPACE_RUN.sub(" ", mended)
-    mended = _SPACE_BEFORE_MARK.sub("", mended)
-    mended = _DOUBLED_STOP.sub(".", mended)
-    return _EDGE_SPACE.sub("", mended)
+    marked = _SEAMS_IN_A_ROW.sub(_SEAM, _CANON_CODE.sub(_SEAM, named))
+    if _SEAM not in marked:
+        return named
+    mended = _ENCLOSED.sub(_SEAM, marked)
+    mended = _FRAMED.sub(_unframed, mended)
+    mended = _COMMA_BEFORE_A_DASH.sub(_SEAM, mended)
+    mended = _BETWEEN_JOINERS.sub(_one_joiner, mended)
+    mended = _SENTENCE_OPENING.sub(_SEAM, mended)
+    mended = _CLAUSE_OPENING.sub(_SEAM, mended)
+    mended = _WEAK_BEFORE_STRONG.sub(_SEAM, mended)
+    mended = _WEAK_AFTER_STRONG.sub(rf"{_SEAM}\1", mended)
+    mended = _DASH_BEFORE_CLOSE.sub(_SEAM, mended)
+    mended = _DOUBLED_STOP.sub(_SEAM, mended)
+    mended = _SEAM_AT_AN_EDGE.sub("", mended)
+    mended = _SEAM_BEFORE_A_MARK.sub(_closed_up, mended)
+    return _SEAM_BETWEEN_WORDS.sub(" ", mended)
 
 
 def speakable_text(text: str, language: str) -> str:
