@@ -4,12 +4,12 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# `--no-install-recommends` matches `Dockerfile:17` and the `Install ffmpeg` step of
-# `.github/workflows/test.yml`, which already pass it; this line was the last holdout. Without it
-# `ffmpeg` pulls its full recommends closure — mesa, GTK 3, X11, SDL2, LLVM, the VA/VDPAU video
-# drivers. An API container uses none of them, and production ships none of them: a dev image
-# carrying packages prod lacks is how a missing production dependency stays hidden until it
-# reaches production.
+# `--no-install-recommends` matches the ffmpeg install in `Dockerfile` and the `Install ffmpeg`
+# step of `.github/workflows/test.yml`, which already pass it; this line was the last holdout.
+# Without it `ffmpeg` pulls its full recommends closure — mesa, GTK 3, X11, SDL2, LLVM, the
+# VA/VDPAU video drivers. An API container uses none of them, and production ships none of them: a
+# dev image carrying packages prod lacks is how a missing production dependency stays hidden until
+# it reaches production.
 #
 # It also shrinks, but does not remove, the exposure to a separate network-side failure. The CDN
 # serving deb.debian.org can begin refusing connections partway through a long fetch, and a
