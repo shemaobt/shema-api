@@ -139,7 +139,7 @@ async def speak_back(
         interrupted=interrupted,
     )
     if handed is None:
-        return a_miss(messages, session.language)
+        return a_miss(messages, language)
     outcome = await run_turn(
         transcript=handed.spoken_to_the_guide,
         coverage_state=session.coverage_state or {},

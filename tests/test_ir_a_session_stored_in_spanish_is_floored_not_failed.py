@@ -34,7 +34,12 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
-from tests.hearing_harness import nothing_settles, the_transcriber_hears
+from tests.hearing_harness import (
+    nothing_settles,
+    the_take_lasts,
+    the_transcriber_hears,
+    the_transcriber_hears_no_words,
+)
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import (
     heard_every_part,
@@ -414,4 +419,37 @@ async def test_a_part_is_named_in_the_rooms_language_on_a_row_stored_in_spanish(
     assert pressed.status_code == 200, pressed.text
     assert f"{part} — {_scene_title(TITLED, 2, floor)}" in room.briefs[-1], (
         "o veredito de uma sessão guardada em espanhol nomeava a parte na língua errada"
+    )
+
+
+@pytest.mark.parametrize(
+    ("floor", "line"),
+    [
+        ("en", "Sorry, I didn't quite catch that — could you say it again?"),
+        ("pt", "Desculpa, não consegui ouvir direito — podem repetir?"),
+    ],
+)
+async def test_a_miss_on_a_row_stored_in_spanish_is_kept_in_the_rooms_language(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    floor: str,
+    line: str,
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, 3_000)
+    session_id = (await _a_row_stored_in_spanish(db_session, PASSAGE)).id
+
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        headers={"X-Room-Key": KEY},
+        files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200, answered.text
+    db_session.expire_all()
+    kept = (await get_session(db_session, session_id)).messages
+    assert [message["text"] for message in kept if message["role"] == "guide"] == [line], (
+        "a conversa guardava a fala de um toque perdido na língua do `es` guardado"
     )
