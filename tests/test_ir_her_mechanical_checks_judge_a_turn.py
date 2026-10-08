@@ -42,6 +42,7 @@ def _turn(**over: Any) -> list[str]:
         "outcome": "pass",
         "expect": UNDERSTAND_FIRST,
         "previous_guide": "Oi, Daniel, oi, Suzuki! Bem-vindos, equipe Terena.",
+        "earlier_guides": ["Oi, Daniel, oi, Suzuki! Bem-vindos, equipe Terena."],
     }
     return mechanical_checks(**{**played, **over})
 
@@ -409,3 +410,123 @@ def test_after_the_fence_closing_line_only_the_microphone_is_said() -> None:
     )
     assert _turn(guide=f"{fence} If you have any questions, ask me.", expect=FENCED) == after
     assert _turn(guide=f"{fence} Lembrem da fome.", expect=FENCED) == after
+
+
+PART_CLOSING_EN = (
+    "What caught your attention in this scene? Talk it over among yourselves. Is this scene "
+    "clear? If you have any questions, ask me. If you have understood it, tell me and we will go "
+    "to the rehearsal."
+)
+#: Her closing as approved on 2026-09-23, with "parte", and the pilot P07 near-closing.
+PART_CLOSING_0923 = PART_CLOSING.replace("nessa cena", "nessa parte").replace(
+    "Essa cena", "Essa parte"
+)
+P07_NEAR = (
+    "Conversem entre vocês. Essa parte ficou clara? Se tiver alguma dúvida, me perguntem. Se já "
+    "entenderam, me digam e a gente vai pro ensaio."
+)
+#: The reminder of her live run of 2026-09-23 22:47, P01-understand-first turn 6.
+REMINDER_MIC = "Quando vocês gravarem essa primeira cena no microfone vermelho, lembrem dele."
+#: The two replies of her live run of 2026-09-23 23:09 to "Entendi. E o que acontece com eles?"
+FENCED_REPLY = (
+    "Em Moabe acontece o resto da história. Mas vocês disseram que já entenderam a primeira parte. "
+    "Então vamos ensaiar ela primeiro, pra ela entrar bem antes de seguir.\n\n"
+    f"{FENCE_OPEN}\n\n{STORY}\n\n{FENCE_CLOSE}\n\n{MIC}"
+)
+WANTED_REPLY = (
+    "A história não diz isso. Ela conta que os dois filhos, Malom e Quiliom, pegaram mulheres de "
+    "Moabe. Uma se chamava Orfa, a outra se chamava Rute. Mas ela não diz qual filho casou com "
+    "qual mulher.\n\nMas isso já é a terceira parte. A gente chega nela daqui a pouco, com calma."
+    f"\n\n{CLOSING_TAIL}"
+)
+WHOLE_PASSAGE_QUESTION = (
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam, e a gente começa pela "
+    "primeira parte."
+)
+NOT_ENDED = (
+    "the part opening does not end with the fixed closing ('O que chamou a atenção de vocês "
+    "nessa cena? … a gente vai pro ensaio.')"
+)
+NO_TAIL = (
+    "the reply to the team's comment or question does not end with the closing's last two "
+    "sentences ('Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai "
+    "pro ensaio.')"
+)
+
+
+def test_a_part_opening_ends_with_her_closing_and_sends_no_one_to_rehearse() -> None:
+    opening = {"part_opening_closing": True}
+    fence_now = "the fenced block was given in the same turn that opens a part"
+    sent = (
+        "the part opening sent the team to rehearse ('Agora podem ensaiar.' or the red "
+        "microphone) before the team said it was ready"
+    )
+    broken = PART_CLOSING.replace("? ", "?\n")
+    assert _turn(guide=f"{STORY}\n\n{broken}\n", expect=opening) == []
+    assert _turn(guide=f"The story of the part. {PART_CLOSING_EN}", expect=opening) == []
+    assert _turn(guide=f"{STORY} {PART_CLOSING_0923}", expect=opening) == [NOT_ENDED], (
+        "o fechamento de 23/09 dizia 'parte'; desde 24/09 é 'cena'"
+    )
+    assert _turn(guide=f"{STORY} {P07_NEAR}", expect=opening) == [NOT_ENDED]
+    assert _turn(guide=f"{STORY} {PART_CLOSING} {FENCE_OPEN}", expect=opening) == [
+        NOT_ENDED,
+        fence_now,
+    ]
+    probe = f"{STORY} {FENCE_CLOSE} {MIC} {PART_CLOSING}"
+    assert _turn(guide=probe, expect=opening) == [sent]
+    next_part = f"Posso, sim. {REMINDER_MIC} Agora vamos pra segunda parte.\n\n{PART_CLOSING}"
+    assert _turn(guide=next_part, expect=opening) == [], (
+        "lembrar do microfone vermelho não é mandar tocar nele"
+    )
+    for mention in (
+        "Antes que vocês toquem no microfone vermelho, lembrem disso.",
+        "Um toque no microfone vermelho = uma cena inteira.",
+        "Toquem no círculo, não no microfone vermelho.",
+        "When you tap the red microphone for the first scene, remember it.",
+    ):
+        assert _turn(guide=f"{mention} {PART_CLOSING}", expect=opening) == [], mention
+    for instruction in (
+        "Toquem de novo no microfone vermelho.",
+        "Tap the red microphone and record your rehearsal of this scene.",
+        "Now you can rehearse.",
+    ):
+        assert _turn(guide=f"{instruction} {PART_CLOSING}", expect=opening) == [sent], instruction
+
+
+def test_a_take_up_ends_with_the_closing_tail_and_gives_no_fence_before_the_team_is_ready() -> None:
+    take_up = {"take_up_closing": True}
+    sent = (
+        "the reply to the team's comment or question sent the team to rehearse ('Agora podem "
+        "ensaiar.' or the red microphone) before the team said it was ready"
+    )
+    assert _turn(guide=WANTED_REPLY, expect=take_up) == []
+    assert _turn(guide=f"Boa pergunta. {PART_CLOSING_0923}", expect=take_up) == []
+    assert _turn(guide=FENCED_REPLY, expect=take_up) == [
+        NO_TAIL,
+        "the fenced block was given before the team said it was ready",
+    ], "a regra (b): 'Entendi. E …?' não é a palavra pra ensaiar"
+    assert _turn(guide=f"Toquem no microfone vermelho. {CLOSING_TAIL}", expect=take_up) == [sent]
+
+
+def test_the_tail_is_asked_for_only_when_the_earlier_guide_turns_left_a_part_open() -> None:
+    if_open = {"take_up_closing_if_open": True}
+    reply = "A história não diz por que ele morreu."
+
+    def after(*earlier: str, guide: str = reply) -> list[str]:
+        return _turn(guide=guide, expect=if_open, earlier_guides=list(earlier))
+
+    assert after(f"{STORY}\n\n{PART_CLOSING}") == [NO_TAIL]
+    assert after(f"Boa pergunta. {CLOSING_TAIL}") == [NO_TAIL]
+    assert after(WHOLE_PASSAGE_QUESTION, WHOLE_PASSAGE_QUESTION) == [], (
+        "a pergunta da passagem inteira não abre parte nenhuma"
+    )
+    assert after() == []
+    assert after(WHOLE_PASSAGE_QUESTION, PART_CLOSING, FENCED_REPLY) == [], "a cerca fecha a parte"
+    assert after(FENCED_REPLY, PART_CLOSING) == [NO_TAIL]
+    assert after(PART_CLOSING, "A história não diz por que ele morreu.") == [NO_TAIL], (
+        "uma resposta sem nenhum dos dois finais deixa a pergunta pras de antes"
+    )
+    assert after(PART_CLOSING, guide=f"{reply} {CLOSING_TAIL}") == []
+    assert after(guide=FENCED_REPLY) == [
+        "the fenced block was given before the team said it was ready"
+    ], "sem parte aberta a cauda não é pedida, mas a cerca nunca vem antes da palavra da equipe"

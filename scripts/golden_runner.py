@@ -376,6 +376,7 @@ async def play(
             outcome=line.outcome,
             expect=turn.expect,
             previous_guide=previous_guide,
+            earlier_guides=[earlier.guide for earlier in played],
         )
         previous_guide = line.guide
         played.append(line)

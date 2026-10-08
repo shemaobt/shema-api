@@ -295,3 +295,43 @@ async def test_a_scene_list_that_is_still_empty_is_told_to_the_judge_as_none(
         "recorded and translated scene rehearsal has reached you: none. Parts with none: S1, "
         "S2, S3.\n"
     ) in judge_transcript(played), "uma lista vazia é o fato, nunca a ausência dele"
+
+
+async def test_her_take_up_check_reads_every_guide_turn_the_runner_played_before_it(
+    seam, tmp_path, monkeypatch
+) -> None:
+    closing = (
+        "Um homem de Belém foi morar em Moabe. O que chamou a atenção de vocês nessa cena? "
+        "Conversem entre vocês. Essa cena ficou clara? Se tiver alguma dúvida, me perguntem. Se "
+        "já entenderam, me digam e a gente vai pro ensaio."
+    )
+    the_models_answer(monkeypatch, closing, None, GUIDE_LINE, None, "Ele morreu lá.", None)
+    path = tmp_path / "P01-a-question-after-the-opening.json"
+    path.write_text(
+        json.dumps(
+            {
+                "name": "P01-a-question-after-the-opening",
+                "pericopeId": "P01",
+                "language": "Brazilian Portuguese",
+                "why": "a part opened two turns before the take-up",
+                "turns": [
+                    {"kickoff": True},
+                    {"team": TEAM_LINE},
+                    {
+                        "team": "Entendi. E o que acontece com ele?",
+                        "expect": {"take_up_closing_if_open": True},
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    script = load_script(path)
+    played: list[Played] = []
+    await play(script, seam, session_id=await open_session(script, seam), played=played)
+
+    assert played[2].mechanical == [
+        "the reply to the team's comment or question does not end with the closing's last two "
+        "sentences ('Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente "
+        "vai pro ensaio.')"
+    ], "a parte aberta dois turnos antes só se vê lendo todas as falas do Guia, não só a última"

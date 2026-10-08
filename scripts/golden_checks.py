@@ -219,12 +219,95 @@ def _fence_faults(guide: str) -> list[str]:
     return faults
 
 
+_PART_CLOSING = (
+    "O que chamou a atenção de vocês nessa cena? Conversem entre vocês. Essa cena ficou clara? "
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
+    "What caught your attention in this scene? Talk it over among yourselves. Is this scene "
+    "clear? If you have any questions, ask me. If you have understood it, tell me and we will go "
+    "to the rehearsal.",
+)
+_CLOSING_TAIL = (
+    "Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e a gente vai pro ensaio.",
+    "If you have any questions, ask me. If you have understood it, tell me and we will go to the "
+    "rehearsal.",
+)
+_TO_THE_RED_MICROPHONE = (
+    _her(
+        r"(?<!\bque\s+(voc[êe]s\s+)?)(?<!\p{L})(toquem|apertem|cliquem)(?!\p{L})"
+        r"(?:(?!\bn[ãa]o\b)[^.!?]){0,30}?\bmicrofone vermelho"
+    ),
+    _her(
+        r"(?<!\b(you|they|we|I)\s+)(?<!\p{L})(tap|press|touch|click)(?!\p{L})"
+        r"(?:(?!\bnot\b)[^.!?]){0,30}?\bred microphone"
+    ),
+)
+
+
+def _ends_with(text: str, lines: tuple[str, ...]) -> bool:
+    return _fold(text).endswith(lines)
+
+
+def _calls_to_rehearse(text: str) -> bool:
+    return _FENCE_CLOSES.search(text) is not None or any(
+        instruction.search(text) for instruction in _TO_THE_RED_MICROPHONE
+    )
+
+
+def _left_part_open(earlier_guides: list[str]) -> bool:
+    for earlier in reversed(earlier_guides):
+        if _ends_with(earlier, _CLOSING_TAIL):
+            return True
+        if _FENCE_OPENS.search(earlier):
+            return False
+    return False
+
+
+def _part_opening_faults(guide: str) -> list[str]:
+    faults = []
+    if not _ends_with(guide, _PART_CLOSING):
+        faults.append(
+            "the part opening does not end with the fixed closing ('O que chamou a atenção de "
+            "vocês nessa cena? … a gente vai pro ensaio.')"
+        )
+    if _FENCE_OPENS.search(guide):
+        faults.append("the fenced block was given in the same turn that opens a part")
+    elif _calls_to_rehearse(guide):
+        faults.append(
+            "the part opening sent the team to rehearse ('Agora podem ensaiar.' or the red "
+            "microphone) before the team said it was ready"
+        )
+    return faults
+
+
+def _take_up_faults(guide: str, *, tail_owed: bool) -> list[str]:
+    faults = []
+    if tail_owed and not _ends_with(guide, _CLOSING_TAIL):
+        faults.append(
+            "the reply to the team's comment or question does not end with the closing's last "
+            "two sentences ('Se tiver alguma dúvida, me perguntem. Se já entenderam, me digam e "
+            "a gente vai pro ensaio.')"
+        )
+    if _FENCE_OPENS.search(guide):
+        faults.append("the fenced block was given before the team said it was ready")
+    elif _calls_to_rehearse(guide):
+        faults.append(
+            "the reply to the team's comment or question sent the team to rehearse ('Agora podem "
+            "ensaiar.' or the red microphone) before the team said it was ready"
+        )
+    return faults
+
+
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
 
 def mechanical_checks(
-    *, guide: str, outcome: str, expect: dict[str, Any], previous_guide: str
+    *,
+    guide: str,
+    outcome: str,
+    expect: dict[str, Any],
+    previous_guide: str,
+    earlier_guides: list[str],
 ) -> list[str]:
     """Every fault of one turn the runner can name without a judge, in her words and order.
 
@@ -270,6 +353,11 @@ def mechanical_checks(
             )
     if expect.get("fenced_rehearsal"):
         fails.extend(_fence_faults(guide))
+    if expect.get("part_opening_closing"):
+        fails.extend(_part_opening_faults(guide))
+    if expect.get("take_up_closing") or expect.get("take_up_closing_if_open"):
+        tail_owed = bool(expect.get("take_up_closing")) or _left_part_open(earlier_guides)
+        fails.extend(_take_up_faults(guide, tail_owed=tail_owed))
     if expect.get("offers_choice_final") and not _offers_choice_final(guide):
         fails.append(
             "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar no "
