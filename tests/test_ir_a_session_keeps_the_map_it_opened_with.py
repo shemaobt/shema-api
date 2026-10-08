@@ -34,6 +34,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.part_names import scene_titles
 from app.services.internalization_room.release import (
     approve_release,
@@ -78,8 +79,21 @@ DROPPED_BEAD = "being:S1:B2"
 KEPT_FIRST_SILENCE_AT = 11
 KEPT_FIRST_SCENE = "THE KEPT FIRST SCENE"
 KEPT_ELIMELECH_LABEL = "Elimelech, as the kept catalogue labels him"
+LEDGER = "LEDGER (the app's notes — information only; you decide what comes next)"
+UNTOUCHED = "NOT YET TOUCHED"
 AUDIT = '"high_risk_register_audit": [\n'
 KEPT_ONLY_RULE = '    {"id": "R99", "kind": "KEPT_ONLY", "note": "kept", "do_not_decide": true},\n'
+
+
+def _the_ledger_in(guide: str) -> list[str]:
+    lines = guide.partition(CACHE_BREAK)[2].splitlines()
+    ledger = lines[lines.index(LEDGER) :]
+    untouched = next(i for i, line in enumerate(ledger) if line.startswith(UNTOUCHED))
+    room_facts = next(
+        (i for i in range(untouched + 1, len(ledger)) if not ledger[i].startswith("  ")),
+        len(ledger),
+    )
+    return ledger[:room_facts]
 
 
 def _rewrite(tree: Path, folder: str, pericope: str, old: str, new: str) -> None:
@@ -288,9 +302,10 @@ async def test_the_ledger_of_a_session_open_when_a_new_canon_is_published_names_
     await the_team_says(client, tablet, opened["session_id"], "depois")
     guide, _ = prompts.since(start)
 
-    assert "Elimelech as kept @ S1" in guide, "a contagem perdeu a conta que o canon novo tirou"
-    assert "the woman @ S1" in guide, "a conta da cena 1 levou o nome que o canon novo dá"
-    assert "Naomi @ S1" not in guide
+    (beings,) = [line for line in _the_ledger_in(guide) if line.startswith("  being: ")]
+    assert beings.startswith("  being: Elimelech as kept, the woman, "), (
+        "o ledger não listou os seres da cena 1 com os nomes que o canon novo dá"
+    )
 
 
 async def test_a_settle_of_a_session_open_when_a_new_canon_is_published_still_works_a_bead_the_new_canon_dropped(  # noqa: E501
@@ -331,7 +346,9 @@ async def test_a_second_tablet_joining_a_session_open_when_a_new_canon_is_publis
         "o segundo tablet desenhou o colar pelo canon novo"
     )
     assert joined["coverage"] == told.json()["coverage"]
-    assert "Elimelech as kept @ S1" in guide, "o segundo tablet ouviu a voz do canon novo"
+    assert any("Elimelech as kept" in line for line in _the_ledger_in(guide)), (
+        "o segundo tablet ouviu a voz do canon novo"
+    )
 
 
 async def test_a_session_open_when_a_new_canon_is_published_is_done_only_on_its_own_canons_floor(
