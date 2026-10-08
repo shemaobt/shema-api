@@ -125,6 +125,7 @@ def _offers_choice_final(text: str) -> bool:
     return False
 
 
+_SCENE_BY_SCENE = _her(r"cena por cena|por cena|parte por parte")
 _THE_MAP = _her(r"\bo mapa\b|the map\b")
 _FAREWELL = _her(r"vão com deus|god bless|amém|amen\b")
 
@@ -159,6 +160,14 @@ def mechanical_checks(
         _THE_RECORDING_AS_A_ROAD.search(guide) or _offers_choice_final(guide)
     ):
         fails.append("guide offered the recording as an alternative on a FIRST imperfect telling")
+    for detail in expect.get("send_off_names") or []:
+        if not _her(detail).search(guide):
+            fails.append(
+                "send-off did not repeat the detail the team carries into the recording: "
+                f"/{detail}/i"
+            )
+    if expect.get("send_off_scene_by_scene") and not _SCENE_BY_SCENE.search(guide):
+        fails.append("send-off did not tell the team to record scene by scene")
     if expect.get("offers_choice_final") and not _offers_choice_final(guide):
         fails.append(
             "guide did not offer the choice (ensaiar esta cena mais uma vez OU seguir e acertar no "

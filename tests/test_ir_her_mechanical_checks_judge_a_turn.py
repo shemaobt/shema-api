@@ -261,3 +261,21 @@ def test_the_small_gaps_choice_in_its_ensaio_final_form_is_read_sentence_by_sent
         _turn(guide="No Ensaio Final, lembrem do marido de Noemi e dos dez anos.", expect=final)
         == missing
     ), "o lembrete do Ensaio Final não é uma escolha"
+
+
+def test_each_detail_her_script_names_must_be_repeated_by_the_send_off() -> None:
+    named = {"send_off_names": ["quem é você", "só o nome dele"]}
+    both = "No Ensaio Final, lembrem da pergunta, quem é você, e de dizer Só o nome dele."
+    assert _turn(guide=both, expect=named) == [], "o /i dela: maiúscula ou minúscula, é o detalhe"
+    assert _turn(guide="No Ensaio Final, lembrem da pergunta, quem é você.", expect=named) == [
+        "send-off did not repeat the detail the team carries into the recording: /só o nome dele/i"
+    ]
+
+
+def test_a_send_off_her_script_wants_scene_by_scene_says_so() -> None:
+    by_scene = {"send_off_scene_by_scene": True}
+    assert _turn(guide="Agora gravem a passagem parte por parte.", expect=by_scene) == []
+    assert _turn(guide="Agora gravem cena por cena.", expect=by_scene) == []
+    assert _turn(guide="Agora gravem a passagem inteira.", expect=by_scene) == [
+        "send-off did not tell the team to record scene by scene"
+    ]
