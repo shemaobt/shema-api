@@ -8,6 +8,7 @@ the loader gains is added in one place. Builders and constants only.
 
 from __future__ import annotations
 
+import json
 import shutil
 import textwrap
 from collections.abc import Callable
@@ -103,3 +104,29 @@ def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
         Nobody says why.
         """
     )
+
+
+_A_RULE = {
+    "id": "R1",
+    "kind": "SILENCE",
+    "note": "The telling never says why.",
+    "do_not_decide": True,
+    "required_in_audit": True,
+}
+
+
+def _a_fable_log(audit: list[dict], checklist: dict | None = None) -> str:
+    body: dict = {"high_risk_register_audit": audit}
+    if checklist is not None:
+        body["validation_checklist"] = checklist
+    return "# COMPILATION LOG\n\n" + json.dumps(body, indent=2) + "\n"
+
+
+A_FABLE_LOG_WITH_A_LAYER = _a_fable_log([_A_RULE])
+A_FABLE_LOG_WITHOUT_ONE = _a_fable_log([])
+A_FABLE_LOG_WITH_A_COMPLETE_REGISTER = _a_fable_log(
+    [_A_RULE], {"high_risk_register_complete": True}
+)
+A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER = _a_fable_log(
+    [_A_RULE], {"high_risk_register_complete": False}
+)
