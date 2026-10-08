@@ -11,10 +11,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
-from app.db.models.internalization_room import IRSessionStatus
+from app.core.config import Settings
+from app.db.models.internalization_room import IRPromptKey, IRSessionStatus
 from app.services.internalization_room.conversation import conversation_of
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import create_session, get_session
+from app.services.internalization_room.verdict_turn import run_verdict_turn
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
@@ -158,3 +161,28 @@ async def test_an_english_failed_turn_with_its_pointer_still_reads_as_unrepairab
     assert last.fail_safe_category == "unrepairable", (
         "a linha com o ponteiro não tinha nome, e a sala de observação perdia a categoria"
     )
+
+
+async def test_an_english_telling_back_verdict_that_fails_points_to_scene_one_too(
+    monkeypatch,
+) -> None:
+    the_room_agent_is(monkeypatch, turn=_DraftsInOrder(FIRST_DRAFT))
+
+    outcome = await run_verdict_turn(
+        findings_text='[{"kind": "addition", "frase": 1}]',
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        telling_back="Naomi told them to go home.",
+        speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
+        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+        session_language="English",
+        language_code="en",
+        settings=Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake"),
+    )
+
+    assert outcome.speech == (
+        "I want us to stay close to the passage here. Let's go back to this scene together"
+        " — this is the part about naomi's last appeal."
+    ), "o veredito da contação de volta caía na linha A sem o ponteiro que o app dela põe"
+    assert outcome.fixed_line == ""
