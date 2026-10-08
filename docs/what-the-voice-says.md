@@ -14,8 +14,9 @@ rewrites the text in four steps, always in this order:
    The mend reaches only the seam a removed code left: each removal is marked, and every rule
    reads the marks beside that seam, so a mark the code did not leave — a dialogue dash, an
    ellipsis — is never touched. A list of codes goes with its commas and its "e" or "and", and a
-   range (`B3 a B5`, `B3 to B5`, `B1–B5`, `B3 - B5`) goes whole; in a mixed list the survivors
-   keep the joiner they had between them (`Noemi, B3 e Rute` → "Noemi e Rute"). A code that
+   range (`B3 a B5`, `B3 to B5`, `B1–B5`, `B3 - B5`) goes whole; a joiner goes with a code only
+   between two codes, so in a mixed list the survivors keep the joiner they had between them
+   (`Noemi, B3 e Rute` → "Noemi e Rute") and no word is ever taken. A code that
    opened a sentence or a clause — after a full stop, a colon, a dash, an opening quote or
    bracket — leaves no mark where it stood (`As cenas:` + `- B3: Noemi volta` → "As cenas: Noemi
    volta."); a colon in the middle of a sentence stays, so a question it introduces is still
@@ -36,8 +37,9 @@ must be mended before the question split reads it. The divine name runs last, so
 slug is "YHWH" is removed before the name is rewritten. In English that order leaves "the LORD"
 lowercase after a cut; the voice does not hear the case.
 
-Each step is deterministic, idempotent and never drops, reorders or invents a word: only marks
-and sentence boundaries move. That is why the Validator judges the Guide's draft as written —
+Each step is deterministic, idempotent and never drops, reorders or invents a word: only marks,
+sentence boundaries, the canon codes and the joiners between two codes move, and a test holds
+every seam to it. That is why the Validator judges the Guide's draft as written —
 the words it judges are the words the team hears. Only what is voiced changes; the stored turn
 keeps the Guide's own form for the facilitator view and the dossier. A clip is keyed by the text
 the voice receives, so a line these rewrites change is synthesised once more the first time it
@@ -62,8 +64,8 @@ Each is pinned by a test, so a change to it is seen, not because it is the wante
 - A preposition or a noun the code completed is left with nothing after it, since no word is
   invented and none is dropped: "In B3 and B4, Naomi weeps." → "In, Naomi weeps.";
   "(cenas B1–B5)" → "(cenas)" (ours).
-- A code that opens a sentence takes the joiner after it, so "Fim... B3 e mais." → "Fim...
-  mais." (ours).
+- A joiner between a word and a code is the word's, so it stays when the code at the end of a
+  list goes: "Noemi, Rute e B3." → "Noemi, Rute e." (ours).
 
 ## The divine-name table
 
