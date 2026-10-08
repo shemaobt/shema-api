@@ -100,20 +100,6 @@ async def _a_turn():
     )
 
 
-async def _a_turn_on_the_wire():
-    return await run_turn(
-        session_language="Portuguese",
-        language_code="pt",
-        transcript="A fome chegou e eles partiram.",
-        coverage_state=initial_state(P),
-        messages=[],
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        pericope_num=P,
-        settings=settings(),
-    )
-
-
 @pytest.mark.parametrize(
     ("drafts", "verdicts", "calls"),
     [
@@ -152,7 +138,7 @@ async def test_a_voice_refused_twice_is_rerun_once_then_the_fail_safe_with_no_th
 ) -> None:
     wire = the_wire(TheWire(refusing=("claude-fable-5-1", "claude-opus-5")))
 
-    outcome = await _a_turn_on_the_wire()
+    outcome = await _a_turn()
 
     assert [request["model"] for request in wire.guide_requests] == [
         "claude-fable-5-1",
@@ -190,7 +176,7 @@ async def test_a_send_back_with_three_issues_is_one_redraft_with_her_note_as_its
     }
     wire = the_wire(TheWire(verdicts=[sent_back, PASS]))
 
-    outcome = await _a_turn_on_the_wire()
+    outcome = await _a_turn()
 
     assert outcome.redrafts == 1
     first, redraft = wire.guide_requests
