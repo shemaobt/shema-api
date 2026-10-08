@@ -11,7 +11,7 @@ pronounceable: the maps write "YHWH", which a voice engine reads letter by lette
 The prompts already ask for plain, voice-first text; these rewrites are the deterministic last
 line of defence for anything that slips through a corrected draft or a story-so-far quote. Each
 is idempotent and never drops, reorders or invents a word. The order and the rulings are
-recorded in ``docs/divine-name-speakable-form.md``.
+recorded in ``docs/what-the-voice-says.md``.
 """
 
 from __future__ import annotations

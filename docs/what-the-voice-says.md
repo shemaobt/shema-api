@@ -11,10 +11,13 @@ rewrites the text in four steps, always in this order:
    word (`C#`) stay.
 2. **Canon codes removed and the seam mended.** `B3`, `PL_ISRAEL`, `[[B3-Naomi]]` and an all-caps
    name joined by underscores (`THE_LAND_AFFLICTED_BY_FAMINE`) are never voiced, in any language.
-   A list of codes goes with its commas and its "e"; a link takes the colon that introduced its
-   name, and a code that opens a line leaves no colon behind. A `FIG_` or `CB_` link is named only
-   by its slug, so it is voiced as the slug's words (`[[FIG_0013-Bread-house-in-Famine]]` →
-   "Bread house in Famine"), in English, as the maps write them.
+   A list of codes goes with its commas and its "e" or "and", and a range (`B3 a B5`, `B3 to B5`,
+   `B1–B5`) goes whole. A code that opened a sentence leaves no mark where the sentence now
+   starts (`[[B3-Naomi]]: Noemi volta.` → "Noemi volta."); a colon in the middle of a sentence
+   stays, so a question it introduces is still cut. A dash pair around a code keeps its pair. A
+   `FIG_` or `CB_` link is named only by its slug, so it is voiced as the slug's words
+   (`[[FIG_0013-Bread-house-in-Famine]]` → "Bread house in Famine"), in English, as the maps
+   write them.
 3. **Every question stands alone.** A sentence that ends as a question is cut at its last colon,
    semicolon or dash outside quotes and parentheses, so the question gets its own tune
    ("Noemi pergunta: onde você trabalhou?" → "Noemi pergunta. Onde você trabalhou?"). A
@@ -23,9 +26,7 @@ rewrites the text in four steps, always in this order:
 4. **The divine name, spoken.** "YHWH" becomes the session language's spoken form.
 
 Steps 1, 3 and 4 are Marcia's, ruled on pilot day 1 (2026-09-09), in her order; her tests are
-ported one for one, her known limits included (a straight single quote is not a span; a head
-that is itself a question still gets a period; an unbalanced double quote stops every later
-cut). Step 2 is ours, and it sits between her first and second steps for two reasons: a code
+ported one for one. Step 2 is ours, and it sits between her first and second steps for two reasons: a code
 inside formatting marks is bare only once the marks are gone, and the seam a removed code leaves
 must be mended before the question split reads it. The divine name runs last, so a code whose
 slug is "YHWH" is removed before the name is rewritten. In English that order leaves "the LORD"
@@ -37,6 +38,21 @@ the words it judges are the words the team hears. Only what is voiced changes; t
 keeps the Guide's own form for the facilitator view and the dossier. A clip is keyed by the text
 the voice receives, so a line these rewrites change is synthesised once more the first time it
 is asked for.
+
+## Known limits
+
+Each is pinned by a test, so a change to it is seen, not because it is the wanted answer.
+
+- A straight single quote is not a span, since it is also the apostrophe (hers).
+- A head that is itself a question still gets a period: "O que vocês acham. Bom ou ruim?"
+  (hers; changing it is Marcia's call).
+- An unbalanced double quote stops every later cut, the safe direction (hers).
+- A plain line with no terminal punctuation gets no period, so a soft-wrapped sentence is not
+  given a false stop (hers).
+- An asterisk is never read as part of a word, so a multiplication loses it: "2*2" → "22"
+  (hers).
+- An article before the divine name is not removed: "The YHWH-given land." → "The the
+  LORD-given land." (ours).
 
 ## The divine-name table
 
