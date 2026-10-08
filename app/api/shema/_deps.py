@@ -62,7 +62,7 @@ file importing the form's router package.
 :data:`MayApply` and :data:`Reading` below. Neither is the capability map this file refuses:
 there is no table and no second vocabulary. :data:`MayApply` is ``coordinator``, the same key the
 route beside it is guarded on, read as a boolean. :data:`Reading` is OBT-528's reader — who reads
-the truth of a sensitive place — and its OR (the ``admin`` hypothesis, or ``coordinator`` in its
+the truth of a sensitive place — and its OR (the ``admin``, or ``coordinator`` in its
 own regions) is written once, in ``app/services/shema/_scope.py``'s
 ``readership``, which owns the region half of it; this file only hands it the grant and the
 scope it already read. Both shape a payload rather than admit a request. The grant is read once

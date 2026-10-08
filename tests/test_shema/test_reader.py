@@ -212,7 +212,7 @@ GLOBAL = RegionScope(global_=True, regions=frozenset())
         "obtLab",
         "resourceCircle",
         "coordinator+obtLab",
-        "admin (hypothesis)",
+        "admin",
         "installation admin",
         "gestor/mesa",
     ],
@@ -224,8 +224,8 @@ def test_each_role_reads_as_coordination_or_other(
 
     ``coordinator`` is coordination **in its own regions** and ``other`` everywhere else (the
     Global Strategist was coordination everywhere, until OBT-572). The ``admin`` row is the
-    issue's reading — the Admin *vê
-    tudo* — to confirm with Daniel. Region rows are per account, so a ``coordinator`` who is
+    issue's reading — the Admin *vê tudo* — confirmed by Daniel on 8/oct/2026. Region rows are
+    per account, so a ``coordinator`` who is
     also ``obtLab`` is coordination wherever the account reaches.
     """
     reading = readership(scope, granted, platform_admin=platform_admin)
@@ -443,7 +443,8 @@ async def test_the_ficha_read_by_another_regions_coordinator_is_a_404(
 async def test_the_coordinator_and_the_admin_read_the_truth(
     client, db_session, shema_app, withheld
 ) -> None:
-    """``coordinator`` in its region is GATE-04's own; the ``admin`` is the issue's hypothesis.
+    """``coordinator`` in its region is GATE-04's own; the ``admin`` is the issue's reading,
+    confirmed by Daniel on 8/oct/2026.
     The admin alone reaches no region, so it is granted beside a regional role that does — and
     that role alone (``obtLab``) reads the region, which is what isolates the admin as the
     cause."""

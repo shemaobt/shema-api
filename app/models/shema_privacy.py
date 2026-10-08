@@ -126,8 +126,8 @@ class ShemaReader(enum.StrEnum):
     """Who a leaving shape is built for — OBT-528's second input to the sensitive-country rule.
 
     * ``coordination`` reads the truth of a sensitive place **and writes the place and the
-      flag**: a ``coordinator`` on a project in a region of their scope, the ``admin`` (the
-      issue's reading, to confirm with Daniel) and an installation admin.
+      flag**: a ``coordinator`` on a project in a region of their scope, the ``admin``
+      (confirmed by Daniel on 8/oct/2026) and an installation admin.
       ``app/services/shema/_scope.py`` derives it; nothing else does.
     * ``trusted`` reads the truth and writes none of what coordination writes — the
       ``resourceCircle`` on a project in a region of its scope, since OBT-571 (Karina, via

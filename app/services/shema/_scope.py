@@ -149,9 +149,10 @@ ROLE_PRECEDENCE = (*ROLE_KEYS, ADMIN_ROLE, GESTOR_ROLE, MESA_ROLE, EQUIPE_ROLE)
 
 #: The roles that read the truth of a sensitive place in **every** region (OBT-528).
 #: The unscoped seat was GATE-04's own answer and left with OBT-572. ``admin`` is here on the
-#: issue's reading — the Admin *vê tudo*, GATE of 23/set — and it is a **hypothesis to confirm
-#: with Daniel**: undoing it is deleting it from this tuple, which would leave the tuple empty
-#: and the truth of a sensitive place to coordinators in their regions and the platform admin.
+#: issue's reading — the Admin *vê tudo*, GATE of 23/set — **confirmed by Daniel on 8/oct/2026**
+#: (relayed on the review of OBT-572/OBT-571, which had carried it as a hypothesis since
+#: OBT-528). Undoing it is deleting it from this tuple, which would leave the tuple empty and the
+#: truth of a sensitive place to coordinators in their regions and the platform admin.
 #: ``coordinator`` is not here because it reads the truth only in its own regions
 #: (:func:`readership`).
 COORDINATION_EVERYWHERE = (ADMIN_ROLE,)
@@ -514,9 +515,10 @@ def readership(
     (``app/api/shema/_deps.py``), and a second read of one fact is the defect
     :func:`scope_from_roles` was written to close.
 
-    * An installation admin and — the hypothesis in :data:`COORDINATION_EVERYWHERE` — an
-      ``admin`` coordinate every region: an installation admin passes every guard in this
-      repository, and reading less than the guards let it reach would be a stricter rule on one
+    * An installation admin and — :data:`COORDINATION_EVERYWHERE`, confirmed by Daniel on
+      8/oct/2026 — an ``admin`` coordinate every region: an installation admin passes every
+      guard in this repository, and reading less than the guards let it reach would be a
+      stricter rule on one
       route than on the route beside it. (The unscoped seat did too, until OBT-572.)
     * A ``coordinator`` coordinates the regions of its own scope — GATE-04's *cada um na sua
       região*.
