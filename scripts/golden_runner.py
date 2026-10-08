@@ -539,12 +539,7 @@ def shares_judge_prompt(script: Script, batch: list[Script]) -> bool:
 
 
 async def judge(
-    script: Script,
-    result: SessionResult,
-    *,
-    out: Path,
-    stamp: str,
-    prompt_repeats: bool = False,
+    script: Script, result: SessionResult, *, out: Path, stamp: str, prompt_repeats: bool
 ) -> None:
     """Her judge on the session, and its verdict written beside the transcript — or the reason not.
 
@@ -764,16 +759,25 @@ async def rejudge(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    earlier = [
+        (path, *exported(path))
+        for path in sorted(Path(args.rejudge).glob("*.json"))
+        if not path.name.endswith(".verdict.json")
+    ]
+    to_judge = [script for _, script, result, _ in earlier if result.refused is None]
+    base_url = earlier[-1][3] if earlier else ""
     results: list[SessionResult] = []
-    base_url = ""
-    for path in sorted(Path(args.rejudge).glob("*.json")):
-        if path.name.endswith(".verdict.json"):
-            continue
-        script, result, base_url = exported(path)
+    for path, script, result, _ in earlier:
         print(f"\n▶ {script.name} — judging {path.name} again")
         out.mkdir(parents=True, exist_ok=True)
         if result.refused is None:
-            await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
+            await judge(
+                script,
+                result,
+                out=out,
+                stamp=path.stem[len(script.name) + 1 :],
+                prompt_repeats=shares_judge_prompt(script, to_judge),
+            )
         results.append(result)
     if not results:
         print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
