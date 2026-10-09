@@ -182,13 +182,15 @@ async def test_a_refused_photo_answers_the_same_sentence_as_an_undecided_one(
     assert bucket.signed == []
 
 
-@pytest.mark.parametrize("role", ["obtLab"])
-async def test_on_a_withheld_project_the_reader_handed_the_reduction_gets_no_link(
+@pytest.mark.parametrize("role", ["obtLab", "resourceCircle"])
+async def test_on_a_withheld_project_nobody_but_the_coordination_gets_a_link(
     client, db_session, shema_app, bucket, role
 ) -> None:
-    """Daniel, 8/oct/2026: the image of a sensitive project is the coordination's until
-    OBT-575. The photo is authorized; what refuses it is who is asking — with the sentence an
-    unauthorized item gets, so the refusal says nothing about the project."""
+    """Daniel, 9/oct/2026 (option b): the image of a sensitive project is the coordination's
+    **only** until OBT-575 — the OBT Lab, handed the reduction, and the Resource Circle, which
+    reads the record's truth (OBT-571) but not these bytes. The photo is authorized; what
+    refuses it is who is asking — with the sentence an unauthorized item gets, so the refusal
+    says nothing about the project."""
     project = await _project(db_session, sensitive=True)
     photo = await _photo(db_session, project, granted=True)
 
@@ -205,33 +207,21 @@ async def test_on_a_withheld_project_the_reader_handed_the_reduction_gets_no_lin
     assert bucket.signed == [("shema-private", photo.storage_key, 15)]
 
 
-async def test_on_a_cleared_project_the_same_reader_gets_the_link(
-    client, db_session, shema_app, bucket
+@pytest.mark.parametrize("role", ["obtLab", "resourceCircle"])
+async def test_on_a_cleared_project_the_same_readers_get_the_link(
+    client, db_session, shema_app, bucket, role
 ) -> None:
+    """Only a withheld project is the coordination's alone: on a cleared one the authorized
+    photo reaches whoever reaches the record."""
     project = await _project(db_session)
     photo = await _photo(db_session, project, granted=True)
 
     res = await client.get(
-        _link(project.id, photo.id), headers=await _headers(db_session, shema_app, "obtLab")
+        _link(project.id, photo.id), headers=await _headers(db_session, shema_app, role)
     )
 
     assert res.status_code == 200, res.text
     assert res.json()["expiresInMinutes"] == 15
-
-
-async def test_the_resource_circle_reads_the_truth_and_gets_the_link(
-    client, db_session, shema_app, bucket
-) -> None:
-    """OBT-571: the Resource Circle is ``trusted`` in its own scope, and trusted reads the truth."""
-    project = await _project(db_session, sensitive=True)
-    photo = await _photo(db_session, project, granted=True)
-
-    res = await client.get(
-        _link(project.id, photo.id),
-        headers=await _headers(db_session, shema_app, "resourceCircle"),
-    )
-
-    assert res.status_code == 200, res.text
 
 
 async def test_outside_the_scope_the_item_is_not_found(

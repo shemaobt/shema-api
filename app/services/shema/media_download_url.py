@@ -12,10 +12,12 @@ the bytes have, and the address expires.
 2. the row exists and holds an object — a video is an address on somebody else's service and
    a photo slot may carry a caption and no image yet, so both are *nothing to serve*.
 3. ``can_share_media`` — authorization, then audience, then the sensitive-country flag —
-   **and, when the caller is a console reader, whether that reader reads the truth of the
-   project** (OBT-581, Daniel 8/oct/2026): an image of a withheld project reaches the
-   coordination only, until OBT-575 — so a reader handed the reduction (``other``) is refused
-   the bytes exactly as the export's ``publico`` is, with the same sentence.
+   **and, when the caller is a console reader, whether that reader is the coordination of a
+   withheld project** (OBT-581; Daniel, 9/oct/2026, option b): an image of a withheld project
+   reaches the coordination **only**, until OBT-575 exists — the OBT Lab and the Resource
+   Circle are refused the bytes exactly as the export's ``publico`` is, with the same sentence.
+   OBT-571's *the Resource Circle reads the truth* covers the record and not these bytes; the
+   row is reopened when OBT-575 lands.
 
 **The third refusal says nothing about which of its reasons fired.** An item nobody has
 decided on, an item refused, and an authorized item on a withheld project asked for by a
@@ -45,14 +47,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
-from app.models.shema_privacy import ShemaAudience
+from app.models.shema_privacy import ShemaAudience, ShemaReader
 from app.services.oral_collector import gcs_utils
 from app.services.shema._media_sharing import can_share_media
 from app.services.shema._media_storage import (
     DOWNLOAD_URL_EXPIRY_MINUTES,
     GCS_SHEMA_BUCKET,
 )
-from app.services.shema._redaction import log_reference, reads_the_truth
+from app.services.shema._redaction import is_withheld, log_reference
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
 
@@ -136,12 +138,14 @@ async def _link(
 ) -> MediaLink:
     """The three gates, once.
 
-    ``readership`` is the console caller's (``_deps.Reading``), or ``None`` for a surface that
-    has no session reader — the export and the Pulse, which name an audience instead. With one,
-    its reader of the project is asked, and a reader who is not handed the truth of a withheld
-    project is refused the bytes too (OBT-581): the record shows that reader the slot, the
-    caption emptied and the decision unnamed, and the link is where the slot would otherwise
-    turn into the photograph the reduction exists to keep from them.
+    ``readership`` is the console caller's (``_deps.Reading``). ``None`` is only the default —
+    today the link route is the one caller of either public name; the export and the Pulse
+    read no media at all (the ``test_pulse_image.py`` note on shema-api#713), and a surface
+    that one day names an audience instead of a reader is what the default is for. With one,
+    its reader of the project is asked, and on a withheld project anybody but the coordination
+    is refused the bytes (OBT-581; Daniel, 9/oct/2026): the OBT Lab, which reads the slot with
+    its caption emptied, and the Resource Circle, which reads the record's truth (OBT-571) and
+    not this — the link is where the slot would otherwise turn into the photograph.
 
     **The default lives on the two public names and not here**, and it is ``coordenacao``,
     because the default that is safe to forget is the restrictive one: an authenticated
@@ -158,8 +162,10 @@ async def _link(
         raise NotFoundError("File not found")
 
     shared = can_share_media(project, item, audience)
-    if readership is not None and not reads_the_truth(
-        project, readership.reader_of(project.region_key)
+    if (
+        readership is not None
+        and is_withheld(project)
+        and readership.reader_of(project.region_key) is not ShemaReader.COORDINATION
     ):
         shared = False
     if not shared:
