@@ -82,3 +82,20 @@ async def test_a_finding_on_a_wav_part_tells_her_speaker_the_sentence_can_be_rec
     assert [one["repair"] for one in _handed(room.briefs[-1])] == ["sentence"], (
         "numa gravação WAV o falante ouvia «part» e mandava gravar a parte de novo"
     )
+
+
+async def test_a_missing_element_no_frase_anchors_is_a_sentence_only_when_every_part_is_wav(
+    client, db_session, analyst: ScriptedAnalyst, room: Room
+) -> None:
+    unanchored = {"kind": "missing", "note": "os efrateus"}
+    every_part, _ = await rehearsed_in_parts(db_session, 2, content_types=(WAV, WAV))
+    one_m4a, _ = await rehearsed_in_parts(db_session, 2, content_types=(WAV, "audio/mp4"))
+    analyst.readings = [{"findings": [unanchored]}, {"findings": [unanchored]}]
+
+    await _terminei(client, db_session, every_part.id)
+    await _terminei(client, db_session, one_m4a.id)
+
+    assert [_handed(brief)[0]["repair"] for brief in room.briefs[-2:]] == ["sentence", "part"], (
+        "um elemento faltando sem frase ouvia «part» numa gravação toda WAV, "
+        "ou «sentence» com uma parte que não é WAV"
+    )
