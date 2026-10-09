@@ -396,6 +396,14 @@ _Avoid_: api key (the room's own is a different door), token, password, Chave do
 
 ### Build
 
+**Claim code**:
+The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it.
+_Avoid_: código, pairing code, device code, credential
+
+**Device credential** (`X-Device-Credential`):
+The token one tablet collects once after its claim code was spent and sends on every request to the room; the server keeps only its hash and compares it on every request, so unlinking the tablet from the Desk locks it out at its next request. It is the only thing that opens a team door.
+_Avoid_: room key, api key, token, session
+
 **Build**:
 The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.
 _Avoid_: version (a pericope's release), revision
