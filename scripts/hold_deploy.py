@@ -14,7 +14,12 @@ from app.services.internalization_room.session_end import SessionState, end_of
 
 async def holding(db: AsyncSession, now: datetime, window: timedelta) -> list[IRSession]:
     result = await db.execute(
-        select(IRSession).where(IRSession.project_id.is_not(None), live(), entered())
+        select(IRSession).where(
+            IRSession.project_id.is_not(None),
+            live(),
+            entered(),
+            IRSession.updated_at >= now - window,
+        )
     )
     return [
         session

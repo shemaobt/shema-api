@@ -82,3 +82,11 @@ async def test_the_panorama_a_team_heard_does_not_hold_the_deploy(
     await a_session(db_session, "panorama-de-rute", pericope="OV-Ruth")
 
     assert await hold_deploy.holding(db_session, NOW, HOUR) == []
+
+
+async def test_a_session_left_untouched_for_longer_than_the_window_does_not_hold_the_deploy(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(db_session, "sessao-de-ontem", updated_at=NOW - timedelta(minutes=61))
+
+    assert await hold_deploy.holding(db_session, NOW, HOUR) == []
