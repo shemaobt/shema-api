@@ -43,6 +43,12 @@ def a_runner(tmp_path: Path) -> dict[str, str]:
     return {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": os.environ["HOME"]}
 
 
+def the_annotation(stdout: str, command: str) -> str:
+    found = [line for line in stdout.splitlines() if line.startswith(command)]
+    assert len(found) == 1, f"{command} is on {len(found)} lines"
+    return found[0]
+
+
 def the_hold_runs(runner: dict[str, str], **settings: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", "-e", "-c", the_hold()["run"]],
@@ -194,6 +200,9 @@ async def test_a_wait_that_outlives_its_deadline_fails_naming_who_held_it(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
     await a_session(db_session, "sessao-da-ruth", updated_at=datetime.now(UTC))
+    await a_session(
+        db_session, "sessao-de-noemi", project_id="time-de-noemi", updated_at=datetime.now(UTC)
+    )
 
     hold = the_hold_runs(
         a_runner(tmp_path),
@@ -202,8 +211,9 @@ async def test_a_wait_that_outlives_its_deadline_fails_naming_who_held_it(
     )
 
     assert hold.returncode == 1
-    error = hold.stdout.split("::error::", 1)[1]
-    assert "sessao-da-ruth  project time-de-ruth" in error
+    annotation = the_annotation(hold.stdout, "::error::")
+    assert "sessao-da-ruth  project time-de-ruth" in annotation
+    assert "sessao-de-noemi  project time-de-noemi" in annotation
 
 
 def test_the_wait_gives_up_inside_the_six_hours_github_gives_the_job() -> None:
@@ -217,6 +227,9 @@ async def test_an_urgent_deploy_does_not_wait_and_says_whose_room_it_ships_into(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
     await a_session(db_session, "sessao-da-ruth", updated_at=datetime.now(UTC))
+    await a_session(
+        db_session, "sessao-de-noemi", project_id="time-de-noemi", updated_at=datetime.now(UTC)
+    )
 
     hold = the_hold_runs(
         a_runner(tmp_path),
@@ -227,8 +240,9 @@ async def test_an_urgent_deploy_does_not_wait_and_says_whose_room_it_ships_into(
 
     assert hold.returncode == 0
     assert "Waiting on" not in hold.stdout
-    warning = hold.stdout.split("::warning::", 1)[1]
-    assert "sessao-da-ruth  project time-de-ruth" in warning
+    annotation = the_annotation(hold.stdout, "::warning::")
+    assert "sessao-da-ruth  project time-de-ruth" in annotation
+    assert "sessao-de-noemi  project time-de-noemi" in annotation
 
 
 def test_only_a_manual_run_can_be_urgent_and_it_is_not_unless_someone_says_so() -> None:
