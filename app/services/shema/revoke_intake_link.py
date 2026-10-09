@@ -22,6 +22,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink
 from app.models.shema_forms import IntakeLink
+from app.services.shema import _trail
 from app.services.shema._intake_tokens import expires_on, link_status
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
 from app.utils.stored_time import as_utc
@@ -48,6 +49,16 @@ async def revoke_intake_link(
     link, version = row
     if link.revoked_at is None:
         link.revoked_at = datetime.now(UTC)
+        project = await db.get(ShemaProject, link.project_id)
+        _trail.stage(
+            db,
+            actor=user,
+            subject="intake_link",
+            action="revoked",
+            subject_id=link.id,
+            project_id=link.project_id,
+            region_key=None if project is None else _trail.region_value(project.region_key),
+        )
         await db.commit()
         await db.refresh(link)
 

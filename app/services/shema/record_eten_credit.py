@@ -31,6 +31,7 @@ from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaEtenCreditSource
 from app.db.models.shema_eten import ShemaEtenCredit
 from app.models.shema_eten import EtenCreditEntry
+from app.services.shema import _trail
 from app.services.shema._audit import author_name
 from app.services.shema._scope import COORDINATOR_ROLE, RegionScope, granted_roles
 from app.services.shema.get_project import get_project
@@ -97,6 +98,16 @@ async def record_eten_credit(
         row = ShemaEtenCredit(project_id=project.id, year=year, source=ShemaEtenCreditSource.MANUAL)
         db.add(row)
 
+    _trail.stage(
+        db,
+        actor=user,
+        subject="eten_credit",
+        action="updated" if row.id is not None else "created",
+        subject_id=f"{project.id}:{year}",
+        project_id=project.id,
+        region_key=_trail.region_value(project.region_key),
+        fields=("credits",),
+    )
     row.credits = credits
     row.recorded_by = user.id
     row.recorded_by_name = author_name(user)

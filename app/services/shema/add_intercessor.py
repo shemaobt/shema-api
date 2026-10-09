@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.shema_consent import ShemaConsentContext
 from app.models.shema_intercessor import IntercessorCreate, IntercessorEntry
+from app.services.shema import _trail
 from app.services.shema._directory import create_person, entry_of, record_consent
 
 
@@ -48,6 +49,14 @@ async def add_intercessor(
         country=payload.country,
         contact=payload.contact,
         sensitive_country=payload.sensitive_country,
+    )
+    _trail.stage(
+        db,
+        actor=actor,
+        subject="intercessor",
+        action="created",
+        subject_id=person_id,
+        fields=("name", "country", "contact", "sensitiveCountry"),
     )
     await record_consent(
         db,

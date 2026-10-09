@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest
 from app.models.shema_pending import DiscardedProject, ProjectDiscard
+from app.services.shema import _trail
 from app.services.shema._grant_rules import require_admin_in
 from app.services.shema.confirm_project import decidable_project
 
@@ -50,6 +51,16 @@ async def reject_pending_project(
     project.discarded_at = now
     project.discarded_by = actor.id
     project.discard_reason = payload.reason
+    _trail.stage(
+        db,
+        actor=actor,
+        subject="pending_project",
+        action="rejected",
+        subject_id=project.id,
+        project_id=project.id,
+        region_key=_trail.region_value(project.region_key),
+        fields=("discardReason",),
+    )
     discarded_id, request_id = project.id, project.source_request_id or ""
     await db.commit()
 

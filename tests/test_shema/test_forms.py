@@ -1126,3 +1126,26 @@ def test_no_file_of_this_issue_spells_a_guarded_column() -> None:
         for source in mine
     }
     assert {name: found for name, found in offenders.items() if found} == {}
+
+
+# --- the audit trail (OBT-577) ---------------------------------------------------------
+
+
+async def test_filing_an_answer_by_hand_is_marked_once_with_the_filers_name(
+    client, db_session, shema_app, coordinator, headers, project
+) -> None:
+    """The record the answer moved is on ``shema_record_edits``; the *filing* — this submission,
+    applied by this person — is the change log's, and a resend of the same bytes is no new act."""
+    from app.db.models.shema_change_log import ShemaChangeLog
+
+    body = {"projectId": "guarani-mbya", "answers": answers(voice="A colheita foi boa.")}
+    for _ in range(2):
+        res = await client.post(SUBMISSIONS, json=body, headers={**headers, "If-Match": '"1"'})
+        assert res.status_code == 201
+
+    rows = list((await db_session.execute(select(ShemaChangeLog))).scalars())
+    assert [(row.subject, row.action, row.project_id) for row in rows] == [
+        ("submission", "imported", "guarani-mbya")
+    ]
+    assert rows[0].actor_id == coordinator.id
+    assert rows[0].actor_name == (coordinator.display_name or coordinator.email)

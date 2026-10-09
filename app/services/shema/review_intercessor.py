@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
 from app.models.shema_intercessor import IntercessorEntry
+from app.services.shema import _trail
 from app.services.shema._directory import entry_of, mark_reviewed
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,15 @@ async def review_intercessor(
     the shape of ``remove_intercessor.py``'s, never the name, the country or the contact.
     """
     moment = now or datetime.now(UTC)
-    await mark_reviewed(db, intercessor_id, now=moment)
+    await _trail.around(
+        db,
+        lambda: mark_reviewed(db, intercessor_id, now=moment),
+        actor=actor,
+        subject="intercessor",
+        action="reviewed",
+        subject_id=intercessor_id,
+        fields=("reviewedAt",),
+    )
     logger.info(
         "shema intercessor reviewed",
         extra={

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
-from app.services.shema import _meeting_log
+from app.services.shema import _meeting_log, _trail
 from app.services.shema._scope import RegionScope
 from app.utils.shema_meetings import MeetingScopeKey, ShemaMeetingId
 
@@ -44,6 +44,14 @@ async def undo_meeting(
     if row is None:
         raise NotFoundError("No log for that meeting, region and period")
 
+    _trail.stage(
+        db,
+        actor=actor,
+        subject="meeting",
+        action="removed",
+        subject_id=f"{meeting_id.value}:{region.value}:{period}",
+        region_key=_trail.region_value(region.value),
+    )
     await db.delete(row)
     await db.commit()
 

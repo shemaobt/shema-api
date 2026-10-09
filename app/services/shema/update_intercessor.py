@@ -15,7 +15,9 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.auth import User
 from app.models.shema_intercessor import IntercessorEntry, IntercessorUpdate
+from app.services.shema import _trail
 from app.services.shema._directory import edit_person, entry_of
 
 
@@ -24,6 +26,7 @@ async def update_intercessor(
     intercessor_id: str,
     *,
     payload: IntercessorUpdate,
+    actor: User,
 ) -> IntercessorEntry:
     """Apply the fields the payload carries; absent means unchanged.
 
@@ -31,5 +34,14 @@ async def update_intercessor(
     answers, and ``sensitiveCountry`` is where the difference bites — a partial edit of a name
     must not silently unflag somebody.
     """
-    await edit_person(db, intercessor_id, payload.model_dump(exclude_unset=True))
+    changes = payload.model_dump(exclude_unset=True)
+    await _trail.around(
+        db,
+        lambda: edit_person(db, intercessor_id, changes),
+        actor=actor,
+        subject="intercessor",
+        action="updated",
+        subject_id=intercessor_id,
+        fields=payload.model_dump(exclude_unset=True, by_alias=True),
+    )
     return await entry_of(db, intercessor_id)

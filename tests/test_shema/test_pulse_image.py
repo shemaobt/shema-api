@@ -711,3 +711,28 @@ async def test_a_withdrawal_outside_the_scope_is_not_found(
 
     assert response.status_code == 404
     assert DESCRIPTION not in response.text
+
+
+# --- the audit trail (OBT-577) ---------------------------------------------------------------
+
+
+async def test_the_import_and_the_withdrawal_are_each_marked_once(
+    client, db_session, headers, project, bucket
+) -> None:
+    from app.db.models.shema_change_log import ShemaChangeLog
+
+    _image_id, submission_id = await a_pulse_with_image(client, db_session, headers)
+    assert (await _import(client, headers, submission_id)).status_code == 200
+    photo = (await db_session.execute(select(ShemaMediaItem))).scalar_one()
+    path = f"{PROJECTS}/guarani-mbya/media/{photo.id}/authorization/withdraw"
+
+    for _ in range(2):
+        assert (await client.post(path, headers=headers)).status_code == 200
+
+    rows = list((await db_session.execute(select(ShemaChangeLog))).scalars())
+    assert sorted((row.subject, row.action) for row in rows) == [
+        ("media", "withdrawn"),
+        ("submission", "imported"),
+    ]
+    assert {row.project_id for row in rows} == {"guarani-mbya"}
+    assert {row.actor_id for row in rows} == {(await _coordinator_user(db_session)).id}
