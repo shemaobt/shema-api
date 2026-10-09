@@ -27,10 +27,10 @@ from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, f
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 #: A letter no English sentence in this codebase has ever needed. Most of the original
 #: Portuguese literals this branch removed carried at least one, so this catches a
@@ -57,8 +57,6 @@ async def client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
-
     async def _panorama(**kwargs: Any) -> TurnOutcome:
         spoken.append(kwargs)
         return TurnOutcome(speech="Bem-vindos.", transcript="")
@@ -84,16 +82,15 @@ async def client(
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
+        transport=ASGITransport(app=test_app), base_url="http://test", headers=tablet.headers
     ) as c:
         yield c
 
 
 async def _open(client: httpx.AsyncClient, **body: Any) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", **body}
-    )
+    return await client.post(f"{PREFIX}/sessions", json={"pericope": "OV", **body})
 
 
 async def test_a_session_opened_naming_a_language_answers_in_it(
@@ -102,9 +99,7 @@ async def test_a_session_opened_naming_a_language_answers_in_it(
     created = await _open(client, language="pt")
     assert created.status_code == 200, created.text[:200]
 
-    await client.post(
-        f"{PREFIX}/sessions/{created.json()['session_id']}/turns", headers={"X-Room-Key": KEY}
-    )
+    await client.post(f"{PREFIX}/sessions/{created.json()['session_id']}/turns")
 
     turn = next(call for call in spoken if "session_language" in call)
     assert turn["language_code"] == "pt"
@@ -117,9 +112,7 @@ async def test_a_session_that_names_no_language_gets_english(
     """O piso é o inglês: um chamador que não nomeia idioma não pode cair no português."""
     created = await _open(client)
 
-    await client.post(
-        f"{PREFIX}/sessions/{created.json()['session_id']}/turns", headers={"X-Room-Key": KEY}
-    )
+    await client.post(f"{PREFIX}/sessions/{created.json()['session_id']}/turns")
 
     turn = next(call for call in spoken if "session_language" in call)
     assert turn["language_code"] == FLOOR
@@ -136,9 +129,9 @@ async def test_the_language_is_fixed_at_the_open_and_no_later_request_moves_it(
 
     await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY, "Accept-Language": "en", "X-Room-Language": "en"},
+        headers={"Accept-Language": "en", "X-Room-Language": "en"},
     )
-    standing = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    standing = await client.get(f"{PREFIX}/sessions/{session_id}")
 
     assert standing.json()["language"] == "pt"
     assert all(call["language_code"] == "pt" for call in spoken if "language_code" in call), (
@@ -171,9 +164,7 @@ async def test_a_language_the_room_does_not_speak_is_refused_rather_than_answere
 async def test_a_language_the_room_does_not_speak_is_refused_at_the_wheel(
     client: httpx.AsyncClient, unspoken: str
 ) -> None:
-    refused = await client.get(
-        f"{PREFIX}/books/Ruth/passages?language={unspoken}", headers={"X-Room-Key": KEY}
-    )
+    refused = await client.get(f"{PREFIX}/books/Ruth/passages?language={unspoken}")
 
     assert refused.status_code == 400, refused.text[:200]
 
@@ -234,29 +225,17 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
     prompt files, nothing here is templated per {{SESSION_LANGUAGE}}, so a Portuguese literal
     in any of them is Portuguese an English session hears too (ENG-822, item 3)."""
     from app.services.internalization_room.turn_instructions import (
-        NOT_THIS_TURN,
-        OPENING_INSTRUCTION,
-        OPENING_MOVEMENT_INSTRUCTION,
+        EARLIER_PASSAGES_HEADING,
+        TEAM_EVIDENCE_HEADING,
         VALIDATOR_USER_MESSAGE,
     )
 
     for value in (
-        OPENING_INSTRUCTION,
-        OPENING_MOVEMENT_INSTRUCTION,
-        NOT_THIS_TURN,
+        TEAM_EVIDENCE_HEADING,
+        EARLIER_PASSAGES_HEADING,
         VALIDATOR_USER_MESSAGE,
     ):
         assert not _PORTUGUESE_MARKER.search(value), value
-
-
-def test_speak_this_turn_is_english_on_every_session() -> None:
-    """SPEAK_THIS_TURN is the filler user message a verdict turn sends when it has neither an
-    opening nor a team utterance to answer — a backend-composed instruction exactly like
-    OPENING_INSTRUCTION above, just missed by the sweep that translated its siblings in this
-    same file. A `pt` session must not see "Fale este turno."."""
-    from app.services.internalization_room.turn_instructions import SPEAK_THIS_TURN
-
-    assert SPEAK_THIS_TURN == "Speak this turn."
 
 
 def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:
@@ -265,34 +244,6 @@ def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:
     assert (
         VALIDATOR_USER_MESSAGE == "Validate the drafted response now. Return only the JSON object."
     )
-
-
-async def test_the_redraft_note_heading_the_guide_reads_is_english(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`_draft` appends the redraft note under its own heading — a section title exactly like
-    the EQUIPE/FACILITADOR labels item 3 targets, just added back the same day (c3ee0e2) it
-    removed those. Never Portuguese, whatever the session speaks (ENG-822, item 3)."""
-    from app.services.internalization_room.validated_turn import _draft
-
-    captured: dict[str, str] = {}
-
-    async def agent(*, user_content: str, **kwargs: Any) -> str:
-        captured["user_content"] = user_content
-        return "fala"
-
-    the_room_agent_is(monkeypatch, turn=agent)
-
-    await _draft(
-        guide_prompt="system",
-        conversation=[],
-        turn="algo",
-        redraft_note="Redo it.",
-        settings=get_settings(),
-    )
-
-    assert "## Rewrite note" in captured["user_content"]
-    assert "## Nota de reescrita" not in captured["user_content"]
 
 
 async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothing_is_left(
@@ -353,8 +304,8 @@ def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
     fully_engaged = merge(nothing, pericope_num=P, engaged=list(nothing))
 
     assert coverage_status_block(fully_engaged, P).endswith(
-        "REMAINING: (none — every element has been worked by the team)"
+        "  (nothing — everything in the map has been visited)"
     )
-    assert "REMAINING (not yet worked by the team, in their own words):" in (
+    assert "NOT YET TOUCHED (still deserve a visit before the session ends):" in (
         coverage_status_block(nothing, P)
     )

@@ -32,9 +32,11 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from tests.deploy_harness import deploy_env_vars
+from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import (
     a_golden_session,
     nothing_settles,
+    the_loop_clock_passes,
     the_probe_fails,
     the_probe_never_answers,
     the_take_lasts,
@@ -42,7 +44,7 @@ from tests.hearing_harness import (
     the_transcriber_hears_no_words,
     the_transcriber_refuses,
 )
-from tests.release_harness import KEY, PREFIX
+from tests.release_harness import PREFIX
 from tests.room_harness import room_client, the_room_speaks
 from tests.text_seam_harness import GOLDEN, RUNNER_KEY, ScriptedAgent, the_models_answer
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_room_agent_is
@@ -87,8 +89,8 @@ async def seam(
 async def _an_open_session(
     db_session: AsyncSession, tablet: httpx.AsyncClient, guide: ScriptedAgent
 ) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
-    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
+    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns")
     assert opened.status_code == 200, opened.text
     guide.guide_inputs.clear()
     return session
@@ -97,7 +99,6 @@ async def _an_open_session(
 async def _the_team_sends_a_take(tablet: httpx.AsyncClient, session: IRSession) -> dict[str, Any]:
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )
     assert answered.status_code == 200, answered.text
@@ -378,17 +379,29 @@ async def test_a_take_with_no_words_whose_probe_never_answers_is_answered_with_d
     guide: ScriptedAgent,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", 0.05)
+    bound = 100.0
+    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", bound)
     session = await _an_open_session(db_session, tablet, guide)
     the_transcriber_hears_no_words(monkeypatch)
-    the_probe_never_answers(monkeypatch)
+    probe_started = the_probe_never_answers(monkeypatch)
+    sending_the_take = asyncio.create_task(_the_team_sends_a_take(tablet, session))
 
+    async with asyncio.timeout(30):
+        while not sending_the_take.done() and not probe_started.is_set():
+            await asyncio.sleep(0.01)
+    assert not sending_the_take.done(), (
+        "the take ended before the probe started: "
+        f"{sending_the_take.exception() or sending_the_take.result()!r}"
+    )
+    the_loop_clock_passes(monkeypatch, bound + 1)
     try:
-        reply = await asyncio.wait_for(_the_team_sends_a_take(tablet, session), timeout=5)
-    except TimeoutError:
-        pytest.fail("um ffprobe travado segurava o turno até o teto de 300 s")
+        done, _ = await asyncio.wait({sending_the_take}, timeout=5)
+        assert done, "um ffprobe travado segurava o turno até o teto de 300 s"
+    finally:
+        sending_the_take.cancel()
+        await asyncio.wait({sending_the_take})
 
-    assert reply["fixed_line"] == "D0"
+    assert sending_the_take.result()["fixed_line"] == "D0"
     assert guide.guide_inputs == []
 
 
@@ -402,12 +415,31 @@ async def test_a_probe_that_never_answers_is_stopped_once_the_bound_has_passed(
     hung_probe.write_text(f"#!/bin/sh\necho $$ > {pid_file}\nexec sleep 60\n")
     hung_probe.chmod(0o755)
     monkeypatch.setattr(audio_duration, "PROBE", str(hung_probe))
-    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", 0.5)
+    bound = 3600.0
+    monkeypatch.setattr(hearing, "MEASURING_BOUND_S", bound)
     the_transcriber_hears_no_words(monkeypatch)
+    hearing_the_take = asyncio.create_task(
+        hearing.heard_speech(b"audio", language="pt", settings=settings())
+    )
 
-    speech = await hearing.heard_speech(b"audio", language="pt", settings=settings())
+    async with asyncio.timeout(30):
+        while not hearing_the_take.done() and (
+            not pid_file.exists() or not pid_file.read_text().endswith("\n")
+        ):
+            await asyncio.sleep(0.01)
+    assert not hearing_the_take.done(), (
+        "the take ended before the probe started: "
+        f"{hearing_the_take.exception() or hearing_the_take.result()!r}"
+    )
+    the_loop_clock_passes(monkeypatch, bound + 1)
+    try:
+        done, _ = await asyncio.wait({hearing_the_take}, timeout=10)
+        assert done, "um ffprobe travado seguia segurando a medida depois do teto"
+    finally:
+        hearing_the_take.cancel()
+        await asyncio.wait({hearing_the_take})
 
-    assert speech.take_ms is None
+    assert hearing_the_take.result().take_ms is None
     with pytest.raises(ProcessLookupError):
         os.kill(int(pid_file.read_text()), 0)
 

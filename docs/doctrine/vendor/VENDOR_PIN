@@ -12,15 +12,15 @@
 # runtime-fetching the portal.
 
 source_repo:      marciasuzuki/tripod_compiler
-pin_commit:       7372ec0e9d3a64e6864d4f1d2619dd5e21900ad2
+pin_commit:       5b5c8d2b3ae7632279c07017224f861ae369b0d7
 pin_ref:          origin/main
-pin_committed:    2026-08-31
-vendored_on:      2026-09-03
+pin_committed:    2026-09-29
+vendored_on:      2026-09-30
 
 # Schema versions at this pin (informational):
 tagset_version:   TRIPOD_STA_v2_0
 validation_rules: v0.19
-enumerations:     v0.23
+enumerations:     v0.24
 
 # Published / consumable books at this pin (derived: aliases in pins.json sources
 # + complete artifact triads in fixtures — the ONLY books vendored here):
@@ -31,4 +31,4 @@ published_books:  Esther (E01-E18) + Jonah (J01-J05) + Ruth (P01-P14) = 37 peric
 # and always enforces them against the vendored bytes via VENDOR_MANIFEST.json.
 sha256_esther_aliases:   3353c0316b6bbca642643ce08b8527a07eda6c0e3fcfee5f84fe3ae1e64fd1d9
 sha256_jonah_aliases:   6b8043d20b1c45dc6f47f305aac3107f82033e09f8035975a1003dbbeb5d0e7f
-sha256_ruth_aliases:   87eadad49b4a61ec6d506fb10dc626ca72f0090b760edae798a6303c98c18da5
+sha256_ruth_aliases:   6bd2550f0c5c38e879c506111ee55757588acacbaeb6df8708b393887cf1412c

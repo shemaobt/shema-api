@@ -8,7 +8,7 @@ did not exist — the base URL is the only thing that says which stack is being 
     ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py \\
         --base-url http://localhost:8000/api/internalization-room/text-seam/back-translation/ \\
         --script /tmp/P02-causa-a-mais.json \\
-        --out golden/reports/2026-09-11
+        --out golden/reports/2026-09-11 [--budget-usd 20]
 
 `--out` is a directory; the convention is `golden/reports/<date>/`, as the Guide-turn runner
 writes. Two files land in it: `<name>.<stamp>.json`, one entry per round with the findings, the
@@ -18,6 +18,12 @@ round by round for a person to read beside one of her `.golden/bt-<name>.md` rep
 The exit code is the gate: 1 when any check failed in any round, 2 when the room refused the
 request, 0 when her bar was met. Each run costs real model calls — hers came to roughly
 US$ 6-7 for five rounds — so it is never part of the test suite.
+
+A run over every script on the shelf stops before the next script once what it has spent
+reaches `--budget-usd`, or `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both
+are: the script in flight plays its last round first. It names the scripts it did not start on
+stderr and exits 3, as the Guide-turn runner does, unless a check failed or the room refused,
+which keep their 1 and 2.
 """
 
 from __future__ import annotations
@@ -36,6 +42,18 @@ from typing import Any
 import httpx
 
 from scripts.bt_golden_checks import check_round
+from scripts.golden_spend import (
+    OVER_BUDGET,
+    Call,
+    budget_of,
+    budgeted,
+    priced,
+    split,
+    stopped,
+    uncounted,
+)
+
+BT_DIR = Path(__file__).resolve().parent.parent / "golden/bt"
 
 
 @dataclass
@@ -222,13 +240,63 @@ def export(
 
 
 async def run(args: argparse.Namespace) -> int:
+    budget = budget_of(args)
+    paths = scripts_to_play(args)
+    codes: list[int] = []
+    paid: list[Call] = []
+    not_started: list[str] = []
+    for position, path in enumerate(paths):
+        if budgeted(paid) >= budget:
+            not_started = [later.stem for later in paths[position:]]
+            break
+        code, played = await play_script(path, args)
+        codes.append(code)
+        paid += _paid(played)
+    by_role, unpriced = priced(paid)
+    if by_role or unpriced:
+        table = f" — {split(by_role)}" if by_role else ""
+        print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
+    if not_started:
+        message = stopped(
+            "bt golden",
+            budget=budget,
+            spent=budgeted(paid),
+            not_started=not_started,
+            unpriced=unpriced,
+        )
+        print(message, file=sys.stderr)
+        return max(codes, default=0) or OVER_BUDGET
+    return max(codes)
+
+
+def _paid(played: list[Played]) -> list[Call]:
+    return [
+        Call(
+            call["role"],
+            call["rung"],
+            call["cost_usd"],
+            call["input_tokens"],
+            call["output_tokens"],
+            call["cache_read_tokens"] or 0,
+            call["cache_write_tokens"] or 0,
+        )
+        for line in played
+        for call in line.usage
+    ]
+
+
+def scripts_to_play(args: argparse.Namespace) -> list[Path]:
+    return [Path(args.script)] if args.script else sorted(BT_DIR.glob("*.json"))
+
+
+async def play_script(path: Path, args: argparse.Namespace) -> tuple[int, list[Played]]:
     """Play her script through one room and answer with what a CI should do about it.
 
     The one catch in this file, and it is the boundary: the room refusing is not her bar
     failing, and the rounds already paid for in model calls have to reach the report before
     that becomes an exit code.
     """
-    script = load_script(Path(args.script))
+    script = load_script(path)
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"X-Access-Code": args.access_code} if args.access_code else {}
     print(f"▶ {script.name} ({script.pericopeId}, {script.language}) → {base_url}")
@@ -252,11 +320,12 @@ async def run(args: argparse.Namespace) -> int:
             )
             failed = sum(len(line.checks) for line in played)
             verdict = "STOPPED" if refused is not None else ("FAIL" if failed else "PASS")
-            print(f"  {verdict} · {failed} check(s) failed · {session_id}")
+            cost = sum(priced(_paid(played))[0].values())
+            print(f"  {verdict} · {failed} check(s) failed · {session_id} · cost US$ {cost:.2f}")
             print(f"  {report}\n  {transcript}")
     if refused is not None:
-        return _refused(refused)
-    return 1 if failed else 0
+        return _refused(refused), played
+    return (1 if failed else 0), played
 
 
 def _refused(stopped: httpx.HTTPStatusError) -> int:
@@ -268,8 +337,9 @@ def _refused(stopped: httpx.HTTPStatusError) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--script", required=True)
+    parser.add_argument("--script", default=None)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--budget-usd", type=float, default=None)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
     try:
         return asyncio.run(run(parser.parse_args()))

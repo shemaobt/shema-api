@@ -1,10 +1,9 @@
-"""ENG-622 — the call a claimed tablet makes once, to stop depending on the shared key.
+"""ENG-622 — the call a claimed tablet makes once, to hold a device credential of its own.
 
 Until now the credential a claim mints went to the Desk and stopped there: the row keeps
 only a hash, the plaintext rode back in the claim response, and `git grep credential` in
 `facilitator-desk` finds nothing that reads it. So the one party that needs a credential —
-the tablet — has never had a way to hold one, and every room route it calls is opened by
-the string every installation shares.
+the tablet — had no way to hold one.
 
 This is that way. A tablet that has been claimed asks once, receives a credential minted
 for the occasion, and from then on names itself on every request. The claim-time copy the
@@ -16,8 +15,8 @@ it must keep polling; a tablet that already collected must stop and show a new c
 A single refusal for both leaves the app unable to choose, and choosing wrong either
 strands a tablet on a dead poll or wipes one that is working.
 
-The shared room key opens this route, like the two beside it, because a tablet with no
-credential is exactly the caller it exists to serve. Retiring the key is ENG-455's.
+This route opens to anyone, like the two beside it, because a tablet with no credential is
+exactly the caller it exists to serve (ADR 0057).
 """
 
 import asyncio
@@ -37,19 +36,19 @@ from app.services.device.unlink_device import unlink_device
 from tests.baker import make_language, make_project, make_project_user_access, make_user
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
-ROOM_KEY_HEADER = "X-Room-Key"
 
 
 def _app_for(session: AsyncSession):
     from fastapi import FastAPI
 
+    from app.api.devices import devices_router
     from app.api.internalization_room import router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
+    test_app.include_router(devices_router, prefix="/api/devices")
     register_exception_handlers(test_app)
 
     async def _get_db():
@@ -61,9 +60,6 @@ def _app_for(session: AsyncSession):
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
-    from app.core.config import get_settings
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     transport = ASGITransport(app=_app_for(db_session))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -98,17 +94,13 @@ async def a_claimed_device(db: AsyncSession, *, email: str = "fac@example.com") 
 
 
 async def collect(client, device_id: str):
-    """The call under test, made the way a tablet makes it: with the shared key."""
-    return await client.post(
-        f"{PREFIX}/devices/{device_id}/credential", headers={ROOM_KEY_HEADER: KEY}
-    )
+    """The call under test, made the way a tablet makes it: with no header."""
+    return await client.post(f"{PREFIX}/devices/{device_id}/credential")
 
 
-async def read_the_link_with(client, device_id: str, credential: str):
-    """A room route answered with the credential alone — no shared key in the request."""
-    return await client.get(
-        f"{PREFIX}/devices/{device_id}/link", headers={DEVICE_CREDENTIAL_HEADER: credential}
-    )
+async def read_itself_with(client, credential: str):
+    """The device's own door, which answers any credential the device still holds."""
+    return await client.get("/api/devices/me", headers={DEVICE_CREDENTIAL_HEADER: credential})
 
 
 async def test_a_claimed_tablet_receives_a_credential_it_can_use(client, db_session):
@@ -118,7 +110,7 @@ async def test_a_claimed_tablet_receives_a_credential_it_can_use(client, db_sess
 
     assert collected.status_code == 200, collected.text
     credential = collected.json()["credential"]
-    served = await read_the_link_with(client, tablet.device_id, credential)
+    served = await read_itself_with(client, credential)
     assert served.status_code == 200, served.text
     assert served.json()["project_id"] == tablet.project.id
 
@@ -139,7 +131,7 @@ async def test_the_second_collection_is_refused_and_the_first_credential_still_w
 
     assert again.status_code == 403
     assert "credential" not in again.json()
-    served = await read_the_link_with(client, tablet.device_id, first)
+    served = await read_itself_with(client, first)
     assert served.status_code == 200, served.text
 
 
@@ -182,12 +174,12 @@ async def test_collecting_retires_the_copy_the_desk_was_handed(client, db_sessio
     rather than a string that was never good.
     """
     tablet = await a_claimed_device(db_session)
-    before = await read_the_link_with(client, tablet.device_id, tablet.claim_time_credential)
+    before = await read_itself_with(client, tablet.claim_time_credential)
     assert before.status_code == 200, before.text
 
     await collect(client, tablet.device_id)
 
-    after = await read_the_link_with(client, tablet.device_id, tablet.claim_time_credential)
+    after = await read_itself_with(client, tablet.claim_time_credential)
     assert after.status_code != 200
 
 
@@ -227,7 +219,7 @@ async def test_two_first_calls_at_once_issue_one_credential(client, db_session, 
 
     assert sorted(answer.status_code for answer in answers) == [200, 403]
     issued = next(answer for answer in answers if answer.status_code == 200).json()["credential"]
-    served = await read_the_link_with(client, tablet.device_id, issued)
+    served = await read_itself_with(client, issued)
     assert served.status_code == 200, served.text
 
 
@@ -250,5 +242,5 @@ async def test_collecting_retires_the_desks_copy_even_after_it_was_rotated(clien
     await collect(client, tablet.device_id)
 
     for retired in (tablet.claim_time_credential, newer):
-        refused = await read_the_link_with(client, tablet.device_id, retired)
+        refused = await read_itself_with(client, retired)
         assert refused.status_code != 200, refused.text

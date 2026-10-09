@@ -3,8 +3,10 @@
 Checks, Test and Migrations are the pull request gates: they run on every pull request, and also
 on `integration/**` pushes, which have no pull request of their own. That filter stays narrow on
 purpose, because the test job has been measured between 6 and 56 minutes and a chain merged
-one step at a time pays the slowest job once per step. The rest run on their own triggers,
-named in the table.
+one step at a time pays the slowest job once per step. The Test job also runs on a push to
+`main`, so a crossing of two green pull requests shows on the commit it landed on; that run
+blocks no merge and no deploy, and the deploy workflow does not wait for it. The rest run on
+their own triggers, named in the table.
 
 A test that spawns a process to prove what it proves does not run in the Test job: the
 fifteen that walk a migration carry the `migration` marker and run in Migrations, which
@@ -16,13 +18,14 @@ turning red. [ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-
 
 | Workflow | What it gates |
 |---|---|
-| Checks | One job, one check on the pull request: the seven commands in a queue under a 10-minute ceiling — `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), `mypy app/`, the two passes of the doctrine guard, and the canon drift check, which talks to Marcia's repository and carries `GITHUB_TOKEN` for it — then the three files marked `fresh_interpreter`. |
-| Test | The pytest suite on SQLite in four processes split by file, selecting out the tests marked `migration` or `fresh_interpreter`, with the schema created once per process, under a 12-minute ceiling, against a step measured at 6m21s on the runner with ~3700 tests (ENG-1092). `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
+| Checks | One job, one check on the pull request: the seven commands in a queue under a 10-minute ceiling — `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), `mypy app/`, the two passes of the doctrine guard, and the canon drift check, which holds the vendored canon to its record and to a fresh clone of Marcia's compiler at the pin, then the canon smoke over every served passage — then the three files marked `fresh_interpreter`. |
+| Test | The pytest suite on SQLite in four processes split by file, selecting out the tests marked `migration` or `fresh_interpreter`, with the schema created once per process, under a 12-minute ceiling on the step itself, against a step measured at 6m21s on the runner with ~3700 tests (ENG-1092), inside a 30-minute ceiling on the job that leaves room for a slow apt (ENG-1498). `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
 | Migrations | The graph stands at one head with no duplicate revision ids, the models match the migrated schema (`alembic check`), the newest migrations walk down and back up on a clean Postgres, then the fifteen tests marked `migration` run with `DATABASE_URL` cleared so they build their own SQLite files instead of running against the job's Postgres. |
 | Deploy | A push to `main` builds the image, upgrades the production database and deploys to Cloud Run. |
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
 | Claude mention | Answers an `@claude` mention on a pull request or issue. |
 | Claude cost report | A weekly usage rollup, posted to a webhook when one is configured. |
+| Canon sync | Mondays and Thursdays at 09:17 UTC: when the compiler's `main` has moved past the pin, re-syncs the canon, runs the drift check against a fresh clone, the canon smoke and `docker build`, and opens one pull request, "Canon sync: new published canon from the compiler", for review. It never merges; with nothing new it does nothing. |
 | Reviews | Two review workflows, each fired by requesting its reviewer on the pull request; re-request to re-run. On a pull request into `dev` the request is made automatically, and remade on every head, because the check is keyed to the head SHA. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
 | Request Joãozinho on dev | Requests the reviewer on every head of a pull request into `dev`, including one retargeted onto it, which is what fires the review there. It requests nobody when the author is Joãozinho's own login or a bot, because the review would skip and a skipped check counts as passing. |
 

@@ -4,17 +4,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_caller_dep
+from app.api.internalization_room._deps import linked_tablet_dep
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
-from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import absence_index, element_keys
-from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.languages import floor, normalize
-from app.services.internalization_room.passage_lines import PANORAMA, line_for, panorama_line_for
+from app.services.internalization_room.passage_lines import PANORAMA, offered, panorama_line_for
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
@@ -63,7 +61,7 @@ async def _voiced_panorama(
 @router.get(
     "/books/{book}/passages",
     response_model=BookPassagesResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def passages(
     book: str,
@@ -107,11 +105,7 @@ async def passages(
         raise ValidationError(f"The room does not speak {language!r}")
     await db.commit()
     in_flight = asyncio.Semaphore(MAX_LINES_IN_FLIGHT)
-    speakable = [
-        (meaning_map.pericope_num, line)
-        for meaning_map in load_book(book)
-        if not unwalkable(meaning_map) and (line := line_for(meaning_map.pericope_num, spoken))
-    ]
+    speakable = offered(book, spoken)
     entries = []
     panorama_line = panorama_line_for(spoken)
     if panorama_line:

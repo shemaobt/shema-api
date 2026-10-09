@@ -4,7 +4,7 @@ No backfill: a line prepared before has no attempts to keep, which is what a nul
 (ADR 0054).
 
 Revision ID: 20261007_atmp01
-Revises: 20261006_opcl01
+Revises: 20261007_keep01
 """
 
 import sqlalchemy as sa
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20261007_atmp01"
-down_revision = "20261006_opcl01"
+down_revision = "20261007_keep01"
 branch_labels = None
 depends_on = None
 

@@ -166,8 +166,8 @@ async def having_closed_the_book(db: AsyncSession, team) -> None:
 
     The events are written by `apply_coverage` rather than inserted, so a fixture cannot agree
     with a resolution that reads them differently from how the room writes them. It is fourteen
-    passages because "complete" now means the book, not a session — and since ENG-589 eight of
-    them are no longer passages the room will open, which is what `open_ir_session` covers.
+    passages because "complete" now means the book, not a session — and the room opens every one
+    of them today, which is how `open_ir_session` opens each.
     """
     from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 

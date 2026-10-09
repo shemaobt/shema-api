@@ -18,6 +18,7 @@ from app.services.internalization_room.canon.elements import (
     element_keys,
     elements_for,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 
 PANORAMA_PREFIX = "OV-"
 
@@ -172,11 +173,13 @@ def coverage_view(session: IRSession) -> CoverageView:
     up as `Math.round` rounds and never half to even as Python's `round` does.
     """
     numbers = counts(session.coverage_state or {})
+    with reading_the_canon_of(session.canon_pin):
+        absence = -1 if is_panorama(session.pericope) else absence_index(session.pericope)
     return CoverageView(
         engaged=numbers["engaged"],
         surfaced=numbers["surfaced"],
         total=numbers["total"],
-        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+        absence_index=absence,
         beads_total=BEADS_TOTAL,
         beads_filled=math.floor(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL + 0.5),
     )
@@ -195,28 +198,6 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
         for element in elements_for(pericope_num)
         if merged.get(element.key) != CoverageStatus.ENGAGED
     ]
-
-
-def current_scene(state: dict[str, str], pericope_num: str) -> str | None:
-    """The first scene with a bead still short of `engaged`, once one scene bead is.
-
-    Ledger state, read off which scene-scoped beads the team has worked: none of them
-    engaged is the whole-passage opening, all of them engaged is the whole-passage
-    integration, and both are answered with no scene at all. The pointer the rehearsal is
-    read against lives in `live_turn` and answers to what the team has said, not to this.
-    """
-    merged = {**initial_state(pericope_num), **state}
-    beads = [
-        (element.scene, merged.get(element.key) == CoverageStatus.ENGAGED)
-        for element in elements_for(pericope_num)
-        if element.scene is not None
-    ]
-    if not any(engaged for _, engaged in beads):
-        return None
-    for scene in sorted({scene for scene, _ in beads}):
-        if not all(engaged for at, engaged in beads if at == scene):
-            return f"S{scene}"
-    return None
 
 
 _EXITS_AT_SURFACED = frozenset({"arc", "context", "tone", "function"})

@@ -167,7 +167,11 @@ def _her_script(tmp_path: Path, *, expect: dict[str, Any], rounds: int = 2) -> P
 
 def _args(script: Path, out: Path) -> argparse.Namespace:
     return argparse.Namespace(
-        base_url=BASE_URL, script=str(script), out=str(out), access_code=RUNNER_KEY
+        base_url=BASE_URL,
+        script=str(script),
+        out=str(out),
+        access_code=RUNNER_KEY,
+        budget_usd=None,
     )
 
 
@@ -242,3 +246,48 @@ async def test_an_http_error_exits_two_and_still_exports(over_the_seam, tmp_path
         "seguinte morre"
     )
     assert len(json.loads(exported[0].read_text(encoding="utf-8"))["rounds"]) == 1
+
+
+async def test_with_no_script_named_the_runner_plays_every_bt_script_on_the_shelf(
+    over_the_seam, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shelf = tmp_path / "bt"
+    shelf.mkdir()
+    first = json.loads(_her_script(shelf, expect=HER_EXPECTATION).read_text(encoding="utf-8"))
+    (shelf / "P02-causa-trocada.json").write_text(
+        json.dumps({**first, "name": "P02-causa-trocada"}, ensure_ascii=False), encoding="utf-8"
+    )
+    monkeypatch.setattr(bt_golden_runner, "BT_DIR", shelf)
+    args = argparse.Namespace(
+        base_url=BASE_URL,
+        script=None,
+        out=str(tmp_path / "reports"),
+        access_code=RUNNER_KEY,
+        budget_usd=None,
+    )
+
+    await bt_golden_runner.run(args)
+
+    played = sorted(path.name.split(".")[0] for path in (tmp_path / "reports").glob("*.json"))
+    assert played == ["P02-causa-a-mais", "P02-causa-trocada"], (
+        "o runner só jogava o roteiro que alguém nomeava"
+    )
+
+
+def test_the_shelf_the_runner_reads_by_default_holds_her_ten_bt_scripts() -> None:
+    found = sorted(
+        path.stem for path in bt_golden_runner.scripts_to_play(argparse.Namespace(script=None))
+    )
+
+    assert found == [
+        "P01-frases",
+        "P01-regravar-frase-acrescimo",
+        "P01-regravar-frase-faltou",
+        "P02-agentes-trocados",
+        "P02-bondade-fiel",
+        "P02-causa-a-mais",
+        "P02-causa-trocada",
+        "P02-nuance-espera",
+        "P02-nuance-esta-noite",
+        "P02-regravar-frase-troca",
+    ], "nenhum roteiro bt dela estava no repositório; o runner lia de /tmp"

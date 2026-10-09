@@ -16,12 +16,11 @@ Decided by the Orchestrator on 2026-10-06, from Marcia's `src/turn/turnLoop.ts`:
   `attempts`, oldest first, one per draft the Guide produced. The column is JSON, so there is no
   migration.
 - An attempt holds `attempt` (1-based), `draft`, `issues` (each only the Validator's `problem`, `claim`
-  and `explanation`, as text, plus the room's own `off_bridge_language`; none when the reply
-  could not be read), `verdict` (absent when no reply could be read), `corrected`
+  and `explanation`, as text; none when the reply could not be read), `verdict` (absent when no reply could be read), `corrected`
   (only on `correct`) and `note`, the attempt note (only when the room has something to say).
 - The attempt note is the room's, never the Validator's, and fixed English: one for a reply that could
-  not be read twice, one for a spoken text that strayed from the bridge language. An ordinary
-  attempt has none. This is Marcia's rule (`src/turn/turnLoop.ts`: the harness writes the note,
+  not be read. An ordinary attempt has none. A draft that came back empty never reaches the
+  Validator, and is kept as an attempt with its empty draft and nothing else. This is Marcia's rule (`src/turn/turnLoop.ts`: the harness writes the note,
   only when something went wrong, and her Validator returns none).
 - Every outcome keeps its attempts: pass, correction, redraft, fail-safe. The fail-safe is not an
   attempt of its own; it is already on the turn (`outcome`, `category`, `fixed_line`).
@@ -43,5 +42,5 @@ Rejected:
 - A table of attempts. The consultant reads them with the turn, never alone, and the entry
   already holds the turn's other facts.
 - An attempt note written by the Validator. It would be one more field a model can get wrong, and the
-  two things the note says are facts the room knows and the Validator cannot.
+  thing the note says is a fact the room knows and the Validator cannot.
 - Rebuilding attempts for old turns from `redrafts`. The drafts they would need were never kept.

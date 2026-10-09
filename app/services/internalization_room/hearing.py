@@ -23,7 +23,6 @@ TRANSCRIBER_BOUND_SECONDS = 15
 _BRIDGE_LANGUAGE_CODES = {
     "pt": {"pt", "por"},
     "en": {"en", "eng"},
-    "es": {"es", "spa"},
 }
 
 _BRACKETED = re.compile(r"\[[^\]]{0,60}\]|[♪♫]")

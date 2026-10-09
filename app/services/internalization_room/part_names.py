@@ -7,9 +7,9 @@ scene.
 
 An address is made of three things and nothing else: the **Frase number** the analyst gave and
 the team heard, the part's position among the session's current parts, and the scene's own
-title out of the element-label catalogue. Nothing here writes a name. A room that described a
-scene in words the map does not use would be putting content about the passage in a team's ears
-on our authority, which is the one thing the containment rule forbids.
+title. Nothing here writes a name. A room that described a scene in words the map does not use
+would be putting content about the passage in a team's ears on our authority, which is the one
+thing the containment rule forbids.
 
 It lives beside the findings block rather than inside it because it is the only thing in the
 room that turns takes and a catalogue into words, and `back_translation.py` is long enough
@@ -18,15 +18,13 @@ without a second subject in it.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 
-from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
-from app.services.internalization_room.canon.labels import ElementLabelsBroken, labelled_elements
-from app.services.internalization_room.languages import FLOOR
-
-logger = logging.getLogger(__name__)
+from app.services.internalization_room.canon.kept import reading_the_canon_of
+from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.canon.titles import scene_title
+from app.services.internalization_room.languages import FLOOR, room_language
 
 
 @dataclass(frozen=True)
@@ -43,31 +41,16 @@ class AddressWords:
     languages exists to prevent.
     """
 
-    frase: str
     whole: str
     part: str
-    span: str
-    one: str
 
 
 #: One entry per language of `ROOM_LANGUAGES`, and the two tables here are read together: a
 #: language claimed with words but without a scene title would speak its address in one language
 #: and name the scene in another, which is the crossing this module exists to prevent.
 _WORDS: dict[str, AddressWords] = {
-    "pt": AddressWords(
-        frase="frase {number}",
-        whole="a gravação inteira",
-        part="a parte {number}",
-        span="das frases {first} a {last}",
-        one="da frase {first}",
-    ),
-    "en": AddressWords(
-        frase="sentence {number}",
-        whole="the whole recording",
-        part="part {number}",
-        span="sentences {first} to {last}",
-        one="sentence {first}",
-    ),
+    "pt": AddressWords(whole="a gravação inteira", part="a parte {number}"),
+    "en": AddressWords(whole="the whole recording", part="part {number}"),
 }
 
 
@@ -88,67 +71,24 @@ class Addresses:
     by_stretch: dict[str, str] = field(default_factory=dict)
     words: AddressWords = _WORDS[FLOOR]
 
-    def of(self, finding_chunk: int | None, segment_id: str | None) -> str:
-        """The address that rides with one finding: its frase, its part, or neither.
-
-        **The part is the stretch's and never the frase's.** A missing element placed *after*
-        frase N resolves to stretch N+1 (ADR 0007) while keeping N as the number the analyst
-        gave and the team heard (ADR 0018), so across a part boundary the two halves name two
-        different parts of the rehearsal and both are right: the frase is where the team heard
-        the gap, the part is what they would record again.
-
-        A **Missing without an address** points at no stretch, so it carries the frase alone —
-        the closing already sends the team to the rehearsal to record what is still missing,
-        and a part named here would send them to record over something that is not wrong. A
-        stretch whose part is no longer one is in the same position: the audio it names is gone.
-
-        A row written before `chunk` existed loses the frase slot and keeps its part. The
-        number cannot be recovered, and one invented here would send the team to the wrong
-        frase with the same confidence as a right one.
-        """
-        said = [] if finding_chunk is None else [self.words.frase.format(number=finding_chunk)]
-        label = self.by_stretch.get(segment_id or "")
-        if label:
-            said.append(label)
-        return " — ".join(said)
+    def part_of(self, segment_id: str | None) -> str:
+        return self.by_stretch.get(segment_id or "", "")
 
 
-def scene_titles(session: IRSession) -> list[str | None]:
-    """The passage's scenes in scene order, each named in the language the room is speaking.
-
-    `None` where the catalogue has no title in that language, which is ten of the fourteen
-    passages in Portuguese. There is no fallback across languages and none is wanted: an
-    English title in a Portuguese session is a sentence the team cannot read.
-
-    **A holed catalogue costs the title, never the room.** `labelled_elements` raises on a
-    catalogue of ours being wrong, and that is a 500 — which is the right answer on the screens
-    that exist to show labels, and the wrong one here: before this the verdict never read the
-    catalogue at all, and a team's session dying over a decoration is a worse failure than a
-    verdict that names the part by its number. So the one exception is caught, around the one
-    call, and it is logged with its traceback rather than swallowed: a data fault nobody is
-    told about is how it stays there.
-    """
-    try:
-        elements = labelled_elements(session.pericope)
-    except ElementLabelsBroken:
-        logger.exception(
-            "element labels are holed for %s; the address loses its titles", session.pericope
-        )
-        return []
-    return [
-        element.label_pt if session.language == "pt" else element.label_en
-        for element in elements
-        if element.kind is ElementKind.SCENE
-    ]
+def scene_titles(session: IRSession) -> list[str]:
+    language = room_language(session.language)
+    with reading_the_canon_of(session.canon_pin):
+        return [
+            scene_title(session.pericope, scene.number, scene.title, language)
+            for scene in load_map(session.pericope).scenes
+        ]
 
 
 def addresses_for(
     told: list[IRSegment],
     parts: list[IRTake],
-    titles: list[str | None],
+    titles: list[str],
     language_code: str,
-    *,
-    superseded: list[IRSegment],
 ) -> Addresses:
     """Each told stretch's part, named as the team will hear it, by the stretch's own address.
 
@@ -162,48 +102,30 @@ def addresses_for(
     **The title only where the rehearsal's parts are the map's scenes.** The room directs the
     team to record whole or scene by scene and nothing enforces it: a team that merged two
     scenes and split a third has four parts over three scenes, and part 2 is not scene 2. The
-    count is the only guard there is, so the title is said when the counts agree and the
-    catalogue holds it in the session's language. The frase range stays either way, because it
-    is the address the team actually heard and it is what makes a wrong title recoverable.
-
-    `superseded` are stretches a retelling has replaced, addressed by the part they are still
-    slices of. A finding is raised on the stretch that was standing when it was read, and the
-    **Correction check** reads it after the retelling has taken that row out of the telling: the
-    row moved, the part did not.
+    count is the only guard there is, so the title is said when the counts agree.
     """
     words = words_for(language_code)
     titled = len([part for part in parts if part.ordinal is not None]) == len(titles)
 
-    frases: dict[str, list[int]] = {}
-    for at, stretch in enumerate(told, start=1):
-        frases.setdefault(stretch.take_id, []).append(at)
+    told_parts = {stretch.take_id for stretch in told}
 
     said: dict[str, str] = {}
     position = 0
     for part in parts:
         if part.ordinal is not None:
             position += 1
-        numbered = frases.get(part.id)
-        if not numbered:
+        if part.id not in told_parts:
             continue
         if part.ordinal is None:
             said[part.id] = words.whole
             continue
-        first, last = numbered[0], numbered[-1]
-        span = (
-            words.one.format(first=first)
-            if first == last
-            else words.span.format(first=first, last=last)
-        )
         named = words.part.format(number=position)
         title = titles[position - 1] if titled else None
-        said[part.id] = f"{named} — {title}, {span}" if title else f"{named}, {span}"
+        said[part.id] = f"{named} — {title}" if title else named
 
     return Addresses(
         by_stretch={
-            stretch.id: said[stretch.take_id]
-            for stretch in [*told, *superseded]
-            if stretch.take_id in said
+            stretch.id: said[stretch.take_id] for stretch in told if stretch.take_id in said
         },
         words=words,
     )

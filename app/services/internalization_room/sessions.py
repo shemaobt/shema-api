@@ -29,6 +29,7 @@ from app.services.internalization_room.back_translation import (
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
+from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -48,8 +49,10 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
 from app.services.internalization_room.entered import entered
+from app.services.internalization_room.fail_safe import FailSafe
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.live import live
+from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
@@ -175,10 +178,9 @@ async def open_session(
     db: AsyncSession,
     *,
     pericope: str | None = None,
+    project_id: str,
     after_panorama: bool = False,
-    project_id: str | None = None,
     language: str | None = None,
-    lifts: bool = False,
 ) -> tuple[IRSession, bool]:
     """The session the room's open door returns, and whether this open created it.
 
@@ -203,21 +205,11 @@ async def open_session(
     before the Panorama would leave `heard_panorama` false, and the route would write the
     Panorama's opening ahead again.
 
-    A tablet that opens a session halted by its call for a person is back in the room, so
-    ``lifts`` writes what a landed turn writes for it (`_a_teams_return`): the halt lifts, and
-    a visit that lifted it becomes final. A warning stands, because a facilitator's visit is
-    its only exit (ADR 0039). Only a credentialed tablet lifts.
-
-    A caller with no team has nothing to resume, so it is minted a session as before.
+    A tablet that opens a session halted by its call for a person is back in the room, so the
+    open writes what a landed turn writes for it (`_a_teams_return`): the halt lifts, and a
+    visit that lifted it becomes final. A warning stands, because a facilitator's visit is
+    its only exit (ADR 0039).
     """
-    if project_id is None:
-        minted = await create_session(
-            db,
-            pericope=pericope,
-            after_panorama=after_panorama,
-            language=language,
-        )
-        return minted, True
     pericope, after_panorama, spoken = await _resolved(
         db,
         pericope=pericope,
@@ -245,9 +237,7 @@ async def open_session(
             session, created = await get_session(db, winner), False
     if after_panorama and not session.after_panorama:
         session.after_panorama = True
-    if lifts and (
-        session.status is IRSessionStatus.NEEDS_PERSON or session.lifted_halt is not None
-    ):
+    if session.status is IRSessionStatus.NEEDS_PERSON or session.lifted_halt is not None:
         await db.execute(
             update(IRSession)
             .where(IRSession.id == session.id)
@@ -401,6 +391,7 @@ async def _minted(
         language=language,
         comprehension={},
         earlier_passages=stamp,
+        canon_pin=deployed_pin(),
     )
     db.add(session)
     await db.flush()
@@ -439,46 +430,18 @@ async def get_session_for_facilitator(db: AsyncSession, user: User, session_id: 
     return session
 
 
-async def get_session_for_room_caller(
-    db: AsyncSession, session_id: str, project_id: str | None
-) -> IRSession:
-    """The session, if it belongs to the team the tablet says it is.
+async def session_for_room_caller(db: AsyncSession, session_id: str, project_id: str) -> IRSession:
+    """The session, if it belongs to the team of the tablet asking.
 
-    The team's own routes have always resolved a session by id alone, which is safe while
-    everything they do is about a session the tablet already holds. Approving is not: a
-    release is the whole of what a team recorded, and a route that writes one has to know
-    whose passage it is naming.
-
-    A session that names no project is reached by whoever asks, credentialed or not, and is
-    refused further in by name — the release cannot be numbered without a project, and that
-    is a different thing to be told than "no such session". Which caller is holding the
-    tablet does not change it: the session is the one that cannot be released.
-
-    Somebody else's session *is* refused as not found, with the message
-    `get_session_for_facilitator` gives, because unowned is nobody's but owned is somebody's.
+    Every team door reads a session through here. Somebody else's session is refused as not
+    found, with the message `get_session_for_facilitator` gives, and so is a session that
+    names no team at all — left by callers on the retired shared key, it is nobody's to reach
+    (ADR 0057).
     """
     session = await _the_live_session(db, session_id)
-    if session.project_id is not None and session.project_id != project_id:
+    if session.project_id != project_id:
         raise NotFoundError(_no_such_session(session_id))
     return session
-
-
-async def session_for_room_caller(
-    db: AsyncSession, session_id: str, project_id: str | None
-) -> IRSession:
-    """The session a team's own routes should read, whether or not the caller names a project.
-
-    Every route the team's tablet calls used to resolve a session by id alone, which is safe
-    while everything it does is about a session the tablet already holds — until a device
-    names a project, at which point the same read let it act on a passage that was never its
-    team's. `get_session_for_room_caller` closed that for a caller who names one; the shared
-    key still names no device and so no project, and a caller on it keeps the by-id read its
-    real facilitator flow has always depended on (`_deps.py`'s own "dated compromise, not a
-    design").
-    """
-    if project_id is not None:
-        return await get_session_for_room_caller(db, session_id, project_id)
-    return await _the_live_session(db, session_id)
 
 
 async def _the_live_session(db: AsyncSession, session_id: str) -> IRSession:
@@ -614,7 +577,7 @@ async def append_exchange(
         guide["redrafts"] = outcome.redrafts
         if outcome.used_fail_safe:
             guide.update(
-                category=outcome.fixed_line[:1],
+                category=outcome.fixed_line[:1] or str(FailSafe.UNREPAIRABLE),
                 fixed_line=outcome.fixed_line,
                 pericope=session.pericope,
                 scene=scene,
@@ -637,6 +600,18 @@ async def append_exchange(
         guide["attempts"] = kept
     if scene_rehearsals is not None:
         guide["scene_rehearsals"] = scene_rehearsals
+    step = (
+        None
+        if is_panorama(session.pericope)
+        else moment_step(
+            session.messages or [],
+            guide_response,
+            fail_safe=outcome is not None and outcome.used_fail_safe,
+            parts=len(scene_ids_for(session.pericope)),
+        )
+    )
+    if step is not None:
+        guide["moment"] = step.as_json()
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
     if state is not None:
@@ -749,6 +724,15 @@ def comprehension_of(session: IRSession) -> ComprehensionState:
         return ComprehensionState.model_validate(stored)
 
 
+def was_opened(session: IRSession) -> bool:
+    """Whether the session holds a Guide line: a room note or a team entry alone does not open it.
+
+    The tablet asks a session's Opening only while it is not opened, so a session that already
+    holds the Guide's line is not asked for a second one.
+    """
+    return any(line.get("role") == "guide" for line in session.messages or [])
+
+
 async def append_opening(
     db: AsyncSession,
     session: IRSession,
@@ -827,7 +811,10 @@ def session_is_done(session: IRSession) -> bool:
     to say — the Guide's send-off and a rehearsal take that was kept — and until it lands the
     floor and the practice reading close the session between them.
     """
-    return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(session)
+    with reading_the_canon_of(session.canon_pin):
+        return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(
+            session
+        )
 
 
 async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:

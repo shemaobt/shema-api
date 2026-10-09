@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from app.services.internalization_room import golden_judge
-from scripts.sync_doctrine import REPO_ROOT, VENDORED, digest
+from app.services.internalization_room import golden_judge, llm
+from scripts.sync_doctrine import FROZEN, REPO_ROOT, digest
 from tests.text_seam_harness import A_VERDICT, the_judge_answers
 
 TRANSCRIPT = (
@@ -24,20 +24,19 @@ TRANSCRIPT = (
 )
 
 
-HER_JUDGE_PROMPT = "4a03febee00949c40207ada18b84600ac7897353fcc3eccd2d49feef85b8f026"
-VENDORED_JUDGE_PROMPT = (
-    "app/services/internalization_room/prompts/vendor/golden_judge_system_prompt.md"
-)
+HER_JUDGE_PROMPT = "394a36339a91ad7c3c1ab2da23d96a7b27a16a67e883b03efee1fa77f8b90dc1"
+FROZEN_JUDGE_PROMPT = "app/services/internalization_room/prompts/golden_judge_system_prompt.md"
 
 
-def test_her_judge_prompt_is_vendored_byte_for_byte_under_the_pin() -> None:
-    ours = VENDORED["prompts/golden_judge_system_prompt.md"]
+def test_the_judge_reads_her_prompt_at_the_freeze_by_its_fingerprint() -> None:
+    ours = FROZEN["prompts/golden_judge_system_prompt.md"]
 
-    assert ours == VENDORED_JUDGE_PROMPT, (
-        "o prompt do juiz mora ao lado dos outros dela, nunca entre os nossos"
+    assert ours == FROZEN_JUDGE_PROMPT, "o juiz dela mora entre os oito prompts dela em uso"
+    assert REPO_ROOT / ours == golden_judge.HER_PROMPT, (
+        "o juiz lia a cópia de 533b6e3, de 103 linhas, sem as decisões de setembro"
     )
     assert digest((REPO_ROOT / ours).read_bytes()) == HER_JUDGE_PROMPT, (
-        "os bytes vendorizados não são os do ramo dela no pin — o sha foi lido do checkout dela"
+        "os bytes não são os do apêndice A do PRD — o sha foi lido de lá"
     )
 
 
@@ -56,6 +55,10 @@ async def test_the_judge_reads_her_prompt_body_with_the_validators_map_and_the_s
         "as notas de engenharia acima do BEGIN são dela para ler, não para o modelo"
     )
     assert "Engineering notes" not in system and "=== END SYSTEM PROMPT ===" not in system
+    assert "Her word:" not in system, "as decisões datadas acima do BEGIN não chegam ao juiz"
+    assert "kind `team_reading_confirmed`" in system, (
+        "o juiz antigo não conhecia a leitura da equipe confirmada como incidente"
+    )
     assert "## PRESERVATION RULES — do_not_decide (HARD CONSTRAINTS)" in system, (
         "o juiz recebe o mapa do Validador — com as proibições — e não o do Guia (run.ts:126)"
     )
@@ -90,6 +93,46 @@ async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_
     )
     assert asked["schema"]["required"] == ["scores", "incidents", "pass", "summary"], (
         "a resposta é presa à forma JSON que o prompt dela pede, e só a ela"
+    )
+
+
+async def test_a_judge_call_that_nothing_follows_is_sent_without_a_cache_mark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P01", language="Brazilian Portuguese", transcript=TRANSCRIPT
+    )
+
+    (asked,) = judge.asked
+    assert llm.CACHE_BREAK not in asked["system_prompt"], (
+        "um script sozinho na passagem escrevia ~19,6k tokens no cache a 1,25x e ninguém lia"
+    )
+
+
+async def test_a_judge_prompt_another_script_repeats_is_marked_whole_and_is_the_same_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P01",
+        language="Brazilian Portuguese",
+        transcript=TRANSCRIPT,
+        prompt_repeats=True,
+    )
+    await golden_judge.judge_session(
+        pericope="P01", language="Brazilian Portuguese", transcript=TRANSCRIPT
+    )
+
+    marked, alone = judge.asked
+    assert marked["system_prompt"].endswith(llm.CACHE_BREAK), (
+        "o segundo script da passagem não leria nada: sem a marca no fim o prompt inteiro não é "
+        "cacheado"
+    )
+    assert marked["system_prompt"].removesuffix(llm.CACHE_BREAK) == alone["system_prompt"], (
+        "a marca é só o fim do prompt: o texto dela, o mapa e a língua são os mesmos com ou sem ela"
     )
 
 

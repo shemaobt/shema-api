@@ -2,39 +2,34 @@ from __future__ import annotations
 
 import re
 
-#: What an app-owned block says when the turn has none. The Validator is shared with every
-#: conversation turn, where there is no finding, no ordered closing and no telling-back, and
-#: an empty heading there reads as evidence withheld rather than as a block that does not
-#: apply. The prompt says so in words; this is the same sentence in the slot itself.
-NOT_THIS_TURN = "(not applicable to this turn)"
+TEAM_EVIDENCE_HEADING = (
+    "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+    "The drafted response answers this. Referring to these words is not a claim about the "
+    "passage.\n\n"
+)
 
-#: What the Validator is told when nobody spoke this turn. Composed in English like every
-#: other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language the
-#: team speaks. Two cases: the opening turn, where nobody has spoken yet, and the verdict
-#: path, where the team has spoken — outside the conversation, into the telling-back — and
-#: the opening line would say the opposite, which is the sentence the Validator quoted back
-#: when it refused the verdict.
-_NO_TEAM_UTTERANCE: dict[str, str] = {
-    "opening": "(the team has not spoken yet — session opening)",
-    "told_back": (
-        "(the team has not spoken in this conversation; what they translated is in the block below)"
-    ),
-}
+EARLIER_PASSAGES_HEADING = (
+    "## EARLIER PASSAGES FOR THIS TEAM (the app's fact about this team — NEVER truth about the "
+    "passage)\n\nThe Guide read this same line this turn.\n\n"
+)
 
 
-def _nobody_spoke_this_turn(telling_back: str) -> str:
-    """What stands where the team's utterance would, on a turn that had none."""
-    return _NO_TEAM_UTTERANCE["told_back"] if telling_back else _NO_TEAM_UTTERANCE["opening"]
+TEAM_REPORTED_HEADING = (
+    "---\n\n# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+    "Evidence of what the team told back — NEVER truth about the passage. The drafted response "
+    "may quote from it to name something reported that the passage does not tell; quoting this "
+    "material is not a claim about the passage and must not be treated as ungrounded.\n\n"
+)
 
 
-#: What is asked of the Speaker on a turn with no team utterance and nothing to open — the
-#: back-translation verdict, whose whole instruction is already in its system prompt. The
-#: conversation used to reach the model as one block of text, which made a user message by
-#: accident; now that it travels as the turns it was, the request would end on the Guide's
-#: own last speech, and the API refuses that as an assistant prefill. Composed in English like
-#: every other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language
-#: the team speaks.
-SPEAK_THIS_TURN = "Speak this turn."
+def her_block(heading: str, text: str) -> str:
+    return f"{heading}{text.strip()}" if text.strip() else ""
+
+
+VERDICT_KICKOFF = (
+    "(The team heard their whole recording, told it back frase by frase, and tapped "
+    "'terminei'. Speak the verdict now.)"
+)
 
 
 OPENING_MOVEMENT_MARK = "[[CENA]]"
@@ -62,20 +57,28 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
     return clean, [whole, scene]
 
 
-OPENING_INSTRUCTION = (
-    "The session is starting now and the team has not spoken yet. Open the "
-    "session: introduce yourself briefly, give the team the whole before the "
-    "parts, and stay with the team on understanding — the invitation to rehearse "
-    "waits until they show they have the part."
-)
+def opening_note(pericope_num: str, language_code: str) -> str:
+    if language_code == "pt":
+        return (
+            f"[A sessão acabou de começar. A equipe abriu a passagem {pericope_num} e está à "
+            "mesa, pronta para começar. Fale primeiro.]"
+        )
+    return (
+        f"[The session has just begun. The team opened passage {pericope_num} and is at the "
+        "table, ready to begin. Speak first.]"
+    )
 
-OPENING_MOVEMENT_INSTRUCTION = (
-    "Write this opening in two movements, separated by a line containing only "
-    f"{OPENING_MOVEMENT_MARK} and nothing else. Before the line: the whole of the "
-    "passage, its arc and its tone. After the line: open the first scene and "
-    "stay in it with the team; the invitation to rehearse does not close the "
-    "opening. Do not write the mark anywhere else, and do not comment on it."
-)
+
+def panorama_note(book: str, language_code: str) -> str:
+    if language_code == "pt":
+        return (
+            f"[A sessão acabou de começar. A equipe abriu o Panorama do Livro de {book} e está "
+            "à mesa, pronta para conversar. Fale primeiro.]"
+        )
+    return (
+        f"[The session has just begun. The team opened the Book Panorama of {book} and is at "
+        "the table, ready to talk. Speak first.]"
+    )
 
 
 VALIDATOR_USER_MESSAGE = "Validate the drafted response now. Return only the JSON object."

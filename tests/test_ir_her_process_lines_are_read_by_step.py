@@ -3,12 +3,11 @@
 A fail-safe answers a failure and varies on purpose — a room that repeats one sentence
 sounds like a machine stuck. A process line marks a step of the telling-back or of the
 external check, and varying it would voice "Agradecemos sua ajuda" where the step means
-"Agora é a vez de quem não ajudou a traduzir". The expected text below is hers, copied
+"Agora é a vez de quem não ajudou a traduzir". The expected text below is hers, written out
 from `shemaobt/Tripod-Internalization` `prompts/fail_safe_utterances.md` on her `main` at
-f8f4f64301052a97ba8d8372c7c12cc2ec5e40e3 — not from ours, which would only prove the file
-equals itself. Her `main` rather than the vendored copy under `prompts/vendor/`, because
-that one is pinned to `fia/pilot-2026-09` 533b6e3f, which carries P and does not carry X
-yet; re-pinning the doctrine vendor is not this slice's to do.
+18fa7c4, the freeze `docs/doctrine/FREEZE_PIN` names — not read from the room's file, which
+would only prove the file equals itself. That file is hers byte for byte at the same commit,
+so these are also the lines it carries.
 
 Every step of both families is here in both languages, and not only the ones a consumer
 asks for today: the position is the whole address, so a bullet that moves in her file
@@ -16,14 +15,11 @@ moves every line after it, and a step nobody asserted is a step that would move 
 """
 
 import importlib
-import json
 import sys
-from pathlib import Path
 from typing import Any, NamedTuple
 
 import pytest
 
-import scripts.render_fixed_voice_lines as render
 from app.services.internalization_room import llm
 from app.services.internalization_room.fail_safe import (
     PROCESS_STEPS,
@@ -33,7 +29,6 @@ from app.services.internalization_room.fail_safe import (
     first,
     localized,
     process_line,
-    utterances,
 )
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.room_agent import room_agent
@@ -102,8 +97,14 @@ HER_PROCESS_LINES: tuple[HerLine, ...] = (
         family="P",
         step="approved",
         name="P3",
-        english=("Approved as the team's final draft. It goes to OBT Refine."),
-        portuguese=("Aprovado como rascunho final da equipe. Ele vai para o OBT Refine."),
+        english=(
+            "Approved as the team's final draft. The next step is the external check: tap the "
+            "'external check' button below and call in the listeners."
+        ),
+        portuguese=(
+            "Aprovado como rascunho final da equipe. O próximo passo é a checagem externa: "
+            "toquem no botão 'checagem externa', aqui embaixo, e chamem os ouvintes."
+        ),
     ),
     HerLine(
         family="X",
@@ -143,12 +144,12 @@ HER_PROCESS_LINES: tuple[HerLine, ...] = (
         english=(
             "Did anything stay unclear? Would you like to comment on anything about the whole "
             "passage? If so, tap the circle and speak, as many times as you want. If not, tap "
-            "'nothing to add'."
+            "'continue'."
         ),
         portuguese=(
             "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem inteira?"
-            " Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em 'nada "
-            "a acrescentar'."
+            " Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em "
+            "'continuar'."
         ),
     ),
     HerLine(
@@ -259,50 +260,6 @@ def test_every_language_the_room_claims_has_her_process_lines_written(spoken: st
             f"the room claims {spoken!r} and family {family} has {len(written)} lines written "
             f"in it, not {len(PROCESS_STEPS[family])} — a step would be spoken in another language"
         )
-
-
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_catalogue_lists_the_process_lines_as_never_rendered(
-    tmp_path: Path, spoken: str
-) -> None:
-    """The bundle has no clip for a step yet, and only the catalogue can say so.
-
-    The render script iterated the fail-safe families alone, so the nine process clips were
-    invisible to `--check`: a person could edit one of her lines and the guard would stay
-    green over audio that no longer says it.
-    """
-    catalogue = render.catalogue(spoken)
-    process_names = {line.name for line in HER_PROCESS_LINES}
-    shipped_fail_safes = {
-        f"{kind}{index}"
-        for kind in FailSafe
-        if kind not in render.NEVER_SHIPPED
-        for index in range(len(utterances(kind, spoken)))
-    }
-
-    for line in HER_PROCESS_LINES:
-        assert catalogue[line.name] == line.written(spoken)
-
-    assert set(catalogue) == (
-        shipped_fail_safes | set(render.STANDALONE.get(spoken, {})) | process_names
-    ), "the catalogue gained a name that is neither a shipped fail-safe nor one of her steps"
-
-    rendered = {
-        name: render.fingerprint(text)
-        for name, text in catalogue.items()
-        if name not in process_names
-    }
-    for name in rendered:
-        clip = render._clip_path(tmp_path, spoken, name)
-        clip.parent.mkdir(parents=True, exist_ok=True)
-        clip.write_bytes(b"")
-    manifest = render._bundle(tmp_path, spoken) / render.MANIFEST
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    manifest.write_text(json.dumps(rendered), encoding="utf-8")
-
-    complaints = render.drift(tmp_path, spoken)
-
-    assert set(complaints) == {f"{spoken}/{name}: never rendered" for name in process_names}
 
 
 def test_no_model_is_reachable_from_a_process_line(monkeypatch: pytest.MonkeyPatch) -> None:

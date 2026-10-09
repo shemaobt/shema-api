@@ -18,15 +18,10 @@ from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room import llm
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
-    Finding,
-    FindingKind,
     analyse_telling_back,
-    verify_correction,
 )
-from app.services.internalization_room.part_names import Addresses
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
-CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
 P = "P03"
 
 
@@ -40,15 +35,16 @@ def _settings(**overrides: Any) -> Settings:
 
 
 class RecordingMessages:
-    def __init__(self, reply: str):
+    def __init__(self, reply: str, stop_reason: str = "end_turn"):
         self.reply = reply
+        self.stop_reason = stop_reason
         self.calls: list[dict[str, Any]] = []
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
         return SimpleNamespace(
             content=[SimpleNamespace(type="text", text=self.reply)],
-            stop_reason="end_turn",
+            stop_reason=self.stop_reason,
             model=kwargs["model"],
             usage=SimpleNamespace(
                 input_tokens=10,
@@ -62,8 +58,8 @@ class RecordingMessages:
 
 @pytest.fixture
 def recording_client(monkeypatch: pytest.MonkeyPatch):
-    def _install(reply: str) -> RecordingMessages:
-        messages = RecordingMessages(reply)
+    def _install(reply: str, stop_reason: str = "end_turn") -> RecordingMessages:
+        messages = RecordingMessages(reply, stop_reason)
 
         def _build(**options: Any) -> SimpleNamespace:
             return SimpleNamespace(messages=messages, options=options)
@@ -105,27 +101,6 @@ async def test_the_analyst_reads_the_telling_back_on_the_analysis_ladder(
     )
 
 
-async def test_the_correction_check_reads_on_the_analysis_ladder(recording_client) -> None:
-    messages = recording_client(json.dumps({"resolved": True, "findings": []}))
-
-    await verify_correction(
-        findings=[Finding(kind=FindingKind.MISSING, note="a fome nao foi contada")],
-        earlier=_segment(1, "Eles partiram."),
-        corrected=_segment(2, "A fome chegou e eles partiram."),
-        chunk=1,
-        scope="1-5",
-        pericope_num=P,
-        correction_prompt=CORRECTION,
-        addresses=Addresses(),
-        settings=_settings(tripod_analysis_model="modelo-de-analise-sob-teste"),
-    )
-
-    assert messages.calls[0]["model"] == "modelo-de-analise-sob-teste", (
-        "a checagem de correção decide se um trecho regravado responde ao achado, e lia isso "
-        "no modelo da voz em vez do papel de análise"
-    )
-
-
 async def test_the_analysis_ladder_starts_where_the_voice_ladder_does(recording_client) -> None:
     """The ladder shipped for analysis, with nothing overridden.
 
@@ -148,7 +123,7 @@ async def test_the_analysis_ladder_starts_where_the_voice_ladder_does(recording_
     )
 
 
-async def test_the_analysts_ceiling_holds_a_reading_and_the_thinking_that_reaches_it(
+async def test_the_analyst_has_room_for_2500_tokens_with_thinking_on_and_no_effort_set(
     recording_client,
 ) -> None:
     messages = recording_client(json.dumps({"evidence_sufficient": True, "findings": []}))
@@ -161,28 +136,33 @@ async def test_the_analysts_ceiling_holds_a_reading_and_the_thinking_that_reache
         settings=_settings(),
     )
 
-    assert messages.calls[0]["max_tokens"] >= 4096, (
-        "2000 era o teto do Gemini, onde o pensamento não saía de dentro dele; aqui sai, e "
-        "uma leitura vazia vira UnreadableReply — o 'terminei' da equipe dá erro, não veredito"
+    call = messages.calls[0]
+    assert call["max_tokens"] == 2500, (
+        "o analista corria com 4096, mais folga do que a Marcia deu, e o teto dela é o que a "
+        "bateria de aceitação mede"
+    )
+    assert call["thinking"] == {"type": "adaptive"}, (
+        "o pensamento do analista fica ligado: ele sai de dentro do teto, não ao lado dele"
+    )
+    assert "effort" not in call.get("output_config", {}), (
+        "o analista era fixado em esforço alto onde a Marcia deixa o padrão do modelo"
     )
 
 
-async def test_the_correction_checks_ceiling_holds_the_thinking_too(recording_client) -> None:
-    messages = recording_client(json.dumps({"resolved": True, "findings": []}))
+async def test_an_analyst_reply_cut_at_its_ceiling_gives_no_verdict_that_round(
+    recording_client,
+) -> None:
+    recording_client('{"evidence_sufficient": true, "findings": [', stop_reason="max_tokens")
 
-    await verify_correction(
-        findings=[Finding(kind=FindingKind.MISSING, note="a fome nao foi contada")],
-        earlier=_segment(1, "Eles partiram."),
-        corrected=_segment(2, "A fome chegou e eles partiram."),
-        chunk=1,
+    analysis = await analyse_telling_back(
+        segments=[_segment(1, "A fome chegou e eles partiram.")],
         scope="1-5",
         pericope_num=P,
-        correction_prompt=CORRECTION,
-        addresses=Addresses(),
+        analyst_prompt=ANALYST,
         settings=_settings(),
     )
 
-    assert messages.calls[0]["max_tokens"] >= 4096, (
-        "1500 deixava a checagem voltar vazia, e uma correção que ninguém conseguiu ler "
-        "conta como não resolvida — a equipe regrava o trecho que já tinha consertado"
+    assert analysis is None, (
+        "um corte no teto virava uma análise sem achados, e a equipe ouvia que o trabalho "
+        "estava conferido sem que o analista tivesse terminado de ler"
     )

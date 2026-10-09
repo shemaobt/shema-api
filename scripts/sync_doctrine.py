@@ -8,22 +8,33 @@ open it.
 
 They are vendored here, not forked. The bytes come from one commit of her repository, the pin
 records repo, branch, commit and a sha256 per file, and an edit to a vendored file is a merge
-conflict rather than a decision. Her prompts land beside ours — `prompts/vendor/` next to
-`prompts/` — because ours are derived from hers and have diverged on purpose; replacing ours
-would throw away the tickets that ported her text, and the vendoring exists so that "how does
-our Guide prompt differ from hers" is a `diff` instead of an argument.
+conflict rather than a decision. Her eight prompts in use sit where the room reads them, in
+`app/services/internalization_room/prompts/`, and are hers byte for byte: no copy of ours
+stands beside them, so a prompt that differs from hers is a failed `--check` and not a
+different Guide. Her ninth, the guided self-check, is retired by the production team's decision
+of 8 Oct 2026, under her delegation of 1 Oct: `RETIRED_PROMPTS` names the ruling, and `--check`
+fails if the ruling stops carrying her word or if the file or its pin row returns.
 
-Her five golden sessions travel the same door, at their own path, because a script that drifts
-from hers grades this room against its own homework: `scripts/golden_runner.py` plays the
-vendored copy, and a run is only comparable to her 5/5 of 2026-09-03 — vendored beside ours —
-while the bytes and the canon pin the judge's map comes from are the ones her branch names.
+Her twenty-three golden sessions and ten Back-Translation scripts travel the same door, at
+their own paths, because a script that drifts from hers grades this room against its own
+homework: `scripts/golden_runner.py` plays the vendored copy, and a run is only comparable to
+her 5/5 of 2026-09-03 — vendored beside ours — while the bytes and the canon pin the judge's
+map comes from are the ones her freeze names.
 
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,
-when she has ruled. Point it at a checkout of `fia/pilot-2026-09`.
+when she has ruled. Point it at a checkout of her repository.
+
+Two pins, two commits. `DOCTRINE_PIN` is her pilot branch, `fia/pilot-2026-09`, and holds her
+2026-09-03 golden reports. `FREEZE_PIN` is her `main` at the freeze and holds the doctrine, her
+prompts, her sessions and the Back-Translation scripts.
 
     uv run python scripts/sync_doctrine.py --check             # offline; CI runs this
     uv run python scripts/sync_doctrine.py --sync --from ~/src/Tripod-Internalization
+    uv run python scripts/sync_doctrine.py --sync --freeze --from ~/src/Tripod-Internalization
+
+The first, on `fia/pilot-2026-09`, rewrites `DOCTRINE_PIN`; the second, on `main`, rewrites
+`FREEZE_PIN`.
 """
 
 from __future__ import annotations
@@ -44,38 +55,6 @@ BRANCH = "fia/pilot-2026-09"
 
 #: Her path in `Tripod-Internalization` → the path it is vendored to here.
 VENDORED = {
-    "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
-    "prompts/guide_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/guide_system_prompt.md"
-    ),
-    "prompts/validator_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/validator_system_prompt.md"
-    ),
-    "prompts/classifier_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/classifier_system_prompt.md"
-    ),
-    "prompts/book_overview_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/book_overview_system_prompt.md"
-    ),
-    "prompts/fail_safe_utterances.md": (
-        "app/services/internalization_room/prompts/vendor/fail_safe_utterances.md"
-    ),
-    "prompts/golden_judge_system_prompt.md": (
-        "app/services/internalization_room/prompts/vendor/golden_judge_system_prompt.md"
-    ),
-    "golden/sessions/J01-frame-before-elicit.json": (
-        "golden/sessions/J01-frame-before-elicit.json"
-    ),
-    "golden/sessions/P01-opening-and-mother-tongue.json": (
-        "golden/sessions/P01-opening-and-mother-tongue.json"
-    ),
-    "golden/sessions/P01-retelling-gaps-and-additions.json": (
-        "golden/sessions/P01-retelling-gaps-and-additions.json"
-    ),
-    "golden/sessions/P01-spoilers-and-boundaries.json": (
-        "golden/sessions/P01-spoilers-and-boundaries.json"
-    ),
-    "golden/sessions/P01-understand-first.json": "golden/sessions/P01-understand-first.json",
     "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
     "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
         "golden/reports/2026-09-03/J01-frame-before-elicit.md"
@@ -92,10 +71,75 @@ VENDORED = {
     "golden/reports/2026-09-03/P01-understand-first.md": (
         "golden/reports/2026-09-03/P01-understand-first.md"
     ),
+}
+
+FREEZE_BRANCH = "main"
+
+HER_SESSIONS = (
+    "J01-frame-before-elicit",
+    "P01-ensaio-da-cena",
+    "P01-ensaio-final-send-off-a-small-gap",
+    "P01-ensaio-final-send-off-b-oral-scene",
+    "P01-ensaio-final-send-off-c-late-rehearsal",
+    "P01-fia-moments",
+    "P01-opening-and-mother-tongue",
+    "P01-part-opening-closing",
+    "P01-question-is-not-a-shelter",
+    "P01-retelling-gaps-and-additions",
+    "P01-small-gaps-choice",
+    "P01-spoilers-and-boundaries",
+    "P01-understand-first",
+    "P02-meaning-not-form",
+    "P03-accept-meaning-and-microphone",
+    "P08-resting-place",
+    "P09-threshing-floor-night",
+    "P10-earlier-passages-status",
+    "P10-sit-still",
+    "P11-the-gate",
+    "P12-the-blessing",
+    "P13-the-son",
+    "P14-the-generations",
+)
+HER_BT_SCRIPTS = (
+    "P01-frases",
+    "P01-regravar-frase-acrescimo",
+    "P01-regravar-frase-faltou",
+    "P02-agentes-trocados",
+    "P02-bondade-fiel",
+    "P02-causa-a-mais",
+    "P02-causa-trocada",
+    "P02-nuance-espera",
+    "P02-nuance-esta-noite",
+    "P02-regravar-frase-troca",
+)
+
+HER_PROMPTS = (
+    "backtranslation_analysis_system_prompt.md",
+    "backtranslation_verdict_system_prompt.md",
+    "book_overview_system_prompt.md",
+    "classifier_system_prompt.md",
+    "fail_safe_utterances.md",
+    "golden_judge_system_prompt.md",
+    "guide_system_prompt.md",
+    "validator_system_prompt.md",
+)
+
+PROMPTS_DIR = "app/services/internalization_room/prompts"
+
+RETIRED_PROMPTS = {
+    "draft_check_system_prompt.md": "2026-10-08-the-guided-self-check-is-retired",
+}
+
+FROZEN = {
+    **{f"prompts/{name}": f"{PROMPTS_DIR}/{name}" for name in HER_PROMPTS},
+    **{f"golden/sessions/{name}.json": f"golden/sessions/{name}.json" for name in HER_SESSIONS},
+    **{f"golden/bt/{name}.json": f"golden/bt/{name}.json" for name in HER_BT_SCRIPTS},
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
+    "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
 }
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"
+FREEZE_FILE = REPO_ROOT / "docs/doctrine/FREEZE_PIN"
 RULINGS_DIR = REPO_ROOT / "docs/doctrine/rulings"
 SEAM_FILE = REPO_ROOT / "docs/doctrine/MODEL_SEAM"
 
@@ -113,7 +157,7 @@ GOVERNED = ("ladder", "max_output_tokens", "effort", "thinks")
 UNRULED = "unruled"
 
 BAR_FILE = REPO_ROOT / "docs/doctrine/ACCEPTANCE_BAR"
-DOCTRINE = REPO_ROOT / VENDORED["docs/DOCTRINE.md"]
+DOCTRINE = REPO_ROOT / FROZEN["docs/DOCTRINE.md"]
 
 #: The second column of a bar row this repo does not hold today. Counted out loud rather than
 #: left out, because a line missing from the record reads as a line nobody had to think about.
@@ -173,13 +217,15 @@ def read_pin(pin_file: Path = PIN_FILE) -> Pin:
     )
 
 
-def write_pin(commit: str, digests: dict[str, str], pin_file: Path = PIN_FILE) -> None:
-    lines = [f"repo {REPO}", f"branch {BRANCH}", f"commit {commit}", ""]
+def write_pin(
+    commit: str, digests: dict[str, str], pin_file: Path = PIN_FILE, branch: str = BRANCH
+) -> None:
+    lines = [f"repo {REPO}", f"branch {branch}", f"commit {commit}", ""]
     lines += [f"{digests[path]}  {path}" for path in sorted(digests)]
     pin_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def drift(pin: Pin, root: Path = REPO_ROOT) -> list[str]:
+def drift(pin: Pin, root: Path = REPO_ROOT, vendored: dict[str, str] = VENDORED) -> list[str]:
     """Every vendored path whose bytes are not the ones the pin recorded.
 
     Walked over `VENDORED` rather than over the pin, because the pin is the thing being
@@ -187,7 +233,7 @@ def drift(pin: Pin, root: Path = REPO_ROOT) -> list[str]:
     silently stops being one, with the comparison green for having nothing left to compare.
     """
     drifted = []
-    for path in sorted(VENDORED.values()):
+    for path in sorted(vendored.values()):
         local = root / path
         if path not in pin.digests:
             drifted.append(f"unpinned: {path}")
@@ -196,6 +242,24 @@ def drift(pin: Pin, root: Path = REPO_ROOT) -> list[str]:
         elif digest(local.read_bytes()) != pin.digests[path]:
             drifted.append(f"edited: {path}")
     return drifted
+
+
+def retired_faults(
+    pin: Pin, retired: dict[str, str], rulings: list[Ruling], root: Path = REPO_ROOT
+) -> list[str]:
+    faults = []
+    ruled = {ruling.slug for ruling in rulings if ruling.word and ruling.written}
+    for name in sorted(retired):
+        path = f"{PROMPTS_DIR}/{name}"
+        if retired[name] not in ruled:
+            faults.append(
+                f"unruled: {name} — {retired[name]} carries no word of hers and where it is written"
+            )
+        if (root / path).exists():
+            faults.append(f"returned: {path} — retired by docs/doctrine/rulings/{retired[name]}.md")
+        if path in pin.digests:
+            faults.append(f"pinned: {path}")
+    return faults
 
 
 def read_rulings(rulings_dir: Path = RULINGS_DIR) -> list[Ruling]:
@@ -224,6 +288,10 @@ def unruled(pin: Pin, rulings: list[Ruling]) -> list[str]:
     A re-sync rewrites every sha in the pin, so drift alone can never catch one: the bytes
     and their record move together. What cannot move quietly is the commit — so a pin naming
     a commit no ruling names is the re-sync nobody recorded her word for.
+
+    Only `DOCTRINE_PIN` is asked for a ruling. `FREEZE_PIN` moves without one: the freeze is
+    her word, so the doctrine, her prompts and her sessions move with it as her prompts already
+    did, and the freeze commit is not a commit a ruling has to name.
     """
     faults = []
     if not any(ruling.pin == pin.commit for ruling in rulings):
@@ -429,7 +497,12 @@ def bar_faults(
     return faults
 
 
-def sync(source: Path) -> int:
+def sync(
+    source: Path,
+    vendored: dict[str, str] = VENDORED,
+    pin_file: Path = PIN_FILE,
+    branch: str = BRANCH,
+) -> int:
     commit = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
         capture_output=True,
@@ -437,7 +510,7 @@ def sync(source: Path) -> int:
         check=True,
     ).stdout.strip()
     digests: dict[str, str] = {}
-    for hers, ours in sorted(VENDORED.items()):
+    for hers, ours in sorted(vendored.items()):
         data = (source / hers).read_bytes()
         target = REPO_ROOT / ours
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -445,7 +518,7 @@ def sync(source: Path) -> int:
         target.write_bytes(data)
         digests[ours] = digest(data)
         print(f"  {ours}{f' ({moved})' if moved else ''}")
-    write_pin(commit, digests)
+    write_pin(commit, digests, pin_file, branch)
     print(f"pinned at {commit}")
     return 0
 
@@ -454,13 +527,29 @@ def check() -> int:
     pin = read_pin()
     faults = drift(pin)
     if faults:
-        print(f"the vendored doctrine drifted from pin {pin.commit[:12]}:", file=sys.stderr)
+        print(f"her reports of 2026-09-03 drifted from pin {pin.commit[:12]}:", file=sys.stderr)
+        for line in faults:
+            print(f"  {line}", file=sys.stderr)
+        print(NOT_A_FORK, file=sys.stderr)
+        return 1
+
+    freeze = read_pin(FREEZE_FILE)
+    faults = drift(freeze, vendored=FROZEN)
+    if faults:
+        print(f"her freeze drifted from pin {freeze.commit[:12]}:", file=sys.stderr)
         for line in faults:
             print(f"  {line}", file=sys.stderr)
         print(NOT_A_FORK, file=sys.stderr)
         return 1
 
     rulings = read_rulings()
+    faults = retired_faults(freeze, RETIRED_PROMPTS, rulings)
+    if faults:
+        print("a prompt the production team retired is back:", file=sys.stderr)
+        for line in faults:
+            print(f"  {line}", file=sys.stderr)
+        return 1
+
     record = read_seam_record()
     missing = (
         unruled(pin, rulings) + seam_drift(record, model_seam()) + unnamed_rulings(record, rulings)
@@ -482,7 +571,9 @@ def check() -> int:
 
     inherited = sum(1 for _value, ruling in record.values() if ruling == UNRULED)
     pending = sum(1 for claims in bar.values() if claims == [PENDING])
-    print(f"the vendored doctrine matches pin {pin.commit[:12]}")
+    print(f"the vendored doctrine matches pin {freeze.commit[:12]}")
+    retired = "; ".join(f"{name}, ruling {why}" for name, why in RETIRED_PROMPTS.items())
+    print(f"her prompts: {len(HER_PROMPTS)} in use, {len(RETIRED_PROMPTS)} retired — {retired}")
     print(f"the model seam matches its record — {inherited} of {len(record)} rows still unruled")
     print(f"the acceptance bar is {len(lines)} lines — {pending} still PENDING")
     return 0
@@ -494,9 +585,12 @@ def main() -> int:
     group.add_argument("--sync", action="store_true")
     group.add_argument("--check", action="store_true")
     parser.add_argument("--from", dest="source", type=Path)
+    parser.add_argument("--freeze", action="store_true")
     args = parser.parse_args()
     if args.sync and args.source is None:
         parser.error("--sync needs --from <checkout of Tripod-Internalization>")
+    if args.sync and args.freeze:
+        return sync(args.source, FROZEN, FREEZE_FILE, FREEZE_BRANCH)
     return sync(args.source) if args.sync else check()
 
 

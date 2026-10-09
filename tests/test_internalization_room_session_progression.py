@@ -50,8 +50,8 @@ _codes = itertools.count()
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND = CANON[0], CANON[1]
 
-#: The passages a team can actually finish. Closing all of `CANON` is a state no team can
-#: reach, because eight of Ruth's maps refuse to open a session at all.
+#: The passages a team can actually finish: those `unwalkable` leaves open. For Ruth today that
+#: is all of `CANON`; a map the room refuses drops out of this list and stays in `CANON`.
 WALKABLE = [
     meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
 ]
@@ -67,9 +67,9 @@ async def having_finished(db: AsyncSession, team, *pericopes: str) -> None:
 
     A passage is finished because the team recorded their rehearsal of it, so the fixture
     records. The coverage events are still written by `apply_coverage` and never inserted,
-    because they are what the necklace and the element list read. Since ENG-589 the room
-    refuses eight of the fourteen, so the session rows for those come from `open_ir_session` —
-    the end of the book is no longer a place the production path reaches.
+    because they are what the necklace and the element list read. The session rows come from
+    `open_ir_session`, which opens each passage through the room and writes the row itself only
+    for a passage the room refuses since ENG-589, so the fixture reaches wherever the canon does.
     """
     for pericope in pericopes:
         session = await open_ir_session(db, pericope=pericope, project_id=team.id)
@@ -163,10 +163,11 @@ async def test_a_team_that_closed_every_passage_it_could_walk_is_refused_the_sam
 ) -> None:
     """The end of the book as a team actually meets it, which is where this broke.
 
-    Closing all fourteen is a state nobody can reach — eight of them refuse to open a session
-    at all — so the conflict above was only ever asserted against a fixture. What a real team
-    reaches is the sixth passage closed, and that resolved to the seventh: a passage whose own
-    refusal came back as a broken room, on that touch and on every touch after it.
+    Closing the whole book was a state nobody could reach while passages whose layer nobody
+    had written refused to open a session at all, so the conflict above was only ever asserted
+    against a fixture. What a real team reached was the sixth passage closed, and that resolved
+    to the seventh: a passage whose own refusal came back as a broken room, on that touch and
+    on every touch after it.
     """
     team = await a_team(db_session, name="Andou tudo que dava")
     await having_finished(db_session, team, *WALKABLE)

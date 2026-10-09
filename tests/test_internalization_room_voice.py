@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.config import Settings
+from app.core.exceptions import ValidationError
 from app.services.internalization_room import synthesize_facilitator_speech
 from app.services.internalization_room.passage_lines import panorama_line_for
 from app.services.internalization_room.voices import voice_for
@@ -19,7 +20,6 @@ from app.services.platform import tts
 
 MARIANA = "tZ2oxQJXfOrGrN7iKnta"
 RETIRED_VOICE_ID = "83Nae6GFQiNslSbuzmE7"
-ROOM_VOICE_ID_ES = "fYypSok4m8xKqKsDwS7O"
 ROOM_MODEL = "eleven_turbo_v2_5"
 
 
@@ -114,9 +114,8 @@ async def test_a_legacy_es_session_is_floored_and_spoken_in_the_floors_voice() -
     """`es` left `ROOM_LANGUAGES` in shema-api#362, but a session row persisted before that
     still carries `language="es"` and still calls this with it. Marcia's ruling stands:
     Spanish is off the air until she offers it, so this must land on the floor's own voice,
-    never on `voice_for("es", ...)`, which still answers — it is kept on purpose so a legacy
-    row does not 500 — and would otherwise speak the Portuguese or English fail-safe text in
-    the Spanish voice.
+    never on `voice_for("es", ...)`, which refuses — the room has no Spanish voice — and
+    would otherwise fail the legacy row instead of speaking to it.
     """
     client = _client()
 
@@ -297,15 +296,9 @@ async def test_a_different_voice_id_is_honoured() -> None:
     assert "OtherVoiceId123" in client.post.await_args.args[0]
 
 
-def test_voice_for_still_answers_es_directly_because_the_floor_is_the_caller_s_job() -> None:
-    """Pins the boundary shema-api#362 chose: `voice_for` never refuses `es`.
-
-    Refusing it here would 500 a session row already persisted with `language="es"`; the
-    floor that keeps it off the air lives in `synthesize_facilitator_speech`, applied before
-    this is ever reached. If this function ever refused `es` on its own, a legacy row would
-    fail differently but still fail, and the fix belongs one layer up, not here.
-    """
-    assert voice_for("es", settings=_settings()) == ROOM_VOICE_ID_ES
+def test_voice_for_refuses_a_language_the_room_has_no_voice_for() -> None:
+    with pytest.raises(ValidationError):
+        voice_for("es", settings=_settings())
 
 
 async def _say(line: str, *, store: MemoryStore, client: SimpleNamespace) -> str:
@@ -383,6 +376,10 @@ async def test_after_an_hour_a_known_line_is_asked_of_the_bucket_again(
         "uma chave lembrada para sempre continuava sendo entregue mesmo que o objeto "
         "tivesse saído do bucket"
     )
+
+
+def test_the_room_is_configured_with_no_spanish_voice() -> None:
+    assert [name for name in Settings.model_fields if name.endswith("_es")] == []
 
 
 async def test_the_team_never_hears_a_canon_code_in_a_guide_line() -> None:

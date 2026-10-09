@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from functools import partial
 from typing import TypeVar
 
@@ -16,6 +16,7 @@ from app.services.platform.tts import (
     SpeechStore,
     SynthesizedSpeech,
     Upload,
+    speech_key,
     synthesize_speech,
     synthesize_speech_key,
 )
@@ -44,9 +45,8 @@ async def synthesize_facilitator_speech(
     The language is the caller's, because it is the session's, because it is the tablet's.
     A caller that names none gets the floor, and so does a caller that names a language the
     room no longer claims: `es` left `ROOM_LANGUAGES` in shema-api#362, and a session row
-    persisted before that still passes it here on every turn. `voice_for` does not refuse
-    `es` — that voice entry is kept on purpose so a legacy row does not 500 — so a caller
-    is floored before the voice is chosen, not after. The voice follows the language rather
+    persisted before that still passes it here on every turn, so a caller is floored before
+    the voice is chosen, not after. The voice follows the language rather
     than being chosen alongside it: the app never picks how the facilitator sounds, only
     which language it sounds in.
 
@@ -94,20 +94,28 @@ async def in_a_voice_the_room_has(key: str, text: str, *, language: str | None) 
     return speech.key
 
 
+def facilitator_speech_key(text: str, *, language: str | None) -> str:
+    return _in_the_rooms_voice(speech_key, text, language=language, settings=None)()
+
+
 async def render_facilitator_speech(
-    text: str, *, language: str, store: SpeechStore
+    text: str,
+    *,
+    language: str,
+    store: SpeechStore,
+    client: httpx.AsyncClient | None = None,
 ) -> SynthesizedSpeech:
     speak = _in_the_rooms_voice(synthesize_speech, text, language=language, settings=None)
-    return await speak(store=store)
+    return await speak(store=store, client=client)
 
 
 def _in_the_rooms_voice(
-    speak: Callable[..., Awaitable[T]],
+    speak: Callable[..., T],
     text: str,
     *,
     language: str | None,
     settings: Settings | None,
-) -> Callable[..., Awaitable[T]]:
+) -> Callable[..., T]:
     cfg = settings or get_settings()
     spoken = normalize(language) or floor(cfg)
     return partial(

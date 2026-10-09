@@ -47,9 +47,9 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.internalization_room.takes import take_by_id
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
-    KEY,
     PREFIX,
     TABLET,
     P,
@@ -66,10 +66,6 @@ PLAYBACK_BLOCKER = "playback_did_not_cover_the_clip"
 #: part uploaded during the case has to be newer than the one it was recorded over, and two
 #: rows written in the same second cannot say which.
 REHEARSED_AT = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
-
-#: The heading that only the correction prompt carries. The double tells the two readings
-#: apart by it, the way a reader would — not by counting calls.
-CORRECTION_MARK = "## What the team told back now"
 
 
 class Analyst:
@@ -99,26 +95,15 @@ class ScriptedAnalyst:
     """The analyst answering the findings a case wrote, one entry per whole reading.
 
     A case about what the room does *with* a finding has to put one there, and the counting
-    double above cannot: it answers the same clean reading every time. The correction check is
-    told apart by the heading only its prompt carries, the way a reader would, and it keeps
-    what it was shown and passes: a case that needs it to refuse, or to raise something of its
-    own, sets that up here when there is one — buttons nobody presses are a double agreeing
-    with itself. The seam has a double of the same shape (`text_seam_harness.Analyst`) and the
-    two are deliberately not merged: this module is where `CORRECTION_MARK` lives, so importing
-    that one back would close an import cycle.
+    double above cannot: it answers the same clean reading every time.
     """
 
     def __init__(self) -> None:
         self.readings: list[dict[str, Any]] = []
-        self.verifications: list[str] = []
-        self.verification: dict[str, Any] = {"resolved": True, "findings": []}
         self.shown: list[str] = []
         self.on_reading: Callable[[], Awaitable[None]] | None = None
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if CORRECTION_MARK in system_prompt:
-            self.verifications.append(system_prompt)
-            return json.dumps(self.verification)
         self.shown.append(system_prompt)
         if self.on_reading is not None:
             await self.on_reading()
@@ -271,7 +256,6 @@ async def room_client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     if runner_key is not None:
         monkeypatch.setattr(
             get_settings(), "internalization_room_runner_key", runner_key, raising=False
@@ -290,12 +274,16 @@ async def room_client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"X-Access-Code": runner_key, "Authorization": f"Bearer {runner_key}"}
-        if runner_key
-        else {},
+        headers=tablet.headers
+        | (
+            {"X-Access-Code": runner_key, "Authorization": f"Bearer {runner_key}"}
+            if runner_key
+            else {}
+        ),
     ) as client:
         yield client
 
@@ -323,7 +311,7 @@ async def rehearsed_in_parts(
     db: AsyncSession,
     count: int,
     *,
-    project_id: str | None = None,
+    project_id: str | None = TABLET_TEAM,
     language: str = "pt",
     content_types: tuple[str, ...] | None = None,
     audio: tuple[bytes, ...] | None = None,
@@ -411,7 +399,7 @@ async def rehearsed_in_parts_of(
     if unnumbered_first and told_whole:
         raise ValueError("a rehearsal told whole has no numbered part to come after it")
 
-    session = await create_session(db, pericope=pericope, language=language)
+    session = await create_session(db, pericope=pericope, project_id=TABLET_TEAM, language=language)
     session.coverage_state = merge(
         initial_state(pericope), pericope_num=pericope, engaged=element_keys(pericope)
     )
@@ -622,7 +610,7 @@ async def upload_a_part(
         data["chunk_index"] = str(part)
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers=headers or {"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers=headers or {"X-Room-Device": TABLET},
         data=data,
         files={"file": ("gravacao.m4a", audio, content_type)},
     )
@@ -634,7 +622,6 @@ async def press_terminei(
     """Press `terminei`, with or without a report of what the tablet played."""
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/finish",
-        headers={"X-Room-Key": KEY},
         **({"json": report} if report is not None else {}),
     )
 

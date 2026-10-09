@@ -28,7 +28,6 @@ class IRPromptKey(enum.StrEnum):
     COVERAGE_CLASSIFIER = "coverage_classifier"
     BOOK_PANORAMA = "book_panorama"
     BT_ANALYST = "bt_analyst"
-    BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
 
 
@@ -183,6 +182,7 @@ class IRSession(Base):
     opening_claimed_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(timezone=True), nullable=True
     )
+    canon_pin: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class IRTeamSession(Base):
@@ -559,9 +559,7 @@ class IRRelease(Base):
     exclude, and one that filtered on nothing would only teach the next reader that
     releases can be retired.
 
-    ``project_id`` is not null: a release is named by project, pericope and version, and a
-    session opened on the shared room key names no project — which is why approving one is
-    refused rather than numbered in a group belonging to nobody.
+    ``project_id`` is not null: a release is named by project, pericope and version.
 
     ``package_sha256`` keeps the packet's own key rather than the glossary's word, which is
     *packet* and avoids *package*: the fingerprint travels to Refine under that name, and one

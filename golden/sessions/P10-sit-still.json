@@ -1,0 +1,173 @@
+{
+  "name": "P10-sit-still",
+  "pericopeId": "P10",
+  "language": "Brazilian Portuguese",
+  "why": "SC-0089 (Marcia's map standard of 2026-09-28 and her rulings of 2026-09-29, «(b), (b), (a), sim — pode seguir com as recomendações»), vendored at the compiler branch tip 0dfe225 (re-pin to the merge commit after her merge word) — P10 = Ruth 3:14-18: the high-risk register (14 entries, 8 do_not_decide: R1, R2, R4, R5, R6, R9, R10, R14). R1: Boaz's words 'do not go empty to your mother-in-law' come only in Ruth's report (3:17); a telling that has him say them at the threshing floor moves them earlier and is offered back gently (order, items 1 and 12); no measure named, no farewell. R2: the secret of 3:14 kept — 'let it not be known that the woman came to the threshing floor' — with no reason given for it; if asked, the text does not say. Her ruling D2 (b), as at 4:5 (P11 R13): the voice tells 'he goes into the town' (3:15, the reading she approved at SC-0056) and never teaches another reading; a team telling 'she went into the town' ('ela foi para a cidade'), as some Bibles read, is offered back gently with the map's reading (R10). R5, as the cross-check resolved it and her 'pode seguir com as recomendações' approved: 'como foi, minha filha?' keeps the meaning and loses only the 3:9 echo — a nuance, named once, not sent back (her 2026-09-24 nuance ruling (b)); the text does not say what Naomi means by the question, and the voice does not explain it. R6: 'will not rest' (shaqat) is another word from the 'rest' of 1:9 and 3:1 (menuchah, manoach): the voice never links the two and never says Naomi's wish, prayer or plan is coming true — a team reading that it does stays the team's (item 13); say nothing of what Boaz does next. And (D3 (vi), the 09-24 session, where the voice said 'é pra casa' before the team did): 3:16 says 'she came to her mother-in-law'; the voice's own tellings never put Ruth 'em casa' / 'pra casa' — the team never says 'casa' in this script, so the judge reads every 'casa' of the voice for 3:16 as the voice's own. The judge reads them in the map and the register; the keys below are the mechanical half. No earlierPassages fixture: the team's statuses are not fixed here (P10-earlier-passages-status plays the pilot's own). Turn 0: the kickoff is the Familiarization (F1, the whole passage, F3 as the last words) — the secret kept, 'he goes into the town', 'she comes to her mother-in-law', 'do not go empty' only in Ruth's report, nothing of the gate. Turn 1: in the Familiarization the team offers a reading — Naomi wanted rest for Ruth and now 'the man will not rest', so Naomi's prayer is coming true — and asks why Boaz wanted no one to know (the reading stays theirs, no link made, no act of God; the text does not say why: R6, R2); F4 as the last words, no scene opened. Turn 2: 'Estamos prontos.' opens scene 1 — I1 cena 1 and her closing. Turn 3: A1 before the fence. Turn 4: a scene rehearsal of scene 1 in which Boaz says 'não vá vazia pra sua sogra' at the threshing floor — offered back gently (R1: order); the fence again, no choice. Turn 5: scene 1 again without it, but 'e ela foi para a cidade' — offered back gently with the map's reading, he goes into the town (D2 (b)); the fence again, no choice (who did what is never a small gap). Turn 6: scene 1 whole, the secret kept, 'seis medidas de cevada' (R1: accepted without comment), 'e ele foi para a cidade' — accepted. Turn 7: 'Pode abrir a segunda cena pra gente?' with the team's question on what Naomi meant by 'quem é você, minha filha?' — the tail, no outside knowledge (R5: the text does not say; the voice may say the words come again, never what they mean). Turn 8: A2 before the fence. Turn 9: scene 2 with 'como foi, minha filha?' — accepted, the nuance named once (send_off_names /quem é você/: the text's own words, so a silent acceptance fails mechanically); with S1 and S2 recorded, the plain Ensaio Final send-off (the orange dot; the moment EF). Live watch (compiler OWED 8): R1, R5 and R10 are do_not_decide, so only the Validator reads them; the Guide reads the map prose ('those words are heard only in Ruth's report', 'He goes into the town; she comes to her mother-in-law', 'who are you, my daughter?') — a live acceptance at turns 4-5, a send-back at turn 9 or a silent turn 9 is the real signal, not a script defect. The team's lines are the builder's fixtures, pending Marcia's word. Team lines approved by Marcia 2026-09-29 («as falas estão aprovadas»). R14 (Marcia's rulings of 2026-09-29, afternoon, «(a), (a), sim — pode seguir com as recomendações», ruling (2) (a), as P09 R19): the text never says that Boaz slept or woke — 3:14 tells only that Ruth lay at the place of his feet until the morning; for the voice only, never to be said: 'dormiu', 'dormindo', 'acordou', 'acordou assustado' (live 2026-09-29, turn 7: 'quando acordou assustado', recalling the night beside 'quem é você?'). Mechanical: boaz_never_asleep on every turn; no team line says a sleep or wake word.",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "moment_after": "F",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Chamou a atenção da gente o descanso. A Noemi queria um lugar de descanso pra Rute, e agora ela diz que o homem não vai descansar. A oração da Noemi tá se cumprindo, né? E por que o Boaz não queria que ninguém soubesse que a mulher veio à eira?",
+      "expect": {
+        "no_fail_safe": true,
+        "team_reading_stays_theirs": true,
+        "no_divine_causation": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "familiarization_tail": true,
+        "moment_after": "F",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "no_outside_knowledge": true,
+        "moment_after": "I1",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Rute ficou deitada no lugar dos pés dele até de manhã, e se levantou antes que uma pessoa pudesse reconhecer a outra.",
+          "E ele disse: que ninguém saiba que a mulher veio à eira.",
+          "Ele disse: traga o manto que está sobre você e segure. Ela segurou, e ele mediu seis medidas de cevada e pôs sobre ela.",
+          "E ele disse: não vá vazia pra sua sogra.",
+          "E ele foi para a cidade."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "names_addition": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Rute ficou deitada no lugar dos pés dele até de manhã, e se levantou antes que uma pessoa pudesse reconhecer a outra.",
+          "E ele disse: que ninguém saiba que a mulher veio à eira.",
+          "Ele disse: traga o manto que está sobre você e segure. Ela segurou, e ele mediu seis medidas de cevada e pôs sobre ela.",
+          "E ela foi para a cidade."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Rute ficou deitada no lugar dos pés dele até de manhã, e se levantou antes que uma pessoa pudesse reconhecer a outra.",
+          "E ele disse: que ninguém saiba que a mulher veio à eira.",
+          "Ele disse: traga o manto que está sobre você e segure. Ela segurou, e ele mediu seis medidas de cevada e pôs sobre ela.",
+          "E ele foi para a cidade."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_spoiler": true,
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Pode abrir a segunda cena pra gente? O que a Noemi quis dizer com \"quem é você, minha filha?\"? Ela não reconheceu a Rute?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "no_spoiler": true,
+        "moment_after": "I2",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 2,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_spoiler": true,
+        "moment_after": "A2",
+        "scene_word_cena": true,
+        "boaz_never_asleep": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Rute chegou na sogra dela, e a sogra perguntou: como foi, minha filha?",
+          "E a Rute contou tudo o que o homem tinha feito por ela.",
+          "Ela disse: essas seis medidas de cevada ele me deu, porque ele me disse: não vá vazia pra sua sogra.",
+          "E a Noemi disse: fique quieta, minha filha, até você saber como o assunto vai cair, porque o homem não vai descansar enquanto não terminar o assunto hoje."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": ["S1", "S2"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_spoiler": true,
+        "send_off_names": ["quem é você"],
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "moment_after": "EF",
+        "boaz_never_asleep": true
+      }
+    }
+  ]
+}

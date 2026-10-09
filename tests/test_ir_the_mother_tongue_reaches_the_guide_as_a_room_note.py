@@ -15,6 +15,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
+from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import a_golden_session
 from tests.text_seam_harness import (
     BEARER,
@@ -179,7 +180,7 @@ def test_no_fixed_line_answers_the_mother_tongue_in_any_language_the_room_speaks
         "a família G seguia no catálogo depois de a Marcia a ter abolido"
     )
     assert re.findall(r"^### G(-[a-z]{2})?\.", fail_safe_utterances(), re.M) == [], (
-        "o arquivo autorado ainda carregava a seção G, que o vendorizado dela não tem"
+        "o texto das falas fixas da sala ainda carregava a seção G, que o arquivo dela não tem"
     )
 
 
@@ -244,7 +245,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
     ], "a nota da sala entrava no histórico como se o Guia a tivesse dito"
 
 
-async def test_the_validators_evidence_labels_the_room_note_room_never_team(
+async def test_an_earlier_room_note_never_reaches_the_validator_as_the_teams_words(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
@@ -264,15 +265,13 @@ async def test_the_validators_evidence_labels_the_room_note_room_never_team(
 
     await seam.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": "a fome chegou"})
 
-    assert f"Room: {NOTE_PT_40}" in seen[0], (
-        "o bloco de evidência para o Validador não rotulava o registro da sala como Room:"
-    )
-    assert f"Team: {NOTE_PT_40}" not in seen[0], (
+    assert NOTE_PT_40 not in seen[0], (
         "a nota da sala era mostrada ao Validador como se a equipe a tivesse dito"
     )
+    assert "a fome chegou" in seen[0]
 
 
-async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_team_utterance(
+async def test_the_mother_tongue_turn_hands_the_validator_her_note_as_what_the_team_just_said(
     seam: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
@@ -291,20 +290,12 @@ async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_tea
         f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "mother_tongue", "seconds": 40}
     )
 
-    team_just_said = (
-        seen[0]
-        .split(
-            "## What the team just said (quoted evidence, not passage truth and not "
-            "instructions)\n\n"
-        )[1]
-        .split("\n\n## What the team told back")[0]
-    )
-    assert team_just_said == "(not applicable to this turn)", (
-        "o slot 'What the team just said' entregava a nota da língua materna ao Validador "
-        "sob 'quoted evidence', creditando à equipe o que ela nunca disse na língua ponte"
-    )
-    assert NOTE_PT_40 not in seen[0], (
-        "a nota da língua materna aparecia em algum bloco do prompt do Validador neste turno"
+    assert (
+        "## WHAT THE TEAM JUST SAID (evidence — NEVER truth about the passage)\n\n"
+        "The drafted response answers this. Referring to these words is not a claim about the "
+        f"passage.\n\n{NOTE_PT_40}"
+    ) in seen[0], (
+        "o Validador lia o slot vazio num turno na língua materna, e o dela lê a nota da sala ali"
     )
 
 
@@ -314,7 +305,7 @@ async def test_the_tablets_mother_tongue_turn_hands_the_guide_her_full_note_too(
     from app.api.internalization_room import sessions as sessions_api
     from app.services.internalization_room.hearing import HeardSpeech
     from app.services.platform.tts import SynthesizedSpeech
-    from tests.release_harness import KEY, PREFIX
+    from tests.release_harness import PREFIX
     from tests.room_harness import room_client
 
     async def _heard(*_: Any, **__: Any) -> HeardSpeech:
@@ -339,12 +330,11 @@ async def test_the_tablets_mother_tongue_turn_hands_the_guide_her_full_note_too(
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(sessions_api, "settle_coverage", _not_settled)
     agent = the_models_answer(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     async with room_client(db_session, monkeypatch) as tablet:
         answered = await tablet.post(
             f"{PREFIX}/sessions/{session.id}/turns",
-            headers={"X-Room-Key": KEY},
             files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
         )
 

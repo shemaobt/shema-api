@@ -27,6 +27,8 @@ is ENG-482.
 from __future__ import annotations
 
 import itertools
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import PassageClosed
 from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
-from app.services.internalization_room.canon.book_material import unwalkable
+from app.services.internalization_room.canon import book_material, parse_map
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
@@ -53,6 +55,12 @@ from tests.baker import (
     make_language,
     make_project,
 )
+from tests.canon_harness import (
+    A_FABLE_LOG_WITH_A_LAYER,
+    A_FABLE_LOG_WITHOUT_ONE,
+    a_fable_map,
+    forget_the_canon,
+)
 
 _codes = itertools.count()
 
@@ -64,13 +72,30 @@ ENGAGED = CoverageStatus.ENGAGED.value
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
 
-#: The passages a team can actually be standing on. The rest are vendored but unwalkable, and
-#: the resolution steps over them — so the boundary cases below are about the last passage
-#: that opens rather than the last one in the folder.
-WALKABLE = [
-    meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
-]
-LAST = WALKABLE[-1]
+
+@pytest.fixture
+def a_book_whose_walkable_passages_end_before_it_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    maps = tmp_path / "meaning-map"
+    logs = tmp_path / "compilation-log"
+    maps.mkdir()
+    logs.mkdir()
+    layers = {1: True, 2: False, 3: True, 4: False}
+    for number, carries_its_layer in layers.items():
+        stem = f"Q0{number}-Fable-1-{number}-{number + 1}"
+        (maps / f"{stem}.md").write_text(a_fable_map(number), encoding="utf-8")
+        (logs / f"{stem}-COMPILATION-LOG.md").write_text(
+            A_FABLE_LOG_WITH_A_LAYER if carries_its_layer else A_FABLE_LOG_WITHOUT_ONE,
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
+    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
+    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
+    forget_the_canon()
+    yield "Fable"
+    forget_the_canon()
 
 
 def at_the_floor(pericope: str) -> dict[str, str]:
@@ -116,21 +141,20 @@ def test_a_team_that_closed_every_passage_stands_on_none() -> None:
     assert resolve(set(CANON)) is None
 
 
-def test_a_team_that_closed_everything_it_can_walk_is_at_the_end_of_the_book() -> None:
-    """The end a team can actually reach, which is earlier than the last vendored passage.
+def test_a_team_that_closed_every_passage_that_opens_is_at_the_end_of_a_book_that_goes_on(
+    a_book_whose_walkable_passages_end_before_it_does: str,
+) -> None:
+    book = a_book_whose_walkable_passages_end_before_it_does
 
-    The passages past the canon's edge carry no preservation layer, so no session can open
-    on them and their floor can never be met. The resolution walked them anyway and answered
-    the first of them forever: the team closed the last passage that opens and was sent, on
-    every touch after that, to one that refuses to open. `None` here is what makes the
-    end-of-book branch reachable at all.
-    """
-    assert resolve(set(WALKABLE)) is None
+    assert resolve({"Q01", "Q03"}, book=book) is None
 
 
-def test_the_last_passage_still_being_worked_is_where_the_team_is() -> None:
-    """The boundary beside the case above, so `None` cannot come from an off-by-one."""
-    assert resolve(set(CANON[:-1]) - {LAST}) == LAST
+def test_a_team_is_sent_past_a_refused_passage_to_the_last_one_that_opens(
+    a_book_whose_walkable_passages_end_before_it_does: str,
+) -> None:
+    book = a_book_whose_walkable_passages_end_before_it_does
+
+    assert resolve({"Q01"}, book=book) == "Q03"
 
 
 def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_book() -> None:

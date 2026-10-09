@@ -13,8 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import (
     device_project_dep,
-    require_room_caller,
-    room_caller_dep,
+    linked_tablet_dep,
 )
 from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
@@ -43,8 +42,9 @@ from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
+from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
@@ -54,7 +54,10 @@ from app.services.internalization_room.prepare_opening import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
-from app.services.internalization_room.sessions import book_of, is_panorama
+from app.services.internalization_room.sessions import book_of, is_panorama, was_opened
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    facilitator_speech_key,
+)
 from app.services.internalization_room.turn_dedup import (
     answer_once,
     answered_turn,
@@ -226,7 +229,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
 #: grow this without bound.
 _LANGUAGE_MEMO_MAX = 1024
-_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str | None]] = OrderedDict()
+_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str]] = OrderedDict()
 
 
 def forget_session_languages() -> None:
@@ -234,7 +237,7 @@ def forget_session_languages() -> None:
     _LANGUAGE_MEMO.clear()
 
 
-def _remember_language(session_id: str, language: str, project_id: str | None) -> None:
+def _remember_language(session_id: str, language: str, project_id: str) -> None:
     _LANGUAGE_MEMO[session_id] = (language, project_id)
     _LANGUAGE_MEMO.move_to_end(session_id)
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
@@ -399,6 +402,8 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         back_translation=await _progress(db, session),
         language=session.language,
         halt=halt.standing(session),
+        opened=was_opened(session),
+        moment=moment_view(session),
     )
 
 
@@ -424,13 +429,13 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     )
 
 
-@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_caller_dep])
+@router.post("/sessions", response_model=SessionStateResponse, dependencies=[linked_tablet_dep])
 async def create_session(
     payload: CreateSessionRequest,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    project_id: str | None = device_project_dep,
-    caller: Device | None = Depends(require_room_caller),
+    project_id: str = device_project_dep,
+    caller: Device = linked_tablet_dep,
 ) -> SessionStateResponse:
     """Open a session, and end this tablet's halt if it was standing in one.
 
@@ -439,9 +444,8 @@ async def create_session(
     here. The session's halt is the team's: any credentialed tablet of the team that reopens a
     session a call for a person stopped is the room going again, and the room never waits on
     the Desk (ENG-1354), so `open_session` lifts it in the open's own transaction (ADR 0045).
-    Both are gated on `caller`, the gate's own result — the credential is resolved once per
-    request and FastAPI's dependency cache is what makes this and `device_project_dep` one
-    query — so a caller on the shared room key names no device and lifts nothing.
+    `caller` is the gate's own result — the credential is resolved once per request and
+    FastAPI's dependency cache is what makes this and `device_project_dep` one query.
 
     After the session exists, so an `open_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
@@ -467,11 +471,9 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
-        lifts=caller is not None,
     )
-    if caller is not None:
-        await clear_needs_person(db, caller.id)
-        nudge(session.project_id, "halts")
+    await clear_needs_person(db, caller.id)
+    nudge(session.project_id, "halts")
     if previous is not None:
         if hand_over(previous, session):
             await db.commit()
@@ -488,11 +490,11 @@ async def create_session(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionStateResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def read_session(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SessionStateResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
@@ -614,11 +616,11 @@ async def facilitator_sessions(
 @router.post(
     "/sessions/{session_id}/needs-person",
     response_model=NeedsPersonResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def ask_for_a_person(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> NeedsPersonResponse:
     """The room in front of the team decided it cannot go on without a person.
@@ -638,11 +640,11 @@ async def ask_for_a_person(
 @router.post(
     "/sessions/{session_id}/person-arrived",
     response_model=PersonArrivedResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def a_person_arrived(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> PersonArrivedResponse:
     """Somebody long-pressed the halted room to say they are standing in it (ENG-792).
@@ -701,21 +703,34 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
             except Exception:
                 voiced = None
         if voiced is None:
-            voiced = (await room.synthesize_facilitator_speech(last, language=session.language))[0]
+            try:
+                voiced = (
+                    await room.synthesize_facilitator_speech(last, language=session.language)
+                )[0]
+            except Exception as error:
+                logger.warning("a stored line could not be voiced again: %s", type(error).__name__)
     return TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=(
+            clip_url(
+                voiced.key if voiced else facilitator_speech_key(last, language=session.language),
+                session_id=session.id,
+            )
+            if last
+            else ""
+        ),
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         turn_id=turn_id or "",
+        moment=moment_view(session),
     )
 
 
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def take_turn(
     session_id: str,
@@ -727,7 +742,7 @@ async def take_turn(
     interrupted: str | None = Form(default=None),
     interrupted_at_ms: str | None = Form(default=None),
     interrupted_of_ms: str | None = Form(default=None),
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -737,13 +752,6 @@ async def take_turn(
     as an opening had the Guide introduce itself and lay the whole passage out a second time —
     against a probe already waiting for a free retell, which the Validator then rejected, so
     the room answered a returning team with a canned line.
-
-    The turn is voiced before any of it is written down. A probe is the room's authorization
-    to assess the answer that comes next, so committing one for a turn whose synthesis then
-    failed points that authorization at a question the team was never asked, and leaves the
-    ledger holding evidence for an exchange that was never recorded. Speaking first costs
-    nothing in the other direction: a clip reaches the team only as the handle in this
-    response, so a request that fails after synthesis hands the app nothing to play.
 
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
@@ -774,12 +782,12 @@ async def take_turn(
     "/sessions/{session_id}/turns/{turn_id}",
     response_model=TurnResponse,
     responses={202: {"description": "The turn is still in flight; nothing to read yet."}},
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def look_at_turn(
     session_id: str,
     turn_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse | Response:
     """The tablet's one look at a turn it gave up on, without sending the turn again.
@@ -815,7 +823,7 @@ async def _answer_the_turn(
     background: BackgroundTasks,
     file: UploadFile | None,
     turn_id: str | None,
-    project_id: str | None,
+    project_id: str,
     cut: _Cut,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
@@ -854,7 +862,7 @@ async def _answer_the_turn(
         if stt is not None:
             await stop_hearing(stt)
         raise
-    _remember_language(session_id, session.language, project_id)
+    _remember_language(session_id, room_language(session.language), project_id)
 
     if file is not None and stt is None:
         audio_bytes = await _read_capped_audio(file)
@@ -863,7 +871,7 @@ async def _answer_the_turn(
                 audio_bytes,
                 filename=file.filename,
                 mime_type=file.content_type,
-                language=session.language,
+                language=room_language(session.language),
                 cut=cut,
             )
         )
@@ -919,6 +927,7 @@ async def _draft_the_turn(
             coverage=coverage_view(session),
             done=False,
             turn_id=turn_id or str(uuid.uuid4()),
+            moment=moment_view(session),
         )
         if turn_id:
             await remember_turn(
@@ -937,10 +946,11 @@ async def _draft_the_turn(
         async with asyncio.timeout_at(deadline):
             if is_panorama(session.pericope):
                 book = book_of(session.pericope)
+                language = room_language(session.language)
                 outcome = await room.run_panorama_turn(
                     messages=session.messages or [],
-                    session_language=LANGUAGE_NAMES[session.language],
-                    language_code=session.language,
+                    session_language=LANGUAGE_NAMES[language],
+                    language_code=language,
                     panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
                     validator_prompt=validator_prompt,
                     book=book,
@@ -964,20 +974,7 @@ async def _draft_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    uploads: list[Upload] = []
-    try:
-        with stage("voice"):
-            voiced, segments = await _voice_the_turn(
-                outcome, language=session.language, uploads=uploads
-            )
-    except BaseException:
-        if uploads:
-            await _upload(uploads)
-        raise
-    session, _ = await asyncio.gather(
-        _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening),
-        _upload(uploads),
-    )
+    session = await _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -992,16 +989,23 @@ async def _draft_the_turn(
 
     reply = TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=(
+            ""
+            if outcome.fixed_line
+            else clip_url(
+                facilitator_speech_key(outcome.speech, language=session.language),
+                session_id=session.id,
+            )
+        ),
         fixed_line=outcome.fixed_line,
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         degraded=outcome.degraded,
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
-        segments=segments,
         turn_id=response_turn_id,
         classification_pending=pending,
+        moment=moment_view(session),
     )
     lifted = halted and session.status is not IRSessionStatus.NEEDS_PERSON
     with stage("db_write"):
@@ -1013,4 +1017,19 @@ async def _draft_the_turn(
     nudge(team_id, "sessions")
     if lifted:
         nudge(team_id, "halts")
-    return reply
+
+    uploads: list[Upload] = []
+    try:
+        with stage("voice"):
+            _, segments = await _voice_the_turn(outcome, language=session.language, uploads=uploads)
+    except Exception as error:
+        logger.warning("a stored turn could not be voiced: %s", type(error).__name__)
+        segments = []
+    try:
+        await _upload(uploads)
+    except Exception as error:
+        logger.warning("a voiced turn's clip did not reach the bucket: %s", type(error).__name__)
+        return reply
+    if not segments:
+        return reply
+    return reply.model_copy(update={"audio_url": segments[0].audio_url, "segments": segments})

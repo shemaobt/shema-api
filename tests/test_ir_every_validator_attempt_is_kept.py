@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room import prepare_opening as prepare_opening_module
-from app.services.internalization_room.back_translation import closing_block, findings_block
+from app.services.internalization_room.back_translation import findings_block
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prepare_opening import hand_over, prepare_opening
@@ -22,7 +22,8 @@ from app.services.internalization_room.run_turn import TurnOutcome, run_verdict_
 from app.services.internalization_room.sessions import append_exchange, create_session, get_session
 from app.services.internalization_room.validated_turn import MAX_REDRAFTS
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, P
 from tests.room_harness import room_client
 from tests.room_route_audit_harness import models_in, room_app_routes
 from tests.turn_harness import SPEAKER, VALIDATOR, settings, the_room_agent_is, the_speaker_answers
@@ -83,8 +84,8 @@ def the_room_hears(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)
 
-    def _install(drafts: list[str], replies: list[str], **seams: Any) -> None:
-        the_room_agent_is(monkeypatch, turn=_Model(drafts, replies), **seams)
+    def _install(drafts: list[str], replies: list[str]) -> None:
+        the_room_agent_is(monkeypatch, turn=_Model(drafts, replies))
 
     return _install
 
@@ -92,7 +93,6 @@ def the_room_hears(monkeypatch: pytest.MonkeyPatch):
 async def _a_turn(client, db_session: AsyncSession, session_id: str) -> dict[str, Any]:
     answered = await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
     assert answered.status_code == 200, answered.text[:300]
@@ -100,7 +100,7 @@ async def _a_turn(client, db_session: AsyncSession, session_id: str) -> dict[str
 
 
 async def _a_session(db_session: AsyncSession):
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     await append_exchange(db_session, session, team_utterance="a fome", guide_response="…")
     return session
 
@@ -198,36 +198,11 @@ async def test_an_attempt_whose_validator_reply_could_not_be_read_keeps_its_draf
     assert kept["attempts"][0]["note"].strip()
 
 
-async def test_an_attempt_that_strayed_from_the_bridge_language_keeps_the_attempt_note_and_issue(
-    client, db_session: AsyncSession, the_room_hears
-) -> None:
-    the_room_hears(
-        ["Let us stay in this scene.", "Vamos ficar nesta cena."],
-        [_verdict("pass"), _verdict("pass")],
-        strays_from=lambda text, _language: text.startswith("Let us"),
-    )
-    session = await _a_session(db_session)
-
-    kept = await _a_turn(client, db_session, session.id)
-
-    assert kept["attempts"] == [
-        {
-            "attempt": 1,
-            "draft": "Let us stay in this scene.",
-            "verdict": "pass",
-            "issues": [{"problem": "off_bridge_language"}],
-            "note": ANY,
-        },
-        {"attempt": 2, "draft": "Vamos ficar nesta cena.", "verdict": "pass", "issues": []},
-    ]
-    assert kept["attempts"][0]["note"].strip()
-
-
 async def test_a_turn_stored_before_attempts_were_kept_is_read_back_without_invented_attempts(
     client, db_session: AsyncSession, the_room_hears
 ) -> None:
     the_room_hears(["O que Rute fez?"], [_verdict("pass")])
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     old = [
         {
             "role": "guide",
@@ -293,7 +268,6 @@ async def test_a_telling_back_verdict_turn_keeps_its_attempts(
         session_language="Portuguese",
         language_code="pt",
         findings_text=findings_block([], Addresses()),
-        closing=closing_block(None, checked=True),
         scope=P,
         pericope_num=P,
         messages=[],
@@ -327,16 +301,14 @@ async def test_a_prepared_opening_once_taken_is_stored_with_its_attempts(
 ) -> None:
     the_room_hears([], [])
     attempts = [{"attempt": 1, "draft": "Vamos começar.", "verdict": "pass", "issues": []}]
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session.prepared_speech = "Vamos começar."
     session.prepared_audio_key = "clips/prepared.mp3"
     session.prepared_pericope = P
     session.prepared_attempts = attempts
     await db_session.commit()
 
-    answered = await client.post(
-        f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}
-    )
+    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert answered.status_code == 200, answered.text[:300]
     reread = await get_session(db_session, session.id)
@@ -380,7 +352,6 @@ async def test_the_teams_tablet_receives_none_of_the_attempts(
 
     answered = await client.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
 

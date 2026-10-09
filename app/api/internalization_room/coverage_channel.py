@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_project_dep, linked_tablet_dep
 from app.core.database import get_db
 from app.services.internalization_room.coverage_channel import subscribe
 from app.services.internalization_room.sessions import session_for_room_caller
@@ -40,10 +40,10 @@ KEEP_ALIVE_SECONDS = 15.0
 router = APIRouter()
 
 
-@router.get("/sessions/{session_id}/coverage", dependencies=[room_caller_dep])
+@router.get("/sessions/{session_id}/coverage", dependencies=[linked_tablet_dep])
 async def coverage_channel(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     await session_for_room_caller(db, session_id, project_id)
