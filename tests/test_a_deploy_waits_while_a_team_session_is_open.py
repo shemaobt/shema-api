@@ -238,3 +238,17 @@ def test_only_a_manual_run_can_be_urgent_and_it_is_not_unless_someone_says_so() 
     assert (urgent["type"], urgent["default"]) == ("boolean", False)
     assert triggers["push"] == {"branches": ["main"]}
     assert the_hold()["env"]["DEPLOY_URGENT"] == "${{ inputs.urgent }}"
+
+
+def test_the_hold_reads_the_migrations_secret_from_the_checkout_before_anything_ships() -> None:
+    steps = the_steps()
+    names = [step["name"] for step in steps]
+    hold = steps.index(the_hold())
+    secret = "--secret=tripod_backend_neon_database_url --project=shemaobt-secrets"
+
+    assert names.index("Setup Cloud SDK") < names.index("Build and Push Backend") < hold
+    assert hold < names.index("Run migrations") < names.index("Deploy Backend")
+    assert secret in steps[names.index("Run migrations")]["run"]
+    assert secret in the_hold()["run"]
+    assert "docker" not in the_hold()["run"]
+    assert all("if" not in step and "continue-on-error" not in step for step in steps[hold:])
