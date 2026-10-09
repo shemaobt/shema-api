@@ -41,6 +41,7 @@ class DeclaredClip(BaseModel):
 
     key: str = Field(max_length=120)
     durationMs: int = Field(ge=0)
+    contentType: str | None = Field(default=None, max_length=120)
 
 
 class DeclareBackTranslationSessionRequest(BaseModel):
