@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -158,6 +159,7 @@ async def test_a_column_the_pending_migration_adds_does_not_break_the_count(
     assert [session.id for session in held] == ["sessao-da-ruth"]
 
 
+@pytest.mark.fresh_interpreter
 async def test_with_no_team_in_the_room_the_deploy_goes_on(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
@@ -169,6 +171,7 @@ async def test_with_no_team_in_the_room_the_deploy_goes_on(
     assert "No team session is open; the deploy goes on." in hold.stdout
 
 
+@pytest.mark.fresh_interpreter
 async def test_the_deploy_names_the_team_it_waits_for_and_goes_on_once_their_passage_ends(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
@@ -196,6 +199,7 @@ async def test_the_deploy_names_the_team_it_waits_for_and_goes_on_once_their_pas
     assert rest.endswith("No team session is open; the deploy goes on.\n")
 
 
+@pytest.mark.fresh_interpreter
 async def test_a_wait_that_outlives_its_deadline_fails_naming_who_held_it(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
@@ -223,6 +227,7 @@ def test_the_wait_gives_up_inside_the_six_hours_github_gives_the_job() -> None:
     assert hold_deploy.DEADLINE_MINUTES < 360
 
 
+@pytest.mark.fresh_interpreter
 async def test_an_urgent_deploy_does_not_wait_and_says_whose_room_it_ships_into(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
@@ -274,6 +279,7 @@ def test_one_production_deploy_runs_at_a_time_and_the_next_one_is_kept() -> None
     assert workflow["concurrency"] == {"group": "deploy", "cancel-in-progress": False}
 
 
+@pytest.mark.fresh_interpreter
 async def test_the_window_is_an_hour_unless_the_deploy_is_told_otherwise(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
