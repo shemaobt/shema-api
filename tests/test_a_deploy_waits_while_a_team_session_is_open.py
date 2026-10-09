@@ -58,3 +58,11 @@ async def test_a_passage_the_team_finished_a_minute_ago_does_not_hold_the_deploy
     )
 
     assert await hold_deploy.holding(db_session, NOW, HOUR) == []
+
+
+async def test_a_session_the_facilitator_zeroed_does_not_hold_the_deploy(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(db_session, "sessao-zerada", archive_id="arquivo-do-zerar")
+
+    assert await hold_deploy.holding(db_session, NOW, HOUR) == []
