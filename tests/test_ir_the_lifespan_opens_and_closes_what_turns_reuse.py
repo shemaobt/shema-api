@@ -79,7 +79,7 @@ async def test_the_model_client_a_turn_reused_is_closed_when_the_server_stops(
     )
 
 
-async def test_the_language_profiles_are_loaded_before_the_first_turn_needs_them(
+async def test_the_language_profiles_are_loaded_before_a_speech_with_no_language_named_needs_them(
     quiet_startup: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(detector_factory, "_factory", None)
