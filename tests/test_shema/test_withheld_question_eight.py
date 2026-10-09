@@ -53,7 +53,7 @@ FIELDS = {
     "partnerOrg": (PARTNER, lambda r: r["partnerOrg"]),
     "statusGoal": (GOAL, lambda r: r["statusGoal"]),
     "mediaPhotos.caption": (PHOTO, lambda r: _first(r, "mediaPhotos").get("caption")),
-    "mediaVideos.caption": (VIDEO, lambda r: _first(r, "mediaVideos").get("caption")),
+    "mediaVideos.caption": (VIDEO, lambda r: _first(r, "mediaVideos").get("caption") or ""),
     "storyProgress.recordLocation": (
         PLACE,
         lambda r: _first(r, "storyProgress").get("recordLocation"),
