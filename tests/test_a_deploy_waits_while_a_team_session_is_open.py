@@ -229,3 +229,12 @@ async def test_an_urgent_deploy_does_not_wait_and_says_whose_room_it_ships_into(
     assert "Waiting on" not in hold.stdout
     warning = hold.stdout.split("::warning::", 1)[1]
     assert "sessao-da-ruth  project time-de-ruth" in warning
+
+
+def test_only_a_manual_run_can_be_urgent_and_it_is_not_unless_someone_says_so() -> None:
+    triggers = yaml.safe_load(DEPLOY.read_text())[True]
+    urgent = triggers["workflow_dispatch"]["inputs"]["urgent"]
+
+    assert (urgent["type"], urgent["default"]) == ("boolean", False)
+    assert triggers["push"] == {"branches": ["main"]}
+    assert the_hold()["env"]["DEPLOY_URGENT"] == "${{ inputs.urgent }}"
