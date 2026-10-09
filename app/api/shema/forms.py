@@ -61,7 +61,7 @@ import hashlib
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Header, Request, Response, status
+from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from slowapi.util import get_remote_address
 
 from app.api.shema._deps import (
@@ -77,6 +77,7 @@ from app.api.shema.projects import LOCAL_DAY_HEADER, _expected_version, _local_d
 from app.core.rate_limit import limiter
 from app.models.shema_forms import (
     IntakeForm,
+    IntakeImageStored,
     IntakeLink,
     IntakeLinkCreate,
     IntakeLinkCreated,
@@ -95,7 +96,9 @@ from app.services.shema import (
     read_submission,
     receive_submission,
     revoke_intake_link,
+    store_intake_image,
 )
+from app.services.shema._intake_image_rules import MAX_IMAGE_BYTES
 
 router = APIRouter()
 
@@ -323,3 +326,55 @@ async def submit_intake_form(
         db, token, payload, payload_bytes=await request.body(), app_key=APP_KEY
     )
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+_IMAGE_TOO_LARGE = HTTPException(
+    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    detail=f"The image exceeds the {MAX_IMAGE_BYTES // (1024 * 1024)} MB limit.",
+)
+
+
+async def _capped_image_body(request: Request) -> bytes:
+    """The raw body, refused as 413 the moment it passes the ceiling — never buffered whole first.
+
+    The declared ``Content-Length`` answers early when it is honest; the stream is measured as
+    it arrives for when it is not, the same two steps
+    ``app/api/resource_requests/attachments.py`` takes for the form's attachment.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > MAX_IMAGE_BYTES:
+        raise _IMAGE_TOO_LARGE
+    received = bytearray()
+    async for chunk in request.stream():
+        received.extend(chunk)
+        if len(received) > MAX_IMAGE_BYTES:
+            raise _IMAGE_TOO_LARGE
+    return bytes(received)
+
+
+@intake.post(
+    "/intake/{token}/image", response_model=IntakeImageStored, status_code=status.HTTP_201_CREATED
+)
+@limiter.limit(INTAKE_WRITE_RATE_LIMIT, key_func=get_remote_address)
+@limiter.limit(INTAKE_LINK_RATE_LIMIT, key_func=intake_token_key)
+async def upload_intake_image(
+    token: str,
+    request: Request,
+    db: Db,
+    content_type: Annotated[str | None, Header(alias="Content-Type")] = None,
+    file_name: Annotated[str | None, Header(alias="X-File-Name")] = None,
+) -> IntakeImageStored:
+    """The Pulse's image, through the same link as its answers (OBT-578).
+
+    Raw bytes, not multipart: one file, its type in ``Content-Type`` and its name — for display
+    only — in ``X-File-Name``. The answer is the id the ``image`` answer of the Pulse then
+    carries; the bytes go to the module's private bucket and reach no surface until a
+    coordinator imports the Pulse that names them (``store_intake_image``).
+    """
+    data = await _capped_image_body(request)
+    image = await store_intake_image(
+        db, token, data=data, content_type=content_type, file_name=file_name
+    )
+    return IntakeImageStored(
+        id=image.id, file_name=image.file_name, content_type=image.content_type
+    )

@@ -635,6 +635,12 @@ content type and size policy per collection (`ProjectMaterial.kind` is `text | a
 and a screen to be wrong in front of, and nothing here freezes it. `upload_gcs_object` with
 `GCS_SHEMA_BUCKET` and `storage_key` is the whole of what that issue has to write.
 
+**The first upload is built, and it is the Pulse's (OBT-578, 8/oct/2026).** `store_intake_image.py`
+is exactly that sentence — `upload_gcs_object` to `GCS_SHEMA_BUCKET` under `storage_key(MEDIA, …)` —
+with the policy it said was missing written in `_intake_image_rules.py`: JPEG, PNG and WebP, 10 MiB,
+the type proved by the file's own first bytes and never by the header alone. It is a policy for
+**one** collection; a material (`text | audio | video`) still has none, and nothing here freezes one.
+
 ### 4.7 Phases — **Not applicable**
 
 `app/db/models/phase.py`, `app/services/phase/`, `app/api/phases.py`,
@@ -736,7 +742,7 @@ behaviour on it.
 | 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day — which the server cannot know, so BE-06 has the client state it in `X-Shema-Local-Date` and bounds it to ±1 day of the server's own, the window every real offset fits in and a backdated ETEN credit does not. **A row is checked against the book that exists** (`app/utils/shema_books.py`): not a book, a scope longer than the book, a count above its own row. The ceiling is **per row and never over the aggregates** — three export records carry `156/25`. |
 | 5.3 | **Health assessment** | `shema_health_assessments` | BE-02, BE-07 | **Its own aggregate.** The flat fields on the record are a *projection of the newest entry*, never a second truth; append and re-project in one step, and carry a pre-history record into the history before appending. The **per-dimension note is the data**; the running note is derived from it at write time. `""` is not `boa`. |
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
-| 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). |
+| 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). **Since OBT-578 (8/oct/2026) a photo is also born from a Pulse**: the import mints it from the image the link uploaded, with the description as its caption and the leader's box as its decision — `true` is granted, by the leader on the day the Pulse arrived; unchecked or absent is **undecided**, never a refusal the server invented — and from there every output reads it through the same `can_share_media`. The coordination withdraws it (`withdraw_image_authorization.py`): granted becomes `false` with who and when, and the reference, the description and the box leave the archived Pulse (`image_erased_at`/`_by` on the submission, the OBT-561 shape). What was already sent is **not** recalled — Daniel, 8/oct/2026. §6.6. |
 | 5.6 | **Prayer** | *(none for the wall)* | BE-09 | **The wall is derived, never stored**, which is what makes withdrawal free: moving a request back to `coordenacao` removes it from the next query with no cleanup step. The three columns live on the record; `_consent.py` is their only reader. If BE-09 ever stores requests, a withdrawn one is **deleted from that store**, never flagged and retained. **The one store that kept the text is the archived Pulse, and since OBT-561 (2/out/2026, Levi) it is cleaned too**: Karina, via Daniel, 1/out/2026 — *"o pedido é apagado também do Pulso guardado"* (the other options were keeping the Pulse whole for coordination only, or as it was). A withdrawal is the team **stating** a visibility other than `rede` over a request that was on the wall (`_consent.withdraws_authorization`), on a save or a health reading; `_submission_archive.erase_shared_requests` then removes the request, and the visibility answer that authorized it, from **every archived Pulse of the project that shared one** — that answered `rede` — whatever its words: the health wizard writes an edited text and restates `rede` in one save, so matching by text would miss a request the record has since spelled otherwise (Levi, 2/out/2026, on the review of shema-api#622). A Pulse that kept its request in coordination is left as it arrived. The row keeps `prayer_request_erased_at`/`_by` — never the text. A new text replacing the request is **not** a withdrawal and erases nothing. The content hash stays the hash of the bytes as they arrived, so the same file sent again is still a no-op. |
 | 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. **OBT-531:** a contact untouched for more than a year — the latest of entry, review and send — is **flagged for review**, served as `reviewDue` and never derived by the client; and a person with no account **leaves through an exit link**, which is the same erasure. |
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
@@ -1124,6 +1130,8 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 | `location`, `country` | the truth | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
 | `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | the truth | `""` | `""` |
+| the captions of `mediaPhotos` and `mediaVideos` (OBT-578, found in review — the authorization gates the bytes, not the leader's sentence) | the truth | the truth | `""` / `null` | — |
+| `authorization.by` of `mediaPhotos` and `mediaVideos` (OBT-578 — Daniel, 8/oct/2026: on a Pulse-born photo it is the leader's own name, `submittedBy`) | the truth | the truth | `""`; `granted` and `at` kept | — |
 | `coords` | the truth | the truth | the region centroid | the region centroid |
 | `sensitiveCountry` (the ficha) | the flag | the flag | the flag | — |
 | `locationWithheld` | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed | the flag, fail-closed |
@@ -1754,6 +1762,37 @@ this module with no `Authorization` requirement, by FE-44 §9.0; the intercessor
 >   writes an empty request over the record's nor authorizes the text again. `archived_payload`
 >   is therefore verbatim **except** for that removal, and `content_hash` keeps the hash of the
 >   bytes as they arrived. §5.6 holds the rule.
+>
+> - **The Pulse carries an image, a description and the leader's authorization of its use**
+>   (OBT-578, 8/oct/2026). Karina, via Daniel, 6/oct/2026: *"pulso mensal: acrescentar um campo
+>   para adicionar imagem e uma descrição com um campo de autorização de uso de imagem."* That
+>   sentence is hers; the five answers below are **Daniel's, 8/oct/2026**, on proposals of ours,
+>   and are never to be cited as hers. (1) **JPEG, PNG and WebP, 10 MiB**, proved by the bytes
+>   (`_intake_image_rules.py`; the attachment precedent of `resource_request/_attachment_rules.py`).
+>   (2) **One image per Pulse**, and it becomes the record's `ShemaMediaItem kind=photo` at the
+>   import — never before: a `shema_intake_images` row is on no surface, so between the upload and
+>   the import the ficha's `mediaPhotos` and the card's `hasMedia` do not know it exists, and only
+>   the coordinator's inbox read shows the three answers, as it shows every pending answer.
+>   (3) **The bytes go up through the link, before the answers that name them** —
+>   `POST /api/shema/intake/{token}/image`, the third unauthenticated route, under the same token
+>   guard and the same rate limits, into the private bucket under a key scoped to the row's own id
+>   (the leader's filename and the project's slug never in it); the `image` answer carries the id
+>   back, and `receive_submission` refuses an id another link uploaded, one already bound to a
+>   Pulse, or any id at all on the coordinator's direct filing, which has no link to upload through.
+>   The archive stays JSON and byte-identical: the image is a pointer in it, not a payload.
+>   (4) **A sensitive project's image reaches `coordenacao` only, until OBT-575 exists** — the safe
+>   option, and it costs no new rule: `can_share_media`'s third gate already refuses `publico` on a
+>   sensitive project whatever the leader authorized. (5) **Withdrawing the authorization removes
+>   the reference from the archived Pulse and stamps who and when; it never recalls what was sent.**
+>   `POST /projects/{id}/media/{item}/authorization/withdraw`, coordinator only, in one transaction
+>   with the erasure; a second call changes nothing. The leader's box is the decision as the record
+>   already understands one: `true` is *granted by the leader, on the day the Pulse arrived*;
+>   unchecked or absent is **undecided**, which §5.5 makes behave as refused on every path that
+>   shares something — so without the authorization the image appears in no output, and
+>   `tests/test_shema/test_pulse_image.py` proves it **per output**: the signed URL refuses, and the
+>   prayer wall, the Prayer Pulse and the export carry neither the key, nor the filename, nor the
+>   description, before and after a withdrawal. **Out of scope, by the same decision:** the image
+>   inside the *sent* Prayer Pulse, which is GATE-03's (OBT-389) — the Pulse is text and stays text.
 >
 > **Not built, and it is GATE-03's:** `POST /api/shema/forms/pulse/{projectId}`, the generated
 > artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
