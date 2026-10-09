@@ -36,3 +36,11 @@ async def test_a_team_in_the_middle_of_a_passage_holds_the_deploy(
     held = await hold_deploy.holding(db_session, NOW, HOUR)
 
     assert [session.id for session in held] == ["sessao-da-ruth"]
+
+
+async def test_a_session_opened_with_no_team_never_holds_the_deploy(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(db_session, "sessao-da-chave-da-sala", project_id=None)
+
+    assert await hold_deploy.holding(db_session, NOW, HOUR) == []
