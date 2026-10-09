@@ -254,6 +254,11 @@ def _unreadable_keys(project: ShemaProject, readership: Readership) -> frozenset
     return frozenset(FIELD_KEYS.get(column) or _wire(column) for column in columns)
 
 
+def keys_hidden_from(project: ShemaProject, readership: Readership) -> frozenset[str]:
+    """The trail keys a reader is not told moved — :func:`_unreadable_keys`, for the audit feed."""
+    return _unreadable_keys(project, readership)
+
+
 async def changes_since(
     db: AsyncSession, project: ShemaProject, version: int, *, readership: Readership
 ) -> ChangesSince:
