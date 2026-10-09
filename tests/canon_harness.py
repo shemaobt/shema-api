@@ -8,20 +8,27 @@ the loader gains is added in one place. Builders and constants only.
 
 from __future__ import annotations
 
+import importlib
 import json
+import pkgutil
 import shutil
 import textwrap
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from app.services import internalization_room as room
+from app.services.internalization_room import canon
 from app.services.internalization_room.canon import (
     book_material,
     elements,
     kept,
     labels,
+    names,
     parse_map,
+    titles,
 )
 from app.services.internalization_room.comprehension import checkpoints
 
@@ -31,10 +38,39 @@ def forget_the_canon() -> None:
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()
     book_material._register_complete.cache_clear()
+    book_material.significant_absences.cache_clear()
     elements.elements_for.cache_clear()
     elements.scene_of.cache_clear()
     labels._known_pericopes.cache_clear()
+    labels._catalogue.cache_clear()
+    labels._legend.cache_clear()
+    names._names_list.cache_clear()
+    names._passage_labels.cache_clear()
+    names._beings_by_scene.cache_clear()
+    names._glosses.cache_clear()
+    titles._portuguese.cache_clear()
     checkpoints.checkpoints_for.cache_clear()
+
+
+def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
+    submodules = [
+        importlib.import_module(found.name)
+        for found in pkgutil.walk_packages(room.__path__, f"{room.__name__}.")
+    ]
+    held: dict[int, tuple[str, Any]] = {}
+    for module in [room, *submodules]:
+        under_the_canon = module.__name__ == canon.__name__ or module.__name__.startswith(
+            f"{canon.__name__}."
+        )
+        for name, value in sorted(vars(module).items()):
+            if isinstance(value, kept.PerCanon) or (
+                under_the_canon
+                and not isinstance(value, type)
+                and hasattr(value, "cache_clear")
+                and hasattr(value, "cache_info")
+            ):
+                held.setdefault(id(value), (name, value))
+    return list(held.values())
 
 
 def the_canon_moves_on(
