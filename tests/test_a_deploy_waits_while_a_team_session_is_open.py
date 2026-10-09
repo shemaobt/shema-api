@@ -74,3 +74,11 @@ async def test_a_session_minted_on_a_launch_nobody_entered_does_not_hold_the_dep
     await a_session(db_session, "sessao-de-ninguem", messages=[])
 
     assert await hold_deploy.holding(db_session, NOW, HOUR) == []
+
+
+async def test_the_panorama_a_team_heard_does_not_hold_the_deploy(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(db_session, "panorama-de-rute", pericope="OV-Ruth")
+
+    assert await hold_deploy.holding(db_session, NOW, HOUR) == []
