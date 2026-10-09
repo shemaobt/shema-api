@@ -40,7 +40,7 @@ def a_runner(tmp_path: Path) -> dict[str, str]:
     uv.write_text(f'#!/bin/sh\nshift 2\nexec {sys.executable} "$@"\n')
     gcloud.chmod(0o755)
     uv.chmod(0o755)
-    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    return {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": os.environ["HOME"]}
 
 
 def the_hold_runs(runner: dict[str, str], **settings: str) -> subprocess.CompletedProcess[str]:
