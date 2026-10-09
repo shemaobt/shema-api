@@ -5,53 +5,59 @@ import os
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRSession
+from app.db.types import UtcDateTime
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, end_of
+from app.services.project.list_facilitator_teams import _last_activity_subquery
 
 WINDOW_MINUTES = 60
 POLL_SECONDS = 60
 DEADLINE_MINUTES = 300
 
 
-async def holding(db: AsyncSession, now: datetime, window: timedelta) -> list[IRSession]:
+async def holding(
+    db: AsyncSession, now: datetime, window: timedelta
+) -> list[tuple[IRSession, datetime]]:
+    activity = _last_activity_subquery(None)
+    last_active = type_coerce(activity.c.last_activity_at, UtcDateTime(timezone=True))
     result = await db.execute(
-        select(IRSession)
+        select(IRSession, last_active)
+        .join(activity, activity.c.project_id == IRSession.project_id)
         .options(
             load_only(
                 IRSession.project_id,
                 IRSession.pericope,
                 IRSession.created_at,
                 IRSession.ended_at,
-                IRSession.updated_at,
             )
         )
         .where(
             IRSession.project_id.is_not(None),
             live(),
             entered(),
-            IRSession.updated_at >= now - window,
+            last_active >= now - window,
         )
     )
     return [
-        session
-        for session in result.scalars()
+        (session, at)
+        for session, at in result.tuples()
         if not is_panorama(session.pericope) and end_of(session).state is SessionState.IN_PROGRESS
     ]
 
 
-def named(sessions: list[IRSession]) -> str:
+def named(held: list[tuple[IRSession, datetime]]) -> str:
     return "\n".join(
         f"  {session.id}  project {session.project_id}  passage {session.pericope}"
-        f"  last moved {session.updated_at:%Y-%m-%d %H:%M} UTC"
-        for session in sessions
+        f"  team last active {at:%Y-%m-%d %H:%M} UTC"
+        for session, at in held
     )
 
 

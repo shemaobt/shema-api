@@ -13,7 +13,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.database import Base
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.internalization_room import (
+    IRQuestion,
+    IRSession,
+    IRSessionStatus,
+    IRTake,
+    IRTakeKind,
+)
 from scripts import hold_deploy
 
 NOW = datetime(2026, 10, 8, 14, 0, tzinfo=UTC)
@@ -84,7 +90,7 @@ async def test_a_team_in_the_middle_of_a_passage_holds_the_deploy(
 
     held = await hold_deploy.holding(db_session, NOW, HOUR)
 
-    assert [session.id for session in held] == ["sessao-da-ruth"]
+    assert [session.id for session, _ in held] == ["sessao-da-ruth"]
 
 
 async def test_a_session_opened_with_no_team_never_holds_the_deploy(
@@ -141,6 +147,57 @@ async def test_a_session_left_untouched_for_longer_than_the_window_does_not_hold
     assert await hold_deploy.holding(db_session, NOW, HOUR) == []
 
 
+async def test_a_team_recording_takes_holds_the_deploy_though_its_session_row_is_old(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(db_session, "sessao-da-ruth", updated_at=NOW - timedelta(hours=3))
+    db_session.add(
+        IRTake(
+            session_id="sessao-da-ruth",
+            project_id="time-de-ruth",
+            device_id="tablet-1",
+            pericope="P03",
+            kind=IRTakeKind.ENSAIO,
+            scope="P03",
+            storage_key="takes/sessao-da-ruth/ensaio/1",
+            size_bytes=2048,
+            sha256="1" * 64,
+            crc32c="AAAAAAA=",
+            content_type="audio/mp4",
+            created_at=NOW - timedelta(minutes=10),
+        )
+    )
+    await db_session.commit()
+
+    held = await hold_deploy.holding(db_session, NOW, HOUR)
+
+    assert [session.id for session, _ in held] == ["sessao-da-ruth"]
+    assert hold_deploy.named(held) == (
+        "  sessao-da-ruth  project time-de-ruth  passage P03  team last active 2026-10-08 13:50 UTC"
+    )
+
+
+async def test_a_team_raising_a_hand_holds_the_deploy_though_its_session_row_is_old(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(db_session, "sessao-da-ruth", updated_at=NOW - timedelta(hours=3))
+    db_session.add(
+        IRQuestion(
+            device_id="tablet-1",
+            session_id="sessao-da-ruth",
+            project_id="time-de-ruth",
+            pericope="P03",
+            audio_key="questions/sessao-da-ruth/1.m4a",
+            created_at=NOW - timedelta(minutes=10),
+        )
+    )
+    await db_session.commit()
+
+    held = await hold_deploy.holding(db_session, NOW, HOUR)
+
+    assert [session.id for session, _ in held] == ["sessao-da-ruth"]
+
+
 async def test_a_column_the_pending_migration_adds_does_not_break_the_count(
     tmp_path: Path,
 ) -> None:
@@ -156,7 +213,7 @@ async def test_a_column_the_pending_migration_adds_does_not_break_the_count(
         held = await hold_deploy.holding(db, NOW, HOUR)
     await engine.dispose()
 
-    assert [session.id for session in held] == ["sessao-da-ruth"]
+    assert [session.id for session, _ in held] == ["sessao-da-ruth"]
 
 
 @pytest.mark.fresh_interpreter
