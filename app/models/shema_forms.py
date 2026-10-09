@@ -135,6 +135,20 @@ class IntakeSubmission(BaseModel):
     answers: dict[str, Any]
 
 
+class IntakeImageStored(BaseModel):
+    """What ``POST /api/shema/intake/{token}/image`` answers — the id the ``image`` answer carries.
+
+    Nothing else: no key, no URL, no project. An anonymous caller is told the pointer it needs
+    to finish its form and nothing it did not send (OBT-578).
+    """
+
+    model_config = _OUTWARD
+
+    id: str
+    file_name: str | None = None
+    content_type: str
+
+
 class IntakeLinkCreate(BaseModel):
     """What a coordinator asks for when they mint a link.
 

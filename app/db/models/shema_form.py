@@ -165,6 +165,17 @@ class ShemaSubmission(Base):
     prayer_request_erased_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    #: The same trace for the Pulse's image (OBT-578): when the coordination withdrew the
+    #: authorization of the photo this Pulse carried, its reference, its description and the
+    #: leader's answer to the authorization box leave :attr:`archived_payload` — Daniel,
+    #: 8/oct/2026, on Karina's rule for the prayer request (*"o pedido é apagado também do Pulso
+    #: guardado"*, 1/oct/2026). Who and when, never the image.
+    image_erased_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+    image_erased_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     #: When a coordinator applied this to the record, or ``NULL`` while it is still an inbox
     #: entry. It is what keeps applying **idempotent** on a second attempt, and it is a
     #: timestamp rather than a flag for the reason ``used_at`` below is one.
@@ -208,6 +219,65 @@ class ShemaIntakeLink(Base):
     expires_at: Mapped[datetime] = mapped_column(UtcDateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ShemaIntakeImage(Base):
+    """One image a team leader uploaded through the intake link, before and after its Pulse.
+
+    The Pulso Mensal gained an image, a description and an authorization box (OBT-578 —
+    Karina, via Daniel, 6/oct/2026). The description and the box are answers and travel in the
+    archived payload like every other; the image is bytes and cannot: a base64 blob inside
+    ``archived_payload`` would be a copy the erasure of OBT-561 would then have to rewrite. So
+    the bytes go to the module's private bucket under a key of their own (``_media_storage``,
+    content-addressed, scoped to this row's id and never to the project's slug), and this row
+    is the pointer — uploaded **before** the answers are posted, named by the ``image`` answer,
+    and bound to the submission when it arrives.
+
+    **It is not a media item yet.** Until a coordinator imports the Pulse, the photo is on no
+    surface of the record: the ficha's media list and the card's ``hasMedia`` read
+    ``shema_media_items``, and this table is not that one. The import is what mints the
+    :class:`~app.db.models.shema_media.ShemaMediaItem` — with the leader's answer to the box as
+    the authorization triple — and writes :attr:`media_item_id` here, so the two rows point at
+    the same object and the same decision (``docs/shema.md`` §6.6).
+
+    ``intake_link_id`` is ``SET NULL`` for the link's own reason: revoking a credential must not
+    be blocked by what came through it. The project reference restricts, as the submission's
+    does.
+    """
+
+    __tablename__ = "shema_intake_images"
+    __table_args__ = (
+        Index("ix_shema_intake_images_link", "intake_link_id"),
+        Index("ix_shema_intake_images_submission", "submission_id"),
+        Index("ix_shema_intake_images_media_item", "media_item_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(
+        String(120), ForeignKey("shema_projects.id", ondelete="RESTRICT"), nullable=False
+    )
+    intake_link_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("shema_intake_links.id", ondelete="SET NULL"), nullable=True
+    )
+    #: The object in the module's private bucket — a key, never a URL.
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    #: The name the leader's device gave the file, for display only; never part of the key.
+    file_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    content_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: The Pulse that named this image, once it arrived; ``NULL`` while the leader is still
+    #: filling the form — or forever, for an upload nobody followed with answers.
+    submission_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("shema_submissions.id", ondelete="SET NULL"), nullable=True
+    )
+    #: The media item the import minted from this upload, or ``NULL`` before the import.
+    media_item_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("shema_media_items.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )

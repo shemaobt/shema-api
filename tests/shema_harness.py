@@ -38,6 +38,12 @@ from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 #: the guard — and ``tests/test_shema/test_intercessor_exit.py`` is where each method is held to
 #: what it may do: the ``GET`` changes nothing, the ``POST`` erases.
 #:
+#: /api/shema/intake/{token}/image`` (OBT-578): the Pulse's image goes up through the same
+#: token, before the answers that name it. Same shape again — the token is the guard, and
+#: ``store_intake_image.py`` verifies it before a byte is kept — and
+#: ``tests/test_shema/test_pulse_image.py`` holds the route to the three formats, the ceiling and
+#: the proof by the bytes; a dead link takes no image.
+#:
 #: A route that arrives without a line added here fails
 #: ``test_access.py::test_every_shema_route_is_guarded``, which is what makes forgetting a guard
 #: a red build rather than an open endpoint. Keyed by path because that is what the audit
@@ -45,7 +51,11 @@ from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 #: is where each is held to what it may actually serve — the guard being absent is the premise
 #: of that file, not a gap in the audit.
 UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
-    {f"{PREFIX}/intake/{{token}}", f"{PREFIX}/intercessors/leave/{{token}}"}
+    {
+        f"{PREFIX}/intake/{{token}}",
+        f"{PREFIX}/intake/{{token}}/image",
+        f"{PREFIX}/intercessors/leave/{{token}}",
+    }
 )
 
 
