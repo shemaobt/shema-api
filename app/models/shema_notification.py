@@ -50,8 +50,17 @@ from app.models.shema_privacy import LeavingShape
 #: the one computed kind (``stale``) that has no event at all — and, since OBT-541, the
 #: resource-request form's two, its arrival and its decision, rung in the PME's bell. Closed
 #: rather than open, so an eighth spelling fails typing instead of landing on the panel unnoticed.
+#: OBT-575 added the eighth deliberately: ``prayerReview``, a sensitive project's request waiting
+#: for the coordination.
 NotificationKind = Literal[
-    "health", "need", "prayer", "field", "stale", "requestArrival", "requestDecision"
+    "health",
+    "need",
+    "prayer",
+    "prayerReview",
+    "field",
+    "stale",
+    "requestArrival",
+    "requestDecision",
 ]
 
 _OUTWARD = ConfigDict(

@@ -88,9 +88,18 @@ REDACTION_COLUMNS = frozenset(
     | set(CONTACT_FIELDS)
 )
 
-#: The three columns whose only reader is the consent gate, in the spelling BE-02 wrote them
-#: in so this test and that table cannot drift.
-CONSENT_COLUMNS = frozenset({"prayer_requests", "prayer_visibility", "prayer_requests_audio"})
+#: The columns whose only reader is the consent gate, in the spelling BE-02 wrote them in so
+#: this test and that table cannot drift — and, since OBT-575, the coordination's release of a
+#: sensitive project's request, on the project and on each need.
+CONSENT_COLUMNS = frozenset(
+    {
+        "prayer_requests",
+        "prayer_visibility",
+        "prayer_requests_audio",
+        "prayer_released_from",
+        "prayer_released_text",
+    }
+)
 
 #: The per-item sharing decision and its evidence.
 MEDIA_COLUMNS = frozenset({"authorization_granted", "authorized_by", "authorized_at"})
@@ -178,6 +187,10 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", f"{PREFIX}/pending-projects"),
         ("GET", f"{PREFIX}/export/projects"),
         ("POST", f"{PREFIX}/import/projects"),
+        # OBT-575: the queue and the release ask the reader who coordinates where; the queue
+        # reads a sensitive project's request and its language's name as the coordination does.
+        ("GET", f"{PREFIX}/prayer/review"),
+        ("POST", f"{PREFIX}/projects/{{project_id}}/prayer/release"),
     }
 )
 

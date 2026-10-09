@@ -26,6 +26,7 @@ from app.db.models.notification import Notification
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.db.models.shema_progress import ShemaProgressEntry
+from app.services.shema._prayer_review import REVIEW_EVENT
 from app.services.shema._submission_notices import ARRIVAL_EVENT, PRAYER_EVENT
 from app.utils.shema_forms import PULSE_FORM_TYPE, PULSE_KIND
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user, make_shema_project
@@ -601,6 +602,41 @@ async def test_the_first_shared_request_reaches_the_circle_when_the_coordinator_
     assert [row.user_id for row in await notices(db_session, PRAYER_EVENT)] == [circle.id]
     wall = await client.get(f"{PREFIX}/prayer/requests", headers=headers)
     assert "Orem pela seca." in wall.text
+
+
+@pytest.mark.parametrize("door", ["link", "import"])
+async def test_a_sensitive_project_s_shared_request_waits_for_the_coordination_at_the_apply(
+    client, db_session, shema_app, headers, coordinator, project, door
+) -> None:
+    """OBT-575. On a sensitive project the Pulse's ``rede`` puts nothing on the wall: the request
+    waits for the coordination's release, so the Resource Circle hears nothing at the apply and
+    the region's coordination — not the coordinator who applied it — hears that it waits. The
+    circle is told at the release (``test_prayer_review.py``)."""
+    circle = await a_circle(db_session, shema_app)
+    second = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="coordenacao-2@shema.test",
+        role_key="coordinator",
+        regions=[ShemaRegionKey.SOUTH_AMERICA],
+    )
+    project.sensitive_country = True
+    await db_session.commit()
+
+    await apply_pulse(
+        client,
+        db_session,
+        headers,
+        door,
+        prayerRequest="Orem pela seca.",
+        prayerVisibility="rede",
+    )
+
+    assert await told(db_session, PRAYER_EVENT) == set()
+    assert await told(db_session, REVIEW_EVENT) == {second.id}
+    assert circle.id not in await told(db_session, REVIEW_EVENT)
+    wall = await client.get(f"{PREFIX}/prayer/requests", headers=headers)
+    assert "Orem pela seca." not in wall.text
 
 
 @pytest.mark.parametrize("door", ["link", "import"])

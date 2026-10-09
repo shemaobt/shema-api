@@ -385,6 +385,11 @@ class ShemaProject(Base):
     #: A storage key in the module's private bucket, never a URL — the signed GET is minted
     #: per call and stored nowhere (``docs/shema.md`` §4.6). BE-04 owns the adapter.
     prayer_requests_audio: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    #: OBT-575 — the coordination's release of a sensitive project's request, guarded like the
+    #: three above: the team's text the release was given for, and the text that leaves in its
+    #: place. NULL is *never released*; a release for another text is not one for this text.
+    prayer_released_from: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prayer_released_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     needs_pastoral_intervention: Mapped[ShemaYesNo] = mapped_column(
         YES_NO, default=ShemaYesNo.PT_NAO, server_default=text("'nao'")

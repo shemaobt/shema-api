@@ -65,6 +65,7 @@ async def seed(
     location: str = "Vale Novo, Serra Clara",
     team: str = "Base Serra Clara",
     language: str = "Língua Aurora",
+    released: bool = False,
 ) -> ShemaProject:
     project = await make_shema_project(
         db_session, project_id=project_id, region_key=region, language_name=language
@@ -74,6 +75,9 @@ async def seed(
     project.sensitive_country = sensitive
     project.prayer_requests = text
     project.prayer_visibility = visibility
+    if released:
+        project.prayer_released_from = text
+        project.prayer_released_text = text
     await db_session.commit()
     return project
 
@@ -409,6 +413,7 @@ async def test_a_sensitive_country_is_transformed_before_the_pulse_is_written(
         text=SHARED,
         visibility=ShemaPrayerVisibility.REDE,
         sensitive=True,
+        released=True,
         region=AWAY,
         location="Lugar Secreto, Vila Escondida",
         team="Base Lugar Secreto",
@@ -450,6 +455,7 @@ async def test_the_pulse_names_no_place_it_cannot_tell(client, db_session, circl
         text=SHARED,
         visibility=ShemaPrayerVisibility.REDE,
         sensitive=True,
+        released=True,
         location="Lugar Secreto",
         language="Língua Sereno",
     )
@@ -480,6 +486,7 @@ async def test_the_wall_entry_of_a_withheld_project_carries_no_country_and_no_ba
         text=SHARED,
         visibility=ShemaPrayerVisibility.REDE,
         sensitive=True,
+        released=True,
         region=AWAY,
         location="Lugar Secreto",
         team="Base Lugar Secreto",

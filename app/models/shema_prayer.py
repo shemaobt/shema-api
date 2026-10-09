@@ -34,7 +34,14 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Final, NamedTuple
 
-from pydantic import AliasGenerator, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    AliasGenerator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+)
 from pydantic.alias_generators import to_camel
 
 from app.db.models.shema_enums import ShemaRegionKey
@@ -220,3 +227,44 @@ def render_prayer_pulse(
         lines.extend(["", heading])
         lines.extend(f"  {line}" if line else "" for line in entry.text.splitlines())
     return "\n".join(lines) + "\n"
+
+
+#: Request shapes speak camelCase inward and refuse a field nobody declared.
+_INWARD = ConfigDict(
+    populate_by_name=True,
+    alias_generator=AliasGenerator(validation_alias=to_camel, serialization_alias=to_camel),
+    extra="forbid",
+)
+
+
+class PrayerReviewEntry(BaseModel):
+    """One request waiting for the coordination's release (OBT-575) — the queue's row.
+
+    **Read by the coordination alone**, so it carries the team's text whole and the language's
+    real name: the route answers nobody else. It names no place, so it is no leaving shape —
+    the request's text is the coordination's to read, and the card's place is the record's.
+    """
+
+    model_config = _OUTWARD
+
+    id: str
+    project_id: str
+    need_id: str | None
+    language: str
+    source: PrayerSource
+    text: str
+
+
+class PrayerRelease(BaseModel):
+    """The coordination's release of one request — and, in ``text``, its edit (OBT-575).
+
+    ``reviewed`` is the team's text as the coordination read it in the queue: a release is for
+    that text, and a team that wrote another one since is a conflict rather than a text released
+    unread. ``text`` omitted, or blank, releases the team's text as it stands.
+    """
+
+    model_config = _INWARD
+
+    need_id: str | None = None
+    reviewed: str = Field(min_length=1, max_length=20_000)
+    text: str | None = Field(default=None, max_length=20_000)
