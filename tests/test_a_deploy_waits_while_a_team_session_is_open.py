@@ -252,3 +252,9 @@ def test_the_hold_reads_the_migrations_secret_from_the_checkout_before_anything_
     assert secret in the_hold()["run"]
     assert "docker" not in the_hold()["run"]
     assert all("if" not in step and "continue-on-error" not in step for step in steps[hold:])
+
+
+def test_one_production_deploy_runs_at_a_time_and_the_next_one_is_kept() -> None:
+    workflow = yaml.safe_load(DEPLOY.read_text())
+
+    assert workflow["concurrency"] == {"group": "deploy", "cancel-in-progress": False}
