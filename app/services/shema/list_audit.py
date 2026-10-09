@@ -88,51 +88,47 @@ async def list_audit(
     log_stmt = log_stmt.order_by(ShemaChangeLog.occurred_at.desc(), ShemaChangeLog.id.desc())
     log_rows = (await db.execute(log_stmt.limit(limit))).scalars().all()
 
-    reachable = visible_projects(scope)
+    reachable_ids = select(visible_projects(scope).subquery().c.id)
+    edit_stmt = select(ShemaRecordEdit).where(ShemaRecordEdit.project_id.in_(reachable_ids))
     if project_id is not None:
-        reachable = reachable.where(ShemaProject.id == project_id)
-    projects = {project.id: project for project in (await db.execute(reachable)).scalars()}
-    edit_rows: list[ShemaRecordEdit] = []
-    if projects:
-        edit_stmt = (
-            select(ShemaRecordEdit)
-            .where(ShemaRecordEdit.project_id.in_(list(projects)))
-            .order_by(ShemaRecordEdit.changed_at.desc(), ShemaRecordEdit.id.desc())
-            .limit(limit)
-        )
-        edit_rows = list((await db.execute(edit_stmt)).scalars())
+        edit_stmt = edit_stmt.where(ShemaRecordEdit.project_id == project_id)
+    edit_stmt = edit_stmt.order_by(ShemaRecordEdit.changed_at.desc(), ShemaRecordEdit.id.desc())
+    edit_rows = list((await db.execute(edit_stmt.limit(limit))).scalars())
 
+    named = {row.project_id for row in edit_rows}
+    projects = {
+        project.id: project
+        for project in (
+            await db.execute(visible_projects(scope).where(ShemaProject.id.in_(named)))
+        ).scalars()
+    }
     hidden = {pid: keys_hidden_from(project, readership) for pid, project in projects.items()}
     entries = [
-        AuditEntry.model_validate(
-            {
-                "source": "log",
-                "subject": row.subject,
-                "subjectId": row.subject_id,
-                "action": row.action,
-                "projectId": row.project_id,
-                "regionKey": row.region_key,
-                "fields": json.loads(row.field_keys) if row.field_keys else [],
-                "changedBy": row.actor_name,
-                "changedAt": as_utc(row.occurred_at),
-            }
+        AuditEntry(
+            source="log",
+            subject=row.subject,
+            subject_id=row.subject_id,
+            action=row.action,
+            project_id=row.project_id,
+            region_key=row.region_key,
+            fields=json.loads(row.field_keys) if row.field_keys else [],
+            changed_by=row.actor_name,
+            changed_at=as_utc(row.occurred_at),
         )
         for row in log_rows
     ] + [
-        AuditEntry.model_validate(
-            {
-                "source": "record",
-                "subject": "project",
-                "subjectId": row.project_id,
-                "action": "updated",
-                "projectId": row.project_id,
-                "regionKey": projects[row.project_id].region_key.value,
-                "fields": [row.field_key],
-                "oldValue": row.old_value,
-                "newValue": row.new_value,
-                "changedBy": row.changed_by_name,
-                "changedAt": as_utc(row.changed_at),
-            }
+        AuditEntry(
+            source="record",
+            subject="project",
+            subject_id=row.project_id,
+            action="updated",
+            project_id=row.project_id,
+            region_key=projects[row.project_id].region_key.value,
+            fields=[row.field_key],
+            old_value=row.old_value,
+            new_value=row.new_value,
+            changed_by=row.changed_by_name,
+            changed_at=as_utc(row.changed_at),
         )
         for row in edit_rows
         if row.field_key not in hidden[row.project_id]

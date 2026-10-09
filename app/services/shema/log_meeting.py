@@ -41,6 +41,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.exceptions import UnprocessableValueError
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_meeting import ShemaMeetingLogEntry
 from app.models.shema_meeting import MeetingLogCreate, MeetingLogEntry
 from app.services.shema import _meeting_log, _trail
@@ -95,8 +96,8 @@ async def log_meeting(
     _trail.stage(
         db,
         actor=actor,
-        subject="meeting",
-        action="replaced" if replaced else "created",
+        subject=ChangeSubject.MEETING,
+        action=ChangeAction.REPLACED if replaced else ChangeAction.CREATED,
         subject_id=f"{meeting_id}:{region.value}:{period}",
         region_key=_trail.region_value(region.value),
         fields=("date", "notes"),

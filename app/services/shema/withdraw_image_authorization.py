@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_form import ShemaIntakeImage, ShemaSubmission
 from app.db.models.shema_media import ShemaMediaItem
 from app.services.shema import _trail
@@ -51,18 +52,17 @@ async def withdraw_image_authorization(
     if item is None:
         raise NotFoundError("Media item not found")
 
-    if item.authorization_granted is not False:
+    if withdraw_authorization(item, by=author_name(user)):
         _trail.stage(
             db,
             actor=user,
-            subject="media",
-            action="withdrawn",
+            subject=ChangeSubject.MEDIA,
+            action=ChangeAction.WITHDRAWN,
             subject_id=item.id,
             project_id=project.id,
             region_key=_trail.region_value(project.region_key),
             fields=("authorization",),
         )
-    withdraw_authorization(item, by=author_name(user))
     image = (
         await db.execute(select(ShemaIntakeImage).where(ShemaIntakeImage.media_item_id == item.id))
     ).scalar_one_or_none()

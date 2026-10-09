@@ -16,6 +16,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.models.shema_intercessor import IntercessorEntry, IntercessorUpdate
 from app.services.shema import _trail
 from app.services.shema._directory import edit_person, entry_of
@@ -35,13 +36,14 @@ async def update_intercessor(
     must not silently unflag somebody.
     """
     changes = payload.model_dump(exclude_unset=True)
+    wire_keys = payload.model_dump(exclude_unset=True, by_alias=True).keys()
     await _trail.around(
         db,
         lambda: edit_person(db, intercessor_id, changes),
         actor=actor,
-        subject="intercessor",
-        action="updated",
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.UPDATED,
         subject_id=intercessor_id,
-        fields=payload.model_dump(exclude_unset=True, by_alias=True),
+        fields=wire_keys,
     )
     return await entry_of(db, intercessor_id)

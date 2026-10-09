@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_enums import ShemaEtenCreditSource
 from app.db.models.shema_eten import ShemaEtenCredit
 from app.models.shema_eten import EtenCreditEntry
@@ -101,8 +102,8 @@ async def record_eten_credit(
     _trail.stage(
         db,
         actor=user,
-        subject="eten_credit",
-        action="updated" if row.id is not None else "created",
+        subject=ChangeSubject.ETEN_CREDIT,
+        action=ChangeAction.UPDATED if row.id is not None else ChangeAction.CREATED,
         subject_id=f"{project.id}:{year}",
         project_id=project.id,
         region_key=_trail.region_value(project.region_key),

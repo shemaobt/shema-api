@@ -14,6 +14,7 @@ No account here is a platform admin, except where a test says so: an admin passe
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.routing import APIRoute
@@ -34,9 +35,10 @@ from tests.test_shema.conftest import (
     make_scoped_user,
     make_shema_project,
 )
-from tests.test_shema.test_eten import CREDITS, YEAR, listed
 
 AUDIT = f"{PREFIX}/audit"
+CREDITS = f"{PREFIX}/eten/credits"
+YEAR = datetime.now(UTC).year - 1
 MEETINGS = f"{PREFIX}/meetings/log"
 
 #: A contact no fixture shares, so a body or a table can be searched for it.
@@ -213,7 +215,7 @@ async def test_a_manual_eten_credit_is_marked_each_time_it_moves(
     db_session, client, shema_app
 ) -> None:
     _user, headers = await _as(db_session, shema_app, "coordinator", *ShemaRegionKey)
-    await listed(db_session, "credito")
+    await make_shema_project(db_session, project_id="credito", region_key=SOUTH_AMERICA)
     for credits in (1, 2):
         res = await client.put(
             f"{CREDITS}/credito/{YEAR}", json={"credits": credits}, headers=headers

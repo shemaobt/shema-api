@@ -24,6 +24,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_consent import ShemaConsentContext
 from app.models.shema_intercessor import IntercessorEntry
 from app.services.shema import _trail
@@ -52,8 +53,8 @@ async def set_intercessor_consent(
             db, intercessor_id, context, basis=basis, recorded_by=actor.id, commit=True
         ),
         actor=actor,
-        subject="intercessor",
-        action="consent-recorded",
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.CONSENT_RECORDED,
         subject_id=intercessor_id,
         fields=(context.value,),
     )
@@ -82,8 +83,8 @@ async def withdraw_intercessor_consent(
         db,
         lambda: withdraw_consent(db, intercessor_id, context, commit=True),
         actor=actor,
-        subject="intercessor",
-        action="consent-withdrawn",
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.CONSENT_WITHDRAWN,
         subject_id=intercessor_id,
         fields=(context.value,),
     )

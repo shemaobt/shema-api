@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.models.shema_intercessor import IntercessorEntry
 from app.services.shema import _trail
 from app.services.shema._directory import entry_of, mark_reviewed
@@ -43,8 +44,8 @@ async def review_intercessor(
         db,
         lambda: mark_reviewed(db, intercessor_id, now=moment),
         actor=actor,
-        subject="intercessor",
-        action="reviewed",
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.REVIEWED,
         subject_id=intercessor_id,
         fields=("reviewedAt",),
     )

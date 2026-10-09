@@ -19,6 +19,7 @@ module's trigger, which refuses UPDATE and DELETE, and ``SET NULL`` and ``CASCAD
 each (``ShemaScopeChange`` made the same argument). The actor's name is stamped as it was then.
 """
 
+import enum
 import uuid
 from datetime import UTC, datetime
 
@@ -29,6 +30,34 @@ from sqlalchemy.sql import func
 from app.core.database import Base
 from app.db.models.shema_enums import guard_append_only
 from app.db.types import UtcDateTime
+
+
+class ChangeSubject(enum.StrEnum):
+    """What an act was done to. The closed set the writers draw from; the column is text."""
+
+    INTERCESSOR = "intercessor"
+    MEETING = "meeting"
+    ETEN_CREDIT = "eten_credit"
+    INTAKE_LINK = "intake_link"
+    SUBMISSION = "submission"
+    PENDING_PROJECT = "pending_project"
+    MEDIA = "media"
+
+
+class ChangeAction(enum.StrEnum):
+    """What was done."""
+
+    CREATED = "created"
+    UPDATED = "updated"
+    REMOVED = "removed"
+    REVIEWED = "reviewed"
+    REPLACED = "replaced"
+    CONSENT_RECORDED = "consent-recorded"
+    CONSENT_WITHDRAWN = "consent-withdrawn"
+    REVOKED = "revoked"
+    IMPORTED = "imported"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
 
 
 class ShemaChangeLog(Base):
@@ -42,12 +71,10 @@ class ShemaChangeLog(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    #: What the act was done to — ``intercessor``, ``member``, ``meeting``, ``eten_credit``,
-    #: ``intake_link``, ``submission``, ``pending_project``, ``media``, ``import``.
+    #: A :class:`ChangeSubject`.
     subject: Mapped[str] = mapped_column(String(40), nullable=False)
     subject_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    #: What was done — ``created``, ``updated``, ``removed``, ``reviewed``, ``granted``,
-    #: ``revoked``, ``imported``, ``rejected``, ``withdrawn``.
+    #: A :class:`ChangeAction`.
     action: Mapped[str] = mapped_column(String(40), nullable=False)
     #: The project the act belongs to, when it belongs to one; the reader's scope is decided by it.
     project_id: Mapped[str | None] = mapped_column(String(120), nullable=True)

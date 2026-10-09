@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeImage, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, SubmissionImport
 from app.services.shema import _trail
@@ -136,8 +137,8 @@ async def _apply(
         _trail.stage(
             db,
             actor=user,
-            subject="submission",
-            action="imported",
+            subject=ChangeSubject.SUBMISSION,
+            action=ChangeAction.IMPORTED,
             subject_id=submission.id,
             project_id=project.id,
             region_key=_trail.region_value(project.region_key),

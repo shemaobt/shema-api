@@ -28,7 +28,7 @@ from typing import Any, Final, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.shema_change_log import ShemaChangeLog
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject, ShemaChangeLog
 from app.db.models.shema_enums import ShemaRegionKey
 from app.services.shema._audit import author_name
 
@@ -95,8 +95,8 @@ def stage(
     db: AsyncSession,
     *,
     actor: User | None,
-    subject: str,
-    action: str,
+    subject: ChangeSubject,
+    action: ChangeAction,
     subject_id: str | None = None,
     project_id: str | None = None,
     region_key: str | None = None,
@@ -109,9 +109,9 @@ def stage(
     """
     keys = sorted(set(fields))
     row = ShemaChangeLog(
-        subject=subject,
+        subject=subject.value,
         subject_id=subject_id,
-        action=action,
+        action=action.value,
         project_id=project_id,
         region_key=region_key,
         field_keys=json.dumps(keys) if keys else None,

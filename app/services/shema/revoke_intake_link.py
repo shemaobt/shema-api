@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink
 from app.models.shema_forms import IntakeLink
 from app.services.shema import _trail
@@ -53,8 +54,8 @@ async def revoke_intake_link(
         _trail.stage(
             db,
             actor=user,
-            subject="intake_link",
-            action="revoked",
+            subject=ChangeSubject.INTAKE_LINK,
+            action=ChangeAction.REVOKED,
             subject_id=link.id,
             project_id=link.project_id,
             region_key=None if project is None else _trail.region_value(project.region_key),

@@ -158,7 +158,7 @@ def pulse_photo(
     )
 
 
-def withdraw_authorization(item: Authorizable, *, by: str, at: datetime | None = None) -> None:
+def withdraw_authorization(item: Authorizable, *, by: str, at: datetime | None = None) -> bool:
     """Record a refusal on ``item`` — the coordination taking an authorization back (OBT-578).
 
     The one direction this file writes for a person other than the one who consented: the
@@ -167,9 +167,11 @@ def withdraw_authorization(item: Authorizable, *, by: str, at: datetime | None =
     and when is the item's, as every decision here carries one — and it is the **first**
     refusal's: a second withdraw changes nothing, or the day the ficha shows would be the last
     click and not the moment the authorization ended (found by the review bot on shema-api#713).
+    Answers whether it changed anything, which is what decides whether the act is worth a mark.
     """
     if item.authorization_granted is False:
-        return
+        return False
     item.authorization_granted = False
     item.authorized_by = by
     item.authorized_at = at or datetime.now(UTC)
+    return True
