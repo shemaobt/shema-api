@@ -25,7 +25,7 @@ from app.services.internalization_room import llm, usage
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.takes import take_by_id
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import KEY, PREFIX, TABLET
+from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     Room,
     ScriptedAnalyst,
@@ -99,7 +99,7 @@ async def _tell(
         data["retelling"] = "true"
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers={"X-Room-Device": TABLET},
         data=data,
         files={"file": ("trecho.m4a", b"um trecho contado", "audio/mp4")},
     )
@@ -112,7 +112,7 @@ async def _tell_again(
 ) -> httpx.Response:
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/segments/{stretch.id}/replace",
-        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers={"X-Room-Device": TABLET},
         data={
             "take_id": stretch.take_id,
             "starts_ms": str(stretch.starts_ms),

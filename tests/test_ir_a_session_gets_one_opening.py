@@ -43,7 +43,7 @@ from tests.opening_harness import (
     the_tablet_opens,
     the_team_says,
 )
-from tests.release_harness import KEY, PREFIX, P, a_claimed_device
+from tests.release_harness import PREFIX, P, a_claimed_device
 from tests.room_harness import room_client
 from tests.tablet_turn_harness import the_room_opens
 from tests.turn_harness import the_room_agent_is
@@ -135,7 +135,6 @@ def _guide(monkeypatch: pytest.MonkeyPatch, guide: _Guide) -> _Guide:
 async def _speak(client, session_id: str, turn_id: str):
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": turn_id},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )

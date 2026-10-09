@@ -21,10 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.enums import ProjectRole
 from app.db.models.project import Project
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.hearing import HeardSpeech
 from tests.baker import make_project_user_access, make_user
-from tests.release_harness import KEY, PREFIX, team_headers
+from tests.device_harness import a_linked_tablet
+from tests.release_harness import PREFIX, team_headers
 from tests.tablet_turn_harness import the_team_says as a_turn_is_said
 from tests.tablet_turn_harness import the_turn_is_scripted
 
@@ -38,7 +38,6 @@ async def ask_for_the_opening(
     """A turn with no recording on the room's key, under `turn_id` or under none."""
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": turn_id} if turn_id else {},
     )
 
@@ -77,11 +76,7 @@ async def another_tablet_of(db: AsyncSession, team: Project) -> str:
     """A tablet a facilitator of this team claimed, and the credential it calls with."""
     user = await make_user(db, email=f"fac-{uuid.uuid4()}@example.com")
     await make_project_user_access(db, team.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=team.id
-    )
-    return claimed.credential
+    return (await a_linked_tablet(db, team_id=team.id, facilitator=user)).credential
 
 
 async def the_tablet_opens(

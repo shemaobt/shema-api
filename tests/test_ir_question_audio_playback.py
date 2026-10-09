@@ -34,6 +34,7 @@ from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import questions as service
 from app.services.platform.storage import StoredObject
 from tests.baker import make_app, make_role, make_user, make_user_app_role
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
@@ -125,7 +126,10 @@ async def client(db_session, store, settings, monkeypatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -223,7 +227,6 @@ async def test_the_room_key_alone_does_not_open_the_question(client, db_session,
 
     played = await client.get(
         f"{IR}/facilitator/questions/{question.id}/audio",
-        headers={"X-Room-Key": "sala-local-dev"},
         follow_redirects=False,
     )
 

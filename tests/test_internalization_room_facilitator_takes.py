@@ -31,6 +31,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
@@ -82,7 +83,10 @@ async def client(db_session):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -163,7 +167,6 @@ async def test_the_room_key_does_not_open_the_facilitator_door(client, db_sessio
 
     response = await client.get(
         f"{IR}/facilitator/sessions/{session.id}/takes",
-        headers={"X-Room-Key": "sala-local-dev"},
     )
 
     assert response.status_code == 401, (

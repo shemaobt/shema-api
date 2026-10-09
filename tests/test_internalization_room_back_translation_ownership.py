@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import back_translation as bt_api
 from app.services.internalization_room.takes import takes_of
-from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import (
     Analyst,
     Room,
@@ -108,22 +108,6 @@ async def test_a_chunk_from_another_projects_device_is_refused_before_any_work_r
     assert len(stored) == 2, "o trecho de outro projeto foi guardado, ou o do dono não foi"
 
 
-async def test_a_room_key_caller_with_no_device_still_sends_a_chunk_on_a_project_owned_session(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    hearing: _CountingHearing,
-) -> None:
-    owner, _credential = await a_claimed_device(db_session, email="owner3@example.com")
-    session, parts = await rehearsed_in_parts(db_session, 1, project_id=owner.id)
-
-    answered = await _send_chunk(
-        client, session.id, parts[0].id, {"X-Room-Key": KEY, "X-Room-Device": STRANGER_DEVICE}
-    )
-
-    assert answered.status_code == 200, answered.text
-    assert hearing.calls == 1
-
-
 async def test_a_terminei_from_another_projects_device_is_refused_before_any_work_runs(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -144,23 +128,6 @@ async def test_a_terminei_from_another_projects_device_is_refused_before_any_wor
     assert owner_reply.status_code == 200, owner_reply.text
     assert analyst.readings == 1, "o analista leu a sessão de outro projeto"
     assert len(room.said) == 1, "a voz foi sintetizada para o estranho"
-
-
-async def test_a_room_key_caller_with_no_device_still_finishes_a_project_owned_session(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    analyst: Analyst,
-) -> None:
-    owner, _credential = await a_claimed_device(db_session, email="owner8@example.com")
-    session, parts = await rehearsed_in_parts(db_session, 1, project_id=owner.id)
-    report = played_every_part([part.id for part in parts])
-
-    answered = await _press_terminei(
-        client, session.id, {"X-Room-Key": KEY, "X-Room-Device": STRANGER_DEVICE}, report
-    )
-
-    assert answered.status_code == 200, answered.text
-    assert analyst.readings == 1
 
 
 async def test_a_remembered_verdict_is_not_replayed_to_another_project(

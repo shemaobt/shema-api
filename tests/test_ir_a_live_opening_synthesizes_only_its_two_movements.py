@@ -23,9 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.sessions import create_session
 from app.services.platform import tts
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 WHOLE = "O todo da passagem.\n\nA cena e o convite."
 HEARD_WHOLE = "O todo da passagem. A cena e o convite."
@@ -132,7 +132,6 @@ async def _client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
     monkeypatch.setattr(tts, "_default_store", lambda _: bucket)
@@ -146,7 +145,8 @@ async def _client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    return httpx.AsyncClient(transport=transport, base_url="http://test", headers=tablet.headers)
 
 
 def _opens_in_two_movements(
@@ -172,7 +172,7 @@ async def test_a_live_opening_synthesizes_only_its_two_movements(
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
 
@@ -199,7 +199,7 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
         assert opened.status_code == 200
@@ -216,7 +216,7 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
         )
 
         again = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
 
@@ -239,7 +239,7 @@ async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_join
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
         assert opened.status_code == 200
@@ -247,9 +247,7 @@ async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_join
         pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
         assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
 
-        again = asyncio.create_task(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
-        )
+        again = asyncio.create_task(client.post(f"{PREFIX}/sessions/{session.id}/turns"))
         await asyncio.wait({again}, timeout=0.2)
         assert not again.done(), "o diga de novo respondeu sem esperar a linha inteira ainda em voo"
 
@@ -284,7 +282,7 @@ async def test_a_cancelled_say_it_again_does_not_cancel_the_whole_line_it_joined
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
         assert opened.status_code == 200
@@ -293,9 +291,7 @@ async def test_a_cancelled_say_it_again_does_not_cancel_the_whole_line_it_joined
         assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
         whole_task = next(iter(pending))
 
-        again = asyncio.create_task(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
-        )
+        again = asyncio.create_task(client.post(f"{PREFIX}/sessions/{session.id}/turns"))
         await asyncio.wait({again}, timeout=0.2)
         assert not again.done(), "o diga de novo respondeu sem esperar a linha inteira ainda em voo"
 
@@ -333,7 +329,7 @@ async def test_a_say_it_again_whose_whole_line_was_cancelled_falls_back_to_its_o
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
         assert opened.status_code == 200
@@ -341,9 +337,7 @@ async def test_a_say_it_again_whose_whole_line_was_cancelled_falls_back_to_its_o
         assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
         whole_task = next(iter(pending))
 
-        again = asyncio.create_task(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
-        )
+        again = asyncio.create_task(client.post(f"{PREFIX}/sessions/{session.id}/turns"))
         await asyncio.wait({again}, timeout=0.2)
         assert not again.done(), "o diga de novo respondeu sem esperar a linha inteira ainda em voo"
 
@@ -411,7 +405,7 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
         assert opened.status_code == 200, (
@@ -447,7 +441,7 @@ async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
         left_behind = sessions_api._PENDING_WHOLE_LINE_TASKS - before
@@ -478,7 +472,7 @@ async def test_a_refused_movement_finds_the_whole_line_already_under_way(
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
         left_behind = sessions_api._PENDING_WHOLE_LINE_TASKS - before
@@ -512,7 +506,7 @@ async def test_a_turn_without_movements_still_speaks_only_the_whole_line(
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         opened = await asyncio.wait_for(
-            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            client.post(f"{PREFIX}/sessions/{session.id}/turns"),
             timeout=2,
         )
 

@@ -39,6 +39,7 @@ from tests.release_harness import (
     ensaio_take,
     ready_session,
     releases_of,
+    team_headers,
     the_one_part_of,
 )
 from tests.room_harness import (
@@ -179,7 +180,8 @@ async def test_the_facilitator_cannot_force_past_an_untold_part(
     this state is only reachable through the upload route, which is why the case is here and not
     a seventh row there.
     """
-    project, _credential = await a_claimed_device(db_session)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
     session, _parts, _fresh = await _a_session_with_part_two_recorded_again(
         client, db_session, project_id=project.id
     )
@@ -303,7 +305,7 @@ async def test_the_short_way_answers_no_composed_take(
 
     answered = await client.post(
         f"/api/internalization-room/sessions/{session.id}/segments/{told.id}/replace",
-        headers={"X-Room-Key": "sala-de-teste", "X-Room-Device": "tablet-da-sala"},
+        headers={"X-Room-Device": "tablet-da-sala"},
         data={
             "take_id": part.id,
             "starts_ms": str(told.starts_ms),

@@ -25,13 +25,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSessionStatus, IRTake, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING, create_session
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_harness import heard_every_part, press_terminei
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 
@@ -69,12 +69,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
     from app.api.internalization_room import segments as segments_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     bucket = MemoryStore()
     monkeypatch.setattr(takes_service, "_store", lambda *_, **__: bucket)
 
@@ -97,20 +95,19 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
+        transport=ASGITransport(app=test_app), base_url="http://test", headers=tablet.headers
     ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
 
-HEADERS = {"X-Room-Key": KEY, "X-Room-Device": DEVICE}
+HEADERS = {"X-Room-Device": DEVICE}
 
 
 async def _session(client: httpx.AsyncClient) -> str:
-    made = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": PASSAGE}
-    )
+    made = await client.post(f"{PREFIX}/sessions", json={"pericope": PASSAGE})
     assert made.status_code == 200, made.text
     return str(made.json()["session_id"])
 
@@ -168,14 +165,21 @@ async def _replace(
 
 async def _units(client: httpx.AsyncClient, session_id: str) -> list[dict[str, Any]]:
     """The stretches that count, as the tablet reads them."""
-    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    state = await client.get(f"{PREFIX}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     return list(state.json()["back_translation"]["segments"])
 
 
-async def _one_told_stretch(client: httpx.AsyncClient) -> tuple[str, str, dict[str, Any]]:
+async def _another_session(db: AsyncSession) -> str:
+    """A second session of the tablet's team: opening the passage again resumes the first."""
+    return str((await create_session(db, pericope=PASSAGE, project_id=TABLET_TEAM)).id)
+
+
+async def _one_told_stretch(
+    client: httpx.AsyncClient, session_id: str | None = None
+) -> tuple[str, str, dict[str, Any]]:
     """A session with one rehearsal recording and one stretch told back over (0, 20000)."""
-    session_id = await _session(client)
+    session_id = session_id or await _session(client)
     take_id = await _rehearse(client, session_id, b"a equipe ensaiou a passagem inteira")
     client.said.append("Noemi mandou Rute voltar e Rute disse que ia junto.")  # type: ignore[attr-defined]
     told = await _tell(client, session_id, take_id, 0, 20000, b"o trecho inteiro")
@@ -356,7 +360,7 @@ async def test_a_divided_stretch_cannot_be_replaced_as_a_unit_through_the_route(
 
 
 async def test_a_stretch_of_another_session_is_refused_the_way_an_absent_one_is(
-    client: httpx.AsyncClient,
+    client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """The room key is the same string in every tablet, so the session in the path is the
     only thing that says which work is being reached.
@@ -370,7 +374,7 @@ async def test_a_stretch_of_another_session_is_refused_the_way_an_absent_one_is(
     """
     absent = str(uuid.uuid4())
     mine, _, my_stretch = await _one_told_stretch(client)
-    theirs, _, their_stretch = await _one_told_stretch(client)
+    theirs, _, their_stretch = await _one_told_stretch(client, await _another_session(db_session))
 
     allowed = await _divide(client, mine, my_stretch["segment_id"], 8000)
     trespass = await _divide(client, mine, their_stretch["segment_id"], 8000)
@@ -661,7 +665,7 @@ async def _tellings(db: AsyncSession, session_id: str) -> list[int]:
 
 async def _asks_for_a_person(client: httpx.AsyncClient, session_id: str) -> bool:
     """Whether the room has asked for a person to come to the team."""
-    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    state = await client.get(f"{PREFIX}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     return state.json()["halt"] is not None
 
@@ -829,7 +833,7 @@ async def test_dividing_a_stretch_is_not_telling_it_again_and_counts_nothing(
 
 
 async def _session_read(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    return await client.get(f"{PREFIX}/sessions/{session_id}")
 
 
 async def test_a_chunk_for_a_session_the_room_does_not_hold_is_404_the_session_reads_shape(
@@ -859,11 +863,11 @@ async def _retro_take_of(client: httpx.AsyncClient, session_id: str) -> str:
 
 
 async def _a_take_id_that_does_not_resolve(
-    client: httpx.AsyncClient, session_id: str, shape: str
+    client: httpx.AsyncClient, db: AsyncSession, session_id: str, shape: str
 ) -> str:
     """The three ways `rehearsal_take_of`'s query can miss, for the session in `session_id`."""
     if shape == "of_another_session":
-        return await _rehearse(client, await _session(client), b"o ensaio de outra sessao")
+        return await _rehearse(client, await _another_session(db), b"o ensaio de outra sessao")
     if shape == "never_existed":
         return str(uuid.uuid4())
     if shape == "retro_of_this_session":
@@ -873,13 +877,13 @@ async def _a_take_id_that_does_not_resolve(
 
 @pytest.mark.parametrize("shape", ["of_another_session", "never_existed", "retro_of_this_session"])
 async def test_a_chunk_naming_a_take_that_does_not_resolve_is_422_unknown_reference(
-    client: httpx.AsyncClient, shape: str
+    client: httpx.AsyncClient, db_session: AsyncSession, shape: str
 ) -> None:
     """`rehearsal_take_of` filters on session, id and kind together: any of the three misses
     lands on the same query returning nothing, so all three answer the same 422 — never the
     session's own 404."""
     session_id = await _session(client)
-    take_id = await _a_take_id_that_does_not_resolve(client, session_id, shape)
+    take_id = await _a_take_id_that_does_not_resolve(client, db_session, session_id, shape)
 
     refused = await _tell(client, session_id, take_id, 0, 9000, b"um trecho")
 
@@ -913,10 +917,10 @@ async def test_a_replace_for_a_session_the_room_does_not_hold_is_404_the_session
 
 @pytest.mark.parametrize("shape", ["of_another_session", "never_existed", "retro_of_this_session"])
 async def test_a_replace_naming_a_take_that_does_not_resolve_is_422_unknown_reference(
-    client: httpx.AsyncClient, shape: str
+    client: httpx.AsyncClient, db_session: AsyncSession, shape: str
 ) -> None:
     session_id, _, whole = await _one_told_stretch(client)
-    take_id = await _a_take_id_that_does_not_resolve(client, session_id, shape)
+    take_id = await _a_take_id_that_does_not_resolve(client, db_session, session_id, shape)
 
     refused = await _replace(
         client,
@@ -962,7 +966,7 @@ async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.Asyn
         standing = (await _units(client, session_id))[0]
         await _correct(client, session_id, standing)
 
-    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    state = await client.get(f"{PREFIX}/sessions/{session_id}")
 
     assert state.json()["status"] == IRSessionStatus.IN_PROGRESS.value
     assert state.json()["halt"] == "warning"

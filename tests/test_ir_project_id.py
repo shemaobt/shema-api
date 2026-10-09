@@ -23,7 +23,8 @@ from app.services.internalization_room import questions as room_questions
 from app.services.internalization_room import sessions as room_sessions
 from app.services.internalization_room import takes as room_takes
 from app.services.platform.storage import StoredObject
-from tests.release_harness import KEY, PREFIX, a_claimed_device
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.release_harness import PREFIX, a_claimed_device
 
 SELF_ISSUED_DEVICE = "a" * 32
 
@@ -59,11 +60,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -74,7 +72,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -86,7 +87,7 @@ async def test_a_session_opened_by_a_linked_device_carries_that_devices_project(
 
     opened = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
+        headers={DEVICE_CREDENTIAL_HEADER: credential},
         json={"pericope": "OV"},
     )
 
@@ -113,7 +114,7 @@ async def test_a_session_opened_with_an_unrecognised_credential_is_refused(clien
 
     opened = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: "b" * 64},
+        headers={DEVICE_CREDENTIAL_HEADER: "b" * 64},
         json={"pericope": "OV"},
     )
 
@@ -169,18 +170,6 @@ async def test_a_take_takes_its_project_from_the_session(db_session):
 
 
 # Behaviour 3 — an unclaimed device does the same thing in all three tables.
-
-
-async def test_a_session_opened_without_a_claimed_device_is_accepted_with_no_project(
-    client, db_session
-):
-    opened = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV"}
-    )
-
-    assert opened.status_code == 200, opened.text
-    session = await room_sessions.get_session(db_session, opened.json()["session_id"])
-    assert session.project_id is None
 
 
 async def test_a_question_from_a_session_with_no_project_has_no_project(db_session):
@@ -281,9 +270,10 @@ async def test_the_question_route_carries_the_sessions_project(
     client, db_session, stored_in_memory
 ):
     project, credential = await a_claimed_device(db_session)
+    client.headers.update({DEVICE_CREDENTIAL_HEADER: credential})
     opened = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
+        headers={DEVICE_CREDENTIAL_HEADER: credential},
         json={"pericope": "OV"},
     )
     session_id = opened.json()["session_id"]
@@ -291,7 +281,7 @@ async def test_the_question_route_carries_the_sessions_project(
     raised = await client.post(
         f"{PREFIX}/questions",
         params={"session_id": session_id},
-        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        headers={"X-Room-Device": SELF_ISSUED_DEVICE},
         files={"file": ("q.m4a", b"pergunta", "audio/mp4")},
     )
 
@@ -302,16 +292,17 @@ async def test_the_question_route_carries_the_sessions_project(
 
 async def test_the_take_route_carries_the_sessions_project(client, db_session, stored_in_memory):
     project, credential = await a_claimed_device(db_session)
+    client.headers.update({DEVICE_CREDENTIAL_HEADER: credential})
     opened = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
+        headers={DEVICE_CREDENTIAL_HEADER: credential},
         json={"pericope": "P03"},
     )
     session_id = opened.json()["session_id"]
 
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        headers={"X-Room-Device": SELF_ISSUED_DEVICE},
         data={"kind": "ensaio", "scope": "P03"},
         files={"file": ("t.m4a", b"take", "audio/mp4")},
     )
@@ -337,22 +328,23 @@ async def test_the_back_translation_chunk_route_carries_the_sessions_project(
     monkeypatch.setattr(bt_api, "heard", _heard)
 
     project, credential = await a_claimed_device(db_session)
+    client.headers.update({DEVICE_CREDENTIAL_HEADER: credential})
     opened = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
+        headers={DEVICE_CREDENTIAL_HEADER: credential},
         json={"pericope": "P03"},
     )
     session_id = opened.json()["session_id"]
     rehearsal = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        headers={"X-Room-Device": SELF_ISSUED_DEVICE},
         data={"kind": "ensaio", "scope": "P03"},
         files={"file": ("t.m4a", b"ensaio", "audio/mp4")},
     )
 
     sent = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        headers={"X-Room-Device": SELF_ISSUED_DEVICE},
         data={
             "retelling": "false",
             "take_id": rehearsal.json()["take_id"],

@@ -50,12 +50,11 @@ from app.services.internalization_room.sessions import create_session, get_sessi
 from app.services.internalization_room.takes import store_take, takes_of
 from app.services.internalization_room.voice_handles import to_handle
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import KEY, PREFIX, P, a_claimed_device, team_headers
+from tests.release_harness import PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.room_route_audit_harness import room_app_routes
 
 TABLET = "tablet-da-sala"
-ROOM_KEY_HEADERS = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
 
 
 def room_caller_session_routes() -> list[tuple[str, str]]:
@@ -404,25 +403,6 @@ async def test_a_device_of_another_project_is_refused_before_any_work(
     )
 
 
-@pytest.mark.parametrize("tag", TAGS)
-async def test_a_room_key_caller_still_reaches_a_project_owned_session(
-    client: httpx.AsyncClient, db_session: AsyncSession, tag: str
-) -> None:
-    """The shared key names no device and so no project — `_deps.py`'s own "dated
-    compromise, not a design" — and every one of these routes kept working for it before
-    this ticket. `session_for_room_caller` preserves that by construction; this proves it.
-    """
-    owner, _credential = await a_claimed_device(db_session, email=f"key-owner-{tag}@example.com")
-    owned = await _owned(db_session, owner.id, f"key-{tag}")
-    case = next(c for c in cases(owned) if c["tag"] == tag)
-
-    allowed = await _send(client, db_session, case, ROOM_KEY_HEADERS)
-
-    assert allowed == _EXPECTED_OWNER_STATUS[case["expects"]], (
-        f"{tag}: a chave da sala deixou de alcançar uma sessão com dono, veio {allowed}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # The two routes that name a session outside the path: audited by hand, since
 # `room_caller_session_routes()` only ever looks at path templates.
@@ -586,28 +566,3 @@ async def test_a_device_of_another_projects_question_audio_is_refused_before_any
 
     assert allowed.status_code == 200, allowed.text[:300]
     assert allowed.content == b"a equipe perguntou"
-
-
-async def test_a_room_key_caller_still_reaches_a_project_owned_questions_audio(
-    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The shared key names no device and so no project — `_deps.py`'s own "dated
-    compromise, not a design" — and this route kept answering it before this ticket.
-    """
-    store = _CountingStore()
-    monkeypatch.setattr(question_service, "_store", lambda *_, **__: store)
-    owner, _credential = await a_claimed_device(db_session, email="key-owner-qa@example.com")
-    question = await question_service.raise_question(
-        db_session,
-        device_id="tablet-sala",
-        session_id="sessao-qa-key",
-        pericope=P,
-        audio=b"a equipe perguntou pela chave",
-        project_id=owner.id,
-        store=store,
-    )
-
-    allowed = await client.get(_question_audio_url(question), headers=ROOM_KEY_HEADERS)
-
-    assert allowed.status_code == 200, allowed.text[:300]
-    assert allowed.content == b"a equipe perguntou pela chave"

@@ -20,6 +20,7 @@ from google_crc32c import Checksum
 from httpx import ASGITransport
 from sqlalchemy import select
 
+from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.db.models.auth import Role
 from app.db.models.internalization_room import IRSession, IRTakeKind
@@ -34,6 +35,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
@@ -106,7 +108,10 @@ async def client(db_session):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -159,7 +164,6 @@ async def test_the_room_hears_a_take_of_its_own_session(client, db_session):
 
     response = await client.get(
         f"{IR}/sessions/{session.id}/takes/{take.id}/audio",
-        headers={"X-Room-Key": ROOM_KEY},
         follow_redirects=False,
     )
 
@@ -185,12 +189,10 @@ async def test_the_room_does_not_hear_the_take_of_another_session(client, db_ses
 
     opened = await client.get(
         f"{IR}/sessions/{mine.id}/takes/{my_take.id}/audio",
-        headers={"X-Room-Key": ROOM_KEY},
         follow_redirects=False,
     )
     response = await client.get(
         f"{IR}/sessions/{mine.id}/takes/{their_take.id}/audio",
-        headers={"X-Room-Key": ROOM_KEY},
         follow_redirects=False,
     )
 
@@ -201,6 +203,7 @@ async def test_the_room_does_not_hear_the_take_of_another_session(client, db_ses
 
 async def test_without_the_room_credential_nothing_plays(client, db_session):
     session, take = await a_session_that_recorded(db_session, "sessao-sem-chave")
+    client.headers.pop(DEVICE_CREDENTIAL_HEADER)
 
     response = await client.get(
         f"{IR}/sessions/{session.id}/takes/{take.id}/audio", follow_redirects=False
@@ -225,17 +228,14 @@ async def test_an_absent_take_and_somebody_elses_answer_alike(client, db_session
 
     opened = await client.get(
         f"{IR}/sessions/{mine.id}/takes/{my_take.id}/audio",
-        headers={"X-Room-Key": ROOM_KEY},
         follow_redirects=False,
     )
     elsewhere = await client.get(
         f"{IR}/sessions/{mine.id}/takes/{their_take.id}/audio",
-        headers={"X-Room-Key": ROOM_KEY},
         follow_redirects=False,
     )
     nowhere = await client.get(
         f"{IR}/sessions/{mine.id}/takes/{absent}/audio",
-        headers={"X-Room-Key": ROOM_KEY},
         follow_redirects=False,
     )
 
@@ -262,7 +262,6 @@ async def test_the_facilitator_door_is_where_it_was(client, db_session, room_app
     )
     with_the_room_key = await client.get(
         f"{IR}/facilitator/takes/{take.id}/audio",
-        headers={"X-Room-Key": ROOM_KEY},
         follow_redirects=False,
     )
 

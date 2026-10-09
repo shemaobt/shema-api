@@ -19,6 +19,7 @@ from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.voice_handles import team_audio_url
 from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.release_harness import a_claimed_device
 
 DEVICE = "tablet-da-equipe-1"
@@ -42,13 +43,9 @@ class MemoryStore:
 async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The tablet's side of the router — real HTTP, real SQLite, a faked speech store."""
     from app.api.internalization_room.questions import router as questions_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
-    )
     monkeypatch.setattr(service, "_store", lambda *a, **kw: MemoryStore())
 
     async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
@@ -64,10 +61,11 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app),
         base_url="http://test",
-        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+        headers=tablet.headers | {"X-Room-Device": DEVICE},
     ) as client:
         yield client
 
@@ -452,22 +450,6 @@ async def test_a_question_that_names_no_project_is_still_listed_to_a_claimed_dev
     assert [r["question_id"] for r in response.json()["replies"]] == [question.id], (
         "a maioria das perguntas de hoje nasce de uma sessão da chave compartilhada e não "
         "nomeia projeto; exigir igualdade esvaziava a fila de quem já tem credencial"
-    )
-
-
-async def test_the_shared_key_still_lists_a_project_question_by_device(
-    db_session: AsyncSession, room_client: httpx.AsyncClient
-) -> None:
-    team, _credential = await a_claimed_device(db_session, email="shared-list@example.com")
-    store = MemoryStore()
-    question = await _raise(db_session, store, project_id=team.id)
-    await service.answer_with_voice(
-        db_session, question, audio=b"resposta", answered_by="fac", store=store
-    )
-
-    assert await _served_reply(room_client, question.id) is not None, (
-        "a chave compartilhada não nomeia aparelho nem projeto, e a fila dela é por aparelho "
-        "como sempre foi; conferir projeto ali a deixaria sem as respostas que já recebe"
     )
 
 

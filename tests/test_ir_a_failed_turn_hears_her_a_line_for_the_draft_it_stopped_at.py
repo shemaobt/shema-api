@@ -19,7 +19,8 @@ from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.verdict_turn import run_verdict_turn
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
 
@@ -67,7 +68,6 @@ async def client(db_session, monkeypatch):
 async def _a_take(client, session_id: str) -> dict[str, Any]:
     answered = await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
     assert answered.status_code == 200, answered.text[:300]
@@ -99,7 +99,7 @@ async def test_a_failed_turn_hears_the_a_line_of_the_draft_it_gave_up_at_never_t
     client, db_session: AsyncSession, monkeypatch, drafts: list[str], name: str, heard: str
 ) -> None:
     the_room_agent_is(monkeypatch, turn=_DraftsInOrder(drafts))
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     reply = await _a_take(client, session.id)
 
@@ -115,7 +115,7 @@ async def test_three_failed_turns_in_a_row_each_hear_their_own_draft_and_never_t
     client, db_session: AsyncSession, monkeypatch
 ) -> None:
     the_room_agent_is(monkeypatch, turn=_DraftsInOrder(FIRST_DRAFT, THIRD_DRAFT, SECOND_DRAFT))
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     spoken = [(await _a_take(client, session.id))["fixed_line"] for _ in range(3)]
 
@@ -136,7 +136,7 @@ async def test_an_english_failed_turn_points_to_scene_one_and_is_voiced_with_the
 
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice_it)
     the_room_agent_is(monkeypatch, turn=_DraftsInOrder(FIRST_DRAFT))
-    session = await create_session(db_session, language="en", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="en", pericope=P)
 
     reply = await _a_take(client, session.id)
 
@@ -152,7 +152,7 @@ async def test_an_english_failed_turn_with_its_pointer_still_reads_as_unrepairab
     client, db_session: AsyncSession, monkeypatch
 ) -> None:
     the_room_agent_is(monkeypatch, turn=_DraftsInOrder(FIRST_DRAFT))
-    session = await create_session(db_session, language="en", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="en", pericope=P)
 
     await _a_take(client, session.id)
 

@@ -24,12 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
-from app.services.device import claim_device_as_facilitator, create_device
 from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_route_audit_harness import room_app_routes
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 #: A credential-shaped string that matches no device. Distinctive enough that finding it
 #: anywhere is unambiguous — no substring of a uuid or a path could be mistaken for it.
@@ -43,11 +42,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -58,7 +54,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -77,11 +76,7 @@ async def a_credential_that_works(db: AsyncSession) -> str:
     language = await make_language(db, name="Lang", code="fac")
     project = await make_project(db, language.id, name="Team")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=project.id
-    )
-    return claimed.credential
+    return (await a_linked_tablet(db, team_id=project.id, facilitator=user)).credential
 
 
 def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_by_hand() -> None:
