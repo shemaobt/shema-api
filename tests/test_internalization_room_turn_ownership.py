@@ -1,7 +1,7 @@
 """ENG-1031: a turn is answered only for the project that owns the session.
 
 `take_turn` resolved a session by id alone, the way `approve_internalization_release` used
-to before it adopted `get_session_for_room_caller`, so a device from another project's turn
+to before it was scoped to the caller's team, so a device from another project's turn
 ran transcription, the Guide, the Validator and synthesis against somebody else's recording
 before the room ever turned it away.
 """

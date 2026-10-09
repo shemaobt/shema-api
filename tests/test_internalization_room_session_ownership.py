@@ -24,9 +24,7 @@ are exercised by hand below.
 
 ``POST .../turns``, ``POST .../release``, ``POST .../back-translation/chunks`` and ``POST
 .../back-translation/finish`` already resolve their session through the ownership rule —
-release through ``get_session_for_room_caller`` directly and unconditionally, a stricter rule
-of its own (a release is numbered to a project, so even the shared key is refused on a
-project-owned session) that predates this ticket and is not this ticket's to change.
+release through ``session_for_room_caller`` like every other team door.
 ``TESTED_ELSEWHERE`` names each one and where, so the completeness case still accounts for
 them without rebuilding their fixtures a second time.
 """

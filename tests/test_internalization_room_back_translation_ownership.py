@@ -1,7 +1,7 @@
 """ENG-1046: the retro's own routes are answered only for the project that owns the session.
 
 `add_chunk` and `finish` resolved a session by id alone, the way `take_turn` used to before
-ENG-1031 gave it `get_session_for_room_caller`, so a device from another project's chunk or
+ENG-1031 scoped it to the caller's team, so a device from another project's chunk or
 `terminei` ran transcription, the analyst and the Speaker against somebody else's rehearsal
 before the room ever turned it away.
 """

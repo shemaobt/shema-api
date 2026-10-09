@@ -1,6 +1,6 @@
 """ENG-448 — the room app authenticates as a device, not with a key everyone shares.
 
-`X-Room-Key` is one string, the same in every installation, shipped as an asset inside the
+The shared room key was one string, the same in every installation, shipped as an asset inside the
 bundle. Leak one and you have leaked all of them, and there is nothing to revoke because
 there is nothing that tells two tablets apart.
 
@@ -85,7 +85,7 @@ async def open_a_session(client, headers: dict[str, str]):
 async def test_a_credential_alone_is_served_and_scopes_the_session_to_its_project(
     client, db_session
 ):
-    """No `X-Room-Key` in this request at all — the credential is the whole authentication."""
+    """The credential is the whole authentication."""
     device = await a_claimed_device(db_session)
 
     opened = await open_a_session(client, {DEVICE_CREDENTIAL_HEADER: device.credential})
