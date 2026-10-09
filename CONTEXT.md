@@ -38,7 +38,7 @@ The facilitator's web app, consumer of the routes for questions, halts and sessi
 _Avoid_: panel, dashboard, Mesa
 
 **Consultant**:
-A reader of every team's work in the Desk, who arrives after the fact to judge a passage: a platform role on the internalization-room app, not a link to a team, admitted to every read door and refused at every write (ADR 0054). A facilitator can hold it too and still acts only on the teams they facilitate.
+A reader of every team's work in the Desk, who arrives after the fact to judge a passage: a platform role on the internalization-room app, not a link to a team, admitted to every read door and refused at every write (ADR 0058). A facilitator can hold it too and still acts only on the teams they facilitate.
 _Avoid_: observer, auditor, read-only facilitator, Consultor
 
 **Nudge**:
