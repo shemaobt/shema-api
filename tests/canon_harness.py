@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 
+from app.services import internalization_room as room
 from app.services.internalization_room import canon
 from app.services.internalization_room.canon import (
     book_material,
@@ -54,13 +55,17 @@ def forget_the_canon() -> None:
 def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
     submodules = [
         importlib.import_module(found.name)
-        for found in pkgutil.walk_packages(canon.__path__, f"{canon.__name__}.")
+        for found in pkgutil.walk_packages(room.__path__, f"{room.__name__}.")
     ]
     held: dict[int, tuple[str, Any]] = {}
-    for module in [canon, *submodules, checkpoints]:
+    for module in [room, *submodules]:
+        under_the_canon = module.__name__ == canon.__name__ or module.__name__.startswith(
+            f"{canon.__name__}."
+        )
         for name, value in sorted(vars(module).items()):
-            if (
-                not isinstance(value, type)
+            if isinstance(value, kept.PerCanon) or (
+                under_the_canon
+                and not isinstance(value, type)
                 and hasattr(value, "cache_clear")
                 and hasattr(value, "cache_info")
             ):

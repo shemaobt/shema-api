@@ -11,6 +11,8 @@ from typing import Any
 
 import pytest
 
+from app.services.internalization_room import passage_lines
+from app.services.internalization_room.canon import kept
 from tests.canon_harness import forget_the_canon, the_caches_the_loader_holds
 
 
@@ -25,6 +27,23 @@ def test_the_discovery_finds_the_caches_the_ticket_names() -> None:
         "_portuguese",
         "checkpoints_for",
     } <= found
+
+
+def test_a_canon_cache_declared_outside_the_canon_package_is_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planted = kept.per_canon(maxsize=1)(lambda: 0)
+    monkeypatch.setattr(passage_lines, "_a_planted_cache", planted, raising=False)
+
+    found = [cache for _, cache in the_caches_the_loader_holds()]
+
+    assert any(cache is planted for cache in found)
+
+
+def test_the_caches_of_the_rest_of_the_room_are_not_the_canons_to_forget() -> None:
+    found = {name for name, _ in the_caches_the_loader_holds()}
+
+    assert found.isdisjoint({"_sections", "load_prompt", "fail_safe_utterances"})
 
 
 @pytest.mark.parametrize("held", the_caches_the_loader_holds(), ids=lambda held: held[0])
