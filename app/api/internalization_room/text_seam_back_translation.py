@@ -100,7 +100,12 @@ async def declare_back_translation_session(
     session = await room.create_session(
         db, pericope=payload.pericopeId, language=_language_code(payload.language)
     )
-    parts = await declare_rehearsal_parts(db, session, keys)
+    parts = await declare_rehearsal_parts(
+        db,
+        session,
+        keys,
+        {clip.key: clip.contentType for clip in payload.clips if clip.contentType},
+    )
     await room.report_playback(
         db,
         session,

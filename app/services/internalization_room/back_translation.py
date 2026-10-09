@@ -1022,7 +1022,7 @@ def _for_her_speaker(finding: Finding | Nuance, addresses: Addresses) -> dict[st
     part = addresses.part_of(finding.segment_id)
     if part and (isinstance(finding, Nuance) or finding.kind is not FindingKind.MISSING):
         handed["part"] = part
-    handed["repair"] = "part"
+    handed["repair"] = addresses.repair_of(finding.segment_id)
     return handed
 
 

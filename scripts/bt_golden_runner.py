@@ -60,6 +60,7 @@ BT_DIR = Path(__file__).resolve().parent.parent / "golden/bt"
 class Clip:
     key: str
     durationMs: int
+    contentType: str | None = None
 
 
 @dataclass
@@ -100,7 +101,10 @@ def load_script(path: Path) -> Script:
         pericopeId=raw["pericopeId"],
         language=raw["language"],
         why=raw.get("why", ""),
-        clips=[Clip(key=one["key"], durationMs=one["durationMs"]) for one in raw["draft"]["clips"]],
+        clips=[
+            Clip(key=one["key"], durationMs=one["durationMs"], contentType=one.get("contentType"))
+            for one in raw["draft"]["clips"]
+        ],
         rounds=[Round(frases=one["frases"], expect=one["expect"]) for one in raw["rounds"]],
     )
 

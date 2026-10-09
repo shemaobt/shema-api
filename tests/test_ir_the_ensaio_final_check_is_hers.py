@@ -212,6 +212,29 @@ async def test_an_addition_reaches_her_speaker_with_its_part_and_nothing_of_ours
     assert result["spoken"] == SAID, "a sala colava a nossa frase «I» depois do veredito"
 
 
+async def test_a_clip_her_script_declares_wav_lets_her_speaker_ask_for_the_whole_sentence(
+    client, analyst, speaker
+) -> None:
+    declared = await client.post(
+        f"{SEAM}/session",
+        json={
+            "pericopeId": PASSAGE,
+            "language": LANGUAGE,
+            "clips": [{**clip, "contentType": "audio/wav"} for clip in CLIPS],
+        },
+    )
+    assert declared.status_code == 200, declared.text
+    analyst.readings = [
+        {"findings": [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}]}
+    ]
+
+    await _a_round(client, TELLING, session_id=str(declared.json()["sessionId"]))
+
+    assert [one["repair"] for one in json.loads(_handed(speaker))] == ["sentence"], (
+        "a costura jogava fora o «audio/wav» do roteiro dela e o falante ouvia «part»"
+    )
+
+
 async def test_a_retold_frase_is_judged_by_her_analyst_over_the_whole_telling(
     client, analyst
 ) -> None:
@@ -307,4 +330,19 @@ async def test_of_two_nuances_only_the_one_on_the_lowest_frase_is_handed(
 
     assert [one["frase"] for one in json.loads(_handed(speaker))] == [1], (
         "a voz dizia a primeira nuance da resposta, não a da frase mais baixa"
+    )
+
+
+async def test_a_content_type_longer_than_a_take_can_hold_is_refused_at_the_door(client) -> None:
+    refused = await client.post(
+        f"{SEAM}/session",
+        json={
+            "pericopeId": PASSAGE,
+            "language": LANGUAGE,
+            "clips": [{**CLIPS[0], "contentType": "audio/" + "x" * 59}],
+        },
+    )
+
+    assert refused.status_code == 422, (
+        "um tipo de 65 caracteres passava a porta e quebrava na coluna de 64 do take"
     )
