@@ -5,11 +5,11 @@ the tablet displays a code, a facilitator types it into the Desk and chooses the
 the link comes back to the tablet with nobody touching it. Three of these calls make that
 possible from the tablet's side — the one that hands it a code to show, the one it polls
 until the code has been spent, and the one it makes once afterwards to stop depending on
-the shared key.
+the claim code.
 
-All of them are opened by the shared room key, because a tablet that has not collected yet
-holds nothing else. That is the same dated compromise ``require_room_caller`` already
-records, and retiring the key is ENG-455's.
+All three open to anyone, with no header at all (ADR 0057): the device id is minted by the
+server and unguessable, a claim code is only worth what a facilitator spends on it from the
+Desk, and the device credential is collected once.
 
 The third one answers with a credential, and it is the only route here that does (ENG-622).
 The claim mints one and hands it to the Desk, which never reads it; the row keeps only a
@@ -19,14 +19,14 @@ moment — one device, one live credential.
 
 The fourth is not part of installation and is here because it is addressed the same way
 (ENG-624): a tablet saying it needs a person when it has no session to say it through. It
-is the one route in this module that reads *which* device is calling rather than only that
-somebody may — a tablet holding a credential may halt itself and nothing else.
+is the one route in this module behind a team door, and it reads *which* device is calling:
+a tablet may halt itself and nothing else.
 """
 
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import require_room_caller, room_caller_dep
+from app.api.internalization_room._deps import linked_tablet_dep
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.device import Device
@@ -49,7 +49,6 @@ router = APIRouter()
 @router.post(
     "/devices/code",
     response_model=RoomDeviceCodeResponse,
-    dependencies=[room_caller_dep],
 )
 async def show_a_claim_code(
     payload: RoomDeviceCodeRequest = RoomDeviceCodeRequest(),
@@ -63,7 +62,6 @@ async def show_a_claim_code(
     "/devices/{device_id}/link",
     response_model=RoomDeviceLinkResponse,
     responses={status.HTTP_204_NO_CONTENT: {"description": "Nobody has claimed this device yet."}},
-    dependencies=[room_caller_dep],
 )
 async def read_the_team_link(
     device_id: str,
@@ -84,7 +82,6 @@ async def read_the_team_link(
 @router.post(
     "/devices/{device_id}/credential",
     response_model=DeviceCredentialResponse,
-    dependencies=[room_caller_dep],
 )
 async def collect_the_device_credential(
     device_id: str,
@@ -93,8 +90,7 @@ async def collect_the_device_credential(
     """The credential this tablet authenticates with from now on. Issued once, never again.
 
     Called once, after ``link`` has answered 200, and the answer is the only copy — the row
-    keeps a hash. From here the tablet presents ``X-Device-Credential`` and stops needing
-    the key every installation shares.
+    keeps a hash. From here the tablet presents ``X-Device-Credential`` at every team door.
 
     Four answers, and the tablet does something different with each:
 
@@ -119,7 +115,7 @@ async def collect_the_device_credential(
 )
 async def ask_for_a_person_without_a_session(
     device_id: str,
-    caller: Device | None = Depends(require_room_caller),
+    caller: Device = linked_tablet_dep,
     db: AsyncSession = Depends(get_db),
 ) -> DeviceNeedsPersonResponse:
     """This tablet cannot go on and there is no session to say so through.
@@ -129,37 +125,23 @@ async def ask_for_a_person_without_a_session(
     before one was opened. So the halt is recorded on the device — the thing that is still
     there — and the facilitators of its team read it beside the sessions that halted.
 
-    Four answers, and the tablet does something different with each:
+    The tablet names itself twice, by the device in the path and by its credential, and the
+    two have to agree. Its answers:
 
     - **200** — recorded, with the moment it was first recorded. Asking again while it
       still stands answers the same moment, so a retry over a bad network costs nothing.
-    - **409** — nobody has claimed this device, or it was taken out of service. It belongs
-      to no team, so there is nobody the halt could reach; the tablet has an installation
-      problem, not a room problem.
-    - **403** — the credential presented belongs to a different device. A tablet that can
-      name itself may halt itself and nothing else.
-    - **404** — no device with that id, as ``link`` and ``credential`` say for the same.
-
-    A caller on the shared key names no device and may halt any claimed one, which is the
-    same window the three routes above stand in and closes with them in ENG-455.
+    - **403** — the device in the path is not the one holding the credential. A tablet may
+      halt itself and nothing else.
+    - **409** — the tablet was unlinked between the door letting it in and the halt being
+      written. It belongs to no team any more, so there is nobody the halt could reach.
 
     Nothing lifts this from here. The halt ends when that device opens a session, the way a
     session's ``NEEDS_PERSON`` ends when a turn lands; a facilitator saying they attended to
     it is a different event. **ENG-609's API slice did not bring it**: that one gave the
     session halts a facilitator lift and left this half exactly as it is, so the device
     queue still drains only by the tablet coming back.
-
-    **The two halves are not symmetric, and the asymmetry has a floor under it.** Halting is
-    open to the shared key; lifting is not, and cannot be — a caller presenting the key names
-    no device, so ``POST /sessions`` has nothing to lift. A halt recorded on the key therefore
-    has nothing in this slice that clears it. What keeps that off the field is the order the
-    work was authorised in: the app collects its credential in ENG-622 and starts presenting
-    it in ENG-623, both before ENG-625 makes it call this route at all, so every call that
-    happens in a room names its device. A tablet that halted on the key anyway waits for a
-    facilitator lift that does not exist yet on this half — and that is the sentence to
-    re-read before calling this route from anywhere else.
     """
-    if caller is not None and caller.id != device_id:
+    if caller.id != device_id:
         raise AuthorizationError("A device may only ask for a person for itself.")
 
     since, team_id = await record_needs_person(db, device_id)

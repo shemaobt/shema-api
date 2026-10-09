@@ -11,7 +11,7 @@ each new schema is a promise the next route breaks. Everything below is derived 
 mounted application, so a route that would break it fails this file on the day it is written:
 
 * which routes the room app reaches — every mounted route whose dependency tree, or whose own
-  body, calls the tablet's gates (`require_room_caller`, `require_device`) — shared with the
+  body, calls the tablet's gates (`linked_tablet`, `require_device`) — shared with the
   credential audit as `room_route_audit_harness.room_app_routes` (ENG-1039), so a route gated
   by hand instead of by `Depends` cannot go unaudited in one file and not the other;
 * which of those can reach a question — the ones the room's question router mounts, read off
@@ -179,7 +179,7 @@ async def a_question_the_room_could_read_back(db: AsyncSession, room_client) -> 
     Answered on purpose: an open question is invisible to `replies`, so a sentinel test run
     against one would pass without the route ever having had the chance to leak.
     """
-    db.add(IRSession(id=SESSION, pericope="P03"))
+    db.add(IRSession(id=SESSION, pericope="P03", project_id=TABLET_TEAM))
     await db.commit()
 
     raised = await room_client.post(

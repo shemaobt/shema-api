@@ -14,7 +14,6 @@ the defect this slice exists to remove.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 
 import httpx
@@ -24,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
-from app.services.device import claim_device_as_facilitator, create_device
+from app.services.device import create_device
 from app.services.device.unlink_device import unlink_device
 from tests.baker import (
     grant_facilitator_app_role,
@@ -33,10 +32,9 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import a_linked_tablet
 
 IR = "/api/internalization-room"
-ROOM_KEY = "sala-de-teste"
-ROOM_KEY_HEADER = "X-Room-Key"
 QUEUE = f"{IR}/facilitator/sessions"
 
 
@@ -60,11 +58,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.facilitator.teams import facilitator_teams_router
     from app.api.internalization_room import router as room_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=IR)
@@ -116,21 +111,16 @@ async def a_team(db: AsyncSession, *, code: str) -> Team:
 
 
 async def a_tablet(db: AsyncSession, team: Team, *, label: str | None = None) -> Tablet:
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=team.user, code=minted.claim_code, project_id=team.project.id, label=label
-    )
-    return Tablet(device_id=claimed.device.id, credential=claimed.credential)
+    linked = await a_linked_tablet(db, team_id=team.project.id, facilitator=team.user, label=label)
+    return Tablet(device_id=linked.device_id, credential=linked.credential)
 
 
-async def halt(client: httpx.AsyncClient, device_id: str, *, credential: str | None = None):
-    """The call itself: on the shared key, or as the tablet naming itself."""
-    headers = (
-        {DEVICE_CREDENTIAL_HEADER: credential}
-        if credential is not None
-        else {ROOM_KEY_HEADER: ROOM_KEY}
+async def halt(client: httpx.AsyncClient, tablet: Tablet, *, credential: str | None = None):
+    """The call itself: the tablet naming itself, by its own credential unless told another."""
+    return await client.post(
+        needs_person_url(tablet.device_id),
+        headers={DEVICE_CREDENTIAL_HEADER: credential or tablet.credential},
     )
-    return await client.post(needs_person_url(device_id), headers=headers)
 
 
 async def halted_moments(client: httpx.AsyncClient, team: Team) -> dict[str, str | None]:
@@ -168,7 +158,7 @@ async def test_a_tablet_that_halts_is_shown_to_the_facilitator_of_its_own_team(c
     stopped = await a_tablet(db_session, team, label="Tablet da Ana")
     working = await a_tablet(db_session, team)
 
-    asked = await halt(client, stopped.device_id)
+    asked = await halt(client, stopped)
 
     assert asked.status_code == 200, asked.text[:300]
     assert asked.json()["device_id"] == stopped.device_id
@@ -196,7 +186,7 @@ async def test_the_halt_of_one_team_is_not_shown_to_the_facilitator_of_another(c
     team_b = await a_team(db_session, code="eqb")
     stopped = await a_tablet(db_session, team_a)
 
-    assert (await halt(client, stopped.device_id)).status_code == 200
+    assert (await halt(client, stopped)).status_code == 200
 
     assert [row["device_id"] for row in await queued_devices(client, team_a)] == [stopped.device_id]
 
@@ -209,13 +199,12 @@ async def test_the_halt_of_one_team_is_not_shown_to_the_facilitator_of_another(c
 
 
 async def test_a_device_with_no_team_to_reach_is_refused_and_leaves_no_halt(client, db_session):
-    """Three refusals, told apart by status alone, and the team's two reads left as they were.
+    """Two refusals, and the team's two reads left as they were.
 
-    A device nobody claimed and one taken out of service have no team, so there is no one
-    the halt could reach; an id this server never minted has no row at all. The tablet acts
-    on the three differently, which is why they are three statuses and not one.
+    A device nobody claimed holds no credential, so it never gets past the door; one taken
+    out of service holds a credential that was revoked, and is told so.
 
-    The working tablet is what the last two lines are about. None of the three refused
+    The working tablet is what the last two lines are about. Neither of the two refused
     devices can appear in either read whatever the server does with them — an unclaimed one
     belongs to no team and an unlinked one is filtered out of both — so without a device
     that *can* appear, "the facilitator sees no halt" is a sentence about two empty
@@ -228,9 +217,10 @@ async def test_a_device_with_no_team_to_reach_is_refused_and_leaves_no_halt(clie
     retired = await a_tablet(db_session, team)
     await unlink_device(db_session, user=team.user, device_id=retired.device_id)
 
-    assert (await halt(client, unclaimed.device.id)).status_code == 409
-    assert (await halt(client, retired.device_id)).status_code == 409
-    assert (await halt(client, str(uuid.uuid4()))).status_code == 404
+    assert (await client.post(needs_person_url(unclaimed.device.id))).status_code == 401
+    revoked = await halt(client, retired)
+    assert revoked.status_code == 403
+    assert revoked.json()["code"] == "DEVICE_REVOKED"
 
     assert await halted_moments(client, team) == {working.device_id: None}
     assert await queued_devices(client, team) == []
@@ -249,7 +239,7 @@ async def test_a_tablet_naming_itself_may_halt_only_itself(client, db_session):
     first = await a_tablet(db_session, team)
     second = await a_tablet(db_session, team)
 
-    reaching_over = await halt(client, second.device_id, credential=first.credential)
+    reaching_over = await halt(client, second, credential=first.credential)
 
     assert reaching_over.status_code == 403
     assert await halted_moments(client, team) == {
@@ -257,7 +247,7 @@ async def test_a_tablet_naming_itself_may_halt_only_itself(client, db_session):
         second.device_id: None,
     }
 
-    itself = await halt(client, first.device_id, credential=first.credential)
+    itself = await halt(client, first, credential=first.credential)
 
     assert itself.status_code == 200, itself.text[:300]
     moments = await halted_moments(client, team)
@@ -281,12 +271,12 @@ async def test_a_tablet_asking_twice_does_not_move_the_moment_it_first_asked(cli
     team = await a_team(db_session, code="eqa")
     stopped = await a_tablet(db_session, team)
 
-    asked = await halt(client, stopped.device_id)
+    asked = await halt(client, stopped)
     assert asked.status_code == 200
     first_moment = (await halted_moments(client, team))[stopped.device_id]
     assert first_moment is not None
 
-    again = await halt(client, stopped.device_id)
+    again = await halt(client, stopped)
     assert again.status_code == 200
 
     assert again.json()["needs_person_since"] == asked.json()["needs_person_since"]
@@ -309,7 +299,7 @@ async def test_the_halt_lifts_when_that_tablet_opens_a_session_and_not_when_anot
     stopped = await a_tablet(db_session, team)
     other = await a_tablet(db_session, team)
 
-    assert (await halt(client, stopped.device_id)).status_code == 200
+    assert (await halt(client, stopped)).status_code == 200
 
     elsewhere = await open_a_session(client, other.credential)
     assert elsewhere.status_code == 200, elsewhere.text[:300]
@@ -339,7 +329,7 @@ async def test_a_halted_tablet_taken_out_of_service_leaves_the_queue(client, db_
     team = await a_team(db_session, code="eqa")
     stopped = await a_tablet(db_session, team)
 
-    assert (await halt(client, stopped.device_id)).status_code == 200
+    assert (await halt(client, stopped)).status_code == 200
     assert [row["device_id"] for row in await queued_devices(client, team)] == [stopped.device_id]
 
     await unlink_device(db_session, user=team.user, device_id=stopped.device_id)
@@ -361,8 +351,8 @@ async def test_the_queue_puts_the_newest_halt_first(client, db_session):
     earlier = await a_tablet(db_session, team)
     later = await a_tablet(db_session, team)
 
-    assert (await halt(client, earlier.device_id)).status_code == 200
-    assert (await halt(client, later.device_id)).status_code == 200
+    assert (await halt(client, earlier)).status_code == 200
+    assert (await halt(client, later)).status_code == 200
 
     queued = await queued_devices(client, team)
 
@@ -383,7 +373,7 @@ async def test_a_refused_session_request_leaves_the_halt_standing(client, db_ses
     team = await a_team(db_session, code="eqa")
     stopped = await a_tablet(db_session, team)
 
-    assert (await halt(client, stopped.device_id)).status_code == 200
+    assert (await halt(client, stopped)).status_code == 200
 
     refused = await client.post(
         f"{IR}/sessions",

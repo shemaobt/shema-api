@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRQuestion, IRSession
 from app.services.internalization_room import background
 from app.services.internalization_room import questions as service
+from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import room_client
@@ -65,7 +66,7 @@ async def test_a_question_is_transcribed_with_its_own_session_let_go_not_held_op
 async def test_a_raised_hand_is_put_in_the_bucket_with_the_database_let_go_not_held_open(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    db_session.add(IRSession(id="sessao-1", pericope="P03", language="pt"))
+    db_session.add(IRSession(id="sessao-1", pericope="P03", language="pt", project_id=TABLET_TEAM))
     await db_session.commit()
     held: dict[str, bool] = {}
 

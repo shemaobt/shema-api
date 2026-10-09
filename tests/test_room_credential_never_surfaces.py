@@ -87,7 +87,7 @@ def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_b
     question's transcript."""
     paths = {route.path for route in room_app_routes()}
     assert any(path.endswith("/voice/{handle}") for path in paths), (
-        "a rota do clipe chama require_room_caller direto no corpo, sem Depends, e a "
+        "a rota do clipe chama linked_tablet direto no corpo, sem Depends, e a "
         "auditoria parou de enxergá-la"
     )
 

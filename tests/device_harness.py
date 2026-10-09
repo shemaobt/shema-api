@@ -23,6 +23,9 @@ from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.collect_device_credential import collect_device_credential
 from tests.baker import make_language, make_project_user_access, make_user
 
+#: The header the shared room key travelled in, named only by the cases proving it opens nothing.
+RETIRED_ROOM_KEY_HEADER = "X-Room-Key"
+
 #: The team a module's tablet belongs to, so the sessions a case writes can be written in it.
 TABLET_TEAM = "equipe-do-tablet"
 

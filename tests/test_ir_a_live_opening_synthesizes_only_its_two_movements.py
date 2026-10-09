@@ -168,7 +168,7 @@ async def test_a_live_opening_synthesizes_only_its_two_movements(
 ) -> None:
     elevenlabs = _Elevenlabs(holds=HEARD_WHOLE)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         opened = await asyncio.wait_for(
@@ -194,7 +194,7 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
 
     elevenlabs = _Elevenlabs(holds=HEARD_WHOLE)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
@@ -234,7 +234,7 @@ async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_join
 
     elevenlabs = _Elevenlabs(holds=HEARD_WHOLE)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
@@ -277,7 +277,7 @@ async def test_a_cancelled_say_it_again_does_not_cancel_the_whole_line_it_joined
 
     elevenlabs = _Elevenlabs(holds=HEARD_WHOLE)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
@@ -324,7 +324,7 @@ async def test_a_say_it_again_whose_whole_line_was_cancelled_falls_back_to_its_o
 
     elevenlabs = _Elevenlabs(holds=HEARD_WHOLE)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
@@ -400,7 +400,7 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
 
     elevenlabs = _Elevenlabs(holds=HEARD_WHOLE, refuses=HEARD_WHOLE)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
@@ -436,7 +436,7 @@ async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
 
     elevenlabs = _Elevenlabs(refuses=SECOND)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
@@ -467,7 +467,7 @@ async def test_a_refused_movement_finds_the_whole_line_already_under_way(
 
     elevenlabs = _ElevenlabsWhereAMovementWaitsForTheWholeLine(refuses=SECOND)
     _opens_in_two_movements(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
@@ -502,7 +502,7 @@ async def test_a_turn_without_movements_still_speaks_only_the_whole_line(
 ) -> None:
     elevenlabs = _Elevenlabs()
     _opens_in_two_movements(monkeypatch, movements=[])
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         opened = await asyncio.wait_for(

@@ -31,6 +31,7 @@ from app.db.models.auth import App
 from app.services.internalization_room.sessions import get_session
 from app.services.internalization_room.takes import take_by_id
 from tests.baker import make_app, make_role
+from tests.device_harness import TABLET_TEAM
 from tests.release_harness import (
     APP_KEY,
     a_claimed_device,
@@ -115,7 +116,7 @@ async def _recorded_again(
 
 
 async def _a_session_with_part_two_recorded_again(
-    client: httpx.AsyncClient, db: AsyncSession, *, project_id: str | None = None
+    client: httpx.AsyncClient, db: AsyncSession, *, project_id: str | None = TABLET_TEAM
 ):
     """Three parts told back, heard and read clean, and then part two recorded again.
 

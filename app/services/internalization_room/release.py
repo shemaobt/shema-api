@@ -651,8 +651,7 @@ async def _release_of(
     v1 while approving it would mint a v3, and the packet would name a draft that is no
     longer the one the passage is on.
 
-    A session that names no project has no release to be: the number is per project, and a
-    room on the shared key names none.
+    A session that names no project has no release to be: the number is per project.
     """
     if session.project_id is None:
         return None

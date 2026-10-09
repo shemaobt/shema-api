@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER, require_room_caller
+from app.api.internalization_room._deps import (
+    DEVICE_CREDENTIAL_HEADER,
+    device_project,
+    linked_tablet,
+)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
@@ -134,7 +138,6 @@ async def clip(
     arrived: float = Depends(_arrived),
     db: AsyncSession = Depends(get_db),
     x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
-    x_room_key: str | None = Header(default=None),
     x_range: str | None = Header(default=None, alias="Range"),
     x_if_range: str | None = Header(default=None, alias="If-Range"),
     session: str | None = None,
@@ -158,7 +161,7 @@ async def clip(
     kept — and a 404 there left the team with a reply it could never hear and no way to ask
     for it again short of speaking again. Her audio route does the same: it voices the
     stored text when the tablet asks. The session, not the handle, decides what may be
-    voiced, because a handle is only a content key and anyone holding a room credential can
+    voiced, because a handle is only a content key and anyone holding a device credential can
     mint one for any words: only a guide line stored in that session, read through the
     caller's own project, is spoken, so a forged key or another team's session answers 404
     and never reaches the speech engine.
@@ -186,9 +189,7 @@ async def clip(
 
     gate_passed = False
     try:
-        caller = await require_room_caller(
-            db, x_device_credential=x_device_credential, x_room_key=x_room_key
-        )
+        caller = await linked_tablet(db, x_device_credential=x_device_credential)
         gate_passed = True
     finally:
         if not gate_passed and read_task is not None:
@@ -211,7 +212,7 @@ async def clip(
             db,
             key=key,
             session_id=session,
-            project_id=caller.project_id if caller else None,
+            project_id=await device_project(caller),
             store=GcsPlatformStore(cfg),
         )
 
@@ -276,7 +277,7 @@ async def clip(
 
 
 async def _the_stored_line_voiced(
-    db: AsyncSession, *, key: str, session_id: str, project_id: str | None, store: SpeechStore
+    db: AsyncSession, *, key: str, session_id: str, project_id: str, store: SpeechStore
 ) -> bytes | None:
     stored = await session_for_room_caller(db, session_id, project_id)
     line = next(

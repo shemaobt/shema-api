@@ -37,6 +37,7 @@ from app.services.internalization_room.synthesize_facilitator_speech import faci
 from app.services.internalization_room.turn_dedup import remember_turn
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM
 from tests.opening_harness import (
     a_scripted_room,
     ask_for_the_opening,
@@ -163,7 +164,7 @@ async def _claim_on_the_row(rival_factory, session_id: str, turn_id: str, at: da
 async def test_two_no_audio_requests_with_different_turn_ids_on_a_new_session_draft_one_opening_and_answer_alike(  # noqa: E501
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
 
     async with (
@@ -195,7 +196,7 @@ async def test_two_no_audio_requests_with_different_turn_ids_on_a_new_session_dr
 async def test_a_request_for_the_opening_without_a_turn_id_joins_the_opening_another_tablet_is_drafting(  # noqa: E501
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
 
     async with (
@@ -221,7 +222,7 @@ async def test_a_request_for_the_opening_without_a_turn_id_joins_the_opening_ano
 async def test_a_team_turn_sent_while_the_opening_drafts_is_answered_after_the_opening_in_order(
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
 
     async with (
@@ -251,7 +252,7 @@ async def test_a_team_turn_waits_for_the_opening_no_longer_than_the_opening_wait
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(get_settings(), "internalization_room_opening_wait_ms", 300)
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
 
     async with (
@@ -286,7 +287,7 @@ async def test_a_team_turns_own_bound_starts_after_its_wait_for_the_opening(
     arrival leaves it at most 2 s, and a bound counted after the wait leaves it 4 s: a reply
     taking 3 s fits only the second, by a whole second either way."""
     monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 4000)
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
     guide.opening_takes = 2.0
     guide.reply_takes = 3.0
@@ -312,7 +313,7 @@ async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide(lines=(OPENING, OPENING)))
     guide.opening_fails = True
 
@@ -352,7 +353,7 @@ async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_
 async def test_an_opening_claimed_by_a_request_on_another_instance_is_waited_for_not_drafted_again(
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
     await _claim_on_the_row(rival_factory, session.id, "outra-instancia", datetime.now(UTC))
     stored = TurnResponse(
@@ -386,7 +387,7 @@ async def test_a_claim_left_by_a_holder_that_died_is_taken_over(
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
     guide.answer.set()
     died_at = datetime.now(UTC) - _dead_after() - timedelta(seconds=5)
@@ -405,7 +406,7 @@ async def test_a_claim_left_by_a_holder_that_died_is_taken_over(
 async def test_claiming_the_opening_does_not_count_as_the_teams_activity(
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
     last_active = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
     async with rival_factory() as setup:
@@ -470,7 +471,7 @@ async def test_a_prepared_line_is_never_parked_on_a_resumed_session_where_the_te
 async def test_a_no_audio_request_with_a_new_turn_id_on_a_session_with_messages_hears_the_last_line_again(  # noqa: E501
     db_session: AsyncSession, rival_factory, voice: _Voice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide())
     guide.answer.set()
 
@@ -495,7 +496,7 @@ async def test_an_opening_that_fails_after_it_was_written_leaves_the_claim_free(
     """The holder's own transaction already holds the row when the failure comes after the
     opening was written and before it was committed; freeing the claim must not wait on it."""
     monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 2000)
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _guide(monkeypatch, _Guide(lines=(OPENING, OPENING)))
     guide.answer.set()
 

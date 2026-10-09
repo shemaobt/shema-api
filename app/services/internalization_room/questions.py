@@ -193,8 +193,7 @@ async def get_question_for_device(
     The project is what the credential proves, and ``question_for_room_caller`` beside this
     already reads the reply's audio on that rule — the audio and the mark answered
     different callers until this helper made them agree. Same rule, same shape: a caller
-    that names a project reaches only that project's questions; the shared key names none
-    and keeps the by-id read, as everywhere else in the room. The list the tablet pulls
+    that names a project reaches only that project's questions. The list the tablet pulls
     (``replies_for``) reads on the same rule, so the list, the audio and the mark agree on
     who may touch a question.
     """
@@ -277,24 +276,17 @@ async def audio_of_a_question_this_facilitator_facilitates(
     return found
 
 
-async def question_for_room_caller(
-    db: AsyncSession, key: str, project_id: str | None
-) -> IRQuestion:
+async def question_for_room_caller(db: AsyncSession, key: str, project_id: str) -> IRQuestion:
     """The question an audio key addresses, on the room's own ownership rule.
 
-    Same rule as ``session_for_room_caller``: a device that names a project reads only
-    that project's own questions. A question naming none is reached by whoever asks —
-    unlike ``audio_of_a_question_this_facilitator_facilitates``, which refuses one — because
-    it is the common shape today: the room's app does not send its device credential yet
-    (see ``get_question_for_facilitator``'s own note on this), so refusing an unowned
-    question here would leave most of the table unreachable by the very team that raised
-    the hand. The shared key names no device and so no project, and keeps the by-id read
-    its real facilitator flow has always depended on.
+    A tablet reads only its own team's questions. A question naming no team is still
+    reached by whoever asks — unlike ``audio_of_a_question_this_facilitator_facilitates``,
+    which refuses one.
     """
     found = await _question_by_audio_key(db, key)
     if found is None:
         raise NotFoundError("No such audio")
-    if project_id is not None and found.project_id is not None and found.project_id != project_id:
+    if found.project_id is not None and found.project_id != project_id:
         raise NotFoundError("No such audio")
     return found
 
@@ -535,8 +527,7 @@ async def replies_for(
     The project is the third filter, after the device and the unheard answer, and it reads on
     the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
     a caller that names one lists that project's questions and the ones that name none.
-    ``project_id=None`` is the shared key, which names no project, and it turns the rule off
-    and keeps the list by device.
+    ``project_id=None`` turns the rule off and keeps the list by device.
     """
     query = (
         select(IRQuestion)
@@ -611,8 +602,8 @@ class SignedAudio:
 async def listen_address(key: str, *, settings: Settings | None = None) -> SignedAudio:
     """A short-lived signed address for a question or a reply, and when it dies.
 
-    The only address these ever had was the clip route, which is gated on the room key —
-    the tablet's credential. A facilitator signs in as a person and carries no room key,
+    The only address these ever had was the clip route, which is gated on the tablet's
+    device credential. A facilitator signs in as a person and carries none,
     so every play button in their queue answered 401 and the hand was dead on their side
     as surely as it was on the team's.
 

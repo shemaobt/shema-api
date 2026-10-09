@@ -557,8 +557,8 @@ class IRRelease(Base):
     releases can be retired.
 
     ``project_id`` is not null: a release is named by project, pericope and version, and a
-    session opened on the shared room key names no project — which is why approving one is
-    refused rather than numbered in a group belonging to nobody.
+    session that names no project — one the runner opened, or one left by the retired shared
+    key — is refused approval rather than numbered in a group belonging to nobody.
 
     ``package_sha256`` keeps the packet's own key rather than the glossary's word, which is
     *packet* and avoids *package*: the fingerprint travels to Refine under that name, and one

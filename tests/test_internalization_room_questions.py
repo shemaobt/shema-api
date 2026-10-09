@@ -517,7 +517,9 @@ async def test_a_panorama_question_keeps_the_sessions_own_pericope(
 ) -> None:
     """A hand raised on the Book Panorama screen names OV-Ruth, never a fallback or a book id
     stripped of its prefix (ENG-802)."""
-    session = await session_service.create_session(db_session, pericope="OV")
+    session = await session_service.create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV"
+    )
     assert session.pericope == OV
 
     question_id = await _raise_the_hand(room_client, session_id=session.id)
@@ -534,7 +536,9 @@ async def test_raising_a_hand_in_the_panorama_touches_no_coverage(
     """The boundary this half of ENG-779 does not move: the hand reads no map, reads the
     coverage events once (the SELECT behind `last_bead_moved_in_session`, the anchor that ENG-456
     added) and writes none, so the session's necklace is exactly what it was before the question."""
-    session = await session_service.create_session(db_session, pericope="OV")
+    session = await session_service.create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV"
+    )
     state_before = dict(session.coverage_state)
     events_before = await _coverage_events(db_session, session.id)
 

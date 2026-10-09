@@ -34,8 +34,8 @@ ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 #: An approval that cannot be numbered, because a release is named by project, pericope
 #: and version and this session names no project. Its own code because the tablet acts on
-#: it: nothing about the passage is wrong and retrying changes nothing — the room was
-#: opened on the shared key, and only a credentialed device can approve.
+#: it: nothing about the passage is wrong and retrying changes nothing — the session belongs
+#: to no team.
 ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
 #: A force asked for without the word that makes it one. Its own code for the reason above:
 #: nothing about the passage is wrong and retrying changes nothing — the Desk arms the force
@@ -124,12 +124,12 @@ class ProjectGranularityLocked(ConflictError):
 
 
 class ReleaseWithoutProject(ConflictError):
-    """A session opened on the shared room key was asked to approve its passage.
+    """A session that names no team was asked to approve its passage.
 
     Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
     promises a version to reload from, and there is none. Refused rather than numbered in
     a group belonging to nobody, because a release is named by project, pericope and
-    version, and the shared key names no project.
+    version, and this session names no project.
     """
 
 

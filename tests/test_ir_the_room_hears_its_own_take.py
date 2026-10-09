@@ -39,7 +39,6 @@ from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
-ROOM_KEY = "chave-da-sala"
 BUCKET = "balde-de-teste"
 STORAGE = "https://armazenamento.exemplo"
 AUDIO = b"a equipe contou de volta em portugues"
@@ -83,7 +82,6 @@ def storage_that_signs_without_google(monkeypatch):
     from app.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "gcs_platform_bucket", BUCKET, raising=False)
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     async def _signed(bucket: str, key: str, **_kwargs: object) -> str:
         return f"{STORAGE}/{bucket}/{key}?assinado"
@@ -115,7 +113,9 @@ async def client(db_session):
         yield c
 
 
-async def a_session_that_recorded(db_session, session_id: str, project_id: str | None = None):
+async def a_session_that_recorded(
+    db_session, session_id: str, project_id: str | None = TABLET_TEAM
+):
     session = IRSession(id=session_id, pericope="P03", project_id=project_id)
     db_session.add(session)
     await db_session.commit()

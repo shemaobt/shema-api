@@ -327,7 +327,7 @@ async def test_a_defect_of_ours_does_not_send_the_team_back_to_the_recorder(
     costs them a re-recording of something already committed. The reading runs after the
     answer and reports to nobody; what it leaves behind is a row with audio and no text.
     """
-    db_session.add(IRSession(id="sessao-1", pericope=PERICOPE))
+    db_session.add(IRSession(id="sessao-1", pericope=PERICOPE, project_id=TABLET_TEAM))
     await db_session.commit()
 
     answer = await room_client.post(

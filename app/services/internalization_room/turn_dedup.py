@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -67,23 +67,24 @@ async def _on_a_session_of_its_own(
 
 
 async def answered_turn(
-    db: AsyncSession, session_id: str, turn_id: str, project_id: str | None
+    db: AsyncSession, session_id: str, turn_id: str, project_id: str
 ) -> dict[str, Any] | None:
-    """The response already given for this turn id, to the project that may hear it.
+    """The response already given for this turn id, to the team that may hear it.
 
-    A caller naming no project is judged the way the session read beside this one
-    judges it — by id alone — so only a caller naming one joins against the session,
-    which names none of its own: a turn belonging to somebody else's session reads as
-    not landed yet, the same as a turn nobody has answered, so it falls through to the
-    ownership check the session read below already gives that caller its own refusal
-    from.
+    Joined against the session, which names the team: a turn belonging to somebody else's
+    session, or to a session that names no team, reads as not landed yet, the same as a
+    turn nobody has answered, so it falls through to the session read beside this one,
+    which refuses it.
     """
-    query = select(IRTurn).where(IRTurn.session_id == session_id, IRTurn.turn_id == turn_id)
-    if project_id is not None:
-        query = query.join(IRSession, IRSession.id == IRTurn.session_id).where(
-            or_(IRSession.project_id.is_(None), IRSession.project_id == project_id)
+    result = await db.execute(
+        select(IRTurn)
+        .join(IRSession, IRSession.id == IRTurn.session_id)
+        .where(
+            IRTurn.session_id == session_id,
+            IRTurn.turn_id == turn_id,
+            IRSession.project_id == project_id,
         )
-    result = await db.execute(query)
+    )
     turn = result.scalar_one_or_none()
     return turn.response if turn is not None else None
 

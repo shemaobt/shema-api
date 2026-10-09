@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_caller_dep
+from app.api.internalization_room._deps import linked_tablet_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.get(
     "/fixed-lines/{line}",
     response_model=FixedLineView,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def fixed_line(
     line: str,

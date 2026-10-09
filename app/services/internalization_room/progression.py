@@ -150,12 +150,11 @@ def _position(pericope: str, finished: Collection[str], here: str | None) -> Per
 async def active_passage(
     db: AsyncSession, *, project_id: str | None, book: str = ROOM_BOOK
 ) -> str | None:
-    """Where one team stands. A tablet that never said whose it is stands at the beginning.
+    """Where one team stands. A session that names no team stands at the beginning.
 
-    `project_id` is nullable because the room's app does not send its device credential yet
-    (ENG-454), so today that is the common case in the field rather than the exception. Work
-    with no project belongs to nobody rather than to everybody, so there is no history to read
-    and the honest answer is the one a team that has not started gets.
+    `project_id` is nullable because the runner's doors open sessions that belong to no team.
+    Work with no team belongs to nobody rather than to everybody, so there is no history to
+    read and the honest answer is the one a team that has not started gets.
     """
     if project_id is None:
         return resolve(set(), book=book)

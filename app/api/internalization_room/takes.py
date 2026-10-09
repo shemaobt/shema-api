@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
@@ -57,7 +57,7 @@ def _kind(raw: str) -> IRTakeKind:
 @router.post(
     "/sessions/{session_id}/takes",
     response_model=TakeResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def keep_take(
     session_id: str,
@@ -67,7 +67,7 @@ async def keep_take(
     chunk_index: int | None = Form(default=None),
     file: UploadFile = File(...),
     device_id: str = device_dep,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TakeResponse:
     """Store one take and answer with where it landed.
@@ -113,11 +113,11 @@ async def keep_take(
 @router.get(
     "/sessions/{session_id}/takes",
     response_model=TakesResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def list_takes(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TakesResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
@@ -132,12 +132,12 @@ async def list_takes(
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     response_class=RedirectResponse,
     response_model=None,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def room_listens_to_take(
     session_id: str,
     take_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Give the team back the telling it just recorded, by the same signed redirect.
@@ -165,8 +165,8 @@ async def facilitator_takes(
 ) -> TakesResponse:
     """What a session recorded, for the person who will listen to it.
 
-    A facilitator signs in; the team never does. So this carries no room key — the two
-    audiences never share a route.
+    A facilitator signs in; the team never does. So this carries no device credential — the
+    two audiences never share a route.
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
     return TakesResponse(
