@@ -211,3 +211,21 @@ def test_the_wait_gives_up_inside_the_six_hours_github_gives_the_job() -> None:
 
     assert job["timeout-minutes"] == 360
     assert hold_deploy.DEADLINE_MINUTES < 360
+
+
+async def test_an_urgent_deploy_does_not_wait_and_says_whose_room_it_ships_into(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    await a_session(db_session, "sessao-da-ruth", updated_at=datetime.now(UTC))
+
+    hold = the_hold_runs(
+        a_runner(tmp_path),
+        DEPLOY_URGENT="true",
+        DEPLOY_HOLD_POLL_SECONDS="0.1",
+        DEPLOY_HOLD_DEADLINE_MINUTES="0.005",
+    )
+
+    assert hold.returncode == 0
+    assert "Waiting on" not in hold.stdout
+    warning = hold.stdout.split("::warning::", 1)[1]
+    assert "sessao-da-ruth  project time-de-ruth" in warning

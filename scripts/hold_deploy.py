@@ -65,6 +65,13 @@ async def wait() -> int:
         if not held:
             print("No team session is open; the deploy goes on.", flush=True)
             return 0
+        if os.environ.get("DEPLOY_URGENT") == "true":
+            print(
+                f"::warning::An urgent deploy does not wait for the {len(held)} open team"
+                f" session(s):\n{named(held)}",
+                flush=True,
+            )
+            return 0
         if time.monotonic() - started >= deadline * 60:
             print(
                 f"::error::The deploy waited {deadline:g} minutes and these team sessions"
