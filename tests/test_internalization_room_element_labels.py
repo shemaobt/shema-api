@@ -40,7 +40,7 @@ def holed_catalogue(tmp_path):
     """A copy of the shipped catalogue with one language emptied out of one element."""
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["scene:1"]["pt"] = ""
+    holed["P01"]["absence:1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -112,7 +112,7 @@ def _without_the_key(node, key):
 
 def test_a_bead_with_no_spanish_name_in_a_passage_that_has_some_is_not_a_hole(tmp_path):
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
-    complete["P01"]["scene:1"]["es"] = ""
+    complete["P01"]["absence:1"]["es"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(complete), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -120,7 +120,7 @@ def test_a_bead_with_no_spanish_name_in_a_passage_that_has_some_is_not_a_hole(tm
 
     named = {e.key: e for e in labelled_elements("P01", catalogue_dir=tmp_path)}
 
-    assert named["scene:1"].label_pt and named["scene:1"].label_en
+    assert named["absence:1"].label_pt and named["absence:1"].label_en
 
 
 @pytest.mark.parametrize("name", ["ruth.json", "legend.json"])
@@ -150,7 +150,7 @@ def test_the_same_key_in_two_pericopes_carries_its_own_label():
 def test_a_hole_in_the_catalogue_is_refused_rather_than_filled_in(tmp_path):
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["scene:1"]["pt"] = ""
+    holed["P01"]["absence:1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -160,7 +160,7 @@ def test_a_hole_in_the_catalogue_is_refused_rather_than_filled_in(tmp_path):
         labelled_elements("P01", catalogue_dir=tmp_path)
 
     said = str(refused.value)
-    assert "P01" in said and "scene:1" in said and "pt" in said
+    assert "P01" in said and "absence:1" in said and "pt" in said
 
 
 def _shipped():
@@ -317,7 +317,7 @@ def test_the_two_refusals_do_not_answer_the_same_thing_on_the_wire(tmp_path, hol
 
     broken = client.get("/ours-is-broken")
     assert broken.status_code == 500
-    assert "scene:1" in broken.text
+    assert "absence:1" in broken.text
 
     asked = client.get("/they-asked-for-a-passage-that-is-not-one")
     assert asked.status_code == 400
@@ -345,7 +345,7 @@ def test_a_bead_with_no_label_is_a_named_failure_not_a_blank_page(holed_catalogu
 
     assert broken.status_code == 500
     body = broken.json()
-    assert "P01" in body["detail"] and "scene:1" in body["detail"]
+    assert "P01" in body["detail"] and "absence:1" in body["detail"]
     assert body["detail"] != "An unexpected error occurred. Please try again later."
 
 
@@ -382,7 +382,7 @@ def test_our_own_catalogue_being_broken_does_not_read_as_the_caller_s_mistake(tm
     """
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["scene:1"]["pt"] = ""
+    holed["P01"]["absence:1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -441,7 +441,8 @@ def test_outside_the_pilot_portuguese_is_absent_and_not_english(pericope_num):
     their language.
     """
     for element in labelled_elements(pericope_num):
-        assert element.label_pt is None
+        if element.kind is not ElementKind.SCENE:
+            assert element.label_pt is None
 
 
 def test_inside_the_pilot_nothing_moved():
@@ -472,7 +473,9 @@ def test_a_passage_the_catalogue_does_not_have_still_falls_back_to_the_canon(tmp
     named = labelled_elements("P03", catalogue_dir=catalogue)
     from_the_canon = {element.key: element.label for element in elements_for("P03")}
 
-    assert all(element.label_pt is None for element in named)
+    assert all(
+        element.label_pt is None for element in named if element.kind is not ElementKind.SCENE
+    )
     assert all(element.label_en == from_the_canon[element.key] for element in named)
 
 
@@ -551,9 +554,10 @@ def test_a_label_with_no_portuguese_is_served_absent_rather_than_refused(tmp_pat
 
     named = labelled_elements("P03", catalogue_dir=_with("P03", only_english, tmp_path))
 
+    catalogued = [element for element in named if element.kind is not ElementKind.SCENE]
     assert {element.key for element in named} == {e.key for e in elements_for("P03")}
-    assert all(element.label_en.startswith("en ") for element in named)
-    assert all(element.label_pt is None for element in named)
+    assert all(element.label_en.startswith("en ") for element in catalogued)
+    assert all(element.label_pt is None for element in catalogued)
 
 
 def test_the_permission_does_not_reach_english(tmp_path):
@@ -628,6 +632,8 @@ def test_the_ten_keep_the_promises_the_pilot_keeps(pericope_num):
     hebrew = re.compile(r"[֐-׿]")
 
     for element in labelled_elements(pericope_num):
+        if element.kind is ElementKind.SCENE:
+            continue
         text = element.label_en
         assert not hebrew.search(text), f"{pericope_num} {element.key} shows Hebrew: {text}"
         assert not _SHOUTED.search(text.replace("YHWH", "")), (
@@ -655,4 +661,5 @@ def test_two_beads_of_one_scene_of_the_ten_never_read_the_same(pericope_num):
 def test_portuguese_stays_absent_for_the_ten(pericope_num):
     """Naming them in English did not machine-fill the other one, which is the whole refusal."""
     for element in labelled_elements(pericope_num):
-        assert element.label_pt is None
+        if element.kind is not ElementKind.SCENE:
+            assert element.label_pt is None

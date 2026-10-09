@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import validator_map_block
@@ -53,4 +54,5 @@ async def run_verdict_turn(
         session_id=session_id,
         telling_back=telling_back,
         with_history=False,
+        first_scene=load_map(pericope_num).scenes[0].title,
     )

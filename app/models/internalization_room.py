@@ -249,6 +249,15 @@ class CoverageView(BaseModel):
     beads_filled: int
 
 
+At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
+
+
+class MomentView(BaseModel):
+    at: At
+    part: int | None = None
+    parts: int
+
+
 class CoverageFrame(BaseModel):
     turn_id: str
     status: Literal["settled", "failed"]
@@ -372,6 +381,7 @@ class SessionStateResponse(BaseModel):
     #: True once the session holds a Guide line, its Opening at least. The tablet asks a
     #: session's Opening only while this is false.
     opened: bool = False
+    moment: MomentView | None = None
 
 
 class SpokenSegment(BaseModel):
@@ -402,6 +412,7 @@ class TurnResponse(BaseModel):
     #: first, then the scene and its invitation. Empty on every other turn, and empty
     #: whenever the Guide did not mark the boundary exactly where it was asked for.
     segments: list[SpokenSegment] = Field(default_factory=list)
+    moment: MomentView | None = None
 
 
 class PassageView(BaseModel):
@@ -884,9 +895,7 @@ class TeamReleaseResponse(BaseModel):
     package_sha256: str | None = None
     #: Null on a refusal, for the reason ``release_id`` is.
     approved_at: str | None = None
-    #: The gate's codes in the order the gate raised them, plus `no_project`, the one literal
-    #: that is the route's own (the gate never composes a project-less session); empty on a
-    #: mint. Never a sentence.
+    #: The gate's codes in the order the gate raised them; empty on a mint. Never a sentence.
     blockers: list[str] = Field(default_factory=list)
     #: Which current parts carry nobody's words, by their own take, when `untold_part` is
     #: among the blockers; empty otherwise, the way `terminei`'s own field is (ADR 0027).

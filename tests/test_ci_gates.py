@@ -61,8 +61,13 @@ INTEGRATION_GLOB = "integration/**"
 
 #: A push filter that reaches these would put every branch in the repository through four
 #: jobs on every push. The cost of the test job alone is between 6 and 56 minutes (ENG-556),
-#: so the trigger staying narrow is a property worth holding, not a detail.
+#: so the trigger staying narrow is a property worth holding, not a detail. Only `test.yml` may
+#: also name `main`, as a report that gates nothing.
 TOO_BROAD = {"**", "*", "main", "master"}
+
+#: `main` is the one branch the Test workflow alone may add: a report on the merge commit, which
+#: blocks no merge and no deploy. No gate may reach these.
+ALWAYS_TOO_BROAD = TOO_BROAD - {"main"}
 
 #: ENG-980's own lists, and every migration test added since: the fifteen files that walk a
 #: migration and the three that open a fresh interpreter, read here rather than derived, so a
@@ -133,12 +138,28 @@ def test_the_gate_still_runs_on_pull_requests(filename: str) -> None:
     assert "pull_request" in triggers, f"{filename} stopped running on pull requests"
 
 
-@pytest.mark.parametrize("filename", sorted(GATES))
-def test_the_push_trigger_reaches_only_the_integration_branches(filename: str) -> None:
-    triggers = _triggers(_workflow(filename), filename)
-    branches = set(triggers["push"]["branches"])
+def test_the_test_workflow_runs_on_a_push_to_main_and_the_other_gates_stay_narrow() -> None:
+    """A crossing of two green pull requests shows on the commit it lands on, as a report."""
+    pushed = {
+        filename: set(_triggers(_workflow(filename), filename)["push"]["branches"])
+        for filename in GATES
+    }
 
-    assert not branches & TOO_BROAD, f"{filename} would run on every push: {branches}"
+    assert {"main", INTEGRATION_GLOB} <= pushed["test.yml"], pushed["test.yml"]
+    for filename, branches in pushed.items():
+        assert not branches & ALWAYS_TOO_BROAD, f"{filename} would run on every push: {branches}"
+    for filename in GATES.keys() - {"test.yml"}:
+        assert not pushed[filename] & TOO_BROAD, f"{filename} would run on main: {pushed[filename]}"
+
+
+def test_the_deploy_does_not_wait_for_the_test_workflow() -> None:
+    """The Test run on `main` reports and gates nothing: the deploy starts on the push itself."""
+    deploy = _workflow("deploy.yml")
+    triggers = _triggers(deploy, "deploy.yml")
+
+    assert "main" in triggers["push"]["branches"]
+    assert "workflow_run" not in triggers
+    assert all("needs" not in job for job in deploy["jobs"].values())
 
 
 @pytest.mark.parametrize(("filename", "jobs"), sorted(GATES.items()))

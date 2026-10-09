@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 IR = "/api/internalization-room"
-ROOM_KEY = "sala-de-teste"
 TEAM = "A fome grande fez a família se mudar."
 FAIL_SAFE = "Tem bastante coisa aqui. Vamos com calma e ficar nesta cena."
 OPENING = "Vamos ficar no começo: uma família sai de Belém por falta de comida."
@@ -49,14 +49,11 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room.comprehension.state import ComprehensionState
     from app.services.internalization_room.live_turn import ComprehensionTurn
     from app.services.platform.tts import SynthesizedSpeech
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=IR)
@@ -67,7 +64,10 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         staged = _Room(client=c, outcome=TurnOutcome(speech=OPENING, transcript=""))
 
         async def _comprehension_turn(*_: Any, **__: Any) -> ComprehensionTurn:
@@ -99,14 +99,14 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 async def passage(db_session: AsyncSession) -> str:
     """A passage session with nothing prepared, so every opening here is written on demand."""
-    session = await create_session(db_session, pericope="P01", language="pt")
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="P01", language="pt"
+    )
     return session.id
 
 
 async def _the_room_opens(room: _Room, session_id: str) -> httpx.Response:
-    opened = await room.client.post(
-        f"{IR}/sessions/{session_id}/turns", headers={"X-Room-Key": ROOM_KEY}
-    )
+    opened = await room.client.post(f"{IR}/sessions/{session_id}/turns")
     assert opened.status_code == 200, opened.text[:200]
     return opened
 
@@ -114,7 +114,6 @@ async def _the_room_opens(room: _Room, session_id: str) -> httpx.Response:
 async def _the_team_answers(room: _Room, session_id: str) -> httpx.Response:
     answered = await room.client.post(
         f"{IR}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": ROOM_KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
     assert answered.status_code == 200, answered.text[:200]
@@ -267,7 +266,9 @@ async def test_a_panorama_answer_is_heard_but_promises_no_classification(
         return room.outcome
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama_turn)
-    panorama = await create_session(db_session, pericope="OV-Ruth", language="pt")
+    panorama = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV-Ruth", language="pt"
+    )
     room.outcome = TurnOutcome(speech=OPENING, transcript=TEAM)
 
     answered = await _the_team_answers(room, panorama.id)

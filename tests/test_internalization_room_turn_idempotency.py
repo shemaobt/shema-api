@@ -17,7 +17,8 @@ from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session, get_session
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
 
@@ -93,7 +94,6 @@ def fan_out(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 async def _post_a_turn(client, session_id: str, *, turn_id: str):
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": turn_id},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
@@ -102,7 +102,7 @@ async def _post_a_turn(client, session_id: str, *, turn_id: str):
 async def test_the_same_turn_id_posted_twice_runs_the_fan_out_once_and_appends_one_exchange(
     client, db_session, test_engine, fan_out
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     first = await _post_a_turn(client, session.id, turn_id="turno-1")
     assert first.status_code == 200, first.text[:300]
@@ -125,7 +125,7 @@ async def test_two_different_turn_ids_each_run_their_own_fan_out(
     client, db_session, fan_out
 ) -> None:
     """The counterweight: dedupe keys on the id, not on the session alone."""
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     first = await _post_a_turn(client, session.id, turn_id="turno-1")
     assert first.status_code == 200, first.text[:300]
@@ -140,12 +140,11 @@ async def test_two_different_turn_ids_each_run_their_own_fan_out(
 async def test_a_turn_id_over_the_column_width_is_refused_before_any_work_runs(
     client, db_session, fan_out
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     too_long = "x" * 65
 
     refused = await client.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": too_long},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
@@ -160,14 +159,13 @@ async def test_the_audio_less_walk_back_in_echoes_the_turn_id_too(
     client, db_session, fan_out
 ) -> None:
     """The third door out of the route, and the one the PR's own note to ENG-627 forgot."""
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response=GUIDE_LINE
     )
 
     again = await client.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": "turno-de-volta"},
     )
 

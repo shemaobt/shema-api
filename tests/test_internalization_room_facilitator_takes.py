@@ -1,9 +1,9 @@
 """Who can listen to what the team recorded.
 
-The room has two audiences that never share a route. The team's app carries a shared device
-key and never signs in; a facilitator is a person, signs in, and comes through the platform's
-own app access. Playback belongs to the second one — the tablet already holds its own copy,
-and the room key is the same on every tablet.
+The room has two audiences that never share a route. The team's app carries a device
+credential and never signs in; a facilitator is a person, signs in, and comes through the
+platform's own app access. Playback belongs to the second one — the tablet already holds its
+own copy.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
@@ -82,7 +83,10 @@ async def client(db_session):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -158,16 +162,17 @@ async def test_without_a_login_nobody_listens(client, db_session, room_app):
     assert response.status_code == 401
 
 
-async def test_the_room_key_does_not_open_the_facilitator_door(client, db_session, room_app):
+async def test_a_tablets_device_credential_does_not_open_the_facilitator_door(
+    client, db_session, room_app
+):
     session, _take = await _session_with_a_take(db_session)
 
     response = await client.get(
         f"{IR}/facilitator/sessions/{session.id}/takes",
-        headers={"X-Room-Key": "sala-local-dev"},
     )
 
     assert response.status_code == 401, (
-        "a chave é a mesma em todos os tablets — ela identifica o app, não uma pessoa"
+        "a credencial do tablet identifica um aparelho, não uma pessoa"
     )
 
 

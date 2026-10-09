@@ -1,6 +1,6 @@
 """ENG-448 — the room app authenticates as a device, not with a key everyone shares.
 
-`X-Room-Key` is one string, the same in every installation, shipped as an asset inside the
+The shared room key was one string, the same in every installation, shipped as an asset inside the
 bundle. Leak one and you have leaked all of them, and there is nothing to revoke because
 there is nothing that tells two tablets apart.
 
@@ -9,10 +9,7 @@ nulling its hash ends it. What this file asserts is that the room's door accepts
 ending it is felt on the very next request, and that a caller can tell "revoked" from
 "wrong" — because those are two different things for the tablet to do about it.
 
-**The shared key is still accepted here, deliberately.** Retiring it is the other half of
-the issue and it is not in this slice: the room app does not send the credential until
-ENG-455, so a door that took only the credential would open for nobody. Behaviour 3 is that
-window, written as a test so that closing it later is a test that changes, not a discovery.
+The shared key is retired (ADR 0057): behaviour 3 is that it opens nothing.
 """
 
 from dataclasses import dataclass
@@ -24,14 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import sessions as room_sessions
 from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.device_harness import RETIRED_ROOM_KEY_HEADER, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
-ROOM_KEY_HEADER = "X-Room-Key"
 
 
 @pytest.fixture()
@@ -39,11 +35,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -73,15 +66,12 @@ async def a_claimed_device(db: AsyncSession, *, email="fac@example.com") -> Tabl
     language = await make_language(db, name=f"Lang {email}", code=email[:3])
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=project.id
-    )
+    linked = await a_linked_tablet(db, team_id=project.id, facilitator=user)
     return Tablet(
         user=user,
         project=project,
-        device_id=claimed.device.id,
-        credential=claimed.credential,
+        device_id=linked.device_id,
+        credential=linked.credential,
     )
 
 
@@ -95,7 +85,7 @@ async def open_a_session(client, headers: dict[str, str]):
 async def test_a_credential_alone_is_served_and_scopes_the_session_to_its_project(
     client, db_session
 ):
-    """No `X-Room-Key` in this request at all — the credential is the whole authentication."""
+    """The credential is the whole authentication."""
     device = await a_claimed_device(db_session)
 
     opened = await open_a_session(client, {DEVICE_CREDENTIAL_HEADER: device.credential})
@@ -144,18 +134,13 @@ async def test_a_revoked_credential_is_told_apart_from_one_that_was_never_issued
     assert revoked.json()["code"] != never_issued.json()["code"]
 
 
-# Behaviour 3 — the window: the shared key is still accepted, and nothing is not.
+# Behaviour 3 — the shared key opens nothing, and neither does nothing.
 
 
-async def test_the_shared_room_key_is_still_accepted_while_the_window_is_open(client):
-    """Deliberate, and dated by ENG-455 rather than by this file.
+async def test_the_shared_room_key_alone_is_refused(client):
+    refused = await open_a_session(client, {RETIRED_ROOM_KEY_HEADER: KEY})
 
-    Delete this case when the key is retired; until then a change that stops accepting it
-    stops every tablet in the field, and this is what says so out loud.
-    """
-    served = await open_a_session(client, {ROOM_KEY_HEADER: KEY})
-
-    assert served.status_code == 200, served.text
+    assert refused.status_code == 401, refused.text
 
 
 async def test_a_request_with_neither_credential_nor_key_is_refused(client):

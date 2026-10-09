@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room.voice_handles import team_audio_url
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import rehearsed_in_parts, room_client
 
 
@@ -35,7 +35,6 @@ async def test_a_take_the_team_plays_back_is_signed_with_the_database_let_go(
     async with room_client(db_session, monkeypatch) as client:
         played = await client.get(
             f"{PREFIX}/sessions/{session.id}/takes/{part.id}/audio",
-            headers={"X-Room-Key": KEY},
         )
 
     assert played.status_code == 307, played.text

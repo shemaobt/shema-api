@@ -36,7 +36,7 @@ from app.services.internalization_room.back_translation import (
     the_finding_that_leads,
 )
 from app.services.internalization_room.background import the_reading_ahead
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import final_segments
@@ -99,11 +99,12 @@ async def check_the_telling_back(
     """
     read_this_round: list[Finding] = []
     nuances: list[Nuance] = []
+    language = room_language(session.language)
     addresses = addresses_for(
         told,
         current_parts(takes),
         scene_titles(session),
-        session.language,
+        language,
     )
     if not state.already_analysed(told):
         read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
@@ -111,8 +112,8 @@ async def check_the_telling_back(
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
+            session_language=LANGUAGE_NAMES[language],
+            language_code=language,
             settings=settings,
             session_id=session.id,
         )
@@ -130,7 +131,7 @@ async def check_the_telling_back(
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
-    told_back = segments_block(told, session.language)
+    told_back = segments_block(told, language)
     outcome = await run_verdict_turn(
         findings_text=findings_block(current or nuances[:1], addresses),
         scope=state.scope or session.pericope,
@@ -139,8 +140,8 @@ async def check_the_telling_back(
         telling_back=told_back,
         speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
         validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
-        session_language=LANGUAGE_NAMES[session.language],
-        language_code=session.language,
+        session_language=LANGUAGE_NAMES[language],
+        language_code=language,
         settings=settings,
         session_id=session.id,
     )

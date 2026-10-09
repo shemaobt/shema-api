@@ -7,9 +7,9 @@ scene.
 
 An address is made of three things and nothing else: the **Frase number** the analyst gave and
 the team heard, the part's position among the session's current parts, and the scene's own
-title out of the element-label catalogue. Nothing here writes a name. A room that described a
-scene in words the map does not use would be putting content about the passage in a team's ears
-on our authority, which is the one thing the containment rule forbids.
+title. Nothing here writes a name. A room that described a scene in words the map does not use
+would be putting content about the passage in a team's ears on our authority, which is the one
+thing the containment rule forbids.
 
 It lives beside the findings block rather than inside it because it is the only thing in the
 room that turns takes and a catalogue into words, and `back_translation.py` is long enough
@@ -18,16 +18,13 @@ without a second subject in it.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 
-from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.canon.labels import ElementLabelsBroken, labelled_elements
-from app.services.internalization_room.languages import FLOOR
-
-logger = logging.getLogger(__name__)
+from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.canon.titles import scene_title
+from app.services.internalization_room.languages import FLOOR, room_language
 
 
 @dataclass(frozen=True)
@@ -78,40 +75,19 @@ class Addresses:
         return self.by_stretch.get(segment_id or "", "")
 
 
-def scene_titles(session: IRSession) -> list[str | None]:
-    """The passage's scenes in scene order, each named in the language the room is speaking.
-
-    `None` where the catalogue has no title in that language, which is ten of the fourteen
-    passages in Portuguese. There is no fallback across languages and none is wanted: an
-    English title in a Portuguese session is a sentence the team cannot read.
-
-    **A holed catalogue costs the title, never the room.** `labelled_elements` raises on a
-    catalogue of ours being wrong, and that is a 500 — which is the right answer on the screens
-    that exist to show labels, and the wrong one here: before this the verdict never read the
-    catalogue at all, and a team's session dying over a decoration is a worse failure than a
-    verdict that names the part by its number. So the one exception is caught, around the one
-    call, and it is logged with its traceback rather than swallowed: a data fault nobody is
-    told about is how it stays there.
-    """
-    try:
-        with reading_the_canon_of(session.canon_pin):
-            elements = labelled_elements(session.pericope)
-    except ElementLabelsBroken:
-        logger.exception(
-            "element labels are holed for %s; the address loses its titles", session.pericope
-        )
-        return []
-    return [
-        element.label_pt if session.language == "pt" else element.label_en
-        for element in elements
-        if element.kind is ElementKind.SCENE
-    ]
+def scene_titles(session: IRSession) -> list[str]:
+    language = room_language(session.language)
+    with reading_the_canon_of(session.canon_pin):
+        return [
+            scene_title(session.pericope, scene.number, scene.title, language)
+            for scene in load_map(session.pericope).scenes
+        ]
 
 
 def addresses_for(
     told: list[IRSegment],
     parts: list[IRTake],
-    titles: list[str | None],
+    titles: list[str],
     language_code: str,
 ) -> Addresses:
     """Each told stretch's part, named as the team will hear it, by the stretch's own address.
@@ -126,8 +102,7 @@ def addresses_for(
     **The title only where the rehearsal's parts are the map's scenes.** The room directs the
     team to record whole or scene by scene and nothing enforces it: a team that merged two
     scenes and split a third has four parts over three scenes, and part 2 is not scene 2. The
-    count is the only guard there is, so the title is said when the counts agree and the
-    catalogue holds it in the session's language.
+    count is the only guard there is, so the title is said when the counts agree.
     """
     words = words_for(language_code)
     titled = len([part for part in parts if part.ordinal is not None]) == len(titles)

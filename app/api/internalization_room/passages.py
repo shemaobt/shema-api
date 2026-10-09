@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_caller_dep
+from app.api.internalization_room._deps import linked_tablet_dep
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
@@ -61,7 +61,7 @@ async def _voiced_panorama(
 @router.get(
     "/books/{book}/passages",
     response_model=BookPassagesResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def passages(
     book: str,

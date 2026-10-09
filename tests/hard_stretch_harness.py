@@ -35,11 +35,11 @@ from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import build_internalization_release
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM
 from tests.release_harness import supported_comprehension
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
-ROOM_KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 P = "P01"
 AUDIO = b"a equipe explicou este trecho em portugues"
@@ -95,7 +95,7 @@ class Facilitator:
 
 
 async def a_session(
-    db: AsyncSession, *, team_id: str | None = None, language: str | None = None
+    db: AsyncSession, *, team_id: str | None = TABLET_TEAM, language: str | None = None
 ) -> str:
     """A session, named by its id: the reads below expire the identity map."""
     session = await room.create_session(db, pericope=P, project_id=team_id, language=language)
@@ -115,7 +115,7 @@ async def rehearse(client: httpx.AsyncClient, session_id: str, *, part: int | No
         data["chunk_index"] = str(part)
     kept = await client.post(
         f"{IR}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data=data,
         files={"file": ("ensaio.m4a", b"a equipe ensaiou a passagem inteira", "audio/mp4")},
     )
@@ -147,7 +147,7 @@ async def tell(
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data=data,
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
@@ -166,7 +166,7 @@ async def correct(
     starts, ends = SLICES[stretch - 1]
     return await client.post(
         f"{IR}/sessions/{session_id}/segments/{segment_id}/replace",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)},
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )

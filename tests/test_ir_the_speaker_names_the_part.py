@@ -18,6 +18,7 @@ quotes would go green on a catalogue that had drifted, which is the one thing it
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -27,16 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSegment
-from app.services.internalization_room import part_names
 from app.services.internalization_room.back_translation import (
     Finding,
     FindingKind,
     findings_block,
 )
-from app.services.internalization_room.canon.labels import (
-    ElementLabelsBroken,
-    labelled_elements,
-)
+from app.services.internalization_room.canon import titles
+from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.part_names import (
     Addresses,
@@ -62,22 +60,6 @@ from tests.text_seam_harness import the_analyst_reads as the_seam_analyst_is_scr
 TITLED = "P02"
 
 SEAM = "/api/internalization-room/text-seam/back-translation"
-
-
-def _a_passage_with_no_portuguese_titles(scenes: int = 3) -> str:
-    """A passage of `scenes` scenes the catalogue has not translated into Portuguese.
-
-    Asked of the catalogue rather than written down. Ten of the fourteen are untranslated
-    today and `P03` is one of them, but naming it here would make this case go red on the day
-    somebody translates it — which is work being done, not a rule breaking.
-    """
-    for pericope in (f"P{number:02d}" for number in range(1, 15)):
-        scene_labels = [
-            element for element in labelled_elements(pericope) if element.key.startswith("scene:")
-        ]
-        if len(scene_labels) == scenes and all(one.label_pt is None for one in scene_labels):
-            return pericope
-    pytest.skip(f"every {scenes}-scene passage now has Portuguese scene titles: the rule is moot")
 
 
 def _scene_title(pericope: str, scene: int, language: str) -> str | None:
@@ -200,27 +182,28 @@ async def test_a_four_part_rehearsal_names_the_part_by_number_alone(
     assert title and title not in _block(room.briefs[-1])
 
 
-async def test_a_passage_without_portuguese_titles_names_the_number_alone(
+async def test_a_scene_missing_from_her_list_is_named_by_its_english_heading(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     analyst: ScriptedAnalyst,
     room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    """Ten of the fourteen passages have no Portuguese scene title, and none is borrowed.
-
-    Her own fail-safe rule: a voiced line never mixes languages, so the English title of a
-    passage nobody has translated is not a fallback — it is a sentence the team cannot read.
-    """
-    untitled = _a_passage_with_no_portuguese_titles()
-    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=untitled)
+    listed = json.loads(titles.PORTUGUESE_TITLES.read_text(encoding="utf-8"))
+    del listed["scenes"][TITLED]["S2"]
+    without_it = tmp_path / "ui-labels.pt.json"
+    without_it.write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(titles, "PORTUGUESE_TITLES", without_it)
+    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED)
     analyst.readings = [{"findings": [_addition(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["a parte 2"]
-    in_english = _scene_title(untitled, 2, "en")
-    assert in_english and in_english not in _block(room.briefs[-1])
+    assert _addresses(room.briefs[-1]) == ["a parte 2 — First appeal and refusal"], (
+        "uma cena fora da lista dela era dita só pelo número"
+    )
 
 
 async def test_a_rehearsal_told_whole_is_the_whole_recording(
@@ -313,35 +296,6 @@ async def test_a_whole_recording_beside_numbered_parts_does_not_shift_their_numb
 
     assert answered.status_code == 200, answered.text
     assert _addresses(room.briefs[-1]) == ["a parte 1"]
-
-
-async def test_a_holed_catalogue_costs_the_title_and_not_the_verdict(
-    client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    analyst: ScriptedAnalyst,
-    room: Room,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A catalogue of ours being wrong takes the scene's name away, and nothing else.
-
-    Everywhere else a holed catalogue is a 500, and on the screens that exist to show labels
-    that is right. Here it is not: before this rule the verdict never read the catalogue at
-    all, and a team's session dying over a decoration is a worse failure than a verdict that
-    names the part by its number, which the team can still act on.
-    """
-
-    def holed(*_: Any, **__: Any) -> list[Any]:
-        raise ElementLabelsBroken("P02 scene:2 is labelled but the canon does not serve it")
-
-    monkeypatch.setattr(part_names, "labelled_elements", holed)
-    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=TITLED)
-    analyst.readings = [{"findings": [_addition(5)]}]
-
-    answered = await _checked(client, db_session, session.id)
-
-    assert answered.status_code == 200, answered.text
-    assert _addresses(room.briefs[-1]) == ["a parte 2"]
-    assert room.said, "the room still spoke a verdict"
 
 
 async def test_an_english_session_names_the_part_in_english(

@@ -1,10 +1,10 @@
-"""What a turn leaves behind when the room never gets to speak it.
+"""What a turn leaves behind when the room cannot speak it yet.
 
 Read from the endpoint and then from a second database session, because the fact under
-test is durability: a probe and a ledger event committed by a turn that failed before the
-team heard anything are still there on the next request, and the next answer is then
-assessed against a question nobody asked. Re-reading through the request's own session
-would only show its identity map, which is not what survives.
+test is durability: the turn is stored before any sound is made, so a voice that fails
+leaves the turn whole for the next request, and its reply is the one the team hears once
+the sound is made. Re-reading through the request's own session would only show its
+identity map, which is not what survives.
 """
 
 import json
@@ -25,10 +25,10 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 FIRST_QUESTION = "Quem aparece nesta parte?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
@@ -93,11 +93,9 @@ async def client(
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
 
     async def _heard(audio: bytes, **_: Any) -> Any:
@@ -116,7 +114,10 @@ async def client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -143,7 +144,7 @@ def target_checkpoint() -> str:
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSession:
     """A room that has asked its question and is waiting on the answer."""
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
@@ -155,7 +156,6 @@ async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSe
 async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 
@@ -168,26 +168,24 @@ def _guide_lines(session: IRSession) -> list[str]:
     ]
 
 
-async def test_a_turn_the_room_never_spoke_leaves_no_probe_waiting_on_it(
+async def test_a_turn_whose_voice_fails_is_kept_with_the_state_it_was_decided_in(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     voice: _SynthesisThatCanBreak,
     models_agree: None,
     reread,
 ) -> None:
-    """A question nobody heard cannot be the one the next answer is judged against.
-
-    The probe is the room's authorization to assess what comes next. Committing a new one
-    for a turn that died before the voice went out points that authorization at a question
-    the team was never asked.
-    """
+    """The reply is stored to be heard once its sound is made, so the answer it judged is
+    spent with it, the same as on a turn the room spoke at once."""
     voice.working = False
 
     await _the_team_answers(client, waiting_room.id)
 
-    after = comprehension_of(await reread(waiting_room.id))
-    assert after.active_probe is not None
-    assert after.active_probe.id == "probe-1"
+    session = await reread(waiting_room.id)
+    assert comprehension_of(session).active_probe is None, (
+        "a voz falhava e o turno voltava a avaliar a mesma resposta no pedido seguinte"
+    )
+    assert _guide_lines(session) == [FIRST_QUESTION, GUIDE_LINE]
 
 
 async def test_a_turn_the_room_did_speak_is_remembered_whole(
@@ -213,37 +211,15 @@ async def test_a_turn_the_room_did_speak_is_remembered_whole(
     assert voice.spoken == [GUIDE_LINE]
 
 
-async def test_a_room_that_cannot_speak_still_says_so_to_the_tablet(
-    client: httpx.AsyncClient,
-    waiting_room: IRSession,
-    voice: _SynthesisThatCanBreak,
-    models_agree: None,
-) -> None:
-    """The fix is about what is kept, not about hiding the failure.
-
-    A silent 200 would leave the app with no line to play and no reason why, which is the
-    one outcome worse than the error it already shows.
-    """
-    voice.working = False
-
-    answered = await _the_team_answers(client, waiting_room.id)
-
-    assert answered.status_code == 500
-
-
-async def test_a_turn_that_fails_after_the_voice_still_reaches_no_one(
+async def test_a_turn_whose_write_fails_hands_the_tablet_nothing_to_play(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     voice: _SynthesisThatCanBreak,
     models_agree: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Speaking first does not create a turn the team heard but the room forgot.
-
-    A synthesized clip reaches the team only as the handle in this response, so a request
-    that fails after synthesis hands the app nothing to play. The clip is left paid for in
-    the bucket, where the retry finds it.
-    """
+    """A turn the room could not store is never voiced, so the team hears no reply the room
+    then forgot."""
     from app.api.internalization_room import sessions as sessions_api
 
     async def _the_database_goes_away(*_args: Any, **_kwargs: Any) -> IRSession:
@@ -255,3 +231,4 @@ async def test_a_turn_that_fails_after_the_voice_still_reaches_no_one(
 
     assert answered.status_code == 500
     assert "audio_url" not in answered.text
+    assert voice.spoken == [], "a voz pagava uma fala que a sala não chegou a guardar"

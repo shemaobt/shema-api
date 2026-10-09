@@ -27,10 +27,10 @@ from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, f
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 #: A letter no English sentence in this codebase has ever needed. Most of the original
 #: Portuguese literals this branch removed carried at least one, so this catches a
@@ -57,8 +57,6 @@ async def client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
-
     async def _panorama(**kwargs: Any) -> TurnOutcome:
         spoken.append(kwargs)
         return TurnOutcome(speech="Bem-vindos.", transcript="")
@@ -84,16 +82,15 @@ async def client(
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
+        transport=ASGITransport(app=test_app), base_url="http://test", headers=tablet.headers
     ) as c:
         yield c
 
 
 async def _open(client: httpx.AsyncClient, **body: Any) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", **body}
-    )
+    return await client.post(f"{PREFIX}/sessions", json={"pericope": "OV", **body})
 
 
 async def test_a_session_opened_naming_a_language_answers_in_it(
@@ -102,9 +99,7 @@ async def test_a_session_opened_naming_a_language_answers_in_it(
     created = await _open(client, language="pt")
     assert created.status_code == 200, created.text[:200]
 
-    await client.post(
-        f"{PREFIX}/sessions/{created.json()['session_id']}/turns", headers={"X-Room-Key": KEY}
-    )
+    await client.post(f"{PREFIX}/sessions/{created.json()['session_id']}/turns")
 
     turn = next(call for call in spoken if "session_language" in call)
     assert turn["language_code"] == "pt"
@@ -117,9 +112,7 @@ async def test_a_session_that_names_no_language_gets_english(
     """O piso é o inglês: um chamador que não nomeia idioma não pode cair no português."""
     created = await _open(client)
 
-    await client.post(
-        f"{PREFIX}/sessions/{created.json()['session_id']}/turns", headers={"X-Room-Key": KEY}
-    )
+    await client.post(f"{PREFIX}/sessions/{created.json()['session_id']}/turns")
 
     turn = next(call for call in spoken if "session_language" in call)
     assert turn["language_code"] == FLOOR
@@ -136,9 +129,9 @@ async def test_the_language_is_fixed_at_the_open_and_no_later_request_moves_it(
 
     await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY, "Accept-Language": "en", "X-Room-Language": "en"},
+        headers={"Accept-Language": "en", "X-Room-Language": "en"},
     )
-    standing = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    standing = await client.get(f"{PREFIX}/sessions/{session_id}")
 
     assert standing.json()["language"] == "pt"
     assert all(call["language_code"] == "pt" for call in spoken if "language_code" in call), (
@@ -171,9 +164,7 @@ async def test_a_language_the_room_does_not_speak_is_refused_rather_than_answere
 async def test_a_language_the_room_does_not_speak_is_refused_at_the_wheel(
     client: httpx.AsyncClient, unspoken: str
 ) -> None:
-    refused = await client.get(
-        f"{PREFIX}/books/Ruth/passages?language={unspoken}", headers={"X-Room-Key": KEY}
-    )
+    refused = await client.get(f"{PREFIX}/books/Ruth/passages?language={unspoken}")
 
     assert refused.status_code == 400, refused.text[:200]
 
