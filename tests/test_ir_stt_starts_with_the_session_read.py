@@ -131,7 +131,7 @@ def test_the_memo_holds_at_most_a_thousand_and_twenty_four_sessions(
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
 
     for n in range(sessions_api._LANGUAGE_MEMO_MAX + 5):
-        sessions_api._remember_language(f"session-{n}", "pt", None)
+        sessions_api._remember_language(f"session-{n}", "pt", TABLET_TEAM)
 
     assert len(sessions_api._LANGUAGE_MEMO) == sessions_api._LANGUAGE_MEMO_MAX
     assert "session-0" not in sessions_api._LANGUAGE_MEMO, (

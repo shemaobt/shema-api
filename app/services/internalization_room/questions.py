@@ -184,24 +184,23 @@ def _no_such_question(question_id: str) -> str:
 
 
 async def get_question_for_device(
-    db: AsyncSession, question_id: str, *, device_id: str, project_id: str | None
+    db: AsyncSession, question_id: str, *, device_id: str, project_id: str
 ) -> IRQuestion:
-    """The question, if this tablet raised it and, when the tablet names a project, in it.
+    """The question, if this tablet raised it in its own team.
 
     The device id is self-declared (``require_device``), so on its own it is a claim, not a
     proof: any caller that guesses a question's id and its device's id could mark it heard.
     The project is what the credential proves, and ``question_for_room_caller`` beside this
     already reads the reply's audio on that rule — the audio and the mark answered
-    different callers until this helper made them agree. Same rule, same shape: a caller
-    that names a project reaches only that project's questions. The list the tablet pulls
+    different callers until this helper made them agree. Same rule, same shape: a tablet
+    reaches only its own team's questions. The list the tablet pulls
     (``replies_for``) reads on the same rule, so the list, the audio and the mark agree on
     who may touch a question.
     """
     question = await get_question(db, question_id)
     if question.device_id != device_id:
         raise NotFoundError(_no_such_question(question_id))
-    owned_elsewhere = project_id is not None and question.project_id is not None
-    if owned_elsewhere and question.project_id != project_id:
+    if question.project_id != project_id:
         raise NotFoundError(_no_such_question(question_id))
     return question
 
@@ -279,14 +278,13 @@ async def audio_of_a_question_this_facilitator_facilitates(
 async def question_for_room_caller(db: AsyncSession, key: str, project_id: str) -> IRQuestion:
     """The question an audio key addresses, on the room's own ownership rule.
 
-    A tablet reads only its own team's questions. A question naming no team is still
-    reached by whoever asks — unlike ``audio_of_a_question_this_facilitator_facilitates``,
-    which refuses one.
+    A tablet reads only its own team's questions. A question naming no team — raised on
+    the retired shared key — is nobody's to reach, as a session naming none is (ADR 0057).
     """
     found = await _question_by_audio_key(db, key)
     if found is None:
         raise NotFoundError("No such audio")
-    if found.project_id is not None and found.project_id != project_id:
+    if found.project_id != project_id:
         raise NotFoundError("No such audio")
     return found
 
@@ -516,30 +514,24 @@ async def resolve_elsewhere(
     return question
 
 
-async def replies_for(
-    db: AsyncSession, device_id: str, *, project_id: str | None
-) -> list[IRQuestion]:
+async def replies_for(db: AsyncSession, device_id: str, *, project_id: str) -> list[IRQuestion]:
     """Answers this device has not heard yet, from any session it ever held, in its project.
 
     A facilitator may answer hours later, when that passage is long closed. Scoping the
     reply to its session would drop it silently.
 
-    The project is the third filter, after the device and the unheard answer, and it reads on
+    The team is the third filter, after the device and the unheard answer, and it reads on
     the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
-    a caller that names one lists that project's questions and the ones that name none.
-    ``project_id=None`` turns the rule off and keeps the list by device.
+    only the tablet's own team's questions.
     """
     query = (
         select(IRQuestion)
         .where(IRQuestion.device_id == device_id)
         .where(IRQuestion.status == IRQuestionStatus.ANSWERED)
         .where(IRQuestion.heard_at.is_(None))
+        .where(IRQuestion.project_id == project_id)
         .order_by(IRQuestion.answered_at)
     )
-    if project_id is not None:
-        query = query.where(
-            or_(IRQuestion.project_id.is_(None), IRQuestion.project_id == project_id)
-        )
     result = await db.execute(query)
     return list(result.scalars())
 

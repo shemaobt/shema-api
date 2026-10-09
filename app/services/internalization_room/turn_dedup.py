@@ -13,15 +13,13 @@ from app.db.insert_once import insert_once
 from app.db.models.internalization_room import IRSession, IRTurn
 from app.models.internalization_room import TurnResponse
 
-_in_flight: dict[
-    tuple[str, str, str | None], tuple[asyncio.Task[TurnResponse], StageClock | None]
-] = {}
+_in_flight: dict[tuple[str, str, str], tuple[asyncio.Task[TurnResponse], StageClock | None]] = {}
 
 
 async def answer_once(
     session_id: str,
     turn_id: str,
-    project_id: str | None,
+    project_id: str,
     answer: Callable[[AsyncSession], Coroutine[Any, Any, TurnResponse]],
 ) -> TurnResponse:
     """Run this turn once while it is in flight; a resend joins it and hears the same answer.
@@ -50,7 +48,7 @@ async def answer_once(
     return answered
 
 
-def in_flight(session_id: str, turn_id: str, project_id: str | None) -> bool:
+def in_flight(session_id: str, turn_id: str, project_id: str) -> bool:
     """Whether this caller's request for this turn is still being answered in this process.
 
     Keyed the way `answer_once` keys it, so a stranger's turn id landing on the owner's

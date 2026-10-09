@@ -229,7 +229,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
 #: grow this without bound.
 _LANGUAGE_MEMO_MAX = 1024
-_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str | None]] = OrderedDict()
+_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str]] = OrderedDict()
 
 
 def forget_session_languages() -> None:
@@ -237,7 +237,7 @@ def forget_session_languages() -> None:
     _LANGUAGE_MEMO.clear()
 
 
-def _remember_language(session_id: str, language: str, project_id: str | None) -> None:
+def _remember_language(session_id: str, language: str, project_id: str) -> None:
     _LANGUAGE_MEMO[session_id] = (language, project_id)
     _LANGUAGE_MEMO.move_to_end(session_id)
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:

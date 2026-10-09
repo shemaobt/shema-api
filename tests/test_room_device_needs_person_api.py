@@ -226,15 +226,35 @@ async def test_a_device_with_no_team_to_reach_is_refused_and_leaves_no_halt(clie
     assert await queued_devices(client, team) == []
 
 
+async def test_a_tablet_unlinked_while_its_halt_is_on_the_way_is_refused_and_leaves_no_halt(
+    client, db_session, monkeypatch
+):
+    """The door let the tablet in, and the unlink landed before the halt was written."""
+    from app.api.internalization_room import devices as devices_api
+    from app.services.device.needs_person import record_needs_person
+
+    team = await a_team(db_session, code="eqa")
+    working = await a_tablet(db_session, team)
+    stopped = await a_tablet(db_session, team)
+
+    async def unlinked_on_the_way(db, device_id):
+        await unlink_device(db, user=team.user, device_id=device_id)
+        return await record_needs_person(db, device_id)
+
+    monkeypatch.setattr(devices_api, "record_needs_person", unlinked_on_the_way)
+
+    refused = await halt(client, stopped)
+
+    assert refused.status_code == 409, refused.text
+    assert await halted_moments(client, team) == {working.device_id: None}
+    assert await queued_devices(client, team) == []
+
+
 # Case 4 — a tablet halts only itself.
 
 
 async def test_a_tablet_naming_itself_may_halt_only_itself(client, db_session):
-    """A credential names one device, and here it also bounds what that device may say.
-
-    The shared key names nobody and may halt any claimed device — that window is open until
-    ENG-455 retires the key. A tablet that has stopped naming itself has given that up.
-    """
+    """A credential names one device, and here it also bounds what that device may say."""
     team = await a_team(db_session, code="eqa")
     first = await a_tablet(db_session, team)
     second = await a_tablet(db_session, team)

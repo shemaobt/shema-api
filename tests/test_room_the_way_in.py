@@ -17,13 +17,16 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.core.exceptions import AuthenticationError
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRQuestion, IRSession
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.unlink_device import unlink_device
+from app.services.internalization_room import questions as room_questions
 from app.services.internalization_room import sessions as room_sessions
 from app.services.internalization_room.turn_dedup import remember_turn
+from app.services.internalization_room.voice_handles import to_handle
 from tests.baker import make_project_user_access, make_user
 from tests.device_harness import RETIRED_ROOM_KEY_HEADER, LinkedTablet, a_linked_tablet
+from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client
 
@@ -272,6 +275,50 @@ async def test_a_session_with_no_team_is_reached_by_no_room_caller(
         theirs.id, "X"
     )
     assert turn.status_code == 404, turn.text
+
+
+async def test_a_question_with_no_team_is_reached_by_no_tablet(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryStore()
+    monkeypatch.setattr(room_questions, "_store", lambda *_, **__: store)
+    tablet = await a_linked_tablet(db_session)
+
+    async def an_answered_question(project_id: str | None) -> IRQuestion:
+        raised = await room_questions.raise_question(
+            db_session,
+            device_id=tablet.device_id,
+            session_id="sessao",
+            pericope="P03",
+            audio=b"a equipe perguntou",
+            project_id=project_id,
+            store=store,
+        )
+        return await room_questions.answer_with_voice(
+            db_session, raised, audio=b"a resposta", answered_by="fac", store=store
+        )
+
+    own = await an_answered_question(tablet.project_id)
+    teamless = await an_answered_question(None)
+
+    listed = await client.get(f"{PREFIX}/questions/replies", headers=tablet.headers)
+    own_audio = await client.get(
+        f"{PREFIX}/questions/audio/{to_handle(own.reply_audio_key)}", headers=tablet.headers
+    )
+    teamless_audio = await client.get(
+        f"{PREFIX}/questions/audio/{to_handle(teamless.reply_audio_key)}",
+        headers=tablet.headers,
+    )
+    teamless_heard = await client.post(
+        f"{PREFIX}/questions/{teamless.id}/heard", headers=tablet.headers
+    )
+    own_heard = await client.post(f"{PREFIX}/questions/{own.id}/heard", headers=tablet.headers)
+
+    assert [reply["question_id"] for reply in listed.json()["replies"]] == [own.id]
+    assert own_audio.status_code == 200, own_audio.text
+    assert teamless_audio.status_code == 404, teamless_audio.text
+    assert teamless_heard.status_code == 404, teamless_heard.text
+    assert own_heard.status_code == 200, own_heard.text
 
 
 @pytest.mark.parametrize(("method", "path"), TEAM_DOORS)
