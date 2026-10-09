@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.services.internalization_room.canon import book_material
+from tests.canon_harness import forget_the_canon
 
 HER_SENTENCE = (
     "The team has not yet lived any passage: every one of these still lies ahead of them. "
@@ -28,11 +29,9 @@ def a_book_whose_logs_record_no_rule(
     logs = tmp_path / "compilation-log"
     logs.mkdir()
     monkeypatch.setattr(book_material, "LOGS_DIR", logs)
-    for cached in (book_material.preservation_rules, book_material._register_complete):
-        cached.cache_clear()
+    forget_the_canon()
     yield "Ruth"
-    for cached in (book_material.preservation_rules, book_material._register_complete):
-        cached.cache_clear()
+    forget_the_canon()
 
 
 def test_a_book_with_no_recorded_rule_gets_none_recorded_instead_of_failing(
