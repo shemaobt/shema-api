@@ -23,11 +23,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.db.models.internalization_room import IRSegment, IRSessionStatus
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     AUDIO,
     DEVICE,
     IR,
-    ROOM_KEY,
     SLICES,
     current,
     marks,
@@ -51,13 +51,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import hearing
     from app.services.internalization_room import takes as takes_service
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     queue: list[str | Exception] = []
 
@@ -84,7 +81,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.transcriber = queue  # type: ignore[attr-defined]
         c.said = queue  # type: ignore[attr-defined]
         c.bucket = bucket  # type: ignore[attr-defined]
@@ -107,7 +107,7 @@ async def _tell(
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data=data,
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
@@ -167,7 +167,7 @@ async def test_an_empty_retelling_is_refused_and_counts_nothing(
     assert await _segment_rows(db_session, session_id) == before
     assert await marks(db_session, session_id) == []
     assert (await row(db_session, session_id)).status is not IRSessionStatus.NEEDS_PERSON
-    read = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    read = await client.get(f"{IR}/sessions/{session_id}")
     assert read.status_code == 200, read.text
     assert read.json()["halt"] is None
 

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
@@ -53,6 +54,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             if pericope is None:
                 logger.info("Nothing left to prepare: the team has closed every passage")
                 return
+            stamp = await earlier_passages(db, project_id=panorama.project_id, pericope=pericope)
             await db.commit()
             outcome = await run_turn(
                 transcript="",
@@ -67,7 +69,34 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 settings=get_settings(),
                 session_id=panorama_session_id,
                 prepared_pericope=pericope,
+                earlier_passages=stamp,
             )
+            if outcome.used_fail_safe and not outcome.draft:
+                logger.warning(
+                    "Prepared opening fell to the fail-safe on an empty draft for session %s, "
+                    "pericope %s: the Validator never saw it",
+                    panorama_session_id,
+                    pericope,
+                    extra={
+                        "session_id": panorama_session_id,
+                        "pericope": pericope,
+                        "reason": "empty draft",
+                    },
+                )
+                return
+            if outcome.used_fail_safe and not outcome.verdict:
+                logger.warning(
+                    "Prepared opening fell to the fail-safe on an unreadable Validator reply "
+                    "for session %s, pericope %s: the draft was never judged",
+                    panorama_session_id,
+                    pericope,
+                    extra={
+                        "session_id": panorama_session_id,
+                        "pericope": pericope,
+                        "reason": "unreadable Validator reply",
+                    },
+                )
+                return
             if outcome.used_fail_safe:
                 reason = (
                     ", ".join(str(issue.get("problem", "?")) for issue in outcome.issues)

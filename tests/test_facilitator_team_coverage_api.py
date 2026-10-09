@@ -2,7 +2,7 @@
 
 `CoverageView` answers `{engaged, surfaced, total, absence_index}`, and those aggregates are
 exactly what the product forbids putting in front of a facilitator. This route answers the
-opposite: every element of the passage, named in three languages, typed, placed in its scene,
+opposite: every element of the passage, named in two languages, typed, placed in its scene,
 and carrying its own coverage state.
 
 Three of these carry the slice.
@@ -61,7 +61,7 @@ PILOT = {
     "P01": {"elements": 44, "scenes": [1, 2, 3, 4], "preserved": 3},
     "P02": {"elements": 39, "scenes": [1, 2, 3], "preserved": 4},
     "P05": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P14": {"elements": 14, "scenes": [1], "preserved": 0},
+    "P14": {"elements": 19, "scenes": [1], "preserved": 5},
 }
 
 #: The four Level-1 axes open every passage, and like a preservation rule they sit in no scene.
@@ -197,9 +197,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
 ) -> None:
     """Behaviour 1 — each pilot passage serves its own count, scenes and preservation group.
 
-    P14 is a case of this and not a test of its own: one scene, and the fifth group empty.
-    Both are real passages of Ruth rather than edge cases, and asserting them twice would be
-    the same branch covered under two names.
+    P14 is a case of this and not a test of its own: the only one of the four with a single
+    scene. It is a real passage of Ruth rather than an edge case, and asserting it twice
+    would be the same branch covered under two names.
     """
     _user, project, headers = await a_facilitator(db_session, email=f"b1{pericope}@x.com")
 
@@ -220,7 +220,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     assert all(e["scene"] is not None for e in body[4:] if e not in preserved)
 
 
-async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncSession) -> None:
+async def test_every_bead_is_named_in_portuguese_and_english(
+    client, db_session: AsyncSession
+) -> None:
     """Behaviour 1 — no bead reaches the Desk as an identifier.
 
     Non-empty is not the assertion. Serving `preserved:R3` as its own label is non-empty and
@@ -228,8 +230,8 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
     absent and the names asserted distinct from each other — a facilitator has to be able to
     tell two beads apart by reading them.
 
-    What is deliberately *not* asserted is that the three languages differ. `being:B10` is
-    Rute in all three, and demanding a difference would demand a mistranslation. Nor that a
+    What is deliberately *not* asserted is that the two languages differ. `being:S1:B10` is
+    YHWH in both, and demanding a difference would demand a mistranslation. Nor that a
     name is unique across the passage: Ruth is a bead in each of P02's three scenes, told
     apart by the scene column, so the names are distinct within a scene.
     """
@@ -239,7 +241,7 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
 
     assert len(body) == PILOT["P02"]["elements"]
     for element in body:
-        for language in ("pt", "en", "es"):
+        for language in ("pt", "en"):
             named = element[f"label_{language}"]
             assert named.strip()
             assert named != element["key"]
@@ -452,7 +454,6 @@ async def test_no_aggregate_reaches_the_facilitator(client, db_session: AsyncSes
         "key",
         "label_pt",
         "label_en",
-        "label_es",
         "kind",
         "scene",
         "status",
@@ -547,8 +548,8 @@ async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     This route refused it until ENG-442 landed. It does not any more, and the reason is worth
     keeping: the canon serves all fourteen of Ruth, D-03 walks every team through them, and
     refusing ten of the fourteen would have taken the whole necklace down for a passage the
-    team is genuinely working on. English comes almost free from the canon; Portuguese and
-    Spanish are absent rather than filled in with it, which is what stops a sentence a
+    team is genuinely working on. English comes almost free from the canon; Portuguese is
+    absent rather than filled in with it, which is what stops a sentence a
     facilitator does not read arriving under the name of their own language.
     """
     _user, project, headers = await a_facilitator(db_session, email="b7@x.com")
@@ -559,7 +560,7 @@ async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     body = response.json()
     assert body, "a passagem sem catalogo respondeu vazia em vez de vir do canon"
     assert all(bead["label_en"] for bead in body)
-    assert all(bead["label_pt"] is None and bead["label_es"] is None for bead in body)
+    assert all(bead["label_pt"] is None for bead in body if bead["kind"] != "scene")
 
 
 async def test_a_pericope_outside_the_book_is_refused(client, db_session: AsyncSession) -> None:
@@ -673,3 +674,28 @@ async def test_the_served_order_is_the_canons_bead_order(client, db_session: Asy
     body = (await client.get(coverage_url(project.id, "P01"), headers=headers)).json()
 
     assert [element["key"] for element in body] == element_keys("P01")
+
+
+async def test_the_woman_of_ruth_1_5_reaches_the_desk_with_no_name_beside_her(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b10woman@x.com")
+
+    body = by_key((await client.get(coverage_url(project.id, "P01"), headers=headers)).json())
+
+    assert body["being:S4:B3"]["label_en"] == "The woman"
+    assert body["being:S4:B3"]["label_pt"] == "A mulher", (
+        "a conta da cena 4 dizia «A mulher (Noemi)», devolvendo o nome que o texto tira em 1:5"
+    )
+
+
+async def test_the_unnamed_husband_of_ruth_2_11_reaches_the_desk_unnamed(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b10husband@x.com")
+
+    body = by_key((await client.get(coverage_url(project.id, "P06"), headers=headers)).json())
+
+    assert body["being:S2:ruth-s-deceased-husband-your-hus"]["label_en"] == (
+        "Someone the text leaves unnamed here"
+    ), "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"

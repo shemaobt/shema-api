@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Resp
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
@@ -47,14 +47,14 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 DeviceId = device_dep
 
 
-@router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[room_caller_dep])
+@router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[linked_tablet_dep])
 async def raise_question(
     session_id: str,
     background: BackgroundTasks,
     device_id: str = DeviceId,
     element_key: str | None = Form(default=None),
     file: UploadFile = File(...),
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> QuestionRaisedResponse:
     """Take the hand down and keep what was asked.
@@ -95,14 +95,15 @@ async def raise_question(
 
 
 @router.get(
-    "/questions/replies", response_model=HandRepliesResponse, dependencies=[room_caller_dep]
+    "/questions/replies",
+    response_model=HandRepliesResponse,
+    dependencies=[linked_tablet_dep, DeviceId],
 )
 async def replies(
-    device_id: str = DeviceId,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> HandRepliesResponse:
-    waiting = await service.replies_for(db, device_id, project_id=project_id)
+    waiting = await service.replies_for(db, project_id=project_id)
     return HandRepliesResponse(
         replies=[
             HandReplyView(
@@ -115,9 +116,9 @@ async def replies(
     )
 
 
-@router.get("/questions/audio/{handle}", dependencies=[room_caller_dep])
+@router.get("/questions/audio/{handle}", dependencies=[linked_tablet_dep])
 async def team_audio(
-    handle: str, project_id: str | None = device_project_dep, db: AsyncSession = Depends(get_db)
+    handle: str, project_id: str = device_project_dep, db: AsyncSession = Depends(get_db)
 ) -> Response:
     """Serve a facilitator's spoken reply to the app that asked.
 
@@ -133,16 +134,15 @@ async def team_audio(
     return await _audio(handle)
 
 
-@router.post("/questions/{question_id}/heard", dependencies=[room_caller_dep])
+@router.post("/questions/{question_id}/heard", dependencies=[linked_tablet_dep, DeviceId])
 async def heard(
     question_id: str,
     payload: HeardRequest | None = None,
-    device_id: str = DeviceId,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     question = await service.get_question_this_tablet_reaches(
-        db, question_id, device_id=device_id, project_id=project_id
+        db, question_id, project_id=project_id
     )
     await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
     nudge(question.project_id, "hands")
@@ -150,10 +150,10 @@ async def heard(
 
 
 def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -> InboxQuestionView:
-    """One card, with its bead named in the three languages the Desk offers.
+    """One card, with its bead named in the two languages the Desk offers.
 
     A hand raised on no bead, a key the catalogue does not have, and a pericope outside the
-    canon all arrive here as a miss, and all three leave the card with three nulls.
+    canon all arrive here as a miss, and all three leave the card with two nulls.
     """
     bead = named.get((question.pericope, question.element_key or ""))
     return InboxQuestionView(
@@ -164,7 +164,6 @@ def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -
         pericope=question.pericope,
         element_label_pt=bead.label_pt if bead else None,
         element_label_en=bead.label_en if bead else None,
-        element_label_es=bead.label_es if bead else None,
         status=str(question.status),
         heard_at=_moment(question.heard_at),
         audio_url=facilitator_audio_url(question.audio_key),

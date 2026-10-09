@@ -14,10 +14,11 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.run_turn import TurnOutcome
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 
 @pytest.fixture()
@@ -26,11 +27,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _panorama(**_: Any) -> TurnOutcome:
         return TurnOutcome(
@@ -48,7 +46,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             mime_type="audio/mpeg",
             etag="e",
             cached=False,
-            key=(f"tts/{get_settings().internalization_room_voice_id}/m/f/{abs(hash(_text))}.mp3"),
+            key=facilitator_speech_key(_text, language="pt"),
         )
         return entry, False
 
@@ -64,20 +62,22 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 async def test_the_opening_turn_carries_no_body_at_all(client: httpx.AsyncClient) -> None:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": "OV", "language": "pt"},
     )
     assert created.status_code == 200
     session_id = created.json()["session_id"]
 
-    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     assert opened.status_code == 200, (
         "a abertura sem corpo e o que o app envia; recusa-la deixa a sala muda e "
@@ -107,12 +107,11 @@ async def test_a_marked_opening_arrives_as_two_clips_and_now_as_the_first_of_the
 
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": "OV", "language": "pt"},
     )
     session_id = created.json()["session_id"]
 
-    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     body = opened.json()
     assert body["audio_url"].startswith("/api/internalization-room/voice/")
@@ -147,13 +146,12 @@ async def test_a_team_walking_back_in_hears_where_the_room_was(
 
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": "OV", "language": "pt"},
     )
     session_id = created.json()["session_id"]
 
-    first = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
-    again = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    first = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
+    again = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     assert first.status_code == 200
     assert again.status_code == 200

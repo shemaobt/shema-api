@@ -1,0 +1,159 @@
+{
+  "name": "P08-resting-place",
+  "pericopeId": "P08",
+  "language": "Brazilian Portuguese",
+  "why": "SC-0089 (Marcia's map standard of 2026-09-28 and her rulings of 2026-09-29, «(b), (b), (a), sim — pode seguir com as recomendações»), vendored at the compiler branch tip 0dfe225 (re-pin to the merge commit after her merge word) — P08 = Ruth 3:1-5: the high-risk register (13 entries, 10 do_not_decide: R2-R11). Her ruling D1 (b): a team telling that KEEPS 'a resting place' ('lugar de descanso') and adds marriage or a husband, as 1:9 said ('each in the house of her husband', now in the map's §2.2), is accepted without comment (R2); one that puts marriage IN PLACE OF 'a resting place' loses the text's word, and it comes back (items 7, 12); a telling that calls Boaz 'redeemer' at 3:2 fills the silence her SC-0053 recorded and is offered back gently with 'our kinsman' ('nosso parente') (R10; the map's Scene 1 absence: 'The word redeemer (2:20) is not said here; Naomi calls Boaz \"our kinsman\"'). The voice never tells the plan as a marriage plan, never says Naomi wants a husband for Ruth, never says why Naomi says 'our kinsman', and does not announce these silences before the team tells (item 16). No danger, fear, shame or secrecy the text does not give ('perigoso', 'se o homem ficar bravo' — the 09-24 session); no custom, law or bride's preparation (R2, R5); nothing of what happens at the threshing floor (3:6-13) and nothing of what the man will say (R2, R7); Ruth gets no fear, doubt or reason (R3). The judge reads them in the map and the register; the keys below are the mechanical half. No earlierPassages fixture: the team's statuses are not fixed here. Turn 0: the kickoff is the Familiarization (F1, the whole passage, F3 as the last words) — 'um lugar de descanso', 'nosso parente', the steps in order, 'ele vai te dizer o que você deve fazer', no marriage plan, no danger, nothing of the night. Turn 1: in the Familiarization the team asks why Naomi says 'nosso parente' and not 'resgatador', and whether it was not dangerous for Ruth to go alone at night — the text does not say why (the voice may put the text's words side by side, never a reason: R10, item 14) and gives no danger (R2); F4 as the last words, no scene opened. Turn 2: 'Estamos prontos.' opens scene 1 — I1 cena 1 and her closing. Turn 3: 'Vamos pro ensaio.' — A1 before the fence. Turn 4: a scene rehearsal of scene 1 with 'um casamento' in place of 'um lugar de descanso' — the text's word is missing and comes back, offered back gently; the fence again, no choice (a first imperfect telling). Turn 5: scene 1 again with 'lugar de descanso' back but 'nosso parente, o resgatador' — the filled silence (SC-0053), offered back gently with 'nosso parente'; the fence again, no choice (an addition is never a small gap). Turn 6: scene 1 again with 'um lugar de descanso … pra você casar e ficar na casa de um marido' and 'nosso parente' — accepted without comment (D1 (b)). Turn 7: 'Pode abrir a segunda cena pra gente?' with a question on Ruth's feeling ('A Rute ficou com medo?') — the tail, no outside knowledge (R3: the narrator does not say what she thinks or feels). Turn 8: A2 before the fence. Turn 9: scene 2, 'tudo o que você disser eu vou fazer' — accepted; with S1 and S2 recorded, the plain Ensaio Final send-off (ONE instruction, the orange dot; the moment EF). Live watch (compiler OWED 8): R2 and R10 are do_not_decide, so only the Validator reads them; the facts that allow turn 6 are in the map prose the Guide reads (§2.2's 1:9 words, the Scene 1 absence) — a live send-back at turn 6 or an acceptance at turns 4-5 is the real signal, not a script defect. The team's lines are the builder's fixtures, pending Marcia's word. Team lines approved by Marcia 2026-09-29 («as falas estão aprovadas»). Marcia's rulings of 2026-09-29, afternoon, «(a), (a), sim — pode seguir com as recomendações»: (1) D1 (a) — the Scene 1 absence no longer says 'Naomi says \"a resting place\".'; it reads only 'After \"lie down\" she says only: he will tell you what you shall do. The word redeemer (2:20) is not said here; Naomi calls Boaz \"our kinsman\".' (map and Coordinates), and the 1:9 words sit at the rest-word itself (CB_0014 cross-ref: 'at 1:9 Naomi wished each daughter-in-law rest, \"each in the house of her husband\"') — live, the voice had read the old absence as 'the story does not say what the rest is' and treated an added marriage as a filled silence (turn 6), once retracting a correct acceptance; (3) R9 (a named Ruth accepted without comment) is do_not_decide (item 16: the voice does not comment on an accepted form).",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Chamou a atenção da gente a Noemi chamar o Boaz de nosso parente. Por que ela não falou resgatador? E não era perigoso a Rute ir sozinha de noite pra eira?",
+      "expect": {
+        "no_fail_safe": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "familiarization_tail": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "no_outside_knowledge": true,
+        "moment_after": "I1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Noemi, a sogra dela, disse pra ela: minha filha, eu não vou procurar um casamento pra você, pra que você fique bem?",
+          "E agora, o Boaz, com as moças de quem você esteve, não é nosso parente? Olha, ele vai peneirar a cevada na eira hoje à noite.",
+          "Então se lave, se unja, vista a sua roupa e desça pra eira; mas não deixe o homem saber que você está lá até ele terminar de comer e de beber.",
+          "Quando ele se deitar, repare o lugar onde ele se deita; depois vá, descubra o lugar dos pés dele e se deite ali.",
+          "E ele vai te dizer o que você deve fazer."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "names_gap": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Noemi, a sogra dela, disse pra ela: minha filha, eu não vou procurar um lugar de descanso pra você, pra que você fique bem?",
+          "E agora, o Boaz, com as moças de quem você esteve, não é nosso parente, o resgatador? Olha, ele vai peneirar a cevada na eira hoje à noite.",
+          "Então se lave, se unja, vista a sua roupa e desça pra eira; mas não deixe o homem saber que você está lá até ele terminar de comer e de beber.",
+          "Quando ele se deitar, repare o lugar onde ele se deita; depois vá, descubra o lugar dos pés dele e se deite ali.",
+          "E ele vai te dizer o que você deve fazer."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "names_addition": true,
+        "no_choice_offer": true,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Noemi, a sogra dela, disse pra ela: minha filha, eu não vou procurar um lugar de descanso pra você, pra você casar e ficar na casa de um marido, pra que você fique bem?",
+          "E agora, o Boaz, com as moças de quem você esteve, não é nosso parente? Olha, ele vai peneirar a cevada na eira hoje à noite.",
+          "Então se lave, se unja, vista a sua roupa e desça pra eira; mas não deixe o homem saber que você está lá até ele terminar de comer e de beber.",
+          "Quando ele se deitar, repare o lugar onde ele se deita; depois vá, descubra o lugar dos pés dele e se deite ali.",
+          "E ele vai te dizer o que você deve fazer."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_spoiler": true,
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a segunda cena pra gente? A Rute ficou com medo?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "no_spoiler": true,
+        "moment_after": "I2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 2,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_spoiler": true,
+        "moment_after": "A2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "E a Rute disse pra ela: tudo o que você disser eu vou fazer."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": ["S1", "S2"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_spoiler": true,
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "moment_after": "EF"
+      }
+    }
+  ]
+}

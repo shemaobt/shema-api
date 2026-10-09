@@ -44,6 +44,18 @@ def floor(settings: Settings | None = None) -> str:
     return normalize(named) or FLOOR
 
 
+def room_language(stored: str | None) -> str:
+    """The language the room answers a session in, whatever that session was stored with.
+
+    A row persisted before ``es`` left ``ROOM_LANGUAGES`` still names it, and every reader of
+    that row that indexes a table by the stored value fails on it. Read through this, a stored
+    language the room no longer speaks answers in the floor, as the voice already does. It is
+    applied at each reader and not once at the load, because a refresh re-reads the column and
+    an assignment would be written back to the row.
+    """
+    return normalize(stored) or floor()
+
+
 def normalize(value: str | None) -> str | None:
     """One of the room's languages, or ``None`` for anything it does not speak.
 

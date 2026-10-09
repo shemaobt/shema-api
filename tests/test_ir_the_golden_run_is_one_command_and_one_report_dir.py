@@ -124,6 +124,7 @@ def _args(sessions: Path, out: Path, **over: Any) -> argparse.Namespace:
         "access_code": RUNNER_KEY,
         "stamp": STAMP,
         "rejudge": None,
+        "budget_usd": None,
     }
     return argparse.Namespace(**{**given, **over})
 
@@ -180,6 +181,34 @@ async def test_a_played_session_is_judged_and_the_verdict_sits_beside_its_transc
     transcript = (out / f"P01-understand-first.{STAMP}.transcript.txt").read_text(encoding="utf-8")
     assert judge.asked[0]["user_content"].endswith(transcript.rstrip("\n")), (
         "o juiz lê exatamente o bloco de transcript que foi exportado"
+    )
+
+
+async def test_scripts_of_one_passage_send_the_judge_prompt_marked_and_a_lone_one_does_not(
+    over_the_seam, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    _script(sessions, "P01-a", "P01", [{"team": "Oi."}])
+    _script(sessions, "P01-b", "P01", [{"team": "Oi."}])
+
+    await golden_runner.run(_args(sessions, tmp_path / "pair"))
+
+    assert [llm.CACHE_BREAK in asked["system_prompt"] for asked in judge.asked] == [True, True], (
+        "o segundo script da passagem relia ~19,6k tokens a preço cheio porque o primeiro não "
+        "deixou nada no cache"
+    )
+
+    lone = the_judge_answers(monkeypatch)
+    only = tmp_path / "only"
+    only.mkdir()
+    _script(only, "P01-a", "P01", [{"team": "Oi."}])
+
+    await golden_runner.run(_args(only, tmp_path / "alone"))
+
+    assert [llm.CACHE_BREAK in asked["system_prompt"] for asked in lone.asked] == [False], (
+        "um script sozinho na passagem escrevia no cache a preço de escrita e ninguém lia"
     )
 
 
@@ -573,6 +602,62 @@ async def test_a_rejudge_refuses_to_write_over_the_run_it_reads(
     assert "--out" in capsys.readouterr().err
 
 
+def _export(directory: Path, name: str, *, refused: str | None = None) -> None:
+    exported: dict[str, Any] = {
+        "name": name,
+        "pericopeId": "P01",
+        "language": "Brazilian Portuguese",
+        "baseUrl": "http://127.0.0.1:8047/api/internalization-room/text-seam/",
+        "sessionId": f"s-{name}",
+        "turns": [
+            {
+                "idx": 0,
+                "team": "Oi.",
+                "guide": GUIDE_LINE,
+                "outcome": "pass",
+                "interrupted": False,
+                "turnMs": 17000,
+                "usage": [],
+                "mechanical": [],
+            }
+        ],
+    }
+    if refused:
+        exported["refused"] = refused
+    (directory / f"{name}.2026-09-16T21-13-26.json").write_text(
+        json.dumps(exported), encoding="utf-8"
+    )
+
+
+async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    pair = tmp_path / "pair"
+    pair.mkdir()
+    _export(pair, "P01-a")
+    _export(pair, "P01-b")
+
+    await golden_runner.run(_args(pair, tmp_path / "pair-again", rejudge=str(pair)))
+
+    assert [llm.CACHE_BREAK in asked["system_prompt"] for asked in judge.asked] == [True, True], (
+        "um --rejudge de doze scripts da mesma passagem pagava a escrita de cache doze vezes"
+    )
+
+    survivor = the_judge_answers(monkeypatch)
+    refused = tmp_path / "refused"
+    refused.mkdir()
+    _export(refused, "P01-a")
+    _export(refused, "P01-b", refused="502 o modelo não respondeu")
+
+    await golden_runner.run(_args(refused, tmp_path / "refused-again", rejudge=str(refused)))
+
+    assert [llm.CACHE_BREAK in asked["system_prompt"] for asked in survivor.asked] == [False], (
+        "o export recusado não é julgado, então o outro fica sozinho na passagem e não escreve "
+        "no cache para ninguém ler"
+    )
+
+
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:
     warned = golden_runner.Played(idx=0, team="Oi.", guide="Vão com Deus!", outcome="pass")
     warned.mechanical = ["religious farewell of its own"]
@@ -601,3 +686,31 @@ def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> 
     ) in readme, (
         "uma reprovação do juiz não vira aviso mecânico — e a linha diz por que o portão fechou"
     )
+
+
+async def test_a_session_about_an_earlier_passage_is_judged_with_her_kind_and_the_apps_fact(
+    over_the_seam, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    path = _script(
+        sessions,
+        "P03-earlier-passages-status",
+        "P03",
+        [{"kickoff": True}, {"team": "Lembrem: na última parte, Noemi mandou as noras voltarem."}],
+    )
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["earlierPassages"] = {"P01": "approved", "P02": "not_worked"}
+    path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    await golden_runner.run(_args(sessions, tmp_path / "reports"))
+
+    (asked,) = judge.asked
+    assert "kind `worked_passage_assumed`" in asked["system_prompt"], (
+        "o juiz antigo não tinha o incidente de uma passagem que a equipe não fez"
+    )
+    assert (
+        "APP STATUS (what the app told the guide this turn): EARLIER PASSAGES FOR THIS TEAM: "
+        "Approved: Ruth 1:1\u20135. Not worked yet: Ruth 1:6\u201314.\n"
+    ) in asked["user_content"], "sem o fato do app, o juiz não tinha como julgar o incidente"

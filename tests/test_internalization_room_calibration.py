@@ -22,33 +22,15 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 PANORAMA = "OV"
 THE_TEAM_ANSWERS = "Uma pergunta curta de cada vez."
 PASSAGE = "P03"
-#: The method question as the ticket quotes it, in the three languages the room claims.
-#: Read from the ticket rather than from `bridge_calibration_question`, which this branch
-#: deletes: an expectation taken from the code under test agrees with it by construction.
-THE_METHOD_QUESTION = {
-    "pt": (
-        "Quando trabalharmos as passagens, qual jeito fica melhor para vocês: "
-        "contar naturalmente em português ou receber uma pergunta curta de cada vez?"
-    ),
-    "en": (
-        "When we work through the passages, which suits you better: "
-        "telling it back in your own words, or one short question at a time?"
-    ),
-    "es": (
-        "Cuando trabajemos los pasajes, ¿qué les queda mejor: "
-        "contarlo con sus propias palabras, o recibir una pregunta corta a la vez?"
-    ),
-}
 
 GUIDE_OPENING = "Bem-vindos. Vamos conhecer o livro inteiro antes de entrar nele."
 GUIDE_REPLY = "O livro começa numa fome, e uma família sai de casa por causa dela."
@@ -71,7 +53,6 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     said: list[str] = []
     heard: list[str] = []
 
@@ -115,14 +96,16 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as client:
         yield client, said, heard
 
 
 async def _open_cold(client: httpx.AsyncClient, *, pericope: str, language: str) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": pericope, "language": language},
     )
     assert created.status_code == 200, created.text[:200]
@@ -135,7 +118,7 @@ async def test_the_opening_is_the_guides_own_words_from_first_syllable_to_last(
     client, said, _ = spoken
     session_id = await _open_cold(client, pericope=PANORAMA, language="pt")
 
-    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     assert opened.status_code == 200, opened.text[:200]
     assert said == [GUIDE_OPENING], (
@@ -149,11 +132,10 @@ async def test_the_teams_first_utterance_is_a_turn_like_any_other(
 ) -> None:
     client, said, heard = spoken
     session_id = await _open_cold(client, pericope=PANORAMA, language="pt")
-    await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     answered = await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
 
@@ -174,7 +156,6 @@ async def test_a_mode_named_by_the_tablet_is_taken_in_and_never_said_back(
     client, _, _ = spoken
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": PANORAMA, "language": "pt", "bridge_mode": "guided_microchecks"},
     )
 
@@ -183,7 +164,7 @@ async def test_a_mode_named_by_the_tablet_is_taken_in_and_never_said_back(
         f"equipe sem sessão nenhuma — veio {created.status_code}: {created.text[:200]}"
     )
     session_id = created.json()["session_id"]
-    turned = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    turned = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     assert "bridge_mode" not in created.json(), (
         "a sala devolvia o modo ao tablet, que o guardava e o mandava de volta na sessão "

@@ -1,4 +1,4 @@
-"""What a facilitator reads on a bead, in the three languages the Desk offers.
+"""What a facilitator reads on a bead, in the two languages the Desk offers.
 
 The labels are **not** in the canon and must not be moved there. `canon/vendor/` is pinned to
 an upstream commit and is overwritten wholesale by `scripts/sync_internalization_canon.py
@@ -30,7 +30,9 @@ from pathlib import Path
 
 from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
+from app.services.internalization_room.canon.kept import canon_path
 from app.services.internalization_room.canon.parse_map import load_book
+from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.coverage import CoverageStatus
 
 LABELS_DIR = Path(__file__).parent / "element-labels"
@@ -39,7 +41,7 @@ LABELS_DIR = Path(__file__).parent / "element-labels"
 #: fallback language and no branch that reaches for one: a hole is refused, because the
 #: alternative is an ALL_CAPS identifier or an English sentence in front of a facilitator who
 #: does not read English.
-LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
+LANGUAGES: tuple[str, ...] = ("pt", "en")
 
 #: Coverage states named here before they exist in `CoverageStatus`. Empty, and that is the
 #: resting state: a name belongs here only while its label is written and its enum value is
@@ -98,9 +100,14 @@ def labelled_elements(
     whose English is missing.
     """
     elements = elements_for(pericope_num, book)
-    for_passage = _catalogue(catalogue_dir, book).get(pericope_num)
+    for_passage = _catalogue(canon_path(catalogue_dir), book).get(pericope_num)
     if for_passage is None:
-        return [_from_the_canon(element) for element in elements]
+        return [
+            _scene(pericope_num, element)
+            if element.kind is ElementKind.SCENE
+            else _from_the_canon(element)
+            for element in elements
+        ]
 
     served = {element.key for element in elements}
     orphans = sorted(set(for_passage) - served)
@@ -110,7 +117,9 @@ def labelled_elements(
         )
 
     return [
-        LabelledElement(
+        _scene(pericope_num, element)
+        if element.kind is ElementKind.SCENE
+        else LabelledElement(
             key=element.key,
             kind=element.kind,
             scene=element.scene,
@@ -125,15 +134,26 @@ def labelled_elements(
     ]
 
 
+def _scene(pericope_num: str, element: Element) -> LabelledElement:
+    return LabelledElement(
+        key=element.key,
+        kind=element.kind,
+        scene=element.scene,
+        label_pt=scene_title(pericope_num, element.scene, element.label, "pt"),
+        label_en=element.label,
+    )
+
+
 def _from_the_canon(element: Element) -> LabelledElement:
     """A bead of a passage nobody has translated, named as well as it can honestly be.
 
-    Reached when the catalogue has no entry for this passage. English comes almost free from
-    the canon — §7 says so — so `Element.label` is the English, and Portuguese and Spanish are
-    **absent**. Filling them with the English would put a
-    sentence a facilitator does not read in front of them under the name of their own
-    language, which is the silent fallback this module exists to prevent; leaving them null
-    is the Desk's own `CoverageLabels` shape and draws as a missing translation.
+    Reached when the catalogue has no entry for this passage, for every bead but a scene, which
+    `_scene` names by her Portuguese title. English comes almost free from the canon — §7 says
+    so — so `Element.label` is the English, and Portuguese is **absent**.
+    Filling it with the English would put a sentence a facilitator does not read in front of
+    them under the name of their own language, which is the silent fallback this module exists
+    to prevent; leaving it null is the Desk's own `CoverageLabels` shape and draws as a missing
+    translation.
 
     **No passage of Ruth reaches here any more.** The catalogue carries all fourteen, so for
     this book the path below is unreachable in production and exists for a book nobody has
@@ -162,7 +182,6 @@ def _from_the_canon(element: Element) -> LabelledElement:
         scene=element.scene,
         label_pt=None,
         label_en=element.label,
-        label_es=None,
     )
 
 
@@ -183,7 +202,7 @@ def legend(*, catalogue_dir: Path = LABELS_DIR) -> CoverageLegend:
     return CoverageLegend(coverage_status=coverage_status, element_kind=element_kind)
 
 
-#: The language a bead cannot reach the screen without. The other two are translation work and
+#: The language a bead cannot reach the screen without. The other is translation work and
 #: may legitimately be missing — `LabelledElement` types them `str | None` for exactly that —
 #: so a catalogue entry written in English alone is an untranslated passage somebody finally
 #: named, and not a holed file.
@@ -199,11 +218,11 @@ def _translated_into(for_passage: dict, language: str) -> bool:
     """Whether this passage has been translated into a language at all.
 
     The permission is for a passage nobody has translated, and the loader cannot tell that
-    from a passage whose Spanish somebody deleted — unless it looks at the passage rather than
+    from a passage whose Portuguese somebody deleted — unless it looks at the passage rather than
     at the bead. Written the other way round, blanking one label on a translated passage would
     have gone through in silence, which is the guarantee this module exists for.
 
-    Today the data is exactly consistent: the pilot's four carry all three languages on every
+    Today the data is exactly consistent: the pilot's four carry both languages on every
     bead, and the ten carry English on every bead and nothing else on any. That is what makes
     a whole-passage rule the honest one — a passage is translated or it is not, and a bead is
     not a unit of translation.
@@ -233,7 +252,7 @@ def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str 
     being wrong — the difference between the two is the whole of the permission, and only one
     goes through.
 
-    An entry empty in all three is caught by the English refusal above and never reaches the
+    An entry empty in both is caught by the English refusal above and never reaches the
     rest of this function: `labelled_elements` evaluates `label_en` before it spreads the other
     languages, so by the time this is asked about Portuguese the English of the same entry is
     known to be there. A separate refusal for "nothing in any language" was written here and

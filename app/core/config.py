@@ -89,7 +89,6 @@ class Settings(BaseSettings):
 
     ph_elevenlabs_api_key: str = ""
 
-    internalization_room_api_key: str = ""
     internalization_room_clip_signing_key: str = ""
     #: What her golden runner presents to drive the room by text instead of by microphone.
     #: Empty is the production configuration: the text seam then does not exist, and its
@@ -102,7 +101,6 @@ class Settings(BaseSettings):
     #: ``_en`` when a deployment configures one and by her otherwise.
     internalization_room_voice_id: str = "tZ2oxQJXfOrGrN7iKnta"
     internalization_room_voice_id_en: str = ""
-    internalization_room_voice_id_es: str = "fYypSok4m8xKqKsDwS7O"
     #: What a caller that names no language gets. Not "the language the room speaks" any
     #: more — the app names that on the session, because it is the tablet that knows which
     #: language the team in front of it reads its own settings in.

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -15,6 +15,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
@@ -42,7 +43,7 @@ async def add_chunk(
     ends_ms: int = Form(...),
     retelling: bool = Form(default=False),
     device_id: str = device_dep,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationChunkResponse:
     """One piece told back in the bridge language, while the team's own recording plays.
@@ -155,7 +156,7 @@ router.add_api_route(
     add_chunk,
     methods=["POST"],
     response_model=BackTranslationChunkResponse,
-    dependencies=[room_caller_dep, idempotency_dep],
+    dependencies=[linked_tablet_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )
 
@@ -199,12 +200,12 @@ async def _the_untold_errand(
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def finish(
     session_id: str,
     payload: FinishBackTranslationRequest | None = None,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge.
@@ -370,17 +371,16 @@ async def _finished(
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
-    retired = await room.retired_segments(db, session.id)
     with stage("db_let_go"):
         await db.commit()
-    verdict = await room.check_the_telling_back(
-        session,
-        state=state,
-        told=told,
-        retired=retired,
-        takes=takes,
-        settings=get_settings(),
-    )
+    with reading_the_canon_of(session.canon_pin):
+        verdict = await room.check_the_telling_back(
+            session,
+            state=state,
+            told=told,
+            takes=takes,
+            settings=get_settings(),
+        )
     with stage("voice"):
         voiced = (
             None

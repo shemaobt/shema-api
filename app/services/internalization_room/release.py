@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError, ReleaseWithoutProject
+from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.internalization_room import (
     IRQuestion,
     IRRelease,
@@ -54,6 +54,7 @@ from app.services.internalization_room.back_translation import (
     untold_parts,
 )
 from app.services.internalization_room.canon.book_material import vendor_pin
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -464,6 +465,11 @@ async def compose_internalization_release(
     moving, and two reads of an unchanged session must carry one hash. A consumer verifying
     the fingerprint drops those seven keys and hashes the rest.
     """
+    with reading_the_canon_of(session.canon_pin):
+        return await _composed(db, session)
+
+
+async def _composed(db: AsyncSession, session: IRSession) -> tuple[dict[str, Any], list[str]]:
     blockers: list[str] = []
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
@@ -645,8 +651,7 @@ async def _release_of(
     v1 while approving it would mint a v3, and the packet would name a draft that is no
     longer the one the passage is on.
 
-    A session that names no project has no release to be: the number is per project, and a
-    room on the shared key names none.
+    A session that names no project has no release to be: the number is per project.
     """
     if session.project_id is None:
         return None
@@ -721,12 +726,13 @@ async def approve_release(
 ) -> IRRelease:
     """The team approves this passage: one numbered row, or the one that already says it.
 
-    Refused before anything is composed when the session names no project, because the
-    number is per project and per pericope and there is nothing to number it under. The
-    blockers the packet raises are the gate, and ``forced_by`` is the one thing that moves
-    it: named, the two codes of ``FORCEABLE_BLOCKERS`` are waived and the row records who
-    forced it, when, and which findings were open at that moment. Everything else still
-    refuses, under a force exactly as without one.
+    The session names a project: the number is per project and per pericope, and both doors
+    that reach here — the team's and the facilitator's force — refuse a session that names
+    none as not found before calling. The blockers the packet raises are the gate, and
+    ``forced_by`` is the one thing that moves it: named, the two codes of
+    ``FORCEABLE_BLOCKERS`` are waived and the row records who forced it, when, and which
+    findings were open at that moment. Everything else still refuses, under a force exactly
+    as without one.
 
     ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
     together: a force comes from the Desk, where there is a person and no device.
@@ -782,10 +788,7 @@ async def approve_release(
     that re-allocates after losing the race would mint the version the idempotency check
     exists to prevent. Answering the caller keeps the decision in one place.
     """
-    if session.project_id is None:
-        raise ReleaseWithoutProject(
-            "this session names no project, so a release for it cannot be numbered"
-        )
+    assert session.project_id is not None
 
     packet, blockers = await compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)

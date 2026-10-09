@@ -1,4 +1,4 @@
-"""What a facilitator reads on a bead, in the three languages the Desk offers.
+"""What a facilitator reads on a bead, in the two languages the Desk offers.
 
 Every test here drives the public loader and asserts on the text itself. None asserts on
 where the catalogue lives, on the shape of the file behind it, or on how the join is made.
@@ -40,7 +40,7 @@ def holed_catalogue(tmp_path):
     """A copy of the shipped catalogue with one language emptied out of one element."""
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["scene:1"]["es"] = ""
+    holed["P01"]["absence:1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -97,6 +97,47 @@ def test_every_coverage_state_and_element_kind_is_named_in_every_language():
                 assert texts[language].strip(), f"{value} has no {language} name"
 
 
+def _stripped_of_spanish(tmp_path):
+    for name in ("ruth.json", "legend.json"):
+        written = json.loads((_shipped() / name).read_text(encoding="utf-8"))
+        (tmp_path / name).write_text(json.dumps(_without_the_key(written, "es")), encoding="utf-8")
+    return tmp_path
+
+
+def _without_the_key(node, key):
+    if isinstance(node, dict):
+        return {k: _without_the_key(v, key) for k, v in node.items() if k != key}
+    return node
+
+
+def test_a_bead_with_no_spanish_name_in_a_passage_that_has_some_is_not_a_hole(tmp_path):
+    complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
+    complete["P01"]["absence:1"]["es"] = ""
+    (tmp_path / "ruth.json").write_text(json.dumps(complete), encoding="utf-8")
+    (tmp_path / "legend.json").write_text(
+        (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    named = {e.key: e for e in labelled_elements("P01", catalogue_dir=tmp_path)}
+
+    assert named["absence:1"].label_pt and named["absence:1"].label_en
+
+
+@pytest.mark.parametrize("name", ["ruth.json", "legend.json"])
+def test_the_shipped_catalogue_names_nothing_in_spanish(name):
+    written = json.loads((_shipped() / name).read_text(encoding="utf-8"))
+
+    assert _without_the_key(written, "es") == written
+
+
+def test_a_legend_with_no_spanish_anywhere_still_names_every_state_and_kind(tmp_path):
+    named = legend(catalogue_dir=_stripped_of_spanish(tmp_path))
+
+    for group in (named.coverage_status, named.element_kind):
+        for value, texts in group.items():
+            assert set(texts) == {"pt", "en"}, f"{value} is named in {sorted(texts)}"
+
+
 def test_the_same_key_in_two_pericopes_carries_its_own_label():
     """`scene:1` is a different scene in every pericope; so is `absence:1` and `preserved:R3`."""
     first = {e.key: e.label_pt for e in labelled_elements("P01")}
@@ -109,7 +150,7 @@ def test_the_same_key_in_two_pericopes_carries_its_own_label():
 def test_a_hole_in_the_catalogue_is_refused_rather_than_filled_in(tmp_path):
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["scene:1"]["es"] = ""
+    holed["P01"]["absence:1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -119,7 +160,7 @@ def test_a_hole_in_the_catalogue_is_refused_rather_than_filled_in(tmp_path):
         labelled_elements("P01", catalogue_dir=tmp_path)
 
     said = str(refused.value)
-    assert "P01" in said and "scene:1" in said and "es" in said
+    assert "P01" in said and "absence:1" in said and "pt" in said
 
 
 def _shipped():
@@ -136,7 +177,7 @@ def test_a_label_hung_on_a_key_the_canon_no_longer_has_is_refused(tmp_path):
     """
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     orphaned = {p: dict(keys) for p, keys in complete.items()}
-    orphaned["P01"]["being:B99"] = {"pt": "Alguém", "en": "Someone", "es": "Alguien"}
+    orphaned["P01"]["being:B99"] = {"pt": "Alguém", "en": "Someone"}
     (tmp_path / "ruth.json").write_text(json.dumps(orphaned), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -165,7 +206,7 @@ def test_a_state_named_before_it_exists_is_declared_rather_than_merely_tolerated
 
 def test_a_name_for_something_that_is_not_a_state_at_all_is_refused(tmp_path):
     named = json.loads((_shipped() / "legend.json").read_text(encoding="utf-8"))
-    named["coverage_status"]["nearly_there"] = {"pt": "Quase", "en": "Nearly", "es": "Casi"}
+    named["coverage_status"]["nearly_there"] = {"pt": "Quase", "en": "Nearly"}
     (tmp_path / "legend.json").write_text(json.dumps(named), encoding="utf-8")
 
     with pytest.raises(ElementLabelsBroken) as refused:
@@ -238,7 +279,6 @@ def test_a_language_nobody_added_a_field_for_is_refused_rather_than_dropped():
             scene=1,
             label_pt="a",
             label_en="b",
-            label_es="c",
             label_fr="d",
         )
 
@@ -251,7 +291,6 @@ def test_the_kind_on_the_wire_is_the_closed_set_and_not_any_string():
             scene=1,
             label_pt="a",
             label_en="b",
-            label_es="c",
         )
 
 
@@ -278,7 +317,7 @@ def test_the_two_refusals_do_not_answer_the_same_thing_on_the_wire(tmp_path, hol
 
     broken = client.get("/ours-is-broken")
     assert broken.status_code == 500
-    assert "scene:1" in broken.text
+    assert "absence:1" in broken.text
 
     asked = client.get("/they-asked-for-a-passage-that-is-not-one")
     assert asked.status_code == 400
@@ -306,7 +345,7 @@ def test_a_bead_with_no_label_is_a_named_failure_not_a_blank_page(holed_catalogu
 
     assert broken.status_code == 500
     body = broken.json()
-    assert "P01" in body["detail"] and "scene:1" in body["detail"]
+    assert "P01" in body["detail"] and "absence:1" in body["detail"]
     assert body["detail"] != "An unexpected error occurred. Please try again later."
 
 
@@ -343,7 +382,7 @@ def test_our_own_catalogue_being_broken_does_not_read_as_the_caller_s_mistake(tm
     """
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["scene:1"]["es"] = ""
+    holed["P01"]["absence:1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -392,24 +431,24 @@ def test_a_passage_outside_the_pilot_is_named_rather_than_refused(pericope_num):
     "pericope_num",
     [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in PILOT],
 )
-def test_outside_the_pilot_portuguese_and_spanish_are_absent_and_not_english(pericope_num):
-    """The promise `LabelledElement` cites: pt and es arrive missing, never machine-filled.
+def test_outside_the_pilot_portuguese_is_absent_and_not_english(pericope_num):
+    """The promise `LabelledElement` cites: pt arrives missing, never machine-filled.
 
-    English comes almost free from the canon and the other two are translation work — so
+    English comes almost free from the canon and Portuguese is translation work — so
     the honest answer for an untranslated passage is nothing at all, and the Desk's own
-    `CoverageLabels` is `{ pt: string | null, en: string, es: string | null }` for exactly
-    this. Filling them with the English would put a sentence a facilitator does not read in
-    front of them and call it their language.
+    `CoverageLabels` is `{ pt: string | null, en: string }` for exactly this. Filling it with
+    the English would put a sentence a facilitator does not read in front of them and call it
+    their language.
     """
     for element in labelled_elements(pericope_num):
-        assert element.label_pt is None
-        assert element.label_es is None
+        if element.kind is not ElementKind.SCENE:
+            assert element.label_pt is None
 
 
 def test_inside_the_pilot_nothing_moved():
-    """The four translated passages still carry all three, or the fallback ate them."""
+    """The four translated passages still carry both, or the fallback ate them."""
     for element in labelled_elements("P01"):
-        assert element.label_pt and element.label_en and element.label_es
+        assert element.label_pt and element.label_en
 
 
 def test_a_passage_the_catalogue_does_not_have_still_falls_back_to_the_canon(tmp_path):
@@ -434,7 +473,9 @@ def test_a_passage_the_catalogue_does_not_have_still_falls_back_to_the_canon(tmp
     named = labelled_elements("P03", catalogue_dir=catalogue)
     from_the_canon = {element.key: element.label for element in elements_for("P03")}
 
-    assert all(element.label_pt is None and element.label_es is None for element in named)
+    assert all(
+        element.label_pt is None for element in named if element.kind is not ElementKind.SCENE
+    )
     assert all(element.label_en == from_the_canon[element.key] for element in named)
 
 
@@ -450,7 +491,7 @@ def test_a_passage_translated_into_the_catalogue_is_read_from_it_without_a_secon
     exists to prevent, and nothing anywhere would go red.
 
     So the catalogue is asked directly. This takes a passage back out of a copy of it, puts it
-    in again with three languages, and requires that the loader find it with no other change.
+    in again with both languages, and requires that the loader find it with no other change.
 
     It used to pick a passage the shipped catalogue did not have. **There is no longer one** —
     all fourteen are in it since the ten were written — so the passage is removed first. That
@@ -465,18 +506,14 @@ def test_a_passage_translated_into_the_catalogue_is_read_from_it_without_a_secon
     del written[newly]
     assert newly not in written
     written[newly] = {
-        element.key: {
-            "pt": f"pt {element.key}",
-            "en": f"en {element.key}",
-            "es": f"es {element.key}",
-        }
+        element.key: {"pt": f"pt {element.key}", "en": f"en {element.key}"}
         for element in elements_for(newly)
     }
     (catalogue / "ruth.json").write_text(json.dumps(written), encoding="utf-8")
 
     named = labelled_elements(newly, catalogue_dir=catalogue)
 
-    assert all(element.label_pt and element.label_es for element in named), (
+    assert all(element.label_pt for element in named), (
         "the catalogue has this passage and the loader answered from the canon anyway"
     )
 
@@ -501,8 +538,8 @@ def _with(pericope_num: str, entry: dict, tmp_path):
 def test_a_label_with_no_portuguese_is_served_absent_rather_than_refused(tmp_path):
     """The loader stopped contradicting the model it fills.
 
-    `LabelledElement` types `label_pt` and `label_es` as `str | None` — ENG-442 established
-    that the two are translation work and may be missing. `_text` went on raising for any
+    `LabelledElement` types `label_pt` as `str | None` — ENG-442 established
+    that it is translation work and may be missing. `_text` went on raising for any
     empty language, which was the right rule **before** that and stopped being it after: a
     catalogue entry written in English alone is not a holed file, it is an untranslated
     passage that somebody finally named.
@@ -512,15 +549,15 @@ def test_a_label_with_no_portuguese_is_served_absent_rather_than_refused(tmp_pat
     and is a 500.
     """
     only_english = {
-        element.key: {"pt": None, "en": f"en {element.key}", "es": None}
-        for element in elements_for("P03")
+        element.key: {"pt": None, "en": f"en {element.key}"} for element in elements_for("P03")
     }
 
     named = labelled_elements("P03", catalogue_dir=_with("P03", only_english, tmp_path))
 
+    catalogued = [element for element in named if element.kind is not ElementKind.SCENE]
     assert {element.key for element in named} == {e.key for e in elements_for("P03")}
-    assert all(element.label_en.startswith("en ") for element in named)
-    assert all(element.label_pt is None and element.label_es is None for element in named)
+    assert all(element.label_en.startswith("en ") for element in catalogued)
+    assert all(element.label_pt is None for element in catalogued)
 
 
 def test_the_permission_does_not_reach_english(tmp_path):
@@ -530,9 +567,7 @@ def test_the_permission_does_not_reach_english(tmp_path):
     English at all would serve a bead with nothing on it — which is the ALL_CAPS identifier
     problem again, one step worse, because there would not even be an identifier.
     """
-    no_english = {
-        element.key: {"pt": "algo", "en": None, "es": "algo"} for element in elements_for("P03")
-    }
+    no_english = {element.key: {"pt": "algo", "en": None} for element in elements_for("P03")}
 
     with pytest.raises(ElementLabelsBroken) as refused:
         labelled_elements("P03", catalogue_dir=_with("P03", no_english, tmp_path))
@@ -543,13 +578,13 @@ def test_the_permission_does_not_reach_english(tmp_path):
 def test_a_key_the_catalogue_names_with_nothing_at_all_is_still_our_file_being_wrong(
     tmp_path,
 ):
-    """An entry present and empty in all three is a holed file, not an untranslated passage.
+    """An entry present and empty in both is a holed file, not an untranslated passage.
 
     The difference is the whole point of the permission: *absent Portuguese* is a passage
     waiting for a translator, and *absent everything* is our own file. Only one of the two is
     allowed through.
     """
-    nothing = {element.key: {"pt": None, "en": None, "es": None} for element in elements_for("P03")}
+    nothing = {element.key: {"pt": None, "en": None} for element in elements_for("P03")}
 
     with pytest.raises(ElementLabelsBroken):
         labelled_elements("P03", catalogue_dir=_with("P03", nothing, tmp_path))
@@ -597,6 +632,8 @@ def test_the_ten_keep_the_promises_the_pilot_keeps(pericope_num):
     hebrew = re.compile(r"[֐-׿]")
 
     for element in labelled_elements(pericope_num):
+        if element.kind is ElementKind.SCENE:
+            continue
         text = element.label_en
         assert not hebrew.search(text), f"{pericope_num} {element.key} shows Hebrew: {text}"
         assert not _SHOUTED.search(text.replace("YHWH", "")), (
@@ -621,8 +658,8 @@ def test_two_beads_of_one_scene_of_the_ten_never_read_the_same(pericope_num):
 
 
 @pytest.mark.parametrize("pericope_num", TEN)
-def test_portuguese_and_spanish_stay_absent_for_the_ten(pericope_num):
-    """Naming them in English did not machine-fill the other two, which is the whole refusal."""
+def test_portuguese_stays_absent_for_the_ten(pericope_num):
+    """Naming them in English did not machine-fill the other one, which is the whole refusal."""
     for element in labelled_elements(pericope_num):
-        assert element.label_pt is None
-        assert element.label_es is None
+        if element.kind is not ElementKind.SCENE:
+            assert element.label_pt is None

@@ -12,13 +12,13 @@ stage. Every proposition stays available to the free-retell assessor regardless.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon.book_material import preservation_rules
+from app.services.internalization_room.canon.kept import per_canon
 from app.services.internalization_room.canon.parse_map import MeaningMap, load_map
 
 
@@ -116,7 +116,7 @@ def derive_checkpoints(meaning_map: MeaningMap, *, book: str) -> list[Checkpoint
     return out
 
 
-@lru_cache(maxsize=32)
+@per_canon(maxsize=32)
 def checkpoints_for(pericope_num: str, book: str = "Ruth") -> tuple[Checkpoint, ...]:
     return tuple(derive_checkpoints(load_map(pericope_num), book=book))
 

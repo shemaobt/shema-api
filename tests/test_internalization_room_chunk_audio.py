@@ -18,9 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 AUDIO = b"a equipe explicou este trecho em portugues"
 
@@ -31,12 +31,9 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _silence(*_: Any, **__: Any) -> str:
         return ""
@@ -76,7 +73,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.bucket = bucket  # type: ignore[attr-defined]
         yield c
 
@@ -84,13 +84,11 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 async def _rehearsed(client: httpx.AsyncClient) -> tuple[str, str]:
     """A session with one rehearsal recording in it — a stretch is a slice of a file, so
     there has to be a file before there can be a stretch."""
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "P01"})
     session_id = created.json()["session_id"]
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": "P01"},
         files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
     )
@@ -102,7 +100,7 @@ async def _tell_back(
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000", **extra},
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )
@@ -177,14 +175,11 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     An analyst asked to compare nothing against the map answers with no findings, and no
     findings is what `checked` is made of.
     """
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "P01"})
     session_id = created.json()["session_id"]
 
     answer = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/finish",
-        headers={"X-Room-Key": KEY},
     )
 
     assert answer.status_code == 200
@@ -288,7 +283,7 @@ async def test_a_stretch_whose_slice_is_not_a_slice_is_refused(
 
     refused = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
     )

@@ -9,7 +9,7 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.passage_turn import run_turn
 from app.services.internalization_room.validated_turn import TurnOutcome
 
@@ -129,8 +129,9 @@ async def speak_back(
     A take with no words that is not the mother tongue is a miss, and draws the ladder's line
     whether or not it followed a cut: nothing reaches the Guide.
     """
+    language = room_language(session.language)
     handed = what_the_guide_is_handed(
-        language_code=session.language,
+        language_code=language,
         opening=opening,
         words=transcript,
         mother_tongue=mother_tongue,
@@ -138,13 +139,13 @@ async def speak_back(
         interrupted=interrupted,
     )
     if handed is None:
-        return a_miss(messages, session.language)
+        return a_miss(messages, language)
     outcome = await run_turn(
         transcript=handed.spoken_to_the_guide,
         coverage_state=session.coverage_state or {},
         messages=messages,
-        session_language=LANGUAGE_NAMES[session.language],
-        language_code=session.language,
+        session_language=LANGUAGE_NAMES[language],
+        language_code=language,
         guide_prompt=guide_prompt,
         validator_prompt=validator_prompt,
         pericope_num=pericope,
@@ -153,7 +154,6 @@ async def speak_back(
         settings=settings,
         session_id=session.id,
         ask_for_movements=opening and not messages,
-        mother_tongue=mother_tongue,
         earlier_passages=session.earlier_passages,
     )
     return handed.kept_apart(outcome)

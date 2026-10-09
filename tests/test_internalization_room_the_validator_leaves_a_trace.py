@@ -42,7 +42,6 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
 
 
 LOGGER_NAME = "app.services.internalization_room.validated_turn"
-BRIDGE_LANGUAGE_LOGGER_NAME = "app.services.internalization_room.bridge_language"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 
@@ -79,13 +78,13 @@ async def _a_turn(session_id: str, **overrides: Any):
     return await run_turn(**kwargs)
 
 
-async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_draft(
+async def test_a_validator_answering_loose_text_leaves_one_trace_on_the_draft(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Both readings are of the first draft, so both traces name attempt 1.
+    """The one reading is of the first draft, so the trace names attempt 1.
 
     Three traces on attempts 1, 2 and 3 was the shape when an unreadable reply cost a
-    redraft; a reply the room cannot read is now read again before anything is redrawn.
+    redraft; a reply the room cannot read is the fail-safe at once, with nothing redrawn.
     """
 
     class Garbage(FakeAgent):
@@ -103,7 +102,7 @@ async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_d
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert record.__dict__["attempt"] == 1
         assert record.__dict__["session_id"] == "sessao-1"
@@ -114,7 +113,7 @@ async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_d
 async def test_json_without_a_verdict_key_also_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(FakeAgent(verdicts=[{"ok": True}] * 2))
+    patch_agent(FakeAgent(verdicts=[{"ok": True}]))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-2")
@@ -122,7 +121,7 @@ async def test_json_without_a_verdict_key_also_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert "verdict" in record.__dict__["condition"].lower()
         assert '"ok": true' in record.getMessage().lower()
@@ -155,10 +154,43 @@ async def test_a_regenerate_verdict_leaves_the_whole_reply(
         assert "claims_to_see_the_screen" in record.getMessage()
 
 
+async def test_a_regenerate_verdict_is_logged_as_a_regenerate_not_as_a_refused_reply(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "regenerate", "issues": [{"problem": "off_topic"}]}]
+            * (MAX_REDRAFTS + 1)
+        )
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await _a_turn("sessao-9")
+
+    messages = [record.getMessage() for record in _refusal_records(caplog)]
+    assert [message.split(":")[0] for message in messages] == [
+        "Validator regenerate verdict for session sessao-9, attempt 1",
+        "Validator regenerate verdict for session sessao-9, attempt 2",
+        "Validator regenerate verdict for session sessao-9, attempt 3",
+    ], "a readable regenerate was logged as 'Validator reply refused', the unreadable reply's line"
+
+
+async def test_an_unreadable_reply_is_still_logged_as_a_refused_reply(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(FakeAgent(verdicts=[{"ok": True}]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await _a_turn("sessao-10")
+
+    (record,) = _refusal_records(caplog)
+    assert record.getMessage().startswith("Validator reply refused (")
+
+
 async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
-    patch_agent(FakeAgent(verdicts=[{"verdict": "correct", "corrected_response": "  "}] * 2))
+    patch_agent(FakeAgent(verdicts=[{"verdict": "correct", "corrected_response": "  "}]))
 
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         outcome = await _a_turn("sessao-4")
@@ -166,46 +198,11 @@ async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     assert outcome.used_fail_safe is True
 
     refusals = _refusal_records(caplog)
-    assert len(refusals) == 2
+    assert len(refusals) == 1
     for record in refusals:
         assert "correct" in record.__dict__["condition"].lower()
         assert "empty" in record.__dict__["condition"].lower()
         assert "corrected_response" in record.getMessage()
-
-
-async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_words(
-    patch_agent, caplog: pytest.LogCaptureFixture
-) -> None:
-    """The counterpart of the policy test, on the recusal path instead of the exception one.
-
-    The draft is the Guide's, and the Guide can echo the team — so only the condition and a
-    count of characters are allowed onto this logger, never the drafted words themselves.
-    """
-    draft = "Tell me what you think happens next in this part of the story."
-    patch_agent(
-        FakeAgent(
-            verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
-            drafts=[draft] * (MAX_REDRAFTS + 1),
-        )
-    )
-
-    with (
-        caplog.at_level(logging.WARNING, logger=LOGGER_NAME),
-        caplog.at_level(logging.WARNING, logger=BRIDGE_LANGUAGE_LOGGER_NAME),
-    ):
-        outcome = await _a_turn("sessao-5")
-
-    assert outcome.used_fail_safe is True
-    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-
-    refusals = _refusal_records(caplog)
-    assert len(refusals) == 3
-    for record in refusals:
-        assert "off_bridge_language" in record.__dict__["condition"]
-        assert draft not in record.getMessage()
-        for value in record.__dict__.values():
-            assert draft not in str(value)
-    assert draft not in caplog.text
 
 
 async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(

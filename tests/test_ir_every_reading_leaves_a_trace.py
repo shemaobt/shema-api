@@ -6,11 +6,9 @@ still invisible was the opposite case: a reply that parses cleanly and is simply
 that happens the model's own words are gone the moment the call returns, and nobody can go back
 and read what it actually said.
 
-These cases are about the trace left behind, never about what the analyst or the corrector
-decide — that is `test_internalization_room_back_translation.py`'s and
-`test_ir_a_correction_is_verified_on_its_own.py`'s to hold. Read from `caplog`, and always by
-field on the record (`record.__dict__[...]`, via `extra=`), never by matching the sentence: the
-sentence is free to change, the fields the operator depends on are not.
+Read from `caplog`, and always by field on the record (`record.__dict__[...]`, via `extra=`),
+never by matching the sentence: the sentence is free to change, the fields the operator depends
+on are not.
 """
 
 from __future__ import annotations
@@ -24,18 +22,11 @@ import pytest
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.back_translation import (
-    Finding,
-    FindingKind,
-    analyse_telling_back,
-    verify_correction,
-)
-from app.services.internalization_room.part_names import Addresses
+from app.services.internalization_room.back_translation import analyse_telling_back
 from tests.turn_harness import the_room_agent_is
 
 LOGGER_NAME = "app.services.internalization_room.back_translation"
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
-CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
 P = "P03"
 SESSION_ID = "sessao-do-rastro"
 
@@ -65,8 +56,6 @@ def _told() -> list[IRSegment]:
 
 @pytest.fixture
 def patch_model(monkeypatch: pytest.MonkeyPatch):
-    """Answer the one call `analyse_telling_back`/`verify_correction` make, with `reply`."""
-
     def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
             return reply
@@ -121,51 +110,6 @@ async def test_an_accepted_analysis_reading_leaves_an_info_record(
     assert raw in record.getMessage()
 
 
-async def test_an_accepted_correction_reading_leaves_an_info_record(
-    patch_model, caplog: pytest.LogCaptureFixture
-) -> None:
-    raw = json.dumps(
-        {
-            "resolved": True,
-            "findings": [],
-            "carried": [{"element": "Boaz falou das servas", "still_told": True}],
-        }
-    )
-    patch_model(raw)
-    finding = Finding(
-        kind=FindingKind.ADDITION, note="Boaz não falou nisso", segment_id="segmento-1"
-    )
-    earlier = _segment(1, "Boaz fala pra Rute colher espigas em outros campos.")
-    corrected = _segment(
-        2, "Boaz fala pra Rute colher espigas somente no campo dele.", segment_id="segmento-2"
-    )
-
-    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        check = await verify_correction(
-            findings=[finding],
-            earlier=earlier,
-            corrected=corrected,
-            chunk=1,
-            scope=P,
-            pericope_num=P,
-            correction_prompt=CORRECTION,
-            addresses=Addresses(),
-            settings=_settings(),
-            session_id=SESSION_ID,
-        )
-
-    assert check is not None
-    accepted = _records(caplog, "correction")
-    assert len(accepted) == 1, "uma verificação aceita deixa exatamente um record"
-    record = accepted[0]
-    assert record.levelno == logging.INFO
-    assert record.__dict__["session_id"] == SESSION_ID
-    assert record.__dict__["segment_id"] == corrected.id
-    assert record.__dict__["resolved"] is True
-    assert record.__dict__["findings"] == 0
-    assert raw in record.getMessage()
-
-
 async def test_the_teams_own_words_do_not_reach_this_logger(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -176,29 +120,23 @@ async def test_the_teams_own_words_do_not_reach_this_logger(
     operations log nobody agreed to.
     """
     marker = "MARCADOR-QUE-O-MODELO-NUNCA-CITA-7f3a"
-    raw = json.dumps({"resolved": True, "findings": []})
+    raw = json.dumps({"findings": []})
     patch_model(raw)
-    finding = Finding(kind=FindingKind.MISSING, note="Orfa não apareceu", segment_id="segmento-1")
-    earlier = _segment(1, f"{marker} — a versão que a equipe contou antes.")
-    corrected = _segment(
-        2, f"{marker} — a nova versão que a equipe contou.", segment_id="segmento-2"
-    )
 
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
-        check = await verify_correction(
-            findings=[finding],
-            earlier=earlier,
-            corrected=corrected,
-            chunk=1,
+        analysis = await analyse_telling_back(
+            segments=[
+                _segment(1, f"{marker} — a versão que a equipe contou antes."),
+                _segment(2, f"{marker} — a nova versão que a equipe contou."),
+            ],
             scope=P,
             pericope_num=P,
-            correction_prompt=CORRECTION,
-            addresses=Addresses(),
+            analyst_prompt=ANALYST,
             settings=_settings(),
             session_id=SESSION_ID,
         )
 
-    assert check is not None
+    assert analysis is not None
     logger_text = "\n".join(
         record.getMessage() for record in caplog.records if record.name == LOGGER_NAME
     )

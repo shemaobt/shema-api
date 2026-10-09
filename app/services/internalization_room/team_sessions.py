@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.models.internalization_room import SessionBead, TeamSessionResponse
 from app.services.internalization_room import halt
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
@@ -88,6 +89,8 @@ async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
 
 def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
     end = end_of(session)
+    with reading_the_canon_of(session.canon_pin):
+        beads = _portrait(session.pericope, portrait)
     return TeamSessionResponse(
         session_id=session.id,
         pericope=session.pericope,
@@ -106,7 +109,7 @@ def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
         person_arrived_at=(
             as_utc(session.person_arrived_at) if session.person_arrived_at is not None else None
         ),
-        coverage=_portrait(session.pericope, portrait),
+        coverage=beads,
     )
 
 
@@ -135,7 +138,6 @@ def _portrait(pericope: str, standing: dict[str, str]) -> list[SessionBead]:
             kind=element.kind,
             label_pt=element.label_pt,
             label_en=element.label_en,
-            label_es=element.label_es,
             status=standing.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value),
         )
         for element in labelled_elements(pericope)

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.prepare_opening import hand_over, take_prepared
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 
 def _session(**over: object) -> IRSession:
@@ -120,7 +121,6 @@ PREPARED = "Vamos ficar no começo: uma família sai de Belém por falta de comi
 PANORAMA = "Bem-vindos. Este livro inteiro é uma volta para casa, em quatro movimentos."
 ON_DEMAND = "Uma linha escrita na hora, porque nada estava pronto."
 IR = "/api/internalization-room"
-ROOM_KEY = "sala-de-teste"
 
 
 @pytest.fixture()
@@ -145,8 +145,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.services.internalization_room.live_turn import ComprehensionTurn
     from app.services.internalization_room.run_turn import TurnOutcome
     from app.services.platform.tts import SynthesizedSpeech
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     async def _panorama_turn(**_: Any) -> TurnOutcome:
         return TurnOutcome(speech=PANORAMA, transcript="")
@@ -184,7 +182,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -220,17 +221,13 @@ async def _the_room_said(db_session: AsyncSession, session_id: str) -> str:
 
 
 async def _create_panorama(client) -> str:
-    created = await client.post(
-        f"{IR}/sessions", headers={"X-Room-Key": ROOM_KEY}, json={"pericope": "OV"}
-    )
+    created = await client.post(f"{IR}/sessions", json={"pericope": "OV"})
     assert created.status_code == 200, created.text[:200]
     return created.json()["session_id"]
 
 
 async def _open_it(client, session_id: str):
-    opened = await client.post(
-        f"{IR}/sessions/{session_id}/turns", headers={"X-Room-Key": ROOM_KEY}
-    )
+    opened = await client.post(f"{IR}/sessions/{session_id}/turns")
     assert opened.status_code == 200, opened.text[:200]
     return opened
 
@@ -238,7 +235,6 @@ async def _open_it(client, session_id: str):
 async def _passage_after(client, panorama_id: str, pericope: str = "P01") -> str:
     created = await client.post(
         f"{IR}/sessions",
-        headers={"X-Room-Key": ROOM_KEY},
         json={"pericope": pericope, "after_session": panorama_id},
     )
     assert created.status_code == 200, created.text[:200]

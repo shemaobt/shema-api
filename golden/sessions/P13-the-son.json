@@ -1,0 +1,141 @@
+{
+  "name": "P13-the-son",
+  "pericopeId": "P13",
+  "language": "Brazilian Portuguese",
+  "why": "SC-0088 (Marcia's map standard of 2026-09-28 and her four rulings of the same day, «(b), (b), (a), sim — pode seguir com as recomendações»), vendored at the compiler branch tip 46531c1 (re-pin to the merge commit after her merge word) — P13 = Ruth 4:13-17: the high-risk register (12 entries, 7 do_not_decide — R1 the order and the doers of 4:13: Boaz takes Ruth, she becomes his wife, he comes to her; YHWH gives her conception; she bears a son; no wedding, no span of time, no feelings the text does not give; a team 'God gave them a son' keeps the meaning; R3 the redeemer of 4:14 is the one Ruth has borne and 'his name' is his, no other reading taught; R5 Naomi takes the child and becomes his nurse — never nursing at the breast, adoption, or anyone handing the child to her; R7 the neighbor-women name him Obed, the text does not say why the name, no name meaning; R8 (her ruling D1 (b)) the narrator names David and says nothing more — the voice says only 'David', never 'king'; a team 'o rei Davi' is a nuance, named once — «a história dá só o nome dele, Davi» — without a send-back, and the voice moves on; R9 the text does not say the child raises up the name of the dead or is Mahlon's or Elimelech's son, no law the story does not cite (the levirate law, Deuteronomy 25); R10 (D2 (b)) the women speak to Naomi; neither Ruth nor Boaz speaks or is given feelings; the voice never says whether Ruth or Naomi was at the gate in 4:9-12) and, not do_not_decide, R2 ('redeemer', never 'kinsman' or 'relative') and R4 (Ruth is 'your daughter-in-law who loves you'). The women are 'the women' (4:14) and 'the neighbor-women' (4:17) — never 'the women of Bethlehem' in the voice's mouth (4:13-17 names no place). The judge reads them in the map and the register; the keys below are the mechanical half. no_pairing is not keyed: a recall of Boaz's words at the gate (4:10, 'Ruth the Moabite, the wife of Mahlon'), which R9 allows, would trip the key's pattern; the pairing half is the judge's. No earlierPassages fixture: the team's statuses at P13 are not known. Turn 0: the kickoff is the Familiarization (F1, the whole passage, F3 as the last words) — no king, no wedding feast, no 'the women of Bethlehem', no Genesis, no law. Turn 1: 'Estamos prontos.' opens scene 1 — I1 cena 1 and her closing. Turn 2: 'Vamos pro ensaio.' — A1 before the fence. Turn 3: a whole scene rehearsal of scene 1 (S1) with 'Deus deu pra ela a gravidez' — accepted without comment (R1). Turn 4: 'Pode abrir a segunda cena pra gente?' with two questions: whether the boy is Mahlon's son because of the levirate law, and whether he is the one who raises up the name of the dead (the tail, I2; no outside knowledge, no law, the text does not say it here — R9). Turn 5: A2 before the fence. Turn 6: a whole scene rehearsal of scene 2 told with 'as mulheres' and 'resgatador' — accepted. Turn 7: 'Pode abrir a terceira cena pra gente?' with two questions: why they named him Obed (the text does not say — R7) and whether Ruth was sad to give her son to Naomi (no feelings for Ruth, and no one hands the child — Naomi takes him — R10, R5) (the tail, I3). Turn 8: A3 before the fence. Turn 9: a scene rehearsal of scene 3 ending 'o pai do rei Davi' — accepted, no send-back, no addition: the nuance named once, «a história dá só o nome dele, Davi» (D1 (b)); with S1 to S3 all recorded, the plain Ensaio Final send-off (ONE instruction, the orange dot; the moment EF). Turn 9 carries send_off_names /só o nome dele/, so a silent acceptance of 'o rei Davi' fails mechanically (accepts_telling and the send-off keys all pass on one). The D1 line is in no text the Guide reads (only in the Validator's R8, and the Validator only removes claims), so a live failure of this key is the real signal. The team's lines are the builder's fixtures, pending Marcia's word.",
+  "turns": [
+    {
+      "kickoff": true,
+      "sceneRehearsals": [],
+      "expect": {
+        "no_fail_safe": true,
+        "no_rehearsal_invite": true,
+        "familiarization_entrance": true,
+        "familiarization_closing": true,
+        "no_spoiler": true,
+        "no_outside_knowledge": true,
+        "moment_after": "F",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Estamos prontos.",
+      "expect": {
+        "no_fail_safe": true,
+        "part_entrance": 1,
+        "part_opening_closing": true,
+        "no_outside_knowledge": true,
+        "moment_after": "I1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 1,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A1",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "Então o Boaz tomou a Rute, e ela se tornou mulher dele, e ele se uniu a ela.",
+          "E Deus deu pra ela a gravidez, e ela teve um filho."
+        ],
+        "sceneId": "S1"
+      },
+      "sceneRehearsals": ["S1"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a segunda cena pra gente? Esse menino é filho do Malom, por causa da lei do levirato? É ele que levanta o nome do morto?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "no_spoiler": true,
+        "moment_after": "I2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 2,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "moment_after": "A2",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "E as mulheres disseram pra Noemi: bendito seja o Senhor, que não te deixou hoje sem resgatador. Que o nome dele seja chamado em Israel.",
+          "Ele vai restaurar a tua vida e sustentar a tua velhice, porque a tua nora, que te ama, que é melhor pra você do que sete filhos, foi ela que deu ele à luz."
+        ],
+        "sceneId": "S2"
+      },
+      "sceneRehearsals": ["S1", "S2"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Pode abrir a terceira cena pra gente? Por que deram o nome de Obede pra ele? E a Rute ficou triste de dar o filho pra Noemi?",
+      "expect": {
+        "no_fail_safe": true,
+        "take_up_closing": true,
+        "no_outside_knowledge": true,
+        "no_spoiler": true,
+        "moment_after": "I3",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "team": "Entendemos. Vamos pro ensaio.",
+      "expect": {
+        "no_fail_safe": true,
+        "articulation_entrance": 3,
+        "fenced_rehearsal": true,
+        "invites_microphone": true,
+        "no_outside_knowledge": true,
+        "moment_after": "A3",
+        "scene_word_cena": true
+      }
+    },
+    {
+      "rehearsal": {
+        "pieces": [
+          "A Noemi pegou o menino, colocou ele no colo e cuidou dele.",
+          "E as vizinhas deram um nome pra ele. Elas disseram: nasceu um filho pra Noemi. E chamaram ele de Obede.",
+          "Ele é o pai de Jessé, o pai do rei Davi."
+        ],
+        "sceneId": "S3"
+      },
+      "sceneRehearsals": ["S1", "S2", "S3"],
+      "expect": {
+        "no_fail_safe": true,
+        "accepts_telling": true,
+        "no_outside_knowledge": true,
+        "no_spoiler": true,
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "send_off_names": ["só o nome dele"],
+        "moment_after": "EF"
+      }
+    }
+  ]
+}

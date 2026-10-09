@@ -57,12 +57,7 @@ def _heard_key(project_id: str, book: str) -> tuple[ColumnElement[bool], ...]:
     )
 
 
-async def heard_panorama(db: AsyncSession, *, project_id: str | None, book: str) -> bool:
-    """Whether this team went on from this book's panorama into one of its passages before.
-
-    A tablet that never said whose it is has no history to read, so nothing was heard.
-    """
-    if project_id is None:
-        return False
+async def heard_panorama(db: AsyncSession, *, project_id: str, book: str) -> bool:
+    """Whether this team went on from this book's panorama into one of its passages before."""
     result = await db.execute(select(IRSession.id).where(*_heard_key(project_id, book)).limit(1))
     return result.scalar_one_or_none() is not None

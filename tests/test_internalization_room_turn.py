@@ -4,9 +4,6 @@ import pytest
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.practice import (
-    guide_invited_mother_tongue_practice,
-)
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.render import render
@@ -71,98 +68,15 @@ def test_a_half_offered_structure_is_no_structure_at_all(draft: str) -> None:
     assert OPENING_MOVEMENT_MARK not in text
 
 
-def test_the_channel_policy_is_about_conflation_not_order() -> None:
-    """The Validator invented a sequence rule and rejected the Guide in both directions.
-
-    In one session it rejected the Guide for asking the telling-back before the rehearsal
-    ("inverte o fluxo") and in the next for asking the rehearsal before the telling-back
-    ("a politica exige primeiro o relato"). The second is the inverse of the order the
-    Guide actually keeps, so both rejections spent the redrafts and dropped the room to a
-    canned line. The policy now says what it is for, and says where the order really lives
-    — the Guide's own instructions and the probe contract — so barring it from judging
-    order never reads as licence to invite a rehearsal the contract has not authorised.
-    """
-    policy = VALIDATOR[VALIDATOR.index("Keep the two evidence channels separate") :]
-    policy = policy[: policy.index("\n-")]
-
-    assert "conflation, not sequence" in policy
-    assert "evidence of the other" in policy
-    assert "still governs" in policy
-
-
 def test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it() -> None:
-    """Session 956987cb: the opening itself fell to a fail-safe, on the sentence that ends it.
+    languages = GUIDE[GUIDE.index("## The two languages — never confuse them") :]
+    languages = languages[: languages.index("\n## ")]
 
-    The Validator read "When you finish, tell me in English what you said." as an epistemic
-    violation and quoted both policies at once — the Guide "must not imply it will understand
-    or check the mother-tongue rehearsal itself; it must limit its judgment to the
-    bridge-language telling-back". Neither policy carved anything out for a rehearsal in the
-    future, and on an opening turn nothing else speaks for the invitation either: the probe is
-    None there, so the practice contract that authorises it is never appended. So the one
-    sentence the opening is required to end on had no defender in the room that judges it.
-
-    A promise to hear a telling-back is not a claim about a rehearsal, and it cannot be one:
-    neither has happened when the sentence is spoken.
-    """
-    access = VALIDATOR[VALIDATOR.index("Never claim access to mother-tongue meaning") :]
-    access = access[: access.index("\n-")]
-    judgment = VALIDATOR[VALIDATOR.index("Limit every judgment to the bridge-language") :]
-    judgment = judgment[: judgment.index("\n-")]
-
-    assert "An invitation is not a claim" in access
-    assert "neither has happened yet" in access
-    assert "An invitation makes no judgment" in judgment
-
-
-def test_the_invitation_the_guide_is_shown_is_one_the_room_can_recognise() -> None:
-    """Sessions bc9c71c2 and fbc77ff8: the two ways rule 3 sent the Guide somewhere useless.
-
-    One opening ended "Try rehearsing it together, and then tell me what you said." — the
-    gerund, which `guide_invited_mother_tongue_practice` refuses on purpose, and no phrase
-    naming the language at all. So the telling that came back was never credited and the
-    fixed line asked for the same rehearsal again. The other lifted the rule's worked example
-    whole, in Portuguese, into an English session, and the Validator killed the opening for it.
-
-    Both come from the same line. Its only example was a bare Portuguese sentence with "em
-    português" inside it and no marker saying it was Portuguese, sitting next to a
-    {{SESSION_LANGUAGE}} slot; and the sentence after it told the Guide to call the practice
-    "rehearsing", which is the one English form the matcher was taught to turn away.
-
-    The example is the session's language now, and the rule names the two things the room
-    actually reads: the verb, and the phrase for the language the rehearsal is in.
-    """
-    guide = render(GUIDE, SESSION_LANGUAGE="English", MEANING_MAP="", COVERAGE_STATUS="")
-    rule = guide[
-        guide.index("Open the part, then — once they have it — send them to REHEARSE it") :
-    ]
-    rule = rule[: rule.index("\n")]
-    example = rule[rule.index('*"') + 2 :]
-    example = example[: example.index('"*')]
-
-    assert "venham me contar" not in rule
-    assert guide_invited_mother_tongue_practice(example), example
-
-
-def test_the_turn_after_a_finished_practice_asks_about_the_report_not_the_rehearsal() -> None:
-    """Sessions dceeccde, 1829e6f6, 3d896817: three third turns, three fail-safes.
-
-    The drafts were "rehearse this scene again in your own language to include those names",
-    the invitation said over again, and "did their names enter the rehearsal in your own
-    language?". The Validator refuses a second invitation to a rehearsal just finished, and
-    it refuses the Guide answering for a rehearsal it never heard.
-
-    All three are what rule 4 asked for. It closed on inviting the rehearsal again when
-    needed and on asking whether the missing thing was in the mother-tongue rehearsal, and
-    those were written for a room where the telling had not yet closed anything. Once the
-    telling finishes the practice, that turn belongs to the report: affirm it, then ask one
-    thing it left out, in the session language, about what the team actually said.
-    """
-    rule = GUIDE[GUIDE.index("Take the bridge-language telling-back the invitation asked for") :]
-    rule = rule[: rule.index("\n")]
-
-    assert "PRACTICE DONE" in rule
-    assert "never invite the same scene to be rehearsed again" in rule
-    assert "one question" in rule
+    assert (
+        "You never know what their rehearsal says — only what they tell you back in "
+        "{{SESSION_LANGUAGE}}." in languages
+    )
+    assert "do not pretend you understood" in languages
 
 
 def test_render_refuses_a_prompt_with_an_unfilled_placeholder() -> None:
@@ -180,7 +94,7 @@ def test_render_fills_every_placeholder() -> None:
 
 def test_the_coverage_block_lists_only_what_is_left() -> None:
     state = merge(initial_state(P), pericope_num=P, engaged=["scene:1", "scene:2"])
-    covered, left = coverage_status_block(state, P).split("REMAINING")
+    covered, left = coverage_status_block(state, P).split("NOT YET TOUCHED")
 
     assert "  scene: S3 (v.18)" in left
     assert "S1 (v.15)" not in left
@@ -191,7 +105,7 @@ def test_a_finished_map_says_nothing_remains() -> None:
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     block = coverage_status_block(whole, P)
 
-    assert "none" in block
+    assert block.endswith("  (nothing — everything in the map has been visited)")
 
 
 def test_peer_cue_is_read_off_the_reply() -> None:
@@ -342,41 +256,6 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     assert agent.calls.count("guide") == MAX_REDRAFTS + 1
 
 
-async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_not_the_g_line(
-    patch_agent,
-) -> None:
-    """A team that rehearsed in its own language never sat in this exchange at all.
-
-    Only the Guide's draft strayed, three times running, and the team never spoke. Category
-    G is reserved for a team detected in another language; a draft that cannot hold the
-    bridge language is an ordinary unrepairable draft, the same exit any other exhausted
-    redraft takes."""
-    patch_agent(
-        FakeAgent(
-            verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
-            drafts=["Tell me what you think happens next in this part of the story."]
-            * (MAX_REDRAFTS + 1),
-        )
-    )
-
-    outcome = await run_turn(
-        session_language="Portuguese",
-        language_code="pt",
-        transcript="me conta mais sobre Rute",
-        coverage_state=initial_state(P),
-        messages=[],
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        pericope_num=P,
-        settings=settings(),
-    )
-
-    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-    assert outcome.fixed_line.startswith("A")
-    assert outcome.used_fail_safe is True
-    assert outcome.degraded is True
-
-
 async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> None:
     class Garbage(FakeAgent):
         async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
@@ -426,7 +305,7 @@ async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_ag
     )
 
     first_call, second_call = agent.guide_inputs[0], agent.guide_inputs[1]
-    assert "Rewrite note" not in first_call
-    assert "Rewrite note" in second_call
+    assert first_call == "pergunta"
+    assert "internal redraft note" in second_call
     assert "imported_knowledge" in second_call
     assert "Rute era moabita" in second_call

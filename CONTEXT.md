@@ -29,10 +29,6 @@ _Avoid_: checker, reviewer, classifier, Analista
 The entity that checks the Guide's or the Speaker's draft speech before audio synthesis and can refuse it, triggering the safety speech.
 _Avoid_: analyst (it judges content, not speech), Validador
 
-**Correction check** (`verify_correction`):
-The call that checks whether a correction answered the finding, counting the elements the stretch carried, those still told, and those the new telling brought back. Resolved and broken are independent answers.
-_Avoid_: analyst (it reads a whole scope; this answers one finding), validator (it judges speech, not content), Verificador de correção
-
 **Team** (`project`):
 The group of translators that owns the work. In the schema the column is called `project_id`; the Desk and the backlog say team.
 _Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
@@ -50,7 +46,7 @@ What waits for an action of the facilitator in one team, shown as a band on the 
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
 
 **Reply** (*resposta*):
-The facilitator's voice answer to a team's raised-hand question. It belongs to the team: it shows on every tablet of the team, and counts as heard for all of them once one of them played it to the end. A question that names no team stays with the tablet that asked.
+The facilitator's voice answer to a team's raised-hand question. It belongs to the team: it shows on every tablet of the team, and counts as heard for all of them once one of them played it to the end. A question that names no team is reached by no tablet.
 _Avoid_: answer (in prose), heard the rehearsal (a different listening)
 
 **Phase** (*fase*):
@@ -104,7 +100,7 @@ How many times a stretch has been told: one on the first telling, two when told 
 _Avoid_: attempt, version, Passe, tellings (the count of every telling of the stretch, kept on the row)
 
 **Telling back**:
-The act of saying, in the bridge language, what a stretch of the mother tongue holds. The Portuguese the room writes and speaks for it is *traduzir / tradução*, and its English and Spanish room literals say *translated* / *traducido*; *contar* belongs to the Conversation with the Guide alone, and *recontar* to the External Check.
+The act of saying, in the bridge language, what a stretch of the mother tongue holds. The Portuguese the room writes and speaks for it is *traduzir / tradução*, and its English room literal says *translated*; *contar* belongs to the Conversation with the Guide alone, and *recontar* to the External Check.
 _Avoid_: translating (in English prose; the room's own English literal does say translated), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
 
 **Untold**:
@@ -127,6 +123,10 @@ _Avoid_: granularity, mode, shape, Granularidade
 The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the room removes it from the text before the Voice speaks it, and the stored line keeps it.
 _Avoid_: id, tag, link, slug
 
+**Speakable text**:
+The voiced text: a line as the Voice receives it, with its formatting marks and canon codes gone, each folded question standing as its own sentence and the divine name in its spoken form. Words are never added, dropped or reordered, and the stored line keeps the Guide's own form.
+_Avoid_: TTS text, clean text, sanitized text
+
 **Meaning Map**:
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
 _Avoid_: answer key, base text, Mapa de Sentido
@@ -138,6 +138,14 @@ _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Soun
 **Panorama**:
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
+
+**Book material**:
+What the Panorama voice reads as its standard of truth for one book: the digest of every published passage in story order, then the **Preservation notes**. Built from the vendored canon at its pin, never written by hand.
+_Avoid_: book context, overview prompt, summary
+
+**Preservation notes**:
+The union of a book's withholdings, listed under the book material's header sentence («The team has not yet lived any passage…»): what no passage may state, pair, name or attribute before its moment. A book with none reads «- (none recorded)»; Ruth has 99 at the pin 5b5c8d2.
+_Avoid_: do_not_decide (the canon's field name), spoilers, constraints
 
 **Address**:
 Where a stretch sits: the take it belongs to, and its start and end in milliseconds inside
@@ -158,8 +166,8 @@ What an element of the Meaning Map is. Six kinds sit in a scene of the passage �
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
-_Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
+The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it; the Guide's ledger block stopped carrying it in ENG-1358, as her live ledger never prints it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+_Avoid_: current scene (the retired heading of the ledger's scene line, which the ledger no longer prints; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):
 The scene a rehearsal invitation is about: the first scene of the passage still owed a rehearsal on the turn the Guide invites, kept with the turn's record and credited when the team reports the rehearsal done. Never the **Scene pointer**, which has not settled when the invitation is spoken.
@@ -188,11 +196,11 @@ The field of a missing finding that says whether the absent content sits before,
 _Avoid_: position, offset, Onde
 
 **Swap** (`current_findings`; *relação trocada*, in Marcia's words):
-An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again, one **Correction check** answering both — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
+An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
 _Avoid_: pair (it says there are two things), swapped relation (Marcia's phrase for the mistake, not for what the room carries), troca
 
 **Priority**:
-The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, a finding the **Correction check** put at the front keeps the front for the round that follows, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
+The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
 _Avoid_: severity, ranking, sorting (the stored list keeps the analyst's order), Prioridade
 
 **Filled silence** (`fills_silence`):
@@ -226,7 +234,7 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
+The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
 **Heard the rehearsal** (`unheard_parts`):
@@ -388,9 +396,17 @@ _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de
 **Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
 The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
 every door behind it.
-_Avoid_: api key (the room's own is a different door), token, password, Chave do runner
+_Avoid_: api key, token, password, Chave do runner
 
 ### Build
+
+**Claim code**:
+The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it.
+_Avoid_: código, pairing code, device code, credential
+
+**Device credential** (`X-Device-Credential`):
+The token one tablet collects once after its claim code was spent and sends on every request to the room; the server keeps only its hash and compares it on every request, so unlinking the tablet from the Desk locks it out at its next request. It is the only thing that opens a team door.
+_Avoid_: room key, api key, token, session
 
 **Build**:
 The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.

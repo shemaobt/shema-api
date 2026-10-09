@@ -31,7 +31,6 @@ from app.db.models.internalization_room import (
 )
 from app.services.internalization_room import halt
 from app.services.internalization_room import sessions as room
-from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from tests.baker import (
     grant_facilitator_app_role,
@@ -40,13 +39,13 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     AUDIO,
     DESK,
     DEVICE,
     FROM_THE_DATABASE,
     IR,
-    ROOM_KEY,
     Facilitator,
     P,
 )
@@ -104,12 +103,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import segments as segments_api
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
 
@@ -133,7 +130,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -176,7 +176,7 @@ async def facilitator(db_session: AsyncSession) -> Facilitator:
 
 
 async def _units(client: httpx.AsyncClient, session_id: str) -> list[dict[str, Any]]:
-    state = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    state = await client.get(f"{IR}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     return list(state.json()["back_translation"]["segments"])
 
@@ -206,6 +206,8 @@ async def test_the_third_telling_of_one_stretch_asks_for_a_person_once(
     on every call — so the room deleted the record that somebody had already walked over.
     """
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
 
@@ -247,6 +249,8 @@ async def test_a_second_hard_stretch_asks_again(
 ) -> None:
     """Once per stretch, not once per session: a different stretch is a different ask."""
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
 
@@ -284,6 +288,8 @@ async def test_the_mark_survives_everything_that_follows(
     the notice — not `terminei`, but the next thing the team said, whatever it was.
     """
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
     for saying in ("de novo", "e outra vez"):
@@ -309,7 +315,6 @@ async def test_the_mark_survives_everything_that_follows(
 
     finished = await client.post(
         f"{IR}/sessions/{session_id}/back-translation/finish",
-        headers={"X-Room-Key": ROOM_KEY},
         json={},
     )
     assert finished.status_code == 200, finished.text
@@ -333,6 +338,8 @@ async def test_a_blocking_halt_after_a_warning_still_clears_the_stamps(
     facilitator reading a stamp that answered a halt nobody has been to.
     """
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
     for saying in ("de novo", "e outra vez"):
@@ -341,9 +348,7 @@ async def test_a_blocking_halt_after_a_warning_still_clears_the_stamps(
     attended = await _row(db_session, session_id)
     assert attended.attended_at is not None
 
-    stopped = await client.post(
-        f"{IR}/sessions/{session_id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
-    )
+    stopped = await client.post(f"{IR}/sessions/{session_id}/needs-person")
     assert stopped.status_code == 200, stopped.text
 
     blocked = await _row(db_session, session_id)
@@ -363,6 +368,8 @@ async def test_the_facilitator_queue_lists_the_marks_and_the_tablet_does_not(
 ) -> None:
     """Facilitator-only, explicitly. The team never hears that the room counted."""
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db_session, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
     first_of_the_chain = (await _current(db_session, session_id))[1].id
@@ -379,7 +386,7 @@ async def test_the_facilitator_queue_lists_the_marks_and_the_tablet_does_not(
     assert listed["tellings"] == RETELLS_BEFORE_A_WARNING
     assert listed["crossed_at"]
 
-    state = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    state = await client.get(f"{IR}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     body = state.json()
     assert "hard_stretches" not in body
@@ -463,7 +470,6 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
     that makes a hard stretch. Nothing about the crossing may reach either prompt.
     """
     from app.services.internalization_room import back_translation as service
-    from app.services.internalization_room.back_translation import Finding, FindingKind
     from app.services.internalization_room.prompts import get_prompt_text
     from app.services.internalization_room.segments import capture_segment
 
@@ -494,7 +500,6 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
         bridge_take_id="retro-2",
         transcript="e Rute foi com ela",
     )
-    finding = Finding(kind=FindingKind.MISSING, note="a colheita da cevada", segment_id=earlier.id)
 
     async def _both_prompts() -> list[tuple[str, str]]:
         said.clear()
@@ -504,20 +509,10 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
             pericope_num=P,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
         )
-        await service.verify_correction(
-            findings=[finding],
-            earlier=earlier,
-            corrected=corrected,
-            chunk=1,
-            scope=P,
-            pericope_num=P,
-            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
-            addresses=Addresses(),
-        )
         return list(said)
 
     plain = await _both_prompts()
-    assert len(plain) == 2, "o analista e a verificação da correção, um prompt cada"
+    assert len(plain) == 1, "o analista, um prompt"
 
     earlier.tellings = RETELLS_BEFORE_A_WARNING
     corrected.tellings = RETELLS_BEFORE_A_WARNING
@@ -610,7 +605,7 @@ async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_coun
     client.said.append("")  # type: ignore[attr-defined]
     refused = await client.post(
         f"{IR}/sessions/{session_id}/segments/{retired['segment_id']}/replace",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={
             "take_id": retired["take_id"],
             "starts_ms": str(retired["starts_ms"]),
@@ -637,7 +632,7 @@ async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
     parent = (await _units(client, session_id))[0]
     divided = await client.post(
         f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/divide",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         json={"at_ms": 4000},
     )
     assert divided.status_code == 200, divided.text
@@ -645,7 +640,7 @@ async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
     client.said.append("")  # type: ignore[attr-defined]
     refused = await client.post(
         f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/replace",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={
             "take_id": parent["take_id"],
             "starts_ms": str(parent["starts_ms"]),
@@ -797,7 +792,7 @@ async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(
 
     divided = await client.post(
         f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/divide",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         json={"at_ms": 4000},
     )
     assert divided.status_code == 200, divided.text

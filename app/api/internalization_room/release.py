@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
-from app.core.exceptions import NothingToForce, ReleaseWithoutProject
+from app.core.exceptions import NothingToForce
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import (
     ForcedReleaseResponse,
@@ -166,11 +166,11 @@ async def _team_release_blocked(
 @router.post(
     "/sessions/{session_id}/release",
     response_model=TeamReleaseResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def approve_internalization_release(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TeamReleaseResponse:
@@ -186,28 +186,23 @@ async def approve_internalization_release(
     not, which left the act that numbers a draft for the external check as the only thing a
     team does with nothing saying which tablet did it.
 
-    Scoped with `get_session_for_room_caller`, which the other team routes do not use: what
-    this one writes is named by the team, and resolving the session by id alone would let
-    one tablet mint a release on another team's passage.
+    Scoped to the tablet's team like every team door: what this one writes is named by the
+    team, and resolving the session by id alone would let one tablet mint a release on
+    another team's passage.
 
     Every refusal the gate raises is a 200 naming its blockers, not a 409 (ENG-954): the
     tablet is the client that reads it, and a client that throws on a 409 learns nothing about
     which door is shut. ``InternalizationReleaseBlocked`` answers with its codes as they
-    stand; a session on the shared key answers ``["no_project"]``, a literal here because the
-    fact is the route's own and the gate never sees a project-less session (``approve_release``
-    refuses it first). The facilitator's own routes keep their 409: a person reads those, not
-    the tablet.
+    stand. The facilitator's own routes keep their 409: a person reads those, not the tablet.
 
     The version race is not a refusal and keeps the generic 409 `approve_release` already
-    raises on a lost `IntegrityError`: it is not one of the two exceptions this route catches,
+    raises on a lost `IntegrityError`: it is not the exception this route catches,
     and answering it as a blocker would tell the tablet to stop asking about a passage it is
     entitled to ask about again. That 409 is a retry signal, not a gate.
     """
-    session = await room.get_session_for_room_caller(db, session_id, project_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     try:
         release = await approve_release(db, session, device_id=device_id)
-    except ReleaseWithoutProject:
-        return TeamReleaseResponse(session_id=session_id, blockers=["no_project"])
     except InternalizationReleaseBlocked as exc:
         return await _team_release_blocked(db, session, exc.blockers)
     nudge(session.project_id, "release")

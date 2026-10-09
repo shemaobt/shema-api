@@ -33,8 +33,10 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
+from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM
 from tests.opening_harness import ask_for_the_opening
 from tests.release_harness import P
 from tests.room_harness import room_client
@@ -130,7 +132,7 @@ class _RecordingVoice:
 
     @staticmethod
     def key_of(text: str) -> str:
-        return f"tts/voice/{len(text)}.mp3"
+        return facilitator_speech_key(text, language="pt")
 
 
 @pytest.fixture()
@@ -142,18 +144,19 @@ async def client(db_session, monkeypatch):
 async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_teams_turn(
     client, db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     voice = _RecordingVoice()
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     the_room_agent_is(monkeypatch, turn=_TeamSpeaksWhileTheGuideThinks(rival_factory, session.id))
 
     late = await ask_for_the_opening(client, session.id)
     assert late.status_code == 200, late.text[:300]
-    assert late.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING))
+    opening = clip_url(_RecordingVoice.key_of(OPENING), session_id=session.id)
+    assert late.json()["audio_url"] == opening
 
     again = await ask_for_the_opening(client, session.id)
     assert again.status_code == 200, again.text[:300]
-    assert again.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING)), (
+    assert again.json()["audio_url"] == opening, (
         "o reenvio da abertura era respondido pelo _say_it_again com a fala do turno da equipe"
     )
     assert TEAM_TURN_LINE not in voice.spoken
@@ -177,7 +180,7 @@ class _TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(_TeamSpeaksWhileTheGuideTh
 async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_that_turn_lit(
     client, db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
     the_room_agent_is(
         monkeypatch, turn=_TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id)
@@ -212,7 +215,7 @@ async def test_a_prepared_opening_handed_over_after_the_teams_first_turn_is_drop
     """The team's turn lands between the opening's read of the empty session and its write —
     the only window the prepared line has, since nothing it does in between waits on a model.
     """
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     session.prepared_speech = PREPARED
     session.prepared_audio_key = PREPARED_KEY
     session.prepared_pericope = P

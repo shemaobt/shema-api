@@ -3,12 +3,11 @@
 A fail-safe answers a failure and varies on purpose — a room that repeats one sentence
 sounds like a machine stuck. A process line marks a step of the telling-back or of the
 external check, and varying it would voice "Agradecemos sua ajuda" where the step means
-"Agora é a vez de quem não ajudou a traduzir". The expected text below is hers, copied
+"Agora é a vez de quem não ajudou a traduzir". The expected text below is hers, written out
 from `shemaobt/Tripod-Internalization` `prompts/fail_safe_utterances.md` on her `main` at
-f8f4f64301052a97ba8d8372c7c12cc2ec5e40e3 — not from ours, which would only prove the file
-equals itself. Her `main` rather than the vendored copy under `prompts/vendor/`, because
-that one is pinned to `fia/pilot-2026-09` 533b6e3f, which carries P and does not carry X
-yet; re-pinning the doctrine vendor is not this slice's to do.
+18fa7c4, the freeze `docs/doctrine/FREEZE_PIN` names — not read from the room's file, which
+would only prove the file equals itself. That file is hers byte for byte at the same commit,
+so these are also the lines it carries.
 
 Every step of both families is here in both languages, and not only the ones a consumer
 asks for today: the position is the whole address, so a bullet that moves in her file
@@ -98,8 +97,14 @@ HER_PROCESS_LINES: tuple[HerLine, ...] = (
         family="P",
         step="approved",
         name="P3",
-        english=("Approved as the team's final draft. It goes to OBT Refine."),
-        portuguese=("Aprovado como rascunho final da equipe. Ele vai para o OBT Refine."),
+        english=(
+            "Approved as the team's final draft. The next step is the external check: tap the "
+            "'external check' button below and call in the listeners."
+        ),
+        portuguese=(
+            "Aprovado como rascunho final da equipe. O próximo passo é a checagem externa: "
+            "toquem no botão 'checagem externa', aqui embaixo, e chamem os ouvintes."
+        ),
     ),
     HerLine(
         family="X",
@@ -139,12 +144,12 @@ HER_PROCESS_LINES: tuple[HerLine, ...] = (
         english=(
             "Did anything stay unclear? Would you like to comment on anything about the whole "
             "passage? If so, tap the circle and speak, as many times as you want. If not, tap "
-            "'nothing to add'."
+            "'continue'."
         ),
         portuguese=(
             "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem inteira?"
-            " Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em 'nada "
-            "a acrescentar'."
+            " Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em "
+            "'continuar'."
         ),
     ),
     HerLine(

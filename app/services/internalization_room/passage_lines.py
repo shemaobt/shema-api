@@ -4,6 +4,8 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from app.services.internalization_room.canon.book_material import unwalkable
+from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.languages import FLOOR
 
 _LINES_FILE = Path(__file__).parent / "prompts" / "passage_lines.md"
@@ -65,3 +67,11 @@ def panorama_line_for(language_code: str) -> str:
     team an answer in the wrong language instead of leaving the entry off the wheel.
     """
     return line_for(PANORAMA, language_code, floor=language_code)
+
+
+def offered(book: str, spoken: str) -> list[tuple[str, str]]:
+    return [
+        (meaning_map.pericope_num, line)
+        for meaning_map in load_book(book)
+        if not unwalkable(meaning_map) and (line := line_for(meaning_map.pericope_num, spoken))
+    ]

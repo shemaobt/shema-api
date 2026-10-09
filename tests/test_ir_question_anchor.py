@@ -32,11 +32,11 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
-#: A fully translated passage — pt, en and es all carry real text for every bead — because
-#: cases 1 and 2 assert the card in all three languages. `P03`, which the neighbouring test
-#: files use, is one of the ten the catalogue has only in English (see
-#: `test_ir_question_completeness.py`), so it cannot carry that assertion.
+#: A fully translated passage — pt and en both carry real text for every bead — because
+#: cases 1 and 2 assert the card in both languages. `P01` carries both in the catalogue; a
+#: passage whose entry has no Portuguese label could not carry that assertion.
 PERICOPE = "P01"
 
 DEVICE = "tablet-da-equipe-1"
@@ -62,8 +62,8 @@ def _label(key: str) -> LabelledElement:
     return next(e for e in labelled_elements(PERICOPE) if e.key == key)
 
 
-def _labels(card: dict) -> tuple[str | None, str | None, str | None]:
-    return (card["element_label_pt"], card["element_label_en"], card["element_label_es"])
+def _labels(card: dict) -> tuple[str | None, str | None]:
+    return (card["element_label_pt"], card["element_label_en"])
 
 
 async def auth_header(db: AsyncSession, user) -> dict[str, str]:
@@ -86,13 +86,9 @@ async def a_team_and_its_facilitator(db: AsyncSession) -> tuple[object, dict[str
 async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     """The tablet's side of the router — real HTTP, real SQLite, a faked speech store."""
     from app.api.internalization_room.questions import router as questions_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
-    )
     monkeypatch.setattr(service, "_store", lambda *a, **kw: MemoryStore())
 
     async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
@@ -108,10 +104,11 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app),
         base_url="http://test",
-        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+        headers=tablet.headers | {"X-Room-Device": DEVICE},
     ) as client:
         yield client
 
@@ -138,12 +135,15 @@ async def desk_client(db_session: AsyncSession):
 
 
 async def _raise(
-    client: httpx.AsyncClient, *, session_id: str, element_key: str | None = None
+    client: httpx.AsyncClient, db: AsyncSession, session, *, element_key: str | None = None
 ) -> str:
+    """The hand raised from a tablet of the session's own team."""
+    tablet = await a_linked_tablet(db, team_id=session.project_id)
     data = {} if element_key is None else {"element_key": element_key}
     response = await client.post(
         QUESTIONS,
-        params={"session_id": session_id},
+        params={"session_id": session.id},
+        headers=tablet.headers,
         data=data,
         files={"file": ("pergunta.m4a", b"a equipe levantou a mao", "audio/mp4")},
     )
@@ -169,11 +169,11 @@ async def test_the_card_names_the_bead_the_room_was_on(
     bead = element_keys(PERICOPE)[0]
     await session_service.apply_coverage(db_session, session.id, {bead: SURFACED})
 
-    question_id = await _raise(room_client, session_id=session.id)
+    question_id = await _raise(room_client, db_session, session)
 
     card = await _card(desk_client, headers, question_id)
     expected = _label(bead)
-    assert _labels(card) == (expected.label_pt, expected.label_en, expected.label_es)
+    assert _labels(card) == (expected.label_pt, expected.label_en)
 
 
 async def test_the_most_recent_move_wins(
@@ -188,12 +188,12 @@ async def test_the_most_recent_move_wins(
     await session_service.apply_coverage(db_session, session.id, {a: SURFACED})
     await session_service.apply_coverage(db_session, session.id, {b: SURFACED})
 
-    first_question = await _raise(room_client, session_id=session.id)
+    first_question = await _raise(room_client, db_session, session)
     first_card = await _card(desk_client, headers, first_question)
     assert first_card["element_label_en"] == _label(b).label_en
 
     await session_service.apply_coverage(db_session, session.id, {a: ENGAGED})
-    second_question = await _raise(room_client, session_id=session.id)
+    second_question = await _raise(room_client, db_session, session)
     second_card = await _card(desk_client, headers, second_question)
     assert second_card["element_label_en"] == _label(a).label_en
 
@@ -208,10 +208,10 @@ async def test_no_move_no_anchor(db_session: AsyncSession, room_client, desk_cli
         db_session, pericope=PERICOPE, project_id=team.id
     )
 
-    question_id = await _raise(room_client, session_id=session.id)
+    question_id = await _raise(room_client, db_session, session)
 
     card = await _card(desk_client, headers, question_id)
-    assert _labels(card) == (None, None, None)
+    assert _labels(card) == (None, None)
 
 
 async def test_another_sessions_bead_is_not_borrowed(
@@ -224,15 +224,15 @@ async def test_another_sessions_bead_is_not_borrowed(
     s2 = await session_service.create_session(db_session, pericope=PERICOPE, project_id=team.id)
     await session_service.apply_coverage(db_session, s1.id, {a: SURFACED})
 
-    first_question = await _raise(room_client, session_id=s2.id)
+    first_question = await _raise(room_client, db_session, s2)
     first_card = await _card(desk_client, headers, first_question)
-    assert _labels(first_card) == (None, None, None), (
+    assert _labels(first_card) == (None, None), (
         "a pergunta de S2 herdou o bead que S1 moveu, e cada sessao tem sua propria historia"
     )
 
     await session_service.apply_coverage(db_session, s2.id, {b: SURFACED})
     await session_service.apply_coverage(db_session, s1.id, {c: SURFACED})
-    second_question = await _raise(room_client, session_id=s2.id)
+    second_question = await _raise(room_client, db_session, s2)
     second_card = await _card(desk_client, headers, second_question)
     assert second_card["element_label_en"] == _label(b).label_en, (
         "S1 moveu C depois, mas C nao e desta sessao"
@@ -254,7 +254,7 @@ async def test_a_key_the_client_sends_is_kept(
     )
     await session_service.apply_coverage(db_session, session.id, {a: SURFACED})
 
-    question_id = await _raise(room_client, session_id=session.id, element_key=b)
+    question_id = await _raise(room_client, db_session, session, element_key=b)
 
     card = await _card(desk_client, headers, question_id)
     assert card["element_label_en"] == _label(b).label_en
@@ -280,7 +280,7 @@ async def test_the_anchor_and_the_tracker_cannot_drift(
     # rises for the first time and does get one.
     await session_service.apply_coverage(db_session, session.id, {x: ENGAGED, y: SURFACED})
 
-    question_id = await _raise(room_client, session_id=session.id)
+    question_id = await _raise(room_client, db_session, session)
 
     card = await _card(desk_client, headers, question_id)
     assert card["element_label_en"] == _label(y).label_en, (

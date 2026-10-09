@@ -1,24 +1,23 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings
-from app.services.internalization_room.fail_safe import validation_ladder
-from app.services.internalization_room.llm import Turn, cache_break_before
+from app.services.internalization_room.fail_safe import unrepairable
+from app.services.internalization_room.llm import TruncatedReply, Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
 from app.services.internalization_room.room_agent import room_agent
 from app.services.internalization_room.turn_instructions import (
-    NOT_THIS_TURN,
-    OPENING_MOVEMENT_INSTRUCTION,
-    SPEAK_THIS_TURN,
+    EARLIER_PASSAGES_HEADING,
+    TEAM_EVIDENCE_HEADING,
+    TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
-    _nobody_spoke_this_turn,
+    her_block,
     split_opening_movements,
 )
 from app.services.internalization_room.usage import (
@@ -33,9 +32,6 @@ from app.services.platform.tts import warm_connection_in_background
 logger = logging.getLogger(__name__)
 
 MAX_REDRAFTS = 2
-
-#: How many times one draft is put to the Validator before its reply is given up on.
-READINGS_OF_ONE_DRAFT = 2
 
 
 @dataclass(frozen=True)
@@ -103,36 +99,6 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     ]
 
 
-#: How each stored role is quoted back into the Validator's evidence block. Anything else
-#: (the team's own words) falls through to "Team" below.
-_EVIDENCE_LABELS = {"guide": "Guide", "room": "Room"}
-
-
-def _conversation_as_evidence(messages: list[dict[str, Any]]) -> str:
-    """The whole session, quoted, for the Validator to check a recollection against.
-
-    The Guide hears every turn (no window), so it may say what the team told it three
-    scenes ago. The Validator's evidence rule refuses any such sentence it cannot find in a
-    record, and with the slot reading "not this turn" nothing could be found: a true
-    recollection of the team's own words died as an "epistemic" violation and the team heard
-    the pause line for asking what it had said. This is quoted evidence, never a window — it
-    is all of it, oldest first, and the doctrine forbids the window, not the record.
-
-    Takes the raw stored messages, not `Turn`s: a room note is stored as its own role
-    (`sessions.append_exchange`), and the API's two-role `Turn` has already folded it onto
-    the team's side by the time `_conversation_turns` is done with it. Quoting it back as
-    `Team:` would credit the team with words it never said in the session language — this
-    labels it `Room:` instead, the one thing the Guide's own prompt already knows to do with
-    a bracketed note but the Validator's prompt is never told.
-    """
-    if not messages:
-        return NOT_THIS_TURN
-    return "\n".join(
-        f"{_EVIDENCE_LABELS.get(str(message.get('role')), 'Team')}: {message.get('text', '')}"
-        for message in messages
-    )
-
-
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     """Every refused Validator reply leaves itself behind, whole, with what refused it.
 
@@ -153,42 +119,35 @@ def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     )
 
 
-def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
-    """The room's own gate rejecting spoken text: the condition and a number, never the words.
+def _regenerated(raw: str, session_id: str, attempt: int) -> None:
+    """A Validator that read the draft and asked for another leaves its whole reply behind.
 
-    The rejected text is the Guide's draft on a `pass` verdict, or the Validator's own
-    ``corrected_response`` on a `correct` one — either way ``detail`` may never be that text
-    itself, because both can echo the team's own turn back at them, which is exactly what
-    `test_a_failed_turn_logs_its_cause_and_never_what_the_team_said` forbids of the log.
+    Not a refused reply: the verdict was readable, and what it decided was a redraft. The
+    `condition` field is kept so everything that already counts a Validator trace by it still
+    counts this one.
     """
     logger.warning(
-        "Guide draft rejected (%s) for session %s, attempt %s: %s",
-        condition,
+        "Validator regenerate verdict for session %s, attempt %s: %s",
         session_id,
         attempt,
-        detail,
-        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
+        raw,
+        extra={
+            "session_id": session_id,
+            "attempt": attempt,
+            "condition": "verdict is 'regenerate'",
+        },
     )
 
 
-def _the_guides_turn(utterance: str, opening_instruction: str, ask_for_movements: bool) -> str:
+def _the_guides_turn(utterance: str, opening_instruction: str) -> str:
     """The Speaker's last user turn, behind everything already said.
 
     What the team just said is that turn, on its own: the exchange it answers is the
     conversation, not a heading inside the question. The instructions that ride per turn —
-    the opening, the two-movement mark — stay in that last message, which is where an
+    the opening's note — stay in that last message, which is where an
     instruction is read as this turn's and not as something said earlier.
-
-    A turn with neither — the back-translation verdict — asks for its speech in the session's
-    own language rather than sending nothing: the API refuses an empty user message, and that
-    400 would reach the team as a fail-safe line.
     """
-    if utterance:
-        return utterance
-    instruction = opening_instruction or SPEAK_THIS_TURN
-    if ask_for_movements:
-        return f"{instruction} {OPENING_MOVEMENT_INSTRUCTION}"
-    return instruction
+    return utterance or opening_instruction
 
 
 async def _draft(
@@ -202,7 +161,8 @@ async def _draft(
     """Ask the Speaker for this turn, with the rewrite note behind it when there is one."""
     user_content = turn
     if redraft_note:
-        user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
+        conversation = [*conversation, Turn(role="user", text=turn)]
+        user_content = redraft_note
     draft: str = await room_agent().turn.call_agent(
         role="guide",
         system_prompt=guide_prompt,
@@ -299,29 +259,20 @@ async def _voiced_after_validation(
     opening_instruction: str = "",
     ask_for_movements: bool = False,
     telling_back: str = "",
-    finding: str = "",
-    ordered_closing: str = "",
-    mother_tongue: bool = False,
     prepared_pericope: str | None = None,
+    earlier_passages: str = "",
+    with_history: bool = True,
+    first_scene: str = "",
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
 
-    `telling_back`, `finding` and `ordered_closing` are the verdict turn's own context — what
-    the team told back outside the conversation, what the analyst found, and the ending the
-    Speaker was ordered to write. Every other turn leaves them empty, and the Validator is told
-    in words that an empty block is a block that does not apply to this turn rather than
-    evidence being withheld, so nothing about a conversation turn changes.
-
-    `mother_tongue` is the one case where `transcript` is not the team's own words in the
-    session language — `turn.speech.speak_back` puts the app's own note there instead, so the
-    Guide has something to draft against. The Validator's `{{TEAM_UTTERANCE}}` is quoted
-    evidence of what the team *said*, under a heading no prompt tells it to read as a fact
-    about the room rather than speech; this turn's note has not reached `messages` yet
-    either, so nothing in `RECENT_CONVERSATION` catches it. Left alone, the slot would credit
-    the team with a sentence in the session language it never spoke.
+    The opening's note goes in. In her app it is the team side of turn 0 — her route makes it
+    the kickoff's team text — and her turn loop hands that text to the Validator as what the
+    team said, so with no team words the note handed to the Guide stands
+    in the slot.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
@@ -335,22 +286,23 @@ async def _voiced_after_validation(
     as the family-A fail-safe: the next tap failed the same way, and the team heard the
     same canned line over and over with nothing to say a person was needed. The only
     fail-safe this engine still speaks is the designed one — a Validator that will not
-    settle after `MAX_REDRAFTS`, or one whose reply cannot be read twice over.
+    settle after `MAX_REDRAFTS`, or one whose reply is not a verdict.
 
-    A reply the room cannot read is not a verdict on the draft, so it costs a second
-    reading of the same draft and never a redraft: the Guide's words were not judged, and
-    sending them back to be rewritten spent the budget that keeps the Guide talking on a
-    fault that was the Validator's. Only when the second reading is unreadable too does the
-    family-A line answer, and the redrafts it reports are the ones actually spent.
+    The Validator reads each draft once, as in her app. A reply cut at its ceiling, one that
+    cannot be read, one with a verdict she never named, or a correction with nothing in it is
+    not a judgment of the draft and gets no second reading: the family-A line answers at once,
+    with no redraft spent, because the Guide's words were not judged and sending them back to
+    be rewritten would spend the budget that keeps the Guide talking on a fault that was the
+    Validator's.
     """
     started = time.monotonic()
     spend = open_ledger()
-    conversation = _conversation_turns(messages)
+    conversation = _conversation_turns(messages) if with_history else []
     redraft_note = ""
     issues: list[dict[str, Any]] = []
     warmed_connection = False
 
-    turn = _the_guides_turn("" if opening else transcript, opening_instruction, ask_for_movements)
+    turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
     for attempt in range(MAX_REDRAFTS + 1):
         draft, movements = split_opening_movements(
@@ -364,21 +316,19 @@ async def _voiced_after_validation(
         )
         if not ask_for_movements:
             movements = []
+        if not draft:
+            verdict: dict[str, Any] = {}
+            break
 
+        reported = her_block(TEAM_REPORTED_HEADING, telling_back)
+        earlier = her_block(EARLIER_PASSAGES_HEADING, earlier_passages)
         validator_system = render(
-            cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
+            cache_break_before(validator_prompt, "{{EARLIER_PASSAGES}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
-            RECENT_CONVERSATION=_conversation_as_evidence(messages),
-            TEAM_UTTERANCE=(
-                NOT_THIS_TURN
-                if mother_tongue
-                else transcript or _nobody_spoke_this_turn(telling_back)
-            ),
+            EARLIER_PASSAGES=f"{reported}\n\n{earlier}" if reported else earlier,
+            TEAM_EVIDENCE=her_block(TEAM_EVIDENCE_HEADING, transcript or opening_instruction),
             DRAFTED_RESPONSE=draft,
-            TELLING_BACK=telling_back or NOT_THIS_TURN,
-            FINDING=finding or NOT_THIS_TURN,
-            ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
         )
         if not warmed_connection:
             warm_connection_in_background(
@@ -387,20 +337,22 @@ async def _voiced_after_validation(
                 settings=settings,
             )
             warmed_connection = True
-        for _reading in range(READINGS_OF_ONE_DRAFT):
+        try:
             raw_verdict = await room_agent().turn.call_agent(
                 role="validator",
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
-                max_output_tokens=4096,
+                max_output_tokens=8192,
+                effort=None,
+                fails_on_truncation=True,
                 settings=settings,
             )
             verdict, refusal = _parse_verdict(raw_verdict)
-            issues = _issues_as_dicts(verdict.get("issues"))
-            if refusal is None:
-                break
-            _refused(refusal, raw_verdict, session_id, attempt + 1)
+        except TruncatedReply as cut:
+            raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
+        issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
+            _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
 
         speech = ""
@@ -410,16 +362,7 @@ async def _voiced_after_validation(
             speech = str(verdict["corrected_response"]).strip()
             movements = []
         else:
-            _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
-
-        if speech and bool(
-            await asyncio.to_thread(room_agent().strays_from, speech, language_code)
-        ):
-            issues = [*issues, {"problem": "off_bridge_language"}]
-            _draft_rejected(
-                "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
-            )
-            speech = ""
+            _regenerated(raw_verdict, session_id, attempt + 1)
 
         if speech:
             return _timed(
@@ -440,10 +383,10 @@ async def _voiced_after_validation(
                 prepared_pericope,
             )
 
-        redraft_note = _redraft_note(issues, language_code)
+        redraft_note = _redraft_note(issues)
     logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
 
-    speech, line = validation_ladder(messages, language_code)
+    speech, line = unrepairable(attempt + 1, language_code, first_scene)
     return _timed(
         TurnOutcome(
             speech=speech,

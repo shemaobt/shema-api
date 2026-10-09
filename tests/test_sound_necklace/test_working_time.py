@@ -405,8 +405,11 @@ async def test_a_beat_that_never_wins_the_race_answers_with_the_stored_total(
     async def _cursor_that_is_always_stale(db, sid):
         now, cursor = await real_clock_and_cursor(db, sid)
         await db.execute(
-            text(f"UPDATE sn_sessions SET last_working_tick_at = {_NOW_SHIFTED} WHERE id = :sid"),
-            {"offset": "+0 seconds", "sid": sid},
+            text(
+                f"UPDATE sn_sessions SET last_working_tick_at ="
+                f" {_SHIFTED.format(column='last_working_tick_at')} WHERE id = :sid"
+            ),
+            {"offset": "+1 seconds", "sid": sid},
         )
         return now, cursor
 
