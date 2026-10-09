@@ -280,3 +280,27 @@ async def erase_shared_requests(db: AsyncSession, project: ShemaProject, *, user
         submission.archived_payload = json.dumps(body, ensure_ascii=False)
         submission.prayer_request_erased_at = at
         submission.prayer_request_erased_by = user.id
+
+
+async def pulse_shared(db: AsyncSession, project: ShemaProject, text: str) -> bool:
+    """Whether an applied Pulse of ``project`` brought ``text`` and shared it — answered ``rede``.
+
+    The Resource Circle's notice says *the Pulse received carries a prayer request* (OBT-566), so
+    on a sensitive project, where that notice waits for the coordination's release (OBT-575), the
+    release asks this before announcing: a request typed into the ficha came with no Pulse, and on
+    a project nothing withholds it is not announced either. Read off the archived answers, as
+    :func:`erase_shared_requests` reads them, and compared after trimming, as the record keeps it.
+    """
+    rows = await db.execute(
+        select(ShemaSubmission).where(
+            ShemaSubmission.project_id == project.id, ShemaSubmission.applied_at.is_not(None)
+        )
+    )
+    for submission in rows.scalars():
+        answers = archived_answers(submission)
+        if answers.get(PRAYER_VISIBILITY_FIELD) != "rede":
+            continue
+        carried = answers.get(PRAYER_FIELD)
+        if isinstance(carried, str) and carried.strip() == text:
+            return True
+    return False

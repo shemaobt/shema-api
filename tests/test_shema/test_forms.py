@@ -640,6 +640,36 @@ async def test_a_sensitive_project_s_shared_request_waits_for_the_coordination_a
 
 
 @pytest.mark.parametrize("door", ["link", "import"])
+async def test_a_sensitive_project_s_pulse_request_reaches_the_circle_at_the_release(
+    client, db_session, shema_app, headers, coordinator, project, door
+) -> None:
+    """OBT-566's notice, moved by OBT-575: on a sensitive project the Pulse's request reaches the
+    wall when the coordination releases it, and that is when the Resource Circle hears of it —
+    once, and not again when the coordination edits the released text."""
+    circle = await a_circle(db_session, shema_app)
+    project.sensitive_country = True
+    await db_session.commit()
+    await apply_pulse(
+        client,
+        db_session,
+        headers,
+        door,
+        prayerRequest="Orem pela seca.",
+        prayerVisibility="rede",
+    )
+    release = f"{PREFIX}/projects/{project.id}/prayer/release"
+
+    first = await client.post(release, json={"reviewed": "Orem pela seca."}, headers=headers)
+    edit = await client.post(
+        release, json={"reviewed": "Orem pela seca.", "text": "Orem pela chuva."}, headers=headers
+    )
+
+    assert first.status_code == 204, first.text
+    assert edit.status_code == 204, edit.text
+    assert [row.user_id for row in await notices(db_session, PRAYER_EVENT)] == [circle.id]
+
+
+@pytest.mark.parametrize("door", ["link", "import"])
 @pytest.mark.parametrize(
     "pulse",
     [

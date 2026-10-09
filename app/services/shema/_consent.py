@@ -367,7 +367,7 @@ async def awaiting_ids(db: AsyncSession, project: ShemaProject) -> frozenset[str
 
 def release_request(
     project: ShemaProject, need: ShemaNeed | None, *, reviewed: str, text: str | None
-) -> bool:
+) -> str | None:
     """Release one request of a sensitive project, as ``text`` or as the team wrote it.
 
     **Bound to the text the coordination read**, ``reviewed``: a team that wrote something new
@@ -377,9 +377,9 @@ def release_request(
 
     Refused as a conflict, naming nothing of the text, when there is nothing to release: a
     project nothing withholds (its requests never wait), a request the team has not authorized
-    or has taken back, or one with no text. Answers whether the release put on the wall a team
-    request that was not on it — the Resource Circle's notice (OBT-566) is for a request, not
-    for a coordination's second edit of one.
+    or has taken back, or one with no text. Answers the team's text when the release put on the
+    wall a request that was not on it, and ``None`` for a coordination's second edit of one — the
+    Resource Circle's notice (OBT-566) is for a request, and the caller asks where it came from.
     """
     if not is_withheld(project):
         raise ConflictError("only a sensitive project's prayer request waits for the coordination")
@@ -400,7 +400,7 @@ def release_request(
     else:
         need.prayer_released_from = current
         need.prayer_released_text = released
-    return before != current
+    return current if before != current else None
 
 
 def reads_withheld_requests(granted: Collection[str], *, platform_admin: bool) -> bool:

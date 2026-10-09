@@ -51,6 +51,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import Any, Final
 
+from sqlalchemy import ColumnElement
+
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema_need import ShemaNeedWrite
@@ -83,6 +85,15 @@ def is_withheld(project: ShemaProject) -> bool:
     from something that is not a row.
     """
     return project.sensitive_country
+
+
+def withheld_rows() -> ColumnElement[bool]:
+    """:func:`is_withheld` as a predicate a query carries — the same column, the same owner.
+
+    For a read that only a withheld project can answer, such as the coordination's review queue
+    (OBT-575), so it does not load every project in reach to keep the sensitive ones.
+    """
+    return ShemaProject.sensitive_country.is_(True)
 
 
 def withheld_note(records: Iterable[LeavingShape], reader: ShemaReader) -> int | None:

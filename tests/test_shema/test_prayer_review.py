@@ -210,6 +210,19 @@ async def test_a_release_of_a_text_the_team_has_since_changed_is_a_conflict(
     assert await wall_texts(client, circle) == set()
 
 
+async def test_a_request_longer_than_any_cap_is_still_released(
+    client, db_session, circle, coordinator
+) -> None:
+    """The team's text has no cap, so the release that must quote it cannot carry one."""
+    long_text = "Orem pela equipe. " * 2_000
+    project = await seed(db_session, "garoa-longa", text=long_text)
+
+    ok = await release(client, coordinator, project.id, {"reviewed": long_text.strip()})
+
+    assert ok.status_code == 204, ok.text
+    assert await wall_texts(client, circle) == {long_text.strip()}
+
+
 # --- who releases and edits ----------------------------------------------------------------
 
 
@@ -312,12 +325,13 @@ async def test_a_project_flagged_sensitive_takes_its_requests_off_the_wall_until
 # --- who is told ---------------------------------------------------------------------------
 
 
-async def test_the_coordination_is_told_when_a_request_starts_waiting_and_the_circle_on_release(
+async def test_the_coordination_is_told_when_a_request_starts_waiting(
     client, db_session, shema_app, circle, coordinator
 ) -> None:
-    """Question 1 and question 5. The OBT Lab authorizes the request on the record; the region's
-    coordination hears that it waits, the writer does not, and the Resource Circle hears nothing
-    until the release puts it on the wall — once, and not again for an edit."""
+    """Question 1. The OBT Lab authorizes the request on the record; the region's coordination
+    hears that it waits, and the writer does not. Question 5: a request typed into the ficha came
+    with no Pulse, so its release announces nothing to the Resource Circle — as on a project
+    nothing withholds. The Pulse's own case is ``test_forms.py``'s."""
     project = await seed(db_session, "garoa-aviso", text=TEAM_TEXT)
     project.prayer_visibility = None
     await db_session.commit()
@@ -334,8 +348,6 @@ async def test_the_coordination_is_told_when_a_request_starts_waiting_and_the_ci
     assert "prayerReview" not in await panel_kinds(client, lab)
     assert await panel_kinds(client, circle) == []
 
-    await release(client, coordinator, project.id, {"reviewed": TEAM_TEXT})
-    assert await panel_kinds(client, circle) == ["prayer"]
-
-    await release(client, coordinator, project.id, {"reviewed": TEAM_TEXT, "text": EDITED})
-    assert await panel_kinds(client, circle) == ["prayer"]
+    released = await release(client, coordinator, project.id, {"reviewed": TEAM_TEXT})
+    assert released.status_code == 204, released.text
+    assert await panel_kinds(client, circle) == []

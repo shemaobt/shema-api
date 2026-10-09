@@ -266,5 +266,5 @@ class PrayerRelease(BaseModel):
     model_config = _INWARD
 
     need_id: str | None = None
-    reviewed: str = Field(min_length=1, max_length=20_000)
-    text: str | None = Field(default=None, max_length=20_000)
+    reviewed: str = Field(min_length=1)
+    text: str | None = None
