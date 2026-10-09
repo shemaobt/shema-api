@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from app.core.database import Base
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from scripts import hold_deploy
 
@@ -90,3 +93,21 @@ async def test_a_session_left_untouched_for_longer_than_the_window_does_not_hold
     await a_session(db_session, "sessao-de-ontem", updated_at=NOW - timedelta(minutes=61))
 
     assert await hold_deploy.holding(db_session, NOW, HOUR) == []
+
+
+async def test_a_column_the_pending_migration_adds_does_not_break_the_count(
+    tmp_path: Path,
+) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'antes-da-migracao.db'}")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with AsyncSession(engine) as db:
+        await a_session(db, "sessao-da-ruth")
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE ir_sessions DROP COLUMN canon_pin"))
+
+    async with AsyncSession(engine) as db:
+        held = await hold_deploy.holding(db, NOW, HOUR)
+    await engine.dispose()
+
+    assert [session.id for session in held] == ["sessao-da-ruth"]
