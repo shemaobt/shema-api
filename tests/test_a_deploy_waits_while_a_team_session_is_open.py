@@ -277,8 +277,13 @@ def test_one_production_deploy_runs_at_a_time_and_the_next_one_is_kept() -> None
 async def test_the_window_is_an_hour_unless_the_deploy_is_told_otherwise(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
+    now = datetime.now(UTC)
+    await a_session(db_session, "sessao-da-ruth", updated_at=now - timedelta(minutes=59))
     await a_session(
-        db_session, "sessao-da-ruth", updated_at=datetime.now(UTC) - timedelta(minutes=30)
+        db_session,
+        "sessao-de-noemi",
+        project_id="time-de-noemi",
+        updated_at=now - timedelta(minutes=61),
     )
     runner = a_runner(tmp_path)
 
@@ -286,4 +291,5 @@ async def test_the_window_is_an_hour_unless_the_deploy_is_told_otherwise(
     a_quarter = the_hold_runs(runner, DEPLOY_URGENT="true", DEPLOY_HOLD_MINUTES="15")
 
     assert "sessao-da-ruth  project time-de-ruth" in an_hour.stdout
+    assert "sessao-de-noemi" not in an_hour.stdout
     assert a_quarter.stdout == "No team session is open; the deploy goes on.\n"
