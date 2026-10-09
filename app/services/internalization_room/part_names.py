@@ -25,6 +25,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.languages import FLOOR, room_language
+from app.services.internalization_room.takes import is_wav
 
 
 @dataclass(frozen=True)
@@ -70,9 +71,14 @@ class Addresses:
 
     by_stretch: dict[str, str] = field(default_factory=dict)
     words: AddressWords = _WORDS[FLOOR]
+    on_wav: frozenset[str] = frozenset()
 
     def part_of(self, segment_id: str | None) -> str:
         return self.by_stretch.get(segment_id or "", "")
+
+    def repair_of(self, segment_id: str | None) -> str:
+        """Her `repairOf`: a stretch of a current WAV part can be recorded again as a sentence."""
+        return "sentence" if segment_id in self.on_wav else "part"
 
 
 def scene_titles(session: IRSession) -> list[str]:
@@ -108,6 +114,7 @@ def addresses_for(
     titled = len([part for part in parts if part.ordinal is not None]) == len(titles)
 
     told_parts = {stretch.take_id for stretch in told}
+    wav_parts = {part.id for part in parts if is_wav(part.content_type)}
 
     said: dict[str, str] = {}
     position = 0
@@ -128,4 +135,5 @@ def addresses_for(
             stretch.id: said[stretch.take_id] for stretch in told if stretch.take_id in said
         },
         words=words,
+        on_wav=frozenset(stretch.id for stretch in told if stretch.take_id in wav_parts),
     )
