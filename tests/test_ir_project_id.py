@@ -103,12 +103,7 @@ async def test_a_session_opened_with_an_unrecognised_credential_is_refused(clien
     and that was right while the credential was only a hint about scoping. ENG-448 makes it
     authentication, and the two readings cannot both hold: ignoring a credential that does
     not resolve is exactly not authenticating by it. A caller presenting a string that
-    matches no device is told so, and does not get in on the strength of the shared key it
-    also sent.
-
-    The shared key **is** in this request deliberately. Without it the refusal would prove
-    nothing new — every request lacking both is already refused — and what is being asserted
-    here is that a bad credential is not rescued by a good key.
+    matches no device is told so.
     """
     await a_claimed_device(db_session)
 

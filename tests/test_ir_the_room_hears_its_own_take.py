@@ -174,11 +174,10 @@ async def test_the_room_hears_a_take_of_its_own_session(client, db_session):
 
 
 async def test_the_room_does_not_hear_the_take_of_another_session(client, db_session):
-    """The case the shared key makes necessary.
+    """A take is reached through its own session, never on its own.
 
-    Every tablet in the field presents the same string, so a take named on its own would
-    be reachable by anyone holding the app — this is what keeps the key from being a key
-    to the whole archive.
+    A take named on its own would be reachable by any tablet of the team that holds the
+    session id of another — this is what keeps one session's recordings to that session.
 
     The same call with the session's own take is asked first and is not decoration: a
     refusal on its own is what an address that leads nowhere also answers, and this case

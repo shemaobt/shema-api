@@ -216,12 +216,14 @@ async def test_playing_a_question_carries_no_shared_room_key(client, db_session,
     assert played.json()["url"], "a rota devolve o endereco assinado no corpo (ENG-533)"
 
 
-async def test_the_room_key_alone_does_not_open_the_question(client, db_session, room_app, store):
+async def test_a_tablets_device_credential_alone_does_not_open_the_question(
+    client, db_session, room_app, store
+):
     """The half of Behaviour 2 the absence check cannot reach.
 
     A route that took either credential would satisfy every assertion above, since those
-    only ever describe the request the test chose to send. This one sends the shared key
-    on its own: it is the same on every tablet and names no one.
+    only ever describe the request the test chose to send. This one sends a tablet's
+    device credential on its own: it names a device, not a person.
     """
     question = await a_raised_hand(db_session, store)
 

@@ -35,7 +35,7 @@ GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 async def ask_for_the_opening(
     client: httpx.AsyncClient, session_id: str, turn_id: str | None = "abertura"
 ) -> httpx.Response:
-    """A turn with no recording on the room's key, under `turn_id` or under none."""
+    """A turn with no recording, under `turn_id` or under none."""
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
         data={"turn_id": turn_id} if turn_id else {},

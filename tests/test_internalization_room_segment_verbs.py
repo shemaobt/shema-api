@@ -362,8 +362,8 @@ async def test_a_divided_stretch_cannot_be_replaced_as_a_unit_through_the_route(
 async def test_a_stretch_of_another_session_is_refused_the_way_an_absent_one_is(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """The room key is the same string in every tablet, so the session in the path is the
-    only thing that says which work is being reached.
+    """A stretch id names no session, so the session in the path is the only thing that says
+    which work is being reached.
 
     The refusal may not tell "not yours" apart from "does not exist": one message for absent,
     unowned and somebody else's, which is what the room already does for sessions and takes.

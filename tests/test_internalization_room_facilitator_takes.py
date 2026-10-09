@@ -1,9 +1,9 @@
 """Who can listen to what the team recorded.
 
-The room has two audiences that never share a route. The team's app carries a shared device
-key and never signs in; a facilitator is a person, signs in, and comes through the platform's
-own app access. Playback belongs to the second one — the tablet already holds its own copy,
-and the room key is the same on every tablet.
+The room has two audiences that never share a route. The team's app carries a device
+credential and never signs in; a facilitator is a person, signs in, and comes through the
+platform's own app access. Playback belongs to the second one — the tablet already holds its
+own copy.
 """
 
 from __future__ import annotations
@@ -162,7 +162,9 @@ async def test_without_a_login_nobody_listens(client, db_session, room_app):
     assert response.status_code == 401
 
 
-async def test_the_room_key_does_not_open_the_facilitator_door(client, db_session, room_app):
+async def test_a_tablets_device_credential_does_not_open_the_facilitator_door(
+    client, db_session, room_app
+):
     session, _take = await _session_with_a_take(db_session)
 
     response = await client.get(
@@ -170,7 +172,7 @@ async def test_the_room_key_does_not_open_the_facilitator_door(client, db_sessio
     )
 
     assert response.status_code == 401, (
-        "a chave é a mesma em todos os tablets — ela identifica o app, não uma pessoa"
+        "a credencial do tablet identifica um aparelho, não uma pessoa"
     )
 
 

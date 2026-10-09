@@ -4,6 +4,10 @@ Every team door opens only to a device credential, so every case that calls one 
 device behind it. Built through the services the field goes through: the device is minted,
 a facilitator of the team spends its claim code, and the tablet collects its own credential,
 which is what kills the copy the claim handed the Desk.
+
+``TABLET_TEAM`` is the team the harnesses' session builders write in by default
+(``rehearsed_session``, ``ready_session``, ``a_session``, ``rehearsed_in_parts``), and that team
+exists only once the module's client fixture has called ``a_linked_tablet`` with it.
 """
 
 from __future__ import annotations

@@ -27,7 +27,9 @@ Decided by Henok on 2026-10-09 (ENG-1518, server half of ENG-1264):
   device id is minted by the server, a claim code is only worth what a facilitator spends on
   it, and the credential is collected once.
 - With every caller in a team, a session read is scoped to the caller's team, and a turn
-  replay is too. A session that names no team is reached by no tablet.
+  replay is too. A session that names no team is reached by no tablet, and neither is a
+  question that names none: its audio, its place in the replies list and its "heard" mark
+  answer only to a tablet of its own team (decided by the Definer, 2026-10-09).
 
 Rejected:
 
@@ -40,10 +42,12 @@ Rejected:
 
 Consequences:
 
-- A tablet in the field must hold a collected credential before an app without the key is
-  installed on it; the app's half is ENG-1519.
-- Sessions opened on the key in the past name no team and are now unreachable. The app drops
-  a session the server no longer has and opens a fresh one, so a team loses its place in such
-  a session, not its recordings, which stay in the database.
+- Production holds no tablet with a credential: on 2026-10-09 its two device rows were never
+  claimed, and its five sessions name no team, the last touched on 2026-09-18. Nothing is in
+  use, so after the merge every production tablet is linked from the Desk before it opens a
+  session; the app's half is ENG-1519.
+- Sessions and questions opened on the key in the past name no team and are now unreachable.
+  The app drops a session the server no longer has and opens a fresh one, so a team loses its
+  place in such a session, not its recordings, which stay in the database.
 - The deploy workflows still bind the `INTERNALIZATION_ROOM_API_KEY` secret. Nothing reads it.
   Removing that line is left to Henok.

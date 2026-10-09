@@ -1,10 +1,8 @@
 """ENG-1048: the rest of the room's routes refuse a session that is not the caller's project.
 
 ENG-1031 and ENG-1046 closed this for the turn route and for the retro's finish and chunk
-routes with `session_for_room_caller` — the session, when the caller names a project, only
-if that project is the session's own; by id, unchanged, for the shared key, whose real
-facilitator flow has always depended on reaching a session no device named it holds. Every
-other route that names a session id resolved it by id alone: a device from another project
+routes with `session_for_room_caller` — the session only if it is the caller's team's own.
+Every other route that names a session id resolved it by id alone: a device from another project
 reached another team's stretches, recordings and halts before this file existed to say it
 could not.
 
