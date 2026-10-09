@@ -50,7 +50,7 @@ def the_hold_runs(runner: dict[str, str], **settings: str) -> subprocess.Complet
         env={**runner, **settings},
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=20,
     )
 
 
@@ -188,3 +188,26 @@ async def test_the_deploy_names_the_team_it_waits_for_and_goes_on_once_their_pas
     assert said[1].split()[:3] == ["sessao-da-ruth", "project", "time-de-ruth"]
     assert hold.returncode == 0
     assert rest.endswith("No team session is open; the deploy goes on.\n")
+
+
+async def test_a_wait_that_outlives_its_deadline_fails_naming_who_held_it(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    await a_session(db_session, "sessao-da-ruth", updated_at=datetime.now(UTC))
+
+    hold = the_hold_runs(
+        a_runner(tmp_path),
+        DEPLOY_HOLD_POLL_SECONDS="0.1",
+        DEPLOY_HOLD_DEADLINE_MINUTES="0.005",
+    )
+
+    assert hold.returncode == 1
+    error = hold.stdout.split("::error::", 1)[1]
+    assert "sessao-da-ruth  project time-de-ruth" in error
+
+
+def test_the_wait_gives_up_inside_the_six_hours_github_gives_the_job() -> None:
+    job = yaml.safe_load(DEPLOY.read_text())["jobs"]["deploy"]
+
+    assert job["timeout-minutes"] == 360
+    assert hold_deploy.DEADLINE_MINUTES < 360
