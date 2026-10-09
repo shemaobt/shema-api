@@ -123,6 +123,10 @@ _Avoid_: granularity, mode, shape, Granularidade
 The identifier the Meaning Map gives a being, figure, object, thread or scene (`B3`, `FIG_0013`, `PL_ISRAEL`, `S2`), alone or inside a link in double square brackets. It is never voiced: the room removes it from the text before the Voice speaks it, and the stored line keeps it.
 _Avoid_: id, tag, link, slug
 
+**Speakable text**:
+The voiced text: a line as the Voice receives it, with its formatting marks and canon codes gone, each folded question standing as its own sentence and the divine name in its spoken form. Words are never added, dropped or reordered, and the stored line keeps the Guide's own form.
+_Avoid_: TTS text, clean text, sanitized text
+
 **Meaning Map**:
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
 _Avoid_: answer key, base text, Mapa de Sentido
@@ -392,9 +396,17 @@ _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de
 **Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
 The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
 every door behind it.
-_Avoid_: api key (the room's own is a different door), token, password, Chave do runner
+_Avoid_: api key, token, password, Chave do runner
 
 ### Build
+
+**Claim code**:
+The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it.
+_Avoid_: código, pairing code, device code, credential
+
+**Device credential** (`X-Device-Credential`):
+The token one tablet collects once after its claim code was spent and sends on every request to the room; the server keeps only its hash and compares it on every request, so unlinking the tablet from the Desk locks it out at its next request. It is the only thing that opens a team door.
+_Avoid_: room key, api key, token, session
 
 **Build**:
 The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.

@@ -205,7 +205,7 @@ async def test_an_addition_reaches_her_speaker_with_its_part_and_nothing_of_ours
             "kind": "addition",
             "note": "Ela voltou «à noite».",
             "frase": 3,
-            "part": "a parte 3 — O segundo apelo e a separação",
+            "part": "a parte 3 — Segundo apelo e a separação",
             "repair": "part",
         }
     ], "o falante recebia o endereço nosso, com «das frases N a M», não a parte dela"
@@ -259,7 +259,7 @@ async def test_a_telling_with_only_a_nuance_hands_her_speaker_that_nuance_and_st
             "frase": 3,
             "quote": "à noite",
             "story": "foi naquela mesma noite",
-            "part": "a parte 3 — O segundo apelo e a separação",
+            "part": "a parte 3 — Segundo apelo e a separação",
             "repair": "part",
         }
     ], "a nuance era lida e jogada fora: o falante dizia a rodada limpa"

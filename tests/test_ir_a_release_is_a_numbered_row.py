@@ -38,10 +38,9 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.release_harness import (
-    KEY,
     PREFIX,
-    TABLET,
     P,
     a_claimed_device,
     one_stretch,
@@ -69,11 +68,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -84,7 +80,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -297,30 +296,6 @@ async def test_the_version_is_never_the_callers(client, db_session):
     assert approved.json()["version"] == 1
 
 
-async def test_a_session_on_the_shared_key_is_refused_by_name(client, db_session, room_app):
-    project, _credential = await a_claimed_device(db_session)
-    session = await ready_session(db_session)
-    desk = await _facilitator(db_session, room_app, project)
-
-    refused = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release",
-        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
-    )
-    read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
-
-    assert refused.status_code == 200, refused.text
-    body = refused.json()
-    assert body["blockers"] == ["no_project"]
-    assert body["version"] is None
-    assert body["untold_take_ids"] == []
-    assert body["unheard_take_ids"] == []
-    assert body["untold_segment_id"] is None
-    assert await releases_of(db_session, session.id) == []
-    assert read.status_code == 404, (
-        "a leitura do facilitador para uma sessão sem projeto continua sendo 404, como na main"
-    )
-
-
 async def test_a_passage_the_packet_refuses_is_not_approved_either(client, db_session):
     """The blockers the packet already raises are the whole of the gate this route has.
 
@@ -446,32 +421,6 @@ async def test_a_packet_stops_naming_its_release_once_the_passage_moved_on(
     )
     assert moved_on.json()["version"] is None
     assert moved_on.json()["package_sha256"] == named.json()["package_sha256"]
-
-
-async def test_a_credentialed_tablet_is_refused_by_name_on_a_session_with_no_project(
-    client, db_session
-):
-    """Criterion 5 is about the session, not about who is holding the tablet.
-
-    A room opened on the shared key names no project, and a claimed tablet asking to approve
-    it has to be told why it cannot be numbered — 404 would say the conversation is not there,
-    which is the one thing that is not true.
-    """
-    _project, credential = await a_claimed_device(db_session)
-    session = await ready_session(db_session)
-
-    refused = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
-    )
-
-    assert refused.status_code == 200, refused.text
-    body = refused.json()
-    assert body["blockers"] == ["no_project"]
-    assert body["version"] is None
-    assert body["untold_take_ids"] == []
-    assert body["unheard_take_ids"] == []
-    assert body["untold_segment_id"] is None
-    assert await releases_of(db_session, session.id) == []
 
 
 async def test_no_team_writes_a_release_on_another_teams_passage(client, db_session):

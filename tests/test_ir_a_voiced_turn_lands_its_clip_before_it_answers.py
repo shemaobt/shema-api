@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -22,9 +22,9 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform import tts
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam uns aos outros sobre ela?"
 
@@ -53,25 +53,6 @@ class _Elevenlabs:
         return SimpleNamespace(status_code=200, content=b"mp3", text="")
 
 
-class _BucketThatWaitsForTheWrite:
-    def __init__(self) -> None:
-        self.uploading = asyncio.Event()
-        self.written = asyncio.Event()
-        self.objects: dict[str, bytes] = {}
-
-    async def get(self, key: str) -> bytes | None:
-        return self.objects.get(key)
-
-    async def exists(self, key: str) -> bool:
-        return key in self.objects
-
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        self.uploading.set()
-        await asyncio.wait_for(self.written.wait(), timeout=1)
-        await asyncio.sleep(0.05)
-        self.objects[key] = data
-
-
 async def _hearing(audio: bytes, **_: Any) -> HeardSpeech:
     return HeardSpeech(text="Noemi voltou para Belém com Rute no tempo da colheita")
 
@@ -90,14 +71,12 @@ def _forget_which_rung_answered():
 
 
 @pytest.fixture()
-def bucket() -> _BucketThatWaitsForTheWrite:
-    return _BucketThatWaitsForTheWrite()
+def bucket() -> _Bucket:
+    return _Bucket()
 
 
 @pytest.fixture()
-async def client(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _BucketThatWaitsForTheWrite
-):
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
@@ -106,7 +85,6 @@ async def client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     monkeypatch.setattr(sessions_api, "heard_speech", _hearing)
@@ -117,16 +95,6 @@ async def client(
     monkeypatch.setattr(tts, "_make_client", _Elevenlabs)
     monkeypatch.setattr(tts, "_default_store", lambda _: bucket)
 
-    appended = sessions_api.room.append_exchange
-
-    async def _append_then_say_so(*args: Any, **kwargs: Any) -> IRSession:
-        session = await appended(*args, **kwargs)
-        await asyncio.wait_for(bucket.uploading.wait(), timeout=1)
-        bucket.written.set()
-        return session
-
-    monkeypatch.setattr(sessions_api.room, "append_exchange", _append_then_say_so)
-
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
     register_exception_handlers(test_app)
@@ -136,13 +104,16 @@ async def client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="Quem aparece nesta parte?"
     )
@@ -151,26 +122,21 @@ async def waiting_room(db_session: AsyncSession) -> IRSession:
     return await save_comprehension(db_session, session, state)
 
 
-async def test_the_clip_uploads_while_the_turn_is_written_and_lands_before_the_answer(
-    client: httpx.AsyncClient, waiting_room: IRSession, bucket: _BucketThatWaitsForTheWrite
+async def test_the_clip_lands_in_the_bucket_before_the_turn_answers(
+    client: httpx.AsyncClient, waiting_room: IRSession, bucket: _Bucket
 ) -> None:
     from app.core.config import get_settings
 
     answered = await client.post(
         f"{PREFIX}/sessions/{waiting_room.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
     )
 
-    assert answered.status_code == 200, (
-        "a escrita no banco terminava inteira antes de o upload começar, e a resposta "
-        "esperava as duas coisas uma atrás da outra"
-    )
-    handle = answered.json()["audio_url"].rsplit("/", 1)[-1]
+    assert answered.status_code == 200, answered.text[:300]
+    handle = urlsplit(answered.json()["audio_url"]).path.rsplit("/", 1)[-1]
     key = from_handle(handle, settings=get_settings())
     assert key in bucket.objects, (
-        "o upload do clipe ao GCS esperava inteiro antes da escrita no banco começar, e a "
-        "resposta só saía depois das duas coisas, uma atrás da outra"
+        "a resposta saía antes de o clipe chegar ao bucket, e outra instância não o achava"
     )
 
 
@@ -214,13 +180,11 @@ async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
     monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
-    refused = await client.post(
-        f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}
-    )
+    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
-    assert refused.status_code == 502
+    assert answered.status_code == 200, answered.text[:300]
     assert b"o todo" in store.objects.values(), (
         "a cena falhava e o fallback da fala inteira falhava atrás dela, e o movimento já "
         "pago à ElevenLabs nunca chegava ao bucket"

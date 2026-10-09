@@ -15,6 +15,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
+from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import a_golden_session
 from tests.text_seam_harness import (
     BEARER,
@@ -304,7 +305,7 @@ async def test_the_tablets_mother_tongue_turn_hands_the_guide_her_full_note_too(
     from app.api.internalization_room import sessions as sessions_api
     from app.services.internalization_room.hearing import HeardSpeech
     from app.services.platform.tts import SynthesizedSpeech
-    from tests.release_harness import KEY, PREFIX
+    from tests.release_harness import PREFIX
     from tests.room_harness import room_client
 
     async def _heard(*_: Any, **__: Any) -> HeardSpeech:
@@ -329,12 +330,11 @@ async def test_the_tablets_mother_tongue_turn_hands_the_guide_her_full_note_too(
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(sessions_api, "settle_coverage", _not_settled)
     agent = the_models_answer(monkeypatch)
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     async with room_client(db_session, monkeypatch) as tablet:
         answered = await tablet.post(
             f"{PREFIX}/sessions/{session.id}/turns",
-            headers={"X-Room-Key": KEY},
             files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
         )
 

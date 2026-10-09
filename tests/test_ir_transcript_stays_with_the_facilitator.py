@@ -11,7 +11,7 @@ each new schema is a promise the next route breaks. Everything below is derived 
 mounted application, so a route that would break it fails this file on the day it is written:
 
 * which routes the room app reaches — every mounted route whose dependency tree, or whose own
-  body, calls the tablet's gates (`require_room_caller`, `require_device`) — shared with the
+  body, calls the tablet's gates (`linked_tablet`, `require_device`) — shared with the
   credential audit as `room_route_audit_harness.room_app_routes` (ENG-1039), so a route gated
   by hand instead of by `Depends` cannot go unaudited in one file and not the other;
 * which of those can reach a question — the ones the room's question router mounts, read off
@@ -39,6 +39,7 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRS
 from app.models.internalization_room import InboxQuestionView
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.voice_handles import to_handle
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_route_audit_harness import models_in, named, room_app_routes
 
 #: How the facilitator's card spells the two fields that must never travel together to the
@@ -144,13 +145,8 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
     raised through this client is one whose transcript would be visible if it could travel.
     """
     from app.api.internalization_room.questions import router as questions_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
-    )
 
     store = MemoryStore()
 
@@ -168,10 +164,11 @@ async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch)
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app),
         base_url="http://test",
-        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+        headers=tablet.headers | {"X-Room-Device": DEVICE},
     ) as client:
         yield client
 
@@ -182,7 +179,7 @@ async def a_question_the_room_could_read_back(db: AsyncSession, room_client) -> 
     Answered on purpose: an open question is invisible to `replies`, so a sentinel test run
     against one would pass without the route ever having had the chance to leak.
     """
-    db.add(IRSession(id=SESSION, pericope="P03"))
+    db.add(IRSession(id=SESSION, pericope="P03", project_id=TABLET_TEAM))
     await db.commit()
 
     raised = await room_client.post(

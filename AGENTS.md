@@ -59,15 +59,25 @@ ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/i
 GOLDEN_HTTP_TOKEN=<key> node src/golden/run.ts --http <host>/api/internalization-room [P01-opening-and-mother-tongue]
 # the judge again over a run already committed, without playing the room
 uv run python scripts/golden_runner.py --rejudge golden/reports/<date> --out golden/reports/<date>-rejulgado
-# the back-translation check, judged by her own checks; exit 1 on a failed check
+# the back-translation check, judged by her own checks; exit 1 on a failed check. It reads the
+# room's price table, so it needs a DATABASE_URL for the settings to load, in the environment or in .env
 ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py --base-url <host>/api/internalization-room/text-seam/back-translation/ --script <her-bt.json> --out golden/reports/<date>
 ```
 
-Each run costs real model calls, so neither is part of the suite. The back-translation run is
-the gate on any change to the two back-translation prompts. The golden run is the gate on the
-release, not only on CI: `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions
-must pass before anything touching prompts, turn loop, model or canvas reaches the team, and
-a green unit suite is not sufficient to ship a prompt change.
+Each run costs real model calls, so neither is part of the suite. Both stop before the next
+script once the figures the room reports for the run so far reach `--budget-usd`, or
+`GOLDEN_BUDGET_USD`, or US$ 20: the script in flight is finished and judged, the ones left are
+named on stderr, and the exit is 3 unless the gate already failed, which keeps its 1 or 2.
+`--rejudge` counts its judge calls against the same budget. A call whose rung the room's price
+table has never seen carries no figure; the budget counts it at the dearest table price for each
+kind of token and the run says how many, so a model change cannot slip under the ceiling. Reading
+that table makes the back-translation runner need a `DATABASE_URL` for the settings to load, as
+the golden runner already did. Each script's closing line says what it cost, and the run ends
+with the total by role. The back-translation run is the gate on any change to the two
+back-translation prompts. The golden run is the gate on the release, not only on CI:
+`docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions must pass before anything
+touching prompts, turn loop, model or canvas reaches the team, and a green unit suite is not
+sufficient to ship a prompt change.
 
 ## The canon
 
@@ -120,5 +130,5 @@ gcloud run services describe tripod-backend-staging --region us-central1 --forma
 
 - [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at her freeze, under the pin in [`FREEZE_PIN`](docs/doctrine/FREEZE_PIN) and binding on every change here. Read it before touching a prompt, the turn loop or the model seam; a change to one of her artifacts needs a ruling in [`rulings/`](docs/doctrine/rulings/).
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. Use its terms in code, tests and commits.
-- [`docs/adr/`](docs/adr/) — one hard-to-reverse decision each. Conventions and runbooks: [local development](docs/local-development.md), [database](docs/database.md), [API conventions](docs/api-conventions.md), [code style](docs/code-style.md), [CI](docs/ci.md), [buckets](docs/buckets.md), [the divine name, spoken](docs/divine-name-speakable-form.md), and the pinned [Sound Necklace snapshot](docs/sound_necklace_interview_package.md).
+- [`docs/adr/`](docs/adr/) — one hard-to-reverse decision each. Conventions and runbooks: [local development](docs/local-development.md), [database](docs/database.md), [API conventions](docs/api-conventions.md), [code style](docs/code-style.md), [CI](docs/ci.md), [buckets](docs/buckets.md), [what the voice says](docs/what-the-voice-says.md), and the pinned [Sound Necklace snapshot](docs/sound_necklace_interview_package.md).
 - [`RUNNING-LOCALLY.md`](RUNNING-LOCALLY.md) — the composed API on its own port. [`http/`](http/) — request examples.

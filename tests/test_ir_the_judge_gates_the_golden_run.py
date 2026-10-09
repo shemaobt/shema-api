@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from app.services.internalization_room import golden_judge
+from app.services.internalization_room import golden_judge, llm
 from scripts.sync_doctrine import FROZEN, REPO_ROOT, digest
 from tests.text_seam_harness import A_VERDICT, the_judge_answers
 
@@ -31,7 +31,7 @@ FROZEN_JUDGE_PROMPT = "app/services/internalization_room/prompts/golden_judge_sy
 def test_the_judge_reads_her_prompt_at_the_freeze_by_its_fingerprint() -> None:
     ours = FROZEN["prompts/golden_judge_system_prompt.md"]
 
-    assert ours == FROZEN_JUDGE_PROMPT, "o juiz dela mora entre os nove prompts dela"
+    assert ours == FROZEN_JUDGE_PROMPT, "o juiz dela mora entre os oito prompts dela em uso"
     assert REPO_ROOT / ours == golden_judge.HER_PROMPT, (
         "o juiz lia a cópia de 533b6e3, de 103 linhas, sem as decisões de setembro"
     )
@@ -93,6 +93,46 @@ async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_
     )
     assert asked["schema"]["required"] == ["scores", "incidents", "pass", "summary"], (
         "a resposta é presa à forma JSON que o prompt dela pede, e só a ela"
+    )
+
+
+async def test_a_judge_call_that_nothing_follows_is_sent_without_a_cache_mark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P01", language="Brazilian Portuguese", transcript=TRANSCRIPT
+    )
+
+    (asked,) = judge.asked
+    assert llm.CACHE_BREAK not in asked["system_prompt"], (
+        "um script sozinho na passagem escrevia ~19,6k tokens no cache a 1,25x e ninguém lia"
+    )
+
+
+async def test_a_judge_prompt_another_script_repeats_is_marked_whole_and_is_the_same_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P01",
+        language="Brazilian Portuguese",
+        transcript=TRANSCRIPT,
+        prompt_repeats=True,
+    )
+    await golden_judge.judge_session(
+        pericope="P01", language="Brazilian Portuguese", transcript=TRANSCRIPT
+    )
+
+    marked, alone = judge.asked
+    assert marked["system_prompt"].endswith(llm.CACHE_BREAK), (
+        "o segundo script da passagem não leria nada: sem a marca no fim o prompt inteiro não é "
+        "cacheado"
+    )
+    assert marked["system_prompt"].removesuffix(llm.CACHE_BREAK) == alone["system_prompt"], (
+        "a marca é só o fim do prompt: o texto dela, o mapa e a língua são os mesmos com ou sem ela"
     )
 
 

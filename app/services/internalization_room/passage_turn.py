@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
+from app.services.internalization_room.moment import moment_fact
 from app.services.internalization_room.prompt_blocks import (
     RoomFact,
     coverage_status_block,
@@ -71,7 +73,12 @@ async def run_turn(
         block
         for block in (
             coverage_status_block(coverage_state, pericope_num),
-            room_facts_block({RoomFact.EARLIER_PASSAGES: earlier}),
+            room_facts_block(
+                {
+                    RoomFact.EARLIER_PASSAGES: earlier,
+                    RoomFact.MOMENT: moment_fact(messages, pericope_num),
+                }
+            ),
         )
         if block
     )
@@ -95,4 +102,5 @@ async def run_turn(
         ask_for_movements=ask_for_movements,
         prepared_pericope=prepared_pericope,
         earlier_passages=earlier,
+        first_scene=load_map(pericope_num).scenes[0].title,
     )

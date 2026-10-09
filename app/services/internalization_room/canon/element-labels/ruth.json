@@ -152,22 +152,6 @@
       "en": "The losses named in one breath, children first",
       "pt": "As perdas ditas de um fôlego, os filhos primeiro"
     },
-    "scene:1": {
-      "en": "Famine and exile to Moab",
-      "pt": "Fome e ida para Moabe"
-    },
-    "scene:2": {
-      "en": "The death of Elimelech",
-      "pt": "A morte de Elimeleque"
-    },
-    "scene:3": {
-      "en": "Marriages, and ten years pass",
-      "pt": "Casamentos, e dez anos se passam"
-    },
-    "scene:4": {
-      "en": "The deaths of the sons",
-      "pt": "A morte dos filhos"
-    },
     "time:S1:TM_PERIOD_OF_JUDGES": {
       "en": "The days of the judges",
       "pt": "Os dias dos juízes"
@@ -318,18 +302,6 @@
       "en": "Which wife married which son is still withheld",
       "pt": "Ainda não se diz qual esposa é de qual filho"
     },
-    "scene:1": {
-      "en": "Hearing the news, and setting out",
-      "pt": "Ouvir a notícia e pôr-se a caminho"
-    },
-    "scene:2": {
-      "en": "The first appeal, and the refusal",
-      "pt": "O primeiro apelo e a recusa"
-    },
-    "scene:3": {
-      "en": "The second appeal, and the parting",
-      "pt": "O segundo apelo e a separação"
-    },
     "tone": {
       "en": "The tone and pace of the telling",
       "pt": "O tom e o ritmo da narração"
@@ -438,18 +410,6 @@
     },
     "preserved:R7": {
       "en": "The Moabite epithet stays away",
-      "pt": null
-    },
-    "scene:1": {
-      "en": "Naomi's last appeal",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "Ruth's vow",
-      "pt": null
-    },
-    "scene:3": {
-      "en": "Naomi's silence",
       "pt": null
     },
     "tone": {
@@ -576,18 +536,6 @@
     },
     "preserved:R9": {
       "en": "The narrator keeps calling her Naomi",
-      "pt": null
-    },
-    "scene:1": {
-      "en": "Arrival, city stirred, women's question",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "Naomi's renaming lament",
-      "pt": null
-    },
-    "scene:3": {
-      "en": "The return to Bethlehem",
       "pt": null
     },
     "time:S3:at-the-beginning-of-the-barley-h": {
@@ -767,22 +715,6 @@
     "preserved:R4": {
       "en": "Chance or providence — the text will not say",
       "pt": "Acaso ou providência — o texto não diz"
-    },
-    "scene:1": {
-      "en": "The narrator introduces Boaz",
-      "pt": "O narrador apresenta Boaz"
-    },
-    "scene:2": {
-      "en": "Ruth asks to go and glean",
-      "pt": "Rute pede para ir respigar"
-    },
-    "scene:3": {
-      "en": "She comes by chance to Boaz's portion",
-      "pt": "Ela chega por acaso à parte de Boaz"
-    },
-    "scene:4": {
-      "en": "Boaz asks, and the foreman answers",
-      "pt": "Boaz pergunta, e o capataz responde"
     },
     "tone": {
       "en": "The tone and pace of the telling",
@@ -976,22 +908,6 @@
     },
     "preserved:R6": {
       "en": "Neither Moab nor Israel is named",
-      "pt": null
-    },
-    "scene:1": {
-      "en": "Boaz's first address to Ruth",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "Ruth asks, and Boaz blesses",
-      "pt": null
-    },
-    "scene:3": {
-      "en": "The meal",
-      "pt": null
-    },
-    "scene:4": {
-      "en": "Boaz's instructions to the young men",
       "pt": null
     },
     "time:S3:TM_MEALTIME": {
@@ -1196,22 +1112,6 @@
       "en": "The nearness that makes the obligation",
       "pt": null
     },
-    "scene:1": {
-      "en": "Gleaning finished, beaten out, and measured",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "The gleaning carried home",
-      "pt": null
-    },
-    "scene:3": {
-      "en": "The name, the blessings, the counsel",
-      "pt": null
-    },
-    "scene:4": {
-      "en": "Through both harvests, at home with Naomi",
-      "pt": null
-    },
     "time:S1:TM_EVENING": {
       "en": "Until the evening",
       "pt": null
@@ -1332,14 +1232,6 @@
     },
     "preserved:R9": {
       "en": "Naomi her mother-in-law; Boaz our kinsman",
-      "pt": null
-    },
-    "scene:1": {
-      "en": "The plan spoken",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "The consent",
       "pt": null
     },
     "tone": {
@@ -1508,18 +1400,6 @@
       "en": "It is Ruth who asks, and Boaz who answers",
       "pt": null
     },
-    "scene:1": {
-      "en": "Down to the floor; the uncovering",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "Midnight: the question and the request",
-      "pt": null
-    },
-    "scene:3": {
-      "en": "Boaz's pledge, and the nearer redeemer",
-      "pt": null
-    },
     "time:S2:TM_MIDDLE_OF_THE_NIGHT": {
       "en": "At half of the night",
       "pt": null
@@ -1644,14 +1524,6 @@
     },
     "preserved:R9": {
       "en": "Ruth tells all he did, and the six measures",
-      "pt": null
-    },
-    "scene:1": {
-      "en": "Dawn at the floor, and the six measures",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "Home: the report, and «sit still»",
       "pt": null
     },
     "time:S1:TM_NIGHT_TO_MORNING": {
@@ -1868,22 +1740,6 @@
       "en": "Ruth is «the wife of the dead», unnamed",
       "pt": null
     },
-    "scene:1": {
-      "en": "The gate convened: the passer-by and the ten",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "The field, and «I will redeem»",
-      "pt": null
-    },
-    "scene:3": {
-      "en": "The second stage: Ruth named, and the decline",
-      "pt": null
-    },
-    "scene:4": {
-      "en": "The custom told, and the sandal drawn",
-      "pt": null
-    },
     "time:S3:TM_DAY_OF_PURCHASE": {
       "en": "On the day you buy",
       "pt": null
@@ -2074,14 +1930,6 @@
       "en": "The seed is asked for, not given",
       "pt": null
     },
-    "scene:1": {
-      "en": "Boaz declares the purchase",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "The assembly's witness and blessing",
-      "pt": null
-    },
     "time:S1:TM_TODAY": {
       "en": "Today",
       "pt": null
@@ -2232,18 +2080,6 @@
       "en": "The child is not counted as the dead's son",
       "pt": null
     },
-    "scene:1": {
-      "en": "The marriage, the gift, the birth",
-      "pt": null
-    },
-    "scene:2": {
-      "en": "The women's blessing to Naomi",
-      "pt": null
-    },
-    "scene:3": {
-      "en": "The child on Naomi's lap; the naming",
-      "pt": null
-    },
     "tone": {
       "en": "The tone and pace of the telling",
       "pt": null
@@ -2317,10 +2153,6 @@
     "preserved:R6": {
       "en": "Perez, the name spoken at the gate",
       "pt": "Perez, o nome dito na porta"
-    },
-    "scene:1": {
-      "en": "The generations of Perez",
-      "pt": "As gerações de Perez"
     },
     "tone": {
       "en": "The tone and pace of the telling",

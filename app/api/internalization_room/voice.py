@@ -7,12 +7,21 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER, require_room_caller
+from app.api.internalization_room._deps import (
+    DEVICE_CREDENTIAL_HEADER,
+    device_project,
+    linked_tablet,
+)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.services.internalization_room.questions import AUDIO_MIME
-from app.services.internalization_room.synthesize_facilitator_speech import voiced_here
+from app.services.internalization_room.sessions import session_for_room_caller
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    facilitator_speech_key,
+    synthesize_facilitator_speech,
+    voiced_here,
+)
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform.storage import GcsPlatformStore
 from app.services.platform.tts import MIME_TYPE, SpeechStore, etag_of, fetch_clip
@@ -129,9 +138,9 @@ async def clip(
     arrived: float = Depends(_arrived),
     db: AsyncSession = Depends(get_db),
     x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
-    x_room_key: str | None = Header(default=None),
     x_range: str | None = Header(default=None, alias="Range"),
     x_if_range: str | None = Header(default=None, alias="If-Range"),
+    session: str | None = None,
 ) -> Response:
     """Serve one synthesized line by the handle a turn handed out.
 
@@ -145,6 +154,17 @@ async def clip(
     `Range`, with no `If-Range`, is still served off whichever rendering this instance
     holds; the app always resumes with `If-Range`, and the write-once put that leaves one
     rendering per key is ENG-996's.
+
+    A miss on an address that names its session is voiced from that session's store rather
+    than answered 404. A turn is stored before its voice is made, so the address it hands
+    out can name a clip that was never made — the speech engine failed after the reply was
+    kept — and a 404 there left the team with a reply it could never hear and no way to ask
+    for it again short of speaking again. Her audio route does the same: it voices the
+    stored text when the tablet asks. The session, not the handle, decides what may be
+    voiced, because a handle is only a content key and anyone holding a device credential can
+    mint one for any words: only a guide line stored in that session, read through the
+    caller's own project, is spoken, so a forged key or another team's session answers 404
+    and never reaches the speech engine.
 
     The device check runs beside the read, not before it — the two are independent, and a
     tablet that is still welcome pays for whichever one is slower, not their sum. But the
@@ -169,9 +189,7 @@ async def clip(
 
     gate_passed = False
     try:
-        await require_room_caller(
-            db, x_device_credential=x_device_credential, x_room_key=x_room_key
-        )
+        caller = await linked_tablet(db, x_device_credential=x_device_credential)
         gate_passed = True
     finally:
         if not gate_passed and read_task is not None:
@@ -189,6 +207,14 @@ async def clip(
         audio, gcs_ms = await _timed_fetch_clip(key, store=GcsPlatformStore(cfg))
     else:
         audio, gcs_ms = await read_task
+    if audio is None and session is not None:
+        audio = await _the_stored_line_voiced(
+            db,
+            key=key,
+            session_id=session,
+            project_id=await device_project(caller),
+            store=GcsPlatformStore(cfg),
+        )
 
     etag = etag_of(audio) if audio is not None else ""
     byte_range: ByteRange | None = None
@@ -248,6 +274,25 @@ async def clip(
             "Accept-Ranges": "bytes",
         },
     )
+
+
+async def _the_stored_line_voiced(
+    db: AsyncSession, *, key: str, session_id: str, project_id: str, store: SpeechStore
+) -> bytes | None:
+    stored = await session_for_room_caller(db, session_id, project_id)
+    line = next(
+        (
+            message["text"]
+            for message in reversed(stored.messages or [])
+            if message.get("role") == "guide"
+            and facilitator_speech_key(message.get("text", ""), language=stored.language) == key
+        ),
+        "",
+    )
+    if not line:
+        return None
+    await synthesize_facilitator_speech(line, language=stored.language)
+    return await fetch_clip(key, store=store)
 
 
 def _media_type(key: str) -> str:

@@ -24,9 +24,9 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.platform import tts
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam uns aos outros sobre ela?"
 
@@ -101,7 +101,6 @@ async def client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     monkeypatch.setattr(sessions_api, "heard_speech", _hearing)
@@ -121,13 +120,16 @@ async def client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="Quem aparece nesta parte?"
     )
@@ -141,7 +143,6 @@ async def test_a_spoken_turn_warms_the_elevenlabs_connection_once_when_the_valid
 ) -> None:
     answered = await client.post(
         f"{PREFIX}/sessions/{waiting_room.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
     )
 
@@ -215,7 +216,6 @@ async def test_a_warm_up_that_fails_never_slows_the_turn_and_logs_only_the_excep
         started = time.monotonic()
         answered = await client.post(
             f"{PREFIX}/sessions/{waiting_room.id}/turns",
-            headers={"X-Room-Key": KEY},
             files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
         )
         elapsed = time.monotonic() - started

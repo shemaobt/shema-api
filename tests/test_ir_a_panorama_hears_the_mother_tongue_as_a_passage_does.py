@@ -19,13 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSession
 from app.services import internalization_room as room
 from app.services.internalization_room.sessions import create_session
+from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import (
     nothing_settles,
     the_take_lasts,
     the_transcriber_hears,
     the_transcriber_hears_no_words,
 )
-from tests.release_harness import KEY, PREFIX
+from tests.release_harness import PREFIX
 from tests.room_harness import room_client, the_room_speaks
 from tests.text_seam_harness import GUIDE_LINE, ScriptedAgent, the_models_answer
 from tests.turn_harness import the_room_agent_is
@@ -84,8 +85,10 @@ async def _an_open_panorama(
     guide: ScriptedAgent,
     language: str = "pt",
 ) -> IRSession:
-    session = await create_session(db_session, language=language, pericope=PANORAMA)
-    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, language=language, pericope=PANORAMA
+    )
+    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns")
     assert opened.status_code == 200, opened.text
     guide.guide_inputs.clear()
     return session
@@ -96,7 +99,6 @@ async def _the_team_sends_a_take(
 ) -> dict[str, Any]:
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         data=form,
         files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )

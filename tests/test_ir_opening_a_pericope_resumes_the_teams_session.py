@@ -47,7 +47,7 @@ from tests.opening_harness import (
     the_tablet_opens,
     the_team_says,
 )
-from tests.release_harness import KEY, PREFIX, P, a_claimed_device, at_the_desk, team_headers
+from tests.release_harness import PREFIX, P, a_claimed_device, at_the_desk, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory, the_room_speaks
 from tests.tablet_turn_harness import the_room_opens
 from tests.text_seam_harness import RUNNER_KEY
@@ -266,15 +266,6 @@ async def test_another_team_opening_the_same_pericope_gets_its_own_session(
     theirs = await the_tablet_opens(client, other_tablet, {"pericope": P, "language": "pt"})
 
     assert theirs["session_id"] != ours["session_id"]
-
-
-async def test_a_caller_with_no_team_still_gets_a_fresh_session_on_every_open(client) -> None:
-    body = {"pericope": P, "language": "pt"}
-    first = await client.post(f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json=body)
-    second = await client.post(f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json=body)
-
-    assert first.status_code == second.status_code == 200
-    assert first.json()["session_id"] != second.json()["session_id"]
 
 
 async def test_the_golden_session_door_still_mints_a_session_on_every_open(client) -> None:

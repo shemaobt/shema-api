@@ -17,9 +17,11 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room import prepare_opening as prepare_opening_module
 from app.services.internalization_room.prepare_opening import prepare_opening
 from app.services.internalization_room.run_turn import TurnOutcome
+from tests.turn_harness import FakeAgent, the_agent_answers
 
 LOGGER_NAME = "app.services.internalization_room.prepare_opening"
 PASSAGE_TEXT = "Uma família sai de Belém por falta de comida."
+REGENERATE = {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}
 
 
 def _panorama(**over: object) -> IRSession:
@@ -58,6 +60,8 @@ async def test_a_refused_opening_names_the_session_the_pericope_and_the_reason(
             speech="",
             transcript="",
             used_fail_safe=True,
+            draft="Vamos começar pela Familiarização.",
+            verdict="regenerate",
             issues=[{"problem": "imported_knowledge"}],
         )
 
@@ -74,6 +78,95 @@ async def test_a_refused_opening_names_the_session_the_pericope_and_the_reason(
     assert "imported_knowledge" in record.getMessage()
 
 
+async def test_an_opening_that_fell_on_an_empty_draft_says_the_validator_never_saw_it(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    db_session.add(_panorama())
+    await db_session.commit()
+    agent = the_agent_answers(monkeypatch, FakeAgent(verdicts=[], drafts=[""]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await prepare_opening("panorama-1", pericope="P01")
+
+    assert agent.calls == ["guide"]
+    (record,) = _warnings(caplog)
+    assert record.getMessage() == (
+        "Prepared opening fell to the fail-safe on an empty draft for session panorama-1, "
+        "pericope P01: the Validator never saw it"
+    ), "an empty draft was logged as 'refused by the Validator', which never saw it"
+    assert record.__dict__["session_id"] == "panorama-1"
+    assert record.__dict__["pericope"] == "P01"
+
+
+async def test_an_empty_draft_after_a_redraft_does_not_blame_the_issues_that_redraft_left(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    db_session.add(_panorama())
+    await db_session.commit()
+    agent = the_agent_answers(
+        monkeypatch, FakeAgent(verdicts=[REGENERATE], drafts=["Vamos começar.", ""])
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await prepare_opening("panorama-1", pericope="P01")
+
+    assert agent.calls == ["guide", "validator", "guide"]
+    (record,) = _warnings(caplog)
+    assert record.getMessage() == (
+        "Prepared opening fell to the fail-safe on an empty draft for session panorama-1, "
+        "pericope P01: the Validator never saw it"
+    ), "the first redraft's issues were offered as the reason the empty one fell"
+    assert "imported_knowledge" not in str(record.__dict__["reason"])
+
+
+async def test_an_opening_whose_validator_reply_could_not_be_read_is_not_logged_as_a_refusal(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    db_session.add(_panorama())
+    await db_session.commit()
+    unreadable = {"issues": [{"problem": "imported_knowledge"}]}
+    agent = the_agent_answers(monkeypatch, FakeAgent(verdicts=[unreadable]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await prepare_opening("panorama-1", pericope="P01")
+
+    assert agent.calls == ["guide", "validator"]
+    (record,) = _warnings(caplog)
+    assert record.getMessage() == (
+        "Prepared opening fell to the fail-safe on an unreadable Validator reply for session "
+        "panorama-1, pericope P01: the draft was never judged"
+    ), "a reply the room could not read was logged as the Validator refusing the draft"
+    assert record.__dict__["session_id"] == "panorama-1"
+    assert record.__dict__["pericope"] == "P01"
+    assert record.__dict__["reason"] == "unreadable Validator reply"
+
+
+async def test_an_opening_the_validator_refused_is_still_logged_as_the_validators(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    db_session.add(_panorama())
+    await db_session.commit()
+    agent = the_agent_answers(monkeypatch, FakeAgent(verdicts=[REGENERATE] * 3))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await prepare_opening("panorama-1", pericope="P01")
+
+    assert agent.calls.count("validator") == 3
+    (record,) = _warnings(caplog)
+    assert record.getMessage() == (
+        "Prepared opening refused by the Validator for session panorama-1, pericope P01: "
+        "imported_knowledge"
+    ), "a draft the Validator read and turned back stopped being logged as its refusal"
+
+
 async def test_a_refused_opening_still_leaves_the_session_with_nothing_prepared(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -86,6 +179,8 @@ async def test_a_refused_opening_still_leaves_the_session_with_nothing_prepared(
             speech="",
             transcript="",
             used_fail_safe=True,
+            draft="Vamos começar pela Familiarização.",
+            verdict="regenerate",
             issues=[{"problem": "imported_knowledge"}],
         )
 
