@@ -161,23 +161,25 @@ async def _link(
     if item is None or item.storage_key is None:
         raise NotFoundError("File not found")
 
-    shared = can_share_media(project, item, audience)
-    if (
-        readership is not None
-        and is_withheld(project)
-        and readership.reader_of(project.region_key) is not ShemaReader.COORDINATION
-    ):
-        shared = False
-    if not shared:
+    reference = {
+        "shema_operation": operation,
+        "shema_user_id": user.id,
+        "shema_item_id": item.id,
+        "shema_audience": audience.value,
+        **log_reference(project),
+    }
+    if not can_share_media(project, item, audience):
+        logger.warning("shema file refused: not shared with this audience", extra=reference)
+        raise AuthorizationError(NOT_SHARED)
+    reader = None if readership is None else readership.reader_of(project.region_key)
+    if reader is not None and reader is not ShemaReader.COORDINATION and is_withheld(project):
+        # The wire says the same sentence for every gate; the log is not the wire, and an
+        # operator reading *not shared with this audience* on an item the predicate just
+        # released would be told the one reason that did not fire. The reader is a relation
+        # to the region and names no place, so it travels — the place itself never does.
         logger.warning(
-            "shema file refused: not shared with this audience",
-            extra={
-                "shema_operation": operation,
-                "shema_user_id": user.id,
-                "shema_item_id": item.id,
-                "shema_audience": audience.value,
-                **log_reference(project),
-            },
+            "shema file refused: the reader is not the coordination of a withheld project",
+            extra={**reference, "shema_reader": reader.value},
         )
         raise AuthorizationError(NOT_SHARED)
 

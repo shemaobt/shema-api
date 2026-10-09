@@ -224,6 +224,44 @@ async def test_on_a_cleared_project_the_same_readers_get_the_link(
     assert res.json()["expiresInMinutes"] == 15
 
 
+async def test_the_two_refusals_share_the_wire_and_differ_in_the_log(
+    client, db_session, shema_app, bucket, caplog
+) -> None:
+    """Found by the review bot on shema-api#724: the reader gate used to log *not shared with
+    this audience* with ``shema_audience: coordenacao`` on an item ``can_share_media`` had just
+    released — the one reason that did not fire. The log tells the two apart now, and carries
+    the reader (a relation to the region, never a place); the body on the wire stays one
+    sentence for both."""
+    import logging
+
+    caplog.set_level(logging.WARNING, logger="app.services.shema.media_download_url")
+    project = await _project(db_session, sensitive=True)
+    authorized = await _photo(db_session, project, granted=True)
+    undecided = await _photo(db_session, project, granted=None)
+    lab = await _headers(db_session, shema_app, "obtLab")
+    ours = await _headers(db_session, shema_app, "coordinator")
+
+    by_reader = await client.get(_link(project.id, authorized.id), headers=lab)
+    by_decision = await client.get(_link(project.id, undecided.id), headers=ours)
+
+    assert by_reader.status_code == by_decision.status_code == 403
+    assert by_reader.json() == by_decision.json()
+    assert "signed.example" not in by_reader.text + by_decision.text
+    lines = [r for r in caplog.records if r.name == "app.services.shema.media_download_url"]
+    assert [r.getMessage() for r in lines] == [
+        "shema file refused: the reader is not the coordination of a withheld project",
+        "shema file refused: not shared with this audience",
+    ]
+    reader_line, decision_line = lines
+    assert reader_line.shema_reader == "other"  # type: ignore[attr-defined]
+    assert reader_line.shema_audience == "coordenacao"  # type: ignore[attr-defined]
+    assert not hasattr(decision_line, "shema_reader")
+    for line in lines:
+        assert line.shema_project_id == project.id  # type: ignore[attr-defined]
+        assert "Vale" not in str(vars(line)) and "Brazil" not in str(vars(line))
+    assert bucket.signed == []
+
+
 async def test_outside_the_scope_the_item_is_not_found(
     client, db_session, shema_app, bucket
 ) -> None:
