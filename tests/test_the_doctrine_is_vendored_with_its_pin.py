@@ -40,7 +40,7 @@ from scripts.sync_doctrine import (
 
 
 def test_every_vendored_artefact_is_in_the_repo_at_the_sha_the_pin_records() -> None:
-    """The doctrine and the five prompts are here, and their bytes are the pinned ones.
+    """Her golden reports of 2026-09-03 are here, and their bytes are the pinned ones.
 
     A pin file naming a commit proves nothing on its own — the canon vendor drifted once
     already — so this compares the recorded sha256 of every vendored path against the bytes
