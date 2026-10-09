@@ -161,3 +161,30 @@ async def test_with_no_team_in_the_room_the_deploy_goes_on(
 
     assert hold.returncode == 0, hold.stderr
     assert "No team session is open; the deploy goes on." in hold.stdout
+
+
+async def test_the_deploy_names_the_team_it_waits_for_and_goes_on_once_their_passage_ends(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    await a_session(db_session, "sessao-da-ruth", updated_at=datetime.now(UTC))
+    hold = subprocess.Popen(
+        ["bash", "-e", "-c", the_hold()["run"]],
+        cwd=ROOT,
+        env={**a_runner(tmp_path), "DEPLOY_HOLD_POLL_SECONDS": "0.1"},
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert hold.stdout is not None
+    said = [hold.stdout.readline() for _ in range(2)]
+
+    session = await db_session.get(IRSession, "sessao-da-ruth")
+    assert session is not None
+    session.status = IRSessionStatus.DONE
+    session.ended_at = datetime.now(UTC)
+    await db_session.commit()
+    rest, _ = hold.communicate(timeout=60)
+
+    assert said[0] == "Waiting on 1 open team session(s):\n"
+    assert said[1].split()[:3] == ["sessao-da-ruth", "project", "time-de-ruth"]
+    assert hold.returncode == 0
+    assert rest.endswith("No team session is open; the deploy goes on.\n")

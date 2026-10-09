@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, end_of
 
 WINDOW_MINUTES = 60
+POLL_SECONDS = 60
 
 
 async def holding(db: AsyncSession, now: datetime, window: timedelta) -> list[IRSession]:
@@ -43,11 +45,24 @@ async def holding(db: AsyncSession, now: datetime, window: timedelta) -> list[IR
     ]
 
 
+def named(sessions: list[IRSession]) -> str:
+    return "\n".join(
+        f"  {session.id}  project {session.project_id}  passage {session.pericope}"
+        f"  last moved {session.updated_at:%Y-%m-%d %H:%M} UTC"
+        for session in sessions
+    )
+
+
 async def wait() -> int:
-    async with AsyncSessionLocal() as db:
-        await holding(db, datetime.now(UTC), timedelta(minutes=WINDOW_MINUTES))
-    print("No team session is open; the deploy goes on.", flush=True)
-    return 0
+    poll = float(os.environ.get("DEPLOY_HOLD_POLL_SECONDS", POLL_SECONDS))
+    while True:
+        async with AsyncSessionLocal() as db:
+            held = await holding(db, datetime.now(UTC), timedelta(minutes=WINDOW_MINUTES))
+        if not held:
+            print("No team session is open; the deploy goes on.", flush=True)
+            return 0
+        print(f"Waiting on {len(held)} open team session(s):\n{named(held)}", flush=True)
+        await asyncio.sleep(poll)
 
 
 def main() -> int:
