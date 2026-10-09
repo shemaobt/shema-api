@@ -176,6 +176,10 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", f"{PREFIX}/forms/submissions/{{submission_id}}"),
         ("POST", f"{PREFIX}/forms/submissions/{{submission_id}}/import"),
         ("GET", f"{PREFIX}/pending-projects"),
+        # OBT-581: the signed link takes the reader to **refuse** — an image of a withheld
+        # project is the coordination's until OBT-575 — never to build; it answers an address
+        # scoped to the row's uuid, and no place.
+        ("GET", f"{PREFIX}/projects/{{project_id}}/media/{{item_id}}/link"),
         ("GET", f"{PREFIX}/export/projects"),
         ("POST", f"{PREFIX}/import/projects"),
     }

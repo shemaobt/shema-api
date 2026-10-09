@@ -35,10 +35,13 @@ from httpx import ASGITransport
 from sqlalchemy import select
 
 from app.api.shema._deps import NO_STORE
-from app.db.models.shema_enums import ShemaRegionKey
+from app.db.models.shema_enums import ShemaMediaKind, ShemaRegionKey
 from app.db.models.shema_form import ShemaSubmission
+from app.db.models.shema_media import ShemaMediaItem
 from app.main import create_app
+from app.services.oral_collector import gcs_utils
 from app.services.shema import issue_exit_link
+from app.services.shema._media_storage import MEDIA, storage_key
 from tests.baker import make_user
 from tests.shema_harness import UNAUTHENTICATED_PATHS, reaches
 from tests.test_shema.conftest import (
@@ -90,7 +93,9 @@ async def server(db_session):
 
 
 @pytest.fixture()
-async def urls(db_session, server, shema_app, form_app) -> tuple[dict[str, str], dict[str, str]]:
+async def urls(
+    db_session, server, shema_app, form_app, monkeypatch
+) -> tuple[dict[str, str], dict[str, str]]:
     """A concrete URL for every ``GET`` that cannot be called as its template, and the headers.
 
     Everything a path parameter names is made through the real routes or the module's services,
@@ -120,12 +125,29 @@ async def urls(db_session, server, shema_app, form_app) -> tuple[dict[str, str],
     assert answered.status_code == 202, answered.text
     submission_id = (await db_session.execute(select(ShemaSubmission.id))).scalar_one()
 
+    photo = ShemaMediaItem(
+        project_id=project_id,
+        kind=ShemaMediaKind.PHOTO,
+        storage_key=storage_key(MEDIA, "cache-photo", "c" * 64, ".jpg"),
+        authorization_granted=True,
+    )
+    db_session.add(photo)
+    await db_session.commit()
+
+    async def _sign(bucket: str, key: str, **_: object) -> str:
+        return f"https://signed.example/{key}"
+
+    monkeypatch.setattr(gcs_utils, "generate_signed_download_url", _sign)
+
     person = await make_intercessor(server, headers, contact="pessoa@example.test")
     exit_token = await issue_exit_link(db_session, person["id"])
 
     concrete = {
         f"{PREFIX}/projects/{{project_id}}": f"{PREFIX}/projects/{project_id}",
         f"{PREFIX}/projects/{{project_id}}/members": f"{PREFIX}/projects/{project_id}/members",
+        f"{PREFIX}/projects/{{project_id}}/media/{{item_id}}/link": (
+            f"{PREFIX}/projects/{project_id}/media/{photo.id}/link"
+        ),
         f"{PREFIX}/projects/{{project_id}}/health-assessments": (
             f"{PREFIX}/projects/{project_id}/health-assessments"
         ),
