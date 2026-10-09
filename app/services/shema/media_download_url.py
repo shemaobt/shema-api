@@ -11,7 +11,11 @@ the bytes have, and the address expires.
    project that does not exist is 404 (``_scope.py`` carries that argument).
 2. the row exists and holds an object — a video is an address on somebody else's service and
    a photo slot may carry a caption and no image yet, so both are *nothing to serve*.
-3. ``can_share_media`` — authorization, then audience, then the sensitive-country flag.
+3. ``can_share_media`` — authorization, then audience, then the sensitive-country flag —
+   **and, when the caller is a console reader, whether that reader reads the truth of the
+   project** (OBT-581, Daniel 8/oct/2026): an image of a withheld project reaches the
+   coordination only, until OBT-575 — so a reader handed the reduction (``other``) is refused
+   the bytes exactly as the export's ``publico`` is, with the same sentence.
 
 **The third refusal says nothing about which of its reasons fired.** An item nobody has
 decided on, an item refused, and an authorized item on a withheld project asked for by a
@@ -48,8 +52,8 @@ from app.services.shema._media_storage import (
     DOWNLOAD_URL_EXPIRY_MINUTES,
     GCS_SHEMA_BUCKET,
 )
-from app.services.shema._redaction import log_reference
-from app.services.shema._scope import RegionScope
+from app.services.shema._redaction import log_reference, reads_the_truth
+from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
 
 logger = logging.getLogger(__name__)
@@ -78,6 +82,7 @@ async def media_download_url(
     *,
     user: User,
     audience: ShemaAudience = ShemaAudience.COORDENACAO,
+    readership: Readership | None = None,
 ) -> MediaLink:
     """A signed URL for one photo, or a refusal that does not say which gate closed."""
     return await _link(
@@ -89,6 +94,7 @@ async def media_download_url(
         operation="media_download_url",
         user=user,
         audience=audience,
+        readership=readership,
     )
 
 
@@ -100,6 +106,7 @@ async def material_download_url(
     *,
     user: User,
     audience: ShemaAudience = ShemaAudience.COORDENACAO,
+    readership: Readership | None = None,
 ) -> MediaLink:
     """The same three gates over what the project produced — text, audio or video."""
     return await _link(
@@ -111,6 +118,7 @@ async def material_download_url(
         operation="material_download_url",
         user=user,
         audience=audience,
+        readership=readership,
     )
 
 
@@ -124,8 +132,16 @@ async def _link(
     operation: str,
     user: User,
     audience: ShemaAudience,
+    readership: Readership | None,
 ) -> MediaLink:
     """The three gates, once.
+
+    ``readership`` is the console caller's (``_deps.Reading``), or ``None`` for a surface that
+    has no session reader — the export and the Pulse, which name an audience instead. With one,
+    its reader of the project is asked, and a reader who is not handed the truth of a withheld
+    project is refused the bytes too (OBT-581): the record shows that reader the slot, the
+    caption emptied and the decision unnamed, and the link is where the slot would otherwise
+    turn into the photograph the reduction exists to keep from them.
 
     **The default lives on the two public names and not here**, and it is ``coordenacao``,
     because the default that is safe to forget is the restrictive one: an authenticated
@@ -141,7 +157,12 @@ async def _link(
     if item is None or item.storage_key is None:
         raise NotFoundError("File not found")
 
-    if not can_share_media(project, item, audience):
+    shared = can_share_media(project, item, audience)
+    if readership is not None and not reads_the_truth(
+        project, readership.reader_of(project.region_key)
+    ):
+        shared = False
+    if not shared:
         logger.warning(
             "shema file refused: not shared with this audience",
             extra={
