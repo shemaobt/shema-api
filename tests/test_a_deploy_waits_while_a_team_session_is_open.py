@@ -66,3 +66,11 @@ async def test_a_session_the_facilitator_zeroed_does_not_hold_the_deploy(
     await a_session(db_session, "sessao-zerada", archive_id="arquivo-do-zerar")
 
     assert await hold_deploy.holding(db_session, NOW, HOUR) == []
+
+
+async def test_a_session_minted_on_a_launch_nobody_entered_does_not_hold_the_deploy(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(db_session, "sessao-de-ninguem", messages=[])
+
+    assert await hold_deploy.holding(db_session, NOW, HOUR) == []
