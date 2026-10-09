@@ -1,7 +1,7 @@
 """ENG-1031: a turn is answered only for the project that owns the session.
 
 `take_turn` resolved a session by id alone, the way `approve_internalization_release` used
-to before it adopted `get_session_for_room_caller`, so a device from another project's turn
+to before it was scoped to the caller's team, so a device from another project's turn
 ran transcription, the Guide, the Validator and synthesis against somebody else's recording
 before the room ever turned it away.
 """
@@ -19,7 +19,7 @@ from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P, a_claimed_device, team_headers
+from tests.release_harness import PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
 
@@ -149,25 +149,6 @@ async def test_a_hot_language_memo_does_not_speculate_for_another_project(
     assert fan_out["hearing"].calls == 0, "a transcrição especulativa rodou para outro projeto"
 
 
-async def test_a_room_key_caller_with_no_device_still_continues_a_project_owned_session(
-    client, db_session: AsyncSession, fan_out
-) -> None:
-    """The shared key names no device and so no project — `_deps.py`'s own "dated
-    compromise, not a design" — and a tablet that has not yet claimed one still has a
-    session to continue, the way a facilitator's queue already relies on elsewhere. This
-    ticket closes the gap a *device* opens by naming another project, not the one the
-    shared key has always had by naming none.
-    """
-    owner, _credential = await a_claimed_device(db_session, email="owner2@example.com")
-    session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
-
-    answered = await _post_a_turn(
-        client, session.id, {"X-Room-Key": KEY, "X-Room-Device": "tablet-sem-dono"}
-    )
-
-    assert answered.status_code == 200, answered.text[:300]
-
-
 async def test_a_replay_is_not_handed_to_another_project(
     client, db_session: AsyncSession, fan_out
 ) -> None:
@@ -196,23 +177,6 @@ async def test_a_replay_is_not_handed_to_another_project(
     )
     assert again.status_code == 200, again.text[:300]
     assert again.json() == first.json(), "o dono perdeu a resposta já dada ao pedir de novo"
-
-
-async def test_a_room_key_replay_still_works_on_a_project_owned_session(
-    client, db_session: AsyncSession, fan_out
-) -> None:
-    owner, _credential = await a_claimed_device(db_session, email="owner6@example.com")
-    session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
-    headers = {"X-Room-Key": KEY, "X-Room-Device": "tablet-sem-dono"}
-
-    first = await _post_a_turn(client, session.id, headers, turn_id="turno-1")
-    assert first.status_code == 200, first.text[:300]
-
-    again = await _post_a_turn(client, session.id, headers, turn_id="turno-1")
-    assert again.status_code == 200, again.text[:300]
-    assert again.json() == first.json(), (
-        "o reenvio sem device recomeçou o turno em vez de repeti-lo"
-    )
 
 
 class _OwnershipCheckThatWaitsToBeReleased:

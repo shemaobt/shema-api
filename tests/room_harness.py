@@ -47,9 +47,9 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.internalization_room.takes import take_by_id
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
-    KEY,
     PREFIX,
     TABLET,
     P,
@@ -256,7 +256,6 @@ async def room_client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     if runner_key is not None:
         monkeypatch.setattr(
             get_settings(), "internalization_room_runner_key", runner_key, raising=False
@@ -275,12 +274,16 @@ async def room_client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"X-Access-Code": runner_key, "Authorization": f"Bearer {runner_key}"}
-        if runner_key
-        else {},
+        headers=tablet.headers
+        | (
+            {"X-Access-Code": runner_key, "Authorization": f"Bearer {runner_key}"}
+            if runner_key
+            else {}
+        ),
     ) as client:
         yield client
 
@@ -308,7 +311,7 @@ async def rehearsed_in_parts(
     db: AsyncSession,
     count: int,
     *,
-    project_id: str | None = None,
+    project_id: str | None = TABLET_TEAM,
     language: str = "pt",
     content_types: tuple[str, ...] | None = None,
     audio: tuple[bytes, ...] | None = None,
@@ -396,7 +399,7 @@ async def rehearsed_in_parts_of(
     if unnumbered_first and told_whole:
         raise ValueError("a rehearsal told whole has no numbered part to come after it")
 
-    session = await create_session(db, pericope=pericope, language=language)
+    session = await create_session(db, pericope=pericope, project_id=TABLET_TEAM, language=language)
     session.coverage_state = merge(
         initial_state(pericope), pericope_num=pericope, engaged=element_keys(pericope)
     )
@@ -607,7 +610,7 @@ async def upload_a_part(
         data["chunk_index"] = str(part)
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers=headers or {"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers=headers or {"X-Room-Device": TABLET},
         data=data,
         files={"file": ("gravacao.m4a", audio, content_type)},
     )
@@ -619,7 +622,6 @@ async def press_terminei(
     """Press `terminei`, with or without a report of what the tablet played."""
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/finish",
-        headers={"X-Room-Key": KEY},
         **({"json": report} if report is not None else {}),
     )
 

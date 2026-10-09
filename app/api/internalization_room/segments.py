@@ -9,7 +9,7 @@ rules about where a cut may land are the service's, and neither is decided here.
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError, WordlessTelling
@@ -57,13 +57,13 @@ async def _units(db: AsyncSession, session_id: str) -> list[SegmentView]:
 @router.post(
     "/sessions/{session_id}/segments/{segment_id}/divide",
     response_model=SegmentsResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def divide(
     session_id: str,
     segment_id: str,
     payload: DivideSegmentRequest,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
     """The team heard two ideas where they had told one, and cuts the stretch in two.
@@ -92,7 +92,7 @@ async def replace(
     ends_ms: int = Form(...),
     file: UploadFile = File(...),
     device_id: str = device_dep,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
     """One **Correction**: the same stretch told again, over the recording it already sits in.
@@ -183,6 +183,6 @@ router.add_api_route(
     replace,
     methods=["POST"],
     response_model=SegmentsResponse,
-    dependencies=[room_caller_dep, idempotency_dep],
+    dependencies=[linked_tablet_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )

@@ -13,8 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import (
     device_project_dep,
-    require_room_caller,
-    room_caller_dep,
+    linked_tablet_dep,
 )
 from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
@@ -230,7 +229,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
 #: grow this without bound.
 _LANGUAGE_MEMO_MAX = 1024
-_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str | None]] = OrderedDict()
+_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str]] = OrderedDict()
 
 
 def forget_session_languages() -> None:
@@ -238,7 +237,7 @@ def forget_session_languages() -> None:
     _LANGUAGE_MEMO.clear()
 
 
-def _remember_language(session_id: str, language: str, project_id: str | None) -> None:
+def _remember_language(session_id: str, language: str, project_id: str) -> None:
     _LANGUAGE_MEMO[session_id] = (language, project_id)
     _LANGUAGE_MEMO.move_to_end(session_id)
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
@@ -430,13 +429,13 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     )
 
 
-@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_caller_dep])
+@router.post("/sessions", response_model=SessionStateResponse, dependencies=[linked_tablet_dep])
 async def create_session(
     payload: CreateSessionRequest,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    project_id: str | None = device_project_dep,
-    caller: Device | None = Depends(require_room_caller),
+    project_id: str = device_project_dep,
+    caller: Device = linked_tablet_dep,
 ) -> SessionStateResponse:
     """Open a session, and end this tablet's halt if it was standing in one.
 
@@ -445,9 +444,8 @@ async def create_session(
     here. The session's halt is the team's: any credentialed tablet of the team that reopens a
     session a call for a person stopped is the room going again, and the room never waits on
     the Desk (ENG-1354), so `open_session` lifts it in the open's own transaction (ADR 0045).
-    Both are gated on `caller`, the gate's own result — the credential is resolved once per
-    request and FastAPI's dependency cache is what makes this and `device_project_dep` one
-    query — so a caller on the shared room key names no device and lifts nothing.
+    `caller` is the gate's own result — the credential is resolved once per request and
+    FastAPI's dependency cache is what makes this and `device_project_dep` one query.
 
     After the session exists, so an `open_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
@@ -473,11 +471,9 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
-        lifts=caller is not None,
     )
-    if caller is not None:
-        await clear_needs_person(db, caller.id)
-        nudge(session.project_id, "halts")
+    await clear_needs_person(db, caller.id)
+    nudge(session.project_id, "halts")
     if previous is not None:
         if hand_over(previous, session):
             await db.commit()
@@ -494,11 +490,11 @@ async def create_session(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionStateResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def read_session(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SessionStateResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
@@ -620,11 +616,11 @@ async def facilitator_sessions(
 @router.post(
     "/sessions/{session_id}/needs-person",
     response_model=NeedsPersonResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def ask_for_a_person(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> NeedsPersonResponse:
     """The room in front of the team decided it cannot go on without a person.
@@ -644,11 +640,11 @@ async def ask_for_a_person(
 @router.post(
     "/sessions/{session_id}/person-arrived",
     response_model=PersonArrivedResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def a_person_arrived(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> PersonArrivedResponse:
     """Somebody long-pressed the halted room to say they are standing in it (ENG-792).
@@ -734,7 +730,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def take_turn(
     session_id: str,
@@ -746,7 +742,7 @@ async def take_turn(
     interrupted: str | None = Form(default=None),
     interrupted_at_ms: str | None = Form(default=None),
     interrupted_of_ms: str | None = Form(default=None),
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -786,12 +782,12 @@ async def take_turn(
     "/sessions/{session_id}/turns/{turn_id}",
     response_model=TurnResponse,
     responses={202: {"description": "The turn is still in flight; nothing to read yet."}},
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def look_at_turn(
     session_id: str,
     turn_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse | Response:
     """The tablet's one look at a turn it gave up on, without sending the turn again.
@@ -827,7 +823,7 @@ async def _answer_the_turn(
     background: BackgroundTasks,
     file: UploadFile | None,
     turn_id: str | None,
-    project_id: str | None,
+    project_id: str,
     cut: _Cut,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000

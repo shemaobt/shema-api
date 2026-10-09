@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_agent_answers
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 
 
@@ -59,7 +59,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 100, raising=False)
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
@@ -88,7 +87,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -96,14 +98,12 @@ async def test_a_turn_whose_models_never_answer_is_a_502_inside_the_bound_not_a_
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, spoken: list[str]
 ) -> None:
     the_agent_answers(monkeypatch, _Hung())  # type: ignore[arg-type]
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": P, "language": "pt"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": P, "language": "pt"})
     assert created.status_code == 200
     session_id = created.json()["session_id"]
 
     answered = await asyncio.wait_for(
-        client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}),
+        client.post(f"{PREFIX}/sessions/{session_id}/turns"),
         timeout=5,
     )
 
@@ -136,15 +136,12 @@ async def test_the_hearing_spends_the_same_bound_the_models_do(
         return HeardSpeech(text="Noemi voltou para Belém com Rute")
 
     monkeypatch.setattr(sessions_api, "heard_speech", _slow_hearing)
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": P, "language": "pt"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": P, "language": "pt"})
     session_id = created.json()["session_id"]
 
     answered = await asyncio.wait_for(
         client.post(
             f"{PREFIX}/sessions/{session_id}/turns",
-            headers={"X-Room-Key": KEY},
             files={"file": ("answer.m4a", b"audio", "audio/m4a")},
         ),
         timeout=5,

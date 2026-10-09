@@ -392,7 +392,7 @@ _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de
 **Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
 The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
 every door behind it.
-_Avoid_: api key (the room's own is a different door), token, password, Chave do runner
+_Avoid_: api key, token, password, Chave do runner
 
 ### Build
 

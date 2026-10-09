@@ -22,9 +22,9 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform import tts
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam uns aos outros sobre ela?"
 
@@ -85,7 +85,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, buck
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     monkeypatch.setattr(sessions_api, "heard_speech", _hearing)
@@ -105,13 +104,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, buck
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="Quem aparece nesta parte?"
     )
@@ -127,7 +129,6 @@ async def test_the_clip_lands_in_the_bucket_before_the_turn_answers(
 
     answered = await client.post(
         f"{PREFIX}/sessions/{waiting_room.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
     )
 
@@ -179,11 +180,9 @@ async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
     monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
     monkeypatch.setattr(tts, "_default_store", lambda _: store)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
-    answered = await client.post(
-        f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}
-    )
+    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert answered.status_code == 200, answered.text[:300]
     assert b"o todo" in store.objects.values(), (

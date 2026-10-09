@@ -18,7 +18,8 @@ from app.core.config import get_settings
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform import tts
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, P
 from tests.room_harness import (
     heard_every_part,
     nothing_is_read_ahead,
@@ -162,7 +163,7 @@ async def test_an_opening_prepared_before_the_voice_changed_is_heard_in_marianas
         return None
 
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session.prepared_speech = "Vamos conhecer a cena."
     session.prepared_audio_key = (
         f"tts/{RETIRED_VOICE_ID}/eleven_turbo_v2_5/mp3_44100_128/abc/def.mp3"
@@ -171,9 +172,7 @@ async def test_an_opening_prepared_before_the_voice_changed_is_heard_in_marianas
     await db_session.commit()
 
     async with room_client(db_session, monkeypatch) as client:
-        opened = await client.post(
-            f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}
-        )
+        opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     served = _served_key(opened.json()["audio_url"])

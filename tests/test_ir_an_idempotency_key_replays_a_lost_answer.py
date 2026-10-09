@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.exceptions import ConflictError
 from app.services.internalization_room import idempotency
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     AUDIO,
     DEVICE,
     IR,
-    ROOM_KEY,
     SLICES,
 )
 from tests.hard_stretch_harness import (
@@ -78,12 +78,10 @@ async def client(db_session: AsyncSession, test_engine, monkeypatch: pytest.Monk
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import segments as segments_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     transcriber = Transcriber()
     monkeypatch.setattr(bt_api, "heard", transcriber)
     monkeypatch.setattr(segments_api, "heard", transcriber)
@@ -104,7 +102,12 @@ async def client(db_session: AsyncSession, test_engine, monkeypatch: pytest.Monk
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={DEVICE_CREDENTIAL_HEADER: tablet.credential},
+    ) as c:
         c.transcriber = transcriber  # type: ignore[attr-defined]
         yield c
 
@@ -115,12 +118,11 @@ def _answers(client: httpx.AsyncClient) -> list[Any]:
 
 def _headers(
     key: str | None,
-    room_key: str = ROOM_KEY,
     *,
     device: str | None = DEVICE,
     credential: str | None = None,
 ) -> dict[str, str]:
-    headers = {"X-Room-Key": room_key}
+    headers = {}
     if device is not None:
         headers["X-Room-Device"] = device
     if credential is not None:
@@ -139,7 +141,6 @@ async def _chunk(
     key: str | None = None,
     again: bool = False,
     audio: bytes = AUDIO,
-    room_key: str = ROOM_KEY,
     device: str | None = DEVICE,
     credential: str | None = None,
 ) -> httpx.Response:
@@ -149,7 +150,7 @@ async def _chunk(
         data["retelling"] = "true"
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers=_headers(key, room_key, device=device, credential=credential),
+        headers=_headers(key, device=device, credential=credential),
         data=data,
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )
@@ -334,7 +335,7 @@ async def test_a_refused_credential_does_not_spend_the_key(
 ) -> None:
     session_id, take_id = await _a_rehearsed_session(db_session, client)
 
-    refused = await _chunk(client, session_id, take_id, 1, key="um-trecho", room_key="errada")
+    refused = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential="errada")
     resent = await _chunk(client, session_id, take_id, 1, key="um-trecho")
 
     assert refused.status_code == 401, refused.text
@@ -349,7 +350,7 @@ async def test_a_replay_is_answered_only_to_a_caller_the_door_lets_in(
     first = await _chunk(client, session_id, take_id, 1, key="um-trecho")
     assert first.status_code == 200, first.text
 
-    stranger = await _chunk(client, session_id, take_id, 1, key="um-trecho", room_key="errada")
+    stranger = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential="errada")
 
     assert stranger.status_code == 401, stranger.text
 
@@ -470,9 +471,9 @@ async def test_a_request_missing_its_device_does_not_spend_the_key(
 async def test_another_projects_device_is_refused_as_without_a_key_never_replayed(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    team, own = await a_claimed_device(db_session, email="ana@example.com")
+    own = (await a_linked_tablet(db_session, team_id=TABLET_TEAM)).credential
     _, stranger = await a_claimed_device(db_session, email="bia@example.com")
-    session_id = await _a_session(db_session, team_id=team.id)
+    session_id = await _a_session(db_session, team_id=TABLET_TEAM)
     take_id = await _rehearse(client, session_id)
     first = await _chunk(client, session_id, take_id, 1, key="um-trecho", credential=own)
     assert first.status_code == 200, first.text

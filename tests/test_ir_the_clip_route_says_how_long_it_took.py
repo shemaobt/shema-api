@@ -57,7 +57,7 @@ class _SlowBucket:
 
 async def _slow_gate(db: AsyncSession, credential: str) -> Any:
     await asyncio.sleep(AUTH_MS / 1000)
-    return SimpleNamespace(project_id=None)
+    return SimpleNamespace(project_id="equipe", credential_collected_at="collected")
 
 
 @pytest.fixture()
@@ -352,7 +352,7 @@ async def test_when_the_semaphore_is_full_the_read_waits_for_the_gate_like_befor
     async def _gate_that_peeks(db: AsyncSession, credential: str) -> Any:
         await asyncio.sleep(AUTH_MS / 1000)
         observed_while_still_at_the_gate.append(bucket.entered.is_set())
-        return SimpleNamespace(project_id=None)
+        return SimpleNamespace(project_id="equipe", credential_collected_at="collected")
 
     monkeypatch.setattr(_deps, "authenticate_device", _gate_that_peeks)
 
@@ -386,12 +386,8 @@ async def test_a_revoked_credential_refuses_a_foreign_handle_before_the_bucket_g
 
 
 async def test_no_credential_gets_401_not_404_on_a_foreign_handle(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient,
 ) -> None:
-    monkeypatch.setattr(
-        get_settings(), "internalization_room_api_key", "the-room-key", raising=False
-    )
-
     fetched = await client.get(f"{PREFIX}/voice/{FOREIGN_HANDLE}")
 
     assert fetched.status_code == 401, (
@@ -438,7 +434,7 @@ async def test_the_read_begins_before_a_slow_gate_lets_the_caller_through(
     async def _gate_that_peeks(db: AsyncSession, credential: str) -> Any:
         await asyncio.sleep(AUTH_MS / 1000)
         observed_while_still_at_the_gate.append(bucket.entered.is_set())
-        return SimpleNamespace(project_id=None)
+        return SimpleNamespace(project_id="equipe", credential_collected_at="collected")
 
     monkeypatch.setattr(_deps, "authenticate_device", _gate_that_peeks)
 
