@@ -32,9 +32,9 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 FIRST_QUESTION = "Quem aparece nesta parte?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam uns aos outros sobre ela?"
@@ -117,7 +117,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, mode
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
     monkeypatch.setattr(sessions_api, "heard_speech", _slow_hearing)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _slow_voice)
@@ -135,13 +134,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, mode
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
@@ -162,7 +164,6 @@ async def _the_team_answers(
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
         data={} if client_timing is None else {"client_timing": client_timing},
     )
@@ -215,9 +216,9 @@ async def test_letting_the_read_go_before_the_models_is_timed_on_its_own_not_hid
 async def test_letting_the_read_go_before_a_live_opening_is_timed_on_its_own_too(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert "db_let_go" in _server_timing(opened), (
@@ -255,10 +256,12 @@ async def test_a_turn_whose_voice_breaks_still_says_how_long_it_waited_before_br
     with caplog.at_level(logging.INFO):
         answered = await _the_team_answers(client, waiting_room.id)
 
-    assert answered.status_code == 500
+    assert answered.status_code == 200, answered.text[:300]
     lines = _timing_lines(caplog)
     assert len(lines) == 1, "o turno que quebrava não deixava tempo nenhum para trás"
-    assert re.search(r" stt=\d+ms guide=\d+ms validator=\d+ms voice=\d+ms total=\d+ms", lines[0])
+    assert re.search(
+        r" stt=\d+ms guide=\d+ms validator=\d+ms db_write=\d+ms voice=\d+ms", lines[0]
+    ), "a voz era feita antes de o turno ficar guardado"
 
 
 async def test_the_tablets_timings_of_its_last_turn_reach_the_same_log_as_the_servers(

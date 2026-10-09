@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -43,7 +43,7 @@ async def add_chunk(
     ends_ms: int = Form(...),
     retelling: bool = Form(default=False),
     device_id: str = device_dep,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationChunkResponse:
     """One piece told back in the bridge language, while the team's own recording plays.
@@ -156,7 +156,7 @@ router.add_api_route(
     add_chunk,
     methods=["POST"],
     response_model=BackTranslationChunkResponse,
-    dependencies=[room_caller_dep, idempotency_dep],
+    dependencies=[linked_tablet_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )
 
@@ -200,12 +200,12 @@ async def _the_untold_errand(
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def finish(
     session_id: str,
     payload: FinishBackTranslationRequest | None = None,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge.

@@ -85,6 +85,26 @@ def test_only_new_canon_reaches_the_guard_the_smoke_the_build_and_the_change_in_
     assert check["env"]["TRIPOD_COMPILER_REPO"] in clone
 
 
+def test_new_canon_has_its_missing_titles_filled_before_the_smoke_checks_hers() -> None:
+    steps = _steps()
+    filled = _index("scripts/fill_scene_titles.py")
+
+    assert (
+        _index("scripts/sync_internalization_canon.py --sync")
+        < filled
+        < _index("scripts/smoke_internalization_canon.py")
+    ), "a sincronização não preenchia os títulos que faltam antes da checagem dos dela"
+    assert steps[filled].get("if") == UPDATED
+
+
+def test_the_change_carries_the_titles_the_fill_wrote() -> None:
+    change = _steps()[_index("peter-evans/create-pull-request")]["with"]
+
+    assert (
+        "app/services/internalization_room/canon/ui-labels.pt.json" in change["add-paths"].split()
+    ), "os títulos preenchidos ficavam fora da mudança aberta"
+
+
 def test_the_change_carries_her_title_and_her_review_sentence() -> None:
     change = _steps()[_index("peter-evans/create-pull-request")]["with"]
 

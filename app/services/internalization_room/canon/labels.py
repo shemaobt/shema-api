@@ -32,6 +32,7 @@ from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
 from app.services.internalization_room.canon.kept import canon_path
 from app.services.internalization_room.canon.parse_map import load_book
+from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.coverage import CoverageStatus
 
 LABELS_DIR = Path(__file__).parent / "element-labels"
@@ -101,7 +102,12 @@ def labelled_elements(
     elements = elements_for(pericope_num, book)
     for_passage = _catalogue(canon_path(catalogue_dir), book).get(pericope_num)
     if for_passage is None:
-        return [_from_the_canon(element) for element in elements]
+        return [
+            _scene(pericope_num, element)
+            if element.kind is ElementKind.SCENE
+            else _from_the_canon(element)
+            for element in elements
+        ]
 
     served = {element.key for element in elements}
     orphans = sorted(set(for_passage) - served)
@@ -111,7 +117,9 @@ def labelled_elements(
         )
 
     return [
-        LabelledElement(
+        _scene(pericope_num, element)
+        if element.kind is ElementKind.SCENE
+        else LabelledElement(
             key=element.key,
             kind=element.kind,
             scene=element.scene,
@@ -126,11 +134,22 @@ def labelled_elements(
     ]
 
 
+def _scene(pericope_num: str, element: Element) -> LabelledElement:
+    return LabelledElement(
+        key=element.key,
+        kind=element.kind,
+        scene=element.scene,
+        label_pt=scene_title(pericope_num, element.scene, element.label, "pt"),
+        label_en=element.label,
+    )
+
+
 def _from_the_canon(element: Element) -> LabelledElement:
     """A bead of a passage nobody has translated, named as well as it can honestly be.
 
-    Reached when the catalogue has no entry for this passage. English comes almost free from
-    the canon — §7 says so — so `Element.label` is the English, and Portuguese is **absent**.
+    Reached when the catalogue has no entry for this passage, for every bead but a scene, which
+    `_scene` names by her Portuguese title. English comes almost free from the canon — §7 says
+    so — so `Element.label` is the English, and Portuguese is **absent**.
     Filling it with the English would put a sentence a facilitator does not read in front of
     them under the name of their own language, which is the silent fallback this module exists
     to prevent; leaving it null is the Desk's own `CoverageLabels` shape and draws as a missing

@@ -256,41 +256,6 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     assert agent.calls.count("guide") == MAX_REDRAFTS + 1
 
 
-async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_not_the_g_line(
-    patch_agent,
-) -> None:
-    """A team that rehearsed in its own language never sat in this exchange at all.
-
-    Only the Guide's draft strayed, three times running, and the team never spoke. Category
-    G is reserved for a team detected in another language; a draft that cannot hold the
-    bridge language is an ordinary unrepairable draft, the same exit any other exhausted
-    redraft takes."""
-    patch_agent(
-        FakeAgent(
-            verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
-            drafts=["Tell me what you think happens next in this part of the story."]
-            * (MAX_REDRAFTS + 1),
-        )
-    )
-
-    outcome = await run_turn(
-        session_language="Portuguese",
-        language_code="pt",
-        transcript="me conta mais sobre Rute",
-        coverage_state=initial_state(P),
-        messages=[],
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        pericope_num=P,
-        settings=settings(),
-    )
-
-    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-    assert outcome.fixed_line.startswith("A")
-    assert outcome.used_fail_safe is True
-    assert outcome.degraded is True
-
-
 async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> None:
     class Garbage(FakeAgent):
         async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
@@ -340,7 +305,7 @@ async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_ag
     )
 
     first_call, second_call = agent.guide_inputs[0], agent.guide_inputs[1]
-    assert "Rewrite note" not in first_call
-    assert "Rewrite note" in second_call
+    assert first_call == "pergunta"
+    assert "internal redraft note" in second_call
     assert "imported_knowledge" in second_call
     assert "Rute era moabita" in second_call

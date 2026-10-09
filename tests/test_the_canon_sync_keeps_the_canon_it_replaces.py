@@ -12,6 +12,7 @@ from tests.canon_sync_harness import SHA, Compiler, point_the_sync_at, what_is_v
 WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "canon-sync.yml"
 NEXT = "c" * 40
 FIRST_LABELS = '{"P01": "labelled for the first canon"}'
+FIRST_TITLES = '{"scenes": {"P01": {"S1": "o título da primeira cena"}}}'
 
 
 @pytest.fixture
@@ -24,6 +25,7 @@ def a_vendor_synced_once_beside_its_labels(
     point_the_sync_at(monkeypatch, canon, compiler, tmp_path)
     (tmp_path / "element-labels").mkdir()
     (tmp_path / "element-labels" / "ruth.json").write_text(FIRST_LABELS)
+    (tmp_path / "ui-labels.pt.json").write_text(FIRST_TITLES)
     assert canon.sync(pin=SHA) == 0
     return compiler
 
@@ -48,6 +50,19 @@ def test_a_re_pin_keeps_the_canon_it_replaces_under_its_pin_beside_the_labels_it
     assert (kept / "element-labels" / "ruth.json").read_text() == FIRST_LABELS
     assert what_is_vendored(tmp_path / "vendor")["meaning-map/P01-Ruth-1-1-5.md"] == (
         b"map P01 revised"
+    )
+
+
+def test_a_re_pin_keeps_her_portuguese_titles_beside_the_canon_it_replaces(
+    a_vendor_synced_once_beside_its_labels: Compiler, tmp_path: Path
+) -> None:
+    compiler = a_vendor_synced_once_beside_its_labels
+    compiler.sha = NEXT
+
+    assert canon.sync(pin=NEXT) == 0
+
+    assert (tmp_path / "kept" / SHA / "ui-labels.pt.json").read_text() == FIRST_TITLES, (
+        "o re-pin deixava a sessão aberta sem os títulos dela com que começou"
     )
 
 

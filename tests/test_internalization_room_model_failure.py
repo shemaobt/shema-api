@@ -8,7 +8,6 @@ line between a canned answer the policy promises and a defect of ours that must 
 
 import asyncio
 import json
-import threading
 from typing import Any
 
 import httpx
@@ -16,12 +15,13 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room import validated_turn
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 CORRECTED_LINE = "Fiquem nesta cena. O que vocês contariam?"
@@ -72,11 +72,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         spoken.append(text)
@@ -104,7 +101,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -115,7 +115,6 @@ def _the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> None:
 async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": P, "language": "pt"},
     )
     assert created.status_code == 200
@@ -123,13 +122,12 @@ async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
 
 
 async def _the_room_takes_a_turn(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    return await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
 
 async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 
@@ -231,9 +229,9 @@ async def test_a_bug_in_the_rooms_own_checks_is_not_dressed_up_as_an_outage(
     _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
 
     def _explodes(*_args: Any, **_kwargs: Any) -> bool:
-        raise AssertionError("a defect in the room's own bridge-language check")
+        raise AssertionError("a defect in the room's own peer-cue check")
 
-    the_room_agent_is(monkeypatch, strays_from=_explodes)
+    monkeypatch.setattr(validated_turn, "detects_peer_cue", _explodes)
     session_id = await _a_room_opening_a_passage(client)
 
     answered = await _the_room_takes_a_turn(client, session_id)
@@ -256,26 +254,3 @@ async def test_a_cancelled_turn_is_never_dressed_up_as_a_fail_safe(
 
     with pytest.raises(asyncio.CancelledError):
         await _the_room_takes_a_turn(client, session_id)
-
-
-async def test_the_bridge_language_check_runs_beside_the_event_loop_not_on_it(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
-    ran_on: list[int] = []
-
-    def _where_it_ran(text: str, language_code: str = "pt") -> bool:
-        ran_on.append(threading.get_ident())
-        return False
-
-    the_room_agent_is(monkeypatch, strays_from=_where_it_ran)
-    session_id = await _a_room_opening_a_passage(client)
-
-    answered = await _the_room_takes_a_turn(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    assert ran_on
-    assert threading.get_ident() not in ran_on, (
-        "o langdetect rodava na thread do loop: enquanto ele lia a fala, nenhum outro "
-        "pedido do servidor andava"
-    )
