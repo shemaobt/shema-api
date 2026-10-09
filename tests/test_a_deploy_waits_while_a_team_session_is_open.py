@@ -258,3 +258,18 @@ def test_one_production_deploy_runs_at_a_time_and_the_next_one_is_kept() -> None
     workflow = yaml.safe_load(DEPLOY.read_text())
 
     assert workflow["concurrency"] == {"group": "deploy", "cancel-in-progress": False}
+
+
+async def test_the_window_is_an_hour_unless_the_deploy_is_told_otherwise(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    await a_session(
+        db_session, "sessao-da-ruth", updated_at=datetime.now(UTC) - timedelta(minutes=30)
+    )
+    runner = a_runner(tmp_path)
+
+    an_hour = the_hold_runs(runner, DEPLOY_URGENT="true")
+    a_quarter = the_hold_runs(runner, DEPLOY_URGENT="true", DEPLOY_HOLD_MINUTES="15")
+
+    assert "sessao-da-ruth  project time-de-ruth" in an_hour.stdout
+    assert a_quarter.stdout == "No team session is open; the deploy goes on.\n"

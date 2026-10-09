@@ -56,12 +56,13 @@ def named(sessions: list[IRSession]) -> str:
 
 
 async def wait() -> int:
+    window = timedelta(minutes=float(os.environ.get("DEPLOY_HOLD_MINUTES", WINDOW_MINUTES)))
     poll = float(os.environ.get("DEPLOY_HOLD_POLL_SECONDS", POLL_SECONDS))
     deadline = float(os.environ.get("DEPLOY_HOLD_DEADLINE_MINUTES", DEADLINE_MINUTES))
     started = time.monotonic()
     while True:
         async with AsyncSessionLocal() as db:
-            held = await holding(db, datetime.now(UTC), timedelta(minutes=WINDOW_MINUTES))
+            held = await holding(db, datetime.now(UTC), window)
         if not held:
             print("No team session is open; the deploy goes on.", flush=True)
             return 0
