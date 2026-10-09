@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from scripts import hold_deploy
 
 NOW = datetime(2026, 10, 8, 14, 0, tzinfo=UTC)
@@ -42,5 +42,19 @@ async def test_a_session_opened_with_no_team_never_holds_the_deploy(
     db_session: AsyncSession,
 ) -> None:
     await a_session(db_session, "sessao-da-chave-da-sala", project_id=None)
+
+    assert await hold_deploy.holding(db_session, NOW, HOUR) == []
+
+
+async def test_a_passage_the_team_finished_a_minute_ago_does_not_hold_the_deploy(
+    db_session: AsyncSession,
+) -> None:
+    await a_session(
+        db_session,
+        "sessao-terminada",
+        status=IRSessionStatus.DONE,
+        ended_at=NOW - timedelta(minutes=1),
+        updated_at=NOW - timedelta(minutes=1),
+    )
 
     assert await hold_deploy.holding(db_session, NOW, HOUR) == []
