@@ -1,16 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import asyncio
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
+from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, end_of
+
+WINDOW_MINUTES = 60
 
 
 async def holding(db: AsyncSession, now: datetime, window: timedelta) -> list[IRSession]:
@@ -37,3 +41,18 @@ async def holding(db: AsyncSession, now: datetime, window: timedelta) -> list[IR
         for session in result.scalars()
         if not is_panorama(session.pericope) and end_of(session).state is SessionState.IN_PROGRESS
     ]
+
+
+async def wait() -> int:
+    async with AsyncSessionLocal() as db:
+        await holding(db, datetime.now(UTC), timedelta(minutes=WINDOW_MINUTES))
+    print("No team session is open; the deploy goes on.", flush=True)
+    return 0
+
+
+def main() -> int:
+    return asyncio.run(wait())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

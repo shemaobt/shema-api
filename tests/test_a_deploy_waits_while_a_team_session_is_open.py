@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import yaml
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -13,6 +17,41 @@ from scripts import hold_deploy
 
 NOW = datetime(2026, 10, 8, 14, 0, tzinfo=UTC)
 HOUR = timedelta(minutes=60)
+ROOT = Path(__file__).resolve().parent.parent
+DEPLOY = ROOT / ".github" / "workflows" / "deploy.yml"
+
+
+def the_steps() -> list[dict[str, Any]]:
+    return yaml.safe_load(DEPLOY.read_text())["jobs"]["deploy"]["steps"]
+
+
+def the_hold() -> dict[str, Any]:
+    found = [step for step in the_steps() if "scripts/hold_deploy.py" in step.get("run", "")]
+    assert len(found) == 1, f"the hold is in {len(found)} steps"
+    return found[0]
+
+
+def a_runner(tmp_path: Path) -> dict[str, str]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gcloud = bin_dir / "gcloud"
+    gcloud.write_text(f"#!/bin/sh\necho '{os.environ['DATABASE_URL']}'\n")
+    uv = bin_dir / "uv"
+    uv.write_text(f'#!/bin/sh\nshift 2\nexec {sys.executable} "$@"\n')
+    gcloud.chmod(0o755)
+    uv.chmod(0o755)
+    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+
+def the_hold_runs(runner: dict[str, str], **settings: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", "-e", "-c", the_hold()["run"]],
+        cwd=ROOT,
+        env={**runner, **settings},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
 
 
 async def a_session(db: AsyncSession, session_id: str, **columns: Any) -> None:
@@ -111,3 +150,14 @@ async def test_a_column_the_pending_migration_adds_does_not_break_the_count(
     await engine.dispose()
 
     assert [session.id for session in held] == ["sessao-da-ruth"]
+
+
+async def test_with_no_team_in_the_room_the_deploy_goes_on(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    await a_session(db_session, "sessao-da-chave-da-sala", project_id=None)
+
+    hold = the_hold_runs(a_runner(tmp_path))
+
+    assert hold.returncode == 0, hold.stderr
+    assert "No team session is open; the deploy goes on." in hold.stdout

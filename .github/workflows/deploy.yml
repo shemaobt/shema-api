@@ -68,6 +68,11 @@ jobs:
           docker build --build-arg GIT_SHA=${{ github.sha }} -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} .
           docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }}
 
+      - name: Wait while a team session is open
+        run: |
+          DATABASE_URL="$(gcloud secrets versions access latest --secret=tripod_backend_neon_database_url --project=shemaobt-secrets)" \
+            uv run python scripts/hold_deploy.py
+
       - name: Run migrations
         run: |
           docker run --rm \
