@@ -331,3 +331,18 @@ async def test_of_two_nuances_only_the_one_on_the_lowest_frase_is_handed(
     assert [one["frase"] for one in json.loads(_handed(speaker))] == [1], (
         "a voz dizia a primeira nuance da resposta, não a da frase mais baixa"
     )
+
+
+async def test_a_content_type_longer_than_a_take_can_hold_is_refused_at_the_door(client) -> None:
+    refused = await client.post(
+        f"{SEAM}/session",
+        json={
+            "pericopeId": PASSAGE,
+            "language": LANGUAGE,
+            "clips": [{**CLIPS[0], "contentType": "audio/" + "x" * 59}],
+        },
+    )
+
+    assert refused.status_code == 422, (
+        "um tipo de 65 caracteres passava a porta e quebrava na coluna de 64 do take"
+    )
