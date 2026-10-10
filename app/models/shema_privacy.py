@@ -229,15 +229,24 @@ REASON_FIELDS: Final[tuple[str, ...]] = ("sensitivity",)
 
 #: The free text a team writes about itself — the record's notes, the health notes, the status
 #: comments and the scope — any of which can say where it is (*a equipe se mudou para …*). Since
-#: OBT-556 a withheld shape empties them for every reader who is not coordination, as it empties
-#: the base: there is no reduced form of a sentence. The nested free text of a withheld record —
-#: a need's description, an assessment's notes — is ``_redaction.py``'s, because a nested list
-#: arrives on the shape after it was built.
+#: OBT-556 a withheld shape empties them for every reader who does not read the truth, as it
+#: empties the base: there is no reduced form of a sentence. **OBT-573 added five**, Karina's
+#: answer to question 8 (via Daniel, 6/out/2026): on a sensitive project the objective's, the
+#: finances' and the needs' notes, the partner organisation and the status goal stay with
+#: coordination too — and since OBT-571 the reader left without them is the OBT Lab, the
+#: Resource Circle reading the truth. The nested free text of a withheld record — a need's
+#: description, an assessment's notes, a media caption, a story's recording place — is
+#: ``_redaction.py``'s, because a nested list arrives on the shape after it was built.
 FREE_TEXT_FIELDS: Final[tuple[str, ...]] = (
     "notes",
     "health_notes",
     "status_comments",
     "scope_details",
+    "objective_notes",
+    "financial_notes",
+    "needs_notes",
+    "partner_org",
+    "status_goal",
 )
 
 #: The language's name, under the two spellings the leaving shapes use (the prayer entry calls

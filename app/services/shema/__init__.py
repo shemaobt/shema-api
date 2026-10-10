@@ -311,6 +311,7 @@ from app.services.shema.leave_intercessor import (
     open_exit_link,
 )
 from app.services.shema.list_assessments import list_assessments
+from app.services.shema.list_audit import list_audit
 from app.services.shema.list_eten_credits import list_eten_credits
 from app.services.shema.list_grant_changes import list_grant_changes
 from app.services.shema.list_intake_links import list_intake_links
@@ -455,6 +456,7 @@ __all__ = [
     "leaving_person",
     "link_status",
     "list_assessments",
+    "list_audit",
     "list_eten_credits",
     "list_grant_changes",
     "list_intake_links",

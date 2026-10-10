@@ -123,7 +123,7 @@ async def _media(
     for row in (await db.execute(stmt)).scalars():
         decision = recorded_decision(row)
         if row.kind == ShemaMediaKind.PHOTO:
-            photos.append(ShemaMediaPhoto(caption=row.caption, authorization=decision))
+            photos.append(ShemaMediaPhoto(id=row.id, caption=row.caption, authorization=decision))
         else:
             videos.append(
                 ShemaProjectVideo(

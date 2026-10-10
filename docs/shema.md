@@ -360,6 +360,8 @@ bucket, which is the precedent, not a trespass).
 | `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 21, key for key (`derived`, `readAs` and, since OBT-413, `completedDate` are the contract's own keys now), plus `locationWithheld` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
 | `app/db/models/shema_audit.py` | **BE-06, built** | `shema_record_edits` — the trail: who moved which field, when, from what to what. Append-only, by the same trigger `shema_progress_history` uses. |
 | `app/services/shema/_audit.py` | **BE-06, built** | The trail's writer and its one reader. Names no guarded column and records no guarded **value**. |
+| `app/db/models/shema_change_log.py`, `app/services/shema/_trail.py` | **OBT-577, built** | `shema_change_log` — the acts that had no ledger of their own (who, when, to what, which keys; **no value**), append-only. `_trail.stage` is its one writer and `_trail.COVERAGE` classifies every write route; `tests/test_shema/test_change_log.py` fails on a route that is not listed. |
+| `app/services/shema/list_audit.py`, `app/api/shema/audit.py` | **OBT-577, built** | `GET /api/shema/audit` — the two ledgers as one feed, for the coordination and the Admin, inside their regions. |
 | `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
 | `app/services/shema/save_project.py` | **BE-06, built** | The create, the partial update, and the version guard. The one thing in the module that moves `shema_projects.version`. |
 | `app/services/shema/read_record.py` | **BE-06, built** | The record read, and `build_record` — the assembly the write path answers with. |
@@ -743,7 +745,7 @@ behaviour on it.
 | 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day — which the server cannot know, so BE-06 has the client state it in `X-Shema-Local-Date` and bounds it to ±1 day of the server's own, the window every real offset fits in and a backdated ETEN credit does not. **A row is checked against the book that exists** (`app/utils/shema_books.py`): not a book, a scope longer than the book, a count above its own row. The ceiling is **per row and never over the aggregates** — three export records carry `156/25`. |
 | 5.3 | **Health assessment** | `shema_health_assessments` | BE-02, BE-07 | **Its own aggregate.** The flat fields on the record are a *projection of the newest entry*, never a second truth; append and re-project in one step, and carry a pre-history record into the history before appending. The **per-dimension note is the data**; the running note is derived from it at write time. `""` is not `boa`. |
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
-| 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). **Since OBT-578 (8/oct/2026) a photo is also born from a Pulse**: the import mints it from the image the link uploaded, with the description as its caption and the leader's box as its decision — `true` is granted, by the leader on the day the Pulse arrived; unchecked or absent is **undecided**, never a refusal the server invented — and from there every output reads it through the same `can_share_media`. The coordination withdraws it (`withdraw_image_authorization.py`): granted becomes `false` with who and when, and the reference, the description and the box leave the archived Pulse (`image_erased_at`/`_by` on the submission, the OBT-561 shape). What was already sent is **not** recalled — Daniel, 8/oct/2026. §6.6. |
+| 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). **Since OBT-578 (8/oct/2026) a photo is also born from a Pulse**: the import mints it from the image the link uploaded, with the description as its caption and the leader's box as its decision — `true` is granted, by the leader on the day the Pulse arrived; unchecked or absent is **undecided**, never a refusal the server invented — and from there every output reads it through the same `can_share_media`. The coordination withdraws it (`withdraw_image_authorization.py`): granted becomes `false` with who and when, and the reference, the description and the box leave the archived Pulse (`image_erased_at`/`_by` on the submission, the OBT-561 shape). What was already sent is **not** recalled — Daniel, 8/oct/2026. §6.6. **The record carries each photo's `id` and never its address** (OBT-581): the bytes have one door, `GET /projects/{id}/media/{item}/link`, a fifteen-minute signed URL minted per call behind `media_download_url`'s gates — the caller's scope, an object to serve, `can_share_media` **and the caller's reader**, so an authorized image of a withheld project reaches the coordination **only** — not the OBT Lab, and not the Resource Circle either, whose OBT-571 reading of the truth covers the record and not these bytes — until OBT-575 (Daniel, 9/oct/2026, option b: reopened when OBT-575 exists). A link in the record was rejected because it would outlive its expiry wherever the record is held and reach readers the gate refuses. |
 | 5.6 | **Prayer** | *(none for the wall)* | BE-09 | **The wall is derived, never stored**, which is what makes withdrawal free: moving a request back to `coordenacao` removes it from the next query with no cleanup step. The three columns live on the record; `_consent.py` is their only reader. If BE-09 ever stores requests, a withdrawn one is **deleted from that store**, never flagged and retained. **The one store that kept the text is the archived Pulse, and since OBT-561 (2/out/2026, Levi) it is cleaned too**: Karina, via Daniel, 1/out/2026 — *"o pedido é apagado também do Pulso guardado"* (the other options were keeping the Pulse whole for coordination only, or as it was). A withdrawal is the team **stating** a visibility other than `rede` over a request that was on the wall (`_consent.withdraws_authorization`), on a save or a health reading; `_submission_archive.erase_shared_requests` then removes the request, and the visibility answer that authorized it, from **every archived Pulse of the project that shared one** — that answered `rede` — whatever its words: the health wizard writes an edited text and restates `rede` in one save, so matching by text would miss a request the record has since spelled otherwise (Levi, 2/out/2026, on the review of shema-api#622). A Pulse that kept its request in coordination is left as it arrived. The row keeps `prayer_request_erased_at`/`_by` — never the text. A new text replacing the request is **not** a withdrawal and erases nothing. The content hash stays the hash of the bytes as they arrived, so the same file sent again is still a no-op. |
 | 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. **OBT-531:** a contact untouched for more than a year — the latest of entry, review and send — is **flagged for review**, served as `reviewDue` and never derived by the client; and a person with no account **leaves through an exit link**, which is the same erasure. |
 | 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
@@ -1130,7 +1132,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 | **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading, confirmed by Daniel on 8/oct/2026*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | a `resourceCircle` on a project in a region of its scope — reads the truth, writes nothing of coordination's | every other session in the console — `obtLab` (the `resourceCircle` read here until OBT-571; every project it reaches is in its own scope, where it is `trusted`) | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
 | `location`, `country` | the truth | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
-| `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | the truth | `""` | `""` |
+| `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556); `objectiveNotes`, `financialNotes`, `needsNotes`, `partnerOrg`, `statusGoal` and `storyProgress[].recordLocation` (OBT-573) | the truth | the truth | `""` | `""` |
 | the captions of `mediaPhotos` and `mediaVideos` (OBT-578, found in review — the authorization gates the bytes, not the leader's sentence) | the truth | the truth | `""` / `null` | — |
 | `authorization.by` of `mediaPhotos` and `mediaVideos` (OBT-578 — Daniel, 8/oct/2026: on a Pulse-born photo it is the leader's own name, `submittedBy`) | the truth | the truth | `""`; `granted` and `at` kept | — |
 | `coords` | the truth | the truth | the region centroid | the region centroid |
@@ -1290,16 +1292,33 @@ coordinator imported it — the same gap the import has for the prayer request.
 
 **Residuals named and not closed** — each can name a place and none is reduced for `other`:
 ~~the slug `<language>-<place>`, which is the record's address on every shape~~ (closed by OBT-552: every id is an opaque UUID); the free text of
-the ficha that OBT-556's list left out (`partnerOrg`, `statusGoal`, `phases`, `needsNotes`,
-`objectiveNotes`, `financialNotes`, a need's `estimatedValue`, a material's file name or link,
-media captions and URLs); `storyProgress[].recordLocation` and its copy in
-`progressHistory` — reducing a field inside a table the progress tab saves whole would make the
-next save of that table erase the truth; and the text a team authorized for prayer, which
+the ficha that OBT-556's and OBT-573's lists leave out (`phases`, a need's `estimatedValue`, a
+material's file name or link, the media URLs); and the text a team authorized for prayer, which
 reaches the wall, the Pulse and the export by its consent (`_consent.py`) whether or not the
 place is withheld. They belong to GATE-04's *Notes & media* column, which the grid has not
 answered per role. ~~`notes`, `healthNotes`, `statusComments`, `scopeDetails`, a need's
 `description`, the assessments' notes and the submissions inbox's free text~~ — closed by
-OBT-556 on a withheld record, below.
+OBT-556 on a withheld record, below; ~~`partnerOrg`, `statusGoal`, `needsNotes`,
+`objectiveNotes`, `financialNotes`, the media captions and `storyProgress[].recordLocation` with
+its copy in `progressHistory`~~ — closed by OBT-573, below.
+
+**Seven more texts — OBT-573.** Karina, via Daniel, 6/out/2026, question 8: on a sensitive
+project the coordination also keeps *"Observações do objetivo; Observações do financeiro;
+Observações das necessidades; Legendas de fotos e vídeos; Local da gravação; Organização
+parceira; Meta do status"*. Since OBT-571 the Resource Circle reads the truth, so the reader
+handed them as `""` is `other` — the OBT Lab (Daniel, 7/out/2026). The five columns joined
+`FREE_TEXT_FIELDS`: the ficha and the card empty them, a write of one by name is a 403 and the
+409 does not name them. The captions and the recording place are nested and leave by
+`_redaction.free_text_as_read`, the place in every row and on each copy the progress history
+keeps — every row as `""`, written or not, so the reduction does not tell which story had one.
+**The place is also a write**, which is why OBT-556 left it out: the progress tab sends the
+story table whole, so `_redaction.story_text_as_written` gives a row of a stored story, matched
+by its name, the stored place back when it is sent as `""` or without one, refuses one sent with
+any place (comparing with the `""` the reader was given, never with the truth), and writes a new
+story as typed. The captions have no write path. **Known gap:** the rows have no id, so a reader
+who renames a stored story sends a new one and the old row's place goes with the row — as it
+would if they deleted it, which the progress tab already lets them do. A row id on
+`storyProgress` is what would close it.
 
 **What a withheld record holds back beyond its place — OBT-556.** The INT-12 pass found the
 record's text leaving by five doors, and the client decided on 2/out/2026 to close them all
@@ -1480,7 +1499,13 @@ for it.
 verdict is built: `app/services/shema/_media_storage.py` holds the `shema-private` bucket and
 the content-addressed key, `app/services/shema/media_download_url.py` applies
 `can_share_media` on the only address the bytes have, and the address is a signed GET that
-expires in fifteen minutes and is persisted nowhere. **One departure from the sibling's key
+expires in fifteen minutes and is persisted nowhere — **served since OBT-581 by
+`GET /projects/{id}/media/{item}/link`**, which also asks the caller's reader: on a withheld
+project the link is the **coordination's only**, and both the `other` reader, who already reads
+the slot with its caption emptied, and the `trusted` Resource Circle, whose general reading of
+the truth (OBT-571) does **not** cover the bytes of a sensitive project's image, are refused with
+the same sentence an unauthorized item gets — Daniel, 9/oct/2026, option b: the row is reopened
+when OBT-575 exists. **One departure from the sibling's key
 shape, and it is this section's own argument arriving in the object store:**
 `resource-requests-private` scopes a key by its `request_id`; this one scopes by the media
 row's uuid, because a Shemá id is `<language>-<place>` and a signed URL travels further than
@@ -2190,6 +2215,45 @@ the wall, the Pulse and the export until they are read — archived Pulses are n
 nothing was withdrawn; (5) OBT-566's notice is sent at the release.
 
 ---
+
+### 6.12 Seam J — every write leaves a mark — **Decided; OBT-577**
+
+Karina, via Daniel, 6/out/2026: *"toda alteração seja gravada, datada e com o nome de quem alterou."*
+Daniel, 7/out: the scope is the whole PME.
+
+**Two ledgers, not one, and the line between them is whether a value can be told.**
+`shema_record_edits` keeps both sides of a project's field and withholds the guarded ones; every
+other act (an intercessor edited, a meeting log undone, a link revoked, a pending project
+rejected, an ETEN credit set, a photo's authorization withdrawn, a submission imported) goes to
+`shema_change_log`, which has **no column that could hold a value** — the act, the subject, the keys
+it touched, the account (nullable, for the unauthenticated exits) and the name as it was then. A
+log that never held a value cannot leak one to a reader who may not read the record.
+
+**What is not in the new table, and why.** The acts that already keep author and day on their own
+row stay there and are not copied: the record's fields (`shema_record_edits`, which the project
+create, the import of projects and the confirmation also write), a seat (`shema_role_changes`), a
+region's scope (`shema_scope_changes`), a health reading, a member (`added_by`/`removed_by`), an
+invitation (`created_by`/`revoked_by`), an intake link's minting and a leader's own submission.
+**Exempt, with the reason on the registry:** the account's own notification preferences and its
+read marks — the reader's state, not the PME's data.
+
+**The rule is a registry and a test.** `_trail.COVERAGE` names, for every non-GET route, where its
+mark lands (`trail`, `ledger` or `exempt`). `test_every_write_route_of_the_module_is_accounted_for`
+compares it with the built application's route table, so a write route nobody classified is red.
+
+**One transaction.** `_trail.stage` adds the row and never commits; the act's own commit carries it.
+Where the act's helper checks and commits (an intercessor by id), `_trail.around` stages first and
+unstages if the helper refuses, so a 404 leaves no mark on a session something else commits.
+
+**Who reads it: the coordination and the Admin** (`list_audit.AUDIT_AUDIENCE`) — Daniel's proposal,
+to confirm on the PR. The reach is the reader's `coordination` and not the session's scope: the
+`admin` role holds no region row and coordinates everywhere. Entries that belong to no region (the
+intercessor network, a global meeting) are told to every reader of the feed. A record field the
+reader is handed reduced is left out, as `changes_since` leaves it out of a 409 (OBT-556).
+
+**Left out, deliberately:** the *reads* (the contact reveal keeps its log line), and a value-bearing
+history of the acts above — the person's contact and a prayer request are exactly what the log
+must not hold.
 
 ## 7. Traps in this repository, for this module
 
