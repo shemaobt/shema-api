@@ -4,7 +4,7 @@ No backfill: a recording stored before has no upload awaiting confirm-upload und
 name, which is what a null says; confirm-upload falls back to the name it checked before.
 
 Revision ID: 20261007_pend01
-Revises: 20261007_keep01
+Revises: 20261007_atmp01
 """
 
 import sqlalchemy as sa
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20261007_pend01"
-down_revision = "20261007_keep01"
+down_revision = "20261007_atmp01"
 branch_labels = None
 depends_on = None
 
