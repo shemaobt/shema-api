@@ -33,6 +33,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.release_harness import a_claimed_device, team_headers
 from tests.stream_harness import opening_status
 
 APP_KEY = "internalization-room"
@@ -335,3 +336,24 @@ async def test_the_gate_does_not_re_read_the_role_tables_on_every_request(
     assert role_tables == [], (
         f"o portao releu as tabelas de papel numa requisicao ja autenticada: {role_tables}"
     )
+
+
+async def test_the_credential_a_tablet_opens_a_session_with_is_refused_on_the_facilitator_inbox(
+    client, db_session
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    tablet_headers = team_headers(tablet)
+
+    opened = await client.post(
+        "/api/internalization-room/sessions",
+        headers=tablet_headers,
+        json={"pericope": "P01", "language": "pt"},
+    )
+    refused = await client.get(
+        "/api/internalization-room/facilitator/questions",
+        headers=tablet_headers,
+        params={"team_id": team.id},
+    )
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert refused.status_code == 401

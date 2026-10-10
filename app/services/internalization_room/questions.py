@@ -173,33 +173,24 @@ def _no_such_question(question_id: str) -> str:
     """The message the room's routes refuse a question with, written once.
 
     Every refusal it serves must be **identical**, not merely similar: absent, unowned,
-    another team's (the facilitator's three, ENG-534), another device's and another
-    project's (the tablet's two, ``get_question_for_device`` below — ENG-534 left the
-    device one written by hand in the router and said so here; ENG-1147 moved it and added
-    the project). A caller who can tell them apart asks for ids until one answers
-    differently, and a question that exists is a team that exists. Two call sites drifting
-    by a word is all it takes to hand that back.
+    another team's (the facilitator's three, ENG-534), and one the tablet does not reach
+    (``get_question_this_tablet_reaches`` below). A caller who can tell them apart asks for
+    ids until one answers differently, and a question that exists is a team that exists.
     """
     return f"Question {question_id} not found"
 
 
-async def get_question_for_device(
-    db: AsyncSession, question_id: str, *, device_id: str, project_id: str
+async def get_question_this_tablet_reaches(
+    db: AsyncSession, question_id: str, *, project_id: str
 ) -> IRQuestion:
-    """The question, if this tablet raised it in its own team.
+    """The question, if it is this tablet's team's.
 
-    The device id is self-declared (``require_device``), so on its own it is a claim, not a
-    proof: any caller that guesses a question's id and its device's id could mark it heard.
-    The project is what the credential proves, and ``question_for_room_caller`` beside this
-    already reads the reply's audio on that rule — the audio and the mark answered
-    different callers until this helper made them agree. Same rule, same shape: a tablet
-    reaches only its own team's questions. The list the tablet pulls
-    (``replies_for``) reads on the same rule, so the list, the audio and the mark agree on
-    who may touch a question.
+    A reply belongs to the team, so any tablet of the team may mark it heard, and the mark
+    counts for all of them. A question that names no team is nobody's to reach (ADR 0057).
+    The list (``replies_for``) and the audio (``question_for_room_caller``) read on the same
+    rule.
     """
     question = await get_question(db, question_id)
-    if question.device_id != device_id:
-        raise NotFoundError(_no_such_question(question_id))
     if question.project_id != project_id:
         raise NotFoundError(_no_such_question(question_id))
     return question
@@ -514,25 +505,19 @@ async def resolve_elsewhere(
     return question
 
 
-async def replies_for(db: AsyncSession, device_id: str, *, project_id: str) -> list[IRQuestion]:
-    """Answers this device has not heard yet, from any session it ever held, in its project.
+async def replies_for(db: AsyncSession, *, project_id: str) -> list[IRQuestion]:
+    """Answers the team has not heard yet, from any session it ever held.
 
     A facilitator may answer hours later, when that passage is long closed. Scoping the
     reply to its session would drop it silently.
-
-    The team is the third filter, after the device and the unheard answer, and it reads on
-    the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
-    only the tablet's own team's questions.
     """
-    query = (
+    result = await db.execute(
         select(IRQuestion)
-        .where(IRQuestion.device_id == device_id)
+        .where(IRQuestion.project_id == project_id)
         .where(IRQuestion.status == IRQuestionStatus.ANSWERED)
         .where(IRQuestion.heard_at.is_(None))
-        .where(IRQuestion.project_id == project_id)
         .order_by(IRQuestion.answered_at)
     )
-    result = await db.execute(query)
     return list(result.scalars())
 
 

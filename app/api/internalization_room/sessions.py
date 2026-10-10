@@ -914,10 +914,12 @@ async def _draft_the_turn(
     team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
-        speech, audio_key = ready
+        speech, audio_key, attempts = ready
         audio_key = await room.in_a_voice_the_room_has(audio_key, speech, language=session.language)
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        await room.append_opening(db, session, guide_response=speech, commit=False)
+        await room.append_opening(
+            db, session, guide_response=speech, attempts=attempts, commit=False
+        )
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),

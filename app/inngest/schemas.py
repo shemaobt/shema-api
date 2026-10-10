@@ -48,10 +48,6 @@ class SplitRequestedPayload(BaseModel):
     secondary_register_id: str | None = None
 
 
-class BlobVerificationResult(BaseModel):
-    size: int
-
-
 class SegmentResult(BaseModel):
     id: str
     gcs_url: str

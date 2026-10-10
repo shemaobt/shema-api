@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from app.core.config import Settings
@@ -33,6 +33,41 @@ logger = logging.getLogger(__name__)
 
 MAX_REDRAFTS = 2
 
+UNREADABLE_REPLY_ATTEMPT_NOTE = (
+    "The Validator's reply could not be read, so this draft was not judged."
+)
+
+
+def _the_validators_words(issues: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The issues as an attempt keeps them: what the Validator said, as text, and nothing else.
+
+    A model's reply may carry any key and any value, and `json.loads` lets a bare `NaN` through
+    that Postgres' `json` refuses at commit, which would fail a turn that passed.
+    """
+    return [
+        {
+            key: str(row[key])
+            for key in ("problem", "claim", "explanation")
+            if row.get(key) is not None
+        }
+        for row in issues
+    ]
+
+
+@dataclass(frozen=True)
+class Attempt:
+    """One draft of the Guide's and what the Validator and the room made of it."""
+
+    attempt: int
+    draft: str
+    issues: list[dict[str, str]] = field(default_factory=list)
+    verdict: str | None = None
+    corrected: str | None = None
+    note: str | None = None
+
+    def stored(self) -> dict[str, Any]:
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
 
 @dataclass(frozen=True)
 class CutPoint:
@@ -58,11 +93,14 @@ class TurnOutcome:
     #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
-    #: The last words the Guide drafted and the last verdict the Validator gave on them, as
-    #: it wrote it — empty when no draft was asked for, or when no reply could be read.
-    #: They are what the record keeps of a firing, so a fail-safe can be read back later.
+    #: The last words the Guide drafted and the last verdict the Validator gave on them —
+    #: empty when no draft was asked for, or when no reply could be read. `issues` above is
+    #: what the Validator wrote, whole; the record keeps only its text (`_the_validators_words`).
     draft: str = ""
     verdict: str = ""
+    #: Every draft of the turn, oldest first, with what the Validator and the room made of
+    #: it. Empty on a turn that asked no Validator.
+    attempts: list[dict[str, Any]] = field(default_factory=list)
     room_note: str = ""
     #: The turn the Guide was handed in the team's place: their words behind any room note,
     #: or the instruction it spoke on. Empty when no Guide was asked.
@@ -300,6 +338,7 @@ async def _voiced_after_validation(
     conversation = _conversation_turns(messages) if with_history else []
     redraft_note = ""
     issues: list[dict[str, Any]] = []
+    attempts: list[Attempt] = []
     warmed_connection = False
 
     turn = _the_guides_turn("" if opening else transcript, opening_instruction)
@@ -316,6 +355,7 @@ async def _voiced_after_validation(
         )
         if not ask_for_movements:
             movements = []
+        attempts.append(Attempt(attempt=attempt + 1, draft=draft))
         if not draft:
             verdict: dict[str, Any] = {}
             break
@@ -352,14 +392,19 @@ async def _voiced_after_validation(
             raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
         issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
+            attempts[-1] = replace(attempts[-1], note=UNREADABLE_REPLY_ATTEMPT_NOTE)
             _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
+        attempts[-1] = replace(
+            attempts[-1], issues=_the_validators_words(issues), verdict=str(verdict["verdict"])
+        )
 
         speech = ""
         if verdict["verdict"] == "pass":
             speech = draft
         elif verdict["verdict"] == "correct":
             speech = str(verdict["corrected_response"]).strip()
+            attempts[-1] = replace(attempts[-1], corrected=speech)
             movements = []
         else:
             _regenerated(raw_verdict, session_id, attempt + 1)
@@ -375,6 +420,7 @@ async def _voiced_after_validation(
                     movements=movements,
                     draft=draft,
                     verdict=str(verdict["verdict"]),
+                    attempts=[attempt.stored() for attempt in attempts],
                     guide_heard=turn,
                 ),
                 started,
@@ -398,6 +444,7 @@ async def _voiced_after_validation(
             fixed_line=line,
             draft=draft,
             verdict=str(verdict.get("verdict", "")),
+            attempts=[attempt.stored() for attempt in attempts],
             guide_heard=turn,
         ),
         started,

@@ -71,7 +71,7 @@ async def test_the_prepared_line_is_spoken_once_and_then_gone(db_session: AsyncS
     db_session.add(session)
     await db_session.commit()
 
-    assert await take_prepared(db_session, session) == ("Olá.", "tts/x.mp3")
+    assert await take_prepared(db_session, session) == ("Olá.", "tts/x.mp3", [])
     assert await take_prepared(db_session, session) is None
 
 
