@@ -1145,3 +1145,37 @@ class ConversationTurn(BaseModel):
 class ConversationResponse(BaseModel):
     session_id: str
     turns: list[ConversationTurn]
+
+
+class TurnTeamSide(BaseModel):
+    language: str | None
+    language_probability: float | None
+    take_ms: float | None
+    mother_tongue: bool | None
+    interrupted_at_s: float | None
+    guide_heard: str | None
+
+
+TurnOutcomeCode = Literal["validated", "corrected", "fail_safe", "no_record"]
+
+
+class TurnVoiceSide(BaseModel):
+    outcome: TurnOutcomeCode
+    boundary: bool
+    attempts: int
+    recognition_ms: int | None
+    reply_ms: int | None
+    synthesis_ms: int | None
+    model: str | None
+    text: str
+    audio_url: str
+
+
+class SessionTurn(BaseModel):
+    team: TurnTeamSide | None
+    voice: TurnVoiceSide
+
+
+class SessionTurnsResponse(BaseModel):
+    session_id: str
+    turns: list[SessionTurn]

@@ -7,7 +7,12 @@ from typing import Any
 
 from app.core.config import Settings
 from app.services.internalization_room.fail_safe import unrepairable
-from app.services.internalization_room.llm import TruncatedReply, Turn, cache_break_before
+from app.services.internalization_room.llm import (
+    TruncatedReply,
+    Turn,
+    cache_break_before,
+    the_rungs_that_answer,
+)
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
@@ -117,6 +122,8 @@ class TurnOutcome:
     take_ms: float | None = None
     #: Where the team cut the Guide's previous reply short to say this, when they did.
     interrupted: CutPoint | None = None
+    #: The rung of the ladder that answered the Guide's last draft; ``None`` when no model did.
+    model: str | None = None
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
@@ -195,21 +202,23 @@ async def _draft(
     turn: str,
     redraft_note: str,
     settings: Settings,
-) -> str:
-    """Ask the Speaker for this turn, with the rewrite note behind it when there is one."""
+) -> tuple[str, str | None]:
+    """Ask the Speaker for this turn, with the rewrite note behind it when there is one, and
+    say which rung answered."""
     user_content = turn
     if redraft_note:
         conversation = [*conversation, Turn(role="user", text=turn)]
         user_content = redraft_note
-    draft: str = await room_agent().turn.call_agent(
-        role="guide",
-        system_prompt=guide_prompt,
-        user_content=user_content,
-        conversation=conversation,
-        max_output_tokens=4096,
-        settings=settings,
-    )
-    return draft.strip()
+    with the_rungs_that_answer() as answered:
+        draft: str = await room_agent().turn.call_agent(
+            role="guide",
+            system_prompt=guide_prompt,
+            user_content=user_content,
+            conversation=conversation,
+            max_output_tokens=4096,
+            settings=settings,
+        )
+    return draft.strip(), answered[-1] if answered else None
 
 
 def _timed(
@@ -344,15 +353,14 @@ async def _voiced_after_validation(
     turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
     for attempt in range(MAX_REDRAFTS + 1):
-        draft, movements = split_opening_movements(
-            await _draft(
-                guide_prompt=speaker_system,
-                conversation=conversation,
-                turn=turn,
-                redraft_note=redraft_note,
-                settings=settings,
-            )
+        drafted, model = await _draft(
+            guide_prompt=speaker_system,
+            conversation=conversation,
+            turn=turn,
+            redraft_note=redraft_note,
+            settings=settings,
         )
+        draft, movements = split_opening_movements(drafted)
         if not ask_for_movements:
             movements = []
         attempts.append(Attempt(attempt=attempt + 1, draft=draft))
@@ -422,6 +430,7 @@ async def _voiced_after_validation(
                     verdict=str(verdict["verdict"]),
                     attempts=[attempt.stored() for attempt in attempts],
                     guide_heard=turn,
+                    model=model,
                 ),
                 started,
                 session_id,
@@ -446,6 +455,7 @@ async def _voiced_after_validation(
             verdict=str(verdict.get("verdict", "")),
             attempts=[attempt.stored() for attempt in attempts],
             guide_heard=turn,
+            model=model,
         ),
         started,
         session_id,

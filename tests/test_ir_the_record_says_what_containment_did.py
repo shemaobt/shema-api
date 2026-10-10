@@ -96,6 +96,7 @@ async def test_a_passing_turn_is_recorded_as_a_pass_with_its_redrafts(
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": "isso mesmo",
         "outcome": "pass",
         "redrafts": 0,
@@ -121,6 +122,7 @@ async def test_a_mended_turn_is_recorded_as_corrected(db_session: AsyncSession) 
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": "isso mesmo",
         "outcome": "corrected",
         "redrafts": 1,
@@ -156,6 +158,7 @@ async def test_a_fail_safe_is_recorded_with_everything_her_spec_asks_for(
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": "Vamos com calma.",
         "outcome": "fail_safe",
         "redrafts": 2,
@@ -215,6 +218,7 @@ async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": DRAFT,
         "outcome": "pass",
         "redrafts": 0,
@@ -223,6 +227,8 @@ async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
         "language_probability": None,
         "mother_tongue": False,
         "take_ms": None,
+        "guide_heard": ANY,
+        "recognition_ms": ANY,
     }
 
 
