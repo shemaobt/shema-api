@@ -65,26 +65,18 @@ def is_boundary_turn(outcome: TurnOutcomeCode, text: str, *, opening: bool) -> b
 def turns_of(session: IRSession) -> SessionTurnsResponse:
     """The session's turns, oldest first, as the team's side and the voice's side of each.
 
-    A turn ends on the Guide's entry, which carries the facts of both sides. The opening is a
-    Guide entry with nothing said before it and no take heard, so it has no team side: a
-    first take the room missed writes nothing before its Guide entry either, and is still
-    the team's turn. The telling-back round is left out, as the conversation leaves it out.
+    The opening has no team side.
     """
-    turns: list[SessionTurn] = []
-    said_before = False
-    for message in the_conversation(session):
-        if message.get("role") != "guide":
-            said_before = True
-            continue
-        opening = not said_before and "mother_tongue" not in message
-        said_before = True
-        turns.append(
+    return SessionTurnsResponse(
+        session_id=session.id,
+        turns=[
             SessionTurn(
-                team=None if opening else _team_side(message),
-                voice=_voice_side(message, session.id, len(turns), opening=opening),
+                team=None if opening else _team_side(guide),
+                voice=_voice_side(guide, session.id, number, opening=opening),
             )
-        )
-    return SessionTurnsResponse(session_id=session.id, turns=turns)
+            for number, (guide, opening) in enumerate(_voice_turns(session))
+        ],
+    )
 
 
 async def turn_clip_url(session: IRSession, number: int) -> str:
@@ -94,13 +86,13 @@ async def turn_clip_url(session: IRSession, number: int) -> str:
     made it. A turn stored without one, or whose object is gone, is voiced once in the
     room's current voice: the key is the words' content hash, so every later play finds it.
     """
-    guide = _the_guide_entries(session)
-    if not 0 <= number < len(guide):
+    turns = _voice_turns(session)
+    if not 0 <= number < len(turns):
         raise NotFoundError(f"Turn {number} of session {session.id} not found")
     settings = get_settings()
     if not settings.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
-    entry = guide[number]
+    entry, _ = turns[number]
     key = entry.get("voice_key")
     if not key or not await is_stored(key):
         voiced, _ = await synthesize_facilitator_speech(
@@ -115,8 +107,20 @@ async def turn_clip_url(session: IRSession, number: int) -> str:
     )
 
 
-def _the_guide_entries(session: IRSession) -> list[dict[str, Any]]:
-    return [message for message in the_conversation(session) if message.get("role") == "guide"]
+def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
+    """The conversation's Guide entries, oldest first, each with whether it is the opening.
+
+    A turn ends on the Guide's entry, which carries the facts of both sides. The opening is a
+    Guide entry with nothing said before it and no take heard: a first take the room missed
+    writes nothing before its Guide entry either, and is still the team's turn.
+    """
+    turns: list[tuple[dict[str, Any], bool]] = []
+    said_before = False
+    for message in the_conversation(session):
+        if message.get("role") == "guide":
+            turns.append((message, not said_before and "mother_tongue" not in message))
+        said_before = True
+    return turns
 
 
 def _team_side(guide: dict[str, Any]) -> TurnTeamSide:

@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
@@ -115,17 +116,23 @@ def _ladder(configured: str) -> list[str]:
 #: thing. Cleared only by a restart, which is also when a key's entitlements can have changed.
 _SETTLED: dict[str, str] = {}
 
-_RUNGS_THAT_ANSWERED: ContextVar[list[str] | None] = ContextVar("rungs_that_answered", default=None)
+
+@dataclass
+class Answered:
+    rung: str | None = None
+
+
+_ANSWERED: ContextVar[Answered | None] = ContextVar("answered", default=None)
 
 
 @contextmanager
-def the_rungs_that_answer() -> Iterator[list[str]]:
-    answered: list[str] = []
-    token = _RUNGS_THAT_ANSWERED.set(answered)
+def the_rung_that_answers() -> Iterator[Answered]:
+    answered = Answered()
+    token = _ANSWERED.set(answered)
     try:
         yield answered
     finally:
-        _RUNGS_THAT_ANSWERED.reset(token)
+        _ANSWERED.reset(token)
 
 
 #: How long a rung waits before it is asked the same question a second time, on a rate limit,
@@ -295,9 +302,9 @@ async def call_agent(
         if refused is None:
             _SETTLED[rungs[0]] = model
         spoken = "" if _refused_outright(response) else _spoken_text(response)
-        answered = _RUNGS_THAT_ANSWERED.get()
+        answered = _ANSWERED.get()
         if answered is not None:
-            answered.append(model)
+            answered.rung = model
         if fails_on_truncation and response.stop_reason == "max_tokens":
             raise TruncatedReply(spoken)
         return spoken

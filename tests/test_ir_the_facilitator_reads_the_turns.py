@@ -309,11 +309,22 @@ async def test_a_session_of_five_turns_reads_as_five_pairs_oldest_first_each_wit
         }
         for number, words in enumerate(WORDS)
     ]
-    for turn in turns:
-        assert turn["voice"]["outcome"] == "validated"
-        assert turn["voice"]["boundary"] is False
-        assert turn["voice"]["attempts"] == 1
-        assert turn["voice"]["audio_url"]
+    assert [
+        {
+            key: turn["voice"][key]
+            for key in ("outcome", "boundary", "attempts", "text", "audio_url")
+        }
+        for turn in turns
+    ] == [
+        {
+            "outcome": "validated",
+            "boundary": False,
+            "attempts": 1,
+            "text": text,
+            "audio_url": f"{_turns_of(room.session_id)}/{number}/audio",
+        }
+        for number, text in enumerate([OPENING, *LINES])
+    ]
 
 
 async def test_a_turn_where_the_team_cut_the_voice_off_at_4_s_reads_as_interrupted_at_4_seconds_and_what_the_guide_received_starts_with_the_apps_note(  # noqa: E501
@@ -355,8 +366,10 @@ async def test_a_mother_tongue_take_reads_as_mother_tongue_with_the_note_instead
 
     assert rehearsal["team"]["mother_tongue"] is True
     assert rehearsal["team"]["language"] == "sw"
-    assert rehearsal["team"]["guide_heard"]
-    assert "maka nanu ipuxova" not in rehearsal["team"]["guide_heard"]
+    assert rehearsal["team"]["guide_heard"] == (
+        "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição — "
+        "nenhuma palavra chegou até você.]"
+    )
 
 
 async def test_a_short_take_with_no_words_reads_as_nothing_reaching_the_guide_a_fail_safe_turn(

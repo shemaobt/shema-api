@@ -317,9 +317,9 @@ def speech_key(
     )
 
 
-async def is_stored(key: str, *, settings: Settings | None = None) -> bool:
+async def is_stored(key: str) -> bool:
     """Whether the bucket holds this clip, asking it only when this process has not kept it."""
-    return _is_kept(key) or await _default_store(settings or get_settings()).exists(key)
+    return _is_kept(key) or await _default_store(get_settings()).exists(key)
 
 
 async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:

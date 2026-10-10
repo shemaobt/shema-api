@@ -11,7 +11,7 @@ from app.services.internalization_room.llm import (
     TruncatedReply,
     Turn,
     cache_break_before,
-    the_rungs_that_answer,
+    the_rung_that_answers,
 )
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
@@ -209,7 +209,7 @@ async def _draft(
     if redraft_note:
         conversation = [*conversation, Turn(role="user", text=turn)]
         user_content = redraft_note
-    with the_rungs_that_answer() as answered:
+    with the_rung_that_answers() as answered:
         draft: str = await room_agent().turn.call_agent(
             role="guide",
             system_prompt=guide_prompt,
@@ -218,7 +218,7 @@ async def _draft(
             max_output_tokens=4096,
             settings=settings,
         )
-    return draft.strip(), answered[-1] if answered else None
+    return draft.strip(), answered.rung
 
 
 def _timed(
