@@ -24,8 +24,10 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_consent import ShemaConsentContext
 from app.models.shema_intercessor import IntercessorEntry
+from app.services.shema import _trail
 from app.services.shema._directory import entry_of, record_consent, withdraw_consent
 from app.services.shema.remove_intercessor import remove_intercessor
 
@@ -45,8 +47,16 @@ async def set_intercessor_consent(
     needs. ``set_region_scope`` deliberately does the opposite for a region grant; the two are
     different facts and the divergence is argued in both docstrings.
     """
-    await record_consent(
-        db, intercessor_id, context, basis=basis, recorded_by=actor.id, commit=True
+    await _trail.around(
+        db,
+        lambda: record_consent(
+            db, intercessor_id, context, basis=basis, recorded_by=actor.id, commit=True
+        ),
+        actor=actor,
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.CONSENT_RECORDED,
+        subject_id=intercessor_id,
+        fields=(context.value,),
     )
     return await entry_of(db, intercessor_id)
 
@@ -69,4 +79,12 @@ async def withdraw_intercessor_consent(
         await remove_intercessor(db, intercessor_id, actor=actor)
         return
 
-    await withdraw_consent(db, intercessor_id, context, commit=True)
+    await _trail.around(
+        db,
+        lambda: withdraw_consent(db, intercessor_id, context, commit=True),
+        actor=actor,
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.CONSENT_WITHDRAWN,
+        subject_id=intercessor_id,
+        fields=(context.value,),
+    )

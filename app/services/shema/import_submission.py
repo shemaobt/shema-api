@@ -23,10 +23,12 @@ it the data agrees: the progress a Pulse carries is **absolute**, not a delta, s
 the same numbers moves nothing — ``save_project``'s *a save that changed nothing stops here*
 is the second net, and it is the one that holds even if the first is ever wrong.
 
-**Two commits, in the order that cannot lose anything.** The archive and its notices commit
-first, then the record write commits ``applied_at`` with it. A failure between them leaves a
-submission archived, announced and unapplied — which is an inbox entry a coordinator can
-retry. The other order would apply a Pulse that was never archived.
+**Two commits, in the order that cannot lose anything.** The archive and its arrival notice
+commit first, then the record write commits ``applied_at`` with it — and with the prayer notice,
+when the write put a request on the wall (OBT-566), so the Resource Circle hears of a request in
+the same commit that shares it. A failure between them leaves a submission archived, announced
+and unapplied — which is an inbox entry a coordinator can retry. The other order would apply a
+Pulse that was never archived.
 """
 
 from __future__ import annotations
@@ -40,8 +42,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeImage, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, SubmissionImport
+from app.services.shema import _trail
+from app.services.shema._consent import newly_shared_request, shared_prayer_text
 from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
 from app.services.shema._media_sharing import pulse_photo
@@ -57,6 +62,7 @@ from app.services.shema._submission_archive import (
     archived_answers,
     bind_intake_image,
 )
+from app.services.shema._submission_notices import notify_shared_request
 from app.services.shema.read_submission import as_received, inbox_name
 from app.services.shema.save_project import save_project
 from app.utils.shema_forms import (
@@ -65,6 +71,7 @@ from app.utils.shema_forms import (
     IMAGE_FIELD,
     PULSE_FORM_TYPE,
     PULSE_KIND,
+    carries_prayer_request,
 )
 
 
@@ -100,25 +107,32 @@ async def _apply(
     *,
     readership: Readership,
     user: User,
+    app_key: str,
     expected_version: int,
     day: date,
 ) -> None:
     """Write what the answers map to, stamping where they came from.
 
-    ``applied_at`` is staged **before** ``save_project`` so that its commit carries both: the
+    ``applied_at`` is staged **before** ``save_project`` so that one commit carries both: the
     record and the mark that this submission produced it land together, and there is no window
-    in which the record moved and the inbox still says the entry is waiting. The explicit
-    commit afterwards is for the case ``save_project`` returns without one — a submission whose
-    answers moved nothing is still applied, and saying so is the difference between *done* and
-    *forgotten*.
+    in which the record moved and the inbox still says the entry is waiting. ``save_project``
+    only flushes and the commit is this function's, so a submission whose answers moved nothing
+    is still applied, and saying so is the difference between *done* and *forgotten*.
+
+    **The prayer notice is staged here, between the write and the commit** (OBT-566). This is the
+    moment a request reaches the wall, so the wall's text is read before the write and the
+    record is asked after it whether the wall gained one (``_consent.newly_shared_request``) —
+    the first share included, which the notice at arrival could never see. Only a Pulse that
+    wrote a request announces one: the notice says the Pulse carries it.
 
     The write goes through ``save_project`` as the caller's own, ``readership`` included: an
     import is a person writing the record, and what that person may write is the record's rule
     and not the form's.
     """
+    before = shared_prayer_text(project)
     submission.applied_at = datetime.now(UTC)
     try:
-        await save_project(
+        written = await save_project(
             db,
             scope,
             project.id,
@@ -130,8 +144,21 @@ async def _apply(
             source=ProgressSource(
                 from_field=submission.submitted_by or None, form_type=PULSE_FORM_TYPE
             ),
+            commit=False,
         )
         await _mint_pulse_photo(db, submission, answers)
+        _trail.stage(
+            db,
+            actor=user,
+            subject=ChangeSubject.SUBMISSION,
+            action=ChangeAction.IMPORTED,
+            subject_id=submission.id,
+            project_id=project.id,
+            region_key=_trail.region_value(project.region_key),
+            fields=("appliedAt",),
+        )
+        if carries_prayer_request(answers) and newly_shared_request(written, before):
+            await notify_shared_request(db, written, app_key=app_key)
     except Exception:
         await db.rollback()
         raise
@@ -237,6 +264,7 @@ async def import_submission(
             archived_answers(submission),
             readership=readership,
             user=user,
+            app_key=app_key,
             expected_version=expected_version,
             day=day,
         )
@@ -250,6 +278,7 @@ async def apply_submission(
     *,
     readership: Readership,
     user: User,
+    app_key: str,
     expected_version: int,
     day: date,
 ) -> ReceivedSubmission:
@@ -285,6 +314,7 @@ async def apply_submission(
             archived_answers(submission),
             readership=readership,
             user=user,
+            app_key=app_key,
             expected_version=expected_version,
             day=day,
         )

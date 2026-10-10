@@ -98,7 +98,7 @@ async def edit_intercessor(
     intercessor_id: str, payload: IntercessorUpdate, user: ResourceCircleUser, db: Db
 ) -> IntercessorEntry:
     """Edit a contact. ``addedAt`` has no field here and survives (FE-44 §9.6)."""
-    return await update_intercessor(db, intercessor_id, payload=payload)
+    return await update_intercessor(db, intercessor_id, payload=payload, actor=user)
 
 
 @router.delete(

@@ -245,12 +245,11 @@ async def test_a_withheld_projects_free_text_never_reaches_the_export_file(
     """The file leaves the system, so it is built for nobody: even the region's coordinator
     exports a withheld project with none of its text. Asserted on the bytes.
 
-    **One text does leave, and it is the consent gate's and not this rule's**: the need the team
-    shared for prayer travels as ``sharedPrayerRequests``, exactly as it reaches the prayer wall
-    and the Pulse. That request was authorized to leave coordination by the people it is about
-    (``_consent.py``), which is a different decision from the free text no reader outside
-    coordination was ever given; whether a sensitive project's authorized request should still
-    leave is the question OBT-556 raises in its pull request instead of deciding here.
+    **Not even the need the team shared for prayer, until the coordination releases it.** The
+    question OBT-556 raised in its pull request was answered by Karina for OBT-575: a sensitive
+    project's authorized request reaches the wall, the Pulse and this file only once the
+    coordination has reviewed it (``_consent.py``). ``test_prayer_review.py`` holds the released
+    case on each of the three.
     """
     res = await client.get(
         EXPORT,
@@ -259,9 +258,9 @@ async def test_a_withheld_projects_free_text_never_reaches_the_export_file(
     )
 
     assert res.status_code == 200, res.text
-    assert _leaks(res.text) == [NEED]
+    assert _leaks(res.text) == []
     (row,) = res.json()["projects"]
-    assert row["sharedPrayerRequests"] == [NEED]
+    assert row["sharedPrayerRequests"] == []
     assert "notes" not in row
 
 

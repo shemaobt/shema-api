@@ -86,6 +86,7 @@ from app.db.models.resource_request import (
 )
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
+from app.db.models.shema_change_log import ShemaChangeLog
 from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
 from app.db.models.shema_enums import (
     ShemaEtenCreditSource,
@@ -222,6 +223,7 @@ __all__ = [
     "RolePermission",
     "SessionStatus",
     "SessionStep",
+    "ShemaChangeLog",
     "ShemaConsentContext",
     "ShemaEtenCredit",
     "ShemaEtenCreditSource",

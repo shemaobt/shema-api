@@ -11,7 +11,13 @@ the bytes have, and the address expires.
    project that does not exist is 404 (``_scope.py`` carries that argument).
 2. the row exists and holds an object — a video is an address on somebody else's service and
    a photo slot may carry a caption and no image yet, so both are *nothing to serve*.
-3. ``can_share_media`` — authorization, then audience, then the sensitive-country flag.
+3. ``can_share_media`` — authorization, then audience, then the sensitive-country flag —
+   **and, when the caller is a console reader, whether that reader is the coordination of a
+   withheld project** (OBT-581; Daniel, 9/oct/2026, option b): an image of a withheld project
+   reaches the coordination **only**, until OBT-575 exists — the OBT Lab and the Resource
+   Circle are refused the bytes exactly as the export's ``publico`` is, with the same sentence.
+   OBT-571's *the Resource Circle reads the truth* covers the record and not these bytes; the
+   row is reopened when OBT-575 lands.
 
 **The third refusal says nothing about which of its reasons fired.** An item nobody has
 decided on, an item refused, and an authorized item on a withheld project asked for by a
@@ -41,15 +47,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
-from app.models.shema_privacy import ShemaAudience
+from app.models.shema_privacy import ShemaAudience, ShemaReader
 from app.services.oral_collector import gcs_utils
 from app.services.shema._media_sharing import can_share_media
 from app.services.shema._media_storage import (
     DOWNLOAD_URL_EXPIRY_MINUTES,
     GCS_SHEMA_BUCKET,
 )
-from app.services.shema._redaction import log_reference
-from app.services.shema._scope import RegionScope
+from app.services.shema._redaction import is_withheld, log_reference
+from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
 
 logger = logging.getLogger(__name__)
@@ -78,6 +84,7 @@ async def media_download_url(
     *,
     user: User,
     audience: ShemaAudience = ShemaAudience.COORDENACAO,
+    readership: Readership | None = None,
 ) -> MediaLink:
     """A signed URL for one photo, or a refusal that does not say which gate closed."""
     return await _link(
@@ -89,6 +96,7 @@ async def media_download_url(
         operation="media_download_url",
         user=user,
         audience=audience,
+        readership=readership,
     )
 
 
@@ -100,6 +108,7 @@ async def material_download_url(
     *,
     user: User,
     audience: ShemaAudience = ShemaAudience.COORDENACAO,
+    readership: Readership | None = None,
 ) -> MediaLink:
     """The same three gates over what the project produced — text, audio or video."""
     return await _link(
@@ -111,6 +120,7 @@ async def material_download_url(
         operation="material_download_url",
         user=user,
         audience=audience,
+        readership=readership,
     )
 
 
@@ -124,8 +134,18 @@ async def _link(
     operation: str,
     user: User,
     audience: ShemaAudience,
+    readership: Readership | None,
 ) -> MediaLink:
     """The three gates, once.
+
+    ``readership`` is the console caller's (``_deps.Reading``). ``None`` is only the default —
+    today the link route is the one caller of either public name; the export and the Pulse
+    read no media at all (the ``test_pulse_image.py`` note on shema-api#713), and a surface
+    that one day names an audience instead of a reader is what the default is for. With one,
+    its reader of the project is asked, and on a withheld project anybody but the coordination
+    is refused the bytes (OBT-581; Daniel, 9/oct/2026): the OBT Lab, which reads the slot with
+    its caption emptied, and the Resource Circle, which reads the record's truth (OBT-571) and
+    not this — the link is where the slot would otherwise turn into the photograph.
 
     **The default lives on the two public names and not here**, and it is ``coordenacao``,
     because the default that is safe to forget is the restrictive one: an authenticated
@@ -141,16 +161,25 @@ async def _link(
     if item is None or item.storage_key is None:
         raise NotFoundError("File not found")
 
+    reference = {
+        "shema_operation": operation,
+        "shema_user_id": user.id,
+        "shema_item_id": item.id,
+        "shema_audience": audience.value,
+        **log_reference(project),
+    }
     if not can_share_media(project, item, audience):
+        logger.warning("shema file refused: not shared with this audience", extra=reference)
+        raise AuthorizationError(NOT_SHARED)
+    reader = None if readership is None else readership.reader_of(project.region_key)
+    if reader is not None and reader is not ShemaReader.COORDINATION and is_withheld(project):
+        # The wire says the same sentence for every gate; the log is not the wire, and an
+        # operator reading *not shared with this audience* on an item the predicate just
+        # released would be told the one reason that did not fire. The reader is a relation
+        # to the region and names no place, so it travels — the place itself never does.
         logger.warning(
-            "shema file refused: not shared with this audience",
-            extra={
-                "shema_operation": operation,
-                "shema_user_id": user.id,
-                "shema_item_id": item.id,
-                "shema_audience": audience.value,
-                **log_reference(project),
-            },
+            "shema file refused: the reader is not the coordination of a withheld project",
+            extra={**reference, "shema_reader": reader.value},
         )
         raise AuthorizationError(NOT_SHARED)
 

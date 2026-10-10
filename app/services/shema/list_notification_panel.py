@@ -83,6 +83,7 @@ from app.services.notifications import get_shema_app_id, list_notifications
 from app.services.shema._health_audience import reads_assessments
 from app.services.shema._health_notice import EVENT_TYPE as HEALTH_EVENT_TYPE
 from app.services.shema._needs import URGENT_NEED_EVENT
+from app.services.shema._prayer_review import REVIEW_EVENT
 from app.services.shema._redaction import language_name_for
 from app.services.shema._request_notices import REQUEST_ARRIVAL_EVENT, REQUEST_DECISION_EVENT
 from app.services.shema._scope import (
@@ -106,6 +107,7 @@ _KIND_BY_EVENT_TYPE: dict[str, NotificationKind] = {
     URGENT_NEED_EVENT: "need",
     ARRIVAL_EVENT: "field",
     PRAYER_EVENT: "prayer",
+    REVIEW_EVENT: "prayerReview",
     REQUEST_ARRIVAL_EVENT: "requestArrival",
     REQUEST_DECISION_EVENT: "requestDecision",
 }
@@ -116,8 +118,9 @@ _KIND_BY_EVENT_TYPE: dict[str, NotificationKind] = {
 _URGENT_KINDS = frozenset({"health", "need"})
 
 #: The kinds whose sentence the console words from :class:`ShemaProjectNoticeFacts` (OBT-559):
-#: the four the project writers deliver, and the stale reading computed here.
-_PROJECT_KINDS = frozenset({"health", "need", "field", "prayer", "stale"})
+#: the five the project writers deliver (OBT-575's ``prayerReview`` the fifth), and the stale
+#: reading computed here.
+_PROJECT_KINDS = frozenset({"health", "need", "field", "prayer", "prayerReview", "stale"})
 
 
 def _kind_of(event_type: str) -> NotificationKind:

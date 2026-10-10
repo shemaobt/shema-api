@@ -79,11 +79,13 @@ from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
 from app.db.models.shema_exit_link import ShemaIntercessorExitLink
 from app.db.models.shema_intercessor import ShemaIntercessor
 from app.models.shema_intercessor import Consent, IntercessorEntry
 from app.services.common import tokens
+from app.services.shema import _trail
 from app.utils.shema_contacts import contact_channel, contact_hint
 from app.utils.stored_time import as_utc
 
@@ -656,6 +658,14 @@ async def leave_through_exit_link(db: AsyncSession, token_hash: str, *, now: dat
     person = await db.get(ShemaIntercessor, intercessor_id)
     if person is None:
         raise NotFoundError(DEAD_EXIT_LINK)
+    _trail.stage(
+        db,
+        actor=None,
+        actor_name="the person, through their exit link",
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.REMOVED,
+        subject_id=intercessor_id,
+    )
     await _erase(db, person)
     return intercessor_id
 
