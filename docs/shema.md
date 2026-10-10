@@ -359,6 +359,8 @@ bucket, which is the precedent, not a trespass).
 | `app/models/shema_record.py` | **BE-06, built**; OBT-528 | The record's **read** shape — FE-44's `Project`, 55 + 21, key for key (`derived`, `readAs` and, since OBT-413, `completedDate` are the contract's own keys now), plus `locationWithheld` — and every sub-shape the ficha is made of. A leaving shape built for its reader since OBT-528. Separate from `app/models/shema.py`, which is what a client *sends*. |
 | `app/db/models/shema_audit.py` | **BE-06, built** | `shema_record_edits` — the trail: who moved which field, when, from what to what. Append-only, by the same trigger `shema_progress_history` uses. |
 | `app/services/shema/_audit.py` | **BE-06, built** | The trail's writer and its one reader. Names no guarded column and records no guarded **value**. |
+| `app/db/models/shema_change_log.py`, `app/services/shema/_trail.py` | **OBT-577, built** | `shema_change_log` — the acts that had no ledger of their own (who, when, to what, which keys; **no value**), append-only. `_trail.stage` is its one writer and `_trail.COVERAGE` classifies every write route; `tests/test_shema/test_change_log.py` fails on a route that is not listed. |
+| `app/services/shema/list_audit.py`, `app/api/shema/audit.py` | **OBT-577, built** | `GET /api/shema/audit` — the two ledgers as one feed, for the coordination and the Admin, inside their regions. |
 | `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
 | `app/services/shema/save_project.py` | **BE-06, built** | The create, the partial update, and the version guard. The one thing in the module that moves `shema_projects.version`. |
 | `app/services/shema/read_record.py` | **BE-06, built** | The record read, and `build_record` — the assembly the write path answers with. |
@@ -2168,6 +2170,45 @@ too is a question for Karina. The request link stays valid after its project is 
 revoking it is the Admin's act.
 
 ---
+
+### 6.12 Seam J — every write leaves a mark — **Decided; OBT-577**
+
+Karina, via Daniel, 6/out/2026: *"toda alteração seja gravada, datada e com o nome de quem alterou."*
+Daniel, 7/out: the scope is the whole PME.
+
+**Two ledgers, not one, and the line between them is whether a value can be told.**
+`shema_record_edits` keeps both sides of a project's field and withholds the guarded ones; every
+other act (an intercessor edited, a meeting log undone, a link revoked, a pending project
+rejected, an ETEN credit set, a photo's authorization withdrawn, a submission imported) goes to
+`shema_change_log`, which has **no column that could hold a value** — the act, the subject, the keys
+it touched, the account (nullable, for the unauthenticated exits) and the name as it was then. A
+log that never held a value cannot leak one to a reader who may not read the record.
+
+**What is not in the new table, and why.** The acts that already keep author and day on their own
+row stay there and are not copied: the record's fields (`shema_record_edits`, which the project
+create, the import of projects and the confirmation also write), a seat (`shema_role_changes`), a
+region's scope (`shema_scope_changes`), a health reading, a member (`added_by`/`removed_by`), an
+invitation (`created_by`/`revoked_by`), an intake link's minting and a leader's own submission.
+**Exempt, with the reason on the registry:** the account's own notification preferences and its
+read marks — the reader's state, not the PME's data.
+
+**The rule is a registry and a test.** `_trail.COVERAGE` names, for every non-GET route, where its
+mark lands (`trail`, `ledger` or `exempt`). `test_every_write_route_of_the_module_is_accounted_for`
+compares it with the built application's route table, so a write route nobody classified is red.
+
+**One transaction.** `_trail.stage` adds the row and never commits; the act's own commit carries it.
+Where the act's helper checks and commits (an intercessor by id), `_trail.around` stages first and
+unstages if the helper refuses, so a 404 leaves no mark on a session something else commits.
+
+**Who reads it: the coordination and the Admin** (`list_audit.AUDIT_AUDIENCE`) — Daniel's proposal,
+to confirm on the PR. The reach is the reader's `coordination` and not the session's scope: the
+`admin` role holds no region row and coordinates everywhere. Entries that belong to no region (the
+intercessor network, a global meeting) are told to every reader of the feed. A record field the
+reader is handed reduced is left out, as `changes_since` leaves it out of a 409 (OBT-556).
+
+**Left out, deliberately:** the *reads* (the contact reveal keeps its log line), and a value-bearing
+history of the acts above — the person's contact and a prayer request are exactly what the log
+must not hold.
 
 ## 7. Traps in this repository, for this module
 

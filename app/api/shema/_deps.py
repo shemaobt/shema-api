@@ -105,6 +105,7 @@ from app.services.shema._scope import (
     scope_from_roles,
     session_roles,
 )
+from app.services.shema.list_audit import may_read_audit
 
 APP_KEY = "shema"
 
@@ -257,6 +258,14 @@ async def _reading(user: CurrentUser, granted: Granted, scope: Scope) -> Readers
 #: **A payload's shape, never a guard.** Which routes take it is a list somebody writes:
 #: ``tests/test_shema/test_privacy_owners.py``'s ``READER_ROUTES``.
 Reading = Annotated[Readership, Depends(_reading)]
+
+
+async def _may_read_audit(user: CurrentUser, granted: Granted) -> bool:
+    """Whether this caller is in the audit trail's audience — ``list_audit.AUDIT_AUDIENCE``."""
+    return may_read_audit(granted, platform_admin=user.is_platform_admin)
+
+
+MayReadAudit = Annotated[bool, Depends(_may_read_audit)]
 
 
 async def _roster(user: SignedIn, db: Db, roles: SessionRoles) -> RosterReach:

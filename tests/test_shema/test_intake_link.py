@@ -573,3 +573,21 @@ async def test_a_submission_too_large_to_be_a_form_is_refused(
 
     assert response.status_code == 400
     assert "Nothing was kept" in json.dumps(response.json())
+
+
+async def test_revoking_a_link_is_marked_once_even_when_tapped_twice(
+    client, db_session, shema_app, coordinator, headers, project
+) -> None:
+    """OBT-577: the link row keeps the day it was revoked and not who revoked it."""
+    from app.db.models.shema_change_log import ShemaChangeLog
+
+    link_id = (await mint(client, headers)).json()["id"]
+    for _ in range(2):
+        assert (await client.post(f"{LINKS}/{link_id}/revoke", headers=headers)).status_code == 200
+
+    rows = list((await db_session.execute(select(ShemaChangeLog))).scalars())
+    assert [(row.subject, row.action, row.subject_id) for row in rows] == [
+        ("intake_link", "revoked", link_id)
+    ]
+    assert rows[0].actor_id == coordinator.id
+    assert rows[0].project_id == "guarani-mbya"

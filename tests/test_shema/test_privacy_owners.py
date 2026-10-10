@@ -182,6 +182,9 @@ READER_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", f"{PREFIX}/projects/{{project_id}}/media/{{item_id}}/link"),
         ("GET", f"{PREFIX}/export/projects"),
         ("POST", f"{PREFIX}/import/projects"),
+        # OBT-577: the audit feed leaves out the rows of a field this reader is handed reduced,
+        # and carries no place itself.
+        ("GET", f"{PREFIX}/audit"),
     }
 )
 

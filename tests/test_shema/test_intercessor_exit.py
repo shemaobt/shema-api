@@ -302,3 +302,21 @@ async def test_every_other_network_route_refuses_a_member_without_resource_circl
             assert res.status_code == 403, (role, method, url)
 
     assert await _count(db_session, ShemaIntercessor) == 1
+
+
+async def test_leaving_through_the_link_is_marked_as_the_persons_own_act(
+    client, db_session, person
+) -> None:
+    """OBT-577: no account acted, so the mark names no account — and says who did, in words."""
+    from app.db.models.shema_change_log import ShemaChangeLog
+
+    token = await issue_exit_link(db_session, person["id"])
+
+    assert (await client.post(_exit(token))).status_code == 204
+
+    [row] = (
+        await db_session.execute(select(ShemaChangeLog).where(ShemaChangeLog.action == "removed"))
+    ).scalars()
+    assert (row.subject, row.subject_id) == ("intercessor", person["id"])
+    assert row.actor_id is None
+    assert "exit link" in row.actor_name
