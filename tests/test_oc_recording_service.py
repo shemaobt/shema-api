@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from types import ModuleType
 
 import pytest
+from google.cloud import storage
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +49,17 @@ async def _seed_project(db: AsyncSession) -> str:
     lang = await make_language(db)
     project = await make_project(db, lang.id)
     return project.id
+
+
+def _discards_as_urls(monkeypatch: pytest.MonkeyPatch, rs: ModuleType) -> list[str]:
+    """What the recording service asks the bucket to delete, as the URLs those objects had."""
+    discarded: list[str] = []
+
+    async def _discard(blob_name: str) -> None:
+        discarded.append(f"{gcs_public_base()}{blob_name}")
+
+    monkeypatch.setattr(rs, "discard_gcs_object", _discard)
+    return discarded
 
 
 def _import_service():
@@ -1569,8 +1581,7 @@ async def test_deleting_a_failed_upload_that_reached_the_bucket_deletes_its_blob
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rs = _import_service()
-    deleted: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    deleted = _discards_as_urls(monkeypatch, rs)
 
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1596,8 +1607,7 @@ async def test_deleting_a_verified_recording_deletes_its_blob(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rs = _import_service()
-    deleted: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    deleted = _discards_as_urls(monkeypatch, rs)
 
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1623,8 +1633,7 @@ async def test_deleting_a_recording_that_never_reached_the_bucket_calls_no_blob_
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rs = _import_service()
-    deleted: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    deleted = _discards_as_urls(monkeypatch, rs)
 
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1648,8 +1657,7 @@ async def test_an_upload_in_flight_can_still_be_deleted(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rs = _import_service()
-    deleted: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    _discards_as_urls(monkeypatch, rs)
 
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1674,8 +1682,7 @@ async def test_a_failed_upload_past_the_retention_is_deleted_with_its_blob(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rs = _import_service()
-    deleted: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    deleted = _discards_as_urls(monkeypatch, rs)
 
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1705,8 +1712,7 @@ async def test_a_failed_upload_that_never_reached_the_bucket_is_purged_anyway(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rs = _import_service()
-    deleted: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    deleted = _discards_as_urls(monkeypatch, rs)
 
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1735,10 +1741,10 @@ async def test_a_bucket_that_refuses_the_blob_does_not_keep_the_row(
     the row or to abandon the rest of the sweep."""
     rs = _import_service()
 
-    def _refuse():  # type: ignore[no-untyped-def]
+    def _refuse(**_kwargs: object) -> None:
         raise RuntimeError("bucket unreachable")
 
-    monkeypatch.setattr(rs, "_get_gcs_client", _refuse)
+    monkeypatch.setattr(storage, "Client", _refuse)
 
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1857,7 +1863,7 @@ async def test_a_purge_pass_stops_at_its_batch_and_takes_the_oldest_first(
     takes, is.
     """
     rs = _import_service()
-    monkeypatch.setattr(rs, "_delete_gcs_blob", lambda url: None)
+    _discards_as_urls(monkeypatch, rs)
     monkeypatch.setattr(rs, "FAILED_UPLOAD_PURGE_BATCH", 2)
 
     user = await make_user(db_session)
@@ -1888,7 +1894,7 @@ async def test_what_one_pass_leaves_behind_goes_in_the_next(
 ) -> None:
     """The batch defers the rest of the backlog, it does not strand it."""
     rs = _import_service()
-    monkeypatch.setattr(rs, "_delete_gcs_blob", lambda url: None)
+    _discards_as_urls(monkeypatch, rs)
     monkeypatch.setattr(rs, "FAILED_UPLOAD_PURGE_BATCH", 2)
 
     user = await make_user(db_session)
@@ -1919,8 +1925,7 @@ async def test_a_batched_pass_deletes_the_blobs_of_the_rows_it_took_and_no_other
 ) -> None:
     """A row deferred to the next pass keeps its blob until the pass that takes its row."""
     rs = _import_service()
-    deleted: list[str] = []
-    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    deleted = _discards_as_urls(monkeypatch, rs)
     monkeypatch.setattr(rs, "FAILED_UPLOAD_PURGE_BATCH", 2)
 
     user = await make_user(db_session)
@@ -2065,7 +2070,7 @@ async def test_without_the_setting_both_upload_urls_address_the_production_bucke
 
 
 async def test_deleting_a_row_inherited_from_production_removes_the_configured_buckets_object(
-    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Staging's rows carry production's prefix: the object name comes from the URL and the
     bucket from the setting, so production's file is never the one removed."""
@@ -2073,9 +2078,12 @@ async def test_deleting_a_row_inherited_from_production_removes_the_configured_b
     _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
     client = _fake_the_bucket(monkeypatch, rs)
 
-    rs._delete_gcs_blob(
-        f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/oral-collector/p/g/r.m4a"
-    )
+    monkeypatch.setattr(storage, "Client", lambda **_kwargs: client)
+    rec, _user = await _seed_recording(db_session)
+    rec.gcs_url = f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/oral-collector/p/g/r.m4a"
+    await db_session.commit()
+
+    await rs.delete_recording(db_session, rec.id)
 
     assert client.deleted == [(STAGING_BUCKET, "oral-collector/p/g/r.m4a")]
 

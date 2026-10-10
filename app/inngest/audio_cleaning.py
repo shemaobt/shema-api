@@ -4,6 +4,7 @@ import httpx
 import inngest
 
 from app.core.config import get_settings
+from app.core.database import AsyncSessionLocal
 from app.core.enums import (
     CleaningStatus,
     OCNotificationEvent,
@@ -20,8 +21,14 @@ from app.inngest.schemas import CleanRequestedPayload
 from app.services.oral_collector.gcs_utils import (
     blob_name_from_url,
     copy_gcs_blob,
+    discard_gcs_object,
+    gcs_public_base,
     original_blob_name,
     upload_gcs_blob,
+)
+from app.services.oral_collector.recording_service import (
+    choose_cleaned_name,
+    repoint_to_cleaned,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,36 +84,52 @@ async def clean_recording_fn(ctx: inngest.Context, step: inngest.Step) -> str:
 
     cleaned_url = await step.run("call-cleaning-api", _call_cleaning_api)
 
-    async def _download_cleaned() -> bytes:
+    async def _choose_cleaned_name() -> str:
+        async with AsyncSessionLocal() as db:
+            name = await choose_cleaned_name(db, payload.recording_id)
+        if name is None:
+            raise inngest.NonRetriableError("Recording not found")
+        return name
+
+    cleaned_name = await step.run("choose-cleaned-name", _choose_cleaned_name)
+    previous = blob_name_from_url(verified_url or payload.gcs_url)
+
+    async def _backup_and_upload() -> None:
         async with httpx.AsyncClient() as client:
             resp = await client.get(cleaned_url, timeout=120.0)
             resp.raise_for_status()
-            return resp.content
+        if previous:
+            await copy_gcs_blob(previous, original_blob_name(previous))
+        await upload_gcs_blob(cleaned_name, resp.content, "application/octet-stream")
 
-    cleaned_data = await step.run("download-cleaned-audio", _download_cleaned)
+    await step.run("back-up-and-write-cleaned-audio", _backup_and_upload)
 
-    async def _backup_and_upload() -> None:
-        blob_name = blob_name_from_url(verified_url or payload.gcs_url)
-        if blob_name:
-            backup_name = original_blob_name(blob_name)
-            await copy_gcs_blob(blob_name, backup_name)
-            await upload_gcs_blob(blob_name, cleaned_data, "application/octet-stream")
-
-    await step.run("backup-and-upload", _backup_and_upload)
-
-    async def _update_status() -> None:
-        await update_recording_fields(
-            payload.recording_id,
-            cleaning_status=CleaningStatus.CLEANED,
-            cleaning_error=None,
-        )
+    async def _update_status() -> bool:
+        async with AsyncSessionLocal() as db:
+            repointed = await repoint_to_cleaned(
+                db,
+                payload.recording_id,
+                cleaned_from=verified_url or payload.gcs_url,
+                cleaned_url=f"{gcs_public_base()}{cleaned_name}",
+            )
+        if not repointed:
+            await discard_gcs_object(cleaned_name)
+            return False
         await notify_user(
             payload.user_id,
             OCNotificationEvent.CLEANING_COMPLETED,
             "Audio cleaning complete",
             "Your recording has been cleaned successfully.",
         )
+        return True
 
-    await step.run("update-status", _update_status)
+    if not await step.run("repoint-to-cleaned-audio", _update_status):
+        return CleaningStatus.NONE
+
+    async def _delete_previous() -> None:
+        if previous and previous != cleaned_name:
+            await discard_gcs_object(previous)
+
+    await step.run("delete-replaced-audio", _delete_previous)
 
     return CleaningStatus.CLEANED
