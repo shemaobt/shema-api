@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
@@ -338,3 +338,61 @@ async def test_a_session_whose_team_no_longer_exists_leaves_the_rest_of_the_list
     sessions = (await read(client, admin))["sessions"]
 
     assert [item["session_id"] for item in sessions] == [listed.id]
+
+
+async def test_a_session_zeroed_while_the_page_is_read_is_left_out_and_the_page_still_reads(
+    client, db_session, test_engine
+):
+    team = await a_team(db_session, "Equipe Rute")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    kept = await a_session(db_session, team, pericope="P03")
+    zeroed = await a_session(db_session, team, pericope="P05", last_activity=NOON + timedelta(1))
+    zeroed_mid_read = {"done": False}
+
+    def zero_after_the_page_query(conn, cursor, statement, parameters, context, executemany):
+        if zeroed_mid_read["done"] or "JOIN projects" not in statement:
+            return
+        zeroed_mid_read["done"] = True
+        other = conn.connection.cursor()
+        other.execute("UPDATE ir_sessions SET archive_id = 'arquivo' WHERE id = ?", (zeroed.id,))
+        other.close()
+
+    event.listen(test_engine.sync_engine, "after_cursor_execute", zero_after_the_page_query)
+    try:
+        answer = await client.get(URL, headers=headers)
+    finally:
+        event.remove(test_engine.sync_engine, "after_cursor_execute", zero_after_the_page_query)
+
+    assert zeroed_mid_read["done"]
+    assert answer.status_code == 200, answer.text
+    assert [item["session_id"] for item in answer.json()["sessions"]] == [kept.id]
+
+
+async def test_the_turns_are_the_guide_lines_of_the_conversation_and_not_of_the_telling_back_verdict(  # noqa: E501
+    client, db_session
+):
+    team = await a_team(db_session, "Equipe Rute")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    session = await a_session(db_session, team, guide_lines=3)
+    for _ in range(2):
+        session = await room.append_exchange(
+            db_session, session, team_utterance="", guide_response="veredito", told_back="contou"
+        )
+
+    [item] = (await read(client, headers))["sessions"]
+
+    assert item["turns"] == 3
+
+
+async def test_a_rehearsal_take_stamped_by_an_archive_is_not_a_kept_rehearsal(client, db_session):
+    team = await a_team(db_session, "Equipe Rute")
+    headers = await a_facilitator_of(db_session, team, email="fac@example.com")
+    session = await a_session(db_session, team)
+    await a_rehearsal_part(db_session, session, 1)
+    stamped = await keep_a_take(db_session, session, audio=b"parte 2", ordinal=2, pass_number=1)
+    stamped.archive_id = "arquivo"
+    await db_session.commit()
+
+    [item] = (await read(client, headers))["sessions"]
+
+    assert item["kept_rehearsals"] == 1

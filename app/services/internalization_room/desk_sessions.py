@@ -32,7 +32,7 @@ from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import as_utc, end_of
-from app.services.internalization_room.takes import current_parts
+from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 
@@ -89,11 +89,12 @@ async def desk_sessions_page(
         ).tuples()
     )
     more = len(found) > limit
-    names = {session.id: name for session, name in found[:limit]}
-    sessions = [session for session, _ in found[:limit]]
+    page_rows = found[:limit]
+    names = {session.id: name for session, name in page_rows}
+    portraits = await _portraits(db, [session for session, _ in page_rows])
+    sessions = [session for session, _ in page_rows if session.id in portraits]
 
     ids = [session.id for session in sessions]
-    portraits = await _portraits(db, sessions)
     rehearsals = await _kept_rehearsals(db, ids)
     released = await _released(db, ids)
     references = {
@@ -113,8 +114,8 @@ async def desk_sessions_page(
             for session in sessions
         ],
         next_cursor=(
-            _encode(_Place(at=sessions[-1].updated_at, session_id=sessions[-1].id))
-            if more and sessions
+            _encode(_Place(at=page_rows[-1][0].updated_at, session_id=page_rows[-1][0].id))
+            if more and page_rows
             else None
         ),
     )
@@ -141,7 +142,11 @@ def _item(
         state=_state(session, end.state),
         last_activity_at=as_utc(session.updated_at),
         ended_at=end.ended_at,
-        turns=sum(1 for line in session.messages or [] if line.get("role") == "guide"),
+        turns=sum(
+            1
+            for line in session.messages or []
+            if line.get("role") == "guide" and not line.get("told_back")
+        ),
         engaged_elements=sum(1 for bead in beads if bead.status == CoverageStatus.ENGAGED.value),
         total_elements=len(beads),
         kept_rehearsals=kept_rehearsals,
@@ -186,12 +191,12 @@ async def _kept_rehearsals(db: AsyncSession, session_ids: list[str]) -> dict[str
         return {}
     rows = await db.execute(
         select(IRTake)
-        .where(IRTake.session_id.in_(session_ids), IRTake.kind == IRTakeKind.ENSAIO)
-        .order_by(
-            IRTake.ordinal.asc().nulls_first(),
-            IRTake.pass_number.asc().nulls_first(),
-            IRTake.created_at,
+        .where(
+            IRTake.session_id.in_(session_ids),
+            IRTake.kind == IRTakeKind.ENSAIO,
+            live(IRTake),
         )
+        .order_by(*READING_ORDER)
     )
     takes: dict[str, list[IRTake]] = defaultdict(list)
     for take in rows.scalars():
