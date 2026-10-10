@@ -1,0 +1,99 @@
+from __future__ import annotations
+
+import asyncio
+import os
+import time
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import select, type_coerce
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
+
+from app.core.database import AsyncSessionLocal
+from app.db.models.internalization_room import IRSession
+from app.db.types import UtcDateTime
+from app.services.internalization_room.coverage import is_panorama
+from app.services.internalization_room.entered import entered
+from app.services.internalization_room.live import live
+from app.services.internalization_room.session_end import SessionState, end_of
+from app.services.project.list_facilitator_teams import _last_activity_subquery
+
+WINDOW_MINUTES = 60
+POLL_SECONDS = 60
+DEADLINE_MINUTES = 300
+
+
+async def holding(
+    db: AsyncSession, now: datetime, window: timedelta
+) -> list[tuple[IRSession, datetime]]:
+    activity = _last_activity_subquery(None)
+    last_active = type_coerce(activity.c.last_activity_at, UtcDateTime(timezone=True))
+    result = await db.execute(
+        select(IRSession, last_active)
+        .join(activity, activity.c.project_id == IRSession.project_id)
+        .options(
+            load_only(
+                IRSession.project_id,
+                IRSession.pericope,
+                IRSession.created_at,
+                IRSession.ended_at,
+            )
+        )
+        .where(
+            IRSession.project_id.is_not(None),
+            live(),
+            entered(),
+            last_active >= now - window,
+        )
+    )
+    return [
+        (session, at)
+        for session, at in result.tuples()
+        if not is_panorama(session.pericope) and end_of(session).state is SessionState.IN_PROGRESS
+    ]
+
+
+def named(held: list[tuple[IRSession, datetime]]) -> str:
+    return "\n".join(
+        f"  {session.id}  project {session.project_id}  passage {session.pericope}"
+        f"  team last active {at:%Y-%m-%d %H:%M} UTC"
+        for session, at in held
+    )
+
+
+async def wait() -> int:
+    window = timedelta(minutes=float(os.environ.get("DEPLOY_HOLD_MINUTES", WINDOW_MINUTES)))
+    poll = float(os.environ.get("DEPLOY_HOLD_POLL_SECONDS", POLL_SECONDS))
+    deadline = float(os.environ.get("DEPLOY_HOLD_DEADLINE_MINUTES", DEADLINE_MINUTES))
+    started = time.monotonic()
+    while True:
+        async with AsyncSessionLocal() as db:
+            held = await holding(db, datetime.now(UTC), window)
+        if not held:
+            print("No team session is open; the deploy goes on.", flush=True)
+            return 0
+        on_one_line = named(held).replace("\n", "%0A")
+        if os.environ.get("DEPLOY_URGENT") == "true":
+            print(
+                f"::warning::An urgent deploy does not wait for the {len(held)} open team"
+                f" session(s):%0A{on_one_line}",
+                flush=True,
+            )
+            return 0
+        if time.monotonic() - started >= deadline * 60:
+            print(
+                f"::error::The deploy waited {deadline:g} minutes and these team sessions"
+                f" were still open, so nothing shipped:%0A{on_one_line}",
+                flush=True,
+            )
+            return 1
+        print(f"Waiting on {len(held)} open team session(s):\n{named(held)}", flush=True)
+        await asyncio.sleep(poll)
+
+
+def main() -> int:
+    return asyncio.run(wait())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

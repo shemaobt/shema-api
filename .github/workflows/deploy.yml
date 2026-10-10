@@ -4,6 +4,15 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      urgent:
+        description: "Ship now even if a team session is open (a hotfix). The run names the open sessions."
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -21,6 +30,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     permissions:
       contents: read
       id-token: write
@@ -67,6 +77,13 @@ jobs:
         run: |
           docker build --build-arg GIT_SHA=${{ github.sha }} -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} .
           docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }}
+
+      - name: Wait while a team session is open
+        env:
+          DEPLOY_URGENT: ${{ inputs.urgent }}
+        run: |
+          DATABASE_URL="$(gcloud secrets versions access latest --secret=tripod_backend_neon_database_url --project=shemaobt-secrets)" \
+            uv run python scripts/hold_deploy.py
 
       - name: Run migrations
         run: |
