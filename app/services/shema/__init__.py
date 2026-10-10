@@ -322,6 +322,7 @@ from app.services.shema.list_my_projects import list_my_projects
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
 from app.services.shema.list_pending_projects import list_pending_projects
 from app.services.shema.list_prayer_requests import list_prayer_requests
+from app.services.shema.list_prayer_review import list_prayer_review
 from app.services.shema.list_project_members import list_project_members
 from app.services.shema.list_projects import list_projects
 from app.services.shema.list_regions import list_regions
@@ -344,6 +345,7 @@ from app.services.shema.read_submission import as_received, list_submissions, re
 from app.services.shema.receive_submission import receive_submission
 from app.services.shema.record_eten_credit import ETEN_LEDGER_AUDIENCE, record_eten_credit
 from app.services.shema.reject_pending_project import reject_pending_project
+from app.services.shema.release_prayer_request import release_prayer_request
 from app.services.shema.remove_intercessor import remove_intercessor
 from app.services.shema.remove_project_member import remove_project_member
 from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
@@ -465,6 +467,7 @@ __all__ = [
     "list_notification_panel",
     "list_pending_projects",
     "list_prayer_requests",
+    "list_prayer_review",
     "list_project_members",
     "list_projects",
     "list_regions",
@@ -508,6 +511,7 @@ __all__ = [
     "region_scope",
     "registered",
     "reject_pending_project",
+    "release_prayer_request",
     "remove_intercessor",
     "remove_project_member",
     "require_files_assessments",

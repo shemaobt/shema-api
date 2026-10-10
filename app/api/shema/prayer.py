@@ -10,18 +10,40 @@ network — the same single role the network's routes are guarded on, for the sa
 guard is the capability map ``_deps.py`` refuses. A coordinator who sends the Pulse is
 granted ``resourceCircle`` beside their own role. The Pulse covers the caller's scope, so a
 regional Resource Circle's file carries its own regions.
+
+**The review queue and the release are the coordination's** (OBT-575): a sensitive project's
+request waits for them before the wall and the Pulse. The routes take the caller's reader, and
+the service answers who coordinates where — a role guard here would refuse the ``admin`` who
+coordinates every region, and admit a coordinator to a region that is not theirs.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Response, status
 from fastapi.responses import PlainTextResponse
 
-from app.api.shema._deps import PER_READER_CACHE_CONTROL, Db, ResourceCircleUser, Scope
-from app.models.shema_prayer import PrayerRequestEntry, PulseLanguage
-from app.services.shema import generate_prayer_pulse, list_prayer_requests
+from app.api.shema._deps import (
+    PER_READER_CACHE_CONTROL,
+    CurrentUser,
+    Db,
+    Reading,
+    ResourceCircleUser,
+    Scope,
+)
+from app.models.shema_prayer import (
+    PrayerRelease,
+    PrayerRequestEntry,
+    PrayerReviewEntry,
+    PulseLanguage,
+)
+from app.services.shema import (
+    generate_prayer_pulse,
+    list_prayer_requests,
+    list_prayer_review,
+    release_prayer_request,
+)
 
 router = APIRouter()
 
@@ -56,3 +78,25 @@ async def download_prayer_pulse(
             "Cache-Control": PER_READER_CACHE_CONTROL,
         },
     )
+
+
+@router.get("/prayer/review", response_model=list[PrayerReviewEntry])
+async def read_prayer_review(
+    user: CurrentUser, db: Db, reading: Reading, response: Response
+) -> list[PrayerReviewEntry]:
+    """The sensitive projects' requests waiting for this coordinator's release (OBT-575)."""
+    response.headers["Cache-Control"] = PER_READER_CACHE_CONTROL
+    return await list_prayer_review(db, reading, user=user)
+
+
+@router.post(
+    "/projects/{project_id}/prayer/release",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def release_prayer(
+    project_id: str, payload: PrayerRelease, user: CurrentUser, db: Db, reading: Reading
+) -> Response:
+    """Release one waiting request to the wall and the Pulse — as the team wrote it, or edited."""
+    await release_prayer_request(db, reading, project_id, payload, user=user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

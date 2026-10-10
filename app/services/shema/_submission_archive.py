@@ -68,7 +68,7 @@ from app.db.models.shema_form import (
     ShemaIntakeLink,
     ShemaSubmission,
 )
-from app.services.shema._form_validation import record_update, validate_submission
+from app.services.shema._form_validation import validate_submission
 from app.services.shema._submission_notices import notify_submission
 from app.utils.shema_forms import (
     IMAGE_ANSWERS,
@@ -76,7 +76,6 @@ from app.utils.shema_forms import (
     PRAYER_FIELD,
     PRAYER_VISIBILITY_FIELD,
     SUBMITTED_BY_FIELD,
-    carries_prayer_request,
 )
 
 #: The largest submission this server will archive.
@@ -170,14 +169,7 @@ async def archive_submission(
     db.add(submission)
     await db.flush()
 
-    await notify_submission(
-        db,
-        project,
-        submission,
-        app_key=app_key,
-        carries_prayer=carries_prayer_request(answers),
-        written=record_update(definition, answers),
-    )
+    await notify_submission(db, project, submission, app_key=app_key)
     return submission, True
 
 
@@ -288,3 +280,27 @@ async def erase_shared_requests(db: AsyncSession, project: ShemaProject, *, user
         submission.archived_payload = json.dumps(body, ensure_ascii=False)
         submission.prayer_request_erased_at = at
         submission.prayer_request_erased_by = user.id
+
+
+async def pulse_shared(db: AsyncSession, project: ShemaProject, text: str) -> bool:
+    """Whether an applied Pulse of ``project`` brought ``text`` and shared it — answered ``rede``.
+
+    The Resource Circle's notice says *the Pulse received carries a prayer request* (OBT-566), so
+    on a sensitive project, where that notice waits for the coordination's release (OBT-575), the
+    release asks this before announcing: a request typed into the ficha came with no Pulse, and on
+    a project nothing withholds it is not announced either. Read off the archived answers, as
+    :func:`erase_shared_requests` reads them, and compared after trimming, as the record keeps it.
+    """
+    rows = await db.execute(
+        select(ShemaSubmission).where(
+            ShemaSubmission.project_id == project.id, ShemaSubmission.applied_at.is_not(None)
+        )
+    )
+    for submission in rows.scalars():
+        answers = archived_answers(submission)
+        if answers.get(PRAYER_VISIBILITY_FIELD) != "rede":
+            continue
+        carried = answers.get(PRAYER_FIELD)
+        if isinstance(carried, str) and carried.strip() == text:
+            return True
+    return False

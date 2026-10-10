@@ -318,9 +318,10 @@ bucket, which is the precedent, not a trespass).
 | `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
 | `app/services/shema/_health_audience.py` | **BE-07, built** | Who may read a reading of a team, and who is told when one turns critical — one list, two uses. |
 | `app/services/shema/_health_notice.py` | **BE-07, built** | What a notice about a struggling team may say, which is the part of that feature that needed deciding. |
-| `app/api/shema/prayer.py` | **BE-09, built** | The wall, `GET /prayer/requests` (any Shemá role, in its scope), and the Prayer Pulse, `GET /prayer/pulse?lang=pt-BR\|en` (`resourceCircle`). The network's routes share the prefix and live in `intercessors.py` (§1.3 C3). |
+| `app/api/shema/prayer.py` | **BE-09, built** | The wall, `GET /prayer/requests` (any Shemá role, in its scope), and the Prayer Pulse, `GET /prayer/pulse?lang=pt-BR\|en` (`resourceCircle`). Since OBT-575, the coordination's queue, `GET /prayer/review`, and the release, `POST /projects/{project_id}/prayer/release` (§6.12). The network's routes share the prefix and live in `intercessors.py` (§1.3 C3). |
 | `app/models/shema_prayer.py` | **BE-09, built** | `PrayerRequestEntry` — FE-44's `PrayerRequest`, a `LeavingShape` validated off the project row — and `render_prayer_pulse`, **the Pulse's format and the only place it lives** (§9.3). |
 | `app/services/shema/list_prayer_requests.py`, `generate_prayer_pulse.py` | **BE-09, built** | The wall, derived on every call; the Pulse, which is the wall rendered and logged without its content. |
+| `app/services/shema/list_prayer_review.py`, `release_prayer_request.py`, `_prayer_review.py` | **OBT-575, built** | The coordination's queue of a sensitive project's requests, the release (and edit) that puts one on the wall, and the notice that one waits — §6.12. |
 | `app/api/shema/meetings.py` | **BE-10, built** | The log: `GET`/`POST /meetings/log`, `DELETE /meetings/log/{meetingId}/{scopeKey}/{period}`. No definitions route — §9.2. |
 | `app/utils/shema_meetings.py` | **BE-10, built** | GATE-02's set as the server needs it: the three logged meetings and their cadences. Titles, attendees and readiness stay in the console's `RITMO_MEETINGS`. |
 | `app/services/shema/_meeting_log.py` | **BE-10, built** | The log's one rule, for reads and writes: `_health_audience.py`'s audience, inside the caller's region scope; `global` refused with the reason. |
@@ -347,7 +348,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9) — whose one statement, `live_membership_ids`, is public since BE-19 (OBT-520), because the resource-request form reads the same fact. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. **BE-09:** `Readership.withheld_prayer`, whether the caller reads a request nobody authorized — `_consent.py`'s rule, set by `_deps._reading`. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
 | `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question; since BE-14, `never_lowered`, the import's one-way rule on the flag. The only reader of the guarded columns in the two `shema` packages. §6.4. |
-| `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to. OBT-554: `submission_reaches_prayer_wall`, the prayer notice's gate — what a submission authorized, and the record. |
+| `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to. OBT-566: `newly_shared_request`, the prayer notice's gate — asked after an applied Pulse is written, whether the wall now shows a request it did not show before. |
 | `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
 | `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
@@ -907,11 +908,19 @@ behaviour on it.
 >   description is rewritten without `prayerShared` is unshared (`need_written`). Stating it keeps
 >   it: the health wizard sends both, and the console's consent control sits beside the text. The
 >   media rule, *replacing the artifact resets the decision*, applied to the request. **The prayer
->   notice asks it of the submission** (OBT-554): it is staged before anybody applies the Pulse,
->   while the record still holds the last request's answer, so `submission_reaches_prayer_wall`
->   lets it through only when the Pulse itself answered `rede` and the record already says so. A
->   Pulse that wrote a request without that answer — a new text, `coordenacao`, the same text
->   again — announces nothing, whatever the project said before.
+>   notice is emitted when a coordinator applies the Pulse** (OBT-566), on either door — the
+>   link's inbox entry applied, or an import filed and applied in one call — after the record is
+>   written and in the same transaction: `_submission_notices.notify_shared_request` tells the
+>   Resource Circle of the region when the Pulse wrote a request **and** the wall now shows a
+>   request it did not show before that write (`_consent.newly_shared_request`, the wall's text
+>   read before and after). The first share is announced at that moment, which the notice at
+>   arrival never was (OBT-554 had it ask, before anybody applied anything, both the Pulse and
+>   the record for `rede`, and the record says `rede` only once that Pulse is applied). A request
+>   already on the wall sent again is not announced twice; a new text with `rede` over a shared
+>   project is a new request on the wall and is. A Pulse that wrote a request without `rede` — a
+>   new text, `coordenacao`, the same text with no answer over an unshared project — announces
+>   nothing, whatever the project said before. **At arrival only coordination is told**, and a
+>   leader claiming `rede` through the link reaches nobody until a coordinator applies it.
 > - **Who reads a request nobody authorized is the health assessment's audience**
 >   (`PRAYER_AUDIENCE = HEALTH_AUDIENCE`): `coordinator` and `obtLab` (and `globalStrategist`, until OBT-572) in their
 >   scope, and an installation admin. The request is raised in the assessment and kept on the
@@ -2169,6 +2178,42 @@ says so, and the Admin decides at the conference. Whether the client wants the s
 too is a question for Karina. The request link stays valid after its project is confirmed;
 revoking it is the Admin's act.
 
+### 6.12 Seam J — a sensitive project's prayer request passes the coordination — **Decided; OBT-575**
+
+Karina, via Daniel, 6/oct/2026 (*Decisões para a Karina*, question 5): *"A coordenação revisa o
+texto antes de ele ir ao mural e ao Pulso."* It holds after OBT-571 — the Resource Circle reads
+everything — because the wall and the Pulse reach intercessors outside the system.
+
+1. **The team's authorization still decides whether a request may leave; on a sensitive project
+   the coordination's release decides when, and as what.** `_consent.authorized_requests` — the
+   wall, the Pulse and the export — gives a project whose place is withheld
+   (`_redaction.is_withheld`) only what the coordination released, as the text it released. A
+   project nothing withholds is unchanged.
+2. **A release belongs to the text it was given for**, as an authorization does (§5.6). Both rows
+   that hold a request — `shema_projects` and `shema_needs` — keep `prayer_released_from`, the
+   team's text the release was for, and `prayer_released_text`, what leaves; `_consent.py` is
+   their one reader. A team that writes a new text is waiting again, the same text sent again
+   stays released, and nothing is cleared: the state is derived on read, like the wall.
+3. **Who releases and edits**: the coordination — `readership.coordination`, the regional
+   coordinator in its own regions and the `admin` in every one. The Resource Circle, the OBT Lab
+   and every other role: 403. A coordinator outside the project's region: 404.
+   `GET /prayer/review` is the queue, `POST /projects/{project_id}/prayer/release` the release,
+   with `reviewed` — the team's text as read, a conflict when the team has written another since
+   — and an optional `text`, the edit.
+4. **Who is told.** A write that leaves a request waiting which was not — the Pulse applied with
+   `rede`, a need shared, a new text, a project flagged sensitive — tells the region's
+   `coordinator` holders (`prayerReview`, a project kind the PME words), not the writer. The
+   Resource Circle's notice of OBT-566 moves, for a sensitive project, from the apply to the
+   release that puts the project's own request on the wall; editing one already released is not
+   news.
+
+**The five questions the issue left open, as answered in the pull request (Levi, 9/oct/2026,
+for Daniel to approve):** (1) the coordination is told, in its reader's language through the
+PME; (2) a request the team takes back before the review leaves the queue; (3) a new text after
+the release leaves the wall and waits again; (4) a project flagged sensitive takes its requests off
+the wall, the Pulse and the export until they are read — archived Pulses are not touched, as
+nothing was withdrawn; (5) OBT-566's notice is sent at the release.
+
 ---
 
 ### 6.12 Seam J — every write leaves a mark — **Decided; OBT-577**
@@ -2179,7 +2224,9 @@ Daniel, 7/out: the scope is the whole PME.
 **Two ledgers, not one, and the line between them is whether a value can be told.**
 `shema_record_edits` keeps both sides of a project's field and withholds the guarded ones; every
 other act (an intercessor edited, a meeting log undone, a link revoked, a pending project
-rejected, an ETEN credit set, a photo's authorization withdrawn, a submission imported) goes to
+rejected, an ETEN credit set, a photo's authorization withdrawn, a submission imported, a
+sensitive project's prayer request released by the coordination — OBT-575, whose columns keep the
+text released and not who released it) goes to
 `shema_change_log`, which has **no column that could hold a value** — the act, the subject, the keys
 it touched, the account (nullable, for the unauthenticated exits) and the name as it was then. A
 log that never held a value cannot leak one to a reader who may not read the record.

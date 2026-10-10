@@ -420,6 +420,8 @@ async def test_notes_people_and_money_never_reach_the_file(
     row.estimated_value = "cerca de 98.765, se a segunda aldeia entrar"
     row.estimated_amount = Decimal("98765.43")
     row.estimated_currency = "BRL"
+    row.prayer_released_from = SHARED_NEED
+    row.prayer_released_text = SHARED_NEED
     await db_session.commit()
 
     body = text_of(await export(client, strategist, fmt))

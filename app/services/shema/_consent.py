@@ -1,4 +1,4 @@
-"""The consent gate — ``docs/shema.md`` §6.4's second row, and the only reader of three columns.
+"""The consent gate — ``docs/shema.md`` §6.4's second row, and the only reader of its columns.
 
 Prayer requests and needs are shared only with the field leader's explicit authorization (the
 ecosystem's ``CLAUDE.md`` §6.2). Three rules hold, and each is a sentence somebody can get
@@ -18,7 +18,9 @@ wrong in a way that is invisible until it is published:
   ``prayer_visibility`` and ``prayer_requests_audio`` in ``app/services/shema/`` and
   ``app/api/shema/``, and ``tests/test_shema/test_privacy_owners.py`` globs both packages and
   fails on a second one. FE-44's frontend has the same scan test over its own shipped files;
-  this is it, on the side that actually holds.
+  this is it, on the side that actually holds. Since OBT-575 the same glob holds the
+  coordination's release, ``prayer_released_from`` and ``prayer_released_text``, on the project
+  and on each need.
 
 **What this file does not decide.** Whose wall it is, what the entry looks like and how the
 needs beside it are gathered belong to BE-09. What is here is the predicate and the two
@@ -39,10 +41,22 @@ answered beside it: **who reads a request nobody authorized** (:data:`PRAYER_AUD
 to the record by :func:`request_as_read` and to every write of a request or a share by
 :func:`refuse_prayer_decisions`), and **what an authorization is attached to** — the
 request it was given for, so a new text arriving without one is unauthorized again
-(:func:`request_written`, :func:`need_written`) — and a submission, announced before anybody
-applies it, is authorized by its own answer (:func:`submission_reaches_prayer_wall`, OBT-554).
+(:func:`request_written`, :func:`need_written`) — and the Resource Circle hears of a request
+when an applied Pulse puts it on the wall (:func:`newly_shared_request`, OBT-554, OBT-566).
 Taking an authorization back is named here too (:func:`withdraws_authorization`, OBT-561),
 because *did the team stop sharing* is a question about the gate; the archive owns the erasure.
+
+**A sensitive project's request passes the coordination first** (OBT-575, Karina via Daniel,
+6/oct/2026: *"a coordenação revisa o texto antes de ele ir ao mural e ao Pulso"*). The team's
+authorization still decides whether a request may leave; on a project whose place is withheld
+(``_redaction.is_withheld``) it leaves only once the coordination has released it
+(:func:`release_request`), and as the text the coordination released — which it may have edited.
+A release belongs to the text it was given for, as an authorization does: a team that writes a
+new text is waiting again, a project flagged sensitive with requests on the wall has them wait
+until they are read, and a request the team stops sharing is no longer anybody's to release.
+Each of those is derived on read and none is a step somebody has to remember, so
+:func:`authorized_requests` — the wall, the Pulse and the export — and :func:`awaiting_review` —
+the coordination's queue — cannot disagree about which requests are waiting.
 """
 
 from __future__ import annotations
@@ -56,7 +70,7 @@ from pydantic.alias_generators import to_camel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError
+from app.core.exceptions import AuthorizationError, ConflictError
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaPrayerVisibility
@@ -65,7 +79,7 @@ from app.models.shema import ShemaProjectUpdate
 from app.models.shema_need import ShemaNeedWrite
 from app.models.shema_prayer import PrayerSource
 from app.services.shema._health_audience import HEALTH_AUDIENCE
-from app.services.shema._redaction import log_reference
+from app.services.shema._redaction import is_withheld, log_reference
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +120,16 @@ def shared_prayer_text(project: ShemaProject) -> str:
     ``""`` and not ``None``: a caller filtering out the empty strings is the shape FE-44's
     export already has, and a ``None`` beside a ``""`` invites a consumer to tell *withheld*
     from *nothing was written*, which is a distinction this function exists not to publish.
+    A sensitive project's request waiting for the coordination is ``""`` here too (OBT-575).
     """
-    return project.prayer_requests.strip() if reaches_prayer_wall(project) else ""
+    if not reaches_prayer_wall(project):
+        return ""
+    return _reviewed(
+        project,
+        project.prayer_requests.strip(),
+        project.prayer_released_from,
+        project.prayer_released_text,
+    )
 
 
 def shared_prayer_audio(project: ShemaProject) -> str | None:
@@ -116,9 +138,36 @@ def shared_prayer_audio(project: ShemaProject) -> str | None:
     A separate function rather than a field of a tuple because the audio is a storage key
     whose caller has to sign or serve it, and a caller that wants only the text should not
     have to hold one to discard it. ``None`` is *no recording*, which is the column's own
-    state and is not a second answer to the consent question.
+    state and is not a second answer to the consent question. On a sensitive project the
+    recording leaves with the text it was recorded beside, once that text is released.
     """
-    return project.prayer_requests_audio if reaches_prayer_wall(project) else None
+    if not reaches_prayer_wall(project):
+        return None
+    text = project.prayer_requests.strip()
+    if is_withheld(project) and not _released_for(text, project.prayer_released_from):
+        return None
+    return project.prayer_requests_audio
+
+
+def _released_for(text: str, released_from: str | None) -> bool:
+    """Whether a release was given for ``text`` — the team's text as it stands now."""
+    return released_from is not None and released_from == text
+
+
+def _reviewed(
+    project: ShemaProject, text: str, released_from: str | None, released_text: str | None
+) -> str:
+    """``text`` as it may leave: whole on a project nothing withholds, else as released — or ``""``.
+
+    The team's text on a project whose place is not withheld leaves as the team wrote it; nothing
+    changes there (OBT-575). On a withheld one it leaves only as the text the coordination
+    released *for this text*, so a team that wrote something new is waiting again.
+    """
+    if not is_withheld(project):
+        return text
+    if not text or not _released_for(text, released_from):
+        return ""
+    return released_text or ""
 
 
 #: The three columns this file guards, as the names a write carries them under.
@@ -166,7 +215,9 @@ def authorized_requests(
     **The one assembly**, so the wall, the Pulse and the export cannot disagree about what is
     authorized: the project's own request under :func:`reaches_prayer_wall`, each need under its
     own ``prayer_shared``. Per request and never per project — a team that shares three needs
-    and not the fourth has the fourth absent here whatever the project's visibility says.
+    and not the fourth has the fourth absent here whatever the project's visibility says. On a
+    sensitive project each one also waits for the coordination's release, and leaves as the text
+    released (OBT-575).
 
     ``needs`` may be every need of the project; the flag is asked again here, so a caller that
     hands in the unshared ones still gets none of them. A request with no text does not leave:
@@ -189,7 +240,12 @@ def authorized_requests(
     for need in needs:
         if need.project_id != project.id or not need.prayer_shared:
             continue
-        description = (need.description or "").strip()
+        description = _reviewed(
+            project,
+            (need.description or "").strip(),
+            need.prayer_released_from,
+            need.prayer_released_text,
+        )
         if description:
             requests.append(
                 AuthorizedRequest(
@@ -215,17 +271,136 @@ async def authorized_requests_by_project(
     because *which* projects is ``_scope.py``'s question and this file does not ask it twice.
     Every project gets an entry, an empty list included.
     """
-    ids = [project.id for project in projects]
-    shared: dict[str, list[ShemaNeed]] = {project_id: [] for project_id in ids}
-    if ids:
+    shared = await _shared_needs(db, [project.id for project in projects])
+    return {project.id: authorized_requests(project, shared[project.id]) for project in projects}
+
+
+async def _shared_needs(db: AsyncSession, project_ids: Sequence[str]) -> dict[str, list[ShemaNeed]]:
+    """The shared needs of ``project_ids``, one query, an entry for every id."""
+    shared: dict[str, list[ShemaNeed]] = {project_id: [] for project_id in project_ids}
+    if project_ids:
         rows = await db.execute(
             select(ShemaNeed)
-            .where(ShemaNeed.project_id.in_(ids), ShemaNeed.prayer_shared.is_(True))
+            .where(ShemaNeed.project_id.in_(project_ids), ShemaNeed.prayer_shared.is_(True))
             .order_by(ShemaNeed.created_at, ShemaNeed.id)
         )
         for need in rows.scalars():
             shared[need.project_id].append(need)
-    return {project.id: authorized_requests(project, shared[project.id]) for project in projects}
+    return shared
+
+
+class AwaitingRequest(NamedTuple):
+    """One request the team authorized on a sensitive project, not yet released for its text.
+
+    ``text`` is the team's, as they wrote it: the coordination reads what it releases, and what
+    it edits starts from there. ``need_id`` is ``None`` for the project's own request.
+    """
+
+    id: str
+    project_id: str
+    need_id: str | None
+    source: PrayerSource
+    text: str
+
+
+def awaiting_review(project: ShemaProject, needs: Iterable[ShemaNeed]) -> list[AwaitingRequest]:
+    """Every request of ``project`` waiting for the coordination — OBT-575's queue, per project.
+
+    The complement of :func:`authorized_requests` on a sensitive project, by the same three
+    questions: authorized by the team, with text, and not released for that text. A project
+    nothing withholds has no queue.
+    """
+    if not is_withheld(project):
+        return []
+    waiting: list[AwaitingRequest] = []
+    text = project.prayer_requests.strip()
+    if (
+        reaches_prayer_wall(project)
+        and text
+        and not _released_for(text, project.prayer_released_from)
+    ):
+        waiting.append(
+            AwaitingRequest(
+                id=f"{project.id}-pr",
+                project_id=project.id,
+                need_id=None,
+                source=PrayerSource.FORM,
+                text=text,
+            )
+        )
+    for need in needs:
+        if need.project_id != project.id or not need.prayer_shared:
+            continue
+        description = (need.description or "").strip()
+        if description and not _released_for(description, need.prayer_released_from):
+            waiting.append(
+                AwaitingRequest(
+                    id=f"{project.id}-need-{need.id}",
+                    project_id=project.id,
+                    need_id=need.id,
+                    source=PrayerSource.NEED,
+                    text=description,
+                )
+            )
+    return waiting
+
+
+async def awaiting_review_by_project(
+    db: AsyncSession, projects: Sequence[ShemaProject]
+) -> dict[str, list[AwaitingRequest]]:
+    """:func:`awaiting_review` for rows the caller's scope already handed over, one query."""
+    shared = await _shared_needs(db, [project.id for project in projects])
+    return {project.id: awaiting_review(project, shared[project.id]) for project in projects}
+
+
+async def awaiting_ids(db: AsyncSession, project: ShemaProject) -> frozenset[str]:
+    """The ids of ``project``'s requests waiting now — what a write compares before and after.
+
+    Asked of the session, so a write that has staged its rows and not committed them is read as
+    it will land. No query at all for a project nothing withholds.
+    """
+    if not is_withheld(project):
+        return frozenset()
+    shared = await _shared_needs(db, [project.id])
+    return frozenset(request.id for request in awaiting_review(project, shared[project.id]))
+
+
+def release_request(
+    project: ShemaProject, need: ShemaNeed | None, *, reviewed: str, text: str | None
+) -> str | None:
+    """Release one request of a sensitive project, as ``text`` or as the team wrote it.
+
+    **Bound to the text the coordination read**, ``reviewed``: a team that wrote something new
+    between the queue's read and this call would otherwise have its new text released unread,
+    so a ``reviewed`` that is not the team's text now is a conflict. The same call edits a
+    request already released — the release is moved to the new text, still for the team's.
+
+    Refused as a conflict, naming nothing of the text, when there is nothing to release: a
+    project nothing withholds (its requests never wait), a request the team has not authorized
+    or has taken back, or one with no text. Answers the team's text when the release put on the
+    wall a request that was not on it, and ``None`` for a coordination's second edit of one — the
+    Resource Circle's notice (OBT-566) is for a request, and the caller asks where it came from.
+    """
+    if not is_withheld(project):
+        raise ConflictError("only a sensitive project's prayer request waits for the coordination")
+    if need is None:
+        current = project.prayer_requests.strip() if reaches_prayer_wall(project) else ""
+        before = project.prayer_released_from
+    else:
+        current = (need.description or "").strip() if need.prayer_shared else ""
+        before = need.prayer_released_from
+    if not current:
+        raise ConflictError("this prayer request is not authorized to leave the coordination")
+    if reviewed.strip() != current:
+        raise ConflictError("the team has changed this prayer request since it was read")
+    released = (text or "").strip() or current
+    if need is None:
+        project.prayer_released_from = current
+        project.prayer_released_text = released
+    else:
+        need.prayer_released_from = current
+        need.prayer_released_text = released
+    return current if before != current else None
 
 
 def reads_withheld_requests(granted: Collection[str], *, platform_admin: bool) -> bool:
@@ -410,20 +585,21 @@ def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:
     return written
 
 
-def submission_reaches_prayer_wall(project: ShemaProject, written: ShemaProjectUpdate) -> bool:
-    """Whether the request a submission carries may leave coordination — the prayer notice's gate.
+def newly_shared_request(project: ShemaProject, before: str) -> bool:
+    """Whether the record now shares a request it did not share — the prayer notice's gate.
 
-    **The submission authorizes its own request or nothing does.** An authorization belongs to
-    the request it was given for (:func:`request_written`), and a Pulse is announced before
-    anybody applies it, on both doors — so the record still holds the answer the *last* request
-    was given, and read alone it would lend last month's ``rede`` to a text nobody shared. The
-    visibility has to be stated in ``written``, the record write the submission carries:
-    unanswered, ``coordenacao``, or the text already on the record sent again without it, the
-    submission shared nothing, whatever the project said before.
+    Asked **after** a coordinator applied a Pulse (OBT-566), of the record as written, against
+    ``before`` — :func:`shared_prayer_text` read just ahead of that write. The record is the one
+    truth by then: :func:`request_written` has already given the Pulse's answer to the text it
+    came with, so a new text without ``rede`` left the wall rather than borrowing last month's
+    authorization, and the wall shows exactly what the network may now read. *Now on the wall
+    and not before* is a request the Resource Circle has not heard of — the first share above
+    all, which the notice at arrival, before anybody applied anything, could never see.
 
-    **And the record has to agree.** The link is the weakest credential in the system and its
-    answer is not applied until a coordinator applies it, so a leader claiming ``rede`` through
-    it cannot, by itself, make the network hear of a request. Both, because each alone answers
-    *yes* for somebody who never said it.
+    **The same request sent again is not news**, and neither is a Pulse that left the wall as it
+    was. And the link alone never reaches this: its answer is archived and waits for a
+    coordinator, so a leader claiming ``rede`` through the weakest credential in the system
+    makes the network hear of nothing until the record agrees.
     """
-    return written.prayer_visibility is ShemaPrayerVisibility.REDE and reaches_prayer_wall(project)
+    now = shared_prayer_text(project)
+    return now != "" and now != before
