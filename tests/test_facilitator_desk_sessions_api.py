@@ -396,3 +396,55 @@ async def test_a_rehearsal_take_stamped_by_an_archive_is_not_a_kept_rehearsal(cl
     [item] = (await read(client, headers))["sessions"]
 
     assert item["kept_rehearsals"] == 1
+
+
+async def test_a_page_spanning_six_teams_is_read_in_as_many_statements_as_one_spanning_two(
+    client, db_session, test_engine
+):
+    admin = await an_admin(db_session)
+    teams = [await a_team(db_session, f"Equipe {name}") for name in ("Rute", "Noemi")]
+    for minute, team in enumerate(teams):
+        await a_session(db_session, team, last_activity=NOON + timedelta(minutes=minute))
+    statements: list[str] = []
+
+    def count(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", count)
+    try:
+        await read(client, admin)
+        statements.clear()
+        await read(client, admin)
+        for_two = len(statements)
+
+        more = [
+            await a_team(db_session, f"Equipe {name}")
+            for name in ("Boaz", "Orfa", "Elimeleque", "Quiliom")
+        ]
+        for minute, team in enumerate(more, start=2):
+            await a_session(db_session, team, last_activity=NOON + timedelta(minutes=minute))
+        statements.clear()
+        listed = await read(client, admin)
+        for_six = len(statements)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", count)
+
+    assert len({item["team_id"] for item in listed["sessions"]}) == 6
+    assert for_six == for_two
+
+
+async def test_two_teams_on_one_passage_each_read_their_own_engaged_elements(client, db_session):
+    admin = await an_admin(db_session)
+    ruth = await a_team(db_session, "Equipe Rute")
+    naomi = await a_team(db_session, "Equipe Noemi")
+    of_ruth = await a_session(db_session, ruth, pericope=SMALL_PASSAGE)
+    await engage(db_session, of_ruth, 6)
+    of_naomi = await a_session(db_session, naomi, pericope=SMALL_PASSAGE)
+    await engage(db_session, of_naomi, 2)
+
+    listed = (await read(client, admin))["sessions"]
+
+    assert {item["team_id"]: item["engaged_elements"] for item in listed} == {
+        ruth.id: 6,
+        naomi.id: 2,
+    }

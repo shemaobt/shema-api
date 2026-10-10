@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, or_, select
+from sqlalchemy import ColumnElement, and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import SessionState
@@ -169,21 +169,12 @@ async def _portraits(db: AsyncSession, sessions: Sequence[IRSession]) -> dict[st
         return {}
     rows = await db.execute(
         select(IRSession).where(
-            IRSession.project_id.in_({team for team, _ in passages}),
-            IRSession.pericope.in_({pericope for _, pericope in passages}),
+            tuple_(IRSession.project_id, IRSession.pericope).in_(passages),
             live(),
             entered(),
         )
     )
-    by_team: dict[str | None, list[IRSession]] = defaultdict(list)
-    for session in rows.scalars():
-        if (session.project_id, session.pericope) in passages:
-            by_team[session.project_id].append(session)
-
-    portraits: dict[str, dict[str, str]] = {}
-    for conversations in by_team.values():
-        portraits.update(await necklaces_of(db, conversations))
-    return portraits
+    return await necklaces_of(db, list(rows.scalars()))
 
 
 async def _kept_rehearsals(db: AsyncSession, session_ids: list[str]) -> dict[str, int]:
