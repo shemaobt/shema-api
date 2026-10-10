@@ -62,7 +62,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
-from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.device_harness import TABLET_TEAM, LinkedTablet, a_linked_tablet
 
 P = "P03"
 
@@ -108,12 +108,24 @@ async def a_claimed_device(
     `language_name` is the team's mother tongue; two teams in one case need two emails, whose
     first three letters make the language's code.
     """
+    project, _facilitator, [tablet] = await claimed_tablets_of_one_team(
+        db, email=email, language_name=language_name, tablets=1
+    )
+    return project, tablet.credential
+
+
+async def claimed_tablets_of_one_team(
+    db: AsyncSession, *, email: str, tablets: int, language_name: str | None = None
+) -> tuple[Project, User, list[LinkedTablet]]:
+    """A team, the facilitator who claimed its tablets, and that many tablets claimed to it."""
     user = await make_user(db, email=email)
     language = await make_language(db, name=language_name or f"Lang {email}", code=email[:3])
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    tablet = await a_linked_tablet(db, team_id=project.id, facilitator=user)
-    return project, tablet.credential
+    claimed = [
+        await a_linked_tablet(db, team_id=project.id, facilitator=user) for _ in range(tablets)
+    ]
+    return project, user, claimed
 
 
 async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:

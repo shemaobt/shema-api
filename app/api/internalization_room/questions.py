@@ -95,14 +95,15 @@ async def raise_question(
 
 
 @router.get(
-    "/questions/replies", response_model=HandRepliesResponse, dependencies=[linked_tablet_dep]
+    "/questions/replies",
+    response_model=HandRepliesResponse,
+    dependencies=[linked_tablet_dep, DeviceId],
 )
 async def replies(
-    device_id: str = DeviceId,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> HandRepliesResponse:
-    waiting = await service.replies_for(db, device_id, project_id=project_id)
+    waiting = await service.replies_for(db, project_id=project_id)
     return HandRepliesResponse(
         replies=[
             HandReplyView(
@@ -133,16 +134,15 @@ async def team_audio(
     return await _audio(handle)
 
 
-@router.post("/questions/{question_id}/heard", dependencies=[linked_tablet_dep])
+@router.post("/questions/{question_id}/heard", dependencies=[linked_tablet_dep, DeviceId])
 async def heard(
     question_id: str,
     payload: HeardRequest | None = None,
-    device_id: str = DeviceId,
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    question = await service.get_question_for_device(
-        db, question_id, device_id=device_id, project_id=project_id
+    question = await service.get_question_this_tablet_reaches(
+        db, question_id, project_id=project_id
     )
     await service.mark_heard(db, question, audio_url=payload.audio_url if payload else None)
     nudge(question.project_id, "hands")
