@@ -544,6 +544,7 @@ async def test_a_raised_hand_asked_on_the_pericope_before_a_zerar_is_still_in_th
 
     after = await client.get(inbox, headers=desk, params={"team_id": team.id})
     assert after.json() == before.json()
+    assert [question["pericope"] for question in after.json()["questions"]] == [P]
 
 
 async def test_a_zerar_of_the_panorama_archives_only_the_panoramas_sessions(
