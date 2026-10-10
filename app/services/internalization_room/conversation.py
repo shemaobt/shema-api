@@ -10,13 +10,15 @@ _CATEGORY_NAMES = {each.value: each.name.lower() for each in FailSafe}
 
 
 def conversation_of(session: IRSession) -> ConversationResponse:
-    """A line without the telling-back stamp counts as the conversation, so older sessions read."""
     return ConversationResponse(
         session_id=session.id,
-        turns=[
-            _turn_of(message) for message in session.messages or [] if not message.get("told_back")
-        ],
+        turns=[_turn_of(message) for message in the_conversation(session)],
     )
+
+
+def the_conversation(session: IRSession) -> list[dict[str, Any]]:
+    """A line without the telling-back stamp counts as the conversation, so older sessions read."""
+    return [message for message in session.messages or [] if not message.get("told_back")]
 
 
 def _turn_of(message: dict[str, Any]) -> ConversationTurn:
