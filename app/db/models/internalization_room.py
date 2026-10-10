@@ -73,6 +73,9 @@ class IRSession(Base):
     #: passage, and the line written from the old one is handed over as the new one's own
     #: framing — to people who cannot read and cannot check.
     prepared_pericope: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: The attempts the prepared opening above was drafted in, kept until the line is taken and
+    #: stored on the opening (ADR 0054). Null while nothing is prepared.
+    prepared_attempts: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -305,9 +308,11 @@ _QUESTION_STATUS_TYPE = Enum(
 class IRQuestion(Base):
     """A question the team raised by the hand, addressed to a person rather than the app.
 
-    It belongs to the device, not to the session it was asked in. A facilitator may answer
-    hours later, long after that passage is closed, and the team must still receive it —
-    otherwise the necklace shows a knot for a question that went nowhere.
+    It belongs to the team, not to the session it was asked in nor to the tablet that asked:
+    the reply reaches every tablet of the team and is heard once for all of them. A question
+    with no team is reached by no tablet (ADR 0057). A facilitator may answer hours later,
+    long after that passage is closed, and the team must still receive it — otherwise the
+    necklace shows a knot for a question that went nowhere.
     """
 
     __tablename__ = "ir_questions"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -119,6 +120,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             panorama.prepared_speech = outcome.speech
             panorama.prepared_audio_key = speech.key
             panorama.prepared_pericope = pericope
+            panorama.prepared_attempts = outcome.attempts
             await db.commit()
     except Exception as error:
         logger.warning(
@@ -168,17 +170,19 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
         return False
     opening.prepared_speech = prepared.prepared_speech
     opening.prepared_audio_key = prepared.prepared_audio_key
+    opening.prepared_attempts = prepared.prepared_attempts
     # Spent. Working ahead buys one opening, not one per session that mentions the
     # panorama.
     prepared.prepared_speech = None
     prepared.prepared_audio_key = None
     prepared.prepared_pericope = None
+    prepared.prepared_attempts = None
     return True
 
 
 async def take_prepared(
     db: AsyncSession, session: IRSession, *, commit: bool = True
-) -> tuple[str, str] | None:
+) -> tuple[str, str, list[dict[str, Any]]] | None:
     """The line this session was handed, consumed once so a later turn never repeats it.
 
     A panorama is handed nothing, even when a ready line is sitting on its own row — that row
@@ -200,6 +204,8 @@ async def take_prepared(
     session.prepared_speech = None
     session.prepared_audio_key = None
     session.prepared_pericope = None
+    attempts = session.prepared_attempts or []
+    session.prepared_attempts = None
     if commit:
         await db.commit()
-    return speech, key
+    return speech, key, attempts

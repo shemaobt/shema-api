@@ -45,6 +45,10 @@ _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
 
+**Reply** (*resposta*):
+The facilitator's voice answer to a team's raised-hand question. It belongs to the team: it shows on every tablet of the team, and counts as heard for all of them once one of them played it to the end. A question that names no team is reached by no tablet.
+_Avoid_: answer (in prose), heard the rehearsal (a different listening)
+
 **Phase** (*fase*):
 One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
 _Avoid_: step (the tablet's substate of a station), stage, tab, Etapa
@@ -280,6 +284,14 @@ _Avoid_: lease, lock, kickoff lease
 **Team turn**:
 A turn that carries the team's recording: what they said goes in, the Guide's next line comes out. A team turn sent while the **Opening** is being drafted waits for it.
 _Avoid_: audio turn, retell turn
+
+**Attempt**:
+One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Visit.
+_Avoid_: try, round, redraft (the count of drafts after the first), Tentativa
+
+**Attempt note**:
+What the room itself says about an attempt when something in it went wrong: the Validator's reply could not be read. Written by the room, never by the Validator, and absent on an ordinary attempt. Not a **Room note**, which is handed to the Guide.
+_Avoid_: Validator's note, comment, Nota da tentativa
 
 **Closed passage**:
 A session whose passage was closed: done, with its end stamped. It never blocks again, though a warning may still stand on it.

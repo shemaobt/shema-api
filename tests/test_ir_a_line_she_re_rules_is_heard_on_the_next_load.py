@@ -499,7 +499,7 @@ async def test_a_tablet_with_a_credential_hears_its_line_voiced_with_the_read_le
 @pytest.mark.parametrize(
     ("spoken", "notices"),
     [
-        ("pt", {"gravacao_presa", "microfone"}),
+        ("pt", {"sem_conexao", "gravacao_presa", "microfone"}),
         ("en", {"sem_conexao", "gravacao_presa", "microfone"}),
     ],
 )
