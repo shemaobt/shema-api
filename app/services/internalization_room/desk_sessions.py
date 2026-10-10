@@ -69,10 +69,14 @@ def _after(place: _Place) -> ColumnElement[bool]:
 async def desk_sessions_page(
     db: AsyncSession, user: User, *, limit: int = DEFAULT_PAGE, cursor: str | None = None
 ) -> DeskSessionsPage:
-    page = select(IRSession).where(
-        confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
-        live(),
-        entered(),
+    page = (
+        select(IRSession, Project.name)
+        .join(Project, Project.id == IRSession.project_id)
+        .where(
+            confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
+            live(),
+            entered(),
+        )
     )
     if cursor is not None:
         page = page.where(_after(_decode(cursor)))
@@ -82,13 +86,13 @@ async def desk_sessions_page(
             await db.execute(
                 page.order_by(IRSession.updated_at.desc(), IRSession.id.desc()).limit(limit + 1)
             )
-        ).scalars()
+        ).tuples()
     )
-    sessions = found[:limit]
     more = len(found) > limit
+    names = {session.id: name for session, name in found[:limit]}
+    sessions = [session for session, _ in found[:limit]]
 
     ids = [session.id for session in sessions]
-    names = await _team_names(db, {str(session.project_id) for session in sessions})
     portraits = await _portraits(db, sessions)
     rehearsals = await _kept_rehearsals(db, ids)
     released = await _released(db, ids)
@@ -100,7 +104,7 @@ async def desk_sessions_page(
         sessions=[
             _item(
                 session,
-                team_name=names[str(session.project_id)],
+                team_name=names[session.id],
                 reference=references.get(session.pericope),
                 portrait=portraits[session.id],
                 kept_rehearsals=rehearsals.get(session.id, 0),
@@ -152,13 +156,6 @@ def _state(session: IRSession, state: SessionState) -> DeskSessionState:
     if state is SessionState.COMPLETE:
         return DeskSessionState.COMPLETE
     return DeskSessionState.IN_PROGRESS
-
-
-async def _team_names(db: AsyncSession, team_ids: set[str]) -> dict[str, str]:
-    if not team_ids:
-        return {}
-    rows = await db.execute(select(Project.id, Project.name).where(Project.id.in_(team_ids)))
-    return {str(team_id): str(name) for team_id, name in rows.tuples()}
 
 
 async def _portraits(db: AsyncSession, sessions: Sequence[IRSession]) -> dict[str, dict[str, str]]:

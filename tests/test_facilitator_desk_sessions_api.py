@@ -323,3 +323,18 @@ async def test_a_session_reads_the_same_engaged_total_and_state_in_the_teams_lis
     )
     assert item["state"] == ("needs_person" if card["needs_person"] else card["state"])
     assert item["state"] == "needs_person"
+
+
+async def test_a_session_whose_team_no_longer_exists_leaves_the_rest_of_the_list_readable(
+    client, db_session
+):
+    team = await a_team(db_session, "Equipe Rute")
+    admin = await an_admin(db_session)
+    listed = await a_session(db_session, team)
+    orphan = await a_session(db_session, team, last_activity=NOON + timedelta(minutes=1))
+    orphan.project_id = "uma-equipe-que-nao-existe"
+    await db_session.commit()
+
+    sessions = (await read(client, admin))["sessions"]
+
+    assert [item["session_id"] for item in sessions] == [listed.id]
