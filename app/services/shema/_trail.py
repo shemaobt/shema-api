@@ -48,6 +48,7 @@ COVERAGE: Final[dict[str, tuple[str, str]]] = {
     "upload_projects_import": (LEDGER, "shema_record_edits: one entry per field the file moved"),
     "file_assessment": (LEDGER, "shema_health_assessments"),
     "withdraw_media_authorization": (TRAIL, "image authorization withdrawn"),
+    "release_prayer": (TRAIL, "prayer request released by the coordination (OBT-575)"),
     # --- people
     "create_intercessor": (TRAIL, "intercessor created"),
     "edit_intercessor": (TRAIL, "intercessor edited"),

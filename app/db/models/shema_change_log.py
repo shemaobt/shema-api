@@ -42,6 +42,7 @@ class ChangeSubject(enum.StrEnum):
     SUBMISSION = "submission"
     PENDING_PROJECT = "pending_project"
     MEDIA = "media"
+    PRAYER_REQUEST = "prayer_request"
 
 
 class ChangeAction(enum.StrEnum):
@@ -58,6 +59,7 @@ class ChangeAction(enum.StrEnum):
     IMPORTED = "imported"
     REJECTED = "rejected"
     WITHDRAWN = "withdrawn"
+    RELEASED = "released"
 
 
 class ShemaChangeLog(Base):

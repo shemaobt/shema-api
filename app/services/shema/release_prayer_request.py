@@ -22,9 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_need import ShemaNeed
 from app.models.shema_prayer import PrayerRelease
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
+from app.services.shema import _trail
 from app.services.shema._consent import release_request
 from app.services.shema._prayer_review import refuse_unless_coordination
 from app.services.shema._redaction import log_reference
@@ -66,6 +68,18 @@ async def release_prayer_request(
     reached = release_request(project, need, reviewed=payload.reviewed, text=payload.text)
     if need is None and reached is not None and await pulse_shared(db, project, reached):
         await notify_shared_request(db, project, app_key=SHEMA_APP_KEY)
+    # The release stores the text and not who gave it, so its author and day are the trail's
+    # (OBT-577): the keys only, never the words.
+    _trail.stage(
+        db,
+        actor=user,
+        subject=ChangeSubject.PRAYER_REQUEST,
+        action=ChangeAction.RELEASED,
+        subject_id=payload.need_id or project.id,
+        project_id=project.id,
+        region_key=_trail.region_value(project.region_key),
+        fields=("prayerRequest",) if need is None else ("needs",),
+    )
     await db.commit()
     logger.info(
         "shema prayer request released",

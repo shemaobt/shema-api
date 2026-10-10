@@ -2224,7 +2224,9 @@ Daniel, 7/out: the scope is the whole PME.
 **Two ledgers, not one, and the line between them is whether a value can be told.**
 `shema_record_edits` keeps both sides of a project's field and withholds the guarded ones; every
 other act (an intercessor edited, a meeting log undone, a link revoked, a pending project
-rejected, an ETEN credit set, a photo's authorization withdrawn, a submission imported) goes to
+rejected, an ETEN credit set, a photo's authorization withdrawn, a submission imported, a
+sensitive project's prayer request released by the coordination — OBT-575, whose columns keep the
+text released and not who released it) goes to
 `shema_change_log`, which has **no column that could hold a value** — the act, the subject, the keys
 it touched, the account (nullable, for the unauthenticated exits) and the name as it was then. A
 log that never held a value cannot leak one to a reader who may not read the record.

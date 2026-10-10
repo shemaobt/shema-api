@@ -17,8 +17,10 @@ through the API are scoped to ``other`` (``HOME``), where an invented place deri
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_change_log import ShemaChangeLog
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
 from tests.shema_harness import HOME, need, person
 from tests.test_shema.conftest import PREFIX, make_shema_project
@@ -270,6 +272,36 @@ async def test_the_admin_coordinates_every_region_and_releases(
 
     assert ok.status_code == 204, ok.text
     assert await wall_texts(client, circle) == {TEAM_TEXT}
+
+
+async def test_a_release_is_in_the_trail_with_its_author_and_never_its_words(
+    client, db_session, coordinator, waiting
+) -> None:
+    """OBT-577 over OBT-575: the columns keep the text released, not who released it or when."""
+    project, row = waiting
+
+    await release(client, coordinator, project.id, {"reviewed": TEAM_TEXT, "text": EDITED})
+    await release(client, coordinator, project.id, {"needId": row.id, "reviewed": NEED_TEXT})
+
+    marks = (
+        (
+            await db_session.execute(
+                select(ShemaChangeLog).where(ShemaChangeLog.project_id == project.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert sorted((mark.subject, mark.action, mark.subject_id) for mark in marks) == sorted(
+        [
+            ("prayer_request", "released", project.id),
+            ("prayer_request", "released", row.id),
+        ]
+    )
+    assert all(mark.actor_id and mark.occurred_at for mark in marks)
+    stored = " ".join(f"{mark.field_keys} {mark.actor_name}" for mark in marks)
+    for words in (TEAM_TEXT, EDITED, NEED_TEXT):
+        assert words not in stored
 
 
 # --- the four answers ----------------------------------------------------------------------
