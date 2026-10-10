@@ -87,10 +87,14 @@ async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
     return result.scalars().all()
 
 
+def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead]:
+    with reading_the_canon_of(session.canon_pin):
+        return _portrait(session.pericope, portrait)
+
+
 def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
     end = end_of(session)
-    with reading_the_canon_of(session.canon_pin):
-        beads = _portrait(session.pericope, portrait)
+    beads = beads_of(session, portrait)
     return TeamSessionResponse(
         session_id=session.id,
         pericope=session.pericope,
@@ -98,7 +102,7 @@ def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
         ended_at=end.ended_at,
         duration_minutes=end.duration_minutes,
         state=end.state,
-        needs_person=_needs_person(session, state=end.state),
+        needs_person=needs_person(session, state=end.state),
         last_halt=halt.last(session),
         halt=halt.standing(session),
         warned_at=as_utc(warned)
@@ -113,7 +117,7 @@ def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
     )
 
 
-def _needs_person(session: IRSession, *, state: SessionState) -> bool:
+def needs_person(session: IRSession, *, state: SessionState) -> bool:
     """Halted and not complete — a halt on a passage the team already finished is not "waiting".
 
     `last_halt` beside it is the other half and is deliberately not gated on `state`: it is

@@ -249,6 +249,13 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     return take
 
 
+READING_ORDER = (
+    IRTake.ordinal.asc().nulls_first(),
+    IRTake.pass_number.asc().nulls_first(),
+    IRTake.created_at,
+)
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     """Every take of a session, in reading order rather than in arrival order.
 
@@ -264,13 +271,7 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     a real team.
     """
     result = await db.execute(
-        select(IRTake)
-        .where(IRTake.session_id == session_id)
-        .order_by(
-            IRTake.ordinal.asc().nulls_first(),
-            IRTake.pass_number.asc().nulls_first(),
-            IRTake.created_at,
-        )
+        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
     )
     return list(result.scalars().all())
 
