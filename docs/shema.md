@@ -1121,7 +1121,7 @@ in its place, *inclusive na ficha*. So every leaving shape — the ficha include
 | **Who** | a `coordinator` on a project in a region of their scope; the `admin` (*the issue's reading, confirmed by Daniel on 8/oct/2026*); an installation admin (and `globalStrategist`, until OBT-572 retired it) | a `resourceCircle` on a project in a region of its scope — reads the truth, writes nothing of coordination's | every other session in the console — `obtLab` (the `resourceCircle` read here until OBT-571; every project it reaches is in its own scope, where it is `trusted`) | whatever leaves the system: the export, the ETEN report, the Pulse, the leader's link, the urgent-need notice |
 | `location`, `country` | the truth | the truth | the region **key** | the region key |
 | `location2`, the base (`team` / `ywamBase`), the three contacts, `sensitivity` | the truth | the truth | `""` | `""` |
-| `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556) | the truth | the truth | `""` | `""` |
+| `notes`, `healthNotes`, `statusComments`, `scopeDetails` (OBT-556); `objectiveNotes`, `financialNotes`, `needsNotes`, `partnerOrg`, `statusGoal` and `storyProgress[].recordLocation` (OBT-573) | the truth | the truth | `""` | `""` |
 | the captions of `mediaPhotos` and `mediaVideos` (OBT-578, found in review — the authorization gates the bytes, not the leader's sentence) | the truth | the truth | `""` / `null` | — |
 | `authorization.by` of `mediaPhotos` and `mediaVideos` (OBT-578 — Daniel, 8/oct/2026: on a Pulse-born photo it is the leader's own name, `submittedBy`) | the truth | the truth | `""`; `granted` and `at` kept | — |
 | `coords` | the truth | the truth | the region centroid | the region centroid |
@@ -1281,16 +1281,33 @@ coordinator imported it — the same gap the import has for the prayer request.
 
 **Residuals named and not closed** — each can name a place and none is reduced for `other`:
 ~~the slug `<language>-<place>`, which is the record's address on every shape~~ (closed by OBT-552: every id is an opaque UUID); the free text of
-the ficha that OBT-556's list left out (`partnerOrg`, `statusGoal`, `phases`, `needsNotes`,
-`objectiveNotes`, `financialNotes`, a need's `estimatedValue`, a material's file name or link,
-media captions and URLs); `storyProgress[].recordLocation` and its copy in
-`progressHistory` — reducing a field inside a table the progress tab saves whole would make the
-next save of that table erase the truth; and the text a team authorized for prayer, which
+the ficha that OBT-556's and OBT-573's lists leave out (`phases`, a need's `estimatedValue`, a
+material's file name or link, the media URLs); and the text a team authorized for prayer, which
 reaches the wall, the Pulse and the export by its consent (`_consent.py`) whether or not the
 place is withheld. They belong to GATE-04's *Notes & media* column, which the grid has not
 answered per role. ~~`notes`, `healthNotes`, `statusComments`, `scopeDetails`, a need's
 `description`, the assessments' notes and the submissions inbox's free text~~ — closed by
-OBT-556 on a withheld record, below.
+OBT-556 on a withheld record, below; ~~`partnerOrg`, `statusGoal`, `needsNotes`,
+`objectiveNotes`, `financialNotes`, the media captions and `storyProgress[].recordLocation` with
+its copy in `progressHistory`~~ — closed by OBT-573, below.
+
+**Seven more texts — OBT-573.** Karina, via Daniel, 6/out/2026, question 8: on a sensitive
+project the coordination also keeps *"Observações do objetivo; Observações do financeiro;
+Observações das necessidades; Legendas de fotos e vídeos; Local da gravação; Organização
+parceira; Meta do status"*. Since OBT-571 the Resource Circle reads the truth, so the reader
+handed them as `""` is `other` — the OBT Lab (Daniel, 7/out/2026). The five columns joined
+`FREE_TEXT_FIELDS`: the ficha and the card empty them, a write of one by name is a 403 and the
+409 does not name them. The captions and the recording place are nested and leave by
+`_redaction.free_text_as_read`, the place in every row and on each copy the progress history
+keeps — every row as `""`, written or not, so the reduction does not tell which story had one.
+**The place is also a write**, which is why OBT-556 left it out: the progress tab sends the
+story table whole, so `_redaction.story_text_as_written` gives a row of a stored story, matched
+by its name, the stored place back when it is sent as `""` or without one, refuses one sent with
+any place (comparing with the `""` the reader was given, never with the truth), and writes a new
+story as typed. The captions have no write path. **Known gap:** the rows have no id, so a reader
+who renames a stored story sends a new one and the old row's place goes with the row — as it
+would if they deleted it, which the progress tab already lets them do. A row id on
+`storyProgress` is what would close it.
 
 **What a withheld record holds back beyond its place — OBT-556.** The INT-12 pass found the
 record's text leaving by five doors, and the client decided on 2/out/2026 to close them all

@@ -94,9 +94,11 @@ from app.services.shema._progress import (
 )
 from app.services.shema._redaction import (
     NEED_TEXT,
+    STORY_PLACE,
     derive_region,
     log_reference,
     need_text_as_written,
+    story_text_as_written,
     unwritable_fields,
 )
 from app.services.shema._scope import (
@@ -310,7 +312,10 @@ def _as_the_reader_may_write(
     descriptions as ``""`` sends them back that way on every save of the needs, and
     ``_redaction.need_text_as_written`` drops that echo from the payload — the answer is the
     payload this function returns — and names a description typed over one the reader cannot
-    see, which is refused with the rest.
+    see, which is refused with the rest. **The story table's recording places the same way**
+    (OBT-573, ``_redaction.story_text_as_written``): the progress tab sends the table whole, so
+    a place handed as ``""`` and sent back is the stored one again, and one typed over it is
+    refused.
     """
     reader = readership.reader_of(project.region_key)
     refused = unwritable_fields(project, payload.model_fields_set, reader)
@@ -319,6 +324,10 @@ def _as_the_reader_may_write(
         written, typed = need_text_as_written(project, rows, reader)
         refused = [*refused, NEED_TEXT] if typed else refused
         payload = payload.model_copy(update={"needs_items": written})
+    if payload.story_progress is not None:
+        stories, typed = story_text_as_written(project, payload.story_progress, reader)
+        refused = [*refused, STORY_PLACE] if typed else refused
+        payload = payload.model_copy(update={"story_progress": stories})
     if not refused:
         return payload
     logger.warning(
