@@ -124,6 +124,10 @@ def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all
             )
 
 
+def test_the_portuguese_no_connection_line_is_written_down_in_the_script() -> None:
+    assert render.catalogue("pt").get("sem_conexao", "").strip()
+
+
 def test_the_touch_to_start_invitation_is_gone_from_the_catalogue() -> None:
     """Marcia (RESPOSTA-MARCIA.md, item 10): 'Convite falado a cada 25 s: tirem.'
 
@@ -322,14 +326,14 @@ def test_a_bundled_mp3_the_run_did_not_render_is_hashed_and_listed_as_unrendered
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
 ) -> None:
     (tmp_path / "pt").mkdir()
-    (tmp_path / "pt" / "sem_conexao.mp3").write_bytes(b"approved audio")
+    (tmp_path / "pt" / "aprovado_a_mao.mp3").write_bytes(b"approved audio")
 
     run_script(monkeypatch, "--out", str(tmp_path), "--language", "pt")
 
     written = json.loads((tmp_path / "pt" / "clip_hashes.json").read_text())
-    assert written["unrendered"] == ["sem_conexao.mp3"]
-    assert written["clips"]["sem_conexao.mp3"] == hashlib.sha256(b"approved audio").hexdigest()
-    assert (tmp_path / "pt" / "sem_conexao.mp3").read_bytes() == b"approved audio"
+    assert written["unrendered"] == ["aprovado_a_mao.mp3"]
+    assert written["clips"]["aprovado_a_mao.mp3"] == hashlib.sha256(b"approved audio").hexdigest()
+    assert (tmp_path / "pt" / "aprovado_a_mao.mp3").read_bytes() == b"approved audio"
 
 
 def test_a_run_that_cannot_name_the_api_commit_renders_nothing(
