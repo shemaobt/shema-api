@@ -97,6 +97,9 @@ async def turn_clip_url(session: IRSession, number: int) -> str:
     guide = _the_guide_entries(session)
     if not 0 <= number < len(guide):
         raise NotFoundError(f"Turn {number} of session {session.id} not found")
+    settings = get_settings()
+    if not settings.gcs_platform_bucket:
+        raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
     entry = guide[number]
     key = entry.get("voice_key")
     if not key or not await is_stored(key):
@@ -104,9 +107,6 @@ async def turn_clip_url(session: IRSession, number: int) -> str:
             entry.get("text", ""), language=session.language
         )
         key = voiced.key
-    settings = get_settings()
-    if not settings.gcs_platform_bucket:
-        raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
     return await gcs_utils.generate_signed_download_url(
         settings.gcs_platform_bucket,
         key,
