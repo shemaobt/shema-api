@@ -337,6 +337,14 @@ _Avoid_: stage, phase, status (the session's own three states), Estação
 The Internalization's lines between the team and the Guide, as the Desk reads them: ordered turns of the team, the Guide and the room's own notes, each with its moment and, when the Guide gave way to a fixed line, the fail-safe's category.
 _Avoid_: transcript, chat, history
 
+**Turns** (of a session):
+The Conversation read as pairs, oldest first: the team's side (how the take was heard, whether it cut the voice off, and what the Guide received of it) and the voice's side (how containment ended, the attempts, the times, the model, the line voiced and its clip). The opening has no team side; the telling-back round is not part of it.
+_Avoid_: transcript, timeline, Transcrição ao vivo
+
+**Boundary turn**:
+A voice turn that fell to a fail-safe, or that, past the opening, hands the question to the team's own facilitator or says the passage does not tell. Derived when the turns are read, never stored.
+_Avoid_: fronteira, edge turn
+
 **Refine**:
 The later product stage that receives the packet. It does not live on this server.
 _Avoid_: review, refinement
