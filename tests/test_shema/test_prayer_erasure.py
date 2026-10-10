@@ -1,4 +1,4 @@
-"""A withdrawn prayer request leaves the archived Pulses too — OBT-561.
+"""A withdrawn prayer request leaves the archived Pulses too — OBT-561, narrowed by OBT-576.
 
 Karina, via Daniel, 1/out/2026, on what happens to the Pulso Mensal kept on file when the team
 takes back the authorization of a prayer request: *"o pedido é apagado também do Pulso
@@ -8,8 +8,12 @@ log keeps ids); the archive was the one that kept the text as it arrived.
 The lines this file holds, one test each:
 
 * withdrawing — the team stating ``coordenacao`` over a request that was in ``rede`` — removes
-  the request from every archived Pulse of the project that shared one (answered ``rede``),
-  whatever its words, and from no Pulse that kept its request in coordination;
+  the request from every archived Pulse of the project that shared it (answered ``rede``) in
+  the same words, and from no other: not from a Pulse that shared an earlier wording (Karina,
+  6/out/2026: *"só do Pulso com o texto exatamente igual"*), nor from one that kept its request
+  in coordination; and the wall loses it, as before;
+* *the same words* is the text as its reader sees it — the ends, the kind of line break and
+  the composition of a letter are not compared, and everything else is;
 * the removal leaves who and when on the row and never the text;
 * after it, no read of a submission — the inbox, the opened Pulse, the export — returns the
   text, and the same file sent again does not bring it back;
@@ -23,7 +27,7 @@ from sqlalchemy import select
 
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
 from app.db.models.shema_form import ShemaSubmission
-from app.services.shema._consent import withdraws_authorization
+from app.services.shema._consent import same_request, withdrawn_request
 from app.services.shema._submission_archive import archived_answers
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user, make_shema_project
 
@@ -32,6 +36,7 @@ PROJECTS = f"{PREFIX}/projects"
 LINKS = f"{PREFIX}/intake-links"
 SUBMISSIONS = f"{PREFIX}/forms/submissions"
 EXPORT = f"{PREFIX}/export/projects"
+WALL = f"{PREFIX}/prayer/requests"
 
 #: The request the team shared and then took back — a canary no surface may return afterwards.
 WITHDRAWN = "PEDIDO-RETIRADO orem pela familia do tradutor"
@@ -106,30 +111,56 @@ async def _withdraw(client, headers, version: int = 1):
     return response
 
 
-async def test_withdrawing_removes_the_request_from_every_pulse_that_shared_it_and_no_other(
+async def test_withdrawing_removes_the_request_only_from_the_pulses_with_the_same_text(
     client, db_session, shema_app, headers, coordinator, project
 ) -> None:
-    """Two Pulses shared a request — one in the words on the record, one in words the record has
-    rewritten since — and both lose it, with the authorization it gave; the Pulse that kept its
-    request in coordination never shared anything and is left as it arrived."""
+    """Two Pulses shared the request in the words on the record — one of them with a stray space
+    and line break at the ends — and both lose it, with the authorization it gave. The Pulse that
+    shared an earlier wording keeps it as the record of that version, and the two that kept their
+    request in coordination, in the same words or not, never shared anything; all three are left
+    as they arrived."""
     await _pulse(client, headers, prayerRequest=WITHDRAWN, prayerVisibility="rede")
+    await _pulse(client, headers, prayerRequest=f"  {WITHDRAWN}\n", prayerVisibility="rede")
     await _pulse(client, headers, prayerRequest=EARLIER, prayerVisibility="rede")
+    await _pulse(client, headers, prayerRequest=WITHDRAWN, prayerVisibility="coordenacao")
     await _pulse(client, headers, prayerRequest=KEPT, prayerVisibility="coordenacao")
 
     await _withdraw(client, headers)
 
     rows = await _by_request(db_session)
     erased = [row for row in rows if row.prayer_request_erased_at is not None]
-    (kept,) = [row for row in rows if row.prayer_request_erased_at is None]
+    kept = [row for row in rows if row.prayer_request_erased_at is None]
     assert len(erased) == 2
     for row in erased:
-        assert WITHDRAWN not in row.archived_payload and EARLIER not in row.archived_payload
-        assert "prayerVisibility" not in archived_answers(row)
-        assert archived_answers(row)["submittedBy"] == "Kuaray"
+        answers = archived_answers(row)
+        assert WITHDRAWN not in row.archived_payload
+        assert answers.keys().isdisjoint({"prayerRequest", "prayerVisibility"})
+        assert answers["submittedBy"] == "Kuaray"
 
-    assert archived_answers(kept)["prayerRequest"] == KEPT
-    assert archived_answers(kept)["prayerVisibility"] == "coordenacao"
-    assert kept.prayer_request_erased_by is None
+    assert sorted(
+        (archived_answers(row)["prayerRequest"], archived_answers(row)["prayerVisibility"])
+        for row in kept
+    ) == sorted([(EARLIER, "rede"), (WITHDRAWN, "coordenacao"), (KEPT, "coordenacao")])
+    assert all(row.prayer_request_erased_by is None for row in kept)
+
+
+async def test_the_wall_still_loses_the_request_on_withdrawal(
+    client, db_session, shema_app, headers, project
+) -> None:
+    """Narrowing the archive's erasure narrows nothing on the wall: the request leaves it with
+    the withdrawal, although a Pulse with an earlier wording is still on file."""
+    await _pulse(client, headers, prayerRequest=EARLIER, prayerVisibility="rede")
+    before = await client.get(WALL, headers=headers)
+    assert before.status_code == 200, before.text
+    assert WITHDRAWN in before.text
+
+    await _withdraw(client, headers)
+
+    after = await client.get(WALL, headers=headers)
+    assert after.status_code == 200, after.text
+    assert WITHDRAWN not in after.text
+    (row,) = await _by_request(db_session)
+    assert archived_answers(row)["prayerRequest"] == EARLIER
 
 
 async def test_the_removal_records_who_and_when_and_never_the_text(
@@ -276,16 +307,52 @@ async def test_a_health_reading_that_takes_the_authorization_back_removes_it_too
 
 
 @pytest.mark.parametrize(
-    ("sent", "withdraws"),
+    ("sent", "expected"),
     [
-        ({"prayer_visibility": ShemaPrayerVisibility.COORDENACAO}, True),
-        ({"prayer_visibility": None}, True),
-        ({"prayer_visibility": ShemaPrayerVisibility.REDE}, False),
-        ({"prayer_visibility": "rede"}, False),
-        ({"prayer_requests": "um pedido novo"}, False),
+        ({"prayer_visibility": ShemaPrayerVisibility.COORDENACAO}, WITHDRAWN),
+        ({"prayer_visibility": None}, WITHDRAWN),
+        (
+            {"prayer_visibility": ShemaPrayerVisibility.COORDENACAO, "prayer_requests": "novo"},
+            WITHDRAWN,
+        ),
+        ({"prayer_visibility": ShemaPrayerVisibility.REDE}, None),
+        ({"prayer_visibility": "rede"}, None),
+        ({"prayer_requests": "um pedido novo"}, None),
     ],
 )
-async def test_only_a_stated_visibility_other_than_rede_withdraws(project, sent, withdraws) -> None:
+async def test_only_a_stated_visibility_other_than_rede_withdraws(project, sent, expected) -> None:
     """The gate reads the value, not its type: a raw ``"rede"`` is a restatement, and reading it
-    as a withdrawal would erase every Pulse that shared."""
-    assert withdraws_authorization(project, sent) is withdraws
+    as a withdrawal would erase. What a withdrawal names is the text that was on the wall, even
+    when a new one arrives with it."""
+    assert withdrawn_request(project, sent) == expected
+
+
+async def test_a_blank_request_withdraws_nothing_to_compare(project) -> None:
+    """A request with nothing written in it is still governed by the gate, but no Pulse shared
+    a blank, so the withdrawal has no text to erase."""
+    project.prayer_requests = "  \n"
+
+    sent = {"prayer_visibility": ShemaPrayerVisibility.COORDENACAO}
+
+    assert withdrawn_request(project, sent) is None
+
+
+@pytest.mark.parametrize(
+    ("archived", "on_record", "same"),
+    [
+        (f"  {WITHDRAWN}\n\n", WITHDRAWN, True),
+        ("orem pela\r\nfamilia", "orem pela\nfamilia", True),
+        ("orem pela\rfamilia", "orem pela\nfamilia", True),
+        ("orac\u0327a\u0303o pela familia", "ora\u00e7\u00e3o pela familia", True),
+        (EARLIER, WITHDRAWN, False),
+        ("Orem pela familia", "orem pela familia", False),
+        ("orem pela família", "orem pela familia", False),
+        ("orem  pela familia", "orem pela familia", False),
+        ("orem pela\n\nfamilia", "orem pela\nfamilia", False),
+    ],
+)
+def test_same_request_reads_the_text_as_its_reader_sees_it(archived, on_record, same) -> None:
+    """*"Exatamente igual"* (Karina, 6/out/2026) forgives only what the reader cannot see — the
+    ends, the kind of line break, a letter composed or decomposed — and counts everything else:
+    a letter, a capital, an accent, a doubled space or blank line inside."""
+    assert same_request(archived, on_record) is same

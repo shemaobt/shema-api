@@ -43,9 +43,9 @@ asked again.
 
 **Verbatim, with one exception the client made** (OBT-561): when the team withdraws the
 authorization of its prayer request, the request leaves every archived Pulse of the project that
-shared one (:func:`erase_shared_requests`). The rest of the envelope stays; the content hash
-stays the hash of the bytes as they arrived, which is what keeps the same file, sent again, a
-no-op instead of the way the text would return.
+shared it in the same words (:func:`erase_withdrawn_request`, OBT-576). The rest of the envelope
+stays; the content hash stays the hash of the bytes as they arrived, which is what keeps the same
+file, sent again, a no-op instead of the way the text would return.
 """
 
 from __future__ import annotations
@@ -68,6 +68,7 @@ from app.db.models.shema_form import (
     ShemaIntakeLink,
     ShemaSubmission,
 )
+from app.services.shema._consent import same_request
 from app.services.shema._form_validation import validate_submission
 from app.services.shema._submission_notices import notify_submission
 from app.utils.shema_forms import (
@@ -231,7 +232,7 @@ async def erase_pulse_image(db: AsyncSession, submission: ShemaSubmission, *, us
     Daniel, 8/oct/2026, by Karina's rule for the prayer request: withdrawing the authorization
     of the photo removes its reference, its description and the leader's answer to the box from
     the archived payload, and stamps who and when. **Removed, not blanked**, for the reason
-    ``erase_shared_requests`` gives: a pending Pulse applied later must neither mint the photo
+    ``erase_withdrawn_request`` gives: a pending Pulse applied later must neither mint the photo
     again nor authorize it. The bytes stay in the bucket behind ``can_share_media``, which no
     longer lets them out; ``content_hash`` keeps the hash of the bytes as they arrived.
     """
@@ -246,18 +247,23 @@ async def erase_pulse_image(db: AsyncSession, submission: ShemaSubmission, *, us
     submission.image_erased_by = user.id
 
 
-async def erase_shared_requests(db: AsyncSession, project: ShemaProject, *, user: User) -> None:
-    """Remove the prayer request from every archived Pulse of ``project`` that shared it.
+async def erase_withdrawn_request(
+    db: AsyncSession, project: ShemaProject, text: str, *, user: User
+) -> None:
+    """Remove ``text`` from every archived Pulse of ``project`` that shared it in those words.
 
     Karina, via Daniel, 1/out/2026: when the team withdraws the authorization of a prayer
     request, *"o pedido é apagado também do Pulso guardado"* — the other options were keeping
     the Pulse whole for coordination only, or keeping it as it was. **A Pulse that shared is one
     that answered** ``rede``: the team said *share this with the network* in it, and that is
-    what the withdrawal takes back. Matching by the text instead would miss a request the
-    record spells differently since — the health wizard writes an edited text and restates
-    ``rede`` in one save, so the authorization carries over while the words drift — and a
-    Pulse that kept its request in coordination never shared anything and is left as it
-    arrived.
+    what the withdrawal takes back. A Pulse that kept its request in coordination never shared
+    anything and is left as it arrived.
+
+    **Only the Pulse that carries the withdrawn text** — ``text``, the one that was on the wall
+    (``_consent.withdrawn_request``). Karina again, 6/out/2026, asked whether a Pulse that
+    shared a wording the team edited since goes too: *"Não, só do Pulso com o texto exatamente
+    igual."* That Pulse is the record of an earlier version and stays as it arrived. *Exactly
+    equal* is ``_consent.same_request``'s, which compares the text as its reader sees it.
 
     **The answer is removed, not blanked, and its visibility with it.** An archived Pulse still
     waiting in the inbox is applied from these answers: an empty request would be applied over
@@ -275,7 +281,10 @@ async def erase_shared_requests(db: AsyncSession, project: ShemaProject, *, user
         answers = body.get(ANSWERS_KEY)
         if not isinstance(answers, dict) or answers.get(PRAYER_VISIBILITY_FIELD) != "rede":
             continue
-        answers.pop(PRAYER_FIELD, None)
+        carried = answers.get(PRAYER_FIELD)
+        if not isinstance(carried, str) or not same_request(carried, text):
+            continue
+        del answers[PRAYER_FIELD]
         del answers[PRAYER_VISIBILITY_FIELD]
         submission.archived_payload = json.dumps(body, ensure_ascii=False)
         submission.prayer_request_erased_at = at
@@ -289,7 +298,7 @@ async def pulse_shared(db: AsyncSession, project: ShemaProject, text: str) -> bo
     on a sensitive project, where that notice waits for the coordination's release (OBT-575), the
     release asks this before announcing: a request typed into the ficha came with no Pulse, and on
     a project nothing withholds it is not announced either. Read off the archived answers, as
-    :func:`erase_shared_requests` reads them, and compared after trimming, as the record keeps it.
+    :func:`erase_withdrawn_request` reads them, and compared as ``_consent.same_request`` compares.
     """
     rows = await db.execute(
         select(ShemaSubmission).where(
@@ -301,6 +310,6 @@ async def pulse_shared(db: AsyncSession, project: ShemaProject, text: str) -> bo
         if answers.get(PRAYER_VISIBILITY_FIELD) != "rede":
             continue
         carried = answers.get(PRAYER_FIELD)
-        if isinstance(carried, str) and carried.strip() == text:
+        if isinstance(carried, str) and same_request(carried, text):
             return True
     return False
