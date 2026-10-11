@@ -361,9 +361,10 @@ async def test_the_coordination_is_told_when_a_request_starts_waiting(
     client, db_session, shema_app, circle, coordinator
 ) -> None:
     """Question 1. The OBT Lab authorizes the request on the record; the region's coordination
-    hears that it waits, and the writer does not. Question 5: a request typed into the ficha came
-    with no Pulse, so its release announces nothing to the Resource Circle — as on a project
-    nothing withholds. The Pulse's own case is ``test_forms.py``'s."""
+    hears that it waits, and the writer does not. The release puts it on the wall, and the
+    Resource Circle hears of it then, although no Pulse brought it — every door to the wall is
+    announced (Daniel, 10/oct/2026), as on a project nothing withholds. The Pulse's own case is
+    ``test_forms.py``'s."""
     project = await seed(db_session, "garoa-aviso", text=TEAM_TEXT)
     project.prayer_visibility = None
     await db_session.commit()
@@ -382,4 +383,4 @@ async def test_the_coordination_is_told_when_a_request_starts_waiting(
 
     released = await release(client, coordinator, project.id, {"reviewed": TEAM_TEXT})
     assert released.status_code == 204, released.text
-    assert await panel_kinds(client, circle) == []
+    assert await panel_kinds(client, circle) == ["prayer"]
