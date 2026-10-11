@@ -271,7 +271,6 @@ async def apply_submission(
     *,
     readership: Readership,
     user: User,
-    app_key: str,
     expected_version: int,
     day: date,
 ) -> ReceivedSubmission:
