@@ -496,12 +496,14 @@ async def test_a_flagged_person_keeps_their_country_on_the_read_and_loses_it_on_
 # --- who may reach it ------------------------------------------------------------------------
 
 
-async def test_the_resource_circle_reads_the_network_and_writes_none_of_it(
+async def test_the_resource_circle_reads_and_keeps_the_network_and_writes_none_of_it(
     db_session, client, shema_app
 ) -> None:
     """**OBT-574**, Karina's 4a: *"O Resource Circle pode ver, mas não edita."* A Circle scoped to
-    Asia reads a Brazilian contact — the network has no region — and every write is a 403 that
-    leaves the person exactly as they were. Not an admin account, which passes every guard."""
+    Asia reads a Brazilian contact — the network has no region — keeps it current (the review
+    and the ``directory``/``partner-export`` consents: Daniel, 10/out/2026, *"o Resource Circle
+    precisa ter esse acesso"*), and every write — ``network`` included, whose withdrawal erases —
+    is a 403 that leaves the person where they were. Not an admin, who passes every guard."""
     _user, headers = await as_role(db_session, shema_app, "coordinator")
     person = await make_intercessor(client, headers, listed=True)
     circle = await make_scoped_user(
@@ -512,11 +514,14 @@ async def test_the_resource_circle_reads_the_network_and_writes_none_of_it(
         regions=[ShemaRegionKey.ASIA],
     )
     circle_headers = await auth_header(db_session, circle)
-    reads, writes = network_routes(person["id"])
+    reads, upkeep, writes = network_routes(person["id"])
 
     for method, url, body in reads:
         res = await client.request(method, url, headers=circle_headers, json=body)
         assert res.status_code == 200, (method, url, res.text)
+    for method, url, body in upkeep:
+        res = await client.request(method, url, headers=circle_headers, json=body)
+        assert res.is_success, (method, url, res.text)
     for method, url, body in writes:
         res = await client.request(method, url, headers=circle_headers, json=body)
         assert res.status_code == 403, (method, url)
@@ -554,9 +559,9 @@ async def test_obt_lab_reaches_nothing_of_the_network(db_session, client, shema_
     _user, headers = await as_role(db_session, shema_app, "coordinator")
     person = await make_intercessor(client, headers, listed=True)
     _lab, lab_headers = await as_role(db_session, shema_app, "obtLab")
-    reads, writes = network_routes(person["id"])
+    reads, upkeep, writes = network_routes(person["id"])
 
-    for method, url, body in reads + writes:
+    for method, url, body in reads + upkeep + writes:
         res = await client.request(method, url, headers=lab_headers, json=body)
         assert res.status_code == 403, (method, url)
 

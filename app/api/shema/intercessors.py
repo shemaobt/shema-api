@@ -21,9 +21,12 @@ Circle pode ver, mas não edita."* So the list and the one-person contact are
 :data:`~app.api.shema._deps.NetworkReader` — ``resourceCircle``, the role whose stated
 responsibility (``CLAUDE.md`` §5.7) is *pedidos de oração, ora e compartilha com a rede*, with
 ``coordinator`` and ``admin`` — and every write is :data:`~app.api.shema._deps.NetworkWriter`,
-``coordinator`` and ``admin`` alone: adding, editing and erasing a contact, the one-year
-review, and recording or withdrawing a consent, which can erase the person. *Não edita* is
-read whole, as Daniel read *só não podem editar* on OBT-571. ``obtLab`` reaches nothing here.
+``coordinator`` and ``admin`` alone: adding, editing and erasing a contact, and recording or
+withdrawing its ``network`` consent, whose withdrawal erases the person. **Keeping a contact
+current is the Circle's too** (:data:`~app.api.shema._deps.NetworkKeeper` and
+:data:`~app.api.shema._deps.ConsentWriter`): the one-year review and the ``directory`` and
+``partner-export`` consents — Daniel, 10/out/2026: *"conta como edição mas o Resource Circle
+precisa ter esse acesso"*. ``obtLab`` reaches nothing here.
 This is the first OR the product asked for, and ``_deps.py`` says why it is two role sets
 rather than a capability map.
 
@@ -39,7 +42,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, status
 
-from app.api.shema._deps import Db, NetworkReader, NetworkWriter
+from app.api.shema._deps import ConsentWriter, Db, NetworkKeeper, NetworkReader, NetworkWriter
 from app.models.shema_intercessor import (
     ConsentGrant,
     IntercessorContact,
@@ -120,7 +123,7 @@ async def erase_intercessor(intercessor_id: str, user: NetworkWriter, db: Db) ->
 
 @router.post(_PEOPLE + "/{intercessor_id}/review", response_model=IntercessorEntry)
 async def mark_intercessor_reviewed(
-    intercessor_id: str, user: NetworkWriter, db: Db
+    intercessor_id: str, user: NetworkKeeper, db: Db
 ) -> IntercessorEntry:
     """The "Revisado": this contact still belongs in the network, and its year starts again.
 
@@ -152,7 +155,7 @@ async def grant_consent(
     intercessor_id: str,
     context: ShemaConsentContext,
     payload: ConsentGrant,
-    user: NetworkWriter,
+    user: ConsentWriter,
     db: Db,
 ) -> IntercessorEntry:
     """Record that this person consented to one context, on a stated basis.
@@ -173,7 +176,7 @@ async def grant_consent(
 async def revoke_consent(
     intercessor_id: str,
     context: ShemaConsentContext,
-    user: NetworkWriter,
+    user: ConsentWriter,
     db: Db,
 ) -> None:
     """Withdraw one consent. Withdrawing ``network`` **erases the person**.

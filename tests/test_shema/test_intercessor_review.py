@@ -207,21 +207,49 @@ async def test_reviewing_somebody_who_is_not_there_is_a_404(db_session, client, 
     assert res.status_code == 404
 
 
-async def test_only_coordination_and_the_admin_mark_a_review(db_session, client, shema_app) -> None:
-    """Marking a review is a write, and the Resource Circle writes none of the network (OBT-574);
-    the OBT Lab reaches none of it, and an account with no grant neither. **Never an admin**: an
-    admin passes every guard, and this test would pass with the guard deleted."""
+async def test_the_resource_circle_marks_a_review_under_its_own_name(
+    db_session, client, shema_app
+) -> None:
+    """Marking a review counts as editing, *"mas o Resource Circle precisa ter esse acesso"*
+    (Daniel, 10/out/2026, over Karina's 4a): the Circle marks it, and the trail of OBT-577 names
+    the Circle and not the person."""
+    from app.db.models.shema_change_log import ShemaChangeLog
+
+    _user, headers = await as_role(db_session, shema_app, "coordinator")
+    person = await make_intercessor(client, headers, listed=True)
+    circle = await make_scoped_user(
+        db_session, shema_app, email="circle@review.test", role_key="resourceCircle", regions=[]
+    )
+
+    res = await client.post(
+        f"{PEOPLE}/{person['id']}/review", headers=await auth_header(db_session, circle)
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["reviewDue"] is False
+    marks = (
+        await db_session.execute(
+            select(ShemaChangeLog.action, ShemaChangeLog.actor_id).where(
+                ShemaChangeLog.subject_id == person["id"], ShemaChangeLog.action == "reviewed"
+            )
+        )
+    ).all()
+    assert marks == [("reviewed", circle.id)]
+
+
+async def test_who_does_not_keep_the_network_marks_no_review(db_session, client, shema_app) -> None:
+    """The OBT Lab reaches none of the network, and an account with no grant neither. **Never an
+    admin**: an admin passes every guard, and this test would pass with the guard deleted."""
     _user, headers = await as_role(db_session, shema_app, "coordinator")
     person = await make_intercessor(client, headers, listed=True)
 
-    for role in ("resourceCircle", "obtLab"):
-        other = await make_scoped_user(
-            db_session, shema_app, email=f"{role}@review.test", role_key=role, regions=[]
-        )
-        res = await client.post(
-            f"{PEOPLE}/{person['id']}/review", headers=await auth_header(db_session, other)
-        )
-        assert res.status_code == 403, role
+    other = await make_scoped_user(
+        db_session, shema_app, email="obtlab@review.test", role_key="obtLab", regions=[]
+    )
+    res = await client.post(
+        f"{PEOPLE}/{person['id']}/review", headers=await auth_header(db_session, other)
+    )
+    assert res.status_code == 403
 
     outsider = await make_user(db_session, email="outsider@review.test")
     res = await client.post(

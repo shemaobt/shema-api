@@ -343,10 +343,23 @@ async def as_role(db_session, app, role_key: str, *, regions=None) -> tuple:
     return user, await auth_header(db_session, user)
 
 
-def network_routes(person_id: str) -> tuple[list[tuple], list[tuple]]:
-    """Every authenticated route of the network, as its reads and its writes (OBT-574)."""
+def network_routes(person_id: str) -> tuple[list[tuple], list[tuple], list[tuple]]:
+    """Every authenticated route of the network, as its reads, its upkeep and its writes.
+
+    OBT-574. The upkeep — the one-year review and the ``directory`` and ``partner-export``
+    consents — is what the Resource Circle does beside the coordination (Daniel, 10/out/2026);
+    the writes — add, edit, erase, and either side of ``network``, whose withdrawal erases the
+    person — are the coordination's alone. Each list in the order a single caller can run it.
+    """
     target = f"{PEOPLE}/{person_id}"
     reads = [("GET", PEOPLE, None), ("GET", f"{target}/contact", None)]
+    upkeep = [
+        ("POST", f"{target}/review", None),
+        ("PUT", f"{target}/consents/partner-export", {"basis": "yes"}),
+        ("DELETE", f"{target}/consents/partner-export", None),
+        ("DELETE", f"{target}/consents/directory", None),
+        ("PUT", f"{target}/consents/directory", {"basis": "yes"}),
+    ]
     writes = [
         (
             "POST",
@@ -354,9 +367,8 @@ def network_routes(person_id: str) -> tuple[list[tuple], list[tuple]]:
             {"name": "X", "country": "BR", "contact": "x@example.org", "consentBasis": "yes"},
         ),
         ("PATCH", target, {"name": "Outro Nome"}),
-        ("POST", f"{target}/review", None),
-        ("PUT", f"{target}/consents/partner-export", {"basis": "yes"}),
-        ("DELETE", f"{target}/consents/directory", None),
+        ("PUT", f"{target}/consents/network", {"basis": "yes"}),
+        ("DELETE", f"{target}/consents/network", None),
         ("DELETE", target, None),
     ]
-    return reads, writes
+    return reads, upkeep, writes

@@ -101,8 +101,14 @@ from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
+from app.db.models.shema_consent import ShemaConsentContext
 from app.services.shema._consent import reads_withheld_requests
-from app.services.shema._directory import NETWORK_READERS, NETWORK_WRITERS
+from app.services.shema._directory import (
+    NETWORK_KEEPERS,
+    NETWORK_READERS,
+    NETWORK_WRITERS,
+    consent_writers,
+)
 from app.services.shema._health_audience import in_health_audience, reads_team_health
 from app.services.shema._scope import (
     ADMIN_ROLE,
@@ -233,14 +239,37 @@ NetworkReader = Annotated[
 ]
 
 #: Who writes it: ``coordinator`` or ``admin`` — *o Resource Circle pode ver, mas não edita*.
-NetworkWriter = Annotated[
+_WRITE_REFUSAL = (
+    "Only coordination and the Admin add, edit or remove an intercessor contact; "
+    "the resourceCircle reads the network and keeps it current."
+)
+NetworkWriter = Annotated[User, _holding(NETWORK_WRITERS, _WRITE_REFUSAL)]
+
+#: Who keeps a contact current — the one-year review: the writers and ``resourceCircle``
+#: (Daniel, 10/out/2026).
+NetworkKeeper = Annotated[
     User,
     _holding(
-        NETWORK_WRITERS,
-        "Only coordination and the Admin add, edit or remove an intercessor contact; "
-        "the resourceCircle reads the network.",
+        NETWORK_KEEPERS,
+        "The intercessor network is kept by the resourceCircle, coordination and the Admin.",
     ),
 ]
+
+
+async def _consent_writer(
+    context: ShemaConsentContext, user: CurrentUser, granted: Granted
+) -> User:
+    """:data:`NetworkWriter` for ``network``, whose withdrawal erases; :data:`NetworkKeeper` else.
+
+    The context is the route's path parameter, so the one rule (``_directory.consent_writers``)
+    is asked here, before the service, as every other guard of the network is.
+    """
+    if user.is_platform_admin or granted & consent_writers(context):
+        return user
+    raise AuthorizationError(_WRITE_REFUSAL)
+
+
+ConsentWriter = Annotated[User, Depends(_consent_writer)]
 
 
 async def _scope(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:

@@ -95,6 +95,7 @@ __all__ = [
     "REVIEW_AFTER",
     "LeavingPerson",
     "check_exit_link",
+    "consent_writers",
     "contact_channel",
     "contact_hint",
     "count_review_due",
@@ -119,17 +120,29 @@ __all__ = [
     "withdraw_consent",
 ]
 
-#: Who writes the network — adds, edits, erases, marks a review, records or withdraws a
-#: consent (OBT-574). Karina, via Daniel, 6/out/2026, question 4a: *"Somente a coordenação tem
-#: acesso editar e apagar o contato do intercessor. O Resource Circle pode ver, mas não edita."*
-#: Coordination and the Admin; *não edita* is read whole for the Circle, as Daniel read *só não
-#: podem editar* on OBT-571 — no write, on no route.
+#: Who writes the network — adds, edits and erases a contact, and records or withdraws its
+#: ``network`` consent, whose withdrawal erases the person (OBT-574). Karina, via Daniel,
+#: 6/out/2026, question 4a: *"Somente a coordenação tem acesso editar e apagar o contato do
+#: intercessor. O Resource Circle pode ver, mas não edita."* Coordination and the Admin.
 NETWORK_WRITERS: Final = frozenset({COORDINATOR_ROLE, ADMIN_ROLE})
+
+#: Who keeps a contact current — the one-year review and the ``directory`` and
+#: ``partner-export`` consents: the writers and the Resource Circle. Daniel, 10/out/2026, on
+#: whether the review and the consents count as editing: *"conta como edição mas o Resource
+#: Circle precisa ter esse acesso"*. ``network`` stays with the writers, because withdrawing it
+#: erases the person and erasing is what 4a keeps for the coordination (Levi, 10/out/2026).
+NETWORK_KEEPERS: Final = NETWORK_WRITERS | {RESOURCE_CIRCLE_ROLE}
 
 #: Who reads it — the list and one contact at a time: the writers, who read what they edit, and
 #: the Resource Circle. The network has no region (``docs/shema.md`` §5.7), so each of them reads
 #: all of it. Written as the writers plus one, as ``_health_audience.HEALTH_READERS`` is.
 NETWORK_READERS: Final = NETWORK_WRITERS | {RESOURCE_CIRCLE_ROLE}
+
+
+def consent_writers(context: ShemaConsentContext) -> frozenset[str]:
+    """Who records or withdraws ``context``: the writers for ``network``, the keepers otherwise."""
+    return NETWORK_WRITERS if context is ShemaConsentContext.NETWORK else NETWORK_KEEPERS
+
 
 #: How long a contact may go unused before it is due for review — the client's answer of
 #: 22/sep (4.3), *revisar depois de um ano*. Strictly more than this, measured from the latest

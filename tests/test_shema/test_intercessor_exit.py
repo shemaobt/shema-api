@@ -279,10 +279,10 @@ async def test_every_other_network_route_refuses_whoever_may_not_use_it(
 ) -> None:
     """**The DoD's fifth line, other half**: the exit link opened two routes and nothing else.
     Every route of the network still refuses the OBT Lab, and every write refuses the Resource
-    Circle, who reads the network and edits none of it (OBT-574) — never an admin, who passes
-    every guard and would make this pass with the guards deleted."""
-    reads, writes = network_routes(person["id"])
-    for role, routes in (("resourceCircle", writes), ("obtLab", reads + writes)):
+    Circle, who reads and keeps the network and edits none of it (OBT-574) — never an admin, who
+    passes every guard and would make this pass with the guards deleted."""
+    reads, upkeep, writes = network_routes(person["id"])
+    for role, routes in (("resourceCircle", writes), ("obtLab", reads + upkeep + writes)):
         _user, headers = await as_role(db_session, shema_app, role)
         for method, url, body in routes:
             res = await client.request(method, url, headers=headers, json=body)
