@@ -49,7 +49,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from typing import Any, Final
+from typing import Any, Final, TypeVar
+
+from pydantic import BaseModel
+from sqlalchemy import ColumnElement
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
@@ -61,7 +64,12 @@ from app.models.shema_privacy import (
     LeavingShape,
     ShemaReader,
 )
-from app.models.shema_record import ShemaHealthAssessmentEntry, ShemaProjectRecord
+from app.models.shema_record import (
+    ShemaHealthAssessmentEntry,
+    ShemaMediaAuthorization,
+    ShemaProjectRecord,
+    ShemaStoryProgressRow,
+)
 from app.utils.shema_derivations import get_region
 
 
@@ -79,6 +87,15 @@ def is_withheld(project: ShemaProject) -> bool:
     from something that is not a row.
     """
     return project.sensitive_country
+
+
+def withheld_rows() -> ColumnElement[bool]:
+    """:func:`is_withheld` as a predicate a query carries — the same column, the same owner.
+
+    For a read that only a withheld project can answer, such as the coordination's review queue
+    (OBT-575), so it does not load every project in reach to keep the sensitive ones.
+    """
+    return ShemaProject.sensitive_country.is_(True)
 
 
 def withheld_note(records: Iterable[LeavingShape], reader: ShemaReader) -> int | None:
@@ -181,6 +198,10 @@ def searchable_text(project: ShemaProject, reader: ShemaReader) -> str:
     return " ".join(part for part in fields if part)
 
 
+#: A model nested in a record — a media item, a story row — that :func:`_blanked` reduces.
+_Nested = TypeVar("_Nested", bound=BaseModel)
+
+
 def reads_the_truth(project: ShemaProject, reader: ShemaReader) -> bool:
     """Whether ``reader`` reads ``project`` as it is: coordination does, and so does everybody on
     a project whose place is not withheld.
@@ -227,10 +248,24 @@ def free_text_as_read(
 ) -> dict[str, Any]:
     """What a record's nested free text becomes for ``reader`` — an update, or nothing.
 
-    The record's own four are reduced by the shape it is built as. Its needs and its assessments
-    arrive on it afterwards, by ``model_copy`` and not through the boundary, so their text is
-    held back here, in ``_consent.request_as_read``'s mould: a reader who reads the truth gets
-    ``{}``, and anybody else every need's description as ``""`` and the history without notes.
+    The record's own free text is reduced by the shape it is built as. Its needs, its
+    assessments, its media and its progress history arrive on it afterwards, by ``model_copy``
+    and not through the boundary, so their text is held back here, in
+    ``_consent.request_as_read``'s mould: a reader who reads the truth gets ``{}``, and anybody
+    else every need's description as ``""``, the history without notes, and every caption
+    emptied. **OBT-573** adds the rest of Karina's question 8: every story's recording place —
+    on the record's ``story_progress`` and on each copy the progress history keeps.
+
+    **The caption is the leader's own sentence about the photo** (OBT-578) — *a equipe no vale*
+    names the place as readily as a need's description does — and it reaches the ficha whatever
+    the authorization says, because the authorization gates the bytes and the caption is text.
+    So it takes the reduction the other free text takes. Found in review, which is why the
+    video's caption, there since BE-04, is emptied by the same line rather than by a second one.
+
+    **The decision's ``by`` goes with it — Daniel, 8/oct/2026.** On a Pulse-born photo it is the
+    leader's own name (``submittedBy``), and a name on a withheld record is as identifying as a
+    contact, which this reader is not handed either. ``granted`` and ``at`` stay: a boolean and
+    a day name nobody.
     """
     if reads_the_truth(project, reader):
         return {}
@@ -238,11 +273,91 @@ def free_text_as_read(
     history = record.health_history
     if history is not None:
         history = assessments_as_read(project, reader, history)
-    return {"needs_items": needs, "health_history": history}
+    photos = record.media_photos
+    if photos is not None:
+        photos = [
+            photo.model_copy(update={"caption": "", "authorization": _unnamed(photo.authorization)})
+            for photo in photos
+        ]
+    videos = record.media_videos
+    if videos is not None:
+        videos = [
+            video.model_copy(
+                update={"caption": None, "authorization": _unnamed(video.authorization)}
+            )
+            for video in videos
+        ]
+    return {
+        "needs_items": needs,
+        "health_history": history,
+        "media_photos": photos,
+        "media_videos": videos,
+        "story_progress": _blanked(record.story_progress, "record_location"),
+        "progress_history": [
+            entry.model_copy(
+                update={"story_progress": _blanked(entry.story_progress, "record_location")}
+            )
+            for entry in record.progress_history
+        ],
+    }
+
+
+def _blanked(items: Sequence[_Nested] | None, field: str) -> list[_Nested] | None:
+    """``items`` with ``field`` as ``""`` on every one — a story's recording place says where it
+    was outright. Every item, written or not, so the reduction does not tell which ones had text."""
+    if items is None:
+        return None
+    return [item.model_copy(update={field: ""}) for item in items]
+
+
+def _unnamed(decision: ShemaMediaAuthorization | None) -> ShemaMediaAuthorization | None:
+    """The decision without the name of who took it — ``None`` stays ``None`` (undecided)."""
+    return None if decision is None else decision.model_copy(update={"by": ""})
 
 
 #: The one name a refused need text is given, in the client's spelling.
 NEED_TEXT: Final = "needsItems.description"
+
+#: The one name a refused recording place is given, in the client's spelling (OBT-573).
+STORY_PLACE: Final = "storyProgress.recordLocation"
+
+
+def story_text_as_written(
+    project: ShemaProject, rows: Sequence[ShemaStoryProgressRow], reader: ShemaReader
+) -> tuple[list[ShemaStoryProgressRow], bool]:
+    """``rows`` as ``reader`` may write them, and whether one types a place over an unseen one.
+
+    :func:`need_text_as_written` for the story table (OBT-573), and for the reason
+    ``docs/shema.md`` gave when it left the recording place out of OBT-556: the progress tab
+    sends the table **whole** on every save, so a reduction on the read alone would make the next
+    save erase the truth. A reader who does not read it was handed every row's place as ``""``
+    (:func:`free_text_as_read`); a row of a stored story that sends that back — or no place —
+    gets its stored place again, matched by the story's name (and, for a name written twice, in
+    the order the rows are kept). A row of a stored story that sends any place is typed over one
+    the reader cannot see, which the caller refuses — whatever the stored place was, because
+    comparing with the ``""`` the reader was given, and never with the truth, is what keeps the
+    answer from being an oracle. A story with no stored row is new, and its author sees what they
+    type: OBT-528's own exception for a create.
+    """
+    if reads_the_truth(project, reader):
+        return list(rows), False
+    stored: dict[str, list[Any]] = {}
+    for saved in project.story_progress or []:
+        stored.setdefault(saved.get("name", ""), []).append(saved.get("recordLocation"))
+    kept: list[ShemaStoryProgressRow] = []
+    typed = False
+    for row in rows:
+        places = stored.get(row.name)
+        if not places:
+            kept.append(row)
+            continue
+        place = places.pop(0)
+        if row.record_location:
+            typed = True
+            kept.append(row)
+        else:
+            kept.append(row.model_copy(update={"record_location": place}))
+    return kept, typed
 
 
 def need_text_as_written(

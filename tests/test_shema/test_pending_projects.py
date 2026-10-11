@@ -872,3 +872,28 @@ async def test_the_admin_writes_no_roster_on_a_pending_project(
     assert added.status_code == 404
     count = await db_session.execute(select(func.count()).select_from(ShemaProjectMember))
     assert count.scalar_one() == 0
+
+
+async def test_discarding_is_marked_with_the_admins_name_and_the_reason_stays_out_of_the_log(
+    db_session, shema_app, form_app
+) -> None:
+    """OBT-577: the project row keeps who and why; the change log keeps the act, never the words."""
+    from app.db.models.shema_change_log import ShemaChangeLog
+
+    async with pending_client(db_session) as client:
+        filing = await open_filing(db_session, client, shema_app, form_app)
+        await filing.decided(db_session)
+        [project] = await filed_projects(db_session)
+        res = await client.post(
+            reject_path(project.id),
+            json={"reason": "motivo confidencial"},
+            headers=filing.admin_headers,
+        )
+
+    assert res.status_code == 200, res.text
+    [row] = (await db_session.execute(select(ShemaChangeLog))).scalars()
+    assert (row.subject, row.action, row.subject_id) == ("pending_project", "rejected", project.id)
+    assert row.actor_id == filing.admin.id
+    assert "motivo confidencial" not in repr(
+        [getattr(row, column.name) for column in ShemaChangeLog.__table__.c]
+    )

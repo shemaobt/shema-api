@@ -66,12 +66,14 @@ from __future__ import annotations
 from app.api.shema._deps import APP_KEY, DOOR, NO_STORE
 from app.api.shema._routing import ShemaRouter
 from app.api.shema.access import router as access_router
+from app.api.shema.audit import router as audit_router
 from app.api.shema.eten import router as eten_router
 from app.api.shema.forms import intake as intake_router
 from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
 from app.api.shema.intercessor_exit import router as exit_router
 from app.api.shema.intercessors import router as intercessors_router
+from app.api.shema.media import router as media_router
 from app.api.shema.meetings import router as meetings_router
 from app.api.shema.members import door_router as members_door_router
 from app.api.shema.members import router as members_router
@@ -107,6 +109,8 @@ authenticated.include_router(eten_router)  # BE-11
 authenticated.include_router(prayer_router)  # BE-09
 authenticated.include_router(pending_projects_router)  # OBT-547
 authenticated.include_router(transfer_router)  # BE-14
+authenticated.include_router(media_router)  # OBT-578
+authenticated.include_router(audit_router)  # OBT-577
 
 #: **The module's first deliberate hole**, and it is this line rather than a missing dependency.
 #: ``GET`` and ``POST /api/shema/intake/{token}`` carry no ``Authorization`` requirement, by

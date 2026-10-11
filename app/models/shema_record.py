@@ -315,18 +315,41 @@ class ShemaMediaAuthorization(BaseModel):
 
 
 class ShemaMediaPhoto(BaseModel):
-    """``{image, caption, authorization}`` — three required keys, two of them nullable.
+    """``{id, image, caption, authorization}`` — the item, and what may be said about it.
 
-    :attr:`image` is ``None`` **always, for now**, and the module docstring says why: the
-    photo's bytes have no serving path in this wave. A caption with no image is a shape the
-    contract already has, so the console renders an empty slot rather than a broken one.
+    :attr:`id` is the media row's own uuid (OBT-581), for **every** reader: it is what the
+    console hands back to ``GET …/media/{id}/link`` for the bytes and to
+    ``POST …/media/{id}/authorization/withdraw``, and it names no place and no person — the
+    key in the bucket is scoped to it for exactly that reason (``docs/shema.md`` §6.4).
+
+    :attr:`image` is ``None`` **always**, and since OBT-581 that is a decision and not a gap:
+    the bytes are served by a signed link minted per call and persisted nowhere
+    (:class:`ShemaMediaLink`), never by an address carried in a record that lives longer than
+    the link does and reaches readers the link's gate refuses. A caption with no image is a
+    shape the contract already has, so the console renders a slot and asks for the link.
     """
 
     model_config = _OUTWARD
 
+    id: str
     image: None = None
     caption: str = ""
     authorization: ShemaMediaAuthorization | None = None
+
+
+class ShemaMediaLink(BaseModel):
+    """``{url, expiresInMinutes}`` — one photo's bytes, for the next fifteen minutes (OBT-581).
+
+    Minted by ``media_download_url`` on every call and stored by nobody: the expiry is the
+    whole guarantee, and a link in a record or a cache would outlive it. The route that answers
+    with this refuses before minting — an item not shared with the caller's audience, or a
+    reader who is not handed the truth of a withheld project — so no URL exists to leak.
+    """
+
+    model_config = _OUTWARD
+
+    url: str
+    expires_in_minutes: int
 
 
 class ShemaProjectVideo(BaseModel):

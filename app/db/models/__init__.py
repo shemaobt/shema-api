@@ -86,6 +86,7 @@ from app.db.models.resource_request import (
 )
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_audit import ShemaRecordEdit
+from app.db.models.shema_change_log import ShemaChangeLog
 from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
 from app.db.models.shema_enums import (
     ShemaEtenCreditSource,
@@ -103,7 +104,12 @@ from app.db.models.shema_enums import (
 from app.db.models.shema_eten import ShemaEtenCredit, ShemaEtenReport
 from app.db.models.shema_exit_link import ShemaIntercessorExitLink
 from app.db.models.shema_export import ShemaExport
-from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
+from app.db.models.shema_form import (
+    ShemaFormDefinition,
+    ShemaIntakeImage,
+    ShemaIntakeLink,
+    ShemaSubmission,
+)
 from app.db.models.shema_grant import ShemaScopeChange
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.db.models.shema_intercessor import ShemaIntercessor
@@ -217,6 +223,7 @@ __all__ = [
     "RolePermission",
     "SessionStatus",
     "SessionStep",
+    "ShemaChangeLog",
     "ShemaConsentContext",
     "ShemaEtenCredit",
     "ShemaEtenCreditSource",
@@ -225,6 +232,7 @@ __all__ = [
     "ShemaFormDefinition",
     "ShemaHealthAssessment",
     "ShemaHealthLevel",
+    "ShemaIntakeImage",
     "ShemaIntakeLink",
     "ShemaIntercessor",
     "ShemaIntercessorConsent",

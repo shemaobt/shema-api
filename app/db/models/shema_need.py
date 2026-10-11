@@ -162,6 +162,11 @@ class ShemaNeed(Base):
     prayer_shared: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
+    #: OBT-575 — the coordination's release of a sensitive project's shared need: the
+    #: description the release was given for, and the text that leaves in its place. Read by
+    #: ``app/services/shema/_consent.py`` alone, as the project's pair is.
+    prayer_released_from: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prayer_released_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Marks a need celebrated rather than removing it from the wall.
     prayer_answered: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")

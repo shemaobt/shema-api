@@ -34,6 +34,8 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
+from app.db.models.shema_change_log import ChangeAction, ChangeSubject
+from app.services.shema import _trail
 from app.services.shema._directory import erase_person
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,14 @@ logger = logging.getLogger(__name__)
 
 async def remove_intercessor(db: AsyncSession, intercessor_id: str, *, actor: User) -> None:
     """Erase one contact and everything recorded about them."""
-    await erase_person(db, intercessor_id)
+    await _trail.around(
+        db,
+        lambda: erase_person(db, intercessor_id),
+        actor=actor,
+        subject=ChangeSubject.INTERCESSOR,
+        action=ChangeAction.REMOVED,
+        subject_id=intercessor_id,
+    )
 
     logger.info(
         "shema intercessor erased",

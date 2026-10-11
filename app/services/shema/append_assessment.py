@@ -67,7 +67,7 @@ including ``prayer_requests``, whose one reader is ``_consent.py`` — are appli
 for it to see. They pass through ``_consent.request_written`` on the way, which withdraws an
 authorization a new request arrived without — the wizard sends both together, so that path keeps
 what the mentor stated (BE-09). A reading that takes the authorization back erases the request
-from the archived Pulses too (``_consent.withdraws_authorization``, OBT-561), as a save does.
+from the archived Pulses too (``_consent.withdrawn_request``, OBT-561), as a save does.
 
 **The pastoral escalation is stored and never derived.** FE-44 §5.9 is explicit that the
 suggestion is made with its reasons and never applied — ``needsPastoralIntervention`` stays
@@ -89,12 +89,12 @@ from app.db.models.shema_health import ShemaHealthAssessment
 from app.models.shema_health import RECORD_FIELDS, ShemaHealthAssessmentSubmission
 from app.models.shema_privacy import ShemaReader
 from app.services.shema import _audit
-from app.services.shema._consent import request_written, withdraws_authorization
+from app.services.shema._consent import request_written, withdrawn_request
 from app.services.shema._health_audience import require_files_assessments
 from app.services.shema._health_notice import entered_critical, notify_critical
 from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
-from app.services.shema._submission_archive import erase_shared_requests
+from app.services.shema._submission_archive import erase_withdrawn_request
 from app.utils.shema_derivations import OverallHealth, overall_of
 from app.utils.shema_health_questions import CURRENT_QUESTION_SET, DIMENSIONS
 
@@ -287,11 +287,11 @@ async def append_assessment(
         for column in RECORD_FIELDS
         if column in payload.model_fields_set
     }
-    withdrawn = withdraws_authorization(project, sent)
+    withdrawn = withdrawn_request(project, sent)
     for column, value in request_written(project, sent).items():
         setattr(project, column, value)
-    if withdrawn:
-        await erase_shared_requests(db, project, user=user)
+    if withdrawn is not None:
+        await erase_withdrawn_request(db, project, withdrawn, user=user)
 
     version = await _bump_version(db, project)
     project.version = version

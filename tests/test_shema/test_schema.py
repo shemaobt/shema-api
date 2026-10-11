@@ -166,6 +166,11 @@ ADDED_BY_THE_SCHEMA = (
     #: OBT-560: the name every reader but coordination reads for a sensitive project. Not a key
     #: of FE-44's contract — the server's answer to a privacy residue the contract predates.
     "public_language_name",
+    #: OBT-575: the coordination's release of a sensitive project's prayer request — the team's
+    #: text it was given for and the text that leaves. Not a key of the contract: the review is
+    #: the server's, and no record read or write carries either.
+    "prayer_released_from",
+    "prayer_released_text",
 )
 
 #: FE-44 §5.1's own two numbers. The table's column count is derived from them, not equal to

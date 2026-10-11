@@ -56,8 +56,12 @@ raises it. The prayer request has the same two answers from its own owner (BE-09
 ``_consent.refuse_prayer_decisions`` refuses a request or a need's share to a reader outside its
 audience — on a create too, where only the authorization is refused — and
 ``_consent.request_written`` withdraws an authorization the new request did not restate.
-A save that takes the authorization back (``_consent.withdraws_authorization``) erases the request
-from the archived Pulses that shared it too, in the same transaction (OBT-561).
+A save that takes the authorization back (``_consent.withdrawn_request``) erases the request
+from the archived Pulses that shared it in the same words too, in the same transaction (OBT-561,
+OBT-576). A save that leaves a sensitive project's request waiting for the coordination, which
+was not waiting before, tells the coordination of the region in the same transaction
+(``_prayer_review.notify_review``, OBT-575) — the Pulse's apply included, which writes through
+here.
 """
 
 from __future__ import annotations
@@ -79,13 +83,15 @@ from app.services.shema import _audit, _needs
 from app.services.shema._audit import ChangesSince, FieldChange
 from app.services.shema._consent import (
     authorized_on_create,
+    awaiting_ids,
     refuse_prayer_decisions,
     request_written,
     undecidable_shares,
     unreadable_request_writes,
-    withdraws_authorization,
+    withdrawn_request,
 )
 from app.services.shema._health_audience import refuse_unread_health_writes
+from app.services.shema._prayer_review import notify_review
 from app.services.shema._progress import (
     Aggregates,
     ProgressSource,
@@ -94,9 +100,11 @@ from app.services.shema._progress import (
 )
 from app.services.shema._redaction import (
     NEED_TEXT,
+    STORY_PLACE,
     derive_region,
     log_reference,
     need_text_as_written,
+    story_text_as_written,
     unwritable_fields,
 )
 from app.services.shema._scope import (
@@ -106,7 +114,7 @@ from app.services.shema._scope import (
     refuse_out_of_scope,
     visible_projects,
 )
-from app.services.shema._submission_archive import erase_shared_requests
+from app.services.shema._submission_archive import erase_withdrawn_request
 from app.utils.shema_derivations import completion_date_after
 
 logger = logging.getLogger(__name__)
@@ -310,7 +318,10 @@ def _as_the_reader_may_write(
     descriptions as ``""`` sends them back that way on every save of the needs, and
     ``_redaction.need_text_as_written`` drops that echo from the payload — the answer is the
     payload this function returns — and names a description typed over one the reader cannot
-    see, which is refused with the rest.
+    see, which is refused with the rest. **The story table's recording places the same way**
+    (OBT-573, ``_redaction.story_text_as_written``): the progress tab sends the table whole, so
+    a place handed as ``""`` and sent back is the stored one again, and one typed over it is
+    refused.
     """
     reader = readership.reader_of(project.region_key)
     refused = unwritable_fields(project, payload.model_fields_set, reader)
@@ -319,6 +330,10 @@ def _as_the_reader_may_write(
         written, typed = need_text_as_written(project, rows, reader)
         refused = [*refused, NEED_TEXT] if typed else refused
         payload = payload.model_copy(update={"needs_items": written})
+    if payload.story_progress is not None:
+        stories, typed = story_text_as_written(project, payload.story_progress, reader)
+        refused = [*refused, STORY_PLACE] if typed else refused
+        payload = payload.model_copy(update={"story_progress": stories})
     if not refused:
         return payload
     logger.warning(
@@ -463,7 +478,8 @@ async def save_project(
         raise await _conflict(db, project, expected_version, readership)
 
     previous = _aggregates(before)
-    withdrawn = withdraws_authorization(
+    waiting = await awaiting_ids(db, project)
+    withdrawn = withdrawn_request(
         project, {name: getattr(payload, name) for name in payload.model_fields_set}
     )
     for column in changed:
@@ -498,8 +514,11 @@ async def save_project(
         user=user,
     )
     await _needs.notify_urgent(db, project, urgent, actor=user)
-    if withdrawn:
-        await erase_shared_requests(db, project, user=user)
+    await notify_review(
+        db, project, before=waiting, now=await awaiting_ids(db, project), actor=user
+    )
+    if withdrawn is not None:
+        await erase_withdrawn_request(db, project, withdrawn, user=user)
     await _settle(db, project, commit=commit)
     return project
 
@@ -641,5 +660,8 @@ async def create_project(
         user=user,
     )
     await _needs.notify_urgent(db, project, urgent, actor=user)
+    await notify_review(
+        db, project, before=frozenset(), now=await awaiting_ids(db, project), actor=user
+    )
     await _settle(db, project, commit=commit)
     return project
