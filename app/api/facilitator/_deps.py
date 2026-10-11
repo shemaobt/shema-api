@@ -12,12 +12,13 @@ recognise by its spelling is a gate the next route can miss.
 
 from typing import Annotated
 
-from app.core.access_control import require_role
+from app.core.access_control import require_any_role, require_role
 from app.db.models.auth import User
 
 APP_KEY = "internalization-room"
 
 facilitator_role = require_role(APP_KEY, "facilitator")
+reader_role = require_any_role(APP_KEY, "facilitator", "consultant")
 
 #: The person at the Desk, and also the person on the other end of a raised hand: the room's
 #: facilitator routes annotate with this same object rather than calling ``require_role`` a
@@ -31,3 +32,7 @@ facilitator_role = require_role(APP_KEY, "facilitator")
 #: Platform admins pass, since they already hold every other power here and locking them out
 #: would leave nobody able to investigate an installation.
 FacilitatorUser = Annotated[User, facilitator_role]
+
+#: Whoever may read the Desk: a facilitator, or a consultant, who reads every team and writes
+#: nothing (ADR 0058). Every read route annotates with it; every write keeps ``FacilitatorUser``.
+ReaderUser = Annotated[User, reader_role]

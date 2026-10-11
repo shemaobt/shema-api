@@ -18,12 +18,16 @@ from sqlalchemy.orm import InstrumentedAttribute
 from app.core.enums import ProjectRole
 from app.db.models.auth import User
 from app.db.models.project import ProjectUserAccess
+from app.services.authorization.roles_on import roles_on
 from app.services.project.list_facilitated_project_ids import list_facilitated_project_ids
 
 #: One sentence for a team that is not yours and for a team that does not exist. A caller
 #: who could tell them apart could map an installation by asking about ids, and closing that
 #: at one door and leaving it open at another closes nothing.
 TEAM_NOT_FOUND = "Team not found"
+
+ROOM_APP_KEY = "internalization-room"
+CONSULTANT = (ROOM_APP_KEY, "consultant")
 
 
 def facilitated_projects(user: User) -> Select | None:
@@ -84,3 +88,22 @@ def confined_to(
         return column.is_not(None)
 
     return column.in_(ids)
+
+
+async def reads_every_team(db: AsyncSession, user: User) -> bool:
+    """A platform admin or a consultant (ADR 0058): the reads' scope is every team."""
+    return user.is_platform_admin or CONSULTANT in await roles_on(db, user, ROOM_APP_KEY)
+
+
+async def readable_projects(db: AsyncSession, user: User) -> Select | None:
+    """``facilitated_projects`` for a read: ``None`` for whoever reads every team."""
+    if await reads_every_team(db, user):
+        return None
+    return facilitated_projects(user)
+
+
+async def readable_project_ids(db: AsyncSession, user: User) -> list[str] | None:
+    """``facilitated_project_ids`` for a read: ``None`` for whoever reads every team."""
+    if await reads_every_team(db, user):
+        return None
+    return await facilitated_project_ids(db, user)

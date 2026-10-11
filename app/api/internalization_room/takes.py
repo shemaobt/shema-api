@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
@@ -22,7 +22,7 @@ from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.takes import (
     listen_url,
     store_take,
-    take_for_facilitator,
+    take_for_reader,
     take_in_session,
     takes_of,
 )
@@ -161,14 +161,14 @@ async def room_listens_to_take(
 
 @router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)
 async def facilitator_takes(
-    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> TakesResponse:
     """What a session recorded, for the person who will listen to it.
 
     A facilitator signs in; the team never does. So this carries no device credential — the
     two audiences never share a route.
     """
-    session = await room.get_session_for_facilitator(db, user, session_id)
+    session = await room.get_session_for_reader(db, user, session_id)
     return TakesResponse(
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
@@ -182,7 +182,7 @@ async def facilitator_takes(
     response_model=None,
 )
 async def listen_to_take(
-    take_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    take_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> RedirectResponse:
     """Redirect to a short-lived signed URL: storage serves the bytes.
 
@@ -190,6 +190,6 @@ async def listen_to_take(
     minutes of audio through the application server buys nothing over letting the bucket
     do it — the same reason the sound necklace redirects rather than proxies.
     """
-    take = await take_for_facilitator(db, user, take_id)
+    take = await take_for_reader(db, user, take_id)
     await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)

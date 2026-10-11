@@ -65,8 +65,9 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.internalization_room.validated_turn import TurnOutcome, _the_validators_words
-from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
+from app.services.project.facilitated_scope import confined_to, readable_project_ids
 from app.services.project.facilitates_project import facilitates_project
+from app.services.project.reads_project import reads_project
 
 logger = logging.getLogger(__name__)
 
@@ -430,6 +431,17 @@ async def get_session_for_facilitator(db: AsyncSession, user: User, session_id: 
     """
     session = await get_session(db, session_id)
     if session.project_id is None or not await facilitates_project(db, user, session.project_id):
+        raise NotFoundError(_no_such_session(session_id))
+    return session
+
+
+async def get_session_for_reader(db: AsyncSession, user: User, session_id: str) -> IRSession:
+    """``get_session_for_facilitator`` for a read: a consultant reads every team's session.
+
+    Read by ``get_session``, so an archived session is still served by its id (ADR 0052).
+    """
+    session = await get_session(db, session_id)
+    if session.project_id is None or not await reads_project(db, user, session.project_id):
         raise NotFoundError(_no_such_session(session_id))
     return session
 
@@ -855,7 +867,7 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     release route. Any other session still under way is waiting on the team, not on the
     facilitator.
 
-    **Scoped to the teams the caller facilitates, and a team is a project.** The route this
+    **Scoped to the teams the caller reads, and a team is a project.** The route this
     feeds was written to make halted rooms discoverable, on the argument that an id was
     never what kept the session routes shut — obscurity was not the access rule. That was
     true where it was written and stopped being true here: both routes addressed by a
@@ -892,7 +904,7 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
                 halt.a_warning_stands(),
             ),
             live(),
-            confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
+            confined_to(IRSession.project_id, await readable_project_ids(db, user)),
         )
         .order_by(IRSession.updated_at.desc())
     )

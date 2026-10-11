@@ -76,6 +76,10 @@ class FacilitatorTeamView(BaseModel):
     open_raised_hands: int
     device_count: int
     last_activity_at: datetime | None
+    #: Whether a write by this reader on this team would be accepted: a platform admin on every
+    #: team, anyone else on the teams they facilitate. A consultant reads every team and
+    #: facilitates none of them through that role, so the Desk hides the controls (ADR 0058).
+    facilitates: bool
 
 
 class FacilitatorTeamDetail(FacilitatorTeamView):

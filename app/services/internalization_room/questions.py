@@ -37,9 +37,10 @@ from app.services.platform.tts import SpeechStore
 from app.services.project.facilitated_scope import (
     TEAM_NOT_FOUND,
     confined_to,
-    facilitated_project_ids,
+    readable_project_ids,
 )
 from app.services.project.facilitates_project import facilitates_project
+from app.services.project.reads_project import reads_project
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,14 @@ async def get_question_for_facilitator(
     return question
 
 
+async def get_question_for_reader(db: AsyncSession, user: User, question_id: str) -> IRQuestion:
+    """``get_question_for_facilitator`` for a read: a consultant reads every team's question."""
+    question = await get_question(db, question_id)
+    if question.project_id is None or not await reads_project(db, user, question.project_id):
+        raise NotFoundError(_no_such_question(question_id))
+    return question
+
+
 async def _question_by_audio_key(db: AsyncSession, key: str) -> IRQuestion | None:
     """The question this key addresses — its own recording or the reply to it — or None.
 
@@ -238,12 +247,12 @@ async def _question_by_audio_key(db: AsyncSession, key: str) -> IRQuestion | Non
     )
 
 
-async def audio_of_a_question_this_facilitator_facilitates(
+async def audio_of_a_question_this_reader_reads(
     db: AsyncSession, user: User, key: str
 ) -> IRQuestion:
-    """The question an audio key belongs to, if the caller facilitates its team.
+    """The question an audio key belongs to, if the caller reads its team.
 
-    The routes that name a question by id are scoped by ``get_question_for_facilitator``.
+    The routes that name a question by id are scoped by ``get_question_for_reader``.
     A key is the other way to name one: it addresses a team's recording or a facilitator's
     spoken reply, and holding the role has never been owning either. Same rule, reached
     from the other direction.
@@ -261,7 +270,7 @@ async def audio_of_a_question_this_facilitator_facilitates(
     found = await _question_by_audio_key(db, key)
     if found is None:
         raise NotFoundError("No such audio")
-    if found.project_id is None or not await facilitates_project(db, user, found.project_id):
+    if found.project_id is None or not await reads_project(db, user, found.project_id):
         raise NotFoundError("No such audio")
     return found
 
@@ -402,11 +411,11 @@ async def inbox_page(
     and low is the honest direction: there is nothing to attribute the row to.
     """
     if team_id is not None:
-        if not await facilitates_project(db, user, team_id):
+        if not await reads_project(db, user, team_id):
             raise NotFoundError(TEAM_NOT_FOUND)
         restriction = IRQuestion.project_id == team_id
     else:
-        restriction = confined_to(IRQuestion.project_id, await facilitated_project_ids(db, user))
+        restriction = confined_to(IRQuestion.project_id, await readable_project_ids(db, user))
 
     page = select(IRQuestion).where(restriction)
     if wanted is not None:
