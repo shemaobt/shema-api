@@ -516,6 +516,7 @@ FILTERING_TEMPLATES = {
     #: full body and looks right from every angle except the caller who should not be in
     #: it. `tests/test_internalization_room_facilitator_sessions.py` holds both halves.
     ("GET", f"{IR}/facilitator/sessions"),
+    ("GET", f"{DESK}/sessions"),
 }
 
 #: Routes that carry nothing of the installation at all: the answer is the same for every

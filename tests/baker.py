@@ -964,6 +964,8 @@ async def keep_a_take(
     *,
     kind: IRTakeKind = IRTakeKind.ENSAIO,
     audio: bytes = b"a equipe gravou",
+    ordinal: int | None = None,
+    pass_number: int | None = None,
 ) -> IRTake:
     """Audio the team recorded, kept the way the room keeps it.
 
@@ -980,6 +982,8 @@ async def keep_a_take(
         kind=kind,
         scope=session.pericope,
         audio=audio,
+        ordinal=ordinal,
+        pass_number=pass_number,
         store=_BucketInMemory(),
     )
 
