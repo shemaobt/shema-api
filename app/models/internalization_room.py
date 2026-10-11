@@ -762,6 +762,9 @@ class FacilitatorHaltedDeviceView(BaseModel):
     """
 
     device_id: str
+    #: The team the tablet is linked to. A consultant reads every team's halted tablets, and
+    #: the Desk offers "attended" only on a team the reader facilitates (ADR 0058).
+    project_id: str
     label: str | None
     since: datetime
     #: When a facilitator said they went to this tablet, and who (ENG-792).

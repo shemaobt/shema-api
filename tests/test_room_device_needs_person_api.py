@@ -173,6 +173,16 @@ async def test_a_tablet_that_halts_is_shown_to_the_facilitator_of_its_own_team(c
     assert queued[0]["since"] == moments[stopped.device_id]
 
 
+async def test_a_halted_tablet_names_its_team(client, db_session):
+    team = await a_team(db_session, code="eqn")
+    stopped = await a_tablet(db_session, team)
+    await halt(client, stopped)
+
+    queued = await queued_devices(client, team)
+
+    assert [row["project_id"] for row in queued] == [team.project.id]
+
+
 # Case 2 — and nobody else's.
 
 

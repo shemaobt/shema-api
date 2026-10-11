@@ -542,9 +542,9 @@ async def facilitator_sessions(
 
     The moment is bound before it is read because the column is nullable and this list is
     the rows where it is not: the binding is the type system reading what the query already
-    guarantees, not a filter with anything to drop. The team id on the sessions half is bound
+    guarantees, not a filter with anything to drop. The team id on both halves is bound
     the same way and for the same reason — `confined_to` excludes a null project under either
-    of its two shapes, so the `if` there drops nothing either.
+    of its two shapes, so the `if`s there drop nothing either.
 
     **`team_name` costs one more statement, and it is the field that makes the queue
     usable** (ENG-609). This is the one facilitator listing that crosses teams: every other
@@ -602,6 +602,7 @@ async def facilitator_sessions(
         devices=[
             FacilitatorHaltedDeviceView(
                 device_id=device.id,
+                project_id=team,
                 label=device.label,
                 since=as_utc(halted),
                 attended_at=as_utc(device.attended_at) if device.attended_at else None,
@@ -609,6 +610,7 @@ async def facilitator_sessions(
             )
             for device in await devices_waiting_on_a_person(db, scope)
             if (halted := device.needs_person_since) is not None
+            and (team := device.project_id) is not None
         ],
     )
 
