@@ -46,7 +46,6 @@ from app.db.models.shema_change_log import ChangeAction, ChangeSubject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeImage, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, SubmissionImport
 from app.services.shema import _trail
-from app.services.shema._consent import newly_shared_request, shared_prayer_text
 from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
 from app.services.shema._media_sharing import pulse_photo
@@ -62,7 +61,6 @@ from app.services.shema._submission_archive import (
     archived_answers,
     bind_intake_image,
 )
-from app.services.shema._submission_notices import notify_shared_request
 from app.services.shema.read_submission import as_received, inbox_name
 from app.services.shema.save_project import save_project
 from app.utils.shema_forms import (
@@ -71,7 +69,6 @@ from app.utils.shema_forms import (
     IMAGE_FIELD,
     PULSE_FORM_TYPE,
     PULSE_KIND,
-    carries_prayer_request,
 )
 
 
@@ -107,7 +104,6 @@ async def _apply(
     *,
     readership: Readership,
     user: User,
-    app_key: str,
     expected_version: int,
     day: date,
 ) -> None:
@@ -119,20 +115,20 @@ async def _apply(
     only flushes and the commit is this function's, so a submission whose answers moved nothing
     is still applied, and saying so is the difference between *done* and *forgotten*.
 
-    **The prayer notice is staged here, between the write and the commit** (OBT-566). This is the
-    moment a request reaches the wall, so the wall's text is read before the write and the
-    record is asked after it whether the wall gained one (``_consent.newly_shared_request``) —
-    the first share included, which the notice at arrival could never see. Only a Pulse that
-    wrote a request announces one: the notice says the Pulse carries it.
+    **The prayer notice is staged by the write, before this commit** (OBT-566). Applying a Pulse
+    is the moment its request reaches the wall, and ``save_project`` asks whether the wall gained
+    one (``_submission_notices.announce_shared_request``) — the first share included, which the
+    notice at arrival could never see, and a Pulse that answered ``rede`` over a blank request,
+    which puts the older one on the wall (Daniel, 10/oct/2026). The apply used to ask it here and
+    only of a Pulse that wrote a request; the record's write asks it of every door now.
 
     The write goes through ``save_project`` as the caller's own, ``readership`` included: an
     import is a person writing the record, and what that person may write is the record's rule
     and not the form's.
     """
-    before = shared_prayer_text(project)
     submission.applied_at = datetime.now(UTC)
     try:
-        written = await save_project(
+        await save_project(
             db,
             scope,
             project.id,
@@ -157,8 +153,6 @@ async def _apply(
             region_key=_trail.region_value(project.region_key),
             fields=("appliedAt",),
         )
-        if carries_prayer_request(answers) and newly_shared_request(written, before):
-            await notify_shared_request(db, written, app_key=app_key)
     except Exception:
         await db.rollback()
         raise
@@ -264,7 +258,6 @@ async def import_submission(
             archived_answers(submission),
             readership=readership,
             user=user,
-            app_key=app_key,
             expected_version=expected_version,
             day=day,
         )
@@ -314,7 +307,6 @@ async def apply_submission(
             archived_answers(submission),
             readership=readership,
             user=user,
-            app_key=app_key,
             expected_version=expected_version,
             day=day,
         )

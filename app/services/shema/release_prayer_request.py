@@ -5,12 +5,11 @@ Pulso."* The release is ``_consent.release_request``'s, the one writer of the co
 this file finds the request inside the caller's coordination and commits.
 
 **The Resource Circle hears of the request here**, when it reaches the wall (OBT-566's rule, moved
-for a sensitive project from the Pulse's apply to this release): the apply put nothing on the wall
-for it to hear of. Only for what the apply would have announced — the project's own request, a
-Pulse brought and shared (``_submission_archive.pulse_shared``), since that notice says the Pulse
-carried one — and only a release that put a team request on the wall which was not on it: the
-coordination editing a request already released is not news to the network, and a request typed
-into the ficha is not announced on any project.
+for a sensitive project from the record's write to this release): the write put nothing on the
+wall for it to hear of. For the project's own request, as on a project nothing withholds, and
+whatever brought it — a Pulse, the ficha, the health wizard (Daniel, 10/oct/2026: every door to
+the wall is announced) — but only a release that put a team request on the wall which was not on
+it: the coordination editing a request already released is not news to the network.
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ from app.services.shema._consent import release_request
 from app.services.shema._prayer_review import refuse_unless_coordination
 from app.services.shema._redaction import log_reference
 from app.services.shema._scope import Readership
-from app.services.shema._submission_archive import pulse_shared
 from app.services.shema._submission_notices import notify_shared_request
 from app.services.shema.get_project import get_project
 
@@ -66,7 +64,7 @@ async def release_prayer_request(
             raise NotFoundError("Need not found")
 
     reached = release_request(project, need, reviewed=payload.reviewed, text=payload.text)
-    if need is None and reached is not None and await pulse_shared(db, project, reached):
+    if need is None and reached is not None:
         await notify_shared_request(db, project, app_key=SHEMA_APP_KEY)
     # The release stores the text and not who gave it, so its author and day are the trail's
     # (OBT-577): the keys only, never the words.

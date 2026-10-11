@@ -16,12 +16,16 @@ coordinator would tell a coordinator in Oceania that a project in Africa reporte
 the collection read leaking one row at a time through a channel nobody audits.
 
 **Two notices, at two moments.** The arrival reaches coordination when the Pulse is archived
-(:func:`notify_submission`). A prayer request inside it reaches the Resource Circle when it
-**reaches the wall** — when a coordinator applies the Pulse and the record is written
-(:func:`notify_shared_request`, OBT-566) — and only if the Pulse **wrote one** and the wall now
-shows a request it did not show before. The second is ``app/services/shema/_consent.py``'s
-question and never this file's (``newly_shared_request``), and *an unauthorized prayer request
-is absent from all four output paths* with notifications as the fourth.
+(:func:`notify_submission`). A prayer request reaches the Resource Circle when it **reaches the
+wall** (:func:`notify_shared_request`, OBT-566) — whatever put it there: an applied Pulse, the
+coordination sharing it on the record, the health wizard, a project no longer flagged sensitive,
+or the coordination's release of a sensitive one (OBT-575). Daniel, 10/oct/2026, on the two
+doors OBT-566 left silent — a Pulse that answers ``rede`` over a blank request and so puts the
+older one on the wall, and the coordination setting ``rede`` on the record: *"pode notificar nos
+dois casos"*. *Did the wall gain a request it did not show* is ``app/services/shema/_consent.py``'s
+question and never this file's (``newly_shared_request``), asked by :func:`announce_shared_request`
+around the record's writers, and *an unauthorized prayer request is absent from all four output
+paths* with notifications as the fourth.
 
 **Why at the apply and not at arrival.** At arrival nobody has applied anything, so the record
 still holds the answer the *last* request was given: OBT-554 had the notice ask both the Pulse
@@ -57,6 +61,7 @@ from app.db.models.shema_form import ShemaSubmission
 from app.models.shema_privacy import ShemaReader
 from app.services import authorization_service
 from app.services.notifications import get_shema_app_id
+from app.services.shema._consent import newly_shared_request
 from app.services.shema._project_notices import ProjectNoticeFacts, stage_project_notice
 from app.services.shema._redaction import language_name_for
 from app.services.shema._scope import (
@@ -190,11 +195,11 @@ async def notify_submission(
 
 
 async def notify_shared_request(db: AsyncSession, project: ShemaProject, *, app_key: str) -> None:
-    """Tell the Resource Circle that an applied Pulse put its prayer request on the wall (OBT-566).
+    """Tell the Resource Circle that the project's prayer request is now on the wall (OBT-566).
 
-    Called by the apply, after the record write and inside its transaction, once the Pulse wrote
-    a request and ``_consent.newly_shared_request`` says the wall gained it: the notice lands
-    with the request it announces, or neither does.
+    Called after the write and inside its transaction, once the wall gained the request: the
+    notice lands with the request it announces, or neither does. The words say *on the wall* and
+    not *the Pulse carries*, because a Pulse is one of the doors and not the only one.
     """
     language = _language(project)
     await _tell(
@@ -205,10 +210,24 @@ async def notify_shared_request(db: AsyncSession, project: ShemaProject, *, app_
         event_type=PRAYER_EVENT,
         title=f"Prayer request — {language}",
         body=(
-            f"The Pulse received for {language} carries a prayer request the team has "
-            "shared with the network. Open the project to read it."
+            f"A prayer request for {language} is now on the prayer wall, shared with the "
+            "network. Open the project to read it."
         ),
         facts=ProjectNoticeFacts(project_id=project.id),
         operation="notify_shared_request",
-        nobody="shema submission carried a prayer request and reached nobody",
+        nobody="shema prayer request reached the wall and reached nobody",
     )
+
+
+async def announce_shared_request(
+    db: AsyncSession, project: ShemaProject, *, before: str, app_key: str
+) -> None:
+    """Tell the Resource Circle if the write in hand put the project's request on the wall.
+
+    ``before`` is ``_consent.shared_prayer_text`` read ahead of the write. The writers of the
+    record call this once their columns are set — the record's save and create, the health
+    wizard — so every door to the wall is one question and no door is left silent (Daniel,
+    10/oct/2026). A request already on the wall, or a write that left it as it was, is not news.
+    """
+    if newly_shared_request(project, before):
+        await notify_shared_request(db, project, app_key=app_key)
