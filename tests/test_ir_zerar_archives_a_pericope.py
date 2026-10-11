@@ -51,6 +51,7 @@ from tests.opening_harness import (
     a_scripted_room,
     another_tablet_of,
     desk_routes,
+    desk_sessions_routes,
     the_tablet_opens,
     the_team_speaks,
 )
@@ -109,24 +110,7 @@ async def desk_client(db_session: AsyncSession, per_request):
 
 @pytest.fixture()
 async def desk_sessions_client(db_session: AsyncSession, per_request):
-    from fastapi import FastAPI
-
-    from app.api.facilitator.sessions import facilitator_sessions_router
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
-
-    test_app = FastAPI()
-    test_app.include_router(facilitator_sessions_router, prefix="/api/facilitator/sessions")
-    register_exception_handlers(test_app)
-
-    async def _get_db():
-        async with per_request() as session:
-            yield session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=test_app), base_url="http://test"
-    ) as c:
+    async with desk_sessions_routes(db_session, per_request=per_request) as c:
         yield c
 
 
@@ -786,7 +770,7 @@ async def a_conversation_of_three_guide_lines(
     return session
 
 
-async def the_snapshots_turns(answered: dict[str, Any], session_id: str) -> int:
+def the_snapshots_turns(answered: dict[str, Any], session_id: str) -> int:
     [entry] = [each for each in answered["archive"]["sessions"] if each["session_id"] == session_id]
     return entry["turns"]
 
@@ -800,7 +784,7 @@ async def test_an_archived_sessions_turns_leave_out_the_telling_back_verdicts(
 
     answered = await zerar(client, desk, team.id, P)
 
-    assert await the_snapshots_turns(answered, session.id) == 2
+    assert the_snapshots_turns(answered, session.id) == 2
 
 
 async def test_an_archived_sessions_turns_match_what_the_turns_route_and_the_desk_sessions_route_count(  # noqa: E501
@@ -822,7 +806,7 @@ async def test_an_archived_sessions_turns_match_what_the_turns_route_and_the_des
     assert (
         len(turns_route.json()["turns"]),
         tile["turns"],
-        await the_snapshots_turns(answered, session.id),
+        the_snapshots_turns(answered, session.id),
     ) == (2, 2, 2)
 
 
@@ -835,4 +819,4 @@ async def test_a_session_with_no_telling_back_line_keeps_its_turn_count_in_the_a
 
     answered = await zerar(client, desk, team.id, P)
 
-    assert await the_snapshots_turns(answered, session.id) == 3
+    assert the_snapshots_turns(answered, session.id) == 3
