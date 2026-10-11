@@ -331,7 +331,9 @@ async def test_a_prepared_opening_keeps_its_attempts_while_it_waits_and_on_hand_
 
     await prepare_opening(panorama.id, pericope=P)
     await db_session.refresh(panorama)
-    handed = hand_over(panorama, passage)
+    handed = await hand_over(db_session, panorama, passage)
+    await db_session.refresh(panorama)
+    await db_session.refresh(passage)
 
     assert handed is True
     assert passage.prepared_attempts == attempts

@@ -148,10 +148,12 @@ The overview of the book spoken before the first passage; a session records that
 _Avoid_: introduction
 
 **Prepared opening**:
-The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage. Neither its landing nor its hand-over is the team's activity: the Panorama's `updated_at` stays as it was.
+The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage.
+_Avoid_: ready line, prepared line
 
 **Hand-over**:
 The move of a Prepared opening from the Panorama onto the session of the passage the team opens, once and only to the passage and language it was written for.
+_Avoid_: handing off, transfer
 
 **Book material**:
 What the Panorama voice reads as its standard of truth for one book: the digest of every published passage in story order, then the **Preservation notes**. Built from the vendored canon at its pin, never written by hand.
