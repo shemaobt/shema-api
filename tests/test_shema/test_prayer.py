@@ -853,3 +853,95 @@ async def test_the_wall_reads_the_needs_of_its_own_projects_only(db_session) -> 
     assert authorized == {inside.id: []}
     stored = (await db_session.execute(select(ShemaNeed))).scalars().all()
     assert [row.project_id for row in stored] == [outside.id]
+
+
+# --- every door to the wall is announced (OBT-566, Daniel, 10/oct/2026) ---------------------
+
+
+async def prayer_notices(client, headers) -> int:
+    """How many prayer notices ``headers``' account holds — the Resource Circle's bell."""
+    response = await client.get(f"{PREFIX}/notifications", headers=headers)
+    assert response.status_code == 200, response.text
+    return sum(1 for entry in response.json() if entry["kind"] == "prayer")
+
+
+async def test_the_coordination_sharing_a_request_on_the_ficha_tells_the_circle_once(
+    client, db_session, circle, coordinator
+) -> None:
+    """Case A of Daniel's answer: the request was kept in coordination and the coordination sets
+    ``rede`` on the record, with no Pulse. It reaches the wall, so the circle hears of it — and a
+    later save that leaves the wall as it was is not news."""
+    project = await seed(
+        db_session, "aviso-ficha", text=SHARED, visibility=ShemaPrayerVisibility.COORDENACAO
+    )
+
+    shared = await patch(client, coordinator, project.id, {"prayerVisibility": "rede"})
+    assert shared.status_code == 200, shared.text
+    assert texts(await wall(client, circle)) == {SHARED}
+    assert await prayer_notices(client, circle) == 1
+
+    unrelated = await patch(client, coordinator, project.id, {"team": "Base Nova"}, version=2)
+    assert unrelated.status_code == 200, unrelated.text
+    assert await prayer_notices(client, circle) == 1
+
+
+async def test_a_record_filed_with_its_request_shared_tells_the_circle(
+    client, circle, coordinator
+) -> None:
+    """A create is a write that can put a request on the wall too, and it is announced the same."""
+    created = await client.post(
+        PROJECTS,
+        json={**CREATE, "prayerRequests": SHARED, "prayerVisibility": "rede"},
+        headers=coordinator,
+    )
+
+    assert created.status_code == 201, created.text
+    assert texts(await wall(client, circle)) == {SHARED}
+    assert await prayer_notices(client, circle) == 1
+
+
+async def test_a_health_reading_that_shares_the_request_tells_the_circle(
+    client, db_session, shema_app, circle
+) -> None:
+    """The wizard writes the request and its visibility beside the reading — another door."""
+    mentor = await person(db_session, shema_app, "obtLab")
+    project = await seed(
+        db_session, "aviso-saude", text=SHARED, visibility=ShemaPrayerVisibility.COORDENACAO
+    )
+
+    stated = await client.post(
+        f"{PROJECTS}/{project.id}/health-assessments",
+        json={
+            "date": "2026-09-10",
+            "emotional": "boa",
+            "questionSetVersion": 1,
+            "prayerRequests": SHARED,
+            "prayerVisibility": "rede",
+        },
+        headers=mentor,
+    )
+
+    assert stated.status_code == 201, stated.text
+    assert texts(await wall(client, circle)) == {SHARED}
+    assert await prayer_notices(client, circle) == 1
+
+
+async def test_a_project_no_longer_sensitive_announces_the_request_it_puts_on_the_wall(
+    client, db_session, circle, coordinator
+) -> None:
+    """A sensitive project's shared request waits for the release (OBT-575); once the flag is
+    lowered nothing withholds it, it reaches the wall with that save, and the circle is told."""
+    project = await seed(
+        db_session,
+        "aviso-sensivel",
+        text=SHARED,
+        visibility=ShemaPrayerVisibility.REDE,
+        sensitive=True,
+    )
+    assert await wall(client, circle) == []
+
+    lowered = await patch(client, coordinator, project.id, {"sensitiveCountry": False})
+
+    assert lowered.status_code == 200, lowered.text
+    assert texts(await wall(client, circle)) == {SHARED}
+    assert await prayer_notices(client, circle) == 1

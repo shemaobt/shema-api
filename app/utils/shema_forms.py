@@ -40,7 +40,6 @@ from __future__ import annotations
 import enum
 import hashlib
 import json
-from collections.abc import Mapping
 from typing import Any, Final, NamedTuple
 
 from pydantic import AliasGenerator, BaseModel, ConfigDict, Field
@@ -339,16 +338,3 @@ PRAYER_VISIBILITY_FIELD: Final = "prayerVisibility"
 #: above is: the archive and the progress trail must carry the same name, and two call sites
 #: spelling it themselves is how they stop.
 SUBMITTED_BY_FIELD: Final = "submittedBy"
-
-
-def carries_prayer_request(answers: Mapping[str, Any]) -> bool:
-    """Whether this submission actually wrote a prayer request.
-
-    Asked separately from *may it travel*, which is
-    ``app/services/shema/_consent.py``'s question — about the submission's own answer and the
-    project's — and is not this module's to answer. Both have to be true before anything reaches
-    the Resource Circle, and keeping them apart is what stops a notice firing for a project that
-    consented last year about a form that said nothing this month.
-    """
-    answer = answers.get(PRAYER_FIELD)
-    return isinstance(answer, str) and answer.strip() != ""

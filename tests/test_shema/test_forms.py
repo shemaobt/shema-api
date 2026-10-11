@@ -692,18 +692,27 @@ async def test_a_request_already_on_the_wall_is_not_announced_again(
     assert await told(db_session, PRAYER_EVENT) == set()
 
 
-async def test_a_pulse_that_wrote_no_request_announces_none(
-    client, db_session, shema_app, headers, coordinator, project
+@pytest.mark.parametrize("blank", [None, ""], ids=["unanswered", "blank"])
+async def test_a_pulse_that_only_says_rede_announces_the_older_request_it_puts_on_the_wall(
+    client, db_session, shema_app, headers, coordinator, project, blank
 ) -> None:
-    """The notice says *the Pulse received carries a prayer request*. A Pulse that only answered
-    the visibility carried none, so it announces nothing, even where its ``rede`` puts the
-    record's older request on the wall — that case is named in the PR, not decided here."""
-    await a_circle(db_session, shema_app)
+    """Case B of Daniel's answer (10/oct/2026, *"pode notificar nos dois casos"*): the Pulse wrote
+    no request and answered ``rede``, so the record's older request — kept in coordination until
+    now — reaches the wall with the apply, and the circle hears of it as of any request that does.
+    It used to announce nothing, because the notice said *the Pulse carries a request*."""
+    circle = await a_circle(db_session, shema_app)
     await on_record(db_session, project, "Orem pela colheita.", None)
+    pulse = (
+        {"prayerVisibility": "rede"}
+        if blank is None
+        else {"prayerRequest": blank, "prayerVisibility": "rede"}
+    )
 
-    await apply_pulse(client, db_session, headers, "link", prayerVisibility="rede")
+    await apply_pulse(client, db_session, headers, "link", **pulse)
 
-    assert await told(db_session, PRAYER_EVENT) == set()
+    assert await told(db_session, PRAYER_EVENT) == {circle.id}
+    wall = await client.get(f"{PREFIX}/prayer/requests", headers=headers)
+    assert "Orem pela colheita." in wall.text
 
 
 async def test_a_new_request_on_a_shared_project_is_announced_when_applied(

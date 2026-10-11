@@ -381,7 +381,7 @@ def release_request(
     project nothing withholds (its requests never wait), a request the team has not authorized
     or has taken back, or one with no text. Answers the team's text when the release put on the
     wall a request that was not on it, and ``None`` for a coordination's second edit of one — the
-    Resource Circle's notice (OBT-566) is for a request, and the caller asks where it came from.
+    Resource Circle's notice (OBT-566) is for a request reaching the wall, not for its rewording.
     """
     if not is_withheld(project):
         raise ConflictError("only a sensitive project's prayer request waits for the coordination")
@@ -616,13 +616,15 @@ def need_written(need: ShemaNeed, sent: Mapping[str, Any]) -> dict[str, Any]:
 def newly_shared_request(project: ShemaProject, before: str) -> bool:
     """Whether the record now shares a request it did not share — the prayer notice's gate.
 
-    Asked **after** a coordinator applied a Pulse (OBT-566), of the record as written, against
-    ``before`` — :func:`shared_prayer_text` read just ahead of that write. The record is the one
-    truth by then: :func:`request_written` has already given the Pulse's answer to the text it
-    came with, so a new text without ``rede`` left the wall rather than borrowing last month's
-    authorization, and the wall shows exactly what the network may now read. *Now on the wall
-    and not before* is a request the Resource Circle has not heard of — the first share above
-    all, which the notice at arrival, before anybody applied anything, could never see.
+    Asked **after** a write of the record (OBT-566) — a save, a create, an applied Pulse, a health
+    reading — of the record as written, against ``before``: :func:`shared_prayer_text` read just
+    ahead of that write. The record is the one truth by then: :func:`request_written` has already
+    given the write's answer to the text it came with, so a new text without ``rede`` left the
+    wall rather than borrowing last month's authorization, and the wall shows exactly what the
+    network may now read. *Now on the wall and not before* is a request the Resource Circle has
+    not heard of — the first share above all, which the notice at arrival, before anybody applied
+    anything, could never see; and, since Daniel's answer of 10/oct/2026, an older request a
+    Pulse's ``rede`` or the coordination's put on the wall, which no Pulse wrote this month.
 
     **The same request sent again is not news**, and neither is a Pulse that left the wall as it
     was. And the link alone never reaches this: its answer is archived and waits for a

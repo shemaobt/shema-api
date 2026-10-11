@@ -61,7 +61,10 @@ from the archived Pulses that shared it in the same words too, in the same trans
 OBT-576). A save that leaves a sensitive project's request waiting for the coordination, which
 was not waiting before, tells the coordination of the region in the same transaction
 (``_prayer_review.notify_review``, OBT-575) — the Pulse's apply included, which writes through
-here.
+here. A save or a create that puts the request on the wall tells the Resource Circle in the same
+transaction (``_submission_notices.announce_shared_request``, OBT-566): the coordination sharing it
+on the record, a Pulse whose ``rede`` puts the older request on the wall, a project no longer
+flagged sensitive — Daniel, 10/oct/2026, *"pode notificar nos dois casos"*.
 """
 
 from __future__ import annotations
@@ -79,6 +82,7 @@ from app.core.exceptions import AuthorizationError, ConflictError, ValidationErr
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
+from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.shema import _audit, _needs
 from app.services.shema._audit import ChangesSince, FieldChange
 from app.services.shema._consent import (
@@ -86,6 +90,7 @@ from app.services.shema._consent import (
     awaiting_ids,
     refuse_prayer_decisions,
     request_written,
+    shared_prayer_text,
     undecidable_shares,
     unreadable_request_writes,
     withdrawn_request,
@@ -115,6 +120,7 @@ from app.services.shema._scope import (
     visible_projects,
 )
 from app.services.shema._submission_archive import erase_withdrawn_request
+from app.services.shema._submission_notices import announce_shared_request
 from app.utils.shema_derivations import completion_date_after
 
 logger = logging.getLogger(__name__)
@@ -479,6 +485,7 @@ async def save_project(
 
     previous = _aggregates(before)
     waiting = await awaiting_ids(db, project)
+    shared = shared_prayer_text(project)
     withdrawn = withdrawn_request(
         project, {name: getattr(payload, name) for name in payload.model_fields_set}
     )
@@ -517,6 +524,7 @@ async def save_project(
     await notify_review(
         db, project, before=waiting, now=await awaiting_ids(db, project), actor=user
     )
+    await announce_shared_request(db, project, before=shared, app_key=SHEMA_APP_KEY)
     if withdrawn is not None:
         await erase_withdrawn_request(db, project, withdrawn, user=user)
     await _settle(db, project, commit=commit)
@@ -663,5 +671,6 @@ async def create_project(
     await notify_review(
         db, project, before=frozenset(), now=await awaiting_ids(db, project), actor=user
     )
+    await announce_shared_request(db, project, before="", app_key=SHEMA_APP_KEY)
     await _settle(db, project, commit=commit)
     return project

@@ -348,7 +348,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_scope.py` | BE-03 **· built**; OBT-524; OBT-528 | Which projects a caller reaches, from role **and** region — and, since OBT-524, from a live project membership (`member_projects`, `roster_projects`, `RosterReach`, §6.9) — whose one statement, `live_membership_ids`, is public since BE-19 (OBT-520), because the resource-request form reads the same fact. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. **OBT-528:** `readership` — who reads the truth of a sensitive place, per region — in a function of its own; `visible_projects` untouched. §6.4. **BE-09:** `Readership.withheld_prayer`, whether the caller reads a request nobody authorized — `_consent.py`'s rule, set by `_deps._reading`. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. **OBT-528:** the reader (`ShemaReader`, `read_by`), `SessionShape` with `readAs`, and the write vocabularies. |
 | `app/services/shema/_redaction.py` | **BE-04, built**; OBT-528 | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text` — the last two by reader since OBT-528 — and `unwritable_fields`, the write's question; since BE-14, `never_lowered`, the import's one-way rule on the flag. The only reader of the guarded columns in the two `shema` packages. §6.4. |
-| `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to. OBT-566: `newly_shared_request`, the prayer notice's gate — asked after an applied Pulse is written, whether the wall now shows a request it did not show before. |
+| `app/services/shema/_consent.py` | **BE-04, built**; BE-09 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. BE-09: `authorized_requests` / `authorized_requests_by_project`, the one assembly of what may leave, which the wall, the Pulse and BE-14's export read; `PRAYER_AUDIENCE`, who reads a request nobody authorized; `request_written` / `need_written`, what an authorization is attached to. OBT-566: `newly_shared_request`, the prayer notice's gate — asked after every write of the record (OBT-566), whether the wall now shows a request it did not show before. |
 | `app/api/shema/members.py` | **OBT-524, built** | A project's roster and `/me/projects` behind the PME's door; the Admin's add and removal behind the app gate. §6.9. |
 | `app/services/shema/_roster.py` | **OBT-524, built** | The live row of an account on a project, and the `ProjectMember` shape one row leaves in. The two writers (`add_project_member`, `remove_project_member`) and the two reads (`list_project_members`, `list_my_projects`) are one file each beside it. |
 | `app/db/models/shema_project_member.py`, `app/models/shema_project_member.py` | **OBT-524, built** | `shema_project_members` — one live row per account and project by a partial unique index; removal marks, never deletes — and `ProjectMember` / `ProjectRef` on the wire. |
@@ -908,19 +908,26 @@ behaviour on it.
 >   description is rewritten without `prayerShared` is unshared (`need_written`). Stating it keeps
 >   it: the health wizard sends both, and the console's consent control sits beside the text. The
 >   media rule, *replacing the artifact resets the decision*, applied to the request. **The prayer
->   notice is emitted when a coordinator applies the Pulse** (OBT-566), on either door — the
->   link's inbox entry applied, or an import filed and applied in one call — after the record is
->   written and in the same transaction: `_submission_notices.notify_shared_request` tells the
->   Resource Circle of the region when the Pulse wrote a request **and** the wall now shows a
->   request it did not show before that write (`_consent.newly_shared_request`, the wall's text
->   read before and after). The first share is announced at that moment, which the notice at
->   arrival never was (OBT-554 had it ask, before anybody applied anything, both the Pulse and
->   the record for `rede`, and the record says `rede` only once that Pulse is applied). A request
->   already on the wall sent again is not announced twice; a new text with `rede` over a shared
->   project is a new request on the wall and is. A Pulse that wrote a request without `rede` — a
->   new text, `coordenacao`, the same text with no answer over an unshared project — announces
->   nothing, whatever the project said before. **At arrival only coordination is told**, and a
->   leader claiming `rede` through the link reaches nobody until a coordinator applies it.
+>   notice is emitted when the project's request reaches the wall** (OBT-566), whatever wrote it
+>   there, after the record is written and in the same transaction:
+>   `_submission_notices.announce_shared_request` tells the Resource Circle of the region when the
+>   wall now shows a request it did not show before that write (`_consent.newly_shared_request`,
+>   the wall's text read before and after). It is asked by every writer of the record —
+>   `save_project` (a ficha save, an applied Pulse on either door, a project no longer flagged
+>   sensitive), `create_project` and `append_assessment` — and by the release of a sensitive one
+>   (OBT-575). OBT-566 first asked it only at the apply and only of a Pulse that **wrote** a
+>   request; Daniel, 10/oct/2026, on the two doors that left silent — a Pulse answering `rede` over
+>   a blank request, which puts the older one on the wall, and the coordination setting `rede` on
+>   the record: *"pode notificar nos dois casos"*. The first share is announced at that moment,
+>   which the notice at arrival never was (OBT-554 had it ask, before anybody applied anything,
+>   both the Pulse and the record for `rede`, and the record says `rede` only once that Pulse is
+>   applied). A request already on the wall sent again is not announced twice; a new text with
+>   `rede` over a shared project is a new request on the wall and is. A write that leaves the wall
+>   as it was — a Pulse with a new text and no `rede`, `coordenacao`, an unrelated field —
+>   announces nothing. The file import of projects cannot put a request on the wall (it drops
+>   `prayerVisibility` and never lowers the flag), so it announces nothing either. **At arrival
+>   only coordination is told**, and a leader claiming `rede` through the link reaches nobody until
+>   a coordinator applies it.
 > - **Who reads a request nobody authorized is the health assessment's audience**
 >   (`PRAYER_AUDIENCE = HEALTH_AUDIENCE`): `coordinator` and `obtLab` (and `globalStrategist`, until OBT-572) in their
 >   scope, and an installation admin. The request is raised in the assessment and kept on the
@@ -2204,9 +2211,9 @@ everything — because the wall and the Pulse reach intercessors outside the sys
 4. **Who is told.** A write that leaves a request waiting which was not — the Pulse applied with
    `rede`, a need shared, a new text, a project flagged sensitive — tells the region's
    `coordinator` holders (`prayerReview`, a project kind the PME words), not the writer. The
-   Resource Circle's notice of OBT-566 moves, for a sensitive project, from the apply to the
-   release that puts the project's own request on the wall; editing one already released is not
-   news.
+   Resource Circle's notice of OBT-566 moves, for a sensitive project, from the write to the
+   release that puts the project's own request on the wall — whatever brought the request, a
+   Pulse or the ficha (Daniel, 10/oct/2026); editing one already released is not news.
 
 **The five questions the issue left open, as answered in the pull request (Levi, 9/oct/2026,
 for Daniel to approve):** (1) the coordination is told, in its reader's language through the
