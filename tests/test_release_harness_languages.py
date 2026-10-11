@@ -22,7 +22,7 @@ async def test_two_teams_whose_facilitators_share_an_email_prefix_each_have_thei
     assert len(codes) == len(set(codes)) == 2
 
 
-async def test_a_team_built_with_an_explicit_language_code_keeps_that_code(
+async def test_a_language_built_with_an_explicit_code_keeps_that_code(
     db_session: AsyncSession,
 ) -> None:
     language = await a_language(db_session, code="xyz")

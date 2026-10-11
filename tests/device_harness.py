@@ -81,13 +81,13 @@ async def a_linked_tablet(
     )
 
 
-_language_codes = itertools.count(36**2)
+_BASE36 = string.digits + string.ascii_lowercase
+_language_codes = itertools.count()
 
 
 def _next_language_code() -> str:
     number = next(_language_codes)
-    digits = string.digits + string.ascii_lowercase
-    return "".join(digits[(number // 36**place) % 36] for place in (2, 1, 0))
+    return "".join(_BASE36[(number // 36**place) % 36] for place in (2, 1, 0))
 
 
 async def a_language(
