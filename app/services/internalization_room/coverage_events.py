@@ -269,9 +269,9 @@ async def necklaces_of(
     would walk a bead backwards on the newer card.
 
     Scoped by project **and** passage, for the reason an element key is the canon's: two teams
-    working Ruth both carry ``being:B3``. Both scopes come free here — the caller hands over
-    one team's sessions and each carries its own pericope — which is also why this needs no
-    query beyond the one it already makes.
+    working Ruth both carry ``being:B3``. Both scopes come free here — each session carries its
+    own team and its own pericope, so one call folds one team's history or a page spanning many
+    teams alike — which is also why this needs no query beyond the one it already makes.
 
     A panorama has no spine and no coverage: it prepares the team to enter the book and asks
     no retelling of them. It is answered with nothing rather than refused, because a panorama
@@ -303,7 +303,7 @@ async def necklaces_of(
         stamped = as_utc(at)
         ended[session_id] = max(ended.get(session_id, stamped), stamped)
 
-    for pericope, conversations in _by_passage(sessions).items():
+    for (_team, pericope), conversations in _by_passage(sessions).items():
         if is_panorama(pericope):
             continue
         standing: dict[str, int] = {}
@@ -333,16 +333,16 @@ def _last_word(session: IRSession, ended: dict[str, datetime]) -> tuple[datetime
     return (ended.get(session.id, as_utc(session.created_at)), session.id)
 
 
-def _by_passage(sessions: Sequence[IRSession]) -> dict[str, list[IRSession]]:
-    """One team's conversations, grouped by the passage they were about.
+def _by_passage(sessions: Sequence[IRSession]) -> dict[tuple[str | None, str], list[IRSession]]:
+    """Conversations grouped by the team and the passage they were about.
 
-    The accumulation is a running maximum per passage, so each group is ordered on its own by
-    `_last_word`; the caller hands these over newest first, which is the order the Desk reads
-    them in and not the order they can be folded in.
+    The accumulation is a running maximum per team's passage, so each group is ordered on its
+    own by `_last_word`; the caller hands these over newest first, which is the order the Desk
+    reads them in and not the order they can be folded in.
     """
-    passages: dict[str, list[IRSession]] = {}
+    passages: dict[tuple[str | None, str], list[IRSession]] = {}
     for session in sessions:
-        passages.setdefault(session.pericope, []).append(session)
+        passages.setdefault((session.project_id, session.pericope), []).append(session)
     return passages
 
 
