@@ -145,9 +145,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
         )
 
 
-async def hand_over(
-    db: AsyncSession, prepared: IRSession, opening: IRSession, *, commit: bool = True
-) -> bool:
+async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -> bool:
     """Move a ready opening onto the session that will speak it, once and to the right passage.
 
     The line is written from one passage's meaning map, and the panorama writes it before the
@@ -210,8 +208,7 @@ async def hand_over(
             updated_at=IRSession.updated_at,
         )
     )
-    if commit:
-        await db.commit()
+    await db.commit()
     return True
 
 
