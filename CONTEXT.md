@@ -376,7 +376,7 @@ The summary of a **Release**'s check that the **Packet** carries beside its **Ve
 _Avoid_: check state, manifest check, conferência
 
 **Retroverification file** (`retroverificacao`):
-The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team; the analyst's note lives here and nowhere else.
+The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
 _Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
 
 ### Process lines

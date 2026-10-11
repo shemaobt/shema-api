@@ -211,6 +211,9 @@ async def desk(db_session: AsyncSession, bucket: Bucket) -> Desk:
         "facilitator_of_b": await _a_reader(
             db_session, "facb@example.com", roles=("facilitator",), facilitates=(b,)
         ),
+        "consultant_with_a_leftover_link": await _a_reader(
+            db_session, "sobra@example.com", roles=("consultant",), facilitates=(a,)
+        ),
     }
     return built
 
@@ -335,12 +338,13 @@ async def test_a_consultant_plays_a_questions_audio_a_take_and_a_turn_and_the_se
     assert await _row(per_request, IRQuestion, team.question) == question_before
 
 
-async def test_a_consultant_reads_an_archived_session_by_its_id(client, desk) -> None:
+async def test_a_consultant_reads_an_archived_session_by_its_id(client, desk, per_request) -> None:
     team = desk["b"]
     zerar = await client.post(
         f"{IR}/facilitator/projects/{team.id}/passages/{P}/archive", headers=desk.readers["admin"]
     )
     assert zerar.status_code == 200, zerar.text[:300]
+    assert (await _row(per_request, IRSession, team.session))["archive_id"] is not None
 
     conversation = await client.get(
         f"{IR}/facilitator/sessions/{team.session}/conversation", headers=desk.readers["consultant"]
@@ -380,12 +384,16 @@ async def test_a_facilitator_of_a_who_holds_consultant_replies_and_marks_attende
     attended = await client.post(
         f"{IR}/facilitator/sessions/{desk['a'].session}/attended", headers=reader
     )
+    device_attended = await client.post(
+        f"{DESK}/devices/{desk['a'].device}/attended", headers=reader
+    )
     read = await client.get(
         f"{IR}/facilitator/sessions/{desk['b'].session}/conversation", headers=reader
     )
 
     assert replied.status_code == 200, replied.text[:300]
     assert attended.status_code == 200, attended.text[:300]
+    assert device_attended.status_code < 300, device_attended.text[:300]
     assert read.status_code == 200, read.text[:300]
 
 
@@ -438,7 +446,13 @@ async def test_the_team_card_says_whether_the_reader_facilitates_that_team(clien
 
     cards = {
         reader: facilitates(await client.get(f"{DESK}/teams", headers=desk.readers[reader]))
-        for reader in ("facilitator", "both", "consultant", "admin")
+        for reader in (
+            "facilitator",
+            "both",
+            "consultant",
+            "admin",
+            "consultant_with_a_leftover_link",
+        )
     }
     one_card = await client.get(f"{DESK}/teams/{desk['b'].id}", headers=desk.readers["both"])
 
@@ -447,5 +461,6 @@ async def test_the_team_card_says_whether_the_reader_facilitates_that_team(clien
         "both": {"a": True, "b": False, "c": False},
         "consultant": {"a": False, "b": False, "c": False},
         "admin": {"a": True, "b": True, "c": True},
+        "consultant_with_a_leftover_link": {"a": False, "b": False, "c": False},
     }
     assert one_card.json()["facilitates"] is False

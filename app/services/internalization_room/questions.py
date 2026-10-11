@@ -396,7 +396,7 @@ async def inbox_page(
     """The facilitator's inbox: their teams' questions, in RF-04's order, beside the count.
 
     **The scope holds with or without ``team_id``.** Without it the page is the caller's
-    teams; with a team they do not facilitate the request is refused. The parameter narrows
+    teams; with a team they do not read the request is refused. The parameter narrows
     what they already reach and never widens it — the route answered the whole installation
     before this, and a facilitator read hands that were never addressed to them.
 

@@ -203,12 +203,12 @@ async def question_inbox(
 async def facilitator_audio(
     handle: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> Response:
-    """Serve a team's recorded question to the person deciding how to answer it.
+    """Serve a team's recorded question to the facilitator who answers it, or a consultant.
 
     A facilitator signs in and holds no device key, so the same bytes need a route their
     own credential opens — the queue is unusable if the only thing in it cannot be heard.
 
-    Scoped to the caller's own teams, like every other route that names a question. This
+    Scoped to the teams the caller reads, like every other route that names a question. This
     one names it by key rather than by id, which is why it was not among the five ENG-534
     fixed: it reached this codebase from a different line and arrived after the slice.
     """

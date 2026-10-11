@@ -872,7 +872,7 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     never what kept the session routes shut — obscurity was not the access rule. That was
     true where it was written and stopped being true here: both routes addressed by a
     session id now refuse a session belonging to another team, `…/takes` through
-    `get_session_for_facilitator` and `…/release` since ENG-563's composition. So an
+    `get_session_for_reader` and `…/release` since ENG-563's composition. So an
     unscoped list would no longer be surfacing what was already readable. It would be
     announcing the existence, the passage and the moment of other teams' sessions — and
     handing over ids their reader cannot open.

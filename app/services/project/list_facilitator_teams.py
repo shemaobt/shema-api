@@ -15,7 +15,8 @@ plan is a sequential scan of `ir_sessions`, `ir_questions` and `ir_takes` per re
 `project_id` indexes never touched. Measured on a seeded Postgres before the scope was pushed
 down — three seq scans over 70,000 rows to answer fourteen teams. A query whose cost is the size
 of the installation rather than the size of the answer is one that works until the installation
-grows.
+grows. A platform admin and a consultant read every team, so for them the installation is the
+answer.
 
 The three numbers on the envelope are not the same kind of fact. ``teams`` answers the
 query; ``serves_any_team`` and ``open_hands_total`` answer the facilitator, and neither
@@ -47,9 +48,8 @@ from app.models.team import (
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.progression import active_passages
-from app.services.project.facilitated_scope import readable_projects
+from app.services.project.facilitated_scope import facilitated_by_a_writer, readable_projects
 from app.services.project.facilitated_scope import within as _within
-from app.services.project.list_facilitated_project_ids import list_facilitated_project_ids
 from app.services.project.team_restriction import as_work_queue, matching
 from app.services.project.team_state import team_state
 
@@ -179,7 +179,7 @@ async def list_facilitator_teams(
     scope = await readable_projects(db, user)
     rows = (await db.execute(team_cards(scope))).all()
     here = await active_passages(db, project_ids=[row.id for row in rows])
-    facilitated = await list_facilitated_project_ids(db, user)
+    facilitated = await facilitated_by_a_writer(db, user)
 
     every_team = [
         FacilitatorTeamView(

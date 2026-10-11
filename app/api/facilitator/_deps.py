@@ -14,11 +14,12 @@ from typing import Annotated
 
 from app.core.access_control import require_any_role, require_role
 from app.db.models.auth import User
+from app.services.project.facilitated_scope import CONSULTANT_ROLE, ROOM_APP_KEY
 
-APP_KEY = "internalization-room"
+APP_KEY = ROOM_APP_KEY
 
 facilitator_role = require_role(APP_KEY, "facilitator")
-reader_role = require_any_role(APP_KEY, "facilitator", "consultant")
+reader_role = require_any_role(APP_KEY, "facilitator", CONSULTANT_ROLE)
 
 #: The person at the Desk, and also the person on the other end of a raised hand: the room's
 #: facilitator routes annotate with this same object rather than calling ``require_role`` a

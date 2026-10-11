@@ -1,4 +1,4 @@
-"""Which teams a facilitator reaches, as a restriction a query can carry.
+"""Which teams a caller reaches, as a restriction a query can carry.
 
 Written once and shared because it is the same sentence in two places, and the day the two
 drift is the day one route shows what the other hides. ``list_facilitator_teams`` restricts
@@ -7,6 +7,10 @@ five subqueries with it; the room's inbox restricts a page and a count with it.
 ``None`` for a platform admin rather than a select of every project id: their scope is "no
 restriction at all", and spelling it as a subquery listing the installation would put that
 list inside every clause for nothing.
+
+Reads and writes have one scope each. A write reaches the teams the caller facilitates; a
+read reaches every team for a consultant as well (ADR 0058), through the ``readable_*``
+functions, and no write calls those.
 """
 
 from collections.abc import Sequence
@@ -27,7 +31,9 @@ from app.services.project.list_facilitated_project_ids import list_facilitated_p
 TEAM_NOT_FOUND = "Team not found"
 
 ROOM_APP_KEY = "internalization-room"
-CONSULTANT = (ROOM_APP_KEY, "consultant")
+CONSULTANT_ROLE = "consultant"
+CONSULTANT = (ROOM_APP_KEY, CONSULTANT_ROLE)
+FACILITATOR = (ROOM_APP_KEY, "facilitator")
 
 
 def facilitated_projects(user: User) -> Select | None:
@@ -93,6 +99,17 @@ def confined_to(
 async def reads_every_team(db: AsyncSession, user: User) -> bool:
     """A platform admin or a consultant (ADR 0058): the reads' scope is every team."""
     return user.is_platform_admin or CONSULTANT in await roles_on(db, user, ROOM_APP_KEY)
+
+
+async def facilitated_by_a_writer(db: AsyncSession, user: User) -> set[str]:
+    """The teams a write by this user would be accepted on: the facilitator gate, then a link.
+
+    A link left behind after the facilitator role was taken away opens no write, so it
+    counts for nothing here.
+    """
+    if user.is_platform_admin or FACILITATOR in await roles_on(db, user, ROOM_APP_KEY):
+        return await list_facilitated_project_ids(db, user)
+    return set()
 
 
 async def readable_projects(db: AsyncSession, user: User) -> Select | None:

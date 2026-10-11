@@ -43,8 +43,8 @@ async def internalization_release(
     written against a ``CurrentUser`` that ENG-438 had already retired — the route is
     newer than that slice, so the slice never saw it — and there was no leaving it as it
     was: the name is gone, so this either tightens or re-introduces the loose gate for
-    one route. Tightening is what the rest of ``/facilitator`` already does, and what the
-    docstring above says this route is.
+    one route. Tightening is what the rest of ``/facilitator`` already does, and since ENG-1213
+    every read there admits a consultant too (ADR 0058).
 
     Scoped with ``get_session_for_reader`` and not ``get_session``, which is what it
     arrived with. That is a defect this composition created rather than inherited: on
