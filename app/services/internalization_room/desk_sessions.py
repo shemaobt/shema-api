@@ -34,7 +34,7 @@ from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import as_utc, end_of
 from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
-from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
+from app.services.project.facilitated_scope import confined_to, readable_project_ids
 
 DEFAULT_PAGE = 50
 MAX_PAGE = 100
@@ -73,7 +73,7 @@ async def desk_sessions_page(
         select(IRSession, Project.name)
         .join(Project, Project.id == IRSession.project_id)
         .where(
-            confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
+            confined_to(IRSession.project_id, await readable_project_ids(db, user)),
             live(),
             entered(),
         )

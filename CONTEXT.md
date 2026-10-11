@@ -41,6 +41,10 @@ _Avoid_: panel, dashboard, Mesa
 A reader of every team's work in the Desk, who arrives after the fact to judge a passage: a platform role on the internalization-room app, not a link to a team, admitted to every read door and refused at every write (ADR 0058). A facilitator can hold it too and still acts only on the teams they facilitate.
 _Avoid_: observer, auditor, read-only facilitator, Consultor
 
+**Reader**:
+Whoever may open the Desk's read doors: a facilitator or a consultant. A reader reads the teams their scope opens — a facilitator their own, a consultant every team — and reading changes nothing.
+_Avoid_: viewer, observer, user (in prose), Leitor
+
 **Nudge**:
 A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
@@ -376,7 +380,7 @@ The summary of a **Release**'s check that the **Packet** carries beside its **Ve
 _Avoid_: check state, manifest check, conferência
 
 **Retroverification file** (`retroverificacao`):
-The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team; the analyst's note lives here and nowhere else.
+The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
 _Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
 
 ### Process lines

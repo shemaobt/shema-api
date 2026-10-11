@@ -11,7 +11,7 @@ from hashlib import sha256
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import FacilitatorUser, ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
@@ -175,7 +175,7 @@ def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -
 
 @router.get("/facilitator/questions", response_model=QuestionInboxResponse)
 async def question_inbox(
-    user: FacilitatorUser,
+    user: ReaderUser,
     team_id: str | None = Query(default=None),
     status_wanted: IRQuestionStatus | None = Query(default=None, alias="status"),
     limit: int = Query(default=service.DEFAULT_PAGE, ge=1, le=service.MAX_PAGE),
@@ -201,21 +201,21 @@ async def question_inbox(
 
 @router.get("/facilitator/questions/audio/{handle}")
 async def facilitator_audio(
-    handle: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    handle: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> Response:
-    """Serve a team's recorded question to the person deciding how to answer it.
+    """Serve a team's recorded question to the facilitator who answers it, or a consultant.
 
     A facilitator signs in and holds no device key, so the same bytes need a route their
     own credential opens — the queue is unusable if the only thing in it cannot be heard.
 
-    Scoped to the caller's own teams, like every other route that names a question. This
+    Scoped to the teams the caller reads, like every other route that names a question. This
     one names it by key rather than by id, which is why it was not among the five ENG-534
     fixed: it reached this codebase from a different line and arrived after the slice.
     """
     key = from_question_handle(handle)
     if key is None:
         raise NotFoundError("No such audio")
-    await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
+    await service.audio_of_a_question_this_reader_reads(db, user, key)
     await db.commit()
     return await _audio(handle)
 
@@ -225,7 +225,7 @@ async def facilitator_audio(
     response_model=QuestionAudioResponse,
 )
 async def listen_to_question(
-    question_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    question_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> QuestionAudioResponse:
     """Hand back a short-lived signed address for the recording, rather than redirecting.
 
@@ -238,7 +238,7 @@ async def listen_to_question(
     and points the element at storage — which needs no CORS, since media elements fetch in
     `no-cors` mode, and keeps `Range`, so seeking inside a recording still works.
     """
-    question = await service.get_question_for_facilitator(db, user, question_id)
+    question = await service.get_question_for_reader(db, user, question_id)
     if not question.audio_key:
         raise NotFoundError("No such recording")
     await db.commit()

@@ -9,8 +9,9 @@ from app.db.models.project import ProjectUserAccess
 async def facilitates_project(db: AsyncSession, user: User, project_id: str) -> bool:
     """Whether this user facilitates this one team.
 
-    The single question every facilitator route asks. It replaces ``can_access_project``
-    on those routes and does not change it for anyone else — the other apps in this
+    The question every write route asks of a team, and the one a read asks of anyone who
+    does not read every team (``reads_project``). It replaces ``can_access_project`` on
+    those routes and does not change it for anyone else — the other apps in this
     codebase mean the broader thing by "access" and still do.
     """
     if user.is_platform_admin:

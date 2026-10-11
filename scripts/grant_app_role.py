@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.db.models.auth import App, Role, User, UserAppRole
+from app.services.authorization.grant_app_role import grant_app_role
 
 
 async def main() -> None:
@@ -20,6 +21,11 @@ async def main() -> None:
         "role_key",
         type=str,
         help="The role to grant (e.g., 'admin', 'annotator').",
+    )
+    parser.add_argument(
+        "--add",
+        action="store_true",
+        help="Keep every role the user holds on the app and add this one, instead of replacing.",
     )
 
     args = parser.parse_args()
@@ -45,6 +51,11 @@ async def main() -> None:
         if not role:
             print(f"Error: Role '{args.role_key}' not found for app '{args.app_key}'.")
             sys.exit(1)
+
+        if args.add:
+            await grant_app_role(db, user.id, args.app_key, args.role_key)
+            print(f"Added role '{args.role_key}' on {args.app_key} for {args.email}.")
+            return
 
         existing = (
             await db.execute(

@@ -10,7 +10,7 @@ from functools import partial
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import (
     device_project_dep,
     linked_tablet_dep,
@@ -66,7 +66,7 @@ from app.services.internalization_room.turn_dedup import (
 )
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SpeechKey, Upload
-from app.services.project.facilitated_scope import facilitated_project_ids
+from app.services.project.facilitated_scope import readable_project_ids
 from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
 
@@ -503,7 +503,7 @@ async def read_session(
 
 @router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
 async def facilitator_sessions(
-    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> FacilitatorSessionsResponse:
     """The sessions waiting on a person, for the person they are waiting on.
 
@@ -512,24 +512,24 @@ async def facilitator_sessions(
     The two session-scoped facilitator routes are addressed by an id nobody could obtain,
     so a room that stopped for someone could not reach anyone.
 
-    **Scoped to the caller's own teams**, and the reason the route first gave for needing
+    **Scoped to the teams the caller reads**, and the reason the route first gave for needing
     no scope is worth correcting rather than deleting: it argued that this only makes
     discoverable what was already readable, since an id was never what kept the
     session-addressed routes shut. That was true where it was written. It is not true here
     — `…/{id}/takes` refuses a session of another team through
-    `get_session_for_facilitator`, and `…/{id}/release` has refused one since ENG-563's
+    `get_session_for_reader`, and `…/{id}/release` has refused one since ENG-563's
     composition. An unscoped list would announce the existence, the passage and the moment
     of other teams' sessions, and hand over ids their reader is refused.
 
-    Gated on `FacilitatorUser` for the same reason every other route under `/facilitator`
-    is: the app-wide gate it was written against no longer exists.
+    Gated on `ReaderUser` like every other read under `/facilitator`: the app-wide gate it
+    was written against no longer exists, and a consultant reads every team (ADR 0058).
 
     **`devices` is the half a session id cannot reach** (ENG-624). A tablet whose session
     the server has forgotten, or whose build broke before one was opened, halts on itself
     rather than on a session, and that halt would otherwise be readable only from the team's
     devices panel — a screen a facilitator opens about one team they already suspect. This
     is the list they read to find out which team to go to. Scoped by the same rule as the
-    sessions half — `facilitated_project_ids`, the ids in hand rather than `IN (SELECT …)`
+    sessions half — `readable_project_ids`, the ids in hand rather than `IN (SELECT …)`
     the planner cannot use.
 
     **Resolved twice, once per half, and that is the shape rather than an oversight.**
@@ -542,9 +542,9 @@ async def facilitator_sessions(
 
     The moment is bound before it is read because the column is nullable and this list is
     the rows where it is not: the binding is the type system reading what the query already
-    guarantees, not a filter with anything to drop. The team id on the sessions half is bound
+    guarantees, not a filter with anything to drop. The team id on both halves is bound
     the same way and for the same reason — `confined_to` excludes a null project under either
-    of its two shapes, so the `if` there drops nothing either.
+    of its two shapes, so the `if`s there drop nothing either.
 
     **`team_name` costs one more statement, and it is the field that makes the queue
     usable** (ENG-609). This is the one facilitator listing that crosses teams: every other
@@ -557,7 +557,7 @@ async def facilitator_sessions(
     a stopped room from one asking for a witness, nor one nobody has reached from one a
     colleague walked to five minutes ago.
     """
-    scope = await facilitated_project_ids(db, user)
+    scope = await readable_project_ids(db, user)
     waiting = await room.sessions_waiting_on_a_person(db, user)
     named = await team_names(db, (s.project_id for s in waiting if s.project_id is not None))
     marks = await room.hard_stretches_of(db, [session.id for session in waiting])
@@ -602,6 +602,7 @@ async def facilitator_sessions(
         devices=[
             FacilitatorHaltedDeviceView(
                 device_id=device.id,
+                project_id=team,
                 label=device.label,
                 since=as_utc(halted),
                 attended_at=as_utc(device.attended_at) if device.attended_at else None,
@@ -609,6 +610,7 @@ async def facilitator_sessions(
             )
             for device in await devices_waiting_on_a_person(db, scope)
             if (halted := device.needs_person_since) is not None
+            and (team := device.project_id) is not None
         ],
     )
 

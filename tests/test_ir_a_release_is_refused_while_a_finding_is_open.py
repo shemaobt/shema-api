@@ -796,7 +796,11 @@ def test_no_room_caller_route_accepts_force() -> None:
 
     assert forcing == [(f"{PREFIX}/facilitator/sessions/{{session_id}}/release", ["POST"])]
     assert carries(
-        next(route for route in app.routes if getattr(route, "path", "") == forcing[0][0]).dependant
+        next(
+            route
+            for route in app.routes
+            if getattr(route, "path", "") == forcing[0][0] and "force" in _body_fields(route)
+        ).dependant
     ), "a rota que lê force não está atrás do papel de facilitador"
 
 

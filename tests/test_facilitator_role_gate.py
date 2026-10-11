@@ -38,6 +38,7 @@ from tests.stream_harness import opening_status
 
 APP_KEY = "internalization-room"
 FACILITATOR_ROLE = "facilitator"
+CONSULTANT_ROLE = "consultant"
 
 #: A request shaped well enough to reach the gate on each route, so that a refusal is the
 #: gate's and not the body parser's. A route missing from here cannot be exercised, and the
@@ -138,6 +139,7 @@ async def room_app(db_session: AsyncSession):
         db_session, app.id, role_key=FACILITATOR_ROLE, label="Facilitador", is_system=True
     )
     await make_role(db_session, app.id, role_key="admin", label="Administrador", is_system=True)
+    await make_role(db_session, app.id, role_key=CONSULTANT_ROLE, label="Consultor", is_system=True)
     return app
 
 
@@ -262,30 +264,72 @@ async def test_a_platform_admin_still_passes(client, db_session, room_app):
     assert 403 not in statuses.values(), f"o admin de plataforma foi barrado: {statuses}"
 
 
+def _carries(dependant, gate) -> bool:
+    return any(sub.call is gate or _carries(sub, gate) for sub in dependant.dependencies)
+
+
 def test_every_facilitator_route_carries_the_role_gate():
     """The guard against the next route, not against the ten that exist today.
 
-    Compared against the dependency object the routes actually use, so it cannot decay into
+    Compared against the dependency objects the routes actually use, so it cannot decay into
     asserting a name copied here, and it reads the mounted application, so a facilitator
     route added in a module nobody thought of still has to answer for itself.
     """
-    from app.api.facilitator._deps import facilitator_role
+    from app.api.facilitator._deps import facilitator_role, reader_role
     from app.main import app
 
-    gate = facilitator_role.dependency
-
-    def carries(dependant) -> bool:
-        return any(sub.call is gate or carries(sub) for sub in dependant.dependencies)
+    gates = (facilitator_role.dependency, reader_role.dependency)
 
     ungated = [
         f"{sorted(route.methods)} {route.path}"
         for route in app.routes
         if "/facilitator" in getattr(route, "path", "")
         and getattr(route, "methods", None)
-        and not carries(route.dependant)
+        and not any(_carries(route.dependant, gate) for gate in gates)
     ]
 
     assert ungated == [], f"rota de facilitador sem o portao de papel: {ungated}"
+
+
+async def test_a_signed_in_person_with_neither_role_is_refused_at_every_facilitator_route(
+    client, db_session, room_app
+):
+    user = await make_user(db_session, email="ninguem@example.com")
+
+    statuses = await knock(client, await auth_header(db_session, user))
+
+    assert _refused(statuses) == [], "rotas abertas a quem nao tem papel nenhum"
+
+
+async def test_every_facilitator_read_route_admits_the_consultant_and_every_write_route_refuses_them(  # noqa: E501
+    client, db_session, room_app
+):
+    user = await make_user(db_session, email="consultora@example.com")
+    await grant_app_role(db_session, room_app, user, CONSULTANT_ROLE)
+
+    statuses = await knock(client, await auth_header(db_session, user))
+
+    reads_refused = [f"{m} {p}" for (m, p), s in statuses.items() if m == "GET" and s == 403]
+    writes_open = [f"{m} {p} -> {s}" for (m, p), s in statuses.items() if m != "GET" and s != 403]
+    assert reads_refused == [], "leituras que barram a consultora"
+    assert writes_open == [], "escritas que deixam a consultora passar"
+
+
+def test_no_read_route_is_left_on_the_facilitator_gate_and_no_write_route_is_on_the_reader_gate():
+    from app.api.facilitator._deps import facilitator_role, reader_role
+    from app.main import app
+
+    misplaced = []
+    for route in app.routes:
+        if "/facilitator" not in getattr(route, "path", ""):
+            continue
+        reads = _carries(route.dependant, reader_role.dependency)
+        writes = _carries(route.dependant, facilitator_role.dependency)
+        for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
+            if reads == writes or reads != (method == "GET"):
+                misplaced.append(f"{method} {route.path}: leitura={reads} escrita={writes}")
+
+    assert misplaced == [], misplaced
 
 
 def test_the_audit_covers_both_route_families():

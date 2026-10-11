@@ -25,7 +25,7 @@ closing that at one door and leaving it open at another closes nothing.
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.device import TeamDeviceResponse
@@ -39,9 +39,9 @@ from app.services.device.list_team_devices import list_team_devices
 from app.services.internalization_room.progression import active_passage, team_standing
 from app.services.internalization_room.team_coverage import team_necklace
 from app.services.internalization_room.team_sessions import list_team_sessions
-from app.services.project.facilitates_project import facilitates_project
 from app.services.project.list_facilitator_teams import list_facilitator_teams
 from app.services.project.read_facilitator_team import read_facilitator_team
+from app.services.project.reads_project import reads_project
 
 facilitator_teams_router = APIRouter()
 
@@ -50,7 +50,7 @@ TEAM_NOT_FOUND = "Team not found"
 
 @facilitator_teams_router.get("", response_model=TeamListingResponse)
 async def list_teams_route(
-    user: FacilitatorUser,
+    user: ReaderUser,
     search: str = Query(default="", max_length=200),
     filter: TeamFilter = Query(default=TeamFilter.ALL),
     db: AsyncSession = Depends(get_db),
@@ -71,7 +71,7 @@ async def list_teams_route(
 @facilitator_teams_router.get("/{team_id}", response_model=FacilitatorTeamDetail)
 async def read_team_route(
     team_id: str,
-    user: FacilitatorUser,
+    user: ReaderUser,
     db: AsyncSession = Depends(get_db),
 ) -> FacilitatorTeamDetail:
     """One team, at the address its three panels already hang off.
@@ -97,11 +97,11 @@ async def read_team_route(
 @facilitator_teams_router.get("/{team_id}/devices", response_model=list[TeamDeviceResponse])
 async def list_team_devices_route(
     team_id: str,
-    user: FacilitatorUser,
+    user: ReaderUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[TeamDeviceResponse]:
     """The devices linked to this team. A team with none answers with an empty list."""
-    if not await facilitates_project(db, user, team_id):
+    if not await reads_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
     return [TeamDeviceResponse.of(device) for device in await list_team_devices(db, team_id)]
@@ -110,7 +110,7 @@ async def list_team_devices_route(
 @facilitator_teams_router.get("/{team_id}/coverage", response_model=list[ElementCoverage])
 async def read_team_coverage_route(
     team_id: str,
-    user: FacilitatorUser,
+    user: ReaderUser,
     pericope: str | None = Query(default=None, min_length=1, max_length=120),
     db: AsyncSession = Depends(get_db),
 ) -> list[ElementCoverage]:
@@ -135,7 +135,7 @@ async def read_team_coverage_route(
     that hole is closed at the claim and at the devices list, and leaving it open here would
     close nothing.
     """
-    if not await facilitates_project(db, user, team_id):
+    if not await reads_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
     if pericope is None:
@@ -151,7 +151,7 @@ async def read_team_coverage_route(
 @facilitator_teams_router.get("/{team_id}/pericopes", response_model=list[PericopeStanding])
 async def list_team_pericopes_route(
     team_id: str,
-    user: FacilitatorUser,
+    user: ReaderUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[PericopeStanding]:
     """The book's passages in the canon's order, each already placed for this team.
@@ -165,7 +165,7 @@ async def list_team_pericopes_route(
     facilitator reads; there is no operation here that could move a team, which is the
     restriction no other test catches because a stray write leaves every screen looking right.
     """
-    if not await facilitates_project(db, user, team_id):
+    if not await reads_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
     return await team_standing(db, team_id)
@@ -174,7 +174,7 @@ async def list_team_pericopes_route(
 @facilitator_teams_router.get("/{team_id}/sessions", response_model=list[TeamSessionResponse])
 async def list_team_sessions_route(
     team_id: str,
-    user: FacilitatorUser,
+    user: ReaderUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[TeamSessionResponse]:
     """The passage's history (RF-06). A team that has never met answers with an empty list.
@@ -183,7 +183,7 @@ async def list_team_sessions_route(
     the second is the 404 this module's docstring describes, because a facilitator who could
     tell "not yours" from "no such thing" could map an installation by asking about ids.
     """
-    if not await facilitates_project(db, user, team_id):
+    if not await reads_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
     return await list_team_sessions(db, team_id)

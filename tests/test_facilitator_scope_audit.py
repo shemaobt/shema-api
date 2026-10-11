@@ -87,23 +87,23 @@ def _dependency_calls(dependant) -> set:
 
 
 def facilitator_routes() -> list[tuple[str, str]]:
-    """Every mounted route behind the facilitator role, as (method, path).
+    """Every mounted route behind the facilitator or the reader gate, as (method, path).
 
-    Derived from the gate object in each route's dependency tree rather than from the path,
+    Derived from the gate objects in each route's dependency tree rather than from the path,
     because `/facilitator` in a path is a naming convention and this is not. A route added
     to either family is covered here the moment it is mounted.
     """
-    from app.api.facilitator._deps import facilitator_role
+    from app.api.facilitator._deps import facilitator_role, reader_role
     from app.main import app
 
-    gate = getattr(facilitator_role, "dependency", facilitator_role)
+    gates = {facilitator_role.dependency, reader_role.dependency}
     found = []
     for route in app.routes:
         dependant = getattr(route, "dependant", None)
         if dependant is None:
             continue
         calls = {getattr(c, "dependency", c) for c in _dependency_calls(dependant)}
-        if gate not in calls:
+        if not gates & calls:
             continue
         for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
             found.append((method, route.path))

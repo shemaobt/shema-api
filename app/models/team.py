@@ -76,6 +76,11 @@ class FacilitatorTeamView(BaseModel):
     open_raised_hands: int
     device_count: int
     last_activity_at: datetime | None
+    #: Whether a write by this reader on this team would be accepted: a platform admin on every
+    #: team, a holder of the facilitator role on the teams they are linked to. A consultant
+    #: reads every team and facilitates none through that role, so the Desk hides the
+    #: controls (ADR 0058).
+    facilitates: bool
 
 
 class FacilitatorTeamDetail(FacilitatorTeamView):
@@ -124,4 +129,5 @@ class TeamListingResponse(BaseModel):
 
     teams: list[FacilitatorTeamView]
     serves_any_team: bool
+    #: Over the teams the reader facilitates, never over the teams a consultant only reads.
     open_hands_total: int
