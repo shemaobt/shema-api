@@ -20,7 +20,8 @@ answer.
 
 The three numbers on the envelope are not the same kind of fact. ``teams`` answers the
 query; ``serves_any_team`` and ``open_hands_total`` answer the facilitator, and neither
-narrows with the restriction.
+narrows with the restriction. ``open_hands_total`` counts only the teams the reader
+facilitates: a hand on a team they only read is not theirs to answer.
 """
 
 from datetime import UTC, datetime
@@ -48,7 +49,7 @@ from app.models.team import (
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.progression import active_passages
-from app.services.project.facilitated_scope import facilitated_by_a_writer, readable_projects
+from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.facilitated_scope import within as _within
 from app.services.project.team_restriction import as_work_queue, matching
 from app.services.project.team_state import team_state
@@ -179,7 +180,7 @@ async def list_facilitator_teams(
     scope = await readable_projects(db, user)
     rows = (await db.execute(team_cards(scope))).all()
     here = await active_passages(db, project_ids=[row.id for row in rows])
-    facilitated = await facilitated_by_a_writer(db, user)
+    facilitated = await writable_project_ids(db, user)
 
     every_team = [
         FacilitatorTeamView(
@@ -203,7 +204,7 @@ async def list_facilitator_teams(
     return TeamListingResponse(
         teams=as_work_queue(matching(every_team, search=search, chosen=chosen)),
         serves_any_team=bool(every_team),
-        open_hands_total=sum(team.open_raised_hands for team in every_team),
+        open_hands_total=sum(team.open_raised_hands for team in every_team if team.facilitates),
     )
 
 

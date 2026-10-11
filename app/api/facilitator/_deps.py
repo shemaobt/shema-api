@@ -13,13 +13,11 @@ recognise by its spelling is a gate the next route can miss.
 from typing import Annotated
 
 from app.core.access_control import require_any_role, require_role
+from app.core.room_roles import CONSULTANT_ROLE, FACILITATOR_ROLE, ROOM_APP_KEY
 from app.db.models.auth import User
-from app.services.project.facilitated_scope import CONSULTANT_ROLE, ROOM_APP_KEY
 
-APP_KEY = ROOM_APP_KEY
-
-facilitator_role = require_role(APP_KEY, "facilitator")
-reader_role = require_any_role(APP_KEY, "facilitator", CONSULTANT_ROLE)
+facilitator_role = require_role(ROOM_APP_KEY, FACILITATOR_ROLE)
+reader_role = require_any_role(ROOM_APP_KEY, FACILITATOR_ROLE, CONSULTANT_ROLE)
 
 #: The person at the Desk, and also the person on the other end of a raised hand: the room's
 #: facilitator routes annotate with this same object rather than calling ``require_role`` a

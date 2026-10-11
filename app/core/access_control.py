@@ -47,22 +47,11 @@ def require_role(app_key: str, role_key: str) -> Any:
     ``auth_cache.AUTH_CACHE_TTL_SECONDS``, cut from five minutes to thirty seconds by
     ENG-551 — read that module's docstring before changing it.
     """
-
-    async def _check(
-        user: User = Depends(get_current_user),
-        db: AsyncSession = Depends(get_db),
-    ) -> User:
-        if user.is_platform_admin:
-            return user
-        if (app_key, role_key) not in await authorization_service.roles_on(db, user, app_key):
-            raise AuthorizationError(f"Role '{role_key}' is required for this action.")
-        return user
-
-    return Depends(_check)
+    return require_any_role(app_key, role_key)
 
 
 def require_any_role(app_key: str, *role_keys: str) -> Any:
-    """``require_role`` for a door that more than one role opens."""
+    """The door opens to a platform admin or to anyone holding one of ``role_keys``."""
 
     async def _check(
         user: User = Depends(get_current_user),
@@ -72,7 +61,8 @@ def require_any_role(app_key: str, *role_keys: str) -> Any:
             return user
         held = await authorization_service.roles_on(db, user, app_key)
         if not any((app_key, role_key) in held for role_key in role_keys):
-            raise AuthorizationError(f"One of the roles {', '.join(role_keys)} is required.")
+            named = " or ".join(f"'{role_key}'" for role_key in role_keys)
+            raise AuthorizationError(f"Role {named} is required for this action.")
         return user
 
     return Depends(_check)

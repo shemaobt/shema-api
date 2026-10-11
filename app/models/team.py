@@ -129,4 +129,5 @@ class TeamListingResponse(BaseModel):
 
     teams: list[FacilitatorTeamView]
     serves_any_team: bool
+    #: Over the teams the reader facilitates, never over the teams a consultant only reads.
     open_hands_total: int

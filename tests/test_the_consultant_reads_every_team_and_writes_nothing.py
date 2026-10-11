@@ -401,7 +401,9 @@ async def test_a_facilitator_of_a_who_holds_consultant_is_told_404_when_writing_
     client, desk, db_session, per_request
 ) -> None:
     minted = await create_device(db_session)
-    writes = [w for w in _writes_on(desk["b"], minted.claim_code) if "claim" not in w[1]]
+    writes = _writes_on(desk["b"], minted.claim_code)
+    claim = next(w for w in writes if "claim" in w[1])
+    writes.remove(claim)
 
     answers = {
         f"{method} {url}": (
@@ -410,7 +412,14 @@ async def test_a_facilitator_of_a_who_holds_consultant_is_told_404_when_writing_
         for method, url, kw in writes
     }
 
+    claimed = await client.request(claim[0], claim[1], headers=desk.readers["both"], **claim[2])
+    b_devices = await client.get(
+        f"{DESK}/teams/{desk['b'].id}/devices", headers=desk.readers["admin"]
+    )
+
     assert set(answers.values()) == {404}, answers
+    assert claimed.status_code == 400, claimed.text[:300]
+    assert [row["device_id"] for row in b_devices.json()] == [desk["b"].device]
     question = await _row(per_request, IRQuestion, desk["b"].question)
     assert question["status"] == IRQuestionStatus.OPEN
     assert question["answered_by"] is None
@@ -464,3 +473,34 @@ async def test_the_team_card_says_whether_the_reader_facilitates_that_team(clien
         "consultant_with_a_leftover_link": {"a": False, "b": False, "c": False},
     }
     assert one_card.json()["facilitates"] is False
+
+
+async def test_the_open_hands_total_counts_only_the_teams_the_reader_facilitates(
+    client, desk
+) -> None:
+    listed = await client.get(f"{DESK}/teams", headers=desk.readers["both"])
+
+    assert listed.json()["open_hands_total"] == 1
+
+
+async def test_a_team_that_does_not_exist_is_refused_at_every_read_even_to_a_consultant(
+    client, desk
+) -> None:
+    from app.main import app
+
+    reader = desk.readers["consultant"]
+    nowhere = "equipe-que-nao-existe"
+    reads = [
+        (f"{DESK}/teams/{nowhere}", {}),
+        (f"{DESK}/teams/{nowhere}/sessions", {}),
+        (f"{DESK}/teams/{nowhere}/devices", {}),
+        (f"{DESK}/teams/{nowhere}/pericopes", {}),
+        (f"{DESK}/teams/{nowhere}/coverage", {"params": {"pericope": P}}),
+        (f"{IR}/facilitator/questions", {"params": {"team_id": nowhere}}),
+    ]
+
+    answers = {url: (await client.get(url, headers=reader, **kw)).status_code for url, kw in reads}
+    nudges = await opening_status(app, f"{DESK}/teams/{nowhere}/nudges", reader)
+
+    assert set(answers.values()) == {404}, answers
+    assert nudges == 404

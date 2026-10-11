@@ -24,7 +24,7 @@ from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.progression import finished_passages, resolve, standing
-from app.services.project.facilitated_scope import facilitated_by_a_writer, readable_projects
+from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.list_facilitator_teams import team_cards
 from app.services.project.team_state import team_state
 
@@ -75,7 +75,7 @@ async def read_facilitator_team(
         open_raised_hands=row.open_hands,
         device_count=row.device_count,
         last_activity_at=row.last_activity_at,
-        facilitates=team_id in await facilitated_by_a_writer(db, user),
+        facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
         scene_the_team_is_in=await _scene_they_are_in(db, team_id=team_id, pericope=here),
     )

@@ -1,16 +1,18 @@
 """Which teams a caller reaches, as a restriction a query can carry.
 
-Written once and shared because it is the same sentence in two places, and the day the two
-drift is the day one route shows what the other hides. ``list_facilitator_teams`` restricts
-five subqueries with it; the room's inbox restricts a page and a count with it.
+Written once and shared because it is the same sentence in many places, and the day two of
+them drift is the day one route shows what another hides.
 
-``None`` for a platform admin rather than a select of every project id: their scope is "no
-restriction at all", and spelling it as a subquery listing the installation would put that
-list inside every clause for nothing.
+Reads and writes have one scope each. A read reaches ``readable_projects`` and
+``readable_project_ids``: every team for a platform admin or a consultant (ADR 0058), the
+teams they facilitate for anyone else. ``list_facilitator_teams`` restricts five subqueries
+with the first; the inbox, the person queue and the Desk's sessions list restrict a page with
+the second. A write reaches the teams ``writable_project_ids`` names — the facilitator role,
+then a facilitator link — and no write calls a ``readable_*``.
 
-Reads and writes have one scope each. A write reaches the teams the caller facilitates; a
-read reaches every team for a consultant as well (ADR 0058), through the ``readable_*``
-functions, and no write calls those.
+``None`` for whoever reads every team rather than a select of every project id: their scope
+is "no restriction at all", and spelling it as a subquery listing the installation would put
+that list inside every clause for nothing.
 """
 
 from collections.abc import Sequence
@@ -20,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 from app.core.enums import ProjectRole
+from app.core.room_roles import CONSULTANT_ROLE, FACILITATOR_ROLE, ROOM_APP_KEY
 from app.db.models.auth import User
 from app.db.models.project import ProjectUserAccess
 from app.services.authorization.roles_on import roles_on
@@ -30,14 +33,12 @@ from app.services.project.list_facilitated_project_ids import list_facilitated_p
 #: at one door and leaving it open at another closes nothing.
 TEAM_NOT_FOUND = "Team not found"
 
-ROOM_APP_KEY = "internalization-room"
-CONSULTANT_ROLE = "consultant"
 CONSULTANT = (ROOM_APP_KEY, CONSULTANT_ROLE)
-FACILITATOR = (ROOM_APP_KEY, "facilitator")
+FACILITATOR = (ROOM_APP_KEY, FACILITATOR_ROLE)
 
 
 def facilitated_projects(user: User) -> Select | None:
-    """The project ids the caller reaches, or ``None`` when that is every one of them."""
+    """The project ids the caller facilitates, or ``None`` for a platform admin."""
     if user.is_platform_admin:
         return None
 
@@ -62,7 +63,9 @@ def within(column: InstrumentedAttribute[str | None], scope: Select | None) -> C
 
 
 async def facilitated_project_ids(db: AsyncSession, user: User) -> list[str] | None:
-    """The same scope with the ids in hand, or ``None`` when the caller reaches everything.
+    """The teams the caller facilitates with the ids in hand, or ``None`` for a platform admin.
+
+    ``readable_project_ids`` answers with this for anyone who does not read every team.
 
     **The second form exists because the first one cannot be planned.** A restriction
     written as ``project_id IN (SELECT …)`` is opaque to the planner: on a seeded Postgres
@@ -73,10 +76,10 @@ async def facilitated_project_ids(db: AsyncSession, user: User) -> list[str] | N
     times less. An ``EXISTS`` rewrite plans identically to the subquery and does not help.
 
     So the shape is chosen by where the restriction sits. Inside the grouped subqueries of
-    ``list_facilitator_teams`` the select form is what belongs; as the main filter of a
-    ``SELECT … ORDER BY … LIMIT``, where the planner has to decide whether an index is worth
-    using, the ids have to be visible. The extra read is one index lookup on a table with one
-    row per team a person facilitates.
+    ``list_facilitator_teams`` the select form (``readable_projects``) is what belongs; as the
+    main filter of a ``SELECT … ORDER BY … LIMIT``, where the planner has to decide whether an
+    index is worth using, the ids have to be visible. The extra read is one index lookup on a
+    table with one row per team a person facilitates.
 
     Sorted so that two calls with the same scope render the same statement.
     """
@@ -101,7 +104,7 @@ async def reads_every_team(db: AsyncSession, user: User) -> bool:
     return user.is_platform_admin or CONSULTANT in await roles_on(db, user, ROOM_APP_KEY)
 
 
-async def facilitated_by_a_writer(db: AsyncSession, user: User) -> set[str]:
+async def writable_project_ids(db: AsyncSession, user: User) -> set[str]:
     """The teams a write by this user would be accepted on: the facilitator gate, then a link.
 
     A link left behind after the facilitator role was taken away opens no write, so it

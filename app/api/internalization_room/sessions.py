@@ -512,12 +512,12 @@ async def facilitator_sessions(
     The two session-scoped facilitator routes are addressed by an id nobody could obtain,
     so a room that stopped for someone could not reach anyone.
 
-    **Scoped to the caller's own teams**, and the reason the route first gave for needing
+    **Scoped to the teams the caller reads**, and the reason the route first gave for needing
     no scope is worth correcting rather than deleting: it argued that this only makes
     discoverable what was already readable, since an id was never what kept the
     session-addressed routes shut. That was true where it was written. It is not true here
     — `…/{id}/takes` refuses a session of another team through
-    `get_session_for_facilitator`, and `…/{id}/release` has refused one since ENG-563's
+    `get_session_for_reader`, and `…/{id}/release` has refused one since ENG-563's
     composition. An unscoped list would announce the existence, the passage and the moment
     of other teams' sessions, and hand over ids their reader is refused.
 

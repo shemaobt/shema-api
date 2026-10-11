@@ -41,6 +41,10 @@ _Avoid_: panel, dashboard, Mesa
 A reader of every team's work in the Desk, who arrives after the fact to judge a passage: a platform role on the internalization-room app, not a link to a team, admitted to every read door and refused at every write (ADR 0058). A facilitator can hold it too and still acts only on the teams they facilitate.
 _Avoid_: observer, auditor, read-only facilitator, Consultor
 
+**Reader**:
+Whoever may open the Desk's read doors: a facilitator or a consultant. A reader reads the teams their scope opens — a facilitator their own, a consultant every team — and reading changes nothing.
+_Avoid_: viewer, observer, user (in prose), Leitor
+
 **Nudge**:
 A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
