@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
+from app.core.stage_clock import current_clock
 from app.db.insert_once import insert_once
 from app.db.models.auth import User
 from app.db.models.internalization_room import (
@@ -58,6 +59,9 @@ from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
     final_segments,
     retire_the_segments_of,
+)
+from app.services.internalization_room.synthesize_facilitator_speech import (
+    facilitator_speech_key,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.internalization_room.validated_turn import TurnOutcome, _the_validators_words
@@ -561,7 +565,13 @@ async def append_exchange(
     What the room heard of the team's take — the language, its probability, the
     mother-tongue decision and the take's length — goes on the Guide's entry too, because a
     mother-tongue turn and a missed one write no team entry. Only a turn the room heard
-    carries them; the opening and the telling-back verdict write none.
+    carries them; the opening and the telling-back verdict write none. What the Guide was
+    handed as the team's turn rides with them: empty on a miss, which reached no Guide.
+
+    The Guide's entry also keeps the rung that answered and the turn's recognition and reply
+    times, when the turn has them, and always the key of the clip its line is voiced under,
+    computed here from the words, so the facilitator plays the line the team heard without
+    a second write once the voice is made.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
@@ -592,9 +602,14 @@ async def append_exchange(
                 language_probability=outcome.language_probability,
                 mother_tongue=outcome.mother_tongue,
                 take_ms=outcome.take_ms,
+                guide_heard=outcome.guide_heard,
             )
         if outcome.interrupted is not None:
             guide["interrupted"] = asdict(outcome.interrupted)
+        if outcome.model is not None:
+            guide["model"] = outcome.model
+        guide.update(_the_turns_times())
+    guide["voice_key"] = facilitator_speech_key(guide_response, language=session.language)
     kept = attempts or (outcome.attempts if outcome is not None else [])
     if kept:
         guide["attempts"] = kept
@@ -617,6 +632,19 @@ async def append_exchange(
     if state is not None:
         values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
+
+
+def _the_turns_times() -> dict[str, int]:
+    """The take's recognition and the Guide's and the Validator's work together, in
+    milliseconds, as the request's stage clock measured them; nothing a clock did not measure.
+    """
+    clock = current_clock()
+    stages = clock.stages if clock is not None else {}
+    times = {"recognition_ms": stages["stt"]} if "stt" in stages else {}
+    replied = [stages[role] for role in ("guide", "validator") if role in stages]
+    if replied:
+        times["reply_ms"] = sum(replied)
+    return times
 
 
 def _a_teams_return(session: IRSession) -> dict[str, Any]:

@@ -451,6 +451,22 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (session_id, absent),
         },
         {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/turns", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/turns", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/turns/0/audio", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/turns/0/audio", {}),
+            "ids": (session_id, absent),
+            #: The owner is told this session has no turn 0, where a stranger is told the
+            #: session does not exist: a session that has spoken would send the owner to the
+            #: bucket, which is not what this audit is about.
+            "owner_expects": 404,
+        },
+        {
             "method": "POST",
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
@@ -484,6 +500,8 @@ REFUSING_TEMPLATES = {
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/conversation"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns/{{number}}/audio"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),
