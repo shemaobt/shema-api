@@ -23,8 +23,8 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import sessions as room_sessions
-from tests.baker import make_language, make_project, make_project_user_access, make_user
-from tests.device_harness import RETIRED_ROOM_KEY_HEADER, a_linked_tablet
+from tests.baker import make_project, make_project_user_access, make_user
+from tests.device_harness import RETIRED_ROOM_KEY_HEADER, a_language, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -63,7 +63,7 @@ class Tablet:
 
 async def a_claimed_device(db: AsyncSession, *, email="fac@example.com") -> Tablet:
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     linked = await a_linked_tablet(db, team_id=project.id, facilitator=user)

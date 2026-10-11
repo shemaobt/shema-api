@@ -51,12 +51,11 @@ from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_linked_tablet
+from tests.device_harness import a_language, a_linked_tablet
 from tests.hard_stretch_harness import row as the_row
 from tests.turn_harness import the_room_agent_is
 
@@ -180,7 +179,7 @@ async def a_facilitator(db: AsyncSession, *, email: str, team_name: str) -> Faci
     from app.services.auth.issue_tokens import issue_tokens
 
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lingua {team_name}", code=email[:3])
+    language = await a_language(db, name=f"Lingua {team_name}")
     project = await make_project(db, language.id, name=team_name)
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, user.id)

@@ -24,7 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.services.device import claim_device_as_facilitator, create_device
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.baker import make_project, make_project_user_access, make_user
+from tests.device_harness import a_language
 
 SELF_URL = "/api/devices/me"
 ROTATE_URL = "/api/devices/me/credential"
@@ -55,7 +56,7 @@ async def client(db_session: AsyncSession):
 async def a_claimed_device(db: AsyncSession, *, email="fac@example.com") -> tuple[str, str]:
     """Returns (device_id, credential)."""
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     minted = await create_device(db)

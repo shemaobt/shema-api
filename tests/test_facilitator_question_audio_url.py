@@ -45,11 +45,11 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRS
 from app.services.internalization_room import questions as service
 from tests.baker import (
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import a_language
 
 IR = "/api/internalization-room"
 STORAGE = "/armazenamento"
@@ -134,7 +134,7 @@ async def client(db_session: AsyncSession, store, monkeypatch: pytest.MonkeyPatc
 
 async def a_facilitator(db: AsyncSession, *, email: str = "fac@example.com"):
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, user.id)

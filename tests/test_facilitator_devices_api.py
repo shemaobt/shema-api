@@ -27,11 +27,11 @@ from app.core.rate_limit import limiter
 from app.services.device import claim_code, claim_device_as_facilitator, create_device
 from tests.baker import (
     grant_facilitator_app_role,
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import a_language
 
 CLAIM_URL = "/api/facilitator/devices/claim"
 DEVICE_SELF_URL = "/api/devices/me"
@@ -88,7 +88,7 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
 async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
     """A user with access to one project. Returns (user, project, auth headers)."""
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     await grant_facilitator_app_role(db, user.id)

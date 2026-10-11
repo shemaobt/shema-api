@@ -33,7 +33,8 @@ from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.get_device import get_device
 from app.services.device.rotate_device_credential import rotate_device_credential
 from app.services.device.unlink_device import unlink_device
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.baker import make_project, make_project_user_access, make_user
+from tests.device_harness import a_language
 
 PREFIX = "/api/internalization-room"
 
@@ -78,7 +79,7 @@ class Tablet:
 
 async def a_claimed_device(db: AsyncSession, *, email: str = "fac@example.com") -> Tablet:
     user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     minted = await create_device(db)

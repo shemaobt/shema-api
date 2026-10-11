@@ -56,13 +56,12 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
-    make_language,
     make_project,
     make_project_user_access,
     make_user,
     make_user_app_role,
 )
-from tests.device_harness import TABLET_TEAM, LinkedTablet, a_linked_tablet
+from tests.device_harness import TABLET_TEAM, LinkedTablet, a_language, a_linked_tablet
 
 P = "P03"
 
@@ -105,8 +104,7 @@ async def a_claimed_device(
 ) -> tuple[Project, str]:
     """A device linked to a project, and the credential it calls the room with.
 
-    `language_name` is the team's mother tongue; two teams in one case need two emails, whose
-    first three letters make the language's code.
+    `language_name` is the team's mother tongue.
     """
     project, _facilitator, [tablet] = await claimed_tablets_of_one_team(
         db, email=email, language_name=language_name, tablets=1
@@ -119,7 +117,7 @@ async def claimed_tablets_of_one_team(
 ) -> tuple[Project, User, list[LinkedTablet]]:
     """A team, the facilitator who claimed its tablets, and that many tablets claimed to it."""
     user = await make_user(db, email=email)
-    language = await make_language(db, name=language_name or f"Lang {email}", code=email[:3])
+    language = await a_language(db, name=language_name or f"Lang {email}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
     claimed = [

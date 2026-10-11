@@ -12,10 +12,11 @@ exists only once the module's client fixture has called ``a_linked_tablet`` with
 
 from __future__ import annotations
 
+import itertools
+import string
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
@@ -60,7 +61,7 @@ async def a_linked_tablet(
         project = Project(
             id=team_id or str(uuid.uuid4()),
             name=f"Equipe {uuid.uuid4().hex[:6]}",
-            language_id=(await _a_language(db)).id,
+            language_id=(await a_language(db)).id,
         )
         db.add(project)
         await db.commit()
@@ -80,7 +81,17 @@ async def a_linked_tablet(
     )
 
 
-async def _a_language(db: AsyncSession) -> Language:
-    taken = set((await db.execute(select(Language.code))).scalars())
-    code = next(code for code in (uuid.uuid4().hex[:3] for _ in range(1000)) if code not in taken)
-    return await make_language(db, name=f"Lingua {code}", code=code)
+_language_codes = itertools.count(36**2)
+
+
+def _next_language_code() -> str:
+    number = next(_language_codes)
+    digits = string.digits + string.ascii_lowercase
+    return "".join(digits[(number // 36**place) % 36] for place in (2, 1, 0))
+
+
+async def a_language(
+    db: AsyncSession, *, name: str | None = None, code: str | None = None
+) -> Language:
+    code = code or _next_language_code()
+    return await make_language(db, name=name or f"Lingua {code}", code=code)
