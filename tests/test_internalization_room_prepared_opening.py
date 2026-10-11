@@ -34,14 +34,6 @@ async def _session(db: AsyncSession, **over: object) -> IRSession:
     return session
 
 
-async def _stored_prepared(db: AsyncSession, session: IRSession) -> str | None:
-    return await db.scalar(
-        select(IRSession.prepared_speech)
-        .where(IRSession.id == session.id)
-        .execution_options(populate_existing=True)
-    )
-
-
 async def test_a_ready_line_is_handed_to_the_session_that_speaks_it(
     db_session: AsyncSession,
 ) -> None:
@@ -55,8 +47,8 @@ async def test_a_ready_line_is_handed_to_the_session_that_speaks_it(
     passage = await _session(db_session)
 
     assert await hand_over(db_session, panorama, passage) is True
-    assert await _stored_prepared(db_session, passage) == "Olá."
-    assert await _stored_prepared(db_session, panorama) is None
+    assert await _prepared_speech_of(db_session, passage.id) == "Olá."
+    assert await _prepared_speech_of(db_session, panorama.id) is None
 
 
 async def test_another_passage_is_not_given_the_first_passage_line(
@@ -73,8 +65,8 @@ async def test_another_passage_is_not_given_the_first_passage_line(
     other = await _session(db_session, pericope="P03")
 
     assert await hand_over(db_session, panorama, other) is False
-    assert await _stored_prepared(db_session, other) is None
-    assert await _stored_prepared(db_session, panorama) == "Olá."
+    assert await _prepared_speech_of(db_session, other.id) is None
+    assert await _prepared_speech_of(db_session, panorama.id) == "Olá."
 
 
 async def test_a_panorama_still_writing_hands_over_nothing(db_session: AsyncSession) -> None:
@@ -361,11 +353,7 @@ async def _long_ago(db_session: AsyncSession, *session_ids: str) -> None:
 
 
 async def _updated_at(db_session: AsyncSession, session_id: str) -> datetime:
-    stored = await db_session.scalar(
-        select(IRSession.updated_at)
-        .where(IRSession.id == session_id)
-        .execution_options(populate_existing=True)
-    )
+    stored = await db_session.scalar(select(IRSession.updated_at).where(IRSession.id == session_id))
     assert stored is not None
     return stored.replace(tzinfo=UTC)
 
@@ -401,9 +389,7 @@ async def test_a_panoramas_updated_at_stays_as_it_was_when_its_background_prepar
 
 async def _prepared_speech_of(db_session: AsyncSession, session_id: str) -> str | None:
     return await db_session.scalar(
-        select(IRSession.prepared_speech)
-        .where(IRSession.id == session_id)
-        .execution_options(populate_existing=True)
+        select(IRSession.prepared_speech).where(IRSession.id == session_id)
     )
 
 
