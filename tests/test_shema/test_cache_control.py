@@ -139,7 +139,8 @@ async def urls(
 
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", _sign)
 
-    person = await make_intercessor(server, headers, contact="pessoa@example.test")
+    # Listed: a contact is revealed only to somebody in the directory (OBT-574).
+    person = await make_intercessor(server, headers, contact="pessoa@example.test", listed=True)
     exit_token = await issue_exit_link(db_session, person["id"])
 
     concrete = {

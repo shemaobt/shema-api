@@ -11,9 +11,20 @@ belong to more than one role and ``require_role`` cannot say OR. FE-44's authori
 ``{role, regionScope}`` and nothing in the twelve screens asks a question the four keys do
 not answer, so a map here would be a table with one role per row — a layer of indirection
 over ``require_role`` that costs a query per guarded request and buys an OR nobody needs.
-If a later issue finds the question, the sibling's pair is the shape to copy;
-``permissions``/``role_permissions`` are **not** (``docs/shema.md`` §4.10 — they exist as
-tables and are wired into neither guard).
+``permissions``/``role_permissions`` are **not** the shape either (``docs/shema.md`` §4.10 —
+they exist as tables and are wired into neither guard).
+
+**The network's guard is an OR, and it is two role sets, not the sibling's pair** (OBT-574).
+The client asked it: the intercessor network is read by the Resource Circle, coordination and
+the Admin, and written by coordination and the Admin alone. Role sets beside what they guard
+are how this module already answers an OR inside a service — ``HEALTH_AUDIENCE`` and
+``HEALTH_READERS`` in ``_health_audience.py``, ``PRAYER_AUDIENCE`` in ``_consent.py`` — and
+:data:`NetworkReader`/:data:`NetworkWriter` turn the network's two
+(``_directory.NETWORK_READERS``/``NETWORK_WRITERS``) into guards over :data:`Granted`. The
+sibling's pair is a map shared with its frontend; two sets do not pay for one. The grant is
+read from the table on each request, where ``require_role`` reads a cached role list — one
+indexed join on routes used a few times a day, and a writer whose grant is revoked loses the
+network at once instead of after the cache's thirty seconds.
 
 ``APP_KEY`` is named here and nowhere else in the module, which is where all eight
 applications in this repository keep theirs and where
@@ -80,7 +91,7 @@ router, so every route the module mounts inherits it as it inherits the door or 
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,7 +101,14 @@ from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.db.models.auth import User
+from app.db.models.shema_consent import ShemaConsentContext
 from app.services.shema._consent import reads_withheld_requests
+from app.services.shema._directory import (
+    NETWORK_KEEPERS,
+    NETWORK_READERS,
+    NETWORK_WRITERS,
+    consent_writers,
+)
 from app.services.shema._health_audience import in_health_audience, reads_team_health
 from app.services.shema._scope import (
     ADMIN_ROLE,
@@ -191,6 +209,67 @@ async def _granted(user: CurrentUser, db: Db) -> frozenset[str]:
 
 #: The caller's Shemá roles, read once per request.
 Granted = Annotated[frozenset[str], Depends(_granted)]
+
+
+def _holding(roles: frozenset[str], refusal: str) -> Any:
+    """A guard admitting a holder of any of ``roles`` — the OR ``require_role`` cannot say.
+
+    Over :data:`Granted`, which a handler declaring :data:`Scope` or :data:`Reading` beside it
+    shares, and a platform admin passes first, as they pass every guard here. Chained behind
+    ``CurrentUser`` through :func:`_granted`, so an account with no role in this app is refused
+    by the app gate with the message that names the app, and only a member is asked which role
+    it holds.
+    """
+
+    async def guard(user: CurrentUser, granted: Granted) -> User:
+        if user.is_platform_admin or granted & roles:
+            return user
+        raise AuthorizationError(refusal)
+
+    return Depends(guard)
+
+
+#: Who reads the intercessor network: ``resourceCircle``, ``coordinator`` or ``admin`` (OBT-574).
+NetworkReader = Annotated[
+    User,
+    _holding(
+        NETWORK_READERS,
+        "The intercessor network is read by the resourceCircle, coordination and the Admin.",
+    ),
+]
+
+#: Who writes it: ``coordinator`` or ``admin`` — *o Resource Circle pode ver, mas não edita*.
+_WRITE_REFUSAL = (
+    "Only coordination and the Admin add, edit or remove an intercessor contact; "
+    "the resourceCircle reads the network and keeps it current."
+)
+NetworkWriter = Annotated[User, _holding(NETWORK_WRITERS, _WRITE_REFUSAL)]
+
+#: Who keeps a contact current — the one-year review: the writers and ``resourceCircle``
+#: (Daniel, 10/out/2026).
+NetworkKeeper = Annotated[
+    User,
+    _holding(
+        NETWORK_KEEPERS,
+        "The intercessor network is kept by the resourceCircle, coordination and the Admin.",
+    ),
+]
+
+
+async def _consent_writer(
+    context: ShemaConsentContext, user: CurrentUser, granted: Granted
+) -> User:
+    """:data:`NetworkWriter` for ``network``, whose withdrawal erases; :data:`NetworkKeeper` else.
+
+    The context is the route's path parameter, so the one rule (``_directory.consent_writers``)
+    is asked here, before the service, as every other guard of the network is.
+    """
+    if user.is_platform_admin or granted & consent_writers(context):
+        return user
+    raise AuthorizationError(_WRITE_REFUSAL)
+
+
+ConsentWriter = Annotated[User, Depends(_consent_writer)]
 
 
 async def _scope(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:

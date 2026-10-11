@@ -108,7 +108,7 @@ def test_only_the_users_own_state_is_exempt() -> None:
 async def test_an_intercessor_is_created_edited_reviewed_consented_and_erased_under_a_name(
     db_session, client, shema_app
 ) -> None:
-    user, headers = await _as(db_session, shema_app, "resourceCircle")
+    user, headers = await _as(db_session, shema_app, "coordinator")
     person = await make_intercessor(client, headers, contact=CANARY)
     pid = person["id"]
 
@@ -143,7 +143,7 @@ async def test_an_intercessor_is_created_edited_reviewed_consented_and_erased_un
 async def test_erasing_a_person_through_the_network_consent_is_one_removal(
     db_session, client, shema_app
 ) -> None:
-    _user, headers = await _as(db_session, shema_app, "resourceCircle")
+    _user, headers = await _as(db_session, shema_app, "coordinator")
     pid = (await make_intercessor(client, headers))["id"]
 
     res = await client.delete(f"{PEOPLE}/{pid}/consents/network", headers=headers)
@@ -154,7 +154,7 @@ async def test_erasing_a_person_through_the_network_consent_is_one_removal(
 
 async def test_a_refused_act_leaves_no_mark(db_session, client, shema_app) -> None:
     """Staged before the helper that commits, and taken back when that helper refuses."""
-    _user, headers = await _as(db_session, shema_app, "resourceCircle")
+    _user, headers = await _as(db_session, shema_app, "coordinator")
 
     for res in (
         await client.patch(f"{PEOPLE}/nobody", headers=headers, json={"name": "X"}),
@@ -170,7 +170,7 @@ async def test_a_refused_act_leaves_no_mark(db_session, client, shema_app) -> No
 
 async def test_the_log_holds_no_contact_and_no_name(db_session, client, shema_app) -> None:
     """The canary goes in as a contact and in as a rename; the table never holds it."""
-    _user, headers = await _as(db_session, shema_app, "resourceCircle")
+    _user, headers = await _as(db_session, shema_app, "coordinator")
     pid = (await make_intercessor(client, headers, contact=CANARY, name="Nome Canario"))["id"]
     await client.patch(
         f"{PEOPLE}/{pid}", headers=headers, json={"contact": CANARY, "name": "Nome Canario 2"}
@@ -234,7 +234,7 @@ async def test_a_manual_eten_credit_is_marked_each_time_it_moves(
     "verb", ["UPDATE shema_change_log SET actor_name = 'x'", "DELETE FROM shema_change_log"]
 )
 async def test_the_log_cannot_be_rewritten_or_emptied(db_session, client, shema_app, verb) -> None:
-    _user, headers = await _as(db_session, shema_app, "resourceCircle")
+    _user, headers = await _as(db_session, shema_app, "coordinator")
     await make_intercessor(client, headers)
 
     with pytest.raises(DatabaseError):
@@ -249,8 +249,8 @@ async def _seed_feed(db_session, client, shema_app):
     """One act in Africa, one in South America, one that belongs to no region."""
     await make_shema_project(db_session, project_id="afr", region_key=AFRICA)
     await make_shema_project(db_session, project_id="sam", region_key=SOUTH_AMERICA)
-    _c, circle = await _as(db_session, shema_app, "resourceCircle")
-    await make_intercessor(client, circle)
+    _c, writer = await _as(db_session, shema_app, "coordinator", email="rede@shema.test")
+    await make_intercessor(client, writer)
     for pid, region in (("afr", AFRICA.value), ("sam", SOUTH_AMERICA.value)):
         db_session.add(
             ShemaChangeLog(
