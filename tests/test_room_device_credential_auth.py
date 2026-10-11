@@ -23,8 +23,8 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import sessions as room_sessions
-from tests.baker import make_project, make_project_user_access, make_user
-from tests.device_harness import RETIRED_ROOM_KEY_HEADER, a_language, a_linked_tablet
+from tests.baker import a_language, make_project, make_project_user_access, make_user
+from tests.device_harness import RETIRED_ROOM_KEY_HEADER, a_linked_tablet
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"

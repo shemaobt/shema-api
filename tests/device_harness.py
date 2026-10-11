@@ -12,8 +12,6 @@ exists only once the module's client fixture has called ``a_linked_tablet`` with
 
 from __future__ import annotations
 
-import itertools
-import string
 import uuid
 from dataclasses import dataclass
 
@@ -22,11 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.db.models.auth import User
-from app.db.models.language import Language
 from app.db.models.project import Project
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.collect_device_credential import collect_device_credential
-from tests.baker import make_language, make_project_user_access, make_user
+from tests.baker import a_language, make_project_user_access, make_user
 
 #: The header the shared room key travelled in, named only by the cases proving it opens nothing.
 RETIRED_ROOM_KEY_HEADER = "X-Room-Key"
@@ -79,19 +76,3 @@ async def a_linked_tablet(
         credential=await collect_device_credential(db, claimed.device.id),
         desk_copy=claimed.credential,
     )
-
-
-_BASE36 = string.digits + string.ascii_lowercase
-_language_codes = itertools.count()
-
-
-def _next_language_code() -> str:
-    number = next(_language_codes)
-    return "".join(_BASE36[(number // 36**place) % 36] for place in (2, 1, 0))
-
-
-async def a_language(
-    db: AsyncSession, *, name: str | None = None, code: str | None = None
-) -> Language:
-    code = code or _next_language_code()
-    return await make_language(db, name=name or f"Lingua {code}", code=code)

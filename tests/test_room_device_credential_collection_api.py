@@ -33,8 +33,7 @@ from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.get_device import get_device
 from app.services.device.rotate_device_credential import rotate_device_credential
 from app.services.device.unlink_device import unlink_device
-from tests.baker import make_project, make_project_user_access, make_user
-from tests.device_harness import a_language
+from tests.baker import a_language, make_project, make_project_user_access, make_user
 
 PREFIX = "/api/internalization-room"
 

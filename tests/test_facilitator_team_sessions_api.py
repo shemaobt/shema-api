@@ -37,13 +37,13 @@ from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
     keep_a_take,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_language
 
 P = "P03"
 SURFACED = CoverageStatus.SURFACED.value

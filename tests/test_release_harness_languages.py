@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.language import Language
-from tests.device_harness import a_language
+from tests.baker import a_language
 from tests.release_harness import a_claimed_device
 
 

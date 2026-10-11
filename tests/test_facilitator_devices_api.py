@@ -26,12 +26,12 @@ from app.core.enums import ProjectRole
 from app.core.rate_limit import limiter
 from app.services.device import claim_code, claim_device_as_facilitator, create_device
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_language
 
 CLAIM_URL = "/api/facilitator/devices/claim"
 DEVICE_SELF_URL = "/api/devices/me"

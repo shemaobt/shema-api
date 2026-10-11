@@ -56,12 +56,13 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
+    a_language,
     make_project,
     make_project_user_access,
     make_user,
     make_user_app_role,
 )
-from tests.device_harness import TABLET_TEAM, LinkedTablet, a_language, a_linked_tablet
+from tests.device_harness import TABLET_TEAM, LinkedTablet, a_linked_tablet
 
 P = "P03"
 

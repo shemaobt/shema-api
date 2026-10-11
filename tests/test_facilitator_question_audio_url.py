@@ -44,12 +44,12 @@ from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRSession
 from app.services.internalization_room import questions as service
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_language
 
 IR = "/api/internalization-room"
 STORAGE = "/armazenamento"

@@ -17,12 +17,12 @@ from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRTake, IRTakeKind
 from app.services.internalization_room.voice_handles import facilitator_audio_url
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_language
 from tests.hard_stretch_harness import MemoryStore
 
 IR = "/api/internalization-room"

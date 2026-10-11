@@ -1,4 +1,6 @@
 import base64
+import itertools
+import string
 from datetime import UTC, datetime, timedelta
 
 from google_crc32c import Checksum
@@ -252,6 +254,22 @@ async def make_language(
     await db.commit()
     await db.refresh(lang)
     return lang
+
+
+_BASE36 = string.digits + string.ascii_lowercase
+_language_codes = itertools.count()
+
+
+def _next_language_code() -> str:
+    number = next(_language_codes)
+    return "".join(_BASE36[(number // 36**place) % 36] for place in (2, 1, 0))
+
+
+async def a_language(
+    db: AsyncSession, *, name: str | None = None, code: str | None = None
+) -> Language:
+    code = code or _next_language_code()
+    return await make_language(db, name=name or f"Lingua {code}", code=code)
 
 
 async def make_organization(

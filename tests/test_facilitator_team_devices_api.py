@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ProjectRole
 from app.services.device import create_device
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_language
 
 CLAIM_URL = "/api/facilitator/devices/claim"
 DEVICE_SELF_URL = "/api/devices/me"

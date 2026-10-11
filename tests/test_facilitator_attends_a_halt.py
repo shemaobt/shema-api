@@ -50,12 +50,13 @@ from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_language, a_linked_tablet
+from tests.device_harness import a_linked_tablet
 from tests.hard_stretch_harness import row as the_row
 from tests.turn_harness import the_room_agent_is
 

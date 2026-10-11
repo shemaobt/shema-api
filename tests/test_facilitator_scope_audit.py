@@ -63,12 +63,12 @@ from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room import questions as question_service
 from app.services.internalization_room.voice_handles import to_handle
 from tests.baker import (
+    a_language,
     grant_facilitator_app_role,
     make_project,
     make_project_user_access,
     make_user,
 )
-from tests.device_harness import a_language
 from tests.stream_harness import opening_status
 
 IR = "/api/internalization-room"

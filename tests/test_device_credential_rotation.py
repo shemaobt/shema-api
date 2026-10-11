@@ -24,8 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.services.device import claim_device_as_facilitator, create_device
-from tests.baker import make_project, make_project_user_access, make_user
-from tests.device_harness import a_language
+from tests.baker import a_language, make_project, make_project_user_access, make_user
 
 SELF_URL = "/api/devices/me"
 ROTATE_URL = "/api/devices/me/credential"
