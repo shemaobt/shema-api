@@ -48,7 +48,7 @@ from app.services.internalization_room.moment import moment_view
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
-    hand_over,
+    hand_over_and_commit,
     prepare_opening,
     take_prepared,
 )
@@ -475,8 +475,7 @@ async def create_session(
     await clear_needs_person(db, caller.id)
     nudge(session.project_id, "halts")
     if previous is not None:
-        if hand_over(previous, session):
-            await db.commit()
+        await hand_over_and_commit(db, previous, session)
     elif (
         created
         and is_panorama(session.pericope)

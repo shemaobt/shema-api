@@ -5,7 +5,10 @@ spoken, the coverage is untouched, the conversation is empty — so it is the on
 be written before it is asked for. Doing that turns a five-second wait into none.
 """
 
+from datetime import UTC, datetime
+
 import pytest
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -334,3 +337,105 @@ async def test_the_ready_line_reaches_the_team_without_ever_reaching_the_classif
         "a abertura preparada chegava ao classificador por uma porta que o portão da "
         "abertura ao vivo não lê, e coverage é engaged-only na tela do time"
     )
+
+
+OLD = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+
+
+async def _long_ago(db_session: AsyncSession, *session_ids: str) -> None:
+    for session_id in session_ids:
+        await db_session.execute(
+            update(IRSession)
+            .where(IRSession.id == session_id)
+            .values(updated_at=OLD)
+            .execution_options(synchronize_session=False)
+        )
+    await db_session.commit()
+
+
+async def _updated_at(db_session: AsyncSession, session_id: str) -> datetime:
+    stored = await db_session.scalar(
+        select(IRSession.updated_at)
+        .where(IRSession.id == session_id)
+        .execution_options(populate_existing=True)
+    )
+    assert stored is not None
+    return stored.replace(tzinfo=UTC)
+
+
+async def test_a_panoramas_updated_at_stays_as_it_was_when_its_background_preparation_lands(
+    client, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from app.services.internalization_room import prepare_opening as module
+    from app.services.internalization_room.run_turn import TurnOutcome
+
+    async def _written(**_: object) -> TurnOutcome:
+        return TurnOutcome(speech=PREPARED, transcript="")
+
+    async def _voiced(*_: object, **__: object) -> tuple[SimpleNamespace, None]:
+        return SimpleNamespace(key="tts/prepared.mp3"), None
+
+    async def _the_passage(*_: object, **__: object) -> str:
+        return "P01"
+
+    monkeypatch.setattr(module, "run_turn", _written)
+    monkeypatch.setattr(module, "synthesize_facilitator_speech", _voiced)
+    monkeypatch.setattr(module, "active_passage", _the_passage)
+    panorama = await _create_panorama(client)
+    await _long_ago(db_session, panorama)
+
+    await module.prepare_opening(panorama)
+
+    assert await _prepared_speech_of(db_session, panorama) == PREPARED
+    assert await _updated_at(db_session, panorama) == OLD
+
+
+async def _prepared_speech_of(db_session: AsyncSession, session_id: str) -> str | None:
+    return await db_session.scalar(
+        select(IRSession.prepared_speech)
+        .where(IRSession.id == session_id)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def test_a_panoramas_updated_at_stays_as_it_was_when_the_team_opens_a_passage_and_the_prepared_opening_is_handed_over(  # noqa: E501
+    client, db_session: AsyncSession
+) -> None:
+    panorama = await _create_panorama(client)
+    await _park_the_prepared_line(db_session, panorama)
+    await _long_ago(db_session, panorama)
+
+    passage = await _passage_after(client, panorama)
+
+    assert await _prepared_speech_of(db_session, passage) == PREPARED
+    assert await _prepared_speech_of(db_session, panorama) is None
+    assert await _updated_at(db_session, panorama) == OLD
+
+
+async def test_the_opening_sessions_updated_at_is_not_moved_by_the_hand_over(
+    client, db_session: AsyncSession
+) -> None:
+    panorama = await _create_panorama(client)
+    passage = await _passage_after(client, panorama)
+    await _park_the_prepared_line(db_session, panorama)
+    await _long_ago(db_session, panorama, passage)
+
+    resumed = await _passage_after(client, panorama)
+
+    assert resumed == passage
+    assert await _prepared_speech_of(db_session, passage) == PREPARED
+    assert await _updated_at(db_session, passage) == OLD
+
+
+async def test_a_team_turn_moves_the_sessions_updated_at(client, db_session: AsyncSession) -> None:
+    from app.services.internalization_room import sessions as room
+
+    panorama = await _create_panorama(client)
+    await _long_ago(db_session, panorama)
+    session = await room.get_session(db_session, panorama)
+
+    await room.append_exchange(db_session, session, team_utterance="oi", guide_response="ok")
+
+    assert await _updated_at(db_session, panorama) > OLD

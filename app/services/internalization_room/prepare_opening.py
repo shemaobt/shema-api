@@ -121,6 +121,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             panorama.prepared_audio_key = speech.key
             panorama.prepared_pericope = pericope
             panorama.prepared_attempts = outcome.attempts
+            panorama.updated_at = IRSession.updated_at
             await db.commit()
     except Exception as error:
         logger.warning(
@@ -177,7 +178,14 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     prepared.prepared_audio_key = None
     prepared.prepared_pericope = None
     prepared.prepared_attempts = None
+    prepared.updated_at = IRSession.updated_at
+    opening.updated_at = IRSession.updated_at
     return True
+
+
+async def hand_over_and_commit(db: AsyncSession, prepared: IRSession, opening: IRSession) -> None:
+    if hand_over(prepared, opening):
+        await db.commit()
 
 
 async def take_prepared(
