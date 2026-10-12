@@ -132,3 +132,26 @@ async def test_a_playback_report_read_before_a_check_lands_its_listening_and_kee
         [[0, 4200]],
         4200,
     ), "o relatório de escuta refeito sobre a leitura nova perdia o que ele mesmo trazia"
+
+
+async def test_a_caller_saving_again_after_its_write_was_redone_keeps_the_other_writes_finding(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    checking_db, checking, checking_state = await _read(rival_factory, session.id)
+    finishing_db, finishing, finishing_state = await _read(rival_factory, session.id)
+
+    checking_state.findings.append(_finding("faltou o nome de Boaz"))
+    await service.save_back_translation(checking_db, checking, checking_state)
+    finishing_state.played_ranges = [[0, 4200]]
+    await service.save_back_translation(finishing_db, finishing, finishing_state)
+    finishing_state.waited += 1
+    await service.save_back_translation(finishing_db, finishing, finishing_state)
+    await checking_db.close()
+    await finishing_db.close()
+
+    stored = await _stored(rival_factory, session.id)
+    assert [finding.note for finding in stored.findings] == ["faltou o nome de Boaz"], (
+        "a segunda gravação do mesmo estado lia o achado da outra escrita como retirado"
+    )
+    assert (stored.played_ranges, stored.waited) == ([[0, 4200]], 1)

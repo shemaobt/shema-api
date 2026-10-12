@@ -1118,6 +1118,9 @@ async def save_back_translation(
         fresh = BackTranslationState.model_validate(read or {})
         written = _merged_forward(base, state, fresh).model_dump(mode="json")
     set_committed_value(session, "back_translation", written)
+    for name, value in vars(BackTranslationState.model_validate(written)).items():
+        if getattr(state, name) != value:
+            setattr(state, name, value)
     if commit:
         await db.commit()
         await db.refresh(session)
