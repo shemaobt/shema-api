@@ -124,11 +124,10 @@ class TurnOutcome:
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     """The session as the two speakers a model knows, oldest first and all of it.
 
-    The room stores three: the team, its own notes, and the Guide. Which of the three is the
-    assistant is the only thing being decided here — a room note collapses onto the team's
-    side the same as the team's own words do, because the API knows only two roles, and
-    nothing is left out — a session grows for as long as it runs, and what pays for the
-    length is the cache, not a window.
+    The room stores the team and the Guide, with its notes kept as team entries flagged
+    `room_note`; every entry that is not the Guide's is the user's, and nothing is left out —
+    a session grows for as long as it runs, and what pays for the length is the cache, not a
+    window.
     """
     return [
         Turn(
