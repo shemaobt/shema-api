@@ -151,3 +151,23 @@ async def test_a_question_folded_into_a_statement_is_voiced_as_its_own_sentence_
         "a pergunta dobrada no fim da frase era lida com a entonação de afirmação"
     )
     assert stored == reply, "o turno guardado foi cortado como a fala"
+
+
+async def test_a_verse_range_is_never_cut_where_its_colon_and_dash_fall(
+    client, db_session: AsyncSession, guide: _Guide, elevenlabs: _Elevenlabs
+) -> None:
+    reply = "Vocês lembram do trecho de Rute 1:6–14 que acabamos de ler?"
+
+    said, _ = await _the_team_hears(client, db_session, guide, elevenlabs, reply)
+
+    assert said == [reply], "a referência 1:6–14 era cortada no dois-pontos ou no travessão"
+
+
+async def test_a_dash_inside_a_quoted_phrase_is_never_cut(
+    client, db_session: AsyncSession, guide: _Guide, elevenlabs: _Elevenlabs
+) -> None:
+    reply = 'Noemi disse "fica aqui — vai ali" a Rute, e o que ela fez?'
+
+    said, _ = await _the_team_hears(client, db_session, guide, elevenlabs, reply)
+
+    assert said == [reply], "a frase citada era cortada no travessão de dentro das aspas"
