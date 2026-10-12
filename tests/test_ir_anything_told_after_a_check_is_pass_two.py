@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.takes import take_by_id
+from tests.hard_stretch_harness import current
 from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     ScriptedAnalyst,
@@ -88,3 +90,20 @@ async def test_a_frase_replaced_after_a_check_reaches_her_analyst_as_told_again(
         "a frase traduzida de novo pelo /replace chegava à analista como primeira passada"
     )
     assert TOLD_AGAIN not in _line_of(analyst.shown[-1], "a frase 1, contada de volta")
+
+
+async def test_the_recording_of_a_frase_replaced_after_a_check_is_kept_as_the_second_pass(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    session_id, stretches = await _checked(client, db_session)
+
+    await _replaced(client, session_id, stretches[1])
+
+    replaced = next(
+        one for one in await current(db_session, session_id) if one.transcript == RETOLD
+    )
+    assert replaced.bridge_take_id is not None
+    recording = await take_by_id(db_session, replaced.bridge_take_id)
+    assert recording.pass_number == 2, (
+        "a gravação da frase traduzida de novo ficava na primeira passada, e o texto na segunda"
+    )
