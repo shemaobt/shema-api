@@ -23,7 +23,7 @@ from app.core.config import get_settings
 from app.services import internalization_room as room
 from tests.canon_harness import the_canon_moves_on
 from tests.room_harness import nothing_is_read_ahead, the_analyst_is_scripted
-from tests.text_seam_harness import RUNNER_KEY, the_app
+from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, TEAM_LINE, the_app
 from tests.turn_harness import the_room_agent_is
 
 SEAM = "/api/internalization-room/text-seam/back-translation"
@@ -32,6 +32,8 @@ VENDORED_ROLE = "Role: hearer of the news; rises and sets out"
 KEPT_ROLE = "Role: THE KEPT MAP'S HEARER OF THE NEWS"
 VENDORED_FIRST_SCENE = "Hearing and setting out"
 KEPT_FIRST_SCENE = "The kept first scene"
+FIRST_SCENE_HEADING = "### Scene 1 —"
+SECOND_SCENE_HEADING = "### Scene 2 —"
 CLIPS = [{"key": "S1", "durationMs": 20000}]
 FRASES = [
     {
@@ -50,17 +52,30 @@ def _the_kept_p02_is_told_its_own_way(tree: Path) -> None:
     page.write_text(told, encoding="utf-8")
 
 
+def _the_kept_p02_has_no_first_scene(tree: Path) -> None:
+    (page,) = (tree / "vendor" / "meaning-map").glob("P02-*.md")
+    told = page.read_text(encoding="utf-8")
+    first = told.index(FIRST_SCENE_HEADING)
+    page.write_text(told[:first] + told[told.index(SECOND_SCENE_HEADING) :], encoding="utf-8")
+
+
+async def _nothing_is_classified(**_: Any) -> str:
+    return json.dumps({"decisions": []})
+
+
 class Voice:
     def __init__(self) -> None:
-        self.seen: list[str] = []
+        self.guides: list[str] = []
+        self.validators: list[str] = []
         self.refuses = False
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        self.seen.append(system_prompt)
         if "corrected_response" in system_prompt:
+            self.validators.append(system_prompt)
             if self.refuses:
                 return json.dumps({"verdict": "regenerate", "issues": [{"problem": "added"}]})
             return json.dumps({"verdict": "pass", "issues": []})
+        self.guides.append(system_prompt)
         return "Vocês traduziram bem."
 
 
@@ -134,4 +149,109 @@ async def test_a_text_seam_session_open_when_a_new_canon_is_published_is_pointed
     )
     assert from_fresh["spoken"].endswith("this is the part about hearing and setting out."), (
         "a sessão aberta depois da troca perdeu o ponteiro do mapa que serve"
+    )
+
+
+@pytest.fixture()
+async def golden(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
+    )
+
+    async def _never_voiced(text: str, **_: Any) -> None:
+        raise AssertionError(f"a porta dourada pediu um clipe ao sintetizador: {text!r}")
+
+    monkeypatch.setattr(room, "synthesize_facilitator_speech", _never_voiced)
+    transport = ASGITransport(app=the_app(db_session))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=BEARER) as c:
+        yield c
+
+
+async def _an_open_golden_session(golden: httpx.AsyncClient) -> str:
+    created = await golden.post(
+        f"{GOLDEN}/session", json={"pericopeId": "P02", "language": "English"}
+    )
+    assert created.status_code == 200, created.text
+    session_id = str(created.json()["sessionId"])
+    opened = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
+    )
+    assert opened.status_code == 200, opened.text
+    return session_id
+
+
+async def _the_team_says(golden: httpx.AsyncClient, session_id: str, **more: Any) -> dict[str, Any]:
+    answered = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": TEAM_LINE, **more}
+    )
+    assert answered.status_code == 200, answered.text
+    return dict(answered.json())
+
+
+async def test_a_golden_session_open_when_a_new_canon_is_published_hands_the_voice_and_the_validator_its_own_map(  # noqa: E501
+    golden, monkeypatch, tmp_path
+) -> None:
+    voice = Voice()
+    the_room_agent_is(monkeypatch, turn=voice, classifier=_nothing_is_classified)
+    kept_session = await _an_open_golden_session(golden)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_is_told_its_own_way)
+    fresh_session = await _an_open_golden_session(golden)
+
+    await _the_team_says(golden, fresh_session)
+    await _the_team_says(golden, kept_session)
+    guide_of_fresh, guide_of_kept = voice.guides[-2:]
+    validator_of_fresh, validator_of_kept = voice.validators[-2:]
+
+    assert KEPT_ROLE in guide_of_kept, "a voz leu o mapa novo no meio da sessão da porta"
+    assert KEPT_ROLE in validator_of_kept, "o Validador conferiu contra o mapa novo"
+    assert VENDORED_ROLE not in guide_of_kept and VENDORED_ROLE not in validator_of_kept
+    assert VENDORED_ROLE in guide_of_fresh and VENDORED_ROLE in validator_of_fresh, (
+        "a sessão aberta depois da troca deixou de ler o mapa que serve"
+    )
+
+
+async def test_a_golden_session_open_when_a_new_canon_is_published_is_pointed_at_its_own_scene(
+    golden, monkeypatch, tmp_path
+) -> None:
+    voice = Voice()
+    the_room_agent_is(monkeypatch, turn=voice, classifier=_nothing_is_classified)
+    kept_session = await _an_open_golden_session(golden)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_is_told_its_own_way)
+    fresh_session = await _an_open_golden_session(golden)
+    voice.refuses = True
+
+    from_fresh = await _the_team_says(golden, fresh_session)
+    from_kept = await _the_team_says(golden, kept_session)
+
+    assert from_kept["outcome"] == "fail_safe"
+    assert from_kept["guideText"].endswith("this is the part about the kept first scene."), (
+        "o aviso de segurança apontou para a primeira cena do mapa novo"
+    )
+    assert from_fresh["guideText"].endswith("this is the part about hearing and setting out."), (
+        "a sessão aberta depois da troca perdeu o ponteiro do mapa que serve"
+    )
+
+
+async def test_a_golden_session_open_when_a_new_canon_is_published_is_recorded_in_its_own_scene(
+    golden, db_session, monkeypatch, tmp_path
+) -> None:
+    voice = Voice()
+    the_room_agent_is(monkeypatch, turn=voice, classifier=_nothing_is_classified)
+    kept_session = await _an_open_golden_session(golden)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_has_no_first_scene)
+    fresh_session = await _an_open_golden_session(golden)
+    voice.refuses = True
+
+    await _the_team_says(golden, fresh_session)
+    await _the_team_says(golden, kept_session)
+    recorded = []
+    for session_id in (fresh_session, kept_session):
+        stored = await room.get_session(db_session, session_id)
+        await db_session.refresh(stored)
+        (fired,) = [m for m in stored.messages if m.get("outcome") == "fail_safe"]
+        recorded.append(fired["scene"])
+
+    assert recorded == ["S1", "S2"], (
+        "a cena do aviso de segurança foi gravada pelo mapa que a sala serve agora, onde a "
+        "primeira cena ainda existe e o canon guardado já não a tem"
     )
