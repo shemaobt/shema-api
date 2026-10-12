@@ -57,7 +57,7 @@ async def answer_around_the_opening(
     *,
     opening: bool,
     turn_id: str | None,
-    project_id: str | None,
+    project_id: str,
     hearing: asyncio.Task[HeardSpeech] | None,
     deadline: float,
     bound_s: float,
@@ -177,7 +177,7 @@ def _drafting_since(session: IRSession, bound_s: float) -> datetime | None:
 
 
 async def _claimed_answer(
-    session_id: str, project_id: str | None, *, until: float
+    session_id: str, project_id: str, *, until: float
 ) -> dict[str, Any] | None:
     """The answer stored under the claim, or None once the claim is gone or `until` passes.
 
@@ -201,7 +201,7 @@ async def _joined(
     session_id: str,
     *,
     turn_id: str | None,
-    project_id: str | None,
+    project_id: str,
     until: float,
 ) -> TurnResponse | None:
     """The opening another request claimed, as that request answered it, under this `turn_id`.
@@ -223,7 +223,7 @@ async def _joined(
 
 
 async def _wait_for_the_opening(
-    db: AsyncSession, session: IRSession, project_id: str | None, since: datetime
+    db: AsyncSession, session: IRSession, project_id: str, since: datetime
 ) -> None:
     """Hold a team turn until the opening drafting on its session lands, at most the wait.
 

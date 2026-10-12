@@ -19,6 +19,7 @@ from app.services.project.list_projects_by_organization import (
 )
 from app.services.project.list_projects_for_user import list_projects_for_user
 from app.services.project.list_user_project_roles import list_user_project_roles
+from app.services.project.reads_project import reads_project
 from app.services.project.revoke_organization_access import revoke_organization_access
 from app.services.project.revoke_user_access import revoke_user_access
 from app.services.project.update_project import update_project
@@ -42,6 +43,7 @@ __all__ = [
     "list_projects_by_organization",
     "list_projects_for_user",
     "list_user_project_roles",
+    "reads_project",
     "revoke_organization_access",
     "revoke_user_access",
     "update_project",

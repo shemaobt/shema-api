@@ -56,12 +56,12 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import a_linked_tablet
 from tests.hard_stretch_harness import row as the_row
 from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
-ROOM_KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 
 P = "P03"
@@ -112,7 +112,9 @@ async def _voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
 
 
 @pytest.fixture()
-async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+async def client(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, facilitator_a: Facilitator
+):
     """The room and the Desk on one app, because a halt is read from both sides.
 
     The synthesiser, the transcriber and the take bucket are the neighbours' fakes and no
@@ -125,12 +127,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
 
     async def _heard_speech(audio: bytes, **_: Any) -> Any:
@@ -156,7 +156,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=facilitator_a.team_id)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -216,14 +219,12 @@ async def a_session(db: AsyncSession, *, team_id: str, ready_to_close: bool = Fa
 
 async def the_tablet_halts(client: httpx.AsyncClient, session_id: str) -> None:
     """The room in front of the team says it cannot go on without a person."""
-    asked = await client.post(
-        f"{IR}/sessions/{session_id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
-    )
+    asked = await client.post(f"{IR}/sessions/{session_id}/needs-person")
     assert asked.status_code == 200, asked.text[:300]
 
 
 async def tablet_state(client: httpx.AsyncClient, session_id: str) -> dict:
-    answer = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
+    answer = await client.get(f"{IR}/sessions/{session_id}")
     assert answer.status_code == 200, answer.text[:300]
     return answer.json()
 
@@ -622,7 +623,7 @@ async def test_the_tablets_own_halt_is_a_blocking_one(
 async def _a_rehearsal(client: httpx.AsyncClient, session_id: str) -> str:
     kept = await client.post(
         f"{IR}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": P},
         files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
     )
@@ -635,7 +636,7 @@ async def _tell_back_again(
 ) -> httpx.Response:
     return await client.post(
         f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={
             "take_id": take_id,
             "starts_ms": "0",
@@ -721,7 +722,6 @@ async def waiting_room(
 async def the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     return await client.post(
         f"{IR}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": ROOM_KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 
@@ -1226,9 +1226,7 @@ async def test_a_closed_passage_refuses_a_needs_person_ask(
     assert (await attend(client, waiting_room.id, facilitator_a)).status_code == 200
     went = (await history_row(client, facilitator_a, waiting_room.id))["attended_at"]
 
-    asked = await client.post(
-        f"{IR}/sessions/{waiting_room.id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
-    )
+    asked = await client.post(f"{IR}/sessions/{waiting_room.id}/needs-person")
 
     assert 400 <= asked.status_code < 500, asked.text[:300]
     assert asked.json()["code"] == "PASSAGE_CLOSED"
@@ -1294,9 +1292,7 @@ async def test_a_closed_passage_never_reads_needs_person_nor_in_progress_after_a
         "attend": lambda: attend(client, waiting_room.id, facilitator_a),
         "undo": lambda: unattend(client, waiting_room.id, facilitator_a),
         "turn": lambda: the_team_answers(client, waiting_room.id),
-        "ask": lambda: client.post(
-            f"{IR}/sessions/{waiting_room.id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
-        ),
+        "ask": lambda: client.post(f"{IR}/sessions/{waiting_room.id}/needs-person"),
     }
 
     for name, write in writes.items():

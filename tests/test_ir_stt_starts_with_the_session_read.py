@@ -25,7 +25,8 @@ from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech, stop_hearing
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.release_harness import PREFIX, P
 from tests.turn_harness import the_room_agent_is
 
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
@@ -70,11 +71,9 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     the_room_agent_is(monkeypatch, turn=_Model())
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _Voice())
     monkeypatch.setattr(sessions_api, "heard_speech", _hearing)
@@ -89,13 +88,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 async def _an_opening_turn(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     """A turn with no audio — the shape the app sends first, which reads the session too."""
-    return await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    return await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
 
 async def _a_spoken_turn(
@@ -104,7 +106,6 @@ async def _a_spoken_turn(
     data = {"turn_id": turn_id} if turn_id else {}
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         data=data,
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
@@ -114,12 +115,12 @@ async def test_the_session_language_is_remembered_once_the_session_has_been_read
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     opened = await _an_opening_turn(client, session.id)
 
     assert opened.status_code == 200, opened.text[:300]
-    assert sessions_api._LANGUAGE_MEMO.get(session.id) == ("pt", None), (
+    assert sessions_api._LANGUAGE_MEMO.get(session.id) == ("pt", TABLET_TEAM), (
         "a sessão foi lida e a língua dela não ficou guardada para o próximo turno"
     )
 
@@ -130,7 +131,7 @@ def test_the_memo_holds_at_most_a_thousand_and_twenty_four_sessions(
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
 
     for n in range(sessions_api._LANGUAGE_MEMO_MAX + 5):
-        sessions_api._remember_language(f"session-{n}", "pt", None)
+        sessions_api._remember_language(f"session-{n}", "pt", TABLET_TEAM)
 
     assert len(sessions_api._LANGUAGE_MEMO) == sessions_api._LANGUAGE_MEMO_MAX
     assert "session-0" not in sessions_api._LANGUAGE_MEMO, (
@@ -172,8 +173,8 @@ async def test_a_known_language_starts_transcription_before_the_session_read_fin
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    session = await create_session(db_session, language="pt", pericope=P)
-    sessions_api._remember_language(session.id, session.language, None)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
+    sessions_api._remember_language(session.id, session.language, TABLET_TEAM)
 
     hearing = _HearingThatSignalsItStarted()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
@@ -223,7 +224,7 @@ async def test_a_resend_with_a_warm_memo_never_calls_the_transcriber(
     call already sent to the transcriber never lands, so this is the one read this ticket
     does not overlap."""
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     first = await _a_spoken_turn(client, session.id, turn_id="turno-1")
     assert first.status_code == 200, first.text[:300]
 
@@ -247,7 +248,7 @@ async def test_a_missing_session_cancels_the_speculative_transcription_and_still
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    sessions_api._remember_language("sessao-fantasma", "pt", None)
+    sessions_api._remember_language("sessao-fantasma", "pt", TABLET_TEAM)
     hearing = _HearingThatWaitsToBeCancelled()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
 
@@ -271,7 +272,7 @@ async def test_without_a_known_language_the_session_is_still_read_before_transcr
     """The first turn a process sees for a session has nothing in the memo yet — same order
     as before this ticket: the session read finishes before transcription is ever started."""
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     hearing = _HearingThatSignalsItStarted()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
@@ -328,8 +329,8 @@ async def test_a_read_that_cannot_be_let_go_still_cancels_the_speculative_transc
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    session = await create_session(db_session, language="pt", pericope=P)
-    sessions_api._remember_language(session.id, session.language, None)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
+    sessions_api._remember_language(session.id, session.language, TABLET_TEAM)
     hearing = _HearingThatWaitsToBeCancelled()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
     commit = db_session.commit

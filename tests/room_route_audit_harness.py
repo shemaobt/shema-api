@@ -26,7 +26,7 @@ def _dependency_calls(dependant) -> set:
 def _direct_calls(endpoint) -> set:
     """Gate functions the endpoint's own body calls by name, bypassing ``Depends``.
 
-    `voice.py`'s clip route awaits `require_room_caller` directly so it can run beside the
+    `voice.py`'s clip route awaits `linked_tablet` directly so it can run beside the
     GCS read — a call the dependant tree above never sees. Its name still shows up in the
     function's own bytecode, resolved against the module it was imported into.
     """
@@ -48,7 +48,7 @@ def room_app_routes() -> list:
     from app.api.internalization_room import _deps
     from app.main import app
 
-    gates = {_deps.require_room_caller, _deps.require_device}
+    gates = {_deps.linked_tablet, _deps.require_device}
     return sorted(
         (
             route

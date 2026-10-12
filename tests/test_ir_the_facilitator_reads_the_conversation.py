@@ -28,6 +28,7 @@ from tests.release_harness import (
     a_claimed_device,
     at_the_desk,
     ready_session,
+    team_headers,
 )
 from tests.room_harness import (
     heard_every_part,
@@ -182,7 +183,8 @@ async def test_a_turn_the_tablet_resent_is_not_doubled(
 async def test_the_telling_back_round_is_not_part_of_the_conversation(
     client, db_session, room_app, script
 ) -> None:
-    project, _credential = await a_claimed_device(db_session)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
     session = await ready_session(db_session, project_id=project.id)
     await append_exchange(
         db_session, session, team_utterance=FIRST_ANSWER, guide_response=GUIDE_LINE

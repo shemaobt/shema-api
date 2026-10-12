@@ -16,15 +16,16 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import APIRouter
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.enums import ProjectRole
 from app.db.models.project import Project
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.hearing import HeardSpeech
 from tests.baker import make_project_user_access, make_user
-from tests.release_harness import KEY, PREFIX, team_headers
+from tests.device_harness import a_linked_tablet
+from tests.release_harness import PREFIX, team_headers
 from tests.tablet_turn_harness import the_team_says as a_turn_is_said
 from tests.tablet_turn_harness import the_turn_is_scripted
 
@@ -35,10 +36,9 @@ GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
 async def ask_for_the_opening(
     client: httpx.AsyncClient, session_id: str, turn_id: str | None = "abertura"
 ) -> httpx.Response:
-    """A turn with no recording on the room's key, under `turn_id` or under none."""
+    """A turn with no recording, under `turn_id` or under none."""
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": turn_id} if turn_id else {},
     )
 
@@ -77,11 +77,7 @@ async def another_tablet_of(db: AsyncSession, team: Project) -> str:
     """A tablet a facilitator of this team claimed, and the credential it calls with."""
     user = await make_user(db, email=f"fac-{uuid.uuid4()}@example.com")
     await make_project_user_access(db, team.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=team.id
-    )
-    return claimed.credential
+    return (await a_linked_tablet(db, team_id=team.id, facilitator=user)).credential
 
 
 async def the_tablet_opens(
@@ -112,21 +108,19 @@ async def the_team_says(
 
 
 @asynccontextmanager
-async def desk_routes(
-    db_session: AsyncSession, *, per_request: async_sessionmaker[AsyncSession] | None = None
+async def _desk_router_on_an_app(
+    router: APIRouter,
+    prefix: str,
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession] | None,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    """The Desk's team routes on an app of their own, over the case's database.
-
-    `per_request` gives every request a session of its own, as `room_client` does.
-    """
     from fastapi import FastAPI
 
-    from app.api.facilitator.teams import facilitator_teams_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
-    test_app.include_router(facilitator_teams_router, prefix="/api/facilitator/teams")
+    test_app.include_router(router, prefix=prefix)
     register_exception_handlers(test_app)
 
     async def _get_db():
@@ -139,5 +133,34 @@ async def desk_routes(
     test_app.dependency_overrides[get_db] = _get_db
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        yield client
+
+
+@asynccontextmanager
+async def desk_routes(
+    db_session: AsyncSession, *, per_request: async_sessionmaker[AsyncSession] | None = None
+) -> AsyncIterator[httpx.AsyncClient]:
+    """The Desk's team routes on an app of their own, over the case's database.
+
+    `per_request` gives every request a session of its own, as `room_client` does.
+    """
+    from app.api.facilitator.teams import facilitator_teams_router
+
+    async with _desk_router_on_an_app(
+        facilitator_teams_router, "/api/facilitator/teams", db_session, per_request
+    ) as client:
+        yield client
+
+
+@asynccontextmanager
+async def desk_sessions_routes(
+    db_session: AsyncSession, *, per_request: async_sessionmaker[AsyncSession] | None = None
+) -> AsyncIterator[httpx.AsyncClient]:
+    """The Desk's sessions tile on an app of their own, over the case's database."""
+    from app.api.facilitator.sessions import facilitator_sessions_router
+
+    async with _desk_router_on_an_app(
+        facilitator_sessions_router, "/api/facilitator/sessions", db_session, per_request
     ) as client:
         yield client

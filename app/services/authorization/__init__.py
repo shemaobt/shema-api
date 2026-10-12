@@ -10,6 +10,7 @@ from app.services.authorization.resolve_app_roles import (
     resolve_user_app_roles,
 )
 from app.services.authorization.revoke_role import revoke_role
+from app.services.authorization.roles_on import roles_on
 
 __all__ = [
     "assert_can_manage_roles",
@@ -22,4 +23,5 @@ __all__ = [
     "resolve_user_app_role",
     "resolve_user_app_roles",
     "revoke_role",
+    "roles_on",
 ]

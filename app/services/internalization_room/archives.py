@@ -25,6 +25,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room_archive import ArchivedSession, KeptPart
+from app.services.internalization_room.conversation import the_conversation
 from app.services.internalization_room.live import live
 from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import TEAM_NOT_FOUND
@@ -103,7 +104,8 @@ async def archive_pericope(
 
 
 async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[ArchivedSession]:
-    """Each session's dossier: ``turns`` counts the guide's lines, her ``turnCount``.
+    """Each session's dossier: ``turns`` counts the guide's lines of the conversation, her
+    ``turnCount``, leaving out the telling-back verdicts as the turns route and the Desk do.
 
     ``kept_takes`` are the parts the team had kept, the newest rehearsal under each part number
     as the room reads them, and not every rehearsal ever uploaded; a list, because the passage
@@ -137,7 +139,7 @@ async def _as_they_stood(db: AsyncSession, session_ids: list[str]) -> list[Archi
             language=session.language,
             status=session.status.value,
             coverage=session.coverage_state,
-            turns=sum(1 for line in session.messages or [] if line.get("role") == "guide"),
+            turns=sum(1 for line in the_conversation(session) if line.get("role") == "guide"),
             kept_takes=kept[session.id],
             release_versions=versions.get(session.id, []),
             created_at=as_utc(session.created_at).isoformat(),

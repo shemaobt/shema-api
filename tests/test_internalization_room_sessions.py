@@ -61,7 +61,7 @@ async def test_the_exchange_is_appended_in_order(db_session: AsyncSession) -> No
 
     assert session.messages == [
         {"role": "team", "text": "a fome chegou", "at": ANY},
-        {"role": "guide", "text": "isso mesmo", "at": ANY, "moment": ANY},
+        {"role": "guide", "text": "isso mesmo", "at": ANY, "moment": ANY, "voice_key": ANY},
     ]
 
 
@@ -73,7 +73,13 @@ async def test_the_opening_turn_records_only_the_guide(db_session: AsyncSession)
     )
 
     assert session.messages == [
-        {"role": "guide", "text": "que bom ter vocês aqui", "at": ANY, "moment": ANY}
+        {
+            "role": "guide",
+            "text": "que bom ter vocês aqui",
+            "at": ANY,
+            "moment": ANY,
+            "voice_key": ANY,
+        }
     ]
 
 

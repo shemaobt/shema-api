@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room import validated_turn
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 CORRECTED_LINE = "Fiquem nesta cena. O que vocês contariam?"
@@ -72,11 +72,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         spoken.append(text)
@@ -104,7 +101,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -115,7 +115,6 @@ def _the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> None:
 async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": P, "language": "pt"},
     )
     assert created.status_code == 200
@@ -123,13 +122,12 @@ async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
 
 
 async def _the_room_takes_a_turn(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    return await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
 
 async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 

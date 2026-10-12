@@ -22,9 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.internalization_room import CoverageFrame, CoverageView
 from app.services.internalization_room.coverage_channel import _subscribers, publish
 from app.services.internalization_room.sessions import create_session
+from tests.device_harness import TABLET_TEAM, LinkedTablet, a_linked_tablet
 
 IR = "/api/internalization-room"
-ROOM_KEY = "sala-de-teste"
 
 
 @dataclass
@@ -42,11 +42,8 @@ class _Listening:
 @pytest.fixture()
 def channel_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     from app.api.internalization_room import router as room_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=IR)
@@ -60,13 +57,20 @@ def channel_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> Fa
 
 
 @pytest.fixture()
+async def linked(db_session: AsyncSession) -> LinkedTablet:
+    return await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+
+
+@pytest.fixture()
 async def passage(db_session: AsyncSession) -> str:
-    session = await create_session(db_session, pericope="P01", language="pt")
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="P01", language="pt"
+    )
     return session.id
 
 
 @asynccontextmanager
-async def _listening(app: FastAPI, session_id: str) -> AsyncIterator[_Listening]:
+async def _listening(app: FastAPI, session_id: str, credential: str) -> AsyncIterator[_Listening]:
     started: asyncio.Future[_Listening] = asyncio.get_running_loop().create_future()
     hung_up = asyncio.Event()
     scope = {
@@ -77,7 +81,7 @@ async def _listening(app: FastAPI, session_id: str) -> AsyncIterator[_Listening]
         "path": f"{IR}/sessions/{session_id}/coverage",
         "raw_path": f"{IR}/sessions/{session_id}/coverage".encode(),
         "query_string": b"",
-        "headers": [(b"host", b"test"), (b"x-room-key", ROOM_KEY.encode())],
+        "headers": [(b"host", b"test"), (b"x-device-credential", credential.encode())],
         "client": ("test", 1),
         "server": ("test", 80),
     }
@@ -106,9 +110,9 @@ async def _listening(app: FastAPI, session_id: str) -> AsyncIterator[_Listening]
 
 
 async def test_a_published_frame_reaches_the_open_channel_as_one_coverage_event(
-    channel_app: FastAPI, passage: str
+    channel_app: FastAPI, linked: LinkedTablet, passage: str
 ) -> None:
-    async with _listening(channel_app, passage) as tablet:
+    async with _listening(channel_app, passage, linked.credential) as tablet:
         assert tablet.status == 200
         assert tablet.headers["content-type"].startswith("text/event-stream")
 
@@ -150,13 +154,13 @@ async def test_a_published_frame_reaches_the_open_channel_as_one_coverage_event(
 
 
 async def test_a_quiet_channel_still_says_it_is_alive(
-    channel_app: FastAPI, passage: str, monkeypatch: pytest.MonkeyPatch
+    channel_app: FastAPI, linked: LinkedTablet, passage: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.api.internalization_room import coverage_channel as channel_api
 
     monkeypatch.setattr(channel_api, "KEEP_ALIVE_SECONDS", 0.01)
 
-    async with _listening(channel_app, passage) as tablet:
+    async with _listening(channel_app, passage, linked.credential) as tablet:
         heard = await tablet.next_chunk()
 
     assert heard == b": keep-alive\n\n", (
@@ -166,9 +170,9 @@ async def test_a_quiet_channel_still_says_it_is_alive(
 
 
 async def test_a_tablet_that_hangs_up_is_no_longer_a_subscriber(
-    channel_app: FastAPI, passage: str
+    channel_app: FastAPI, linked: LinkedTablet, passage: str
 ) -> None:
-    async with _listening(channel_app, passage):
+    async with _listening(channel_app, passage, linked.credential):
         assert passage in _subscribers
 
     assert passage not in _subscribers, (
@@ -179,8 +183,9 @@ async def test_a_tablet_that_hangs_up_is_no_longer_a_subscriber(
 
 async def test_a_session_the_room_does_not_know_is_refused_not_listened_for(
     channel_app: FastAPI,
+    linked: LinkedTablet,
 ) -> None:
-    async with _listening(channel_app, "sessao-que-nao-existe") as tablet:
+    async with _listening(channel_app, "sessao-que-nao-existe", linked.credential) as tablet:
         assert tablet.status == 404, (
             "o canal abria um stream sem fim para qualquer id, e a auditoria que percorre "
             "toda rota da sala com um id de mentira ficou pendurada nele"

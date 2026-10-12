@@ -25,10 +25,10 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 P = "P03"
 FIRST_QUESTION = "Quem aparece nesta parte?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
@@ -93,11 +93,9 @@ async def client(
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
 
     async def _heard(audio: bytes, **_: Any) -> Any:
@@ -116,7 +114,10 @@ async def client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -143,7 +144,7 @@ def target_checkpoint() -> str:
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSession:
     """A room that has asked its question and is waiting on the answer."""
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
@@ -155,7 +156,6 @@ async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSe
 async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 

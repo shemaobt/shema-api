@@ -13,7 +13,8 @@ from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, P
 from tests.room_harness import press_terminei, room_client
 
 PANORAMA = "OV-Ruth"
@@ -48,7 +49,6 @@ async def _three_silent_takes(client, session_id: str) -> list[str]:
     for _ in range(3):
         answered = await client.post(
             f"{PREFIX}/sessions/{session_id}/turns",
-            headers={"X-Room-Key": KEY},
             files={"file": ("silencio.m4a", b"audio", "audio/m4a")},
         )
         assert answered.status_code == 200, answered.text[:300]
@@ -59,7 +59,7 @@ async def _three_silent_takes(client, session_id: str) -> list[str]:
 async def test_three_inaudible_takes_in_a_row_in_a_passage_session_each_hear_d_1(
     client, db_session: AsyncSession
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     assert await _three_silent_takes(client, session.id) == ["D0", "D0", "D0"]
 
@@ -67,7 +67,9 @@ async def test_three_inaudible_takes_in_a_row_in_a_passage_session_each_hear_d_1
 async def test_three_inaudible_takes_in_a_row_in_a_panorama_session_each_hear_d_1(
     client, db_session: AsyncSession
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=PANORAMA)
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, language="pt", pericope=PANORAMA
+    )
 
     assert await _three_silent_takes(client, session.id) == ["D0", "D0", "D0"]
 
@@ -76,7 +78,7 @@ async def test_three_inaudible_takes_in_a_row_in_a_panorama_session_each_hear_d_
 async def test_an_empty_telling_back_hears_d_1_whatever_the_number_of_messages_so_far(
     client, db_session: AsyncSession, stored: int
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     session.messages = [
         {"role": "guide", "text": "Vamos conhecer a cena.", "outcome": "pass"}
     ] * stored

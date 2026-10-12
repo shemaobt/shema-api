@@ -32,13 +32,8 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 # longer exists. Just try again.
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
-#: An approval that cannot be numbered, because a release is named by project, pericope
-#: and version and this session names no project. Its own code because the tablet acts on
-#: it: nothing about the passage is wrong and retrying changes nothing — the room was
-#: opened on the shared key, and only a credentialed device can approve.
-ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
-#: A force asked for without the word that makes it one. Its own code for the reason above:
-#: nothing about the passage is wrong and retrying changes nothing — the Desk arms the force
+#: A force asked for without the word that makes it one. Its own code because nothing about
+#: the passage is wrong and retrying changes nothing — the Desk arms the force
 #: and asks again, and answering CONFLICT would send it looking for a blocker instead.
 ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
 ERROR_CODE_REPLY_MOVED_ON: Final = "REPLY_MOVED_ON"
@@ -75,6 +70,10 @@ ERROR_CODE_UNREADABLE_REPLY: Final = "UNREADABLE_REPLY"
 #: forgets the credential it holds and shows its claim code again, which is the wrong
 #: response to every other refusal.
 ERROR_CODE_DEVICE_REVOKED: Final = "DEVICE_REVOKED"
+
+ERROR_CODE_UPLOAD_OBJECT_MISSING: Final = "UPLOAD_OBJECT_MISSING"
+ERROR_CODE_UPLOAD_SIZE_MISMATCH: Final = "UPLOAD_SIZE_MISMATCH"
+ERROR_CODE_UPLOAD_CHECKSUM_MISMATCH: Final = "UPLOAD_CHECKSUM_MISMATCH"
 
 
 class AuthenticationError(Exception):
@@ -123,20 +122,10 @@ class ProjectGranularityLocked(ConflictError):
     """
 
 
-class ReleaseWithoutProject(ConflictError):
-    """A session opened on the shared room key was asked to approve its passage.
-
-    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
-    promises a version to reload from, and there is none. Refused rather than numbered in
-    a group belonging to nobody, because a release is named by project, pericope and
-    version, and the shared key names no project.
-    """
-
-
 class NothingToForce(ConflictError):
     """The force route was called by a body that does not ask for a force.
 
-    Its own exception beside ``ReleaseWithoutProject`` and for the same reason: the generic
+    Its own exception for the reason SessionLockChanged is: the generic
     CONFLICT code promises a blocker or a version to reload from, and there is neither. The
     session was not even looked at — a route whose only purpose is to overrule the gate has
     nothing to say about a caller who did not ask it to.
@@ -330,6 +319,17 @@ class SecondaryClassificationConflictError(ValidationError):
         )
 
 
+class UploadNotConfirmed(ValidationError):
+    """confirm-upload refused the uploaded object, and `code` names the check it failed.
+
+    Still a 400. Its own codes because the app tells the person why, without reading the words.
+    """
+
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
+
+
 class SegmentClassificationConflictError(ValidationError):
     def __init__(self, segment_index: int) -> None:
         super().__init__(
@@ -386,15 +386,6 @@ async def handle_project_granularity_locked(
     )
 
 
-async def handle_release_without_project(
-    _request: Request, exc: ReleaseWithoutProject
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content=_error_body(str(exc), ERROR_CODE_RELEASE_WITHOUT_PROJECT),
-    )
-
-
 async def handle_nothing_to_force(_request: Request, exc: NothingToForce) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -438,6 +429,13 @@ async def handle_stretch_no_longer_counts(
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=_error_body(str(exc), ERROR_CODE_STRETCH_NO_LONGER_COUNTS),
+    )
+
+
+async def handle_upload_not_confirmed(_request: Request, exc: UploadNotConfirmed) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), exc.code),
     )
 
 
@@ -597,7 +595,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     # above regardless of the order these are registered in.
     app.add_exception_handler(SessionLockChanged, handle_session_lock_changed)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
-    app.add_exception_handler(ReleaseWithoutProject, handle_release_without_project)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
@@ -609,6 +606,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
     app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
+    app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
     app.add_exception_handler(StoredAnswer, handle_stored_answer)  # type: ignore[arg-type]

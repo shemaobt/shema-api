@@ -754,7 +754,8 @@ async def test_a_hard_stretch_mark_lands_on_the_stretch_standing_now(
     carries. A chain whose recording the team replaced leads to no stretch standing, and the
     file says that with a null rather than by pointing at a row nobody can hear any more.
     """
-    project, _credential = await a_claimed_device(db_session)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
     session_id = await _a_session(db_session, team_id=project.id)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
     take_id = await _rehearse(client, session_id, part=1)

@@ -69,6 +69,7 @@ class OC_Recording(Base):
     file_size_bytes: Mapped[int] = mapped_column(Integer)
     format: Mapped[str] = mapped_column(String(20))
     gcs_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_blob_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     upload_status: Mapped[str] = mapped_column(String(20), default=UploadStatus.LOCAL)
     upload_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cleaning_status: Mapped[str] = mapped_column(String(20), default=CleaningStatus.NONE)

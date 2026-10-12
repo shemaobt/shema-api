@@ -19,7 +19,8 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import append_exchange, create_session, get_session
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, PREFIX, P
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
 
@@ -77,7 +78,6 @@ def the_room_hears(monkeypatch: pytest.MonkeyPatch):
 async def _post_a_turn(client, session_id: str):
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
 
@@ -96,6 +96,7 @@ async def test_a_passing_turn_is_recorded_as_a_pass_with_its_redrafts(
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": "isso mesmo",
         "outcome": "pass",
         "redrafts": 0,
@@ -121,6 +122,7 @@ async def test_a_mended_turn_is_recorded_as_corrected(db_session: AsyncSession) 
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": "isso mesmo",
         "outcome": "corrected",
         "redrafts": 1,
@@ -156,6 +158,7 @@ async def test_a_fail_safe_is_recorded_with_everything_her_spec_asks_for(
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": "Vamos com calma.",
         "outcome": "fail_safe",
         "redrafts": 2,
@@ -205,7 +208,7 @@ async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
     client, db_session: AsyncSession, the_room_hears
 ) -> None:
     the_room_hears([json.dumps({"verdict": "pass", "issues": []})])
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     answered = await _post_a_turn(client, session.id)
     assert answered.status_code == 200, answered.text[:300]
@@ -215,13 +218,17 @@ async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
         "role": "guide",
         "at": ANY,
         "moment": ANY,
+        "voice_key": ANY,
         "text": DRAFT,
         "outcome": "pass",
         "redrafts": 0,
+        "attempts": [{"attempt": 1, "draft": DRAFT, "verdict": "pass", "issues": []}],
         "language": None,
         "language_probability": None,
         "mother_tongue": False,
         "take_ms": None,
+        "guide_heard": ANY,
+        "recognition_ms": ANY,
     }
 
 
@@ -229,7 +236,7 @@ async def test_a_fixed_line_spoken_through_the_route_is_recorded_with_its_scene(
     client, db_session: AsyncSession, the_room_hears
 ) -> None:
     the_room_hears(["desculpe, não consigo", "desculpe, não consigo"])
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     await append_exchange(db_session, session, team_utterance="a fome", guide_response="…")
 
     answered = await _post_a_turn(client, session.id)

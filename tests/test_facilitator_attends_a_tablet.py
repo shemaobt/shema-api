@@ -30,7 +30,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
@@ -42,13 +41,12 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
 DEVICES = "/api/facilitator/devices"
-ROOM_KEY = "sala-de-teste"
-ROOM_KEY_HEADER = "X-Room-Key"
 
 P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
@@ -98,12 +96,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.api.facilitator.teams import facilitator_teams_router
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room.hearing import HeardSpeech
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
 
     async def _heard_speech(audio: bytes, **_: Any) -> Any:
@@ -122,7 +118,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -160,11 +159,8 @@ async def a_team(db: AsyncSession, *, code: str) -> Team:
 
 
 async def a_tablet(db: AsyncSession, team: Team, *, label: str | None = None) -> Tablet:
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=team.user, code=minted.claim_code, project_id=team.project.id, label=label
-    )
-    return Tablet(device_id=claimed.device.id, credential=claimed.credential)
+    linked = await a_linked_tablet(db, team_id=team.project.id, facilitator=team.user, label=label)
+    return Tablet(device_id=linked.device_id, credential=linked.credential)
 
 
 @pytest.fixture()
@@ -182,10 +178,11 @@ async def team_b(db_session: AsyncSession) -> Team:
 # --- what the tablet and the facilitator do -----------------------------------------------
 
 
-async def the_tablet_halts(client: httpx.AsyncClient, device_id: str) -> httpx.Response:
+async def the_tablet_halts(client: httpx.AsyncClient, tablet: Tablet) -> httpx.Response:
     """The tablet with no session says it cannot go on without a person."""
     return await client.post(
-        f"{IR}/devices/{device_id}/needs-person", headers={ROOM_KEY_HEADER: ROOM_KEY}
+        f"{IR}/devices/{tablet.device_id}/needs-person",
+        headers={DEVICE_CREDENTIAL_HEADER: tablet.credential},
     )
 
 
@@ -254,7 +251,7 @@ async def test_marking_a_tablet_attended_lifts_its_halt_and_records_who_went(
     stopped = await a_tablet(db_session, team_a, label="Tablet da Ana")
     working = await a_tablet(db_session, team_a)
 
-    assert (await the_tablet_halts(client, stopped.device_id)).status_code == 200
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
     standing = await queued_device(client, team_a, stopped.device_id)
     assert standing is not None, "o tablet parou e a fila não o mostra"
     assert standing["attended_at"] is None
@@ -311,7 +308,7 @@ async def test_only_a_facilitator_of_the_tablets_own_team_can_mark_it_attended(
     retired = await a_tablet(db_session, team_a)
     await unlink_device(db_session, user=team_a.user, device_id=retired.device_id)
 
-    assert (await the_tablet_halts(client, stopped.device_id)).status_code == 200
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
 
     refused = await attend(client, stopped.device_id, team_b)
 
@@ -345,7 +342,7 @@ async def test_undoing_the_mark_puts_the_halt_back_at_the_moment_it_was_raised(
     """
     stopped = await a_tablet(db_session, team_a)
 
-    assert (await the_tablet_halts(client, stopped.device_id)).status_code == 200
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
     raised = await queued_device(client, team_a, stopped.device_id)
     assert raised is not None
     since = raised["since"]
@@ -384,7 +381,7 @@ async def test_undoing_the_mark_after_the_tablet_came_back_does_not_stop_it_agai
     """
     stopped = await a_tablet(db_session, team_a)
 
-    assert (await the_tablet_halts(client, stopped.device_id)).status_code == 200
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
     assert await queued_device(client, team_a, stopped.device_id) is not None
     assert (await attend(client, stopped.device_id, team_a)).status_code == 200
 
@@ -463,9 +460,10 @@ async def waiting_room(db_session: AsyncSession, team_a: Team, target_checkpoint
     return session
 
 
-async def the_session_halts(client: httpx.AsyncClient, session_id: str) -> None:
+async def the_session_halts(client: httpx.AsyncClient, session_id: str, tablet: Tablet) -> None:
     asked = await client.post(
-        f"{IR}/sessions/{session_id}/needs-person", headers={ROOM_KEY_HEADER: ROOM_KEY}
+        f"{IR}/sessions/{session_id}/needs-person",
+        headers={DEVICE_CREDENTIAL_HEADER: tablet.credential},
     )
     assert asked.status_code == 200, asked.text[:300]
 
@@ -479,10 +477,12 @@ async def somebody_arrives(
     )
 
 
-async def the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
+async def the_team_answers(
+    client: httpx.AsyncClient, session_id: str, tablet: Tablet
+) -> httpx.Response:
     return await client.post(
         f"{IR}/sessions/{session_id}/turns",
-        headers={ROOM_KEY_HEADER: ROOM_KEY},
+        headers={DEVICE_CREDENTIAL_HEADER: tablet.credential},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 
@@ -521,7 +521,7 @@ async def test_the_long_press_is_recorded_once_and_a_new_halt_is_a_new_wait(
     forward would show the new halt as already answered, and nobody would go.
     """
     tablet = await a_tablet(db_session, team_a)
-    await the_session_halts(client, waiting_room.id)
+    await the_session_halts(client, waiting_room.id, tablet)
 
     touched = await somebody_arrives(client, waiting_room.id, credential=tablet.credential)
 
@@ -543,9 +543,9 @@ async def test_the_long_press_is_recorded_once_and_a_new_halt_is_a_new_wait(
         "o segundo toque moveu a hora, e a mesa passa a ler quando a tela foi tocada"
     )
 
-    answered = await the_team_answers(client, waiting_room.id)
+    answered = await the_team_answers(client, waiting_room.id, tablet)
     assert answered.status_code == 200, answered.text[:300]
-    await the_session_halts(client, waiting_room.id)
+    await the_session_halts(client, waiting_room.id, tablet)
 
     asking_again = await queued_session(client, team_a, waiting_room.id)
     assert asking_again is not None, "a sala parou outra vez e a fila não a mostra"
@@ -571,11 +571,11 @@ async def test_a_tablet_that_halts_again_after_a_visit_comes_back_unanswered(
     """
     stopped = await a_tablet(db_session, team_a)
 
-    assert (await the_tablet_halts(client, stopped.device_id)).status_code == 200
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
     assert (await attend(client, stopped.device_id, team_a)).status_code == 200
     assert await queued_device(client, team_a, stopped.device_id) is None
 
-    assert (await the_tablet_halts(client, stopped.device_id)).status_code == 200
+    assert (await the_tablet_halts(client, stopped)).status_code == 200
 
     asking_again = await queued_device(client, team_a, stopped.device_id)
     assert asking_again is not None, "o tablet parou de novo e a fila não o mostra"

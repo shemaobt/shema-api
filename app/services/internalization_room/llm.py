@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
@@ -112,6 +115,25 @@ def _ladder(configured: str) -> list[str]:
 #: on a key with no frontier access would spend two round trips per turn discovering the same
 #: thing. Cleared only by a restart, which is also when a key's entitlements can have changed.
 _SETTLED: dict[str, str] = {}
+
+
+@dataclass
+class Answered:
+    rung: str | None = None
+
+
+_ANSWERED: ContextVar[Answered | None] = ContextVar("answered", default=None)
+
+
+@contextmanager
+def the_rung_that_answers() -> Iterator[Answered]:
+    answered = Answered()
+    token = _ANSWERED.set(answered)
+    try:
+        yield answered
+    finally:
+        _ANSWERED.reset(token)
+
 
 #: How long a rung waits before it is asked the same question a second time, on a rate limit,
 #: an overload, or a 5xx — the one shot the room gives a transient failure before it rises.
@@ -280,6 +302,9 @@ async def call_agent(
         if refused is None:
             _SETTLED[rungs[0]] = model
         spoken = "" if _refused_outright(response) else _spoken_text(response)
+        answered = _ANSWERED.get()
+        if answered is not None:
+            answered.rung = model
         if fails_on_truncation and response.stop_reason == "max_tokens":
             raise TruncatedReply(spoken)
         return spoken

@@ -21,7 +21,7 @@ the bundle.
 A run also writes the app's `clip_hashes.json` beside each language's manifest, or under
 `--clip-hashes DIR/<language>/`: the sha256 of every mp3 in the folder, with the ones the manifest
 does not vouch for as current listed as `unrendered`: a line that failed, or a clip approved by
-hand like `sem_conexao.mp3`, but not a line skipped because it was already up to date.
+hand, but not a line skipped because it was already up to date.
 A run that cannot name the api commit renders nothing.
 
 One bundle per language, each rendered in that language's own voice. A team never hears two
@@ -59,15 +59,16 @@ CLIP_HASHES = "clip_hashes.json"
 #: Lines the app plays outside a turn: they are not fail-safes and do not live in the prompt,
 #: but they must be in the bundle, because the room says them before it can do anything at all.
 #:
-#: `sem_conexao` is absent from Portuguese and only from Portuguese. Its Portuguese audio was
-#: rendered before this script existed and its wording was never written down, so declaring a
-#: guess here would make the next render overwrite approved audio with it. The other languages
-#: have no approved audio to overwrite, so theirs is written here like any other line — a room
-#: that cannot say it has no connection is a room that opens in silence.
+#: A room that cannot say it has no connection is a room that opens in silence.
 #:
 #: A language with none written renders none, rather than borrowing another language's words.
 STANDALONE: dict[str, dict[str, str]] = {
     "pt": {
+        "sem_conexao": (
+            "A internet caiu, então eu não consigo conversar agora. "
+            "Fiquem à vontade para continuar ensaiando entre vocês. "
+            "Quando a conexão voltar, eu volto também."
+        ),
         "gravacao_presa": (
             "Tem uma gravação de vocês que eu ainda não consegui guardar. "
             "Ela não se perdeu, está aqui comigo. "

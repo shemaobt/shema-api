@@ -25,11 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import router as room_router
 from app.api.internalization_room import sessions as sessions_api
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
-from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.enums import ProjectRole
 from app.core.exceptions import register_exception_handlers
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from tests.baker import (
@@ -38,10 +36,10 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 _codes = itertools.count(40)
 PREFIX = "/api/internalization-room"
-ROOM_KEY = "sala-de-teste"
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST = CANON[0]
@@ -102,7 +100,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, prep
     """The room over HTTP. The panorama's background preparation is stood in for: it
     writes ahead with a model, and nothing here is about what it writes, only whether it
     was asked to."""
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     async def _remember(session_id: str, *_: Any, **__: Any) -> None:
         prepared.append(session_id)
@@ -117,8 +114,9 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, prep
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
     async with httpx.AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
+        transport=ASGITransport(app=test_app), base_url="http://test", headers=tablet.headers
     ) as c:
         yield c
 
@@ -127,11 +125,8 @@ async def a_tablet_of(db: AsyncSession, team) -> dict[str, str]:
     """The headers of a device a facilitator claimed for this team."""
     user = await make_user(db, email=f"fac-{team.id[:8]}@example.com")
     await make_project_user_access(db, team.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=team.id
-    )
-    return {"X-Room-Key": ROOM_KEY, DEVICE_CREDENTIAL_HEADER: claimed.credential}
+    tablet = await a_linked_tablet(db, team_id=team.id, facilitator=user)
+    return {DEVICE_CREDENTIAL_HEADER: tablet.credential}
 
 
 async def the_app_posts(client, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
@@ -183,16 +178,3 @@ async def test_a_panorama_opened_but_never_followed_into_the_passage_is_not_hear
     again = await the_app_posts(client, tablet, {"pericope": "OV", "language": "pt"})
 
     assert prepared == [abandoned["session_id"], again["session_id"]]
-
-
-async def test_a_tablet_that_never_said_whose_it_is_has_every_opening_written(
-    client, prepared: list[str]
-) -> None:
-    """No team, no history: nothing can have been heard."""
-    shared = {"X-Room-Key": ROOM_KEY}
-    launched = await the_app_posts(client, shared, {"pericope": "OV"})
-    await the_app_posts(client, shared, {"after_session": launched["session_id"]})
-
-    again = await the_app_posts(client, shared, {"pericope": "OV"})
-
-    assert prepared == [launched["session_id"], again["session_id"]]

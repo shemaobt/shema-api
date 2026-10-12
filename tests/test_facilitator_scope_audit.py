@@ -87,23 +87,23 @@ def _dependency_calls(dependant) -> set:
 
 
 def facilitator_routes() -> list[tuple[str, str]]:
-    """Every mounted route behind the facilitator role, as (method, path).
+    """Every mounted route behind the facilitator or the reader gate, as (method, path).
 
-    Derived from the gate object in each route's dependency tree rather than from the path,
+    Derived from the gate objects in each route's dependency tree rather than from the path,
     because `/facilitator` in a path is a naming convention and this is not. A route added
     to either family is covered here the moment it is mounted.
     """
-    from app.api.facilitator._deps import facilitator_role
+    from app.api.facilitator._deps import facilitator_role, reader_role
     from app.main import app
 
-    gate = getattr(facilitator_role, "dependency", facilitator_role)
+    gates = {facilitator_role.dependency, reader_role.dependency}
     found = []
     for route in app.routes:
         dependant = getattr(route, "dependant", None)
         if dependant is None:
             continue
         calls = {getattr(c, "dependency", c) for c in _dependency_calls(dependant)}
-        if gate not in calls:
+        if not gates & calls:
             continue
         for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
             found.append((method, route.path))
@@ -451,6 +451,22 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (session_id, absent),
         },
         {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/turns", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/turns", {}),
+            "ids": (session_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/turns/0/audio", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/turns/0/audio", {}),
+            "ids": (session_id, absent),
+            #: The owner is told this session has no turn 0, where a stranger is told the
+            #: session does not exist: a session that has spoken would send the owner to the
+            #: bucket, which is not what this audit is about.
+            "owner_expects": 404,
+        },
+        {
             "method": "POST",
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
@@ -484,6 +500,8 @@ REFUSING_TEMPLATES = {
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/conversation"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/turns/{{number}}/audio"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),
@@ -516,6 +534,7 @@ FILTERING_TEMPLATES = {
     #: full body and looks right from every angle except the caller who should not be in
     #: it. `tests/test_internalization_room_facilitator_sessions.py` holds both halves.
     ("GET", f"{IR}/facilitator/sessions"),
+    ("GET", f"{DESK}/sessions"),
 }
 
 #: Routes that carry nothing of the installation at all: the answer is the same for every

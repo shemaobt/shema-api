@@ -61,7 +61,9 @@ docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && \
 ```
 
 A platform admin with Secret Manager access runs it. The grant script is idempotent per user
-and app: a second run updates the existing grant rather than adding a second one. There is
+and app: a second run updates the existing grant rather than adding a second one. With
+`--add` it keeps every role the person holds on the app and adds this one, which is how a
+facilitator also becomes a consultant (ADR 0058). There is
 also a self-service path through the access-request route, reviewed by an admin, whose
 automatic approval is off by default.
 

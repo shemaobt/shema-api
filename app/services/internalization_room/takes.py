@@ -16,7 +16,7 @@ from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
-from app.services.project.facilitates_project import facilitates_project
+from app.services.project.reads_project import reads_project
 
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
@@ -174,14 +174,14 @@ def _no_such_take(take_id: str) -> str:
     return f"Internalization room take {take_id} not found"
 
 
-async def take_for_facilitator(db: AsyncSession, user: User, take_id: str) -> IRTake:
-    """The take, if it belongs to a team this facilitator facilitates.
+async def take_for_reader(db: AsyncSession, user: User, take_id: str) -> IRTake:
+    """The take, if it belongs to a team this user reads.
 
     The route this guards answers with a signed URL, so what a missing check leaks is not a
     row but the audio itself — and the URL outlives the request that produced it.
     """
     take = await take_by_id(db, take_id)
-    if take.project_id is None or not await facilitates_project(db, user, take.project_id):
+    if take.project_id is None or not await reads_project(db, user, take.project_id):
         raise NotFoundError(_no_such_take(take_id))
     return take
 
@@ -249,6 +249,13 @@ async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> 
     return take
 
 
+READING_ORDER = (
+    IRTake.ordinal.asc().nulls_first(),
+    IRTake.pass_number.asc().nulls_first(),
+    IRTake.created_at,
+)
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     """Every take of a session, in reading order rather than in arrival order.
 
@@ -264,13 +271,7 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     a real team.
     """
     result = await db.execute(
-        select(IRTake)
-        .where(IRTake.session_id == session_id)
-        .order_by(
-            IRTake.ordinal.asc().nulls_first(),
-            IRTake.pass_number.asc().nulls_first(),
-            IRTake.created_at,
-        )
+        select(IRTake).where(IRTake.session_id == session_id).order_by(*READING_ORDER)
     )
     return list(result.scalars().all())
 

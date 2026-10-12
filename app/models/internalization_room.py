@@ -613,11 +613,8 @@ class InboxQuestionView(BaseModel):
     and that choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 
-    **Nothing reads this yet, and there is no window where something reads it wrong.** The
-    Desk has no HTTP client at all — no `fetch`, no `axios`, no `/api/` anywhere in its
-    `src/`; `FacilitatorService` is a type and its only implementation is a fixture. So the
-    key this replaces was never reaching a screen either, and mapping these three onto the
-    Desk's `elementLabel` is that side's work, on the day it grows a client.
+    The Desk's inbox reads these cards over HTTP, for a facilitator or a consultant
+    (ADR 0058), and draws the bead from these three fields.
 
     All three are null together when the question named no bead, when the key is one the
     catalogue does not have, or when the pericope is outside the canon. The last two are
@@ -765,6 +762,9 @@ class FacilitatorHaltedDeviceView(BaseModel):
     """
 
     device_id: str
+    #: The team the tablet is linked to. A consultant reads every team's halted tablets, and
+    #: the Desk offers "attended" only on a team the reader facilitates (ADR 0058).
+    project_id: str
     label: str | None
     since: datetime
     #: When a facilitator said they went to this tablet, and who (ENG-792).
@@ -895,9 +895,7 @@ class TeamReleaseResponse(BaseModel):
     package_sha256: str | None = None
     #: Null on a refusal, for the reason ``release_id`` is.
     approved_at: str | None = None
-    #: The gate's codes in the order the gate raised them, plus `no_project`, the one literal
-    #: that is the route's own (the gate never composes a project-less session); empty on a
-    #: mint. Never a sentence.
+    #: The gate's codes in the order the gate raised them; empty on a mint. Never a sentence.
     blockers: list[str] = Field(default_factory=list)
     #: Which current parts carry nobody's words, by their own take, when `untold_part` is
     #: among the blockers; empty otherwise, the way `terminei`'s own field is (ADR 0027).
@@ -1147,3 +1145,37 @@ class ConversationTurn(BaseModel):
 class ConversationResponse(BaseModel):
     session_id: str
     turns: list[ConversationTurn]
+
+
+class TurnTeamSide(BaseModel):
+    language: str | None
+    language_probability: float | None
+    take_ms: float | None
+    mother_tongue: bool | None
+    interrupted_at_s: float | None
+    guide_heard: str | None
+
+
+TurnOutcomeCode = Literal["validated", "corrected", "fail_safe", "no_record"]
+
+
+class TurnVoiceSide(BaseModel):
+    outcome: TurnOutcomeCode
+    boundary: bool
+    attempts: int
+    recognition_ms: int | None
+    reply_ms: int | None
+    synthesis_ms: int | None
+    model: str | None
+    text: str
+    audio_url: str
+
+
+class SessionTurn(BaseModel):
+    team: TurnTeamSide | None
+    voice: TurnVoiceSide
+
+
+class SessionTurnsResponse(BaseModel):
+    session_id: str
+    turns: list[SessionTurn]

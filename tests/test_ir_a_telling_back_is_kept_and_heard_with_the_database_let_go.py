@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.services.platform.storage import StoredObject
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import KEY, PREFIX, TABLET
+from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import PART_MS, rehearsed_in_parts, room_client, stretch_on
 
 
@@ -69,7 +69,7 @@ async def test_a_stretch_told_back_again_is_kept_and_heard_with_the_database_let
 
     told = await client.post(
         f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers={"X-Room-Device": TABLET},
         data={
             "take_id": part.id,
             "starts_ms": "0",
@@ -95,7 +95,7 @@ async def test_a_stretch_replaced_is_kept_and_heard_with_the_database_let_go(
 
     replaced = await client.post(
         f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace",
-        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        headers={"X-Room-Device": TABLET},
         data={"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)},
         files={"file": ("trecho.m4a", b"a equipe contou outra vez", "audio/mp4")},
     )
@@ -118,7 +118,7 @@ async def test_a_telling_sent_again_is_heard_with_the_database_let_go_not_under_
     }
     audio = {"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")}
     route = f"{PREFIX}/sessions/{session.id}/back-translation/chunks"
-    headers = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
+    headers = {"X-Room-Device": TABLET}
     first = await client.post(route, headers=headers, data=again, files=audio)
     assert first.status_code == 200, first.text
     held.clear()
@@ -136,7 +136,7 @@ async def test_a_replacement_sent_again_is_heard_with_the_database_let_go_not_un
 ) -> None:
     session, (part,) = await rehearsed_in_parts(db_session, 1)
     stretch = await stretch_on(db_session, session, part)
-    headers = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
+    headers = {"X-Room-Device": TABLET}
     slice_ = {"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)}
     audio = {"file": ("trecho.m4a", b"a equipe contou outra vez", "audio/mp4")}
     first = await client.post(
@@ -188,7 +188,7 @@ async def test_a_stretch_told_back_again_takes_three_connections_not_four(
     with _checkouts(test_engine) as checkouts:
         told = await client.post(
             f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
-            headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+            headers={"X-Room-Device": TABLET},
             data={
                 "take_id": part.id,
                 "starts_ms": "0",
@@ -218,7 +218,7 @@ async def test_a_stretch_replaced_takes_four_connections_not_five(
     with _checkouts(test_engine) as checkouts:
         replaced = await client.post(
             f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace",
-            headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+            headers={"X-Room-Device": TABLET},
             data={"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)},
             files={"file": ("trecho.m4a", b"a equipe contou outra vez", "audio/mp4")},
         )

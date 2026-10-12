@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTakeKind
 from tests.room_harness import (
-    KEY,
     PREFIX,
     P,
     room_client,
@@ -64,15 +63,13 @@ async def test_the_chunks_door_stores_the_scope_the_service_defaults(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """A stretch told back from a tablet leaves the state naming the session's passage."""
-    opened = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": P, "language": "pt"}
-    )
+    opened = await client.post(f"{PREFIX}/sessions", json={"pericope": P, "language": "pt"})
     assert opened.status_code == 200, opened.text
     session_id = opened.json()["session_id"]
 
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": "passagem-inteira"},
         files={"file": ("ensaio.m4a", b"a equipe ensaiou a passagem inteira", "audio/mp4")},
     )
@@ -80,7 +77,7 @@ async def test_the_chunks_door_stores_the_scope_the_service_defaults(
 
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": kept.json()["take_id"], "starts_ms": "0", "ends_ms": "9000"},
         files={"file": ("trecho.m4a", b"um trecho contado", "audio/mp4")},
     )

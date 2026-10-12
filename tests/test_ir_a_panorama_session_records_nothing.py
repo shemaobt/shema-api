@@ -19,8 +19,9 @@ from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.takes import declare_rehearsal_parts
+from tests.device_harness import TABLET_TEAM
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import KEY, PREFIX, TABLET
+from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     another_rehearsal_take,
     nothing_is_read_ahead,
@@ -35,7 +36,7 @@ from tests.room_harness import (
 from tests.text_seam_harness import RUNNER_KEY
 
 CODE = "PANORAMA_RECORDS_NOTHING"
-HEADERS = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
+HEADERS = {"X-Room-Device": TABLET}
 SEAM = f"{PREFIX}/text-seam/back-translation"
 CLIPS = [{"key": "S1", "durationMs": 20000}]
 
@@ -60,7 +61,7 @@ def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
 
 
 async def _a_panorama(db: AsyncSession) -> IRSession:
-    return await create_session(db, pericope="OV-Ruth", language="pt")
+    return await create_session(db, project_id=TABLET_TEAM, pericope="OV-Ruth", language="pt")
 
 
 async def _a_panorama_with_a_told_stretch(db: AsyncSession) -> tuple[IRSession, IRTake, IRSegment]:
@@ -196,7 +197,9 @@ async def test_a_text_seam_round_on_a_panorama_session_is_refused_and_captures_n
 async def test_a_passage_sessions_take_is_still_kept(
     client: httpx.AsyncClient, db_session: AsyncSession, bucket: MemoryStore
 ) -> None:
-    session = await create_session(db_session, pericope="P03", language="pt")
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="P03", language="pt"
+    )
 
     kept = await upload_a_part(client, session.id, part=None, audio=b"a equipe ensaiou")
 

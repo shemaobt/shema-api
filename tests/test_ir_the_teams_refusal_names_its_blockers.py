@@ -86,6 +86,7 @@ async def test_a_part_recorded_again_and_not_told_back_refuses_the_team_by_its_t
     behaviour the path left out.
     """
     project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
     session, _parts = await rehearsed_in_parts(db_session, 3, project_id=project.id)
     report = await heard_every_part(db_session, session.id)
     conferred = await press_terminei(client, session.id, report=report)

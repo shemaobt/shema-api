@@ -37,6 +37,7 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
+    create_session,
     get_session,
 )
 from tests.baker import (
@@ -50,6 +51,7 @@ from tests.opening_harness import (
     a_scripted_room,
     another_tablet_of,
     desk_routes,
+    desk_sessions_routes,
     the_tablet_opens,
     the_team_speaks,
 )
@@ -103,6 +105,12 @@ async def client(db_session: AsyncSession, per_request, bucket, monkeypatch: pyt
 @pytest.fixture()
 async def desk_client(db_session: AsyncSession, per_request):
     async with desk_routes(db_session, per_request=per_request) as c:
+        yield c
+
+
+@pytest.fixture()
+async def desk_sessions_client(db_session: AsyncSession, per_request):
+    async with desk_sessions_routes(db_session, per_request=per_request) as c:
         yield c
 
 
@@ -544,6 +552,7 @@ async def test_a_raised_hand_asked_on_the_pericope_before_a_zerar_is_still_in_th
 
     after = await client.get(inbox, headers=desk, params={"team_id": team.id})
     assert after.json() == before.json()
+    assert [question["pericope"] for question in after.json()["questions"]] == [P]
 
 
 async def test_a_zerar_of_the_panorama_archives_only_the_panoramas_sessions(
@@ -744,3 +753,70 @@ async def test_a_facilitator_of_another_team_cannot_zerar_this_teams_pericope(
     assert theirs.json() == nothing.json()
     assert await stamps(per_request, "ir_sessions", [opened["session_id"]]) == {None}
     assert await archives_stored(per_request) == 0
+
+
+async def a_conversation_of_three_guide_lines(
+    db: AsyncSession, team: Project, *, told_back_line: int | None
+) -> IRSession:
+    session = await create_session(db, pericope=P, project_id=team.id, language="pt")
+    for line in range(3):
+        session = await append_exchange(
+            db,
+            session,
+            team_utterance="oi",
+            guide_response="ok",
+            told_back="contou" if line == told_back_line else "",
+        )
+    return session
+
+
+def the_snapshots_turns(answered: dict[str, Any], session_id: str) -> int:
+    [entry] = [each for each in answered["archive"]["sessions"] if each["session_id"] == session_id]
+    return entry["turns"]
+
+
+async def test_an_archived_sessions_turns_leave_out_the_telling_back_verdicts(
+    client, db_session, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await a_conversation_of_three_guide_lines(db_session, team, told_back_line=1)
+
+    answered = await zerar(client, desk, team.id, P)
+
+    assert the_snapshots_turns(answered, session.id) == 2
+
+
+async def test_an_archived_sessions_turns_match_what_the_turns_route_and_the_desk_sessions_route_count(  # noqa: E501
+    client, desk_sessions_client, db_session, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await a_conversation_of_three_guide_lines(db_session, team, told_back_line=1)
+    turns_route = await client.get(
+        f"{PREFIX}/facilitator/sessions/{session.id}/turns", headers=desk
+    )
+    desk_route = await desk_sessions_client.get("/api/facilitator/sessions", headers=desk)
+    assert turns_route.status_code == 200, turns_route.text[:300]
+    assert desk_route.status_code == 200, desk_route.text[:300]
+    [tile] = desk_route.json()["sessions"]
+
+    answered = await zerar(client, desk, team.id, P)
+
+    assert (
+        len(turns_route.json()["turns"]),
+        tile["turns"],
+        the_snapshots_turns(answered, session.id),
+    ) == (2, 2, 2)
+
+
+async def test_a_session_with_no_telling_back_line_keeps_its_turn_count_in_the_archive(
+    client, db_session, room_app
+) -> None:
+    team, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, team)
+    session = await a_conversation_of_three_guide_lines(db_session, team, told_back_line=None)
+
+    answered = await zerar(client, desk, team.id, P)
+
+    assert the_snapshots_turns(answered, session.id) == 3

@@ -10,11 +10,10 @@ from functools import partial
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import (
     device_project_dep,
-    require_room_caller,
-    room_caller_dep,
+    linked_tablet_dep,
 )
 from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
@@ -67,7 +66,7 @@ from app.services.internalization_room.turn_dedup import (
 )
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SpeechKey, Upload
-from app.services.project.facilitated_scope import facilitated_project_ids
+from app.services.project.facilitated_scope import readable_project_ids
 from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
 
@@ -230,7 +229,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
 #: grow this without bound.
 _LANGUAGE_MEMO_MAX = 1024
-_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str | None]] = OrderedDict()
+_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str]] = OrderedDict()
 
 
 def forget_session_languages() -> None:
@@ -238,7 +237,7 @@ def forget_session_languages() -> None:
     _LANGUAGE_MEMO.clear()
 
 
-def _remember_language(session_id: str, language: str, project_id: str | None) -> None:
+def _remember_language(session_id: str, language: str, project_id: str) -> None:
     _LANGUAGE_MEMO[session_id] = (language, project_id)
     _LANGUAGE_MEMO.move_to_end(session_id)
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
@@ -430,13 +429,13 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     )
 
 
-@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_caller_dep])
+@router.post("/sessions", response_model=SessionStateResponse, dependencies=[linked_tablet_dep])
 async def create_session(
     payload: CreateSessionRequest,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    project_id: str | None = device_project_dep,
-    caller: Device | None = Depends(require_room_caller),
+    project_id: str = device_project_dep,
+    caller: Device = linked_tablet_dep,
 ) -> SessionStateResponse:
     """Open a session, and end this tablet's halt if it was standing in one.
 
@@ -445,9 +444,8 @@ async def create_session(
     here. The session's halt is the team's: any credentialed tablet of the team that reopens a
     session a call for a person stopped is the room going again, and the room never waits on
     the Desk (ENG-1354), so `open_session` lifts it in the open's own transaction (ADR 0045).
-    Both are gated on `caller`, the gate's own result — the credential is resolved once per
-    request and FastAPI's dependency cache is what makes this and `device_project_dep` one
-    query — so a caller on the shared room key names no device and lifts nothing.
+    `caller` is the gate's own result — the credential is resolved once per request and
+    FastAPI's dependency cache is what makes this and `device_project_dep` one query.
 
     After the session exists, so an `open_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
@@ -473,14 +471,11 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
-        lifts=caller is not None,
     )
-    if caller is not None:
-        await clear_needs_person(db, caller.id)
-        nudge(session.project_id, "halts")
+    await clear_needs_person(db, caller.id)
+    nudge(session.project_id, "halts")
     if previous is not None:
-        if hand_over(previous, session):
-            await db.commit()
+        await hand_over(db, previous, session)
     elif (
         created
         and is_panorama(session.pericope)
@@ -494,11 +489,11 @@ async def create_session(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionStateResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def read_session(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SessionStateResponse:
     session = await room.session_for_room_caller(db, session_id, project_id)
@@ -507,7 +502,7 @@ async def read_session(
 
 @router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
 async def facilitator_sessions(
-    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> FacilitatorSessionsResponse:
     """The sessions waiting on a person, for the person they are waiting on.
 
@@ -516,24 +511,24 @@ async def facilitator_sessions(
     The two session-scoped facilitator routes are addressed by an id nobody could obtain,
     so a room that stopped for someone could not reach anyone.
 
-    **Scoped to the caller's own teams**, and the reason the route first gave for needing
+    **Scoped to the teams the caller reads**, and the reason the route first gave for needing
     no scope is worth correcting rather than deleting: it argued that this only makes
     discoverable what was already readable, since an id was never what kept the
     session-addressed routes shut. That was true where it was written. It is not true here
     — `…/{id}/takes` refuses a session of another team through
-    `get_session_for_facilitator`, and `…/{id}/release` has refused one since ENG-563's
+    `get_session_for_reader`, and `…/{id}/release` has refused one since ENG-563's
     composition. An unscoped list would announce the existence, the passage and the moment
     of other teams' sessions, and hand over ids their reader is refused.
 
-    Gated on `FacilitatorUser` for the same reason every other route under `/facilitator`
-    is: the app-wide gate it was written against no longer exists.
+    Gated on `ReaderUser` like every other read under `/facilitator`: the app-wide gate it
+    was written against no longer exists, and a consultant reads every team (ADR 0058).
 
     **`devices` is the half a session id cannot reach** (ENG-624). A tablet whose session
     the server has forgotten, or whose build broke before one was opened, halts on itself
     rather than on a session, and that halt would otherwise be readable only from the team's
     devices panel — a screen a facilitator opens about one team they already suspect. This
     is the list they read to find out which team to go to. Scoped by the same rule as the
-    sessions half — `facilitated_project_ids`, the ids in hand rather than `IN (SELECT …)`
+    sessions half — `readable_project_ids`, the ids in hand rather than `IN (SELECT …)`
     the planner cannot use.
 
     **Resolved twice, once per half, and that is the shape rather than an oversight.**
@@ -546,9 +541,9 @@ async def facilitator_sessions(
 
     The moment is bound before it is read because the column is nullable and this list is
     the rows where it is not: the binding is the type system reading what the query already
-    guarantees, not a filter with anything to drop. The team id on the sessions half is bound
+    guarantees, not a filter with anything to drop. The team id on both halves is bound
     the same way and for the same reason — `confined_to` excludes a null project under either
-    of its two shapes, so the `if` there drops nothing either.
+    of its two shapes, so the `if`s there drop nothing either.
 
     **`team_name` costs one more statement, and it is the field that makes the queue
     usable** (ENG-609). This is the one facilitator listing that crosses teams: every other
@@ -561,7 +556,7 @@ async def facilitator_sessions(
     a stopped room from one asking for a witness, nor one nobody has reached from one a
     colleague walked to five minutes ago.
     """
-    scope = await facilitated_project_ids(db, user)
+    scope = await readable_project_ids(db, user)
     waiting = await room.sessions_waiting_on_a_person(db, user)
     named = await team_names(db, (s.project_id for s in waiting if s.project_id is not None))
     marks = await room.hard_stretches_of(db, [session.id for session in waiting])
@@ -606,6 +601,7 @@ async def facilitator_sessions(
         devices=[
             FacilitatorHaltedDeviceView(
                 device_id=device.id,
+                project_id=team,
                 label=device.label,
                 since=as_utc(halted),
                 attended_at=as_utc(device.attended_at) if device.attended_at else None,
@@ -613,6 +609,7 @@ async def facilitator_sessions(
             )
             for device in await devices_waiting_on_a_person(db, scope)
             if (halted := device.needs_person_since) is not None
+            and (team := device.project_id) is not None
         ],
     )
 
@@ -620,11 +617,11 @@ async def facilitator_sessions(
 @router.post(
     "/sessions/{session_id}/needs-person",
     response_model=NeedsPersonResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def ask_for_a_person(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> NeedsPersonResponse:
     """The room in front of the team decided it cannot go on without a person.
@@ -644,11 +641,11 @@ async def ask_for_a_person(
 @router.post(
     "/sessions/{session_id}/person-arrived",
     response_model=PersonArrivedResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def a_person_arrived(
     session_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> PersonArrivedResponse:
     """Somebody long-pressed the halted room to say they are standing in it (ENG-792).
@@ -734,7 +731,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def take_turn(
     session_id: str,
@@ -746,7 +743,7 @@ async def take_turn(
     interrupted: str | None = Form(default=None),
     interrupted_at_ms: str | None = Form(default=None),
     interrupted_of_ms: str | None = Form(default=None),
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -786,12 +783,12 @@ async def take_turn(
     "/sessions/{session_id}/turns/{turn_id}",
     response_model=TurnResponse,
     responses={202: {"description": "The turn is still in flight; nothing to read yet."}},
-    dependencies=[room_caller_dep],
+    dependencies=[linked_tablet_dep],
 )
 async def look_at_turn(
     session_id: str,
     turn_id: str,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse | Response:
     """The tablet's one look at a turn it gave up on, without sending the turn again.
@@ -827,7 +824,7 @@ async def _answer_the_turn(
     background: BackgroundTasks,
     file: UploadFile | None,
     turn_id: str | None,
-    project_id: str | None,
+    project_id: str,
     cut: _Cut,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
@@ -918,10 +915,12 @@ async def _draft_the_turn(
     team_id = session.project_id
     ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
-        speech, audio_key = ready
+        speech, audio_key, attempts = ready
         audio_key = await room.in_a_voice_the_room_has(audio_key, speech, language=session.language)
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        await room.append_opening(db, session, guide_response=speech, commit=False)
+        await room.append_opening(
+            db, session, guide_response=speech, attempts=attempts, commit=False
+        )
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),

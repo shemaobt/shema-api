@@ -32,6 +32,7 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from tests.deploy_harness import deploy_env_vars
+from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import (
     a_golden_session,
     nothing_settles,
@@ -43,7 +44,7 @@ from tests.hearing_harness import (
     the_transcriber_hears_no_words,
     the_transcriber_refuses,
 )
-from tests.release_harness import KEY, PREFIX
+from tests.release_harness import PREFIX
 from tests.room_harness import room_client, the_room_speaks
 from tests.text_seam_harness import GOLDEN, RUNNER_KEY, ScriptedAgent, the_models_answer
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_room_agent_is
@@ -88,8 +89,8 @@ async def seam(
 async def _an_open_session(
     db_session: AsyncSession, tablet: httpx.AsyncClient, guide: ScriptedAgent
 ) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
-    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
+    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns")
     assert opened.status_code == 200, opened.text
     guide.guide_inputs.clear()
     return session
@@ -98,7 +99,6 @@ async def _an_open_session(
 async def _the_team_sends_a_take(tablet: httpx.AsyncClient, session: IRSession) -> dict[str, Any]:
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )
     assert answered.status_code == 200, answered.text

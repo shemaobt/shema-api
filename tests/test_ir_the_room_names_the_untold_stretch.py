@@ -34,6 +34,7 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_harness import (
     a_piece_still_to_be_told,
     heard_every_part,
@@ -43,7 +44,6 @@ from tests.room_harness import (
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 LANGUAGE = "pt"
@@ -140,11 +140,8 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     said: list[str] = []
 
@@ -162,7 +159,10 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -170,7 +170,6 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 async def _open_session(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
-        headers={"X-Room-Key": KEY},
         json={"pericope": PASSAGE, "language": LANGUAGE},
     )
     assert created.status_code == 200, created.text
@@ -180,7 +179,7 @@ async def _open_session(client: httpx.AsyncClient) -> str:
 async def _record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
     kept = await client.post(
         f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
         files={"file": ("tomada.m4a", audio, "audio/mp4")},
     )
@@ -199,7 +198,7 @@ async def _tell_back(
 ) -> None:
     told = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("trecho.m4a", audio, "audio/mp4")},
     )

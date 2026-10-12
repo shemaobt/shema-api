@@ -23,6 +23,8 @@ happens to include ``analyst`` — none do. ``project-health``, ``oral-collector
 reasons.
 """
 
+from app.core.room_roles import FACILITATOR_ROLE, ROOM_APP_KEY
+
 DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
     "translation-helper": "user",
     "project-health": "user",
@@ -31,7 +33,7 @@ DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
     "resource-request-form": "equipe",
     "oral-collector": "member",
     "sound-necklace": "facilitator",
-    "internalization-room": "facilitator",
+    ROOM_APP_KEY: FACILITATOR_ROLE,
 }
 
 LEGACY_DEFAULT_ROLE = "analyst"

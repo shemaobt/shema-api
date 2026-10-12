@@ -59,6 +59,7 @@ from tests.release_harness import (
     ready_session,
     rehearsed_session,
     reported_playback,
+    team_headers,
 )
 from tests.room_harness import (
     PART_MS,
@@ -263,7 +264,8 @@ async def test_the_retired_part_is_kept_as_history(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app: App
 ) -> None:
     """Retired, never deleted: the packet carries the rows and the file carries both takes."""
-    project, _credential = await a_claimed_device(db_session)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
     session, (_one, two, _three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
     was = (await _by_part(db_session, session.id))[two.id].id
 
@@ -323,7 +325,8 @@ async def test_the_retroverification_file_reads_the_new_part_in_its_place(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app: App
 ) -> None:
     """The file numbers a reading nobody has approved yet, and it numbers it the same way."""
-    project, _credential = await a_claimed_device(db_session)
+    project, credential = await a_claimed_device(db_session)
+    client.headers.update(team_headers(credential))
     session, (one, _two, three) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
     standing = await _by_part(db_session, session.id)
     fresh = await _recorded_again(client, session, part=2)
