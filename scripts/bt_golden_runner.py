@@ -249,17 +249,17 @@ async def run(args: argparse.Namespace) -> int:
     codes: list[int] = []
     paid: list[Call] = []
     not_started: list[str] = []
-    for position, path in enumerate(paths):
-        if budgeted(paid) >= budget:
-            not_started = [later.stem for later in paths[position:]]
-            break
-        code, played = await play_script(path, args)
-        codes.append(code)
-        paid += _paid(played)
-    by_role, unpriced = priced(paid)
-    if by_role or unpriced:
-        table = f" — {split(by_role)}" if by_role else ""
-        print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
+    try:
+        for position, path in enumerate(paths):
+            if budgeted(paid) >= budget:
+                not_started = [later.stem for later in paths[position:]]
+                break
+            codes.append(await play_script(path, args, paid))
+    finally:
+        by_role, unpriced = priced(paid)
+        if by_role or unpriced:
+            table = f" — {split(by_role)}" if by_role else ""
+            print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
     if not_started:
         message = stopped(
             "bt golden",
@@ -293,7 +293,7 @@ def scripts_to_play(args: argparse.Namespace) -> list[Path]:
     return [Path(args.script)] if args.script else sorted(BT_DIR.glob("*.json"))
 
 
-async def play_script(path: Path, args: argparse.Namespace) -> tuple[int, list[Played]]:
+async def play_script(path: Path, args: argparse.Namespace, paid: list[Call]) -> int:
     """Play her script through one room and answer with what a CI should do about it.
 
     The one catch in this file, and it is the boundary: the room refusing is not her bar
@@ -310,12 +310,14 @@ async def play_script(path: Path, args: argparse.Namespace) -> tuple[int, list[P
         try:
             session_id = await open_session(script, client)
         except httpx.HTTPStatusError as turned_away:
-            return _refused(turned_away), played
+            return _refused(turned_away)
         try:
             await play(script, client, session_id=session_id, played=played)
         except httpx.HTTPStatusError as stopped:
             refused = stopped
         finally:
+            calls = _paid(played)
+            paid.extend(calls)
             stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
             report, transcript = export(
                 script,
@@ -327,12 +329,12 @@ async def play_script(path: Path, args: argparse.Namespace) -> tuple[int, list[P
             )
             failed = sum(len(line.checks) for line in played)
             verdict = "STOPPED" if refused is not None else ("FAIL" if failed else "PASS")
-            cost = sum(priced(_paid(played))[0].values())
+            cost = sum(priced(calls)[0].values())
             print(f"  {verdict} · {failed} check(s) failed · {session_id} · cost US$ {cost:.2f}")
             print(f"  {report}\n  {transcript}")
     if refused is not None:
-        return _refused(refused), played
-    return (1 if failed else 0), played
+        return _refused(refused)
+    return 1 if failed else 0
 
 
 def _refused(stopped: httpx.HTTPStatusError) -> int:

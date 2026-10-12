@@ -38,10 +38,10 @@ def _a_round_that_costs_three_dollars() -> httpx.Response:
     )
 
 
-def _shelf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *scripts: tuple[str, str]) -> None:
+def _shelf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *scripts: tuple[str, str, int]) -> None:
     shelf = tmp_path / "bt"
     shelf.mkdir()
-    for name, pericope in scripts:
+    for name, pericope, rounds in scripts:
         (shelf / f"{name}.json").write_text(
             json.dumps(
                 {
@@ -56,6 +56,7 @@ def _shelf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *scripts: tuple[str,
                             ],
                             "expect": {"conferida": True, "findings": []},
                         }
+                        for _ in range(rounds)
                     ],
                 }
             ),
@@ -105,7 +106,7 @@ async def test_the_room_turning_one_script_away_keeps_what_the_earlier_ones_cost
         return _a_round_that_costs_three_dollars()
 
     the_room_answers(monkeypatch, _room)
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01"), ("P02-b", "P02"), ("P03-c", "P03"))
+    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
 
     exit_code = await bt_golden_runner.run(_args(tmp_path / "reports"))
 
@@ -117,4 +118,28 @@ async def test_the_room_turning_one_script_away_keeps_what_the_earlier_ones_cost
     assert "bt golden: 403 this canon does not hold P02\n" in shown.err
     assert "\ncost US$ 6.00 — analyst US$ 4.00 · speaker US$ 2.00\n" in shown.out, (
         "o P01 e o P03 custaram US$ 3 cada, e o P02 não chegou a custar nada: a conta não se perde"
+    )
+
+
+async def test_a_script_killed_by_a_timeout_still_leaves_the_run_its_cost_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    rounds: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        rounds.append(request.url.path)
+        if len(rounds) == 3:
+            raise httpx.ReadTimeout("the room did not answer", request=request)
+        return _a_round_that_costs_three_dollars()
+
+    the_room_answers(monkeypatch, _room)
+    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+
+    with pytest.raises(httpx.ReadTimeout):
+        await bt_golden_runner.run(_args(tmp_path / "reports"))
+
+    assert "\ncost US$ 6.00 — analyst US$ 4.00 · speaker US$ 2.00\n" in capsys.readouterr().out, (
+        "uma rodada de cada roteiro foi paga antes de o tempo esgotar, e a conta não aparecia"
     )
