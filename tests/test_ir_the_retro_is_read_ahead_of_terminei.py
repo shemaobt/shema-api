@@ -640,3 +640,21 @@ async def test_the_reading_ahead_hands_the_analyst_each_frase_labelled_with_its_
         "[frase 3 — a parte 3 — Segundo apelo e a separação] a frase 3, contada de volta\n"
         "[frase 4 — a parte 3 — Segundo apelo e a separação] algo que a equipe contou"
     ), "a leitura adiantada lia as frases sem a parte, e o terminei servia essa leitura"
+
+
+async def test_the_reading_ahead_tells_the_analyst_the_check_is_of_the_whole_passage(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [1])
+
+    async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+        await _tell(client, session.id, part, starts_ms=1000, ends_ms=2000)
+
+    assert (
+        "compare the telling-back against the map for the whole passage and report findings"
+        in analyst.shown[-1]
+    ), "a leitura adiantada comparava «para P03», o código da passagem"

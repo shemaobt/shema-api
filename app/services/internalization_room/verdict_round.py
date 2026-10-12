@@ -23,6 +23,7 @@ from app.core.config import Settings
 from app.core.exceptions import UnreadableReply
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import (
+    THE_WHOLE_PASSAGE,
     BackTranslationState,
     Finding,
     Nuance,
@@ -109,7 +110,7 @@ async def check_the_telling_back(
     if not state.already_analysed(told):
         read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
-            scope=state.scope or session.pericope,
+            scope=THE_WHOLE_PASSAGE,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
             addresses=addresses,
@@ -135,7 +136,7 @@ async def check_the_telling_back(
     told_back = segments_block(told, addresses, language)
     outcome = await run_verdict_turn(
         findings_text=findings_block(current or nuances[:1], addresses),
-        scope=state.scope or session.pericope,
+        scope=THE_WHOLE_PASSAGE,
         pericope_num=session.pericope,
         messages=session.messages or [],
         telling_back=told_back,

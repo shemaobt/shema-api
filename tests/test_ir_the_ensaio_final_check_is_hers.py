@@ -154,7 +154,7 @@ async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validato
 
 def _handed(speaker: Speaker) -> str:
     system = speaker.drafts[-1]["system_prompt"].replace(CACHE_BREAK, "")
-    return system.split(f"## The findings for {PASSAGE}\n\n", 1)[1]
+    return system.split("## The findings for the whole passage\n\n", 1)[1]
 
 
 async def test_a_clean_round_hands_her_speaker_an_empty_list_and_says_only_her_words(
@@ -362,3 +362,18 @@ async def test_the_validator_reads_what_the_team_reported_as_the_same_labelled_f
         "[frase 3 — a parte 3 — Segundo apelo e a separação] "
         "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
     ) in speaker.validations[-1], "o Validador lia «1. …» enquanto o analista lia a parte"
+
+
+async def test_her_analyst_and_her_speaker_are_told_the_check_is_of_the_whole_passage(
+    client, analyst, speaker
+) -> None:
+    await _a_round(client, TELLING)
+
+    assert (
+        "compare the telling-back against the map for the whole passage and report findings"
+        in analyst.asked[-1]["system_prompt"]
+    ), "o analista comparava «para P02», o código da passagem, não «the whole passage»"
+    assert (
+        "Speak the\nverdict for the whole passage — one warm turn."
+        in speaker.drafts[-1]["system_prompt"]
+    ), "o falante dava o veredito «for P02»"

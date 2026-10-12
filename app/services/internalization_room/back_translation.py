@@ -315,6 +315,8 @@ class BackTranslationState(BaseModel):
 
 PLAYBACK_TOLERANCE_MS = 750
 
+THE_WHOLE_PASSAGE = "the whole passage"
+
 
 def played_ranges_cover_clip(
     played_ranges: list[tuple[int, int]], clip_duration_ms: int | None

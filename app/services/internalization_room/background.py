@@ -13,6 +13,7 @@ from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.models.internalization_room import CoverageFrame
 from app.services.internalization_room.back_translation import (
+    THE_WHOLE_PASSAGE,
     BackTranslationState,
     ReadAhead,
     analyse_telling_back,
@@ -190,7 +191,7 @@ async def _read_and_keep(
         with reading_the_canon_of(session.canon_pin):
             read = await analyse_telling_back(
                 segments=told,
-                scope=state.scope or session.pericope,
+                scope=THE_WHOLE_PASSAGE,
                 pericope_num=session.pericope,
                 analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
                 addresses=addresses,
