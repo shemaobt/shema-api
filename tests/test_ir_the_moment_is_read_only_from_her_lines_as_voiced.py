@@ -370,3 +370,16 @@ def test_her_scene_closing_refused_after_another_moment_line_is_not_kept_as_igno
     assert "ignored" not in step.as_json(), (
         "o fechamento recusado depois de outra linha de momento entrou na lista de ignoradas"
     )
+
+
+def _ignored(moment: dict[str, Any], voiced: str) -> list[str]:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+    assert step is not None
+    return step.ignored
+
+
+def test_her_fence_opening_in_the_familiarization_is_kept_as_ignored_in_her_words() -> None:
+    assert _ignored(FAMILIARIZATION, FENCE) == ["fence: in the Familiarization, no part number"], (
+        "o bloco do ensaio dito na Familiarização foi descartado sem registro"
+    )
