@@ -41,6 +41,7 @@ from tests.baker import (
 from tests.opening_harness import (
     GUIDE_LINE,
     GUIDE_OPENING,
+    NOTE_PT_P03,
     Script,
     a_scripted_room,
     another_tablet_of,
@@ -137,7 +138,7 @@ async def test_a_team_that_reopens_a_pericope_after_three_turns_lands_on_the_sam
     reopened = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
 
     assert reopened["session_id"] == opened["session_id"]
-    assert await what_the_team_said(client, desk, reopened["session_id"]) == list(ANSWERS)
+    assert await what_the_team_said(client, desk, reopened["session_id"]) == [NOTE_PT_P03, *ANSWERS]
 
 
 async def test_a_second_tablet_of_the_same_team_opening_the_same_pericope_gets_the_same_session(
@@ -152,7 +153,7 @@ async def test_a_second_tablet_of_the_same_team_opening_the_same_pericope_gets_t
     joined = await the_tablet_opens(client, second_tablet, {"pericope": P, "language": "pt"})
 
     assert joined["session_id"] == opened["session_id"]
-    assert await what_the_team_said(client, desk, joined["session_id"]) == list(ANSWERS)
+    assert await what_the_team_said(client, desk, joined["session_id"]) == [NOTE_PT_P03, *ANSWERS]
 
 
 async def test_two_tablets_opening_the_same_pericope_at_the_same_instant_get_one_session_and_hear_one_opening(  # noqa: E501

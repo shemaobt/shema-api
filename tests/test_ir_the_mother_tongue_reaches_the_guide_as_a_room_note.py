@@ -17,6 +17,7 @@ from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
 from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import a_golden_session
+from tests.opening_harness import NOTE_PT_P01
 from tests.text_seam_harness import (
     BEARER,
     GOLDEN,
@@ -209,6 +210,7 @@ async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team
     assert answered.status_code == 200, answered.text
     session = await room.get_session(db_session, session_id)
     assert [(m["role"], m["text"]) for m in session.messages] == [
+        ("team", NOTE_PT_P01),
         ("guide", GUIDE_LINE),
         ("room", NOTE_PT_40),
         ("guide", GUIDE_LINE),
@@ -239,6 +241,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
     await seam.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": "a fome chegou"})
 
     assert heard[0] == [
+        {"role": "user", "text": NOTE_PT_P01},
         {"role": "assistant", "text": GUIDE_LINE},
         {"role": "user", "text": NOTE_PT_40},
         {"role": "assistant", "text": GUIDE_LINE},

@@ -42,6 +42,7 @@ HER_P01 = json.loads(
         encoding="utf-8"
     )
 )
+HER_OPENING_NOTE = HER_P01["turns"][0]["noteText"]
 INTERRUPTED_NOTE = "[A equipe interrompeu a sua fala anterior neste ponto.]"
 CUT_IN = "Espera, espera. Antes disso: a Noemi ficou sozinha ou ficou com os filhos?"
 
@@ -274,6 +275,7 @@ async def test_an_interruption_with_words_stores_the_rooms_note_apart_from_the_t
     session = await room.get_session(db_session, session_id)
     await db_session.refresh(session)
     assert _spoken(session.messages) == [
+        {"role": "team", "text": HER_OPENING_NOTE},
         {"role": "guide", "text": GUIDE_LINE},
         {"role": "room", "text": INTERRUPTED_NOTE},
         {"role": "team", "text": CUT_IN},
@@ -325,6 +327,25 @@ async def test_the_opening_hands_the_guide_the_note_her_runner_sends(client) -> 
     assert opened.json()["transcript"] == kickoff["noteText"], (
         "o juiz dela lia o nosso roteiro em inglês no lugar da nota que o runner dela manda"
     )
+
+
+async def test_the_opening_her_runner_plays_is_stored_with_her_note_as_the_teams_first_line(
+    client, db_session
+) -> None:
+    session_id = await _a_session(client)
+    kickoff = HER_P01["turns"][0]
+
+    opened = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": kickoff["roomNote"]}
+    )
+
+    assert opened.status_code == 200, opened.text
+    session = await room.get_session(db_session, session_id)
+    await db_session.refresh(session)
+    assert _spoken(session.messages) == [
+        {"role": "team", "text": HER_OPENING_NOTE},
+        {"role": "guide", "text": GUIDE_LINE},
+    ], "a abertura da porta dourada ficava gravada sem a nota que o runner dela manda"
 
 
 async def test_a_mother_tongue_turn_of_a_fractional_length_is_answered_with_her_note(
@@ -489,9 +510,12 @@ async def test_scene_rehearsals_the_passage_has_are_kept_with_the_turn(
     assert answered.status_code == 200, answered.text
     session = await room.get_session(db_session, session_id)
     await db_session.refresh(session)
-    assert [m.get("scene_rehearsals") for m in session.messages] == [None, None, ["S1", "S2"]], (
-        "a lista de ensaios de cena que o runner dela manda era descartada e o turno não a guardava"
-    )
+    assert [m.get("scene_rehearsals") for m in session.messages] == [
+        None,
+        None,
+        None,
+        ["S1", "S2"],
+    ], "a lista de ensaios de cena que o runner dela manda era descartada e o turno não a guardava"
 
 
 async def test_the_opening_on_a_session_that_already_spoke_is_still_refused(client) -> None:
@@ -516,9 +540,10 @@ async def test_the_opening_is_the_guides_and_no_clip_is_asked_for(client, db_ses
     assert body["guideText"] == GUIDE_LINE
     assert body["outcome"] == "pass"
     session = await room.get_session(db_session, session_id)
-    assert _spoken(session.messages) == [{"role": "guide", "text": GUIDE_LINE}], (
-        "a abertura era dita e não ficava na conversa, então o turno seguinte abria de novo"
-    )
+    assert _spoken(session.messages) == [
+        {"role": "team", "text": HER_OPENING_NOTE},
+        {"role": "guide", "text": GUIDE_LINE},
+    ], "a abertura era dita e não ficava na conversa, então o turno seguinte abria de novo"
 
 
 async def test_a_turn_with_neither_words_nor_a_room_note_is_refused(client) -> None:
@@ -614,6 +639,7 @@ async def test_the_fourth_turn_is_run_over_every_earlier_exchange_not_a_window(
         assert answered.status_code == 200, answered.text
 
     assert _spoken(seen[-1]) == [
+        {"role": "team", "text": HER_OPENING_NOTE},
         {"role": "guide", "text": GUIDE_LINE},
         {"role": "team", "text": "Primeira fala."},
         {"role": "guide", "text": GUIDE_LINE},

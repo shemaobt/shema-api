@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session
 from tests.baker import make_app, make_role
+from tests.opening_harness import NOTE_PT_P03
 from tests.release_harness import (
     APP_KEY,
     PREFIX,
@@ -130,14 +131,15 @@ async def test_a_facilitator_reads_the_conversation_as_turns_in_order(
 
     turns = await _turns(client, session_id, desk)
 
-    assert [(t["role"], t["text"]) for t in turns[:4]] == [
+    assert [(t["role"], t["text"]) for t in turns[:5]] == [
+        ("team", NOTE_PT_P03),
         ("guide", GUIDE_OPENING),
         ("team", FIRST_ANSWER),
         ("guide", GUIDE_LINE),
         ("team", SECOND_ANSWER),
     ]
-    assert [t["role"] for t in turns[4:]] == ["guide", "room", "guide"]
-    assert turns[5]["text"] == (
+    assert [t["role"] for t in turns[5:]] == ["guide", "room", "guide"]
+    assert turns[6]["text"] == (
         "[A equipe falou na língua materna; sem transcrição — nenhuma palavra chegou até você.]"
     )
     assert all(t["at"] for t in turns)

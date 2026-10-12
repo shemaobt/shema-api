@@ -31,6 +31,18 @@ from tests.tablet_turn_harness import the_turn_is_scripted
 
 GUIDE_OPENING = "Vamos ouvir a historia de Rute. O que voces ja sabem dela?"
 GUIDE_LINE = "Vamos ficar nesta cena. O que voces contariam?"
+NOTE_PT_P01 = (
+    "[A sessão acabou de começar. A equipe abriu a passagem P01 e está à mesa, pronta para "
+    "começar. Fale primeiro.]"
+)
+NOTE_PT_P03 = (
+    "[A sessão acabou de começar. A equipe abriu a passagem P03 e está à mesa, pronta para "
+    "começar. Fale primeiro.]"
+)
+NOTE_PT_OV_RUTH = (
+    "[A sessão acabou de começar. A equipe abriu o Panorama do Livro de Ruth e está à mesa, "
+    "pronta para conversar. Fale primeiro.]"
+)
 
 
 async def ask_for_the_opening(
