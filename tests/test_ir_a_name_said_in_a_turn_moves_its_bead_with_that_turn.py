@@ -287,3 +287,22 @@ async def test_a_turn_that_ends_in_a_fail_safe_line_still_engages_the_name_the_t
     assert stored.get("being:S1:B3") == "engaged", (
         "a voz caía no fail-safe e a Noemi que a equipe disse ficava sem conta"
     )
+
+
+async def test_the_classifier_reads_the_row_with_the_name_already_engaged_by_the_turn(
+    client, db_session, per_request, monkeypatch
+) -> None:
+    read_by_the_settle: list[dict[str, str]] = []
+
+    async def the_settle_reads_the_row(*, session_id: str, **_: Any) -> None:
+        read_by_the_settle.append(await _stored(per_request, session_id))
+
+    monkeypatch.setattr(sessions_api, "settle_coverage", the_settle_reads_the_row)
+    tablet, session_id = await _a_p01_session(client, db_session)
+    await the_room_opens(client, tablet, session_id)
+
+    await the_team_says(client, tablet, session_id, "turno-1")
+
+    assert [read.get("being:S1:B3") for read in read_by_the_settle] == ["engaged"], (
+        "o classificador lia a linha antes do commit do turno e gravava por cima a conta de Noemi"
+    )
