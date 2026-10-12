@@ -63,6 +63,7 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "validator_prompt": VALIDATOR,
         "pericope": P,
         "settings": settings(),
+        "earlier_passages": None,
     }
     return await speak_back(**{**given, **overrides})
 
