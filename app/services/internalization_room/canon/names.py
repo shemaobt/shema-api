@@ -73,6 +73,10 @@ def _glosses(body: str) -> dict[str, str]:
     return glosses
 
 
+def registry_entry(book: str, code: str) -> dict | None:
+    return _names_list(book).get(code)
+
+
 def _retired_or_reserved(code: str, entry: dict) -> bool:
     return bool(
         _RETIRED_OR_RESERVED.search(entry.get("english") or "") or _RETIRED_KEY.search(code)

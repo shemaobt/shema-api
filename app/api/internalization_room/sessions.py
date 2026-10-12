@@ -48,6 +48,7 @@ from app.services.internalization_room.hearing import HeardSpeech, heard_speech,
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
+from app.services.internalization_room.name_check import hear_the_names
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
@@ -858,6 +859,8 @@ async def _draft_the_turn(
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
+    if not opening:
+        hear_the_names(session, team=outcome.transcript)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
