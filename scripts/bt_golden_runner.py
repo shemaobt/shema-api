@@ -296,9 +296,9 @@ def scripts_to_play(args: argparse.Namespace) -> list[Path]:
 async def play_script(path: Path, args: argparse.Namespace, paid: list[Call]) -> int:
     """Play her script through one room and answer with what a CI should do about it.
 
-    The one catch in this file, and it is the boundary: the room refusing is not her bar
-    failing, and the rounds already paid for in model calls have to reach the report before
-    that becomes an exit code.
+    The catches in this file are the boundary: the room refusing, at the door or in a round,
+    is not her bar failing, and the rounds already paid for in model calls have to reach the
+    report before that becomes an exit code.
     """
     script = load_script(path)
     base_url = args.base_url.rstrip("/") + "/"
