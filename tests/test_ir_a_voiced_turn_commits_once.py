@@ -201,7 +201,8 @@ async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     lit = dict(initial_state(P))
-    lit[next(iter(lit))] = CoverageStatus.ENGAGED.value
+    settled_key = next(iter(lit))
+    lit[settled_key] = CoverageStatus.ENGAGED.value
 
     async def the_last_turns_settle_lands() -> None:
         async with rival_factory() as rival:
@@ -212,9 +213,14 @@ async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
-    assert answered.json()["coverage"]["engaged"] == 1, (
-        "a resposta levava as contas lidas antes do Guia, e a conta acesa apagava na tela"
+    async with rival_factory() as fresh:
+        stored = (await get_session(fresh, waiting_room.id)).coverage_state
+    assert stored[settled_key] == CoverageStatus.ENGAGED.value, (
+        "o turno gravava as contas lidas antes do Guia por cima da conta acesa"
     )
+    assert answered.json()["coverage"]["engaged"] == sum(
+        status == CoverageStatus.ENGAGED.value for status in stored.values()
+    ), "a resposta levava as contas lidas antes do Guia, e a conta acesa apagava na tela"
 
 
 async def test_a_person_asked_for_while_the_guide_thinks_is_still_asked_for_after_the_turn(

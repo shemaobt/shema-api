@@ -48,6 +48,7 @@ from app.services.internalization_room.hearing import HeardSpeech, heard_speech,
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.moment import moment_view
+from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.nudge_channel import nudge
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
@@ -102,16 +103,17 @@ async def _write_the_turn(
 ) -> IRSession:
     with stage("db_write"):
         if opening:
-            await room.append_opening(
+            if await room.append_opening(
                 db,
                 session,
                 guide_response=outcome.speech,
                 outcome=outcome,
                 scene=_scene_of(session),
                 commit=False,
-            )
+            ):
+                hear_the_names(db, session, team=stored_opening_note(session), voice=outcome.speech)
             return session
-        return await room.append_exchange(
+        session = await room.append_exchange(
             db,
             session,
             team_utterance=outcome.transcript,
@@ -120,6 +122,8 @@ async def _write_the_turn(
             scene=_scene_of(session, outcome.transcript),
             commit=False,
         )
+        hear_the_names(db, session, team=outcome.transcript, voice=outcome.speech)
+        return session
 
 
 async def _upload(uploads: list[Upload]) -> None:
@@ -198,9 +202,10 @@ async def _timed_stt(
 ) -> HeardSpeech:
     """What the recognizer heard of the take, stamped with where the team cut the Guide short.
 
-    The cut rides the take on every path, including a take the recognizer refused or found no
-    words in. A position that is negative or unreadable counts as absent, as in Marcia's route:
-    the cut stays a cut and the take is never refused over it.
+    The cut rides the take on every path that returns, the words and no words heard alike. A
+    take the recognizer refused raises out of `heard_speech` as an outage and is never stamped.
+    A position that is negative or unreadable counts as absent, as in Marcia's route: the cut
+    stays a cut and the take is never refused over it.
     """
     with stage("stt"):
         heard = await heard_speech(
@@ -802,9 +807,10 @@ async def _draft_the_turn(
         speech, audio_key, attempts = ready
         audio_key = await room.in_a_voice_the_room_has(audio_key, speech, language=session.language)
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        await room.append_opening(
+        if await room.append_opening(
             db, session, guide_response=speech, attempts=attempts, commit=False
-        )
+        ):
+            hear_the_names(db, session, team=stored_opening_note(session), voice=speech)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
