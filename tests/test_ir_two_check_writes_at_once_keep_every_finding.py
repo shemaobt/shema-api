@@ -86,3 +86,26 @@ async def test_two_check_writes_at_once_each_adding_a_finding_keep_both_findings
         "stale read" in record.getMessage() and "back_translation" in record.getMessage()
         for record in caplog.records
     )
+
+
+async def test_a_finding_one_write_took_away_stays_away_when_a_write_that_read_it_lands_first(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    state = service.back_translation_of(session)
+    state.findings.append(_finding("sobre a parte gravada de novo"))
+    await service.save_back_translation(db_session, session, state)
+    checking_db, checking, checking_state = await _read(rival_factory, session.id)
+    retiring_db, retiring, retiring_state = await _read(rival_factory, session.id)
+
+    checking_state.findings.append(_finding("faltou a colheita"))
+    await service.save_back_translation(checking_db, checking, checking_state)
+    retiring_state.findings = []
+    await service.save_back_translation(retiring_db, retiring, retiring_state)
+    await checking_db.close()
+    await retiring_db.close()
+
+    stored = await _stored(rival_factory, session.id)
+    assert [finding.note for finding in stored.findings] == ["faltou a colheita"], (
+        "o achado sobre o áudio aposentado voltava pela escrita que o tinha lido antes"
+    )
