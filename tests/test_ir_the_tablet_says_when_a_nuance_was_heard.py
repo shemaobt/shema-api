@@ -113,3 +113,23 @@ async def test_a_verdict_the_tablet_played_to_its_end_is_kept_heard_on_the_serve
     [kept] = (await stored_telling_back(db_session, session)).checks
     assert kept.heard_at is not None, "o tablet não tinha onde dizer que o veredito tocou até o fim"
     assert kept.heard_at >= before, "a hora era a do tablet, não a do servidor"
+
+
+async def test_only_the_first_report_that_a_verdict_was_heard_counts(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    await _heard(client, session.id, pressed.json()["check_at"])
+    [first] = (await stored_telling_back(db_session, session)).checks
+
+    again = await _heard(client, session.id, pressed.json()["check_at"])
+
+    assert again.status_code == 200, again.text
+    assert again.json() == {"marked": False}, "ouvir a resposta de novo contava como outra escuta"
+    [kept] = (await stored_telling_back(db_session, session)).checks
+    assert kept.heard_at == first.heard_at, "a segunda escuta apagava a hora da primeira"

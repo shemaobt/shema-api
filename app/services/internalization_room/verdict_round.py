@@ -260,7 +260,7 @@ async def save_the_spoken_verdict(
 async def mark_the_verdict_heard(db: AsyncSession, session: IRSession, at: datetime) -> bool:
     state = back_translation_of(session)
     heard = next((one for one in state.checks if one.at == at), None)
-    if heard is None:
+    if heard is None or heard.heard_at is not None:
         return False
     heard.heard_at = datetime.now(UTC)
     await save_back_translation(db, session, state)
