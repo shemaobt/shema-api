@@ -172,6 +172,24 @@ async def test_a_take_heard_as_portuguese_exactly_at_the_floor_reaches_the_guide
     assert guide.guide_inputs == [PORTUGUESE]
 
 
+async def test_three_portuguese_words_heard_at_0_40_reach_the_guide_as_those_three_words(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, "Noemi voltou sozinha", "pt", 0.40)
+    the_take_lasts(monkeypatch, 2_000)
+
+    reply = await _the_team_sends_a_take(tablet, session)
+
+    assert guide.guide_inputs == ["Noemi voltou sozinha"], (
+        "uma fala curta em português abaixo da quase certeza virava nota de língua materna"
+    )
+    assert reply["fixed_line"] == ""
+
+
 async def test_clear_portuguese_at_0_9_reaches_the_guide_as_the_teams_words_and_is_never_answered_with_a_d_line(  # noqa: E501
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
