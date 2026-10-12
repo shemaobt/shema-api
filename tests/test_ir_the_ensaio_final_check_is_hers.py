@@ -322,3 +322,23 @@ async def test_each_frase_reaches_her_analyst_labelled_with_its_part(client, ana
         "[frase 3 — a parte 3 — Segundo apelo e a separação] "
         "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
     ), "o analista lia «1. …» sem a parte; o dela lê «[frase 1 — a parte 1 — …]»"
+
+
+async def test_a_frase_told_again_after_a_verdict_reaches_her_analyst_said_to_be_so(
+    client, analyst
+) -> None:
+    first = await _a_round(client, TELLING)
+    retold = {
+        **TELLING[2],
+        "text": "Orfa beijou a sogra e voltou, mas Rute ficou.",
+        "supersedes": 2,
+    }
+
+    await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação — told again after a verdict] "
+        "Orfa beijou a sogra e voltou, mas Rute ficou."
+    ), "o analista não sabia que a frase 3 tinha sido traduzida de novo depois de um veredito"

@@ -431,7 +431,9 @@ def segments_block(
     if not segments:
         return _NOTHING_TOLD_BACK_YET.get(language_code, _NOTHING_TOLD_BACK_YET[FLOOR])
     return "\n".join(
-        f"[frase {position} — {addresses.part_of(segment.id)}] {segment.transcript}"
+        f"[frase {position} — {addresses.part_of(segment.id)}"
+        f"{' — told again after a verdict' if segment.pass_number == 2 else ''}] "
+        f"{segment.transcript}"
         for position, segment in enumerate(segments, start=1)
     )
 

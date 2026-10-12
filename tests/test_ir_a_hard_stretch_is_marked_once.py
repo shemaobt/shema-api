@@ -440,12 +440,11 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
         session_id = await _a_session(db_session)
         take_id = await _rehearse(client, session_id)
         await _told(client, session_id, take_id, 2)
-        if with_a_mark:
-            # Word for word what stretch 2 already said, so the only difference between the
-            # twins is the mark itself and never the telling-back the analyst reads.
-            for _ in range(2):
-                await _tell(client, session_id, take_id, 2, again=True, saying="o trecho 2")
-            assert await _marks(db_session, session_id), "o gêmeo marcado não foi marcado"
+        # Word for word what stretch 2 already said, so the only difference between the
+        # twins is the mark itself and never the telling-back the analyst reads.
+        for _ in range(2 if with_a_mark else 1):
+            await _tell(client, session_id, take_id, 2, again=True, saying="o trecho 2")
+        assert bool(await _marks(db_session, session_id)) is with_a_mark
         answered = await press_terminei(
             client, session_id, report=await heard_every_part(db_session, session_id)
         )
