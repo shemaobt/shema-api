@@ -31,3 +31,19 @@ def test_the_hebrew_echo_of_naomi_engages_her_and_the_woman_in_scene_four() -> N
         "o eco hebraico do nome, a única chave da forma «the woman», não engajava a cena 4"
     )
     assert heard["being:S1:B3"] == "engaged", "o eco hebraico de Noemi não engajava Noemi"
+
+
+def test_noemia_is_not_noemi_a_name_is_matched_as_a_whole_word() -> None:
+    heard = _team_says("P01", "Noemia chegou")
+
+    assert heard["being:S1:B3"] == "not_encountered", (
+        "«Noemia» engajava Noemi porque o nome era procurado dentro da palavra"
+    )
+
+
+def test_the_hebrew_echo_is_found_inside_a_word_that_carries_a_prefix() -> None:
+    heard = _team_says("P01", "אלימלך ונעמי")
+
+    assert heard["being:S1:B3"] == "engaged", (
+        "o eco hebraico com um prefixo não engajava Noemi, e o dela é lido dentro da palavra"
+    )

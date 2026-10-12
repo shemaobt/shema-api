@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
@@ -14,6 +16,9 @@ from app.services.internalization_room.coverage import is_panorama, merge, remai
 SESSION_FORMS = Path(__file__).parent / "canon" / "session-forms.json"
 
 _NAMED_KINDS = {ElementKind.BEING, ElementKind.PLACE, ElementKind.OBJECT, ElementKind.TIME}
+
+_NOT_A_LETTER = re.compile(r"[^\w\s]|_")
+_HEBREW = re.compile("[\u0590-\u05ff]")
 
 
 @lru_cache(maxsize=1)
@@ -34,18 +39,26 @@ def _keys(element: Element, book: str) -> list[str]:
     return names + [form for name in names for form in _forms().get(name, [])] + hebrew
 
 
+def _plain(text: str) -> str:
+    return " ".join(_NOT_A_LETTER.sub(" ", unicodedata.normalize("NFC", text.lower())).split())
+
+
+def _mentions(text: str, keys: list[str]) -> bool:
+    padded = f" {_plain(text)} "
+    return any(key in text if _HEBREW.search(key) else f" {_plain(key)} " in padded for key in keys)
+
+
 def names_heard(
     coverage_state: dict[str, str], *, team: str, voice: str, pericope: str
 ) -> dict[str, str]:
     book = load_map(pericope).book
-    said, answered = team.lower(), voice.lower()
     named = [
         (element.key, _keys(element, book))
         for element in remaining(coverage_state, pericope)
         if element.kind in _NAMED_KINDS
     ]
-    engaged = [key for key, keys in named if any(k in said for k in keys)]
-    surfaced = [key for key, keys in named if any(k in answered for k in keys)]
+    engaged = [key for key, keys in named if _mentions(team, keys)]
+    surfaced = [key for key, keys in named if _mentions(voice, keys)]
     return merge(coverage_state, pericope_num=pericope, surfaced=surfaced, engaged=engaged)
 
 
