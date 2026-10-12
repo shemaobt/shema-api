@@ -41,6 +41,7 @@ MAX_REDRAFTS = 2
 UNREADABLE_REPLY_ATTEMPT_NOTE = (
     "The Validator's reply could not be read, so this draft was not judged."
 )
+EMPTY_DRAFT_REASON = "the Guide's draft was empty, so the Validator never saw it"
 
 
 def _the_validators_words(issues: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -365,6 +366,7 @@ async def _voiced_after_validation(
         )
         attempts.append(Attempt(attempt=attempt + 1, draft=draft))
         if not draft:
+            attempts[-1] = replace(attempts[-1], note=EMPTY_DRAFT_REASON)
             verdict: dict[str, Any] = {}
             break
 
@@ -440,7 +442,7 @@ async def _voiced_after_validation(
 
         redraft_note = _redraft_note(issues)
     if not draft:
-        why = "the Guide's draft was empty, so the Validator never saw it"
+        why = EMPTY_DRAFT_REASON
     elif refusal is not None:
         why = f"the Validator's reply could not be read ({refusal}), so the draft was never judged"
     else:
