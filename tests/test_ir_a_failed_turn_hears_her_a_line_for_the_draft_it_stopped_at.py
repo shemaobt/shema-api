@@ -267,6 +267,21 @@ async def test_an_english_failed_turn_with_its_pointer_still_reads_as_unrepairab
     )
 
 
+async def test_the_observation_room_reads_the_english_a_line_that_was_played_pointer_included(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    the_room_agent_is(monkeypatch, turn=_DraftsInOrder(SECOND_DRAFT))
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="en", pericope=P)
+
+    await _a_take(client, session.id)
+
+    last = conversation_of(await get_session(db_session, session.id)).turns[-1]
+    assert last.text == (
+        "Let's take that gently. Tell me what you're seeing in this part of the story so far"
+        " — this is the part about naomi's last appeal."
+    ), "a sala de observação mostrava a linha A sem o ponteiro, que não era a que a equipe ouviu"
+
+
 async def test_an_english_telling_back_verdict_that_fails_points_to_scene_one_too(
     monkeypatch,
 ) -> None:
