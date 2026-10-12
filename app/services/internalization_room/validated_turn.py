@@ -380,11 +380,13 @@ async def _voiced_after_validation(
                 settings=settings,
             )
             verdict, refusal = _parse_verdict(raw_verdict)
+            unread_note = UNREADABLE_REPLY_ATTEMPT_NOTE
         except TruncatedReply as cut:
             raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
+            unread_note = "validator error: validator reply cut at max_tokens=8192"
         issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
-            attempts[-1] = replace(attempts[-1], note=UNREADABLE_REPLY_ATTEMPT_NOTE)
+            attempts[-1] = replace(attempts[-1], note=unread_note)
             _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
         attempts[-1] = replace(
@@ -421,7 +423,19 @@ async def _voiced_after_validation(
             )
 
         redraft_note = _redraft_note(issues)
-    logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
+    if not draft:
+        why = "the Guide's draft was empty, so the Validator never saw it"
+    elif refusal is not None:
+        why = f"the Validator's reply could not be read ({refusal}), so the draft was never judged"
+    else:
+        why = f"the Validator sent the draft back every time: issues={issues}"
+    logger.warning(
+        "Fail-safe fired after %s redrafts for session %s: %s",
+        attempt,
+        session_id,
+        why,
+        extra={"session_id": session_id},
+    )
 
     speech, line = unrepairable(attempt + 1, language_code, first_scene)
     return _timed(
