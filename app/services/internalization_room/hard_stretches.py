@@ -33,8 +33,8 @@ from app.services.internalization_room.sessions import (
 )
 
 
-def pass_of_a_telling(state: BackTranslationState, pass_number: int) -> int:
-    return pass_number if state.never_analysed else 2
+def pass_of_a_telling(state: BackTranslationState) -> int:
+    return 1 if state.never_analysed else 2
 
 
 async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRSegment) -> bool:
@@ -126,7 +126,7 @@ async def capture_and_note_a_hard_stretch(
         ends_ms=ends_ms,
         bridge_take_id=bridge_take_id,
         transcript=transcript,
-        pass_number=pass_of_a_telling(standing, pass_number),
+        pass_number=pass_of_a_telling(standing),
         replaces=replaces,
         commit=False,
     )

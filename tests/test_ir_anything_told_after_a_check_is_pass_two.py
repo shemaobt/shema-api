@@ -171,3 +171,30 @@ async def test_a_new_frase_told_after_a_clean_check_refuses_approval_until_a_new
         "a aprovação passava pela rodada limpa de antes da frase nova"
     )
     assert back_translation_of(session).verdict is None
+
+
+async def test_a_frase_told_again_before_any_check_reaches_her_analyst_as_a_first_pass(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [3])
+    stretch = (await final_segments(db_session, session.id))[1]
+    retold = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": stretch.take_id,
+            "starts_ms": str(stretch.starts_ms),
+            "ends_ms": str(stretch.ends_ms),
+            "retelling": "true",
+        },
+        files={"file": ("de-novo.m4a", b"a frase dois antes de conferir", "audio/mp4")},
+    )
+    assert retold.status_code == 200, retold.text
+
+    verdict = await press_terminei(client, session.id, report=played_every_part([part.id]))
+
+    assert verdict.status_code == 200, verdict.text
+    assert TOLD_AGAIN not in _line_of(analyst.shown[-1], RETOLD), (
+        "uma frase contada de novo antes de qualquer conferência chegava à analista "
+        "como contada depois de um veredito"
+    )

@@ -144,7 +144,7 @@ async def replace(
         kind=IRTakeKind.RETRO,
         scope=session.pericope,
         audio=audio_bytes,
-        pass_number=pass_of_a_telling(room.back_translation_of(session), segment.pass_number),
+        pass_number=pass_of_a_telling(room.back_translation_of(session)),
         ordinal=segment.ordinal,
         content_type=file.content_type or "audio/mp4",
     )
