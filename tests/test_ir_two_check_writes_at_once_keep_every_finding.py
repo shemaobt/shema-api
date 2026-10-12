@@ -192,3 +192,26 @@ async def test_a_finding_identical_to_one_already_kept_is_a_second_finding_not_t
         "faltou a colheita",
         "faltou a colheita",
     ], "dois achados idênticos viravam um só na mescla, e o segundo sumia da lista"
+
+
+async def test_a_check_redone_over_a_write_that_left_the_findings_alone_keeps_its_own_order(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    state = service.back_translation_of(session)
+    state.findings.append(_finding("faltou a colheita"))
+    await service.save_back_translation(db_session, session, state)
+    async with rival_factory() as checking_db, rival_factory() as reading_db:
+        checking, checking_state = await _read(checking_db, session.id)
+        reading, reading_state = await _read(reading_db, session.id)
+
+        reading_state.waited = 1
+        await service.save_back_translation(reading_db, reading, reading_state)
+        checking_state.findings = [_finding("faltou o nome de Boaz"), _finding("faltou a colheita")]
+        await service.save_back_translation(checking_db, checking, checking_state)
+
+    stored = await _stored(rival_factory, session.id)
+    assert [finding.note for finding in stored.findings] == [
+        "faltou o nome de Boaz",
+        "faltou a colheita",
+    ], "a mescla punha o achado novo atrás dos antigos, e a sala lia como líder outro achado"

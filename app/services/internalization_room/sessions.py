@@ -1118,10 +1118,14 @@ def _merged_forward(
     for name in vars(wanted).keys() - {"findings", "checks"}:
         if getattr(wanted, name) != getattr(read, name):
             setattr(fresh, name, getattr(wanted, name))
-    fresh.findings = [
-        *_less(fresh.findings, _less(read.findings, wanted.findings)),
-        *_less(wanted.findings, read.findings),
-    ]
+    fresh.findings = (
+        wanted.findings
+        if fresh.findings == read.findings
+        else [
+            *_less(fresh.findings, _less(read.findings, wanted.findings)),
+            *_less(wanted.findings, read.findings),
+        ]
+    )
     fresh.checks = [*fresh.checks, *_less(wanted.checks, read.checks)]
     return fresh
 
