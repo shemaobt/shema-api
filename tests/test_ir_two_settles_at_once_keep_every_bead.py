@@ -112,3 +112,22 @@ async def test_a_settle_refused_for_a_stale_read_says_so_in_the_log_before_it_is
     stale = [r.getMessage() for r in caplog.records if "stale read" in r.getMessage()]
     assert len(stale) == 1, "a leitura velha era escrita por cima calada, sem linha nenhuma no log"
     assert session.id in stale[0] and "coverage_state" in stale[0]
+
+
+async def test_a_settle_landing_while_a_turn_is_in_flight_lets_the_turn_land_not_a_conflict(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    keys = element_keys(P)
+    session = await service.create_session(db_session, pericope=P)
+
+    async with rival_factory() as settle_db:
+        await service.apply_coverage(settle_db, session.id, _lighting(keys[0]))
+
+    await service.append_exchange(db_session, session, team_utterance="oi", guide_response="ola")
+
+    async with rival_factory() as fresh_db:
+        landed = await service.get_session(fresh_db, session.id)
+    assert [message["text"] for message in landed.messages] == ["oi", "ola"], (
+        "um settle que movesse a versão da sessão devolvia 409 a todo turno em voo"
+    )
+    assert landed.coverage_state[keys[0]] == LIT
