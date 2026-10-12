@@ -20,6 +20,7 @@ from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
     analyse_telling_back,
 )
+from app.services.internalization_room.part_names import Addresses
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 P = "P03"
@@ -92,6 +93,7 @@ async def test_the_analyst_reads_the_telling_back_on_the_analysis_ladder(
         scope="1-5",
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(tripod_analysis_model="modelo-de-analise-sob-teste"),
     )
 
@@ -115,6 +117,7 @@ async def test_the_analysis_ladder_starts_where_the_voice_ladder_does(recording_
         scope="1-5",
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 
@@ -133,6 +136,7 @@ async def test_the_analyst_has_room_for_2500_tokens_with_thinking_on_and_no_effo
         scope="1-5",
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 
@@ -159,6 +163,7 @@ async def test_an_analyst_reply_cut_at_its_ceiling_gives_no_verdict_that_round(
         scope="1-5",
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 

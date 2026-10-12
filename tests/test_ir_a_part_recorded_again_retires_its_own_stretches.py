@@ -360,7 +360,7 @@ async def test_the_analyst_is_numbered_in_reading_order(
 
     assert answered.status_code == 200, answered.text
     numbered = next(line for line in analyst.readings[0].splitlines() if RETOLD in line)
-    assert numbered.startswith("2. "), "the part recorded again is read second, not last"
+    assert numbered.startswith("[frase 2 — "), "the part recorded again is read second, not last"
 
 
 async def test_the_listening_of_parts_one_and_three_survives_and_the_new_take_is_unheard(

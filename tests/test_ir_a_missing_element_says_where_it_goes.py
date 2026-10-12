@@ -20,6 +20,7 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     analyse_telling_back,
 )
+from app.services.internalization_room.part_names import Addresses
 from tests.turn_harness import the_room_agent_is
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
@@ -74,6 +75,7 @@ async def _findings_for(reply: str, patch_analyst):
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
     assert analysis is not None
