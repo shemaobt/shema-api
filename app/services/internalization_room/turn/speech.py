@@ -117,6 +117,7 @@ async def speak_back(
     validator_prompt: str,
     pericope: str,
     settings: Settings,
+    earlier_passages: dict[str, str] | None = None,
     interrupted: bool = False,
 ) -> TurnOutcome:
     """The Guide's reply to the team's turn, or the inaudible ladder's line in its place.
@@ -153,6 +154,6 @@ async def speak_back(
         opening=opening,
         settings=settings,
         session_id=session.id,
-        earlier_passages=session.earlier_passages,
+        earlier_passages=earlier_passages,
     )
     return handed.kept_apart(outcome)

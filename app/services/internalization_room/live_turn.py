@@ -53,8 +53,9 @@ async def run_comprehension_turn(
     pericope = session.pericope
     book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
-    if session.earlier_passages is None:
-        session.earlier_passages = await earlier_passages(
+    stamp = session.earlier_passages
+    if stamp is None:
+        stamp = await earlier_passages(
             db, project_id=session.project_id, pericope=pericope, before_a_turn=True
         )
     outcome = await speak_back(
@@ -70,7 +71,10 @@ async def run_comprehension_turn(
         validator_prompt=validator_prompt,
         pericope=pericope,
         settings=settings,
+        earlier_passages=stamp,
     )
+    if stamp is not session.earlier_passages:
+        session.earlier_passages = stamp
     if not opening:
         outcome = replace(
             stamped_with_what_was_heard(outcome, speech),
