@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room.llm import CACHE_BREAK
 from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
     PREFIX,
@@ -172,3 +173,36 @@ async def test_a_report_from_another_projects_tablet_is_refused_and_marks_nothin
     assert [one.heard_at for one in (await stored_telling_back(db_session, session)).checks] == [
         None
     ], "o tablet de outro projeto dava o veredito desta equipe por ouvido"
+
+
+ON_FRASE_3 = {
+    "kind": "nuance",
+    "note": "A parte ficou solta.",
+    "frase": 3,
+    "quote": "parte 2",
+    "story": "a história diz qual parte",
+}
+
+
+def _handed(speaker: Speaker, brief: int = -1) -> list[int]:
+    brief_text = speaker.briefs[brief].replace(CACHE_BREAK, "")
+    handed = brief_text.split("## The findings for the whole passage\n\n", 1)[1]
+    return [one["frase"] for one in json.loads(handed.split("\n\n`=== END", 1)[0])]
+
+
+async def test_once_the_first_nuance_is_heard_the_next_press_names_the_next_one(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    report = await heard_every_part(db_session, session.id)
+    analyst.readings = [{"findings": [ON_FRASE_3, ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    first = await press_terminei(client, session.id, report=report)
+    await _heard(client, session.id, first.json()["check_at"])
+
+    again = await press_terminei(client, session.id, report=report)
+
+    assert again.status_code == 200, again.text
+    assert [_handed(speaker, brief) for brief in range(len(speaker.briefs))] == [[2], [3]], (
+        "depois de ouvir a nuance da frase 2, a próxima rodada repetia o veredito guardado"
+    )

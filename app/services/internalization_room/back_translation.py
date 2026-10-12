@@ -291,6 +291,7 @@ class BackTranslationState(BaseModel):
     verdict: VoicedVerdict | None = None
     read_ahead: ReadAhead | None = None
     checks: list[CheckRound] = Field(default_factory=list)
+    nuances: list[Nuance] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -321,6 +322,15 @@ class BackTranslationState(BaseModel):
         ]:
             return None
         return self.read_ahead
+
+    @property
+    def its_named_nuance_was_heard(self) -> bool:
+        last = self.checks[-1] if self.checks else None
+        return (
+            last is not None
+            and last.heard_at is not None
+            and any(one.voiced == "now" for one in last.nuances)
+        )
 
     @property
     def never_analysed(self) -> bool:

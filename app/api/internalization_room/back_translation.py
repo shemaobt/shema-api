@@ -388,6 +388,7 @@ async def _finished(
         state.already_analysed(told)
         and state.verdict is not None
         and not state.verdict.used_fail_safe
+        and not state.its_named_nuance_was_heard
     ):
         finding = room.the_finding_that_leads(state)
         with stage("db_let_go"):

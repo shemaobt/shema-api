@@ -110,7 +110,6 @@ async def check_the_telling_back(
     else it decides.
     """
     read_this_round: list[Finding] = []
-    nuances: list[Nuance] = []
     language = room_language(session.language)
     addresses = addresses_for(
         told,
@@ -156,7 +155,7 @@ async def check_the_telling_back(
                 told_back=told_back,
             )
         read_this_round = read.findings
-        nuances = sorted(read.nuances, key=lambda one: one.chunk)
+        state.nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
 
@@ -183,9 +182,12 @@ async def check_the_telling_back(
         )
 
     said_already = nuances_said(state.checks)
-    for one in nuances:
-        if said_before(one, said_already, told):
-            one.voiced = "before"
+    nuances = [
+        one.model_copy(
+            update={"voiced": "before" if said_before(one, said_already, told) else None}
+        )
+        for one in state.nuances
+    ]
     offered = None if current else next((one for one in nuances if one.voiced is None), None)
     outcome = await speak(current or ([offered] if offered else []))
     if outcome.used_fail_safe and offered is not None:
