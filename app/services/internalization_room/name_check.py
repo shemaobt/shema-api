@@ -27,6 +27,12 @@ def _forms() -> dict[str, list[str]]:
     return forms
 
 
+def _bare(form: str) -> str:
+    return "".join(
+        char for char in unicodedata.normalize("NFD", form) if not unicodedata.combining(char)
+    )
+
+
 def _keys(element: Element, book: str) -> list[str]:
     entry = registry_entry(book, element.key.rsplit(":", 1)[-1]) or {}
     english = entry.get("english") or ""
@@ -36,7 +42,8 @@ def _keys(element: Element, book: str) -> list[str]:
     if label != english.lower() and label in forms:
         return hebrew
     names = [name.lower() for name in (element.label, english) if name]
-    return names + [form for name in names for form in _forms().get(name, [])] + hebrew
+    forms_said = [form for name in names for form in _forms().get(name, [])]
+    return names + forms_said + [_bare(form) for form in forms_said] + hebrew
 
 
 def _plain(text: str) -> str:

@@ -47,3 +47,11 @@ def test_the_hebrew_echo_is_found_inside_a_word_that_carries_a_prefix() -> None:
     assert heard["being:S1:B3"] == "engaged", (
         "o eco hebraico com um prefixo não engajava Noemi, e o dela é lido dentro da palavra"
     )
+
+
+def test_belem_said_without_its_accent_still_engages_bethlehem() -> None:
+    heard = _team_says("P01", "eles saíram de Belem")
+
+    assert heard["place:S1:PL1"] == "engaged", (
+        "a transcrição sem o acento de «Belém» não engajava Belém"
+    )
