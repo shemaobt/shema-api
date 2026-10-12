@@ -272,3 +272,20 @@ async def test_the_same_words_already_said_placed_on_another_current_frase_count
     assert _handed(speaker) == [], (
         "o Analista punha o mesmo detalhe uma frase ao lado e a voz o dizia de novo"
     )
+
+
+async def test_a_frase_translated_again_on_the_same_audio_keeps_its_nuance_said(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [
+        {"findings": [ON_FRASE_3]},
+        {"findings": [{**ON_FRASE_3, "quote": "a Noemi à noite"}]},
+    ]
+    speaker.line = NAMES_FRASE_3
+    first = await _a_round(client, TELLING)
+
+    await _a_round(client, [{**TELLING[2], "supersedes": 2}], session_id=first["sessionId"])
+
+    assert _handed(speaker) == [], (
+        "traduzir a frase de novo sobre o mesmo áudio fazia a voz dizer a nuance outra vez"
+    )

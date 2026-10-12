@@ -150,7 +150,14 @@ class Nuance(BaseModel):
     segment_id: str
     quote: str
     story: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
     voiced: Literal["now", "before"] | None = None
+
+    @property
+    def audio(self) -> tuple[str, int, int]:
+        return (self.take_id, self.starts_ms, self.ends_ms)
 
 
 class BtAnalysis(BaseModel):
@@ -603,12 +610,16 @@ def _a_nuance(entry: dict[str, Any], segments: list[IRSegment]) -> Nuance | None
     story = str(entry.get("story", "")).strip()
     if chunk is None or not story or not _stands_in(quote, segments[chunk - 1].transcript):
         return None
+    segment = segments[chunk - 1]
     return Nuance(
         note=str(entry.get("note", "")).strip() or f"«{quote}» — {story}",
         chunk=chunk,
-        segment_id=segments[chunk - 1].id,
+        segment_id=segment.id,
         quote=quote,
         story=story,
+        take_id=segment.take_id,
+        starts_ms=segment.starts_ms,
+        ends_ms=segment.ends_ms,
     )
 
 
@@ -973,10 +984,11 @@ def nuances_said(checks: list[CheckRound]) -> list[Nuance]:
     ]
 
 
-def said_before(nuance: Nuance, said: list[Nuance], live: set[str]) -> bool:
+def said_before(nuance: Nuance, said: list[Nuance], told: list[IRSegment]) -> bool:
+    live = {(segment.take_id, segment.starts_ms, segment.ends_ms) for segment in told}
     return any(
-        (one.segment_id == nuance.segment_id and _the_same_words(one.quote, nuance.quote))
-        or (one.segment_id in live and _words_of(one.quote) == _words_of(nuance.quote))
+        (one.audio == nuance.audio and _the_same_words(one.quote, nuance.quote))
+        or (one.audio in live and _words_of(one.quote) == _words_of(nuance.quote))
         for one in said
     )
 
