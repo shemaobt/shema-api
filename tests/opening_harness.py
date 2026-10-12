@@ -16,6 +16,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import APIRouter
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -107,21 +108,19 @@ async def the_team_says(
 
 
 @asynccontextmanager
-async def desk_routes(
-    db_session: AsyncSession, *, per_request: async_sessionmaker[AsyncSession] | None = None
+async def _desk_router_on_an_app(
+    router: APIRouter,
+    prefix: str,
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession] | None,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    """The Desk's team routes on an app of their own, over the case's database.
-
-    `per_request` gives every request a session of its own, as `room_client` does.
-    """
     from fastapi import FastAPI
 
-    from app.api.facilitator.teams import facilitator_teams_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
-    test_app.include_router(facilitator_teams_router, prefix="/api/facilitator/teams")
+    test_app.include_router(router, prefix=prefix)
     register_exception_handlers(test_app)
 
     async def _get_db():
@@ -134,5 +133,34 @@ async def desk_routes(
     test_app.dependency_overrides[get_db] = _get_db
     async with httpx.AsyncClient(
         transport=ASGITransport(app=test_app), base_url="http://test"
+    ) as client:
+        yield client
+
+
+@asynccontextmanager
+async def desk_routes(
+    db_session: AsyncSession, *, per_request: async_sessionmaker[AsyncSession] | None = None
+) -> AsyncIterator[httpx.AsyncClient]:
+    """The Desk's team routes on an app of their own, over the case's database.
+
+    `per_request` gives every request a session of its own, as `room_client` does.
+    """
+    from app.api.facilitator.teams import facilitator_teams_router
+
+    async with _desk_router_on_an_app(
+        facilitator_teams_router, "/api/facilitator/teams", db_session, per_request
+    ) as client:
+        yield client
+
+
+@asynccontextmanager
+async def desk_sessions_routes(
+    db_session: AsyncSession, *, per_request: async_sessionmaker[AsyncSession] | None = None
+) -> AsyncIterator[httpx.AsyncClient]:
+    """The Desk's sessions tile on an app of their own, over the case's database."""
+    from app.api.facilitator.sessions import facilitator_sessions_router
+
+    async with _desk_router_on_an_app(
+        facilitator_sessions_router, "/api/facilitator/sessions", db_session, per_request
     ) as client:
         yield client
