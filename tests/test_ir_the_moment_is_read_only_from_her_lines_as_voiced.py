@@ -359,19 +359,6 @@ def test_a_scene_number_the_passage_does_not_have_is_kept_in_her_words(
     assert step.after.as_json() == moment
 
 
-def test_her_scene_closing_refused_after_another_moment_line_is_not_kept_as_ignored() -> None:
-    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_OPEN}}]
-
-    step = moment_step(
-        heard, f"Vamos pra Articulação da cena 2. {SCENE_ONE} {CLOSING}", fail_safe=False, parts=4
-    )
-
-    assert step is not None
-    assert "ignored" not in step.as_json(), (
-        "o fechamento recusado depois de outra linha de momento entrou na lista de ignoradas"
-    )
-
-
 def _ignored(moment: dict[str, Any], voiced: str) -> list[str]:
     heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
     step = moment_step(heard, voiced, fail_safe=False, parts=4)
@@ -382,4 +369,27 @@ def _ignored(moment: dict[str, Any], voiced: str) -> list[str]:
 def test_her_fence_opening_in_the_familiarization_is_kept_as_ignored_in_her_words() -> None:
     assert _ignored(FAMILIARIZATION, FENCE) == ["fence: in the Familiarization, no part number"], (
         "o bloco do ensaio dito na Familiarização foi descartado sem registro"
+    )
+
+
+@pytest.mark.parametrize(
+    ("moment", "voiced"),
+    [
+        (FAMILIARIZATION, f"Estamos na Familiarização. {SCENE_ONE} {CLOSING}"),
+        (SCENE_TWO_PRACTISED, f"Estamos na Articulação da cena 2. {SCENE_ONE} {CLOSING}"),
+    ],
+)
+def test_her_scene_closing_after_another_moment_line_is_kept_as_ignored_in_her_words(
+    moment: dict[str, Any], voiced: str
+) -> None:
+    assert _ignored(moment, voiced) == [
+        "part_closing: another moment line came earlier in the same reply"
+    ], "o fechamento recusado depois de outra linha de momento foi descartado sem registro"
+
+
+def test_her_scene_closing_that_ends_a_scene_opening_is_not_ignored() -> None:
+    voiced = f"Estamos na Internalização da cena 2. {SCENE_ONE} {CLOSING}"
+
+    assert _ignored(SCENE_TWO_OPEN, voiced) == [], (
+        "o fechamento que termina a abertura da própria cena entrou na lista de ignoradas"
     )

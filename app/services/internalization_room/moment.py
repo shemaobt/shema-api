@@ -243,7 +243,7 @@ def moment_step(
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
         outside = line.part is not None and not 1 <= line.part <= parts
         closing_after_another = line.cause == "part_closing" and earlier
-        declined = _declined(after, line, parts=parts)
+        declined = _declined(after, line, parts=parts, earlier=earlier)
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
         if declined:
             ignored.append(f"{_described(line)}: {declined}")
@@ -273,13 +273,19 @@ def _described(line: _Line) -> str:
     return f"{line.cause} {line.part}{where if line.cause == 'where_we_are' else ''}"
 
 
-def _declined(moment: Moment, line: _Line, *, parts: int) -> str | None:
+def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str | None:
     if line.part is not None and not 1 <= line.part <= parts:
         return f"not a part of this passage (1..{parts})"
     if moment.at == "ensaio_final" and line.cause in _NUMBERED:
         return "after the send-off (Ensaio Final)"
     if moment.at == "familiarization" and line.cause == "fence":
         return "in the Familiarization, no part number"
+    if (
+        earlier
+        and line.cause == "part_closing"
+        and moment.at in ("familiarization", "articulation")
+    ):
+        return "another moment line came earlier in the same reply"
     return None
 
 
