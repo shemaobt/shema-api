@@ -475,8 +475,7 @@ async def create_session(
     await clear_needs_person(db, caller.id)
     nudge(session.project_id, "halts")
     if previous is not None:
-        if hand_over(previous, session):
-            await db.commit()
+        await hand_over(db, previous, session)
     elif (
         created
         and is_panorama(session.pericope)

@@ -5,7 +5,10 @@ spoken, the coverage is untouched, the conversation is empty — so it is the on
 be written before it is asked for. Doing that turns a five-second wait into none.
 """
 
+from datetime import UTC, datetime
+
 import pytest
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -14,105 +17,104 @@ from app.services.internalization_room.prepare_opening import hand_over, take_pr
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 
-def _session(**over: object) -> IRSession:
+async def _session(db: AsyncSession, **over: object) -> IRSession:
     fields: dict[str, object] = {
-        "id": "s1",
         "pericope": "P01",
         "status": IRSessionStatus.IN_PROGRESS,
         "messages": [],
         "coverage_state": {},
         "kept_takes": {},
         "back_translation": {},
+        "language": "pt",
     }
     fields.update(over)
-    return IRSession(**fields)
+    session = IRSession(**fields)
+    db.add(session)
+    await db.commit()
+    return session
 
 
-def test_a_ready_line_is_handed_to_the_session_that_speaks_it() -> None:
-    panorama = _session(
-        id="ov",
+async def test_a_ready_line_is_handed_to_the_session_that_speaks_it(
+    db_session: AsyncSession,
+) -> None:
+    panorama = await _session(
+        db_session,
+        pericope="OV-Ruth",
         prepared_speech="Olá.",
         prepared_audio_key="tts/x.mp3",
         prepared_pericope="P01",
     )
-    passage = _session(id="p")
+    passage = await _session(db_session)
 
-    assert hand_over(panorama, passage) is True
-    assert passage.prepared_speech == "Olá."
-    assert passage.prepared_audio_key == "tts/x.mp3"
+    assert await hand_over(db_session, panorama, passage) is True
+    assert await _prepared_speech_of(db_session, passage.id) == "Olá."
+    assert await _prepared_speech_of(db_session, panorama.id) is None
 
 
-def test_another_passage_is_not_given_the_first_passage_line() -> None:
+async def test_another_passage_is_not_given_the_first_passage_line(
+    db_session: AsyncSession,
+) -> None:
     """The panorama writes ahead for P01 only; P03 would hear P01's framing as its own."""
-    panorama = _session(id="ov", prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
-    other = _session(id="p", pericope="P03")
+    panorama = await _session(
+        db_session,
+        pericope="OV-Ruth",
+        prepared_speech="Olá.",
+        prepared_audio_key="tts/x.mp3",
+        prepared_pericope="P01",
+    )
+    other = await _session(db_session, pericope="P03")
 
-    assert hand_over(panorama, other) is False
-    assert other.prepared_speech is None
-    assert panorama.prepared_speech == "Olá."
+    assert await hand_over(db_session, panorama, other) is False
+    assert await _prepared_speech_of(db_session, other.id) is None
+    assert await _prepared_speech_of(db_session, panorama.id) == "Olá."
 
 
-def test_a_panorama_still_writing_hands_over_nothing() -> None:
+async def test_a_panorama_still_writing_hands_over_nothing(db_session: AsyncSession) -> None:
     """The team may enter before it is ready; then the session simply writes its own."""
-    assert hand_over(_session(id="ov"), _session(id="p")) is False
+    panorama = await _session(db_session, pericope="OV-Ruth")
+
+    assert await hand_over(db_session, panorama, await _session(db_session)) is False
 
 
-def test_half_a_line_is_not_a_line() -> None:
-    only_text = _session(id="ov", prepared_speech="Olá.")
-    assert hand_over(only_text, _session(id="p")) is False
+async def test_half_a_line_is_not_a_line(db_session: AsyncSession) -> None:
+    only_text = await _session(
+        db_session, pericope="OV-Ruth", prepared_speech="Olá.", prepared_pericope="P01"
+    )
+    assert await hand_over(db_session, only_text, await _session(db_session)) is False
 
-    only_audio = _session(id="ov", prepared_audio_key="tts/x.mp3")
-    assert hand_over(only_audio, _session(id="p")) is False
+    only_audio = await _session(
+        db_session, pericope="OV-Ruth", prepared_audio_key="tts/x.mp3", prepared_pericope="P01"
+    )
+    assert await hand_over(db_session, only_audio, await _session(db_session)) is False
 
 
 async def test_the_prepared_line_is_spoken_once_and_then_gone(db_session: AsyncSession) -> None:
     """A second turn must never repeat the opening — it is consumed when taken."""
-    session = _session(prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
-    db_session.add(session)
-    await db_session.commit()
+    session = await _session(db_session, prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
 
     assert await take_prepared(db_session, session) == ("Olá.", "tts/x.mp3", [])
     assert await take_prepared(db_session, session) is None
 
 
 async def test_a_session_with_nothing_prepared_says_so(db_session: AsyncSession) -> None:
-    session = _session()
-    db_session.add(session)
-    await db_session.commit()
+    session = await _session(db_session)
 
     assert await take_prepared(db_session, session) is None
 
 
-def test_the_prepared_line_belongs_to_the_passage_it_was_written_for() -> None:
-    """It is written from one passage's meaning map, and delivered as that passage's words.
+async def test_a_prepared_line_is_handed_over_once(db_session: AsyncSession) -> None:
+    panorama = await _session(
+        db_session,
+        pericope="OV-Ruth",
+        prepared_speech="a primeira fala",
+        prepared_audio_key="tts/v/p01.mp3",
+        prepared_pericope="P01",
+    )
+    first = await _session(db_session)
+    second = await _session(db_session)
 
-    A team choosing P03 heard P01's opening as P03's framing, to people who cannot read
-    and have no way to check.
-
-    The comparison is against the passage recorded when the line was written, not against the
-    constant this used to hold nor against a fresh resolution — see ENG-450's own case for why
-    the third of those is not the same guard.
-    """
-    panorama = IRSession(id="ov", pericope="OV-Ruth", prepared_pericope="P01")
-    panorama.prepared_speech = "a primeira fala da P01"
-    panorama.prepared_audio_key = "tts/v/p01.mp3"
-
-    outra = IRSession(id="s2", pericope="P03")
-
-    assert hand_over(panorama, outra) is False
-    assert outra.prepared_speech is None
-
-
-def test_a_prepared_line_is_handed_over_once() -> None:
-    panorama = IRSession(id="ov", pericope="OV-Ruth", prepared_pericope="P01")
-    panorama.prepared_speech = "a primeira fala"
-    panorama.prepared_audio_key = "tts/v/p01.mp3"
-
-    first = IRSession(id="s1", pericope="P01")
-    second = IRSession(id="s2", pericope="P01")
-
-    assert hand_over(panorama, first) is True
-    assert hand_over(panorama, second) is False, (
+    assert await hand_over(db_session, panorama, first) is True
+    assert await hand_over(db_session, panorama, second) is False, (
         "a origem nunca era limpa, então a mesma fala ia para toda sessão seguinte"
     )
 
@@ -334,3 +336,99 @@ async def test_the_ready_line_reaches_the_team_without_ever_reaching_the_classif
         "a abertura preparada chegava ao classificador por uma porta que o portão da "
         "abertura ao vivo não lê, e coverage é engaged-only na tela do time"
     )
+
+
+OLD = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+
+
+async def _long_ago(db_session: AsyncSession, *session_ids: str) -> None:
+    for session_id in session_ids:
+        await db_session.execute(
+            update(IRSession)
+            .where(IRSession.id == session_id)
+            .values(updated_at=OLD)
+            .execution_options(synchronize_session=False)
+        )
+    await db_session.commit()
+
+
+async def _updated_at(db_session: AsyncSession, session_id: str) -> datetime:
+    stored = await db_session.scalar(select(IRSession.updated_at).where(IRSession.id == session_id))
+    assert stored is not None
+    return stored.replace(tzinfo=UTC)
+
+
+async def test_a_panoramas_updated_at_stays_as_it_was_when_its_background_preparation_lands(
+    client, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from app.services.internalization_room import prepare_opening as module
+    from app.services.internalization_room.run_turn import TurnOutcome
+
+    async def _written(**_: object) -> TurnOutcome:
+        return TurnOutcome(speech=PREPARED, transcript="")
+
+    async def _voiced(*_: object, **__: object) -> tuple[SimpleNamespace, None]:
+        return SimpleNamespace(key="tts/prepared.mp3"), None
+
+    async def _the_passage(*_: object, **__: object) -> str:
+        return "P01"
+
+    monkeypatch.setattr(module, "run_turn", _written)
+    monkeypatch.setattr(module, "synthesize_facilitator_speech", _voiced)
+    monkeypatch.setattr(module, "active_passage", _the_passage)
+    panorama = await _create_panorama(client)
+    await _long_ago(db_session, panorama)
+
+    await module.prepare_opening(panorama)
+
+    assert await _prepared_speech_of(db_session, panorama) == PREPARED
+    assert await _updated_at(db_session, panorama) == OLD
+
+
+async def _prepared_speech_of(db_session: AsyncSession, session_id: str) -> str | None:
+    return await db_session.scalar(
+        select(IRSession.prepared_speech).where(IRSession.id == session_id)
+    )
+
+
+async def test_a_panoramas_updated_at_stays_as_it_was_when_the_team_opens_a_passage_and_the_prepared_opening_is_handed_over(  # noqa: E501
+    client, db_session: AsyncSession
+) -> None:
+    panorama = await _create_panorama(client)
+    await _park_the_prepared_line(db_session, panorama)
+    await _long_ago(db_session, panorama)
+
+    passage = await _passage_after(client, panorama)
+
+    assert await _prepared_speech_of(db_session, passage) == PREPARED
+    assert await _prepared_speech_of(db_session, panorama) is None
+    assert await _updated_at(db_session, panorama) == OLD
+
+
+async def test_the_opening_sessions_updated_at_is_not_moved_by_the_hand_over(
+    client, db_session: AsyncSession
+) -> None:
+    panorama = await _create_panorama(client)
+    passage = await _passage_after(client, panorama)
+    await _park_the_prepared_line(db_session, panorama)
+    await _long_ago(db_session, panorama, passage)
+
+    resumed = await _passage_after(client, panorama)
+
+    assert resumed == passage
+    assert await _prepared_speech_of(db_session, passage) == PREPARED
+    assert await _updated_at(db_session, passage) == OLD
+
+
+async def test_a_team_turn_moves_the_sessions_updated_at(client, db_session: AsyncSession) -> None:
+    from app.services.internalization_room import sessions as room
+
+    panorama = await _create_panorama(client)
+    await _long_ago(db_session, panorama)
+    session = await room.get_session(db_session, panorama)
+
+    await room.append_exchange(db_session, session, team_utterance="oi", guide_response="ok")
+
+    assert await _updated_at(db_session, panorama) > OLD

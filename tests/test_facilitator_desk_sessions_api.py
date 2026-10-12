@@ -448,3 +448,39 @@ async def test_two_teams_on_one_passage_each_read_their_own_engaged_elements(cli
         ruth.id: 6,
         naomi.id: 2,
     }
+
+
+async def test_the_desk_sessions_route_does_not_put_a_panorama_first_after_its_background_preparation_lands(  # noqa: E501
+    client, db_session, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app.services.internalization_room import prepare_opening as module
+    from app.services.internalization_room.run_turn import TurnOutcome
+
+    async def _written(**_: object) -> TurnOutcome:
+        return TurnOutcome(speech="Vamos ficar no começo.", transcript="")
+
+    async def _voiced(*_: object, **__: object) -> tuple[SimpleNamespace, None]:
+        return SimpleNamespace(key="tts/prepared.mp3"), None
+
+    async def _the_passage(*_: object, **__: object) -> str:
+        return "P01"
+
+    monkeypatch.setattr(module, "run_turn", _written)
+    monkeypatch.setattr(module, "synthesize_facilitator_speech", _voiced)
+    monkeypatch.setattr(module, "active_passage", _the_passage)
+    ruth = await a_team(db_session, "Equipe Rute")
+    headers = await a_facilitator_of(db_session, ruth, email="fac@example.com")
+    panorama = await a_session(db_session, ruth, pericope="OV-Ruth", last_activity=NOON)
+    spoken = await a_session(
+        db_session, ruth, pericope="P03", last_activity=NOON + timedelta(minutes=5)
+    )
+
+    await module.prepare_opening(panorama.id)
+
+    listed = (await read(client, headers))["sessions"]
+    assert [(item["session_id"], item["last_activity_at"]) for item in listed] == [
+        (spoken.id, "2026-10-09T12:05:00Z"),
+        (panorama.id, "2026-10-09T12:00:00Z"),
+    ]

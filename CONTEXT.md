@@ -147,6 +147,14 @@ _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Soun
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
 
+**Prepared opening**:
+The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage.
+_Avoid_: ready line, prepared line
+
+**Hand-over**:
+The move of a Prepared opening from the Panorama onto the session of the passage the team opens, once and only to the passage and language it was written for.
+_Avoid_: handing off, transfer
+
 **Book material**:
 What the Panorama voice reads as its standard of truth for one book: the digest of every published passage in story order, then the **Preservation notes**. Built from the vendored canon at its pin, never written by hand.
 _Avoid_: book context, overview prompt, summary
