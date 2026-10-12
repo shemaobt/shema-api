@@ -49,3 +49,19 @@ def test_the_opening_note_stored_as_the_teams_first_line_is_not_the_team_having_
         {"role": "guide", "text": "Olá, equipe."},
     ]
     assert _scene_of(_session(opened)) is None
+
+
+def test_her_mother_tongue_note_stored_on_the_teams_side_is_not_the_team_having_spoken() -> None:
+    rehearsed = [
+        {"role": "guide", "text": "Olá, equipe."},
+        {
+            "role": "team",
+            "text": (
+                "[A equipe falou na língua materna por cerca de 45 segundos; sem transcrição — "
+                "nenhuma palavra chegou até você.]"
+            ),
+            "room_note": True,
+        },
+        {"role": "guide", "text": "Que bom que vocês ensaiaram."},
+    ]
+    assert _scene_of(_session(rehearsed)) is None
