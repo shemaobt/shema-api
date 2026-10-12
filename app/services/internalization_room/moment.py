@@ -263,8 +263,10 @@ class _Line(NamedTuple):
 
 
 def _described(line: _Line) -> str:
-    where = f" ({line.to})" if line.cause == "where_we_are" else ""
-    return f"{line.cause} {line.part}{where}" if line.part is not None else f"{line.cause}{where}"
+    where = f" ({line.to})" if line.to else ""
+    if line.part is None:
+        return f"{line.cause}{where}"
+    return f"{line.cause} {line.part}{where if line.cause == 'where_we_are' else ''}"
 
 
 def _triggers(folded: str, parts: int) -> list[_Line]:

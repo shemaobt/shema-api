@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from app.services.internalization_room.moment import moment_step
+from app.services.internalization_room.moment import _described, _Line, moment_step
 
 FAMILIARIZATION = {"at": "familiarization"}
 SCENE_TWO_OPEN = {"at": "internalization", "part": 2}
@@ -316,4 +316,21 @@ def test_after_the_send_off_her_closing_her_fence_and_plain_words_leave_nothing_
     assert step is not None
     assert "ignored" not in step.as_json(), (
         "uma fala que não era linha numerada entrou na lista de ignoradas depois da despedida"
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "described"),
+    [
+        (_Line(0, "where_we_are", part=2, to="articulation"), "where_we_are 2 (articulation)"),
+        (_Line(0, "where_we_are", part=2), "where_we_are 2"),
+        (_Line(0, "entrance", part=3, to="internalization"), "entrance 3"),
+        (_Line(0, "where_we_are", to="familiarization"), "where_we_are (familiarization)"),
+        (_Line(0, "fence", to="articulation"), "fence (articulation)"),
+        (_Line(0, "fence"), "fence"),
+    ],
+)
+def test_a_line_is_described_the_way_her_record_describes_it(line: _Line, described: str) -> None:
+    assert _described(line) == described, (
+        "a linha era descrita de um jeito que o registro dela nunca escreveu"
     )
