@@ -28,7 +28,7 @@ from app.services.internalization_room.synthesize_facilitator_speech import faci
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.device_harness import TABLET_TEAM
-from tests.opening_harness import ask_for_the_opening
+from tests.opening_harness import NOTE_PT_OV_RUTH, NOTE_PT_P03, ask_for_the_opening
 from tests.release_harness import P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
@@ -96,7 +96,7 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
 
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
-    assert [message["text"] for message in reread.messages] == [OPENING], (
+    assert [message["text"] for message in reread.messages] == [NOTE_PT_P03, OPENING], (
         "a sessão gravou a mesma abertura duas vezes"
     )
 
@@ -134,7 +134,7 @@ async def test_a_panoramas_opening_asked_again_in_flight_is_composed_and_voiced_
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
         remembered = (await fresh_db.execute(select(IRTurn))).scalars().all()
-    assert [message["text"] for message in reread.messages] == [OPENING]
+    assert [message["text"] for message in reread.messages] == [NOTE_PT_OV_RUTH, OPENING]
     assert [turn.turn_id for turn in remembered] == ["abertura"]
 
 
@@ -167,7 +167,7 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
 
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
-    assert [message["text"] for message in reread.messages] == [OPENING], (
+    assert [message["text"] for message in reread.messages] == [NOTE_PT_P03, OPENING], (
         "o turno em voo escrevia pela sessão do request que desistiu, já fechada"
     )
 

@@ -39,9 +39,11 @@ from app.models.internalization_room_golden_doors import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.background import settle_coverage
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.sessions import the_opening_note
 from app.services.internalization_room.turn.speech import mother_tongue_note
 
 router = APIRouter()
@@ -141,11 +143,12 @@ async def play_golden_turn(
     if opening and session.messages:
         raise ConflictError("session already open")
     heard = _heard(payload, language=session.language)
-    rehearsed = _scene_rehearsals(payload, session.pericope)
+    with reading_the_canon_of(session.canon_pin):
+        rehearsed = _scene_rehearsals(payload, session.pericope)
     await db.commit()
 
     started = time.monotonic()
-    with _collecting_model_calls() as calls:
+    with reading_the_canon_of(session.canon_pin), _collecting_model_calls() as calls:
         outcome = await room.run_comprehension_turn(
             db,
             session,
@@ -163,6 +166,7 @@ async def play_golden_turn(
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
             scene_rehearsals=rehearsed,
+            opening_note=the_opening_note(session) if opening else "",
         )
         if _worth_settling(outcome, heard):
             await settle_coverage(

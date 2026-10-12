@@ -112,11 +112,14 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
 
     A turn ends on the Guide's entry, which carries the facts of both sides. The opening is a
     Guide entry with nothing said before it and no take heard: a first take the room missed
-    writes nothing before its Guide entry either, and is still the team's turn.
+    writes «(inaudible)» before its Guide entry and the take's facts on it, and is the team's
+    turn.
     """
     turns: list[tuple[dict[str, Any], bool]] = []
     said_before = False
     for message in the_conversation(session):
+        if message.get("opening_note"):
+            continue
         if message.get("role") == "guide":
             turns.append((message, not said_before and "mother_tongue" not in message))
         said_before = True

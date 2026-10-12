@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session
 from tests.baker import make_app, make_role
+from tests.opening_harness import NOTE_PT_P03
 from tests.release_harness import (
     APP_KEY,
     PREFIX,
@@ -130,14 +131,15 @@ async def test_a_facilitator_reads_the_conversation_as_turns_in_order(
 
     turns = await _turns(client, session_id, desk)
 
-    assert [(t["role"], t["text"]) for t in turns[:4]] == [
+    assert [(t["role"], t["text"]) for t in turns[:5]] == [
+        ("team", NOTE_PT_P03),
         ("guide", GUIDE_OPENING),
         ("team", FIRST_ANSWER),
         ("guide", GUIDE_LINE),
         ("team", SECOND_ANSWER),
     ]
-    assert [t["role"] for t in turns[4:]] == ["guide", "room", "guide"]
-    assert turns[5]["text"] == (
+    assert [t["role"] for t in turns[5:]] == ["guide", "room", "guide"]
+    assert turns[6]["text"] == (
         "[A equipe falou na língua materna; sem transcrição — nenhuma palavra chegou até você.]"
     )
     assert all(t["at"] for t in turns)
@@ -160,6 +162,26 @@ async def test_only_the_fail_safe_line_is_marked_and_names_its_category(
         for t in turns
         if t is not marked[0]
     )
+
+
+async def test_a_take_the_room_could_not_hear_reads_as_inaudible_then_her_d_line_marked_inaudible(
+    client, db_session, room_app, script
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await the_room_opens(client, credential, session.id)
+    script.said = ""
+
+    await the_team_says(client, credential, session.id, "turno-1")
+
+    turns = await _turns(client, session.id, desk)
+    assert [
+        (t["role"], t["text"], t["fail_safe"], t["fail_safe_category"]) for t in turns[-2:]
+    ] == [
+        ("team", "(inaudible)", False, None),
+        ("guide", "Desculpa, não consegui ouvir direito — podem repetir?", True, "inaudible"),
+    ], "a Sala de Observação mostrava o pedido para repetir sem nada do lado da equipe"
 
 
 async def test_a_turn_the_tablet_resent_is_not_doubled(

@@ -23,7 +23,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room import PlayedTake
-from app.services.internalization_room import halt
+from app.services.internalization_room import halt, turn_instructions
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     findings_after_a_part_is_recorded_again,
@@ -43,7 +43,7 @@ from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.fail_safe import FailSafe
-from app.services.internalization_room.languages import floor, normalize
+from app.services.internalization_room.languages import floor, normalize, room_language
 from app.services.internalization_room.live import live
 from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
@@ -149,7 +149,8 @@ async def create_session(
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
     the session and never in its messages, so a session holding one has still not spoken. A
     caller that hands one in (the Golden door) is taken at its word; otherwise the room reads
-    it itself when the session is created (`earlier_passages`), and nothing rewrites it later.
+    it itself when the session is created (`earlier_passages`), and again after a turn once it
+    is five minutes old.
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -524,6 +525,7 @@ async def append_exchange(
     told_back: str = "",
     commit: bool = True,
     scene_rehearsals: list[str] | None = None,
+    opening_note: str = "",
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -567,7 +569,8 @@ async def append_exchange(
 
     What the room heard of the team's take — the language, its probability, the
     mother-tongue decision and the take's length — goes on the Guide's entry too, because a
-    mother-tongue turn and a missed one write no team entry. Only a turn the room heard
+    mother-tongue turn writes no team entry and a missed one writes only «(inaudible)», her
+    mark for a team that spoke and was not heard. Only a turn the room heard
     carries them; the opening and the telling-back verdict write none. What the Guide was
     handed as the team's turn rides with them: empty on a miss, which reached no Guide.
 
@@ -580,10 +583,14 @@ async def append_exchange(
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
     if told_back:
         stamp["told_back"] = True
+    if opening_note:
+        messages.append({"role": "team", "text": opening_note, "opening_note": True, **stamp})
     if outcome is not None and outcome.room_note:
         messages.append({"role": "room", "text": outcome.room_note, **stamp})
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance, **stamp})
+    elif outcome is not None and outcome.fixed_line.startswith(FailSafe.INAUDIBLE):
+        messages.append({"role": "team", "text": "(inaudible)", **stamp})
     guide: dict[str, Any] = {"role": "guide", "text": guide_response, **stamp}
     if outcome is not None:
         guide["outcome"] = _containment_of(outcome)
@@ -741,6 +748,13 @@ def was_opened(session: IRSession) -> bool:
     return any(line.get("role") == "guide" for line in session.messages or [])
 
 
+def the_opening_note(session: IRSession) -> str:
+    language = room_language(session.language)
+    if is_panorama(session.pericope):
+        return turn_instructions.panorama_note(book_of(session.pericope), language)
+    return turn_instructions.opening_note(session.pericope, language)
+
+
 async def append_opening(
     db: AsyncSession,
     session: IRSession,
@@ -778,6 +792,7 @@ async def append_opening(
         attempts=attempts,
         scene=scene,
         commit=commit,
+        opening_note=the_opening_note(session),
     )
     return True
 

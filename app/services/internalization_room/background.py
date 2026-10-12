@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -22,6 +23,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
+from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
@@ -90,6 +92,28 @@ async def settle_coverage(
             logger.exception("Coverage settle failed for session %s", session_id)
             failed_frame = CoverageFrame(turn_id=turn_id, status="failed", coverage=None)
             count("delivered", publish(session_id, failed_frame))
+
+
+async def read_the_earlier_passages_again(*, session_id: str) -> None:
+    try:
+        async with AsyncSessionLocal() as db:
+            session = await get_session(db, session_id)
+            stamp = await earlier_passages(
+                db,
+                project_id=session.project_id,
+                pericope=session.pericope,
+                prior=session.earlier_passages,
+            )
+            if stamp is None:
+                return
+            await db.execute(
+                update(IRSession)
+                .where(IRSession.id == session_id)
+                .values(earlier_passages=stamp, updated_at=IRSession.updated_at)
+            )
+            await db.commit()
+    except Exception:
+        logger.exception("Reading the earlier passages again failed for session %s", session_id)
 
 
 async def transcribe_question(*, question_id: str, audio: bytes) -> None:

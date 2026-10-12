@@ -7,7 +7,6 @@ known price per round, so the money is the test's own arithmetic.
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -16,12 +15,15 @@ import httpx
 import pytest
 
 from scripts import bt_golden_runner
-from tests.golden_spend_harness import charged_call, the_room_answers
+from tests.golden_spend_harness import (
+    BT_PRICED,
+    bt_args,
+    bt_shelf,
+    charged_call,
+    the_room_answers,
+)
 
-BASE_URL = "http://room/api/internalization-room/text-seam/back-translation/"
-
-PRICED = [charged_call("analyst", 2.0), charged_call("speaker", 1.0)]
-WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None, input_tokens=0, output_tokens=0)]
+WITH_ONE_UNPRICED = [*BT_PRICED, charged_call("classifier", None, input_tokens=0, output_tokens=0)]
 
 
 def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]]) -> list[str]:
@@ -49,7 +51,7 @@ def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]])
 
 @pytest.fixture()
 def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    return _room_charging(monkeypatch, PRICED)
+    return _room_charging(monkeypatch, BT_PRICED)
 
 
 @pytest.fixture()
@@ -57,56 +59,13 @@ def opened_with_a_call_the_table_never_priced(monkeypatch: pytest.MonkeyPatch) -
     return _room_charging(monkeypatch, WITH_ONE_UNPRICED)
 
 
-def _shelf(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *scripts: tuple[str, str, int],
-    expect: dict[str, Any] | None = None,
-) -> None:
-    shelf = tmp_path / "bt"
-    shelf.mkdir()
-    for name, pericope, rounds in scripts:
-        (shelf / f"{name}.json").write_text(
-            json.dumps(
-                {
-                    "name": name,
-                    "pericopeId": pericope,
-                    "language": "Brazilian Portuguese",
-                    "draft": {"clips": [{"key": "S1", "durationMs": 20000}]},
-                    "rounds": [
-                        {
-                            "frases": [
-                                {"clipKey": "S1", "coversFrom": 0, "coversTo": 10, "text": "Oi."}
-                            ],
-                            "expect": expect or {"conferida": True, "findings": []},
-                        }
-                        for _ in range(rounds)
-                    ],
-                }
-            ),
-            encoding="utf-8",
-        )
-    monkeypatch.setattr(bt_golden_runner, "BT_DIR", shelf)
-
-
-def _args(out: Path, **over: Any) -> argparse.Namespace:
-    given: dict[str, Any] = {
-        "base_url": BASE_URL,
-        "script": None,
-        "out": str(out),
-        "access_code": "runner-de-teste",
-        "budget_usd": None,
-    }
-    return argparse.Namespace(**{**given, **over})
-
-
 async def test_a_run_past_its_budget_starts_no_further_script_and_names_them(
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2), ("P02-b", "P02", 1), ("P02-c", "P02", 1))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2), ("P02-b", "P02", 1), ("P02-c", "P02", 1))
     out = tmp_path / "reports"
 
-    exit_code = await bt_golden_runner.run(_args(out, budget_usd=5.0))
+    exit_code = await bt_golden_runner.run(bt_args(out, budget_usd=5.0))
 
     assert opened == ["P01"], (
         "duas rodadas de US$ 3 passam dos US$ 5: o segundo roteiro nem declara sessão"
@@ -125,9 +84,9 @@ async def test_a_run_past_its_budget_starts_no_further_script_and_names_them(
 async def test_each_scripts_line_shows_what_it_cost_and_the_run_ends_with_the_total_by_role(
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
 
-    await bt_golden_runner.run(_args(tmp_path / "reports", budget_usd=100.0))
+    await bt_golden_runner.run(bt_args(tmp_path / "reports", budget_usd=100.0))
 
     shown = capsys.readouterr().out
     assert "  PASS · 0 check(s) failed · s-1 · cost US$ 3.00\n" in shown, (
@@ -145,9 +104,9 @@ async def test_the_total_and_the_stop_say_how_many_calls_the_budget_could_not_se
     monkeypatch: pytest.MonkeyPatch,
     capsys,
 ) -> None:
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2), ("P02-b", "P02", 1))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2), ("P02-b", "P02", 1))
 
-    await bt_golden_runner.run(_args(tmp_path / "reports", budget_usd=5.0))
+    await bt_golden_runner.run(bt_args(tmp_path / "reports", budget_usd=5.0))
 
     shown = capsys.readouterr()
     assert (
@@ -164,9 +123,9 @@ async def test_a_run_given_no_budget_stops_at_twenty_dollars(
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("GOLDEN_BUDGET_USD", raising=False)
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 7), ("P02-b", "P02", 1))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 7), ("P02-b", "P02", 1))
 
-    await bt_golden_runner.run(_args(tmp_path / "reports"))
+    await bt_golden_runner.run(bt_args(tmp_path / "reports"))
 
     assert opened == ["P01"], "sete rodadas de US$ 3 são US$ 21, e o teto sem orçamento é US$ 20"
 
@@ -175,9 +134,9 @@ async def test_the_budget_the_environment_provides_is_the_one_a_run_without_a_fl
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("GOLDEN_BUDGET_USD", "30")
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 7), ("P02-b", "P02", 1))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 7), ("P02-b", "P02", 1))
 
-    await bt_golden_runner.run(_args(tmp_path / "reports"))
+    await bt_golden_runner.run(bt_args(tmp_path / "reports"))
 
     assert opened == ["P01", "P02"], "US$ 21 não chegam aos US$ 30 que o ambiente deu"
 
@@ -185,7 +144,7 @@ async def test_the_budget_the_environment_provides_is_the_one_a_run_without_a_fl
 async def test_a_failed_check_keeps_the_gates_one_when_the_budget_then_stops_the_run(
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    _shelf(
+    bt_shelf(
         tmp_path,
         monkeypatch,
         ("P01-a", "P01", 2),
@@ -193,7 +152,7 @@ async def test_a_failed_check_keeps_the_gates_one_when_the_budget_then_stops_the
         expect={"conferida": True, "findings": [], "spoken_names_frase": 9},
     )
 
-    exit_code = await bt_golden_runner.run(_args(tmp_path / "reports", budget_usd=5.0))
+    exit_code = await bt_golden_runner.run(bt_args(tmp_path / "reports", budget_usd=5.0))
 
     assert exit_code == 1, (
         "um check reprovado é o portão: o 3 só diz que a rodada parou e que nada mais deu errado"
@@ -206,9 +165,9 @@ async def test_an_unpriced_rung_is_budgeted_at_the_dearest_price_and_still_stops
 ) -> None:
     unpriced = [charged_call("analyst", None, input_tokens=1_000_000, output_tokens=100_000)]
     opened = _room_charging(monkeypatch, unpriced)
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 1))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 1))
 
-    await bt_golden_runner.run(_args(tmp_path / "reports", budget_usd=5.0))
+    await bt_golden_runner.run(bt_args(tmp_path / "reports", budget_usd=5.0))
 
     shown = capsys.readouterr()
     assert opened == ["P01"], (

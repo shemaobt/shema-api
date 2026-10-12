@@ -150,6 +150,28 @@ async def test_a_take_sent_after_a_cut_hands_the_guide_her_interruption_note_bef
     assert guide.guide_inputs == [f"{CUT} {PORTUGUESE}"]
 
 
+async def test_an_english_session_hands_the_guide_her_english_interruption_note(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    voiced: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="en", pericope=P)
+    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns")
+    assert opened.status_code == 200, opened.text
+    guide.guide_inputs.clear()
+    said = "Naomi went back to Bethlehem with Ruth at the harvest"
+    the_transcriber_hears(monkeypatch, said, "en", 0.95)
+    the_take_lasts(monkeypatch, 6_000)
+
+    await _the_team_sends_a_take(tablet, session, interrupted="1")
+
+    assert guide.guide_inputs == [
+        f"[The team interrupted your previous turn at this point.] {said}"
+    ]
+
+
 async def test_a_mother_tongue_take_sent_after_a_cut_hands_the_guide_the_interruption_note_then_the_mother_tongue_note(  # noqa: E501
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
