@@ -85,7 +85,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                     },
                 )
                 return
-            if outcome.used_fail_safe and not outcome.verdict:
+            if outcome.used_fail_safe and outcome.verdict != "regenerate":
                 logger.warning(
                     "Prepared opening fell to the fail-safe on an unreadable Validator reply "
                     "for session %s, pericope %s: the draft was never judged",
