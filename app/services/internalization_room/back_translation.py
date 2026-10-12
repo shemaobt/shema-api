@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -150,6 +150,7 @@ class Nuance(BaseModel):
     segment_id: str
     quote: str
     story: str
+    voiced: Literal["now", "before"] | None = None
 
 
 class BtAnalysis(BaseModel):
@@ -203,6 +204,7 @@ class CheckRound(BaseModel):
     spoken: str
     outcome: Outcome
     conferida: bool
+    nuances: list[Nuance] = Field(default_factory=list)
 
 
 class BackTranslationState(BaseModel):

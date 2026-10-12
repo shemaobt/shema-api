@@ -175,10 +175,12 @@ async def check_the_telling_back(
             session_id=session.id,
         )
 
-    a_lone_nuance = not current and bool(nuances)
-    outcome = await speak(current or nuances[:1])
-    if outcome.used_fail_safe and a_lone_nuance:
+    offered = None if current else next(iter(nuances), None)
+    outcome = await speak(current or ([offered] if offered else []))
+    if outcome.used_fail_safe and offered is not None:
         outcome = await speak([])
+    elif offered is not None:
+        offered.voiced = "now"
 
     said = outcome.speech
     state.checked = finding is None and not outcome.used_fail_safe
@@ -189,6 +191,7 @@ async def check_the_telling_back(
             spoken=said,
             outcome=outcome_tag(outcome),
             conferida=state.checked,
+            nuances=nuances,
         )
     )
     return TellingBackVerdict(
