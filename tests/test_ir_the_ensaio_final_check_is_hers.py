@@ -432,7 +432,7 @@ async def test_an_unclear_frase_named_out_of_range_reaches_her_speaker_without_a
 
 
 async def test_an_analyst_reply_the_room_cannot_read_is_heard_as_d_1_with_no_verdict(
-    client, analyst, speaker
+    client, analyst, speaker, db_session
 ) -> None:
     analyst.readings = [{"findings": "nada"}]
 
@@ -442,6 +442,10 @@ async def test_an_analyst_reply_the_room_cannot_read_is_heard_as_d_1_with_no_ver
     assert result["outcome"] == "fail_safe"
     assert result["conferida"] is False, "um D-1 não dá a passagem por conferida"
     assert speaker.drafts == [], "sem leitura não há veredito: o falante não é chamado"
+    kept = await _the_kept_rounds(db_session, result["sessionId"])
+    assert [(check.outcome, check.conferida, check.spoken, check.findings) for check in kept] == [
+        ("fail_safe", False, "Desculpa, não consegui ouvir direito — podem repetir?", [])
+    ], "a rodada sem leitura não ficava no histórico"
 
 
 NOT_A_VERDICT = "isto não é um veredito"
@@ -480,6 +484,7 @@ async def test_a_nuance_verdict_that_fails_on_both_runs_is_heard_as_one_family_a
     assert len(speaker.drafts) == 2, "a rodada limpa rodava uma vez só, ou mais de uma"
     assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
     assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "a nuance que caía na linha A duas vezes voltava conferida"
     kept = (await room.get_session(db_session, result["sessionId"])).messages or []
     assert [message["fixed_line"] for message in kept] == ["A1"]
 
@@ -503,6 +508,7 @@ async def test_a_fail_safe_with_no_lone_nuance_handed_over_is_not_run_again(
     assert len(speaker.drafts) == 1, "só uma nuance sozinha ganha uma rodada limpa"
     assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
     assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "uma rodada limpa dita como linha A era conferida"
 
 
 async def test_an_outage_in_the_clean_run_is_never_voiced_as_a_fail_safe(
@@ -522,3 +528,32 @@ async def test_an_outage_in_the_clean_run_is_never_voiced_as_a_fail_safe(
     assert played.json()["code"] == ERROR_CODE_UPSTREAM
     kept = (await room.get_session(db_session, session_id)).messages or []
     assert kept == [], "uma queda do modelo era guardada como se a sala tivesse falado"
+
+
+AN_ADDITION_ON_FRASE_3 = {"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}
+
+
+async def _the_kept_rounds(db_session: AsyncSession, session_id: str) -> list:
+    return room.back_translation_of(await room.get_session(db_session, session_id)).checks
+
+
+async def test_a_clean_round_after_a_finding_confers_and_the_first_round_is_still_kept(
+    client, analyst, db_session
+) -> None:
+    analyst.readings = [{"findings": [AN_ADDITION_ON_FRASE_3]}, {"findings": []}]
+    first = await _a_round(client, TELLING)
+    retold = {**TELLING[2], "text": "Orfa beijou a sogra e voltou; Rute ficou.", "supersedes": 2}
+
+    second = await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert second["conferida"] is True
+    kept = await _the_kept_rounds(db_session, first["sessionId"])
+    assert [(check.outcome, check.conferida, check.spoken) for check in kept] == [
+        ("pass", False, SAID),
+        ("pass", True, SAID),
+    ], "cada leitura sobrescrevia a anterior e a primeira rodada se perdia"
+    assert [[finding.note for finding in check.findings] for check in kept] == [
+        ["Ela voltou «à noite»."],
+        [],
+    ], "os achados da primeira passada, com a nota do Analista, sumiam"
+    assert kept[0].at < kept[1].at

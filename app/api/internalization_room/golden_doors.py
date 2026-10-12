@@ -24,7 +24,6 @@ from app.api.internalization_room.sessions import _scene_of, _worth_settling
 from app.api.internalization_room.text_seam import (
     _collecting_model_calls,
     _language_code,
-    _outcome_tag,
     _the_runner_key,
 )
 from app.core.config import get_settings
@@ -187,7 +186,7 @@ async def play_golden_turn(
             )
     return GoldenTurnResponse(
         guideText=outcome.speech,
-        outcome=_outcome_tag(outcome),
+        outcome=room.outcome_tag(outcome),
         transcript=outcome.guide_heard,
         complete=await room.stored_as_done(db, session.id),
         latencyMs=round((time.monotonic() - started) * 1000),

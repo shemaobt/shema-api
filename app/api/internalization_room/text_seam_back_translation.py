@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room.text_seam import (
     _collecting_model_calls,
     _language_code,
-    _outcome_tag,
     runner_dep,
 )
 from app.core.config import get_settings
@@ -207,7 +206,7 @@ async def play_a_round(
             for finding in _the_round_findings(verdict.current, state.findings)
         ],
         spoken=verdict.said,
-        outcome=_outcome_tag(verdict.outcome),
+        outcome=room.outcome_tag(verdict.outcome),
         conferida=verdict.checked,
         findingsRemaining=verdict.findings_remaining,
         missingWithoutFrase=sum(
