@@ -76,6 +76,8 @@ def fill(
         return 0
     translated = translate(todo)
     for pericope_num, scenes in todo.items():
+        if pericope_num not in translated:
+            raise SystemExit(f"missing pericope in translation: {pericope_num}")
         for scene_id in scenes:
             if scene_id not in translated[pericope_num]:
                 raise SystemExit(f"missing scene in translation: {pericope_num}/{scene_id}")
