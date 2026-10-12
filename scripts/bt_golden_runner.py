@@ -16,8 +16,9 @@ voice, the outcome and the checks that failed; and `<name>.<stamp>.transcript.tx
 round by round for a person to read beside one of her `.golden/bt-<name>.md` reports.
 
 The exit code is the gate: 1 when any check failed in any round, 2 when the room refused the
-request, 0 when her bar was met. Each run costs real model calls — hers came to roughly
-US$ 6-7 for five rounds — so it is never part of the test suite.
+request or the shelf held no script to play, 0 when her bar was met. Each run costs real
+model calls — hers came to roughly US$ 6-7 for five rounds — so it is never part of the test
+suite.
 
 A run over every script on the shelf stops before the next script once what it has spent
 reaches `--budget-usd`, or `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both
@@ -242,6 +243,9 @@ def export(
 async def run(args: argparse.Namespace) -> int:
     budget = budget_of(args)
     paths = scripts_to_play(args)
+    if not paths:
+        print(f"bt golden: no script under {BT_DIR}", file=sys.stderr)
+        return 2
     codes: list[int] = []
     paid: list[Call] = []
     not_started: list[str] = []
