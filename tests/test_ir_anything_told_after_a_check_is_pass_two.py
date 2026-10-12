@@ -6,6 +6,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.release import compose_internalization_release
@@ -44,6 +45,7 @@ def voice(monkeypatch: pytest.MonkeyPatch) -> None:
         return RETOLD
 
     monkeypatch.setattr(segments_api, "heard", heard)
+    monkeypatch.setattr(bt_api, "heard", heard)
 
 
 @pytest.fixture()
@@ -71,6 +73,22 @@ async def _replaced(client: httpx.AsyncClient, session_id: str, stretch: IRSegme
             "ends_ms": str(stretch.ends_ms),
         },
         files={"file": ("de-novo.m4a", b"a frase dois traduzida de novo", "audio/mp4")},
+    )
+    assert answered.status_code == 200, answered.text
+
+
+async def _told_on_a_new_slice(
+    client: httpx.AsyncClient, session_id: str, beside: IRSegment
+) -> None:
+    answered = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": beside.take_id,
+            "starts_ms": str(beside.ends_ms),
+            "ends_ms": str(beside.ends_ms + 1000),
+        },
+        files={"file": ("nova.m4a", b"uma frase nova depois da conferencia", "audio/mp4")},
     )
     assert answered.status_code == 200, answered.text
 
@@ -122,5 +140,34 @@ async def test_a_frase_replaced_after_a_clean_check_refuses_approval_until_a_new
     _artifact, blockers = await compose_internalization_release(db_session, session)
     assert "telling_back_not_checked" in blockers, (
         "a aprovação passava pela rodada limpa de antes da frase traduzida de novo"
+    )
+    assert back_translation_of(session).verdict is None
+
+
+async def test_a_new_frase_told_after_a_check_reaches_her_analyst_as_told_again(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    session_id, stretches = await _checked(client, db_session)
+
+    await _told_on_a_new_slice(client, session_id, stretches[-1])
+    again = await press_terminei(client, session_id)
+
+    assert again.status_code == 200, again.text
+    assert TOLD_AGAIN in _line_of(analyst.shown[-1], RETOLD), (
+        "uma frase nova contada depois da conferência chegava à analista como primeira passada"
+    )
+
+
+async def test_a_new_frase_told_after_a_clean_check_refuses_approval_until_a_new_check(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    session_id, stretches = await _checked(client, db_session)
+
+    await _told_on_a_new_slice(client, session_id, stretches[-1])
+
+    session = await get_session(db_session, session_id)
+    _artifact, blockers = await compose_internalization_release(db_session, session)
+    assert "telling_back_not_checked" in blockers, (
+        "a aprovação passava pela rodada limpa de antes da frase nova"
     )
     assert back_translation_of(session).verdict is None
