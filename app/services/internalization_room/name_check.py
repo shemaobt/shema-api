@@ -24,7 +24,12 @@ def _forms() -> dict[str, list[str]]:
 
 def _keys(element: Element, book: str) -> list[str]:
     entry = registry_entry(book, element.key.rsplit(":", 1)[-1]) or {}
-    names = [name.lower() for name in (element.label, entry.get("english") or "") if name]
+    english = entry.get("english") or ""
+    label = element.label.lower()
+    forms = [form.lower() for form in entry.get("referential_forms") or []]
+    if label != english.lower() and label in forms:
+        return []
+    names = [name.lower() for name in (element.label, english) if name]
     return names + [form for name in names for form in _forms().get(name, [])]
 
 
