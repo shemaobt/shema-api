@@ -14,8 +14,11 @@ from app.api.internalization_room import sessions as sessions_api
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus
 from app.services.internalization_room.conversation import conversation_of
+from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.run_turn import run_turn
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.verdict_turn import run_verdict_turn
 from app.services.platform.tts import SynthesizedSpeech
@@ -195,6 +198,34 @@ async def test_an_english_failed_turn_hears_the_a_line_of_its_draft_with_the_poi
     assert voiced == [heard], (
         "a linha A em inglês voltava sempre a mesma, e a primeira das quatro, que ela nunca fala"
     )
+
+
+async def test_an_english_turn_failing_while_the_team_is_in_scene_three_still_points_to_scene_one(
+    monkeypatch,
+) -> None:
+    the_room_agent_is(monkeypatch, turn=_DraftsInOrder(SECOND_DRAFT))
+    in_part_three = {
+        "role": "guide",
+        "text": "Let's open the third part together.",
+        "moment": {"after": {"at": "internalization", "part": 3}},
+    }
+
+    outcome = await run_turn(
+        transcript="she kept quiet",
+        coverage_state=initial_state(P),
+        messages=[in_part_three],
+        guide_prompt=default_prompt(IRPromptKey.GUIDE)["prompt"],
+        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+        pericope_num=P,
+        session_language="English",
+        language_code="en",
+        settings=Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake"),
+    )
+
+    assert outcome.speech == (
+        "Let's take that gently. Tell me what you're seeing in this part of the story so far"
+        " — this is the part about naomi's last appeal."
+    ), "o ponteiro nomeava a cena em que a equipe estava, e não a primeira do mapa, como o dela"
 
 
 async def test_an_english_failed_turn_with_its_pointer_still_reads_as_unrepairable(
