@@ -94,3 +94,24 @@ async def test_the_beads_come_grouped_by_kind_in_her_order_each_with_the_maps_la
     assert labels["scene:1"] == "Famine and exile to Moab"
     assert labels["being:S1:B2"] == "Elimelech"
     assert labels["place:S1:PL1"] == "Bethlehem"
+
+
+def _states(body: dict[str, Any]) -> dict[str, str]:
+    return {bead["key"]: bead["state"] for group in body["groups"] for bead in group["beads"]}
+
+
+async def test_each_bead_carries_one_of_her_three_states(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session.coverage_state = {"scene:1": "engaged", "being:S1:B3": "surfaced"}
+    await db_session.commit()
+
+    states = _states(await _coverage(client, consultant, session.id))
+
+    assert states["scene:1"] == "engaged"
+    assert states["being:S1:B3"] == "surfaced"
+    assert states["being:S1:B2"] == "untouched"
+    assert set(states.values()) == {"engaged", "surfaced", "untouched"}

@@ -1168,9 +1168,21 @@ class SessionTurnsResponse(BaseModel):
     turns: list[SessionTurn]
 
 
+class BeadState(StrEnum):
+    """Her three states: «engajado», «mencionado pelo guia» and «ainda não tocado».
+
+    The words are the Desk's. The server serves these keys so the client never computes a state.
+    """
+
+    ENGAGED = "engaged"
+    SURFACED = "surfaced"
+    UNTOUCHED = "untouched"
+
+
 class SessionCoverageBead(BaseModel):
     key: str
     label: str
+    state: BeadState
 
 
 class SessionCoverageGroup(BaseModel):
