@@ -22,11 +22,9 @@ from app.services.internalization_room.sessions import (
     get_session,
     mark_needs_person,
     raise_a_warning,
-    save_comprehension,
     unattend,
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
-from tests.baker import fully_supported_comprehension
 from tests.device_harness import TABLET_TEAM
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
@@ -565,7 +563,6 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    await save_comprehension(db_session, waiting_room, fully_supported_comprehension(P))
     await mark_needs_person(db_session, waiting_room)
 
     async def a_visit_and_then_the_last_settle_close_the_passage() -> None:

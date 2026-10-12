@@ -52,16 +52,6 @@ class AllowlistEntry:
 #: row to hide behind. ENG-749 then deleted the memory window itself — the whole conversation
 #: reaches the Guide every turn — and its two rows went with it: 65 down to 6, every one of
 #: them a probe site. Sorted by file, then rule, then the line the text came from, purely for
-#: a readable diff.
-ALLOWLIST: list[AllowlistEntry] = [
-    AllowlistEntry(
-        "app/services/internalization_room/comprehension/probe.py",
-        Rule.PROBE,
-        "class ProbePurpose(enum.StrEnum):",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/comprehension/probe.py",
-        Rule.PROBE,
-        "purpose: ProbePurpose",
-    ),
-]
+#: a readable diff. ENG-1303 deleted the last probe and its two rows with it: the list is
+#: empty, and every hit the guard finds is a violation.
+ALLOWLIST: list[AllowlistEntry] = []

@@ -104,7 +104,6 @@ async def _a_turn():
     ("drafts", "verdicts", "calls"),
     [
         pytest.param([""] * 3, [PASS] * 3, ["guide"], id="the first draft"),
-        pytest.param(["[[CENA]]"] * 3, [PASS] * 3, ["guide"], id="a draft that was only the mark"),
         pytest.param(
             ["rascunho", "", ""],
             [REGENERATE, PASS, PASS],

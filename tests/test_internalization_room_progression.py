@@ -49,7 +49,6 @@ from app.services.internalization_room.progression import (
     team_standing,
 )
 from tests.baker import (
-    fully_supported_comprehension,
     having_finished_the_passage,
     keep_a_take,
     make_language,
@@ -323,13 +322,12 @@ async def test_a_session_that_reached_the_rehearsal_and_never_recorded_leaves_th
     """`done` and `closed` are two facts, and this is the case that separates them.
 
     `session_is_done` is the signal the room reads to send a team to the recording — the
-    floor, the evidence, the practice, the consent. Reaching it is not having recorded, and
+    floor. Reaching it is not having recorded, and
     the passage stays the team's until they do. A rule reading the session's own `done` would
     close the passage on the invitation.
     """
     team = await a_team(db_session, name="Chegou ao ensaio e parou")
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
 
     settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
 
@@ -384,7 +382,6 @@ async def test_a_stretch_told_back_is_not_the_rehearsal_and_closes_nothing(
     """A retro is the team explaining one stretch to the room. The passage is still theirs."""
     team = await a_team(db_session, name="Contou de volta")
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
     settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
 
     await keep_a_take(db_session, settled, kind=IRTakeKind.RETRO)
