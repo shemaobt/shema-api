@@ -42,6 +42,7 @@ from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.name_check import hear_the_names
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import the_opening_note
 from app.services.internalization_room.turn.speech import mother_tongue_note
@@ -167,7 +168,11 @@ async def play_golden_turn(
             scene=_scene_of(session, outcome.transcript),
             scene_rehearsals=rehearsed,
             opening_note=the_opening_note(session) if opening else "",
+            commit=False,
         )
+        if not opening:
+            hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
+        await db.commit()
         if _worth_settling(outcome, heard):
             await settle_coverage(
                 session_id=session.id,
