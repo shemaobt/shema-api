@@ -1,4 +1,7 @@
 import asyncio
+import shutil
+from collections.abc import Iterator
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -6,13 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import passages as route
 from app.core.exceptions import ValidationError
-from app.core.room_enums import ElementKind
 from app.services.internalization_room import passage_lines
+from app.services.internalization_room.canon import book_material
 from app.services.internalization_room.canon.book_material import require_walkable
-from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.parse_map import (
-    SURVEYED_STATUS,
     load_book,
     load_map,
 )
@@ -23,6 +24,7 @@ from app.services.internalization_room.passage_lines import (
     line_for,
     panorama_line_for,
 )
+from tests.canon_harness import forget_the_canon
 
 NAMED_IN_PORTUGUESE: dict[str, str] = {
     "P01": "Rute 1:1–5",
@@ -302,9 +304,27 @@ async def test_the_wheel_offers_no_passage_the_session_would_refuse(
     )
 
 
+@pytest.fixture
+def ruth_with_a_last_passage_whose_register_holds_no_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    logs = tmp_path / "compilation-log"
+    shutil.copytree(book_material.LOGS_DIR, logs)
+    last = next(logs.glob("P14-*-COMPILATION-LOG.md"))
+    last.write_text(
+        last.read_text(encoding="utf-8").replace('"do_not_decide": true', '"do_not_decide": false'),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
+    forget_the_canon()
+    yield "P14"
+    forget_the_canon()
+
+
 async def test_the_wheel_still_offers_every_passage_that_does_open(
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
+    ruth_with_a_last_passage_whose_register_holds_no_rule: str,
 ) -> None:
     """The counterweight, and the more expensive of the two failures.
 
@@ -314,6 +334,10 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
     to survive.
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    assert not any(
+        rule.pericope == ruth_with_a_last_passage_whose_register_holds_no_rule
+        for rule in book_material.preservation_rules("Ruth")
+    )
 
     answer = await route.passages("Ruth", language="pt", db=db_session)
 
@@ -321,13 +345,9 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
     opens = [
         meaning_map.pericope_num
         for meaning_map in load_book("Ruth")
-        if any(
-            element.kind is ElementKind.PRESERVED
-            for element in elements_for(meaning_map.pericope_num)
-        )
-        and meaning_map.sta_status == SURVEYED_STATUS
+        if book_material.unwalkable(meaning_map) is None
     ]
-    assert offered == opens, (
+    assert offered == opens == list(NAMED_IN_PORTUGUESE), (
         "a roda tem que trazer exatamente as passagens que abrem: de menos e a equipe "
         f"ouve que o livro acabou, de mais e ela toca numa que recusa — veio {offered}"
     )
