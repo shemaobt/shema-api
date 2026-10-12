@@ -236,3 +236,9 @@ async def test_a_step_the_guide_drafted_nothing_for_says_the_validator_never_saw
             "note": "the Guide's draft was empty, so the Validator never saw it",
         }
     ]
+
+
+def test_the_published_schema_of_a_verdict_lists_the_three_words_the_validator_can_give() -> None:
+    published = TurnTraceStep.model_json_schema()["properties"]["verdict"]["anyOf"]
+
+    assert {"enum": ["pass", "correct", "regenerate"], "type": "string"} in published
