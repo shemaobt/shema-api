@@ -1166,3 +1166,26 @@ class SessionTurn(BaseModel):
 class SessionTurnsResponse(BaseModel):
     session_id: str
     turns: list[SessionTurn]
+
+
+class SessionCoverageBead(BaseModel):
+    key: str
+    label: str
+
+
+class SessionCoverageGroup(BaseModel):
+    kind: ElementKind
+    beads: list[SessionCoverageBead]
+
+
+class SessionCoverageResponse(BaseModel):
+    """What the consultant reads of one session's coverage: her record's «Cobertura» block.
+
+    `groups` carry the beads by kind in her fixed order, which is the order of `ElementKind`:
+    «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
+    «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
+    listed. Each bead carries the map's element label as written.
+    """
+
+    session_id: str
+    groups: list[SessionCoverageGroup]
