@@ -104,3 +104,19 @@ def test_a_long_word_of_a_label_the_names_list_does_not_hold_names_the_element()
     assert heard["object:S3:TH_TEN_YEARS_APPROXIMATELY"] == "engaged", (
         "«years», palavra do rótulo «about ten years» que a lista de nomes não tem, não o engajava"
     )
+
+
+def test_someone_or_unnamed_names_no_withheld_being_and_the_wife_of_the_dead_names_hers() -> None:
+    withheld = {
+        "P06": "being:S2:ruth-s-deceased-husband-your-hus",
+        "P11": "being:S3:the-dead-the-dead",
+    }
+
+    for pericope, key in withheld.items():
+        for said in ("someone came", "the man stays unnamed here", "she leaves the field"):
+            assert _team_says(pericope, said)[key] == "not_encountered", (
+                f"«{said}» engajava {key}, alguém que o texto deixa sem nome"
+            )
+    assert _team_says("P11", "Ruth the Moabite, the wife of the dead")[withheld["P11"]] == (
+        "engaged"
+    ), "«the wife of the dead» não engajava o morto sem nome de P11"

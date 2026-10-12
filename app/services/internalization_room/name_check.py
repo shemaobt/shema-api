@@ -9,12 +9,17 @@ from pathlib import Path
 from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.elements import Element, elements_for
-from app.services.internalization_room.canon.names import registry_entry, roles_in_scene
+from app.services.internalization_room.canon.names import (
+    WITHHELD_BEING_LABEL,
+    registry_entry,
+    roles_in_scene,
+)
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import is_panorama, merge, remaining
 
 SESSION_FORMS = Path(__file__).parent / "canon" / "session-forms.json"
 
+_UNNAMED_HERE = " (unnamed here)"
 _NAMED_KINDS = {ElementKind.BEING, ElementKind.PLACE, ElementKind.OBJECT, ElementKind.TIME}
 
 _NOT_A_LETTER = re.compile(r"[^\w\s]|_")
@@ -135,22 +140,25 @@ def _carried(book: str, peer: Element, role: str) -> set[str]:
 
 
 def _keys(element: Element, book: str, elements: tuple[Element, ...], pericope: str) -> list[str]:
+    if element.label == WITHHELD_BEING_LABEL:
+        return [element.label]
     beings = {_code(other) for other in elements if other.kind is ElementKind.BEING}
     entry = registry_entry(book, _code(element)) or {}
     english = entry.get("english") or ""
-    label = element.label.lower()
+    shown = element.label.removesuffix(_UNNAMED_HERE)
+    label = shown.lower()
     forms = [form.lower() for form in entry.get("referential_forms") or []]
     hebrew = [entry["hebrew_cons"]] if entry.get("hebrew_cons") else []
     if label != english.lower() and label in forms:
         return hebrew
-    names = [name.lower() for name in (element.label, english) if name]
+    names = [name.lower() for name in (shown, english) if name]
     tokens = [
         word
         for word in english.split()
         if _PROPER_NOUN.match(word) and word.lower() not in _GENERIC
     ]
     if not entry:
-        words = [_NOT_A_WORD_LETTER.sub("", word.lower()) for word in element.label.split()]
+        words = [_NOT_A_WORD_LETTER.sub("", word.lower()) for word in shown.split()]
         tokens += [word for word in words if len(word) >= 5 and word not in _GENERIC]
     whole = names + _with_bare([form for name in names for form in _forms().get(name, [])])
     whole += hebrew
