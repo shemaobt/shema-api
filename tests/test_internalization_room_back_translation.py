@@ -358,15 +358,9 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
     ]
 
 
-async def test_a_missing_that_cannot_name_a_piece_falls_back_to_the_whole(
+async def test_a_finding_that_cannot_name_a_piece_is_kept_with_no_address(
     patch_analyst,
 ) -> None:
-    """A missing element with no readable chunk still lands with no address at all.
-
-    Addition and unclear are different since ENG-1145: naming no chunk the parser can read —
-    `0` is out of the 1-based range and `"tres"` is not a number — drops either of them
-    instead of falling back to a homeless finding.
-    """
     patch_analyst(
         '{"findings":['
         '{"kind":"missing","chunk":null,"note":"a"},'
@@ -384,7 +378,11 @@ async def test_a_missing_that_cannot_name_a_piece_falls_back_to_the_whole(
     )
 
     assert analysis is not None
-    assert [(f.kind, f.segment_id) for f in analysis.findings] == [(FindingKind.MISSING, None)]
+    assert [(f.kind, f.chunk, f.segment_id) for f in analysis.findings] == [
+        (FindingKind.MISSING, None, None),
+        (FindingKind.ADDITION, None, None),
+        (FindingKind.UNCLEAR, None, None),
+    ], "o acréscimo na frase 0 e o pouco claro na frase «tres» eram jogados fora"
 
 
 async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) -> None:

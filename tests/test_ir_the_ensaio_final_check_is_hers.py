@@ -377,3 +377,29 @@ async def test_her_analyst_and_her_speaker_are_told_the_check_is_of_the_whole_pa
         "Speak the\nverdict for the whole passage — one warm turn."
         in speaker.drafts[-1]["system_prompt"]
     ), "o falante dava o veredito «for P02»"
+
+
+async def test_an_addition_with_no_readable_frase_reaches_her_speaker_without_a_number(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{"kind": "addition", "note": "Ela voltou «à noite»."}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {"kind": "addition", "note": "Ela voltou «à noite».", "repair": "part"}
+    ], "o acréscimo sem número de frase era jogado fora e a rodada nem tinha veredito"
+    assert result["conferida"] is False
+
+
+async def test_an_unclear_frase_named_out_of_range_reaches_her_speaker_without_a_number(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{"kind": "unclear", "note": "Não deu.", "frase": 9}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {"kind": "unclear", "note": "Não deu.", "repair": "part"}
+    ], "o pouco claro numa frase que não existe era jogado fora"
+    assert result["conferida"] is False
