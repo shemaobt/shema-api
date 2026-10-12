@@ -170,8 +170,7 @@ async def play_golden_turn(
             opening_note=the_opening_note(session) if opening else "",
             commit=False,
         )
-        if not opening:
-            hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
+        hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
         await db.commit()
         if _worth_settling(outcome, heard):
             await settle_coverage(

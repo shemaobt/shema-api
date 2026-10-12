@@ -806,6 +806,7 @@ async def _draft_the_turn(
         await room.append_opening(
             db, session, guide_response=speech, attempts=attempts, commit=False
         )
+        hear_the_names(session, team="", voice=speech)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
@@ -859,8 +860,7 @@ async def _draft_the_turn(
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
-    if not opening:
-        hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
+    hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False

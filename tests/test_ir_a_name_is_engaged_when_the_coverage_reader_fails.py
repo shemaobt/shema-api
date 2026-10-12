@@ -26,6 +26,7 @@ from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, ScriptedAgent, t
 from tests.turn_harness import the_room_agent_is
 
 ENGAGED_LINE = "WORKED WITH BY THE TEAM (engaged):"
+TOLD = "Elimeleque e Noemi saíram de Belém."
 
 
 @asynccontextmanager
@@ -35,7 +36,7 @@ async def _handed(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture()
 def guide(monkeypatch: pytest.MonkeyPatch) -> ScriptedAgent:
-    agent = ScriptedAgent(["Vamos ouvir uma história juntos.", None, "Isso.", None])
+    agent = ScriptedAgent([TOLD, None, "Isso.", None])
 
     async def the_reader_is_down(**_: Any) -> str:
         raise RuntimeError("o classificador caiu")
@@ -60,6 +61,17 @@ async def client(db_session: AsyncSession, guide, monkeypatch: pytest.MonkeyPatc
         yield c
 
 
+async def _a_p01_session_opened(client: httpx.AsyncClient) -> str:
+    created = await client.post(f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "pt"})
+    assert created.status_code == 200, created.text
+    session_id = created.json()["sessionId"]
+    opened = await client.post(
+        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
+    )
+    assert opened.status_code == 200, opened.text
+    return str(session_id)
+
+
 async def _turn(client: httpx.AsyncClient, session_id: str, said: str) -> None:
     answered = await client.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": said})
     assert answered.status_code == 200, answered.text
@@ -68,13 +80,7 @@ async def _turn(client: httpx.AsyncClient, session_id: str, said: str) -> None:
 async def test_noemi_on_a_turn_whose_classifier_fails_is_read_as_worked_on_the_next_turn(
     client: httpx.AsyncClient, guide: ScriptedAgent
 ) -> None:
-    created = await client.post(f"{GOLDEN}/session", json={"pericopeId": "P01", "language": "pt"})
-    assert created.status_code == 200, created.text
-    session_id = created.json()["sessionId"]
-    opened = await client.post(
-        f"{GOLDEN}/turn", json={"sessionId": session_id, "roomNote": "session_start"}
-    )
-    assert opened.status_code == 200, opened.text
+    session_id = await _a_p01_session_opened(client)
 
     await _turn(client, session_id, "A Noemi ficou.")
     await _turn(client, session_id, "Sim.")
@@ -83,4 +89,16 @@ async def test_noemi_on_a_turn_whose_classifier_fails_is_read_as_worked_on_the_n
     worked = [line for line in ledger.splitlines() if line.startswith(ENGAGED_LINE)]
     assert worked and "Naomi" in worked[0], (
         "o classificador caía e a Noemi que a equipe disse não chegava ao livro-razão do Guia"
+    )
+
+
+async def test_the_names_the_voice_tells_in_a_golden_opening_are_surfaced(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id = await _a_p01_session_opened(client)
+
+    db_session.expire_all()
+    stored = (await room.get_session(db_session, session_id)).coverage_state or {}
+    assert stored.get("being:S1:B2") == "surfaced", (
+        "a abertura pela porta dourada nomeava Elimeleque e a conta dele não saía do lugar"
     )

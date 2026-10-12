@@ -112,3 +112,39 @@ async def test_the_voice_naming_elimelech_surfaces_him_and_leaves_naomi_engaged(
     assert stored.get("being:S1:B3") == "engaged", (
         "Noemi, dita pela equipe, descia para surfaced quando a voz também a nomeava"
     )
+
+
+TOLD = "Elimeleque e Noemi saíram de Belém."
+
+
+async def test_the_names_the_voice_tells_in_the_opening_are_surfaced_and_none_engaged(
+    client, db_session, per_request, voice_says
+) -> None:
+    voice_says[0] = TOLD
+    tablet, session_id = await _a_p01_session(client, db_session)
+
+    await the_room_opens(client, tablet, session_id)
+
+    stored = await _stored(per_request, session_id)
+    assert [stored.get(key) for key in ("being:S1:B2", "being:S1:B3", "place:S1:PL1")] == [
+        "surfaced"
+    ] * 3, "a abertura nomeava Elimeleque, Noemi e Belém e nenhuma conta saía do lugar"
+    assert "engaged" not in stored.values(), "a abertura da voz engajava o que a equipe não disse"
+
+
+async def test_the_names_an_opening_prepared_ahead_tells_are_surfaced_when_it_is_heard(
+    client, db_session, per_request
+) -> None:
+    tablet, session_id = await _a_p01_session(client, db_session)
+    async with per_request() as fresh:
+        row = await get_session(fresh, session_id)
+        row.prepared_speech = TOLD
+        row.prepared_audio_key = "prepared/abertura.mp3"
+        await fresh.commit()
+
+    await the_room_opens(client, tablet, session_id)
+
+    stored = await _stored(per_request, session_id)
+    assert stored.get("being:S1:B2") == "surfaced", (
+        "a abertura preparada nomeava Elimeleque e a conta dele não saía do lugar"
+    )
