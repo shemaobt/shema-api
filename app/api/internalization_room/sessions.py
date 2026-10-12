@@ -15,6 +15,7 @@ from app.api.internalization_room._deps import (
     device_project_dep,
     linked_tablet_dep,
 )
+from app.api.internalization_room.back_translation import finding_views
 from app.api.internalization_room.segments import segment_view
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -37,6 +38,7 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
 from app.services.internalization_room import halt, opening_claim
+from app.services.internalization_room.back_translation import findings_on_stretches_that_count
 from app.services.internalization_room.background import (
     read_the_earlier_passages_again,
     settle_coverage,
@@ -331,12 +333,16 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     """
     state = room.back_translation_of(session)
     finding = room.the_finding_that_leads(state)
+    stretches = await room.final_segments(db, session.id)
     return BackTranslationProgress(
         scope=state.scope,
-        segments=[segment_view(one) for one in await room.final_segments(db, session.id)],
+        segments=[segment_view(one) for one in stretches],
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
+        findings=finding_views(
+            findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
+        ),
         superseded_attempts=len(state.superseded),
     )
 

@@ -4,16 +4,20 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import segments as segments_api
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import get_session
+from tests.release_harness import PREFIX, TABLET
 from tests.room_harness import (
     Room,
     ScriptedAnalyst,
     heard_every_part,
+    nothing_is_read_ahead,
     press_terminei,
     rehearsed_in_parts,
     room_client,
     the_analyst_is_scripted,
+    the_bucket_is_in_memory,
     the_room_speaks,
 )
 
@@ -203,3 +207,73 @@ async def test_a_check_that_could_not_read_leaves_the_earlier_checks_list_standi
     assert body["findings"] == [{"kind": "addition", "frase": 2, "segment_id": told[1].id}], (
         "uma conferência que não pôde ler apagava as marcas da anterior"
     )
+
+
+async def test_the_session_read_lists_the_same_findings_as_the_verdict(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ScriptedAnalyst,
+    room: Room,
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 4)
+    analyst.readings = [
+        {
+            "findings": [
+                {"kind": "addition", "note": "Rute foi junto", "chunk": 2},
+                {"kind": "unclear", "note": "não deu para ouvir", "chunk": 4},
+            ]
+        }
+    ]
+    verdict = await _finish(client, db_session, session.id)
+
+    resumed = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    assert resumed.status_code == 200, resumed.text
+    assert len(verdict.json()["findings"]) == 2
+    assert resumed.json()["back_translation"]["findings"] == verdict.json()["findings"], (
+        "uma equipe que voltava à sala não via de novo as marcas da última conferência"
+    )
+
+
+async def test_the_session_read_drops_the_mark_of_a_frase_translated_again(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ScriptedAnalyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    the_bucket_is_in_memory(monkeypatch)
+    nothing_is_read_ahead(monkeypatch)
+
+    async def heard(*_: object, **__: object) -> str:
+        return "Rute disse que iria aonde Noemi fosse."
+
+    monkeypatch.setattr(segments_api, "heard", heard)
+    session, _parts = await rehearsed_in_parts(db_session, 4)
+    told = await final_segments(db_session, session.id)
+    analyst.readings = [
+        {
+            "findings": [
+                {"kind": "addition", "note": "Rute foi junto", "chunk": 2},
+                {"kind": "unclear", "note": "não deu para ouvir", "chunk": 4},
+            ]
+        }
+    ]
+    await _finish(client, db_session, session.id)
+
+    replaced = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{told[1].id}/replace",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": told[1].take_id,
+            "starts_ms": str(told[1].starts_ms),
+            "ends_ms": str(told[1].ends_ms),
+        },
+        files={"file": ("de-novo.m4a", b"a frase dois traduzida de novo", "audio/mp4")},
+    )
+    assert replaced.status_code == 200, replaced.text
+    resumed = await client.get(f"{PREFIX}/sessions/{session.id}")
+
+    assert resumed.json()["back_translation"]["findings"] == [
+        {"kind": "unclear", "frase": 4, "segment_id": told[3].id}
+    ], "a marca da frase 2 voltava depois de a equipe traduzi-la de novo"

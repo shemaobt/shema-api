@@ -338,6 +338,12 @@ class SegmentsResponse(BaseModel):
     needs_person: bool = False
 
 
+class FindingView(BaseModel):
+    kind: str
+    frase: int | None = None
+    segment_id: str | None = None
+
+
 class BackTranslationProgress(BaseModel):
     """Where a telling-back stopped, so a tablet can be handed it back.
 
@@ -355,6 +361,7 @@ class BackTranslationProgress(BaseModel):
     checked: bool = False
     finding_segment_id: str | None = None
     finding_kind: str | None = None
+    findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
 
 
@@ -496,12 +503,6 @@ class FinishBackTranslationRequest(BaseModel):
     played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[tuple[int, int]] = Field(default_factory=list)
     clip_duration_ms: int | None = Field(default=None, ge=0)
-
-
-class FindingView(BaseModel):
-    kind: str
-    frase: int | None = None
-    segment_id: str | None = None
 
 
 class BackTranslationVerdictResponse(BaseModel):
