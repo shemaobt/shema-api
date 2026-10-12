@@ -12,9 +12,13 @@ from typing import Any
 import httpx
 import pytest
 
-from app.core.exceptions import NoWordsHeard, ValidationError
+from app.core.config import Settings
+from app.core.exceptions import NoWordsHeard
 from app.services.internalization_room import hearing
-from app.services.translation_helper.transcribe_audio import TranscriptionResult
+from app.services.translation_helper.transcribe_audio import (
+    TranscriptionResult,
+    transcribe_audio_detailed,
+)
 from tests.text_seam_harness import GOLDEN
 
 
@@ -54,11 +58,20 @@ def the_transcriber_hears_no_words(
     monkeypatch.setattr(hearing, "transcribe_audio_detailed", detailed)
 
 
-def the_transcriber_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The recognizer turned the request down (a 422), the way a misconfigured model does."""
+def the_recognizer_answers_with_status(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    """The recognizer's own HTTP answer, read by the real transcription, not a stand-in for it."""
+    keyed = Settings(
+        database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="key", _env_file=None
+    )
 
-    async def detailed(*_: Any, **__: Any) -> TranscriptionResult:
-        raise ValidationError("Transcription request failed with status 422")
+    async def detailed(audio: bytes, **options: Any) -> TranscriptionResult:
+        options.pop("settings", None)
+
+        def answer(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(status, json={"detail": "refused"})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
+            return await transcribe_audio_detailed(audio, **options, settings=keyed, client=client)
 
     monkeypatch.setattr(hearing, "transcribe_audio_detailed", detailed)
 

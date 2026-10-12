@@ -202,9 +202,10 @@ async def _timed_stt(
 ) -> HeardSpeech:
     """What the recognizer heard of the take, stamped with where the team cut the Guide short.
 
-    The cut rides the take on every path, including a take the recognizer refused or found no
-    words in. A position that is negative or unreadable counts as absent, as in Marcia's route:
-    the cut stays a cut and the take is never refused over it.
+    The cut rides the take on every path that returns, the words and no words heard alike. A
+    take the recognizer refused raises out of `heard_speech` as an outage and is never stamped.
+    A position that is negative or unreadable counts as absent, as in Marcia's route: the cut
+    stays a cut and the take is never refused over it.
     """
     with stage("stt"):
         heard = await heard_speech(
