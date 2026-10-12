@@ -113,6 +113,21 @@ def test_a_reply_that_drops_a_whole_pericope_is_refused_by_name_and_nothing_is_w
     assert listed.read_bytes() == before, "a perícope que voltou era escrita com outra faltando"
 
 
+def test_a_reply_whose_title_is_blank_is_refused_as_a_dropped_scene_and_nothing_is_written(
+    tmp_path: Path,
+) -> None:
+    listed = _without_titles(tmp_path, "S2")
+    before = listed.read_bytes()
+
+    with pytest.raises(SystemExit) as refused:
+        fill.fill(listed, translate=lambda todo: {"P03": {"S2": "  \n"}})
+
+    assert refused.value.code == "missing scene in translation: P03/S2", (
+        "um título em branco era escrito e a sessão em português ouvia o título em inglês"
+    )
+    assert listed.read_bytes() == before
+
+
 def test_the_scheduled_fill_starts_without_a_key_when_every_served_scene_has_a_title(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -79,7 +79,7 @@ def fill(
         if pericope_num not in translated:
             raise SystemExit(f"missing pericope in translation: {pericope_num}")
         for scene_id in scenes:
-            if scene_id not in translated[pericope_num]:
+            if not translated[pericope_num].get(scene_id, "").strip():
                 raise SystemExit(f"missing scene in translation: {pericope_num}/{scene_id}")
             listed["scenes"].setdefault(pericope_num, {})[scene_id] = translated[pericope_num][
                 scene_id
