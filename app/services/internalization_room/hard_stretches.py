@@ -27,6 +27,7 @@ from app.services.internalization_room.back_translation import BackTranslationSt
 from app.services.internalization_room.segments import capture_segment, first_telling_of
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
+    back_translation_of,
     raise_a_warning,
     save_back_translation,
 )
@@ -112,6 +113,7 @@ async def capture_and_note_a_hard_stretch(
     this capture — the tablet's chunks route and the text seam — and both wrote the default
     themselves, so the rule held until somebody opened a third door.
     """
+    standing = state if state is not None else back_translation_of(session)
     captured = await capture_segment(
         db,
         session,
@@ -120,7 +122,7 @@ async def capture_and_note_a_hard_stretch(
         ends_ms=ends_ms,
         bridge_take_id=bridge_take_id,
         transcript=transcript,
-        pass_number=pass_number,
+        pass_number=pass_number if standing.never_analysed else 2,
         replaces=replaces,
         commit=False,
     )
