@@ -1,0 +1,155 @@
+"""The Guide-turn runner says what happened when a run has nothing to play, or dies midway.
+
+Two ways a run ends that no session of hers describes: the sessions directory holds nothing to
+play, and an error that is not the room's refusal kills it between one turn and the next. The
+room is a wire this test owns, so the money and the failure are its own arithmetic.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import httpx
+import pytest
+
+from scripts import golden_runner
+from tests.golden_spend_harness import (
+    GOLDEN_PRICED,
+    STAMP,
+    golden_args,
+    golden_shelf,
+    the_room_answers,
+)
+from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, the_judge_answers
+
+
+async def test_a_session_asked_for_by_name_that_the_shelf_does_not_hold_is_named_back(
+    tmp_path: Path, capsys
+) -> None:
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1))
+
+    exit_code = await golden_runner.run(
+        golden_args(sessions, tmp_path / "reports", only="P09-not-there")
+    )
+
+    assert exit_code == 2
+    assert capsys.readouterr().err == "golden: no session named P09-not-there\n", (
+        "quem pediu P09-not-there precisa ler esse nome de volta, e não o de outra sessão"
+    )
+
+
+async def test_an_empty_sessions_directory_names_the_directory_and_not_a_session(
+    tmp_path: Path, capsys
+) -> None:
+    sessions = golden_shelf(tmp_path)
+
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
+
+    assert exit_code == 2
+    assert capsys.readouterr().err == f"golden: no sessions under {sessions}\n", (
+        "a pasta vazia dizia «no session named None», como se alguém tivesse pedido uma sessão"
+    )
+
+
+async def test_a_session_killed_by_a_timeout_still_leaves_the_readme_and_the_cost_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    turns: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 3:
+            raise httpx.ReadTimeout("the room did not answer", request=request)
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+    out = tmp_path / "reports"
+
+    with pytest.raises(httpx.ReadTimeout):
+        await golden_runner.run(golden_args(sessions, out))
+
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P01-a | PASS |" in readme and "| P02-b | — |" in readme, (
+        "o P01 foi jogado e julgado, o P02 morreu no segundo turno sem juiz: as duas linhas existem"
+    )
+    assert "≈ US$ 6.00 — guide US$ 4.00 · validator US$ 2.00." in readme, (
+        "dois turnos foram pagos, um em cada sessão, e a sessão que morreu entra na conta"
+    )
+    assert "Rodada interrompida em P02-b por ReadTimeout: the room did not answer.\n" in readme
+    assert "\ncost US$ 6.00 — guide US$ 4.00 · validator US$ 2.00\n" in capsys.readouterr().out
+
+
+async def test_a_session_the_room_could_not_be_reached_to_open_is_a_row_and_is_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    opened: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            opened.append(json.loads(request.content)["pericopeId"])
+            if len(opened) == 2:
+                raise httpx.ConnectError("the room is restarting", request=request)
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
+    out = tmp_path / "reports"
+
+    with pytest.raises(httpx.ConnectError):
+        await golden_runner.run(golden_args(sessions, out))
+
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P02-b | — |" in readme, (
+        "a sala reiniciou entre duas sessões, e a que não chegou a abrir ficava fora da tabela"
+    )
+    assert "Rodada interrompida em P02-b por ConnectError: the room is restarting.\n" in readme, (
+        "quem lê a linha precisa saber qual sessão a rodada deixou de jogar"
+    )
+    assert opened == ["P01", "P02"], "a rodada morta não tenta a terceira sessão"
+
+
+async def test_a_run_that_dies_never_replaces_the_readme_a_finished_run_left_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    turns: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 2:
+            raise httpx.ReadTimeout("the room did not answer", request=request)
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2))
+    out = tmp_path / "reports"
+    out.mkdir()
+    (out / "README.md").write_text("the morning's report, complete\n", encoding="utf-8")
+
+    with pytest.raises(httpx.ReadTimeout):
+        await golden_runner.run(golden_args(sessions, out))
+
+    assert (out / "README.md").read_text(encoding="utf-8") == "the morning's report, complete\n", (
+        "a segunda rodada do dia morreu e trocou o relatório inteiro da manhã por uma linha"
+    )
+    beside = (out / f"README.{STAMP}.md").read_text(encoding="utf-8")
+    assert "Rodada interrompida em P01-a por ReadTimeout: the room did not answer.\n" in beside
+    assert f"README.{STAMP}.md" in capsys.readouterr().out, (
+        "a tela diz onde ficou o relatório da rodada que morreu"
+    )
