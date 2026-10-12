@@ -332,17 +332,16 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     resumes is the same reading the analyst gets.
     """
     state = room.back_translation_of(session)
-    finding = room.the_finding_that_leads(state)
     stretches = await room.final_segments(db, session.id)
+    findings = findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
+    finding = room.the_finding_that_leads(state.model_copy(update={"findings": findings}))
     return BackTranslationProgress(
         scope=state.scope,
         segments=[segment_view(one) for one in stretches],
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
-        findings=finding_views(
-            findings_on_stretches_that_count(state.findings, (one.id for one in stretches))
-        ),
+        findings=finding_views(findings),
         superseded_attempts=len(state.superseded),
     )
 

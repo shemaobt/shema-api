@@ -274,6 +274,12 @@ async def test_the_session_read_drops_the_mark_of_a_frase_translated_again(
     assert replaced.status_code == 200, replaced.text
     resumed = await client.get(f"{PREFIX}/sessions/{session.id}")
 
-    assert resumed.json()["back_translation"]["findings"] == [
-        {"kind": "unclear", "frase": 4, "segment_id": told[3].id}
-    ], "a marca da frase 2 voltava depois de a equipe traduzi-la de novo"
+    progress = resumed.json()["back_translation"]
+    assert progress["findings"] == [{"kind": "unclear", "frase": 4, "segment_id": told[3].id}], (
+        "a marca da frase 2 voltava depois de a equipe traduzi-la de novo"
+    )
+    assert progress["finding_kind"] == "unclear"
+    assert progress["finding_segment_id"] == told[3].id, (
+        "o achado que lidera apontava uma frase que já não está na lista"
+    )
+    assert progress["finding_segment_id"] in {one["segment_id"] for one in progress["segments"]}
