@@ -422,7 +422,19 @@ async def _voiced_after_validation(
             )
 
         redraft_note = _redraft_note(issues)
-    logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
+    if not draft:
+        why = "the Guide's draft was empty, so the Validator never saw it"
+    elif refusal is not None:
+        why = f"the Validator's reply could not be read ({refusal}), so the draft was never judged"
+    else:
+        why = f"the Validator sent the draft back every time: issues={issues}"
+    logger.warning(
+        "Fail-safe fired after %s redrafts for session %s: %s",
+        attempt,
+        session_id,
+        why,
+        extra={"session_id": session_id},
+    )
 
     speech, line = unrepairable(attempt + 1, language_code, first_scene)
     return _timed(
