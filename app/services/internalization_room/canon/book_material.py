@@ -242,7 +242,9 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
 
 
 def require_walkable(meaning_map: MeaningMap) -> None:
-    """Refuse a passage no team should be walked through, and name which layer is missing."""
+    """Refuse a passage no team should be walked through, with `unwalkable`'s reason: the
+    book not served, the checklist's flag missing, the flag and the survey disagreeing, the
+    survey unfinished, or the register still a skeleton."""
     reason = unwalkable(meaning_map)
     if reason is not None:
         raise ValidationError(reason)
