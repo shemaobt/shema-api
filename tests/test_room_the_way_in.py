@@ -48,6 +48,7 @@ TEAM_DOORS = [
     ("GET", "/sessions/{session_id}"),
     ("POST", "/sessions/{session_id}/back-translation/chunks"),
     ("POST", "/sessions/{session_id}/back-translation/finish"),
+    ("POST", "/sessions/{session_id}/back-translation/heard"),
     ("GET", "/sessions/{session_id}/coverage"),
     ("POST", "/sessions/{session_id}/needs-person"),
     ("POST", "/sessions/{session_id}/person-arrived"),
