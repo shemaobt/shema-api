@@ -6,7 +6,20 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, case, delete, or_, select, update
+from sqlalchemy import (
+    JSON,
+    ColumnElement,
+    Text,
+    and_,
+    case,
+    cast,
+    delete,
+    literal,
+    or_,
+    select,
+    update,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -705,6 +718,24 @@ def _containment_of(outcome: TurnOutcome) -> str:
     return "pass"
 
 
+_STORED_JSON = Text().with_variant(JSONB(), "postgresql")
+
+
+async def _written_unless_moved(
+    db: AsyncSession, session_id: str, column: Any, read: Any, value: Any
+) -> bool:
+    written = await db.execute(
+        update(IRSession)
+        .where(
+            IRSession.id == session_id,
+            cast(column, _STORED_JSON) == cast(literal(read, JSON), _STORED_JSON),
+        )
+        .values({column: value})
+        .execution_options(synchronize_session=False)
+    )
+    return bool(written.rowcount == 1)
+
+
 async def apply_coverage(
     db: AsyncSession, session_id: str, coverage_state: dict[str, str]
 ) -> IRSession:
@@ -727,10 +758,15 @@ async def apply_coverage(
     conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
-    kept = session.coverage_state or {}
-    settled = furthest(kept, coverage_state, pericope_num=session.pericope)
-    record_transitions(db, session, before=kept, after=settled)
-    session.coverage_state = settled
+    kept: dict[str, Any] | None = session.coverage_state
+    settled = furthest(kept or {}, coverage_state, pericope_num=session.pericope)
+    record_transitions(db, session, before=kept or {}, after=settled)
+    while settled != kept and not await _written_unless_moved(
+        db, session.id, IRSession.coverage_state, kept, settled
+    ):
+        kept = await db.scalar(select(IRSession.coverage_state).where(IRSession.id == session.id))
+        settled = furthest(kept or {}, coverage_state, pericope_num=session.pericope)
+    set_committed_value(session, "coverage_state", settled)
     if (
         not is_panorama(session.pericope)
         and session_is_done(session)
