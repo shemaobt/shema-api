@@ -10,9 +10,10 @@ a second Cloud Run instance would land it: after this settle read the coverage a
 wrote.
 """
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRCoverageEvent, IRSession
 from app.services.internalization_room import sessions as service
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
@@ -65,4 +66,28 @@ async def test_two_settles_at_once_each_lighting_a_bead_leave_both_lit_not_only_
     stored = await _stored_coverage(rival_factory, session.id)
     assert (stored[keys[0]], stored[keys[1]]) == (LIT, LIT), (
         "o segundo settle gravava a mescla que nunca viu o primeiro, e a conta acesa apagava"
+    )
+
+
+async def test_two_settles_at_once_lighting_the_same_bead_leave_one_event_for_it_not_two(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession], monkeypatch
+) -> None:
+    keys = element_keys(P)
+    session = await service.create_session(db_session, pericope=P)
+    _a_rival_settles_after_the_read(monkeypatch, rival_factory, _lighting(keys[0]))
+
+    await service.apply_coverage(db_session, session.id, _lighting(keys[0]))
+
+    async with rival_factory() as fresh_db:
+        events = (
+            await fresh_db.scalars(
+                select(IRCoverageEvent).where(
+                    IRCoverageEvent.session_id == session.id,
+                    IRCoverageEvent.element_key == keys[0],
+                )
+            )
+        ).all()
+    assert len(events) == 1, (
+        "o segundo settle contava a transição contra a leitura velha, e a conta ganhava dois "
+        "toques para um só acendimento"
     )

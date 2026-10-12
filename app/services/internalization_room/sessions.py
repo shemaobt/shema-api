@@ -760,12 +760,12 @@ async def apply_coverage(
     session = await get_session(db, session_id)
     kept: dict[str, Any] | None = session.coverage_state
     settled = furthest(kept or {}, coverage_state, pericope_num=session.pericope)
-    record_transitions(db, session, before=kept or {}, after=settled)
     while settled != kept and not await _written_unless_moved(
         db, session.id, IRSession.coverage_state, kept, settled
     ):
         kept = await db.scalar(select(IRSession.coverage_state).where(IRSession.id == session.id))
         settled = furthest(kept or {}, coverage_state, pericope_num=session.pericope)
+    record_transitions(db, session, before=kept or {}, after=settled)
     set_committed_value(session, "coverage_state", settled)
     if (
         not is_panorama(session.pericope)
