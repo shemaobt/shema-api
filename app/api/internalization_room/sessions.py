@@ -103,16 +103,17 @@ async def _write_the_turn(
 ) -> IRSession:
     with stage("db_write"):
         if opening:
-            await room.append_opening(
+            if await room.append_opening(
                 db,
                 session,
                 guide_response=outcome.speech,
                 outcome=outcome,
                 scene=_scene_of(session),
                 commit=False,
-            )
+            ):
+                hear_the_names(session, team=stored_opening_note(session), voice=outcome.speech)
             return session
-        return await room.append_exchange(
+        session = await room.append_exchange(
             db,
             session,
             team_utterance=outcome.transcript,
@@ -121,6 +122,8 @@ async def _write_the_turn(
             scene=_scene_of(session, outcome.transcript),
             commit=False,
         )
+        hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
+        return session
 
 
 async def _upload(uploads: list[Upload]) -> None:
@@ -803,10 +806,10 @@ async def _draft_the_turn(
         speech, audio_key, attempts = ready
         audio_key = await room.in_a_voice_the_room_has(audio_key, speech, language=session.language)
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        await room.append_opening(
+        if await room.append_opening(
             db, session, guide_response=speech, attempts=attempts, commit=False
-        )
-        hear_the_names(session, team=stored_opening_note(session), voice=speech)
+        ):
+            hear_the_names(session, team=stored_opening_note(session), voice=speech)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
@@ -860,11 +863,6 @@ async def _draft_the_turn(
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
-    hear_the_names(
-        session,
-        team=stored_opening_note(session) if opening else outcome.transcript,
-        voice=outcome.speech,
-    )
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False

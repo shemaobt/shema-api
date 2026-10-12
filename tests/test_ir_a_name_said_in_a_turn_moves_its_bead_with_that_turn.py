@@ -19,10 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room import turn_instructions
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.sessions import get_session
+from app.services.internalization_room.sessions import append_exchange, get_session
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
+from tests.turn_harness import the_room_agent_is
 
 OPENING = "Vamos ouvir uma história juntos."
 REPLY = "Isso. Contem mais."
@@ -188,4 +189,55 @@ async def test_a_name_in_the_note_of_an_opening_prepared_ahead_is_engaged(
     stored = await _stored(per_request, session_id)
     assert stored.get("being:S1:B3") == "engaged", (
         "a nota da abertura preparada nomeava Noemi e a conta dela não era engajada"
+    )
+
+
+async def test_an_opening_dropped_because_the_team_spoke_first_moves_no_bead(
+    client, db_session, per_request, monkeypatch
+) -> None:
+    tablet, session_id = await _a_p01_session(client, db_session)
+
+    async def the_team_speaks_while_the_guide_thinks(*, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        async with per_request() as rival:
+            team = await get_session(rival, session_id)
+            await append_exchange(rival, team, team_utterance="Sim.", guide_response=REPLY)
+        return TOLD
+
+    the_room_agent_is(monkeypatch, turn=the_team_speaks_while_the_guide_thinks)
+
+    await the_room_opens(client, tablet, session_id)
+
+    stored = await _stored(per_request, session_id)
+    assert stored.get("being:S1:B2", "not_encountered") == "not_encountered", (
+        "a abertura descartada, que não ficou no registro, ainda movia as contas que nomeava"
+    )
+
+
+async def test_an_opening_prepared_ahead_and_dropped_because_the_team_spoke_first_moves_no_bead(
+    client, db_session, per_request, monkeypatch
+) -> None:
+    tablet, session_id = await _a_p01_session(client, db_session)
+    async with per_request() as fresh:
+        row = await get_session(fresh, session_id)
+        row.prepared_speech = TOLD
+        row.prepared_audio_key = "prepared/abertura.mp3"
+        await fresh.commit()
+
+    async def the_team_speaks_while_the_clip_is_found(key: str, *_: Any, **__: Any) -> str:
+        async with per_request() as rival:
+            team = await get_session(rival, session_id)
+            await append_exchange(rival, team, team_utterance="Sim.", guide_response=REPLY)
+        return key
+
+    monkeypatch.setattr(
+        sessions_api.room, "in_a_voice_the_room_has", the_team_speaks_while_the_clip_is_found
+    )
+
+    await the_room_opens(client, tablet, session_id)
+
+    stored = await _stored(per_request, session_id)
+    assert stored.get("being:S1:B2", "not_encountered") == "not_encountered", (
+        "a abertura preparada e descartada ainda movia as contas que nomeava"
     )
