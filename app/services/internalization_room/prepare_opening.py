@@ -41,12 +41,6 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     optimisation and the session opens perfectly well without one, but a refusal or a
     transport error still leaves a WARNING behind, naming the session and the pericope.
 
-    It is written as one movement on purpose, not two: `run_turn` is never asked to split it,
-    so it carries no scene clip to store or hand over. The live opening's two-movement pacing
-    depends on nothing this line's absence would break — a turn with no segments is spoken
-    whole (ENG-775), and matching the split here would cost a second stored audio key and a
-    migration for pacing no team has a way to notice is different.
-
     The landing never counts as the team's activity. `updated_at` is written its own value, as
     a column expression and never a Python value read earlier: the Desk reads it as the last
     time anyone spoke, and a preparation that took a minute would otherwise stamp a panorama

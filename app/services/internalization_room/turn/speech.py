@@ -153,7 +153,6 @@ async def speak_back(
         opening=opening,
         settings=settings,
         session_id=session.id,
-        ask_for_movements=opening and not messages,
         earlier_passages=session.earlier_passages,
     )
     return handed.kept_apart(outcome)
