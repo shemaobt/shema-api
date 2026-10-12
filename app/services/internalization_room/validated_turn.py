@@ -381,11 +381,13 @@ async def _voiced_after_validation(
                 settings=settings,
             )
             verdict, refusal = _parse_verdict(raw_verdict)
+            unread_note = UNREADABLE_REPLY_ATTEMPT_NOTE
         except TruncatedReply as cut:
             raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
+            unread_note = "validator error: validator reply cut at max_tokens=8192"
         issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
-            attempts[-1] = replace(attempts[-1], note=UNREADABLE_REPLY_ATTEMPT_NOTE)
+            attempts[-1] = replace(attempts[-1], note=unread_note)
             _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
         attempts[-1] = replace(

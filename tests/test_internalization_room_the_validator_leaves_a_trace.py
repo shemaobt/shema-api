@@ -20,6 +20,7 @@ import pytest
 
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.llm import TruncatedReply
 from app.services.internalization_room.run_turn import MAX_REDRAFTS, run_turn
 from tests.turn_harness import (
     GUIDE,
@@ -354,3 +355,27 @@ async def test_three_send_backs_name_the_session_and_the_issues_of_the_last_draf
         "Fail-safe fired after 2 redrafts for session sessao-14: the Validator sent the draft "
         "back every time: issues=[{'problem': 'claims_to_see_the_screen'}]"
     ], "the line did not say the draft was sent back, or printed an earlier draft's issues"
+
+
+async def test_the_attempt_kept_for_a_reply_cut_at_its_ceiling_names_the_cut(
+    patch_agent,
+) -> None:
+    class Cut(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            if "corrected_response" not in system_prompt:
+                return "rascunho"
+            raise TruncatedReply('{"verdict": "pass", "issues": [')
+
+    patch_agent(Cut(verdicts=[]))
+
+    outcome = await _a_turn("sessao-15")
+
+    assert outcome.used_fail_safe is True
+    assert outcome.attempts == [
+        {
+            "attempt": 1,
+            "draft": "rascunho",
+            "issues": [],
+            "note": "validator error: validator reply cut at max_tokens=8192",
+        }
+    ], "a verdict cut at its ceiling kept the note of a reply that merely could not be read"
