@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import (
     JSON,
@@ -1101,18 +1101,28 @@ def back_translation_of(session: IRSession) -> BackTranslationState:
     return BackTranslationState.model_validate(session.back_translation or {})
 
 
+_Kept = TypeVar("_Kept")
+
+
+def _less(items: list[_Kept], taken: list[_Kept]) -> list[_Kept]:
+    left = list(items)
+    for one in taken:
+        if one in left:
+            left.remove(one)
+    return left
+
+
 def _merged_forward(
     read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
 ) -> BackTranslationState:
     for name in vars(wanted).keys() - {"findings", "checks"}:
         if getattr(wanted, name) != getattr(read, name):
             setattr(fresh, name, getattr(wanted, name))
-    taken = [one for one in read.findings if one not in wanted.findings]
     fresh.findings = [
-        *(one for one in fresh.findings if one not in taken),
-        *(one for one in wanted.findings if one not in read.findings),
+        *_less(fresh.findings, _less(read.findings, wanted.findings)),
+        *_less(wanted.findings, read.findings),
     ]
-    fresh.checks = [*fresh.checks, *(one for one in wanted.checks if one not in read.checks)]
+    fresh.checks = [*fresh.checks, *_less(wanted.checks, read.checks)]
     return fresh
 
 

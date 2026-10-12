@@ -169,3 +169,26 @@ async def test_a_state_stored_as_json_null_matches_its_own_reading_and_the_save_
     assert [finding.note for finding in stored.findings] == ["faltou a colheita"], (
         "o null guardado não casava com a própria leitura, e a gravação era recusada até desistir"
     )
+
+
+async def test_a_finding_identical_to_one_already_kept_is_a_second_finding_not_the_same_one(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    state = service.back_translation_of(session)
+    state.findings.append(_finding("faltou a colheita"))
+    await service.save_back_translation(db_session, session, state)
+    async with rival_factory() as checking_db, rival_factory() as capturing_db:
+        checking, checking_state = await _read(checking_db, session.id)
+        capturing, capturing_state = await _read(capturing_db, session.id)
+
+        capturing_state.checked = True
+        await service.save_back_translation(capturing_db, capturing, capturing_state)
+        checking_state.findings.append(_finding("faltou a colheita"))
+        await service.save_back_translation(checking_db, checking, checking_state)
+
+    stored = await _stored(rival_factory, session.id)
+    assert [finding.note for finding in stored.findings] == [
+        "faltou a colheita",
+        "faltou a colheita",
+    ], "dois achados idênticos viravam um só na mescla, e o segundo sumia da lista"
