@@ -21,6 +21,7 @@ from app.core.config import get_settings
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import clip_url
 from tests.device_harness import TABLET_TEAM
+from tests.opening_harness import NOTE_PT_P03
 from tests.release_harness import PREFIX
 from tests.room_harness import counting_commits, room_client
 
@@ -143,7 +144,7 @@ async def test_two_requests_racing_the_same_prepared_opening_both_hear_it_and_it
     assert lost.json()["audio_url"] == clip_url(PREPARED_KEY)
     db_session.expire_all()
     written = await get_session(db_session, session_id)
-    assert [message["text"] for message in written.messages] == [PREPARED], (
+    assert [message["text"] for message in written.messages] == [NOTE_PT_P03, PREPARED], (
         "o pedido que perdeu a corrida levava 409 no guarda de version em vez de descartar a"
         " sua abertura"
     )
