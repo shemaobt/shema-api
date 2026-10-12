@@ -16,6 +16,7 @@ import pytest
 from scripts import golden_runner
 from tests.golden_spend_harness import (
     GOLDEN_PRICED,
+    STAMP,
     golden_args,
     golden_shelf,
     the_room_answers,
@@ -118,3 +119,37 @@ async def test_a_session_the_room_could_not_be_reached_to_open_is_a_row_and_is_n
         "quem lê a linha precisa saber qual sessão a rodada deixou de jogar"
     )
     assert opened == ["P01", "P02"], "a rodada morta não tenta a terceira sessão"
+
+
+async def test_a_run_that_dies_never_replaces_the_readme_a_finished_run_left_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    turns: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 2:
+            raise httpx.ReadTimeout("the room did not answer", request=request)
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2))
+    out = tmp_path / "reports"
+    out.mkdir()
+    (out / "README.md").write_text("the morning's report, complete\n", encoding="utf-8")
+
+    with pytest.raises(httpx.ReadTimeout):
+        await golden_runner.run(golden_args(sessions, out))
+
+    assert (out / "README.md").read_text(encoding="utf-8") == "the morning's report, complete\n", (
+        "a segunda rodada do dia morreu e trocou o relatório inteiro da manhã por uma linha"
+    )
+    beside = (out / f"README.{STAMP}.md").read_text(encoding="utf-8")
+    assert "Rodada interrompida em P01-a por ReadTimeout: the room did not answer.\n" in beside
+    assert f"README.{STAMP}.md" in capsys.readouterr().out, (
+        "a tela diz onde ficou o relatório da rodada que morreu"
+    )

@@ -46,7 +46,9 @@ unless a session failed, which keeps its 1.
 
 An error that kills the run — a timeout, a reply that is not JSON — still leaves its README and
 its cost total, the session that died among the rows and its paid turns in the sum, with a line
-saying what killed it; the error is then raised as it was.
+saying what killed it; the error is then raised as it was. Where `--out` already holds a
+README, a finished run's, the dead run's goes beside it as `README.<stamp>.md` and the first is
+left as it was.
 """
 
 from __future__ import annotations
@@ -764,7 +766,8 @@ async def run(args: argparse.Namespace) -> int:
                 )
     except Exception as killed:
         halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
-        close(results, out=out, base_url=base_url, stamp=stamp, halted=halted)
+        readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
+        close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
         raise
     return finish(
         results,
@@ -890,10 +893,16 @@ async def rejudge(args: argparse.Namespace) -> int:
 
 
 def close(
-    results: list[SessionResult], *, out: Path, base_url: str, stamp: str, halted: str = ""
+    results: list[SessionResult],
+    *,
+    out: Path,
+    base_url: str,
+    stamp: str,
+    halted: str = "",
+    readme: str = "README.md",
 ) -> int:
     out.mkdir(parents=True, exist_ok=True)
-    (out / "README.md").write_text(
+    (out / readme).write_text(
         summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins(), halted=halted),
         encoding="utf-8",
     )
@@ -909,7 +918,7 @@ def close(
     if by_role or unpriced:
         table = f" — {split(by_role)}" if by_role else ""
         print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
-    print(f"\n{passed}/{len(results)} golden sessions pass · {out / 'README.md'}")
+    print(f"\n{passed}/{len(results)} golden sessions pass · {out / readme}")
     return 0 if passed == len(results) else 1
 
 
