@@ -9,6 +9,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.exceptions import ERROR_CODE_UPSTREAM, UpstreamServiceError
 from app.services import internalization_room as room
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.text_seam_harness import RUNNER_KEY, the_app
@@ -59,12 +60,18 @@ class Speaker:
     def __init__(self) -> None:
         self.drafts: list[dict[str, Any]] = []
         self.validations: list[str] = []
+        self.verdicts: list[str] = []
+        self.down_from_draft: int | None = None
 
     async def __call__(self, **call: Any) -> str:
         if "corrected_response" in call["system_prompt"]:
             self.validations.append(call["system_prompt"])
+            if self.verdicts:
+                return self.verdicts.pop(0)
             return json.dumps({"verdict": "pass", "issues": []})
         self.drafts.append(call)
+        if self.down_from_draft is not None and len(self.drafts) >= self.down_from_draft:
+            raise UpstreamServiceError("o modelo está fora do ar")
         return SAID
 
 
@@ -152,8 +159,8 @@ async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validato
     ) in speaker.validations[-1], "o Validador não lia o pontapé dela como o que a equipe disse"
 
 
-def _handed(speaker: Speaker) -> str:
-    system = speaker.drafts[-1]["system_prompt"].replace(CACHE_BREAK, "")
+def _handed(speaker: Speaker, run: int = -1) -> str:
+    system = speaker.drafts[run]["system_prompt"].replace(CACHE_BREAK, "")
     return system.split("## The findings for the whole passage\n\n", 1)[1]
 
 
@@ -416,3 +423,83 @@ async def test_an_analyst_reply_the_room_cannot_read_is_heard_as_d_1_with_no_ver
     assert result["outcome"] == "fail_safe"
     assert result["conferida"] is False, "um D-1 não dá a passagem por conferida"
     assert speaker.drafts == [], "sem leitura não há veredito: o falante não é chamado"
+
+
+NOT_A_VERDICT = "isto não é um veredito"
+
+
+async def test_a_nuance_verdict_that_falls_to_the_fail_safe_is_run_again_with_nothing_handed_over(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+    speaker.verdicts = [NOT_A_VERDICT]
+
+    result = await _a_round(client, TELLING)
+
+    assert [kind["kind"] for kind in json.loads(_handed(speaker, 0))] == ["nuance"]
+    assert _handed(speaker, 1) == "[]", "a segunda rodada ainda levava a nuance que falhou"
+    assert result["spoken"] == SAID, "a equipe ouvia a linha A antes de uma rodada limpa"
+    assert result["outcome"] == "pass"
+    assert result["conferida"] is True
+    kept = (await room.get_session(db_session, result["sessionId"])).messages or []
+    assert [message["role"] for message in kept] == ["guide"], "a rodada que falhou era guardada"
+
+
+THE_A_LINE_FOR_A_FIRST_DRAFT = (
+    "Quero que a gente fique perto da passagem. Vamos voltar juntos a esta cena."
+)
+
+
+async def test_a_nuance_verdict_that_fails_on_both_runs_is_heard_as_one_family_a_line(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+    speaker.verdicts = [NOT_A_VERDICT, NOT_A_VERDICT]
+
+    result = await _a_round(client, TELLING)
+
+    assert len(speaker.drafts) == 2, "a rodada limpa rodava uma vez só, ou mais de uma"
+    assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
+    assert result["outcome"] == "fail_safe"
+    kept = (await room.get_session(db_session, result["sessionId"])).messages or []
+    assert [message["fixed_line"] for message in kept] == ["A1"]
+
+
+@pytest.mark.parametrize(
+    "findings",
+    [
+        [{"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}],
+        [],
+    ],
+    ids=["a blocking finding", "a clean telling"],
+)
+async def test_a_fail_safe_with_no_lone_nuance_handed_over_is_not_run_again(
+    client, analyst, speaker, findings
+) -> None:
+    analyst.readings = [{"findings": findings}]
+    speaker.verdicts = [NOT_A_VERDICT]
+
+    result = await _a_round(client, TELLING)
+
+    assert len(speaker.drafts) == 1, "só uma nuance sozinha ganha uma rodada limpa"
+    assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
+    assert result["outcome"] == "fail_safe"
+
+
+async def test_an_outage_in_the_clean_run_is_never_voiced_as_a_fail_safe(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [A_NUANCE]}]
+    speaker.verdicts = [NOT_A_VERDICT]
+    speaker.down_from_draft = 2
+    declared = await client.post(
+        f"{SEAM}/session", json={"pericopeId": PASSAGE, "language": LANGUAGE, "clips": CLIPS}
+    )
+    session_id = str(declared.json()["sessionId"])
+
+    played = await client.post(f"{SEAM}/round", json={"sessionId": session_id, "frases": TELLING})
+
+    assert played.status_code == 502, played.text
+    assert played.json()["code"] == ERROR_CODE_UPSTREAM
+    kept = (await room.get_session(db_session, session_id)).messages or []
+    assert kept == [], "uma queda do modelo era guardada como se a sala tivesse falado"

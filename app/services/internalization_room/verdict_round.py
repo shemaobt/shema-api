@@ -154,19 +154,25 @@ async def check_the_telling_back(
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
-    outcome = await run_verdict_turn(
-        findings_text=findings_block(current or nuances[:1], addresses),
-        scope=THE_WHOLE_PASSAGE,
-        pericope_num=session.pericope,
-        messages=session.messages or [],
-        telling_back=told_back,
-        speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
-        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
-        session_language=LANGUAGE_NAMES[language],
-        language_code=language,
-        settings=settings,
-        session_id=session.id,
-    )
+    async def speak(handed: list[Finding] | list[Nuance]) -> TurnOutcome:
+        return await run_verdict_turn(
+            findings_text=findings_block(handed, addresses),
+            scope=THE_WHOLE_PASSAGE,
+            pericope_num=session.pericope,
+            messages=session.messages or [],
+            telling_back=told_back,
+            speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
+            validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+            session_language=LANGUAGE_NAMES[language],
+            language_code=language,
+            settings=settings,
+            session_id=session.id,
+        )
+
+    a_lone_nuance = not current and bool(nuances)
+    outcome = await speak(current or nuances[:1])
+    if outcome.used_fail_safe and a_lone_nuance:
+        outcome = await speak([])
 
     said = outcome.speech
     return TellingBackVerdict(
