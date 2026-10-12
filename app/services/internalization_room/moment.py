@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, NamedTuple
 
 import regex
@@ -212,9 +212,17 @@ class MomentStep:
     before: Moment
     after: Moment
     by: list[Cause]
+    ignored: list[str] = field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
-        return {"before": self.before.as_json(), "after": self.after.as_json(), "by": self.by}
+        stored: dict[str, Any] = {
+            "before": self.before.as_json(),
+            "after": self.after.as_json(),
+            "by": self.by,
+        }
+        if self.ignored:
+            stored["ignored"] = self.ignored
+        return stored
 
 
 def moment_step(
@@ -227,6 +235,7 @@ def moment_step(
         return None
     after = before
     by: list[Cause] = []
+    ignored: list[str] = []
     earlier = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
         outside = line.part is not None and not 1 <= line.part <= parts
@@ -234,11 +243,16 @@ def moment_step(
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
         if outside or closing_after_another:
             continue
+        if after.at == "ensaio_final" and line.cause in _NUMBERED:
+            ignored.append(f"{line.cause} {line.part}: after the send-off (Ensaio Final)")
         moved = _moved(after, line)
         if moved != after:
             by.append(line.cause)
         after = moved
-    return MomentStep(before=before, after=after, by=by)
+    return MomentStep(before=before, after=after, by=by, ignored=ignored)
+
+
+_NUMBERED = ("entrance", "articulation_entrance", "where_we_are")
 
 
 class _Line(NamedTuple):

@@ -105,3 +105,32 @@ async def test_a_telling_back_verdict_keeps_the_moment_the_room_was_in(
     assert session.messages[-1]["moment"]["after"] == {"at": "internalization", "part": 2}, (
         "o veredito da retroverificação apagou o momento, e a sessão virou uma sessão antiga"
     )
+
+
+async def test_a_numbered_line_after_the_send_off_is_kept_with_the_step_that_ignored_it(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    session = await append_exchange(db_session, session, team_utterance="", guide_response=OPENING)
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="terminamos",
+        guide_response=(
+            "Agora toquem no ponto laranja, no alto da tela, para abrir o Ensaio Final."
+        ),
+    )
+
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="vamos de novo",
+        guide_response="Vamos pra Internalização da cena 3.",
+    )
+
+    assert session.messages[-1]["moment"] == {
+        "before": {"at": "ensaio_final"},
+        "after": {"at": "ensaio_final"},
+        "by": [],
+        "ignored": ["entrance 3: after the send-off (Ensaio Final)"],
+    }, "a linha depois da despedida foi ignorada sem deixar registro no passo do turno"
