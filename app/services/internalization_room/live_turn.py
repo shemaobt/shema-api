@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.turn.scene_view import current_scene_id
@@ -52,6 +53,11 @@ async def run_comprehension_turn(
     pericope = session.pericope
     book = load_map(pericope).book
     messages: list[dict[str, Any]] = list(session.messages or [])
+    stamp = session.earlier_passages
+    if stamp is None:
+        stamp = await earlier_passages(
+            db, project_id=session.project_id, pericope=pericope, before_a_turn=True
+        )
     outcome = await speak_back(
         mother_tongue=speech.mother_tongue,
         take_ms=speech.take_ms,
@@ -65,7 +71,10 @@ async def run_comprehension_turn(
         validator_prompt=validator_prompt,
         pericope=pericope,
         settings=settings,
+        earlier_passages=stamp,
     )
+    if stamp is not session.earlier_passages:
+        session.earlier_passages = stamp
     if not opening:
         outcome = replace(
             stamped_with_what_was_heard(outcome, speech),
