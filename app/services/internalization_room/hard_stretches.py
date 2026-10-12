@@ -34,6 +34,11 @@ from app.services.internalization_room.sessions import (
 
 
 def pass_of_a_telling(state: BackTranslationState) -> int:
+    """One before the analyst has read the telling-back, two once it has, clean or not.
+
+    Hers is the same floor, decided by the server and never by the telling: a frase told again
+    before any check is still the first pass, and a new frase after one is the second.
+    """
     return 1 if state.never_analysed else 2
 
 
@@ -109,9 +114,16 @@ async def capture_and_note_a_hard_stretch(
     for anybody, on a telling the team believes landed.
 
     `state` is the telling-back state for the routes that carry one; the per-stretch correction
-    does not, and passes nothing. It sits here rather than in the router because the router does
-    not touch the database (ADR 0009), and here rather than in `segments` because this composes
-    the count and the halt, which is what this module is between the two services for.
+    passes none, and its state is read off the session here. It sits here rather than in the
+    router because the router does not touch the database (ADR 0009), and here rather than in
+    `segments` because this composes the count and the halt, which is what this module is
+    between the two services for.
+
+    The pass is `pass_of_a_telling`'s, whatever the door sends in `pass_number`. And a capture
+    after a check undoes what the check left: `checked` goes false and the stored verdict goes,
+    so approval is refused until a new clean check, while `checked_at` stays to say when the
+    analyst last read the team. The correction writes that state back too, in this same
+    transaction.
 
     The scope a state is stored under is defaulted here for the same reason. Two doors reach
     this capture — the tablet's chunks route and the text seam — and both wrote the default
