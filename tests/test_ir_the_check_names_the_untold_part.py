@@ -288,10 +288,10 @@ async def test_a_rehearsal_told_whole_and_recorded_again_is_named_too(
 ) -> None:
     """A passage recorded in one go is one part, and recording it again leaves it untold too.
 
-    Nothing is retired here — an upload carrying no number says nothing about which part it
-    replaces — so the telling the team already gave stands, on a recording that is no longer
-    the part. The rule is about the part having nothing told over it and not about anything
-    being taken away, so the answer is the same one.
+    The fresh take is written beside the telling rather than uploaded, so the telling the team
+    already gave stands, on a recording that is no longer the part. The rule is about the part
+    having nothing told over it and not about anything being taken away, so the answer is the
+    same one whether the upload retired that telling or not.
     """
     session, _ = await rehearsed_session(db_session)
     told_whole = await the_one_part_of(db_session, session)

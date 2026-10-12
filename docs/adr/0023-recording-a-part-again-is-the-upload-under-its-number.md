@@ -100,3 +100,18 @@ through the packet by the same rule as any other take.
 Two uploads of one part carrying the *same* pass, drained out of order, still pick the one that
 landed last: the pass separates a recording from the one it replaced, and cannot separate two the
 app counted alike.
+
+**The rehearsal told whole is a part of its own, and recording it whole again is that part
+again** (ENG-1583). The first reading of this decision left a take with no number alone, because
+the only numberless take the room knew besides the passage in one go was the per-stretch
+correction above, and under the verb it would have retired the stretch it was about to replace.
+That fragment is gone, so the reason is gone, and the cost of keeping the exception was the
+other half of the rule: the stretches told on the first whole recording stood beside the ones
+told on the second, read together by the analyst and the Validator with no part to name them.
+`current_parts` already keys the numberless take as one part, so the verb does too: a second take
+with no number retires the stretches of the earlier ones with no number, the findings that
+pointed at them, and the check, exactly as a second take under a number does. It touches no
+numbered part. Marcia's app reads the same
+way: a re-recorded clip stales the frases told on the old one and the check leaves them out,
+keeping them in the record (`src/backtranslation/store.ts` `buildPassageTelling`, frozen at
+18fa7c4).
