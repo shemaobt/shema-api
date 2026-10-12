@@ -550,6 +550,7 @@ class BackTranslationVerdictResponse(BaseModel):
     findings: list[FindingView] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
+    check_at: datetime | None = None
 
 
 class NeedsPersonResponse(BaseModel):

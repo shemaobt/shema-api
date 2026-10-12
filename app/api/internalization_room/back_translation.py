@@ -386,6 +386,7 @@ async def _finished(
             findings=finding_views(state.findings),
             findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=state.verdict.used_fail_safe,
+            check_at=state.checks[-1].at if state.checks else None,
         )
 
     with stage("db_let_go"):
@@ -427,4 +428,5 @@ async def _finished(
         findings=finding_views(state.findings),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
+        check_at=state.checks[-1].at,
     )
