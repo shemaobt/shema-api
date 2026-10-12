@@ -82,5 +82,39 @@ async def test_a_session_killed_by_a_timeout_still_leaves_the_readme_and_the_cos
     assert "≈ US$ 6.00 — guide US$ 4.00 · validator US$ 2.00." in readme, (
         "dois turnos foram pagos, um em cada sessão, e a sessão que morreu entra na conta"
     )
-    assert "Rodada interrompida por ReadTimeout: the room did not answer.\n" in readme
+    assert "Rodada interrompida em P02-b por ReadTimeout: the room did not answer.\n" in readme
     assert "\ncost US$ 6.00 — guide US$ 4.00 · validator US$ 2.00\n" in capsys.readouterr().out
+
+
+async def test_a_session_the_room_could_not_be_reached_to_open_is_a_row_and_is_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+    the_judge_answers(monkeypatch, json.dumps(approving))
+    opened: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            opened.append(json.loads(request.content)["pericopeId"])
+            if len(opened) == 2:
+                raise httpx.ConnectError("the room is restarting", request=request)
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
+    out = tmp_path / "reports"
+
+    with pytest.raises(httpx.ConnectError):
+        await golden_runner.run(golden_args(sessions, out))
+
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "| P02-b | — |" in readme, (
+        "a sala reiniciou entre duas sessões, e a que não chegou a abrir ficava fora da tabela"
+    )
+    assert "Rodada interrompida em P02-b por ConnectError: the room is restarting.\n" in readme, (
+        "quem lê a linha precisa saber qual sessão a rodada deixou de jogar"
+    )
+    assert opened == ["P01", "P02"], "a rodada morta não tenta a terceira sessão"

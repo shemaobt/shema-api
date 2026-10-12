@@ -533,6 +533,9 @@ async def play_session(
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
         results.append(SessionResult(script.name, None, [], _refusal(refused)))
         return
+    except Exception:
+        results.append(SessionResult(script.name, None, []))
+        raise
     result = SessionResult(script.name, session_id, played)
     results.append(result)
     try:
@@ -741,9 +744,11 @@ async def run(args: argparse.Namespace) -> int:
     budget = budget_of(args)
     results: list[SessionResult] = []
     not_started: list[str] = []
+    playing = scripts[0].name
     try:
         async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
             for position, script in enumerate(scripts):
+                playing = script.name
                 if _spent(results) >= budget:
                     not_started = [later.name for later in scripts[position:]]
                     break
@@ -758,7 +763,7 @@ async def run(args: argparse.Namespace) -> int:
                     results=results,
                 )
     except Exception as killed:
-        halted = f"Rodada interrompida por {type(killed).__name__}: {killed}."
+        halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
         close(results, out=out, base_url=base_url, stamp=stamp, halted=halted)
         raise
     return finish(
