@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.llm import CACHE_BREAK
+from app.services.internalization_room.segments import capture_segment, final_segments
 from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
     PREFIX,
@@ -205,4 +206,35 @@ async def test_once_the_first_nuance_is_heard_the_next_press_names_the_next_one(
     assert again.status_code == 200, again.text
     assert [_handed(speaker, brief) for brief in range(len(speaker.briefs))] == [[2], [3]], (
         "depois de ouvir a nuance da frase 2, a próxima rodada repetia o veredito guardado"
+    )
+
+
+async def _frase_1_translated_again(db: AsyncSession, session: Any) -> None:
+    stretch = (await final_segments(db, session.id))[0]
+    await capture_segment(
+        db,
+        session,
+        take_id=stretch.take_id,
+        starts_ms=stretch.starts_ms,
+        ends_ms=stretch.ends_ms,
+        bridge_take_id="retro-de-novo",
+        transcript="parte 0 traduzida outra vez",
+        pass_number=2,
+        replaces=stretch,
+    )
+
+
+async def test_a_nuance_whose_verdict_was_never_reported_heard_is_named_again(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}, {"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+    await _frase_1_translated_again(db_session, session)
+
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    assert [_handed(speaker, brief) for brief in range(len(speaker.briefs))] == [[2], [2]], (
+        "a equipe saiu enquanto o veredito tocava e a nuance nunca mais era dita"
     )
