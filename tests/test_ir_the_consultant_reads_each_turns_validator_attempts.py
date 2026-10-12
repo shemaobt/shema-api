@@ -218,7 +218,7 @@ async def test_a_step_that_kept_only_a_note_reads_as_stored_with_an_empty_draft(
     ]
 
 
-async def test_a_step_the_guide_drafted_nothing_for_says_the_validator_never_saw_it(
+async def test_a_turn_the_guide_drafted_nothing_for_reads_zero_attempts_and_its_step_says_why(
     client, db_session, room_app, the_room_hears
 ) -> None:
     the_room_hears([""], [])
@@ -226,6 +226,7 @@ async def test_a_step_the_guide_drafted_nothing_for_says_the_validator_never_saw
     turn = await _the_last_turn_as_the_desk_reads_it(client, db_session, room_app)
 
     assert turn["voice"]["outcome"] == "fail_safe"
+    assert turn["voice"]["attempts"] == 0
     assert turn["voice"]["trace"] == [
         {
             "attempt": 1,
