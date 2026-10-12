@@ -176,3 +176,18 @@ async def test_a_nuance_verdict_fallen_to_the_fail_safe_is_spoken_clean_and_the_
     assert [one.voiced for one in kept[0].nuances] == [None], (
         "a nuance cujo veredito caiu na linha A contava como dita pela rodada limpa"
     )
+
+
+async def test_every_round_the_seam_plays_counts_as_heard_to_its_end(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}]
+    speaker.line = NAMES_FRASE_3
+
+    result = await _a_round(client, TELLING)
+
+    kept = await _the_kept_rounds(db_session, result["sessionId"])
+    assert kept[0].heard_at is not None, (
+        "o roteiro dourado nunca ouvia o veredito e a mesma nuance voltava a cada rodada"
+    )
+    assert kept[0].heard_at >= kept[0].at

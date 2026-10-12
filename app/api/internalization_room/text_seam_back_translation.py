@@ -15,6 +15,7 @@ key is configured, which production never sets.
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,6 +185,7 @@ async def play_a_round(
                 takes=takes,
                 settings=get_settings(),
             )
+        state.checks[-1].heard_at = datetime.now(UTC)
         await room.save_the_spoken_verdict(
             db,
             session,

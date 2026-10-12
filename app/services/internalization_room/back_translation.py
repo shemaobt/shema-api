@@ -205,6 +205,7 @@ class CheckRound(BaseModel):
     outcome: Outcome
     conferida: bool
     nuances: list[Nuance] = Field(default_factory=list)
+    heard_at: datetime | None = None
 
 
 class BackTranslationState(BaseModel):
