@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.fail_safe import FailSafe, utterances
-from app.services.internalization_room.segments import capture_segment
+from app.services.internalization_room.segments import capture_segment, current_segments
 from tests.release_harness import rehearsed_session, the_one_part_of
 from tests.room_harness import (
     Analyst,
@@ -288,15 +288,15 @@ async def test_a_rehearsal_told_whole_and_recorded_again_is_named_too(
 ) -> None:
     """A passage recorded in one go is one part, and recording it again leaves it untold too.
 
-    The fresh take is written beside the telling rather than uploaded, so the telling the team
-    already gave stands, on a recording that is no longer the part. The rule is about the part
-    having nothing told over it and not about anything being taken away, so the answer is the
-    same one whether the upload retired that telling or not.
+    The product's own verb runs on the fresh take, and a passage recorded whole is the part
+    that carries no number, so the telling the team already gave goes with the recording it was
+    told over. What stands is a part nothing is told over, and that is what the check names.
     """
     session, _ = await rehearsed_session(db_session)
     told_whole = await the_one_part_of(db_session, session)
     await tell_back_about(db_session, session, told_whole, bridge_take_id="retro-do-inteiro")
     fresh = await record_the_part_again(db_session, session, told_whole, sha256=WHOLE_AGAIN)
+    assert await current_segments(db_session, session.id) == []
 
     answered = await press_terminei(
         client, session.id, report=played_every_part([told_whole.id, fresh.id])
