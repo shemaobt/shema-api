@@ -957,6 +957,14 @@ class RetroverificationFinding(BaseModel):
     raised_by_check: bool = False
 
 
+class RetroverificationNuance(BaseModel):
+    chunk: int
+    segment_id: str
+    quote: str
+    story: str
+    said: bool
+
+
 class RetroverificationRelease(BaseModel):
     """One approved draft of the passage, as the consultant's file lists it.
 
@@ -1142,6 +1150,7 @@ class RetroverificationFile(BaseModel):
     divided: list[RetroverificationStretch] = Field(default_factory=list)
     abandoned: list[RetroverificationTelling] = Field(default_factory=list)
     findings: list[RetroverificationFinding] = Field(default_factory=list)
+    nuances: list[RetroverificationNuance] = Field(default_factory=list)
     superseded_attempts: list[RetroverificationAttempt] = Field(default_factory=list)
     listening: list[RetroverificationListening] = Field(default_factory=list)
     hard_stretches: list[RetroverificationHardStretch] = Field(default_factory=list)

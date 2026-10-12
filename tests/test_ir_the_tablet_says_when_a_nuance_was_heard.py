@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import background
 from app.services.internalization_room.llm import CACHE_BREAK
+from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.sessions import get_session
 from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
     PREFIX,
@@ -325,3 +327,22 @@ async def test_a_verdict_that_named_no_nuance_names_none_to_the_tablet(
     assert pressed.json()["named_nuance"] is None, (
         "a linha da frase ganhava a cor de uma nuance que a voz não disse"
     )
+
+
+async def test_the_consultants_file_says_which_nuances_the_voice_already_said(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_3, ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    await _heard(client, session.id, pressed.json()["check_at"])
+
+    read = await retroverification_file(db_session, await get_session(db_session, session.id))
+
+    assert [(one.chunk, one.quote, one.story, one.said) for one in read.nuances] == [
+        (2, "contada de volta", "a história conta de outro jeito", True),
+        (3, "parte 2", "a história diz qual parte", False),
+    ], "a consultora não via as nuances nem se a voz já as tinha dito"
