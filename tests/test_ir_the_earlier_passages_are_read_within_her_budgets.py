@@ -25,9 +25,13 @@ from app.services.internalization_room import earlier_passages as statuses
 from app.services.internalization_room import prepare_opening as prepare_opening_module
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
-from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import run_turn
 from app.services.internalization_room.sessions import get_session
+from tests.earlier_passages_harness import (
+    a_room_whose_guide_is_scripted,
+    a_session_per_request,
+    the_statuses_never_answer,
+)
 from tests.hearing_harness import the_loop_clock_passes
 from tests.release_harness import (
     PREFIX,
@@ -37,7 +41,7 @@ from tests.release_harness import (
     team_release,
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory
-from tests.tablet_turn_harness import the_room_opens, the_turn_is_scripted
+from tests.tablet_turn_harness import the_room_opens
 from tests.text_seam_harness import ScriptedAgent
 from tests.turn_harness import the_room_agent_is
 
@@ -63,22 +67,12 @@ P01_UNDER_HER_NOTICE = (
 
 @pytest.fixture()
 def agent(monkeypatch: pytest.MonkeyPatch) -> ScriptedAgent:
-    guide = ScriptedAgent([])
-
-    async def heard(*_: Any, **__: Any) -> HeardSpeech:
-        return HeardSpeech(text="Noemi voltou para Belem com Rute")
-
-    async def no_opening_ahead(*_: Any, **__: Any) -> None:
-        return None
-
-    the_turn_is_scripted(monkeypatch, heard=heard, model=guide)
-    monkeypatch.setattr(sessions_api, "prepare_opening", no_opening_ahead)
-    return guide
+    return a_room_whose_guide_is_scripted(monkeypatch)
 
 
 @pytest.fixture()
 def per_request(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    return a_session_per_request(test_engine)
 
 
 @pytest.fixture()
@@ -129,18 +123,6 @@ def earlier_line(system_prompt: str) -> str | None:
 
 async def the_stamp_is_left_alone(**_: Any) -> None:
     return None
-
-
-def the_statuses_never_answer(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
-    started = asyncio.Event()
-
-    async def never(*_: Any, **__: Any) -> dict[str, str]:
-        started.set()
-        await asyncio.Event().wait()
-        return {}
-
-    monkeypatch.setattr(statuses, "read_statuses", never)
-    return started
 
 
 async def the_read_begins(started: asyncio.Event, request: asyncio.Task[Any]) -> None:

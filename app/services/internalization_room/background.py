@@ -95,22 +95,25 @@ async def settle_coverage(
 
 
 async def read_the_earlier_passages_again(*, session_id: str) -> None:
-    async with AsyncSessionLocal() as db:
-        session = await get_session(db, session_id)
-        stamp = await earlier_passages(
-            db,
-            project_id=session.project_id,
-            pericope=session.pericope,
-            prior=session.earlier_passages,
-        )
-        if stamp is None:
-            return
-        await db.execute(
-            update(IRSession)
-            .where(IRSession.id == session_id)
-            .values(earlier_passages=stamp, updated_at=IRSession.updated_at)
-        )
-        await db.commit()
+    try:
+        async with AsyncSessionLocal() as db:
+            session = await get_session(db, session_id)
+            stamp = await earlier_passages(
+                db,
+                project_id=session.project_id,
+                pericope=session.pericope,
+                prior=session.earlier_passages,
+            )
+            if stamp is None:
+                return
+            await db.execute(
+                update(IRSession)
+                .where(IRSession.id == session_id)
+                .values(earlier_passages=stamp, updated_at=IRSession.updated_at)
+            )
+            await db.commit()
+    except Exception:
+        logger.exception("Reading the earlier passages again failed for session %s", session_id)
 
 
 async def transcribe_question(*, question_id: str, audio: bytes) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -14,9 +15,13 @@ from app.api.internalization_room import sessions as sessions_api
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import background
 from app.services.internalization_room import earlier_passages as statuses
-from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from app.utils.stored_time import as_utc
+from tests.earlier_passages_harness import (
+    a_room_whose_guide_is_scripted,
+    a_session_per_request,
+    the_statuses_never_answer,
+)
 from tests.hearing_harness import the_loop_clock_passes
 from tests.release_harness import (
     PREFIX,
@@ -26,7 +31,7 @@ from tests.release_harness import (
     team_release,
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory
-from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
+from tests.tablet_turn_harness import the_room_opens, the_team_says
 from tests.text_seam_harness import GUIDE_LINE, ScriptedAgent
 
 EARLIER = "EARLIER PASSAGES FOR THIS TEAM:"
@@ -42,22 +47,12 @@ P01_APPROVED = (
 
 @pytest.fixture()
 def agent(monkeypatch: pytest.MonkeyPatch) -> ScriptedAgent:
-    guide = ScriptedAgent([])
-
-    async def heard(*_: Any, **__: Any) -> HeardSpeech:
-        return HeardSpeech(text="Noemi voltou para Belem com Rute")
-
-    async def no_opening_ahead(*_: Any, **__: Any) -> None:
-        return None
-
-    the_turn_is_scripted(monkeypatch, heard=heard, model=guide)
-    monkeypatch.setattr(sessions_api, "prepare_opening", no_opening_ahead)
-    return guide
+    return a_room_whose_guide_is_scripted(monkeypatch)
 
 
 @pytest.fixture()
 def per_request(test_engine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    return a_session_per_request(test_engine)
 
 
 @pytest.fixture()
@@ -93,18 +88,6 @@ async def stored_statuses(
     async with per_request() as fresh:
         stamp = (await get_session(fresh, session_id)).earlier_passages
     return None if stamp is None else {key: value for key, value in stamp.items() if key != "at"}
-
-
-def the_statuses_never_answer(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
-    started = asyncio.Event()
-
-    async def never(*_: Any, **__: Any) -> dict[str, str]:
-        started.set()
-        await asyncio.Event().wait()
-        return {}
-
-    monkeypatch.setattr(statuses, "read_statuses", never)
-    return started
 
 
 async def a_turn_whose_read_never_answers(
@@ -364,3 +347,26 @@ async def test_a_read_again_that_missed_its_three_seconds_is_read_again_on_the_n
     assert earlier_line(agent.guide_systems[before]) == P01_APPROVED, (
         "uma leitura de novo que estourou o prazo ficava cinco minutos sem ser lida outra vez"
     )
+
+
+async def test_a_read_again_that_breaks_is_logged_for_its_session_and_writes_nothing(
+    client, db_session, per_request, monkeypatch, caplog
+) -> None:
+    _team, tablet = await a_claimed_device(db_session)
+    session_id = await opened_on_p04(client, tablet)
+    six_minutes_old = read_minutes_ago(6, P01="not_worked", P02="not_worked", P03="not_worked")
+    await stamped(per_request, session_id, six_minutes_old)
+
+    async def breaks(*_: Any, **__: Any) -> dict[str, str]:
+        raise RuntimeError("the database went away")
+
+    monkeypatch.setattr(statuses, "read_statuses", breaks)
+    with caplog.at_level(logging.ERROR, logger=background.__name__):
+        await background.read_the_earlier_passages_again(session_id=session_id)
+
+    async with per_request() as fresh:
+        kept = (await get_session(fresh, session_id)).earlier_passages
+    assert kept == six_minutes_old, "uma leitura que quebrava mexia no carimbo da sessão"
+    assert any(
+        session_id in record.getMessage() and record.exc_info for record in caplog.records
+    ), "uma leitura que quebrava escapava sem uma linha que dissesse de qual sessão"

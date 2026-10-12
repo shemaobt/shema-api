@@ -15,14 +15,22 @@ team whose work could be read.
 The read has her budgets: 3 s at the open, as her session route gives it, and 1.5 s before a
 turn, as her turn route does, and it runs on a session of its own, so a statement cut by the
 budget never touches the caller's transaction. A read that misses its budget never leaves the
-fact out: every passage it could not read is stamped not worked yet and named in the stamp's
-`unread`, as her reader does (`src/turn/earlierPassagesRead.ts`, app 18fa7c4). It is the
-safe reading, the one that never claims a memory the team does not have: the voice tells such
-a passage as the story's, «a história conta que…», and never recalls it as the team's.
+fact out: every passage it could not read keeps its status from the stamp before, or is
+stamped not worked yet when there is none, and is named in the stamp's `unread`, as her reader
+does (`src/turn/earlierPassagesRead.ts`, app 18fa7c4). It is the safe reading, the one that
+never claims a memory the team does not have: the voice tells such a passage as the story's,
+«a história conta que…», and never recalls it as the team's.
 
 `unread` sits beside the statuses as one comma-separated string, so the stamp stays a map of
 strings for everything that reads it. Those readers look only at the passages, so a stamp
 written before `unread` existed reads as one with nothing unread.
+
+`at` sits beside them too: when the stamp was read, in UTC, as an ISO 8601 string. After a
+turn, a stamp is read again off the voice's path once `at` is five minutes old, and a stamp
+with no `at` is read again on the next turn. That absence is what re-reads every stamp written
+before `at` existed, and every stamp a timeout left: a timeout writes no `at`, because the
+passages it names unread are due again at once, as her route reads again a stamp with an
+unread passage.
 
 Two statements for the whole book, never one per passage: the releases and the entered
 sessions, each over the earlier passages at once. Live rows only, so a Zerar takes a
