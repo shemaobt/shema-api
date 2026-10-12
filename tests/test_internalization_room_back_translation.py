@@ -131,6 +131,16 @@ def test_the_chunks_go_to_the_analyst_in_listening_order() -> None:
     ]
 
 
+def test_a_frase_of_a_recording_that_is_no_part_is_labelled_without_a_dangling_dash() -> None:
+    told = told_stretches()
+    block = segments_block(told, Addresses(by_stretch={told[1].id: "a parte 1"}))
+
+    assert block.splitlines() == [
+        "[frase 1] Noemi mandou Rute voltar.",
+        "[frase 2 — a parte 1] Rute disse que ia junto.",
+    ], "uma frase de gravação que não é parte chegava ao analista como «[frase 1 — ]»"
+
+
 def test_an_empty_telling_back_says_so_rather_than_looking_complete() -> None:
     assert "ainda não traduziu" in segments_block([], Addresses(), language_code="pt")
 
