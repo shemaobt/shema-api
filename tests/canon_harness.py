@@ -40,6 +40,7 @@ def forget_the_canon() -> None:
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()
     book_material._register_complete.cache_clear()
+    book_material._skeleton_registers.cache_clear()
     book_material.significant_absences.cache_clear()
     elements.elements_for.cache_clear()
     elements.scene_of.cache_clear()
@@ -168,6 +169,10 @@ A_FABLE_LOG_WITH_A_COMPLETE_REGISTER = _a_fable_log(
 )
 A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER = _a_fable_log(
     [_A_RULE], {"high_risk_register_complete": False}
+)
+A_FABLE_LOG_WITH_A_SKELETON_IN_A_COMPLETE_REGISTER = _a_fable_log(
+    [_A_RULE, {"id": "R2", "kind": "SKELETON_PENDING_HIGH_RISK_REVIEW", "note": "pending"}],
+    {"high_risk_register_complete": True},
 )
 A_FABLE_LOG_WITH_A_COMPLETE_REGISTER_AND_NO_RULE = _a_fable_log(
     [{**_A_RULE, "do_not_decide": False}], {"high_risk_register_complete": True}

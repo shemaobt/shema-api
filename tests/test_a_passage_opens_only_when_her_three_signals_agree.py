@@ -13,6 +13,7 @@ from app.services.internalization_room.sessions import create_session
 from tests.canon_harness import (
     A_FABLE_LOG_WITH_A_COMPLETE_REGISTER_AND_NO_RULE,
     A_FABLE_LOG_WITH_A_LAYER,
+    A_FABLE_LOG_WITH_A_SKELETON_IN_A_COMPLETE_REGISTER,
     a_fable_map,
     forget_the_canon,
 )
@@ -60,3 +61,17 @@ def test_a_passage_whose_three_signals_agree_opens_with_no_preservation_rule_rec
 
     assert book_material.unwalkable(parse_map.load_map(pericope)) is None
     assert resolve(set(), book="Fable") == pericope
+
+
+async def test_a_register_holding_a_skeleton_entry_keeps_the_passage_closed_though_marked_complete(
+    db_session: AsyncSession, a_passage_with_its_log: Callable[[str], str]
+) -> None:
+    pericope = a_passage_with_its_log(A_FABLE_LOG_WITH_A_SKELETON_IN_A_COMPLETE_REGISTER)
+
+    reason = book_material.unwalkable(parse_map.load_map(pericope))
+
+    assert reason is not None
+    assert pericope in reason
+    assert resolve(set(), book="Fable") is None
+    with pytest.raises(ValidationError):
+        await create_session(db_session, pericope=pericope)

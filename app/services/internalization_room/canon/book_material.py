@@ -22,6 +22,8 @@ from app.services.internalization_room.canon.parse_map import (
 LOGS_DIR = VENDOR / "compilation-log"
 COORDINATES_DIR = VENDOR / "meaning-coordinates"
 
+SKELETON_KIND = "SKELETON_PENDING_HIGH_RISK_REVIEW"
+
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
 _CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
 _JSON_BLOCK = re.compile(r"```json\s*(.*?)```", re.S)
@@ -141,6 +143,18 @@ def _register_complete(book: str) -> dict[str, bool]:
 
 
 @per_canon(maxsize=8)
+def _skeleton_registers(book: str) -> frozenset[str]:
+    return frozenset(
+        path.name.split("-", 1)[0]
+        for path in sorted(canon_path(LOGS_DIR).glob(f"*-{book}-*-COMPILATION-LOG.md"))
+        if any(
+            entry.get("kind") == SKELETON_KIND
+            for entry in _extract_audit(path.read_text(encoding="utf-8"))
+        )
+    )
+
+
+@per_canon(maxsize=8)
 def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     """The book's withholdings: audit entries the project marked `do_not_decide`.
 
@@ -207,6 +221,8 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
     book = meaning_map.book
     if book not in SERVED_BOOKS:
         return f"{pericope}: the {book} canon is not served in this release"
+    if pericope in _skeleton_registers(book):
+        return f"{pericope}: the high-risk register is still a skeleton, with no entry written"
     survey_complete = meaning_map.sta_status == SURVEYED_STATUS
     register_complete = _register_complete(book).get(pericope)
     if register_complete is None:
