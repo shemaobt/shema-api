@@ -117,3 +117,28 @@ async def test_a_turn_sent_back_once_then_passed_reads_two_attempts_in_order_the
             "note": None,
         },
     ]
+
+
+async def test_a_turn_the_validator_corrected_carries_the_corrected_text_that_was_voiced(
+    client, db_session, room_app, the_room_hears
+) -> None:
+    issue = _issue("imported_knowledge", "Rute casou")
+    the_room_hears(
+        ["Rute casou com Malom."],
+        [_verdict("correct", [issue], corrected_response="O que Rute fez?")],
+    )
+
+    turn = await _the_last_turn_as_the_desk_reads_it(client, db_session, room_app)
+
+    assert turn["voice"]["outcome"] == "corrected"
+    assert turn["voice"]["text"] == "O que Rute fez?"
+    assert turn["voice"]["trace"] == [
+        {
+            "attempt": 1,
+            "draft": "Rute casou com Malom.",
+            "verdict": "correct",
+            "issues": [issue],
+            "corrected": "O que Rute fez?",
+            "note": None,
+        }
+    ]
