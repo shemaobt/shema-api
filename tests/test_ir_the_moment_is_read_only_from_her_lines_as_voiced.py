@@ -403,3 +403,11 @@ def test_her_scene_closing_before_f3_is_kept_as_ignored_in_her_words() -> None:
 
 def test_her_scene_closing_after_the_familiarization_closed_is_not_ignored() -> None:
     assert _ignored(FAMILIARIZATION_CLOSED, f"{SCENE_ONE} {CLOSING}") == []
+
+
+def test_her_scene_closing_after_the_last_part_is_kept_as_ignored_in_her_words() -> None:
+    last = {"at": "articulation", "part": 4, "fenced": True}
+
+    assert _ignored(last, f"{SCENE_ONE} {CLOSING}") == ["part_closing: after the last part"], (
+        "o fechamento depois da última cena foi descartado sem registro"
+    )
