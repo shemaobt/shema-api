@@ -10,6 +10,7 @@ The budget is passed on the loop's clock, never on the wall's.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -18,10 +19,14 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.core.config import Settings
+from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.services.internalization_room import earlier_passages as statuses
 from app.services.internalization_room import prepare_opening as prepare_opening_module
+from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.run_turn import run_turn
 from app.services.internalization_room.sessions import get_session
 from tests.hearing_harness import the_loop_clock_passes
 from tests.release_harness import (
@@ -34,13 +39,19 @@ from tests.release_harness import (
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.tablet_turn_harness import the_room_opens, the_turn_is_scripted
 from tests.text_seam_harness import ScriptedAgent
+from tests.turn_harness import the_room_agent_is
 
 EARLIER = "EARLIER PASSAGES FOR THIS TEAM:"
 ALL_THREE_NOT_WORKED = (
     "EARLIER PASSAGES FOR THIS TEAM: Not worked yet: Ruth 1:1\N{EN DASH}5, "
     "Ruth 1:6\N{EN DASH}14, Ruth 1:15\N{EN DASH}18."
 )
-ALL_THREE_STAMPED_NOT_WORKED = {"P01": "not_worked", "P02": "not_worked", "P03": "not_worked"}
+ALL_THREE_UNREAD = {
+    "P01": "not_worked",
+    "P02": "not_worked",
+    "P03": "not_worked",
+    "unread": "P01, P02, P03",
+}
 P01_UNDER_HER_NOTICE = (
     "**Ruth 1:1\N{EN DASH}5** — The famine, the family's sojourn, and the emptying of the "
     "household\n"
@@ -151,7 +162,7 @@ def test_her_budgets_are_three_seconds_at_the_open_and_one_and_a_half_before_a_t
     assert (statuses.OPEN_READ_BOUND_S, statuses.TURN_READ_BOUND_S) == (3.0, 1.5)
 
 
-async def test_an_open_whose_statuses_do_not_answer_in_three_seconds_stamps_each_not_worked_yet(
+async def test_an_open_whose_statuses_miss_three_seconds_stamps_each_not_worked_and_unread(
     client, db_session, per_request, monkeypatch
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
@@ -167,8 +178,8 @@ async def test_an_open_whose_statuses_do_not_answer_in_three_seconds_stamps_each
         "uma leitura dos estados que não respondia segurava a abertura da passagem sem fim",
     )
 
-    assert await stored_stamp(per_request, session["session_id"]) == ALL_THREE_STAMPED_NOT_WORKED, (
-        "uma leitura lenta deixava a sessão sem carimbo, e a voz sem saber que nada foi lido"
+    assert await stored_stamp(per_request, session["session_id"]) == ALL_THREE_UNREAD, (
+        "o carimbo de uma leitura que estourou o prazo não dizia quais passagens não foram lidas"
     )
 
 
@@ -254,3 +265,37 @@ async def test_a_turn_whose_session_has_no_stamp_tells_the_guide_what_it_read_an
         "P02": "not_worked",
         "P03": "not_worked",
     }, "o carimbo lido antes do turno se perdia e cada turno lia de novo"
+
+
+async def test_a_stamp_naming_its_unread_passages_gives_the_validator_the_line_and_her_notices(
+    monkeypatch,
+) -> None:
+    validator: list[str] = []
+
+    async def answers(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            validator.append(system_prompt)
+            return json.dumps({"verdict": "pass", "issues": []})
+        return "Vamos ouvir a passagem."
+
+    the_room_agent_is(monkeypatch, turn=answers)
+
+    await run_turn(
+        transcript="",
+        coverage_state=initial_state("P04"),
+        messages=[],
+        guide_prompt=default_prompt(IRPromptKey.GUIDE)["prompt"],
+        validator_prompt=default_prompt(IRPromptKey.VALIDATOR)["prompt"],
+        pericope_num="P04",
+        language_code="pt",
+        opening=True,
+        settings=Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake"),
+        earlier_passages=ALL_THREE_UNREAD,
+    )
+
+    assert earlier_line(validator[0]) == ALL_THREE_NOT_WORKED, (
+        "um carimbo com as passagens não lidas tirava do Validador a linha das passagens anteriores"
+    )
+    assert P01_UNDER_HER_NOTICE in validator[0], (
+        "um carimbo com as passagens não lidas tirava do Validador o aviso dela"
+    )
