@@ -130,9 +130,12 @@ async def capture_and_note_a_hard_stretch(
         replaces=replaces,
         commit=False,
     )
-    if state is not None:
-        state.scope = state.scope or session.pericope
-        await save_back_translation(db, session, state, commit=False)
+    if not standing.never_analysed:
+        standing.checked = False
+        standing.verdict = None
+    if state is not None or not standing.never_analysed:
+        standing.scope = standing.scope or session.pericope
+        await save_back_translation(db, session, standing, commit=False)
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()
     return crossed

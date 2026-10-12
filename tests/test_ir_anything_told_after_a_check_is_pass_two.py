@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import segments as segments_api
 from app.db.models.internalization_room import IRSegment
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.sessions import back_translation_of, get_session
 from app.services.internalization_room.takes import take_by_id
 from tests.hard_stretch_harness import current
 from tests.release_harness import PREFIX, TABLET
@@ -107,3 +109,18 @@ async def test_the_recording_of_a_frase_replaced_after_a_check_is_kept_as_the_se
     assert recording.pass_number == 2, (
         "a gravação da frase traduzida de novo ficava na primeira passada, e o texto na segunda"
     )
+
+
+async def test_a_frase_replaced_after_a_clean_check_refuses_approval_until_a_new_check(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    session_id, stretches = await _checked(client, db_session)
+
+    await _replaced(client, session_id, stretches[1])
+
+    session = await get_session(db_session, session_id)
+    _artifact, blockers = await compose_internalization_release(db_session, session)
+    assert "telling_back_not_checked" in blockers, (
+        "a aprovação passava pela rodada limpa de antes da frase traduzida de novo"
+    )
+    assert back_translation_of(session).verdict is None
