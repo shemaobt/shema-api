@@ -315,6 +315,8 @@ class BackTranslationState(BaseModel):
 
 PLAYBACK_TOLERANCE_MS = 750
 
+THE_WHOLE_PASSAGE = "the whole passage"
+
 
 def played_ranges_cover_clip(
     played_ranges: list[tuple[int, int]], clip_duration_ms: int | None
@@ -416,7 +418,9 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 }
 
 
-def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str:
+def segments_block(
+    segments: list[IRSegment], addresses: Addresses, language_code: str = FLOOR
+) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
     Numbered from one over the list it is given, so the number is a position in *this* call
@@ -428,9 +432,13 @@ def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str
     """
     if not segments:
         return _NOTHING_TOLD_BACK_YET.get(language_code, _NOTHING_TOLD_BACK_YET[FLOOR])
-    return "\n".join(
-        f"{position}. {segment.transcript}" for position, segment in enumerate(segments, start=1)
-    )
+    lines = []
+    for position, segment in enumerate(segments, start=1):
+        label = [f"frase {position}", addresses.part_of(segment.id)]
+        if segment.pass_number == 2:
+            label.append("told again after a verdict")
+        lines.append(f"[{' — '.join(one for one in label if one)}] {segment.transcript}")
+    return "\n".join(lines)
 
 
 def _refused(condition: str, raw: str, session: str) -> None:
@@ -446,46 +454,21 @@ def _refused(condition: str, raw: str, session: str) -> None:
     logger.warning("BT analyst reply refused (%s) for session %s: %s", condition, session, raw)
 
 
-def _landed_without_a_frase(raw: str, session: str) -> None:
-    """A missing element the analyst named no readable frase for, counted rather than guessed.
+def _landed_without_a_frase(kind: FindingKind, raw: str, session: str) -> None:
+    """A finding the analyst named no readable frase for, counted rather than guessed.
 
     It is the one silent landing in this parser: an unrecognised `where` is refused out loud
     above, and a `where` left off lands on the frase the reply did name, which is the rule and
-    not an accident (ADR 0007). A chunk left off degrades to no address at all — the team is
-    sent to record more and go back to the rehearsal — and nothing said so, so neither the
-    golden scripts nor production could say how often the model leaves it out. Her prompt item
-    leaves the number optional while our output block requires it, and the item is not ours to
-    edit, so this counts until she rules.
-
-    The reply is behind it whole, as every other line in this file carries one.
-    """
-    logger.warning("BT analyst missing finding without a chunk for session %s: %s", session, raw)
-
-
-def _dropped_without_a_frase(kind: FindingKind, note: str, raw: str, session: str) -> None:
-    """An addition or an unclear the analyst named no readable frase for; dropped, not raised.
-
-    A missing element still lands with no chunk at all — the story simply has not been told
-    that far, and `_landed_without_a_frase` counts it. The other two kinds are a statement
-    about a chunk, and one naming none, or one outside the reading the analyst was given,
-    names nothing the team can act on: it goes the way the retired evidence kind does,
-    dropped and the rest of the reply read, rather than reaching the tablet as a finding
-    with no stretch.
-
-    Said only once the reading has been accepted, the way `_dropped` is: a reply that drops
-    every one of its findings to this rule is refused instead (`_parse_analysis`), and
-    announcing a drop it then threw away whole would send the next investigation to the
-    wrong place.
+    not an accident (ADR 0007). A chunk left off, or one outside the reading, degrades to no
+    address at all for every kind — the finding still reaches the team, without a number — and
+    nothing said so, so neither the golden scripts nor production could say how often the model
+    leaves it out. Her prompt leaves the number optional for a missing element while our output
+    block requires it, and the item is not ours to edit, so this counts until she rules.
 
     The reply is behind it whole, as every other line in this file carries one.
     """
     logger.warning(
-        "BT reply named %s with no readable frase (note: %s); dropped it and read the rest "
-        "for session %s: %s",
-        kind.value,
-        note,
-        session,
-        raw,
+        "BT analyst %s finding without a chunk for session %s: %s", kind.value, session, raw
     )
 
 
@@ -528,14 +511,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     kept, because refusing a reply whole over a name the prompt itself stopped offering is
     the ENG-719 failure with a different trigger — a team stopped three times by a round
     with no verdict, for a reading the room could have used.
-
-    An addition or an unclear naming no chunk this reading has, or one outside it, is
-    dropped the same way (ENG-1145) — but a reply left with nothing at all once every one of
-    its findings dropped for that reason is not a clean reading: it is refused like a
-    malformed reply, through the same `_refused` this function already returns None from,
-    because a reply that named findings and lost every one of them to an unreadable frase is
-    the ENG-719 failure again — a good telling-back blessed on the strength of a reply that
-    said nothing usable.
     """
     session = _session_of(segments)
     text = raw.strip()
@@ -557,7 +532,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     ]
 
     findings: list[Finding] = []
-    dropped_without_a_frase: list[tuple[FindingKind, str]] = []
     for entry in considered:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
@@ -575,9 +549,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             return None
         frase = entry.get("frase", entry.get("chunk"))
         chunk = _chunk_named(frase, segments)
-        if chunk is None and kind is not FindingKind.MISSING:
-            dropped_without_a_frase.append((kind, note))
-            continue
         lands_on = _segment_pointed_at(
             frase,
             segments,
@@ -586,8 +557,8 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             raw_reply=raw,
             session=session,
         )
-        if kind is FindingKind.MISSING and chunk is None:
-            _landed_without_a_frase(raw, session)
+        if chunk is None:
+            _landed_without_a_frase(kind, raw, session)
         findings.append(
             Finding.model_validate(
                 {
@@ -599,12 +570,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             )
         )
 
-    if considered and not findings:
-        _refused("every finding named no readable frase", raw, session)
-        return None
-
-    for kind, note in dropped_without_a_frase:
-        _dropped_without_a_frase(kind, note, raw, session)
     _dropped(reported, raw, f"session {session}")
     nuances = [_a_nuance(one, segments) for one in reported if _is_a_nuance(one)]
     return BtAnalysis(findings=findings, nuances=[one for one in nuances if one is not None])
@@ -736,6 +701,7 @@ async def analyse_telling_back(
     scope: str,
     pericope_num: str,
     analyst_prompt: str,
+    addresses: Addresses,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     language_code: str = FLOOR,
     settings: Settings | None = None,
@@ -763,7 +729,7 @@ async def analyse_telling_back(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
-        SEGMENTS=segments_block(segments, language_code),
+        SEGMENTS=segments_block(segments, addresses, language_code),
     )
     try:
         raw = await room_agent().analyst.call_agent(
