@@ -8,20 +8,14 @@ the failure are its own arithmetic.
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
-from typing import Any
 
 import httpx
 import pytest
 
 from scripts import bt_golden_runner
-from tests.golden_spend_harness import charged_call, the_room_answers
-
-BASE_URL = "http://room/api/internalization-room/text-seam/back-translation/"
-
-PRICED = [charged_call("analyst", 2.0), charged_call("speaker", 1.0)]
+from tests.golden_spend_harness import BT_PRICED, bt_args, bt_shelf, the_room_answers
 
 
 def _a_round_that_costs_three_dollars() -> httpx.Response:
@@ -33,47 +27,9 @@ def _a_round_that_costs_three_dollars() -> httpx.Response:
             "outcome": "pass",
             "conferida": True,
             "missingWithoutFrase": 0,
-            "usage": PRICED,
+            "usage": BT_PRICED,
         },
     )
-
-
-def _shelf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *scripts: tuple[str, str, int]) -> None:
-    shelf = tmp_path / "bt"
-    shelf.mkdir()
-    for name, pericope, rounds in scripts:
-        (shelf / f"{name}.json").write_text(
-            json.dumps(
-                {
-                    "name": name,
-                    "pericopeId": pericope,
-                    "language": "Brazilian Portuguese",
-                    "draft": {"clips": [{"key": "S1", "durationMs": 20000}]},
-                    "rounds": [
-                        {
-                            "frases": [
-                                {"clipKey": "S1", "coversFrom": 0, "coversTo": 10, "text": "Oi."}
-                            ],
-                            "expect": {"conferida": True, "findings": []},
-                        }
-                        for _ in range(rounds)
-                    ],
-                }
-            ),
-            encoding="utf-8",
-        )
-    monkeypatch.setattr(bt_golden_runner, "BT_DIR", shelf)
-
-
-def _args(out: Path, **over: Any) -> argparse.Namespace:
-    given: dict[str, Any] = {
-        "base_url": BASE_URL,
-        "script": None,
-        "out": str(out),
-        "access_code": "runner-de-teste",
-        "budget_usd": None,
-    }
-    return argparse.Namespace(**{**given, **over})
 
 
 async def test_an_empty_shelf_exits_with_a_message_and_not_a_value_error(
@@ -83,7 +39,7 @@ async def test_an_empty_shelf_exits_with_a_message_and_not_a_value_error(
     shelf.mkdir()
     monkeypatch.setattr(bt_golden_runner, "BT_DIR", shelf)
 
-    exit_code = await bt_golden_runner.run(_args(tmp_path / "reports"))
+    exit_code = await bt_golden_runner.run(bt_args(tmp_path / "reports"))
 
     assert exit_code == 2
     assert capsys.readouterr().err == f"bt golden: no script under {shelf}\n", (
@@ -106,9 +62,9 @@ async def test_the_room_turning_one_script_away_keeps_what_the_earlier_ones_cost
         return _a_round_that_costs_three_dollars()
 
     the_room_answers(monkeypatch, _room)
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 1), ("P03-c", "P03", 1))
 
-    exit_code = await bt_golden_runner.run(_args(tmp_path / "reports"))
+    exit_code = await bt_golden_runner.run(bt_args(tmp_path / "reports"))
 
     shown = capsys.readouterr()
     assert exit_code == 2, "a sala recusar um roteiro não é um check reprovado: é o 2 do runner"
@@ -135,10 +91,10 @@ async def test_a_script_killed_by_a_timeout_still_leaves_the_run_its_cost_total(
         return _a_round_that_costs_three_dollars()
 
     the_room_answers(monkeypatch, _room)
-    _shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
 
     with pytest.raises(httpx.ReadTimeout):
-        await bt_golden_runner.run(_args(tmp_path / "reports"))
+        await bt_golden_runner.run(bt_args(tmp_path / "reports"))
 
     assert "\ncost US$ 6.00 — analyst US$ 4.00 · speaker US$ 2.00\n" in capsys.readouterr().out, (
         "uma rodada de cada roteiro foi paga antes de o tempo esgotar, e a conta não aparecia"

@@ -7,63 +7,30 @@ room is a wire this test owns, so the money and the failure are its own arithmet
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
-from typing import Any
 
 import httpx
 import pytest
 
 from scripts import golden_runner
-from tests.golden_spend_harness import charged_call, the_room_answers
-from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, RUNNER_KEY, the_judge_answers
-
-STAMP = "2026-10-12T12-00-00"
-
-PRICED = [charged_call("guide", 2.0), charged_call("validator", 1.0)]
-
-
-def _shelf(tmp_path: Path, *scripts: tuple[str, str, int]) -> Path:
-    sessions = tmp_path / "sessions"
-    sessions.mkdir()
-    for name, pericope, turns in scripts:
-        (sessions / f"{name}.json").write_text(
-            json.dumps(
-                {
-                    "name": name,
-                    "pericopeId": pericope,
-                    "language": "Brazilian Portuguese",
-                    "turns": [{"team": f"fala {n}"} for n in range(turns)],
-                }
-            ),
-            encoding="utf-8",
-        )
-    return sessions
-
-
-def _args(sessions: Path, out: Path, **over: Any) -> argparse.Namespace:
-    given: dict[str, Any] = {
-        "base_url": "http://room/api/internalization-room/",
-        "script": None,
-        "sessions": str(sessions),
-        "only": None,
-        "out": str(out),
-        "turns": None,
-        "access_code": RUNNER_KEY,
-        "stamp": STAMP,
-        "rejudge": None,
-        "budget_usd": None,
-    }
-    return argparse.Namespace(**{**given, **over})
+from tests.golden_spend_harness import (
+    GOLDEN_PRICED,
+    golden_args,
+    golden_shelf,
+    the_room_answers,
+)
+from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, the_judge_answers
 
 
 async def test_a_session_asked_for_by_name_that_the_shelf_does_not_hold_is_named_back(
     tmp_path: Path, capsys
 ) -> None:
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1))
 
-    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports", only="P09-not-there"))
+    exit_code = await golden_runner.run(
+        golden_args(sessions, tmp_path / "reports", only="P09-not-there")
+    )
 
     assert exit_code == 2
     assert capsys.readouterr().err == "golden: no session named P09-not-there\n", (
@@ -74,9 +41,9 @@ async def test_a_session_asked_for_by_name_that_the_shelf_does_not_hold_is_named
 async def test_an_empty_sessions_directory_names_the_directory_and_not_a_session(
     tmp_path: Path, capsys
 ) -> None:
-    sessions = _shelf(tmp_path)
+    sessions = golden_shelf(tmp_path)
 
-    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports"))
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
 
     assert exit_code == 2
     assert capsys.readouterr().err == f"golden: no sessions under {sessions}\n", (
@@ -98,15 +65,15 @@ async def test_a_session_killed_by_a_timeout_still_leaves_the_readme_and_the_cos
         if len(turns) == 3:
             raise httpx.ReadTimeout("the room did not answer", request=request)
         return httpx.Response(
-            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": PRICED}
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
         )
 
     the_room_answers(monkeypatch, _room)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
     out = tmp_path / "reports"
 
     with pytest.raises(httpx.ReadTimeout):
-        await golden_runner.run(_args(sessions, out))
+        await golden_runner.run(golden_args(sessions, out))
 
     readme = (out / "README.md").read_text(encoding="utf-8")
     assert "| P01-a | PASS |" in readme and "| P02-b | — |" in readme, (
