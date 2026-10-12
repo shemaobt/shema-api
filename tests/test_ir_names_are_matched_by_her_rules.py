@@ -87,3 +87,12 @@ def test_ruth_alone_is_ruths_name_and_never_the_young_men_ruth_did_not_go_after(
     assert _team_says("P09", "ela não foi atrás dos rapazes")[young_men] == "engaged", (
         "«rapazes», o nome inteiro deles, não engajava os rapazes"
     )
+
+
+def test_resgatador_names_the_nearer_redeemer_only_where_boaz_is_not_the_redeemer() -> None:
+    assert _team_says("P11", "o resgatador tirou a sandália")["being:S4:B19"] == (
+        "not_encountered"
+    ), "«resgatador» engajava o resgatador mais próximo na cena em que Boaz é o resgatador"
+    assert _team_says("P11", "o resgatador passou por ali")["being:S1:B19"] == "engaged", (
+        "«resgatador» não engajava o resgatador mais próximo onde Boaz só convoca"
+    )

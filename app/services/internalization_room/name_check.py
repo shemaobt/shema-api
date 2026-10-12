@@ -9,7 +9,7 @@ from pathlib import Path
 from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.elements import Element, elements_for
-from app.services.internalization_room.canon.names import registry_entry
+from app.services.internalization_room.canon.names import registry_entry, roles_in_scene
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import is_panorama, merge, remaining
 
@@ -116,7 +116,25 @@ def _own_names(book: str, code: str) -> set[str]:
     }
 
 
-def _keys(element: Element, book: str, beings: set[str]) -> list[str]:
+def _session_forms(text: str) -> list[str]:
+    words = _content_words(text)
+    found = _forms().get(text.lower(), []) + (_forms().get(words[0], []) if len(words) == 1 else [])
+    found += [
+        form
+        for word in (words if len(words) > 1 else [])
+        for form in _forms().get(word, []) + _forms().get(word.removesuffix("'s"), [])
+    ]
+    return _with_bare(found)
+
+
+def _carried(book: str, peer: Element, role: str) -> set[str]:
+    english = (registry_entry(book, _code(peer)) or {}).get("english") or ""
+    texts = [text for text in (peer.label, role.replace("_", " "), english) if text]
+    return {_plain(word) for text in texts for word in _content_words(text) + _session_forms(text)}
+
+
+def _keys(element: Element, book: str, elements: tuple[Element, ...], pericope: str) -> list[str]:
+    beings = {_code(other) for other in elements if other.kind is ElementKind.BEING}
     entry = registry_entry(book, _code(element)) or {}
     english = entry.get("english") or ""
     label = element.label.lower()
@@ -145,6 +163,17 @@ def _keys(element: Element, book: str, beings: set[str]) -> list[str]:
         + tokens
     )
     taken = set().union(*(_own_names(book, other) for other in beings - {_code(element)}))
+    if entry.get("kind") == "PERSON" and element.scene is not None:
+        roles = roles_in_scene(pericope, element.scene)
+        taken |= set().union(
+            *(
+                _carried(book, peer, roles.get(_code(peer), ""))
+                for peer in elements
+                if peer.kind is ElementKind.BEING
+                and peer.scene == element.scene
+                and _code(peer) != _code(element)
+            )
+        )
     return whole + [part for part in parts if _plain(part) not in taken]
 
 
@@ -161,11 +190,9 @@ def names_heard(
     coverage_state: dict[str, str], *, team: str, voice: str, pericope: str
 ) -> dict[str, str]:
     book = load_map(pericope).book
-    beings = {
-        _code(element) for element in elements_for(pericope) if element.kind is ElementKind.BEING
-    }
+    elements = elements_for(pericope)
     named = [
-        (element.key, _keys(element, book, beings))
+        (element.key, _keys(element, book, elements, pericope))
         for element in remaining(coverage_state, pericope)
         if element.kind in _NAMED_KINDS
     ]
