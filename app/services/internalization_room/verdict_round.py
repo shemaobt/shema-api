@@ -14,6 +14,7 @@ first, so a voice that fails leaves no verdict behind claiming to have been spok
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -179,7 +180,7 @@ async def check_the_telling_back(
     outcome = await speak(current or ([offered] if offered else []))
     if outcome.used_fail_safe and offered is not None:
         outcome = await speak([])
-    elif offered is not None:
+    elif offered is not None and re.search(rf"frase\s+{offered.chunk}(?!\d)", outcome.speech, re.I):
         offered.voiced = "now"
 
     said = outcome.speech

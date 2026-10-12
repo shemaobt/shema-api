@@ -134,3 +134,25 @@ async def test_a_round_that_names_a_nuance_keeps_its_frase_words_story_and_that_
     ] == [[(3, "à noite", "foi naquela mesma noite", "now")]], (
         "a nuance da rodada só existia na memória do pedido e sumia com a resposta"
     )
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Só um detalhe: vocês traduziram «à noite»; a história conta outra coisa.",
+        "Só um detalhe, na frase 30: vocês traduziram «à noite».",
+    ],
+    ids=["no frase", "another number"],
+)
+async def test_a_validated_verdict_that_never_says_the_frase_leaves_the_nuance_unsaid(
+    client, analyst, speaker, db_session, line
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}]
+    speaker.line = line
+
+    result = await _a_round(client, TELLING)
+
+    kept = await _the_kept_rounds(db_session, result["sessionId"])
+    assert [one.voiced for one in kept[0].nuances] == [None], (
+        "a nuance contava como dita sem que a voz tivesse dito o número da frase"
+    )
