@@ -46,6 +46,16 @@ def finding_views(findings: list[Finding]) -> list[FindingView]:
     ]
 
 
+def named_nuance_view(state: room.BackTranslationState) -> FindingView | None:
+    named = next(
+        (one for one in (state.checks[-1].nuances if state.checks else []) if one.voiced == "now"),
+        None,
+    )
+    if named is None:
+        return None
+    return FindingView(kind="nuance", frase=named.chunk, segment_id=named.segment_id)
+
+
 async def add_chunk(
     session_id: str,
     background: BackgroundTasks,
@@ -405,6 +415,7 @@ async def _finished(
             findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=state.verdict.used_fail_safe,
             check_at=state.checks[-1].at if state.checks else None,
+            named_nuance=named_nuance_view(state),
         )
 
     with stage("db_let_go"):
@@ -447,4 +458,5 @@ async def _finished(
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
         check_at=state.checks[-1].at,
+        named_nuance=named_nuance_view(state),
     )

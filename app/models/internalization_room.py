@@ -551,6 +551,7 @@ class BackTranslationVerdictResponse(BaseModel):
     findings_remaining: int = 0
     used_fail_safe: bool = False
     check_at: datetime | None = None
+    named_nuance: FindingView | None = None
 
 
 class VerdictHeardRequest(BaseModel):

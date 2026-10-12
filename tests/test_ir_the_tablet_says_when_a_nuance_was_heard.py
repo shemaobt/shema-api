@@ -291,3 +291,37 @@ async def test_a_nuance_read_ahead_reaches_the_speaker_and_alone_still_confers(
     assert answer["checked"] is True, "uma nuance sozinha impedia a aprovação"
     assert answer["findings_remaining"] == 0, "a nuance entrava na conta dos achados em aberto"
     assert answer["findings"] == []
+
+
+async def test_the_verdict_answer_names_the_nuance_it_named_and_a_replay_names_it_again(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    report = await heard_every_part(db_session, session.id)
+    frase_2 = (await final_segments(db_session, session.id))[1]
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+
+    first = await press_terminei(client, session.id, report=report)
+    again = await press_terminei(client, session.id, report=report)
+
+    named = {"kind": "nuance", "frase": 2, "segment_id": frase_2.id}
+    assert first.json()["named_nuance"] == named, (
+        "o tablet não sabia qual frase o veredito nomeou e não tinha onde pôr a cor"
+    )
+    assert again.json()["named_nuance"] == named, "o veredito guardado voltava sem a sua nuance"
+
+
+async def test_a_verdict_that_named_no_nuance_names_none_to_the_tablet(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}]
+
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+
+    assert pressed.json()["named_nuance"] is None, (
+        "a linha da frase ganhava a cor de uma nuance que a voz não disse"
+    )
