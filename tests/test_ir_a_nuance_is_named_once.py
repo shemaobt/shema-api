@@ -218,3 +218,23 @@ async def test_a_nuance_heard_to_its_end_is_never_handed_again_and_the_round_say
     assert _handed(speaker) == [], "a mesma nuance, já ouvida até o fim, era dita de novo"
     kept = await _the_kept_rounds(db_session, first["sessionId"])
     assert [[one.voiced for one in check.nuances] for check in kept] == [["now"], ["before"]]
+
+
+async def test_a_second_different_detail_on_a_frase_whose_first_was_said_is_named_in_its_turn(
+    client, analyst, speaker, db_session
+) -> None:
+    another_on_frase_3 = {
+        **ON_FRASE_3,
+        "note": "Quem segura quem mudou.",
+        "quote": "Rute se agarrou",
+        "story": "Rute ficou com ela",
+    }
+    analyst.readings = [{"findings": [ON_FRASE_3]}, {"findings": [ON_FRASE_3, another_on_frase_3]}]
+    speaker.line = NAMES_FRASE_3
+    first = await _a_round(client, TELLING)
+
+    await _a_round(client, [FRASE_1_AGAIN], session_id=first["sessionId"])
+
+    assert [one["quote"] for one in _handed(speaker)] == ["Rute se agarrou"], (
+        "uma nuance era a sua frase: um segundo detalhe na mesma frase nunca era dito"
+    )

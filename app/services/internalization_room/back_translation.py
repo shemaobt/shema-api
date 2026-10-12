@@ -974,7 +974,10 @@ def nuances_said(checks: list[CheckRound]) -> list[Nuance]:
 
 
 def said_before(nuance: Nuance, said: list[Nuance]) -> bool:
-    return any(one.segment_id == nuance.segment_id for one in said)
+    return any(
+        one.segment_id == nuance.segment_id and _words_of(one.quote) == _words_of(nuance.quote)
+        for one in said
+    )
 
 
 def findings_block(findings: list[Finding] | list[Nuance], addresses: Addresses) -> str:
