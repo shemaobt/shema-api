@@ -277,9 +277,9 @@ async def finish(
 
     What counts as the same question is `already_analysed`, the record the analyst was already
     guarded by — one signal, so the four steps of a press can never disagree about whether the
-    team told back anything new. A press that reached the analyst and then failed saves nothing
-    at all, so the press after it does the whole turn rather than serving a verdict the team
-    never heard.
+    team told back anything new. A press that reached the analyst and then failed saves no
+    verdict, so the press after it does the whole turn rather than serving one the team never
+    heard.
     """
     with stopwatch("[bt-timing]", session_id):
         session = await room.session_for_room_caller(db, session_id, project_id)

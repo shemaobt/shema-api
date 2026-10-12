@@ -28,11 +28,18 @@ import httpx
 import pytest
 from google_crc32c import Checksum
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.exceptions import ERROR_CODE_UPSTREAM
-from app.db.models.internalization_room import IRPromptKey, IRSegment, IRTakeKind
+from app.db.models.internalization_room import (
+    IRPromptKey,
+    IRSegment,
+    IRSession,
+    IRSessionStatus,
+    IRTakeKind,
+)
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room import verdict_round
 from app.services.internalization_room._default_prompts import default_prompt
@@ -449,7 +456,7 @@ async def test_the_valid_finding_reaches_the_session(
     assert resumed["checked"] is False
 
 
-async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
+async def test_a_reply_the_room_cannot_read_is_heard_as_d_1_and_not_as_a_provider_that_is_down(
     client: httpx.AsyncClient,
     analyst: Analyst,
     caplog: pytest.LogCaptureFixture,
@@ -476,13 +483,21 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     with caplog.at_level(logging.WARNING):
         answered = await _finish(client, db_session, session_id)
 
-    assert answered.status_code == 502, answered.text
+    assert answered.status_code == 200, answered.text
     body = answered.json()
-    assert body["code"] == "UNREADABLE_REPLY"
+    assert body["fixed_line"] == "D0", "a equipe ouve a primeira linha D dela, não um erro"
+    assert body["audio_url"] == ""
+    assert body["used_fail_safe"] is True
+    assert body["checked"] is False
+    assert body["finding_kind"] is None
     assert UPSTREAM_LOG_LINE not in caplog.text, (
         "o serviço externo respondeu; chamar isso de queda custou uma investigação inteira"
     )
     assert verdicts == [], "sem leitura não há veredito: a voz não é chamada"
+    standing = (
+        await db_session.execute(select(IRSession.status).where(IRSession.id == session_id))
+    ).scalar_one()
+    assert standing is IRSessionStatus.IN_PROGRESS, "a leitura ilegível não chama ninguém"
 
     resumed = await _resumed(client, session_id)
     assert resumed["checked"] is False
@@ -490,6 +505,47 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
 
     await _finish(client, db_session, session_id)
     assert analyst.readings == 2, "nada foi salvo: o próximo terminei pergunta de novo"
+
+
+async def test_the_press_after_a_d_1_reads_the_telling_again_and_goes_on_as_usual(
+    client: httpx.AsyncClient,
+    analyst: Analyst,
+    spoken: list[str],
+    db_session: AsyncSession,
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    heard = await _finish(client, db_session, session_id)
+    assert heard.json()["fixed_line"] == "D0"
+
+    analyst.reply = '{"evidence_sufficient": true, "findings": []}'
+    again = await _finish(client, db_session, session_id)
+
+    assert again.status_code == 200, again.text
+    body = again.json()
+    assert analyst.readings == 2, "o D-1 foi servido de novo sem o analista ler outra vez"
+    assert body["fixed_line"] == ""
+    assert body["checked"] is True
+    assert spoken == ["Vocês contaram bem."]
+    assert (await _resumed(client, session_id))["checked"] is True
+
+
+async def test_the_d_1_is_a_turn_the_room_keeps(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    kept = (await room.get_session(db_session, session_id)).messages or []
+
+    guide = [message for message in kept if message["role"] == "guide"]
+    assert len(guide) == 1
+    assert guide[0]["text"] == "Desculpa, não consegui ouvir direito — podem repetir?"
+    assert guide[0]["outcome"] == "fail_safe"
+    assert guide[0]["fixed_line"] == "D0"
+    assert guide[0]["category"] == "D"
 
 
 async def test_a_provider_that_is_down_is_still_an_upstream_failure(

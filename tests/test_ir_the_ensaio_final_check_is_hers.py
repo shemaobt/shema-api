@@ -403,3 +403,16 @@ async def test_an_unclear_frase_named_out_of_range_reaches_her_speaker_without_a
         {"kind": "unclear", "note": "Não deu.", "repair": "part"}
     ], "o pouco claro numa frase que não existe era jogado fora"
     assert result["conferida"] is False
+
+
+async def test_an_analyst_reply_the_room_cannot_read_is_heard_as_d_1_with_no_verdict(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": "nada"}]
+
+    result = await _a_round(client, TELLING)
+
+    assert result["spoken"] == "Desculpa, não consegui ouvir direito — podem repetir?"
+    assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "um D-1 não dá a passagem por conferida"
+    assert speaker.drafts == [], "sem leitura não há veredito: o falante não é chamado"
