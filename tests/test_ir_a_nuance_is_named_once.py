@@ -66,9 +66,12 @@ class Speaker:
     def __init__(self) -> None:
         self.line = CLEAN
         self.drafts: list[str] = []
+        self.verdicts: list[str] = []
 
     async def __call__(self, *, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
+            if self.verdicts:
+                return self.verdicts.pop(0)
             return json.dumps({"verdict": "pass", "issues": []})
         self.drafts.append(system_prompt.replace(CACHE_BREAK, ""))
         return self.line
@@ -155,4 +158,21 @@ async def test_a_validated_verdict_that_never_says_the_frase_leaves_the_nuance_u
     kept = await _the_kept_rounds(db_session, result["sessionId"])
     assert [one.voiced for one in kept[0].nuances] == [None], (
         "a nuance contava como dita sem que a voz tivesse dito o número da frase"
+    )
+
+
+async def test_a_nuance_verdict_fallen_to_the_fail_safe_is_spoken_clean_and_the_nuance_stays_unsaid(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}]
+    speaker.line = NAMES_FRASE_3
+    speaker.verdicts = ["isto não é um veredito"]
+
+    result = await _a_round(client, TELLING)
+
+    assert len(speaker.drafts) == 2
+    assert result["conferida"] is True
+    kept = await _the_kept_rounds(db_session, result["sessionId"])
+    assert [one.voiced for one in kept[0].nuances] == [None], (
+        "a nuance cujo veredito caiu na linha A contava como dita pela rodada limpa"
     )
