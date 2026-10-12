@@ -109,3 +109,26 @@ async def test_a_finding_one_write_took_away_stays_away_when_a_write_that_read_i
     assert [finding.note for finding in stored.findings] == ["faltou a colheita"], (
         "o achado sobre o áudio aposentado voltava pela escrita que o tinha lido antes"
     )
+
+
+async def test_a_playback_report_read_before_a_check_lands_its_listening_and_keeps_the_check(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    checking_db, checking, checking_state = await _read(rival_factory, session.id)
+    reporting_db, reporting, reporting_state = await _read(rival_factory, session.id)
+
+    checking_state.checked = True
+    await service.save_back_translation(checking_db, checking, checking_state)
+    reporting_state.played_ranges = [[0, 4200]]
+    reporting_state.clip_duration_ms = 4200
+    await service.save_back_translation(reporting_db, reporting, reporting_state)
+    await checking_db.close()
+    await reporting_db.close()
+
+    stored = await _stored(rival_factory, session.id)
+    assert (stored.checked, stored.played_ranges, stored.clip_duration_ms) == (
+        True,
+        [[0, 4200]],
+        4200,
+    ), "o relatório de escuta refeito sobre a leitura nova perdia o que ele mesmo trazia"

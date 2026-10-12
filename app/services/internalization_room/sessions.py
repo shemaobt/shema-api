@@ -1088,6 +1088,9 @@ def back_translation_of(session: IRSession) -> BackTranslationState:
 def _merged_forward(
     read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
 ) -> BackTranslationState:
+    for name in vars(wanted).keys() - {"findings", "checks"}:
+        if getattr(wanted, name) != getattr(read, name):
+            setattr(fresh, name, getattr(wanted, name))
     taken = [one for one in read.findings if one not in wanted.findings]
     fresh.findings = [
         *(one for one in fresh.findings if one not in taken),
