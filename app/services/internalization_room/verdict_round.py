@@ -34,6 +34,8 @@ from app.services.internalization_room.back_translation import (
     findings_block,
     findings_on_stretches_that_count,
     findings_remaining,
+    nuances_said,
+    said_before,
     segments_block,
     the_finding_that_leads,
 )
@@ -176,7 +178,11 @@ async def check_the_telling_back(
             session_id=session.id,
         )
 
-    offered = None if current else next(iter(nuances), None)
+    said_already = nuances_said(state.checks)
+    for one in nuances:
+        if said_before(one, said_already):
+            one.voiced = "before"
+    offered = None if current else next((one for one in nuances if one.voiced is None), None)
     outcome = await speak(current or ([offered] if offered else []))
     if outcome.used_fail_safe and offered is not None:
         outcome = await speak([])

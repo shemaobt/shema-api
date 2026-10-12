@@ -964,6 +964,19 @@ def findings_remaining(findings: list[Finding]) -> int:
     return len(findings) - len(_swaps(findings))
 
 
+def nuances_said(checks: list[CheckRound]) -> list[Nuance]:
+    return [
+        one
+        for check in checks
+        for one in check.nuances
+        if one.voiced == "before" or (one.voiced == "now" and check.heard_at is not None)
+    ]
+
+
+def said_before(nuance: Nuance, said: list[Nuance]) -> bool:
+    return any(one.segment_id == nuance.segment_id for one in said)
+
+
 def findings_block(findings: list[Finding] | list[Nuance], addresses: Addresses) -> str:
     return json.dumps(
         [_for_her_speaker(one, addresses) for one in findings], ensure_ascii=False, indent=2

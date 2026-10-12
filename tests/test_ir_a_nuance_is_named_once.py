@@ -191,3 +191,30 @@ async def test_every_round_the_seam_plays_counts_as_heard_to_its_end(
         "o roteiro dourado nunca ouvia o veredito e a mesma nuance voltava a cada rodada"
     )
     assert kept[0].heard_at >= kept[0].at
+
+
+def _handed(speaker: Speaker, run: int = -1) -> list[dict]:
+    return list(
+        json.loads(speaker.drafts[run].split("## The findings for the whole passage\n\n")[1])
+    )
+
+
+FRASE_1_AGAIN = {
+    **TELLING[0],
+    "text": "Noemi soube que havia pão e voltou com as noras.",
+    "supersedes": 0,
+}
+
+
+async def test_a_nuance_heard_to_its_end_is_never_handed_again_and_the_round_says_it_was_before(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}, {"findings": [ON_FRASE_3]}]
+    speaker.line = NAMES_FRASE_3
+    first = await _a_round(client, TELLING)
+
+    await _a_round(client, [FRASE_1_AGAIN], session_id=first["sessionId"])
+
+    assert _handed(speaker) == [], "a mesma nuance, já ouvida até o fim, era dita de novo"
+    kept = await _the_kept_rounds(db_session, first["sessionId"])
+    assert [[one.voiced for one in check.nuances] for check in kept] == [["now"], ["before"]]
