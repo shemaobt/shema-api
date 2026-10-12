@@ -171,6 +171,7 @@ async def play_golden_turn(
             commit=False,
         )
         hear_the_names(
+            db,
             session,
             team=stored_opening_note(session) if opening else outcome.transcript,
             voice=outcome.speech,

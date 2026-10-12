@@ -9,6 +9,7 @@ reading (`classify_coverage.py:266-268`), so a «Noemi» said on that turn was n
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -16,9 +17,11 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.db.models.internalization_room import IRCoverageEvent
 from app.services import internalization_room as room
 from app.services.internalization_room import background, turn_instructions
 from app.services.internalization_room.llm import CACHE_BREAK
@@ -116,4 +119,29 @@ async def test_a_name_in_a_golden_openings_note_is_read_as_the_teams_and_engaged
     stored = (await room.get_session(db_session, session_id)).coverage_state or {}
     assert stored.get("being:S1:B3") == "engaged", (
         "a nota de abertura pela porta dourada nomeava Noemi e a conta dela não era engajada"
+    )
+
+
+async def test_naomi_engaged_by_the_turn_leaves_one_event_and_the_classifier_none_more(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def the_reader_says_naomi(**_: Any) -> str:
+        return json.dumps({"decisions": [{"element_id": "being:S1:B3", "new_status": "engaged"}]})
+
+    the_room_agent_is(monkeypatch, classifier=the_reader_says_naomi)
+    session_id = await _a_p01_session_opened(client)
+
+    await _turn(client, session_id, "A Noemi ficou.")
+
+    events = (
+        await db_session.scalars(
+            select(IRCoverageEvent.status).where(
+                IRCoverageEvent.session_id == session_id,
+                IRCoverageEvent.element_key == "being:S1:B3",
+            )
+        )
+    ).all()
+    assert sorted(events) == ["engaged", "surfaced"], (
+        "a Sala de Observação lê os eventos: a conta de Noemi movida no turno não deixava "
+        "evento, ou o classificador contava de novo"
     )

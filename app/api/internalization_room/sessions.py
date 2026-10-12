@@ -111,7 +111,7 @@ async def _write_the_turn(
                 scene=_scene_of(session),
                 commit=False,
             ):
-                hear_the_names(session, team=stored_opening_note(session), voice=outcome.speech)
+                hear_the_names(db, session, team=stored_opening_note(session), voice=outcome.speech)
             return session
         session = await room.append_exchange(
             db,
@@ -122,7 +122,7 @@ async def _write_the_turn(
             scene=_scene_of(session, outcome.transcript),
             commit=False,
         )
-        hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
+        hear_the_names(db, session, team=outcome.transcript, voice=outcome.speech)
         return session
 
 
@@ -809,7 +809,7 @@ async def _draft_the_turn(
         if await room.append_opening(
             db, session, guide_response=speech, attempts=attempts, commit=False
         ):
-            hear_the_names(session, team=stored_opening_note(session), voice=speech)
+            hear_the_names(db, session, team=stored_opening_note(session), voice=speech)
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),

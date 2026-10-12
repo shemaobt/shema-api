@@ -6,6 +6,8 @@ import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.elements import Element, elements_for
@@ -16,6 +18,7 @@ from app.services.internalization_room.canon.names import (
 )
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import is_panorama, merge, remaining
+from app.services.internalization_room.coverage_events import record_transitions
 
 SESSION_FORMS = Path(__file__).parent / "canon" / "session-forms.json"
 
@@ -219,9 +222,10 @@ def stored_opening_note(session: IRSession) -> str:
     )
 
 
-def hear_the_names(session: IRSession, *, team: str, voice: str) -> None:
+def hear_the_names(db: AsyncSession, session: IRSession, *, team: str, voice: str) -> None:
     if is_panorama(session.pericope):
         return
-    session.coverage_state = names_heard(
-        session.coverage_state or {}, team=team, voice=voice, pericope=session.pericope
-    )
+    before = session.coverage_state or {}
+    after = names_heard(before, team=team, voice=voice, pericope=session.pericope)
+    record_transitions(db, session, before=before, after=after)
+    session.coverage_state = after
