@@ -1166,3 +1166,52 @@ class SessionTurn(BaseModel):
 class SessionTurnsResponse(BaseModel):
     session_id: str
     turns: list[SessionTurn]
+
+
+class BeadState(StrEnum):
+    """Her three states: «engajado», «mencionado pelo guia» and «ainda não tocado».
+
+    The words are the Desk's. The server serves these keys so the client never computes a state.
+    """
+
+    ENGAGED = "engaged"
+    SURFACED = "surfaced"
+    UNTOUCHED = "untouched"
+
+
+class SessionCoverageBead(BaseModel):
+    key: str
+    label: str
+    state: BeadState
+
+
+class SessionCoverageGroup(BaseModel):
+    kind: ElementKind
+    beads: list[SessionCoverageBead]
+
+
+class SessionCoverageResponse(BaseModel):
+    """What the consultant reads of one session's coverage: her record's «Cobertura» block.
+
+    `groups` carry the beads by kind in her fixed order, which is the order of `ElementKind`:
+    «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
+    «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
+    listed. Each bead carries the map's element label as written, in the map's own English,
+    which is what her record shows (`e.label`). The Portuguese names of the beads live in
+    `labelled_elements`, which the Desk's session portrait (`team_sessions.py`) reads.
+
+    `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
+    coverage when the read happens by the code that renders it for the Guide: what the voice
+    will be handed on its next turn if nothing changes, without the room facts that follow it.
+
+    A Panorama do Livro has no coverage: `panorama` is true, there are no groups and no ledger,
+    and the Desk shows her line «O Panorama não tem cobertura.» A passage whose map gives no
+    coverage element has `no_elements` true and no groups, and the Desk shows «Sem elementos de
+    cobertura.»
+    """
+
+    session_id: str
+    groups: list[SessionCoverageGroup]
+    panorama: bool
+    no_elements: bool
+    ledger: str | None
