@@ -37,9 +37,13 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
 from app.services.internalization_room import halt, opening_claim
-from app.services.internalization_room.background import settle_coverage
+from app.services.internalization_room.background import (
+    read_the_earlier_passages_again,
+    settle_coverage,
+)
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import coverage_view
+from app.services.internalization_room.earlier_passages import earlier_passages_due
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech, stop_hearing
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.live_turn import current_scene_id
@@ -865,6 +869,8 @@ async def _draft_the_turn(
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
         )
+    if earlier_passages_due(session.earlier_passages):
+        background.add_task(read_the_earlier_passages_again, session_id=session.id)
 
     reply = TurnResponse(
         session_id=session.id,
