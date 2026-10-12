@@ -39,6 +39,7 @@ from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.device_harness import TABLET_TEAM
 from tests.opening_harness import (
+    NOTE_PT_P03,
     a_scripted_room,
     ask_for_the_opening,
     the_tablet_opens,
@@ -190,7 +191,10 @@ async def test_two_no_audio_requests_with_different_turn_ids_on_a_new_session_dr
     assert {**a.json(), "turn_id": ""} == {**b.json(), "turn_id": ""}, (
         "os dois tablets ouviram aberturas diferentes"
     )
-    assert await _conversation(rival_factory, session.id) == [("guide", OPENING)]
+    assert await _conversation(rival_factory, session.id) == [
+        ("team", NOTE_PT_P03),
+        ("guide", OPENING),
+    ]
 
 
 async def test_a_request_for_the_opening_without_a_turn_id_joins_the_opening_another_tablet_is_drafting(  # noqa: E501
@@ -242,6 +246,7 @@ async def test_a_team_turn_sent_while_the_opening_drafts_is_answered_after_the_o
     assert opened.status_code == 200, opened.text[:300]
     assert spoken.status_code == 200, spoken.text[:300]
     assert await _conversation(rival_factory, session.id) == [
+        ("team", NOTE_PT_P03),
         ("guide", OPENING),
         ("team", SAID),
         ("guide", REPLY),
@@ -347,7 +352,10 @@ async def test_a_tablet_whose_opening_failed_leaves_the_claim_free_and_the_next_
 
     assert again.status_code == 200, again.text[:300]
     assert again.json()["audio_url"] == clip_url(_clip_of(OPENING), session_id=session.id)
-    assert await _conversation(rival_factory, session.id) == [("guide", OPENING)]
+    assert await _conversation(rival_factory, session.id) == [
+        ("team", NOTE_PT_P03),
+        ("guide", OPENING),
+    ]
 
 
 async def test_an_opening_claimed_by_a_request_on_another_instance_is_waited_for_not_drafted_again(
@@ -380,7 +388,10 @@ async def test_an_opening_claimed_by_a_request_on_another_instance_is_waited_for
     assert answered.status_code == 200, answered.text[:300]
     assert answered.json() == {**stored, "turn_id": "deste-tablet"}
     assert guide.asked == 0, "a abertura reivindicada por outra instancia foi redigida de novo"
-    assert await _conversation(rival_factory, session.id) == [("guide", OPENING)]
+    assert await _conversation(rival_factory, session.id) == [
+        ("team", NOTE_PT_P03),
+        ("guide", OPENING),
+    ]
 
 
 async def test_a_claim_left_by_a_holder_that_died_is_taken_over(
@@ -400,7 +411,10 @@ async def test_a_claim_left_by_a_holder_that_died_is_taken_over(
 
     assert answered.status_code == 200, answered.text[:300]
     assert guide.asked == 1
-    assert await _conversation(rival_factory, session.id) == [("guide", OPENING)]
+    assert await _conversation(rival_factory, session.id) == [
+        ("team", NOTE_PT_P03),
+        ("guide", OPENING),
+    ]
 
 
 async def test_claiming_the_opening_does_not_count_as_the_teams_activity(
@@ -517,4 +531,7 @@ async def test_an_opening_that_fails_after_it_was_written_leaves_the_claim_free(
         )
 
     assert again.status_code == 200, again.text[:300]
-    assert await _conversation(rival_factory, session.id) == [("guide", OPENING)]
+    assert await _conversation(rival_factory, session.id) == [
+        ("team", NOTE_PT_P03),
+        ("guide", OPENING),
+    ]

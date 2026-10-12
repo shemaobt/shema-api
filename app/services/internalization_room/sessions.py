@@ -23,7 +23,7 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room import PlayedTake
-from app.services.internalization_room import halt
+from app.services.internalization_room import halt, turn_instructions
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     findings_after_a_part_is_recorded_again,
@@ -43,7 +43,7 @@ from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.fail_safe import FailSafe
-from app.services.internalization_room.languages import floor, normalize
+from app.services.internalization_room.languages import floor, normalize, room_language
 from app.services.internalization_room.live import live
 from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
@@ -524,6 +524,7 @@ async def append_exchange(
     told_back: str = "",
     commit: bool = True,
     scene_rehearsals: list[str] | None = None,
+    opening_note: str = "",
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -580,6 +581,8 @@ async def append_exchange(
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
     if told_back:
         stamp["told_back"] = True
+    if opening_note:
+        messages.append({"role": "team", "text": opening_note, "opening_note": True, **stamp})
     if outcome is not None and outcome.room_note:
         messages.append({"role": "room", "text": outcome.room_note, **stamp})
     if team_utterance:
@@ -741,6 +744,13 @@ def was_opened(session: IRSession) -> bool:
     return any(line.get("role") == "guide" for line in session.messages or [])
 
 
+def the_opening_note(session: IRSession) -> str:
+    language = room_language(session.language)
+    if is_panorama(session.pericope):
+        return turn_instructions.panorama_note(book_of(session.pericope), language)
+    return turn_instructions.opening_note(session.pericope, language)
+
+
 async def append_opening(
     db: AsyncSession,
     session: IRSession,
@@ -778,6 +788,7 @@ async def append_opening(
         attempts=attempts,
         scene=scene,
         commit=commit,
+        opening_note=the_opening_note(session),
     )
     return True
 

@@ -35,7 +35,7 @@ from app.services.internalization_room.synthesize_facilitator_speech import faci
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.device_harness import TABLET_TEAM
-from tests.opening_harness import ask_for_the_opening
+from tests.opening_harness import NOTE_PT_P03, ask_for_the_opening
 from tests.release_harness import P
 from tests.room_harness import room_client
 from tests.turn_harness import the_room_agent_is
@@ -56,7 +56,7 @@ async def test_an_opening_on_a_session_where_nobody_has_spoken_is_its_first_line
     assert landed is True
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
-    assert [message["text"] for message in reread.messages] == [OPENING]
+    assert [message["text"] for message in reread.messages] == [NOTE_PT_P03, OPENING]
 
 
 async def test_an_opening_landing_after_the_teams_first_turn_is_dropped_and_logged(
