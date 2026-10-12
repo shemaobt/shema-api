@@ -244,7 +244,7 @@ def moment_step(
         if outside or closing_after_another:
             continue
         if after.at == "ensaio_final" and line.cause in _NUMBERED:
-            ignored.append(f"{line.cause} {line.part}: after the send-off (Ensaio Final)")
+            ignored.append(f"{_described(line)}: after the send-off (Ensaio Final)")
         moved = _moved(after, line)
         if moved != after:
             by.append(line.cause)
@@ -260,6 +260,11 @@ class _Line(NamedTuple):
     cause: Cause
     part: int | None = None
     to: At | None = None
+
+
+def _described(line: _Line) -> str:
+    where = f" ({line.to})" if line.cause == "where_we_are" else ""
+    return f"{line.cause} {line.part}{where}" if line.part is not None else f"{line.cause}{where}"
 
 
 def _triggers(folded: str, parts: int) -> list[_Line]:

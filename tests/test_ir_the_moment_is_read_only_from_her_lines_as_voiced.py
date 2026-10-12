@@ -278,3 +278,25 @@ def test_her_scene_closing_after_another_moment_line_in_the_reply_moves_nothing(
     assert _after(FAMILIARIZATION_CLOSED, voiced) == FAMILIARIZATION_CLOSED, (
         f"o fechamento abriu a cena 1 depois de outra linha de momento: {earlier!r}"
     )
+
+
+@pytest.mark.parametrize(
+    ("voiced", "recorded"),
+    [
+        ("Vamos pra Articulação da cena 2.", "articulation_entrance 2"),
+        ("Estamos na Articulação da cena 2.", "where_we_are 2 (articulation)"),
+        ("Estamos na Internalização da cena 3.", "where_we_are 3 (internalization)"),
+        ("Estamos na Familiarização.", "where_we_are (familiarization)"),
+    ],
+)
+def test_every_numbered_line_after_the_send_off_is_kept_in_her_words(
+    voiced: str, recorded: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": ENSAIO_FINAL}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+
+    assert step is not None
+    assert step.ignored == [f"{recorded}: after the send-off (Ensaio Final)"], (
+        "uma linha de onde estamos depois da despedida foi ignorada sem ser anotada do jeito dela"
+    )
