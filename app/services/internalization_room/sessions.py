@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -721,6 +721,20 @@ def _containment_of(outcome: TurnOutcome) -> str:
 _STORED_JSON = Text().with_variant(JSONB(), "postgresql")
 
 
+_TRIES = 5
+
+
+async def _written_forward(
+    db: AsyncSession, session_id: str, column: Any, read: Any, onto: Callable[[Any], Any]
+) -> tuple[Any, Any]:
+    for _ in range(_TRIES):
+        value = onto(read)
+        if value == read or await _written_unless_moved(db, session_id, column, read, value):
+            return read, value
+        read = await db.scalar(select(column).where(IRSession.id == session_id))
+    raise ConflictError(f"Session {session_id}: {column.key} kept moving under every try")
+
+
 async def _written_unless_moved(
     db: AsyncSession, session_id: str, column: Any, read: Any, value: Any
 ) -> bool:
@@ -765,13 +779,13 @@ async def apply_coverage(
     conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
-    kept: dict[str, Any] | None = session.coverage_state
-    settled = furthest(kept or {}, coverage_state, pericope_num=session.pericope)
-    while settled != kept and not await _written_unless_moved(
-        db, session.id, IRSession.coverage_state, kept, settled
-    ):
-        kept = await db.scalar(select(IRSession.coverage_state).where(IRSession.id == session.id))
-        settled = furthest(kept or {}, coverage_state, pericope_num=session.pericope)
+    kept, settled = await _written_forward(
+        db,
+        session.id,
+        IRSession.coverage_state,
+        session.coverage_state,
+        lambda read: furthest(read or {}, coverage_state, pericope_num=session.pericope),
+    )
     record_transitions(db, session, before=kept or {}, after=settled)
     set_committed_value(session, "coverage_state", settled)
     if (
@@ -1108,15 +1122,21 @@ async def save_back_translation(
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
     """
-    read: dict[str, Any] | None = session.back_translation
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
-    while not await _written_unless_moved(
-        db, session.id, IRSession.back_translation, read, written
-    ):
-        read = await db.scalar(select(IRSession.back_translation).where(IRSession.id == session.id))
-        fresh = BackTranslationState.model_validate(read or {})
-        written = _merged_forward(base, state, fresh).model_dump(mode="json")
+    _, written = await _written_forward(
+        db,
+        session.id,
+        IRSession.back_translation,
+        session.back_translation,
+        lambda read: (
+            written
+            if read == session.back_translation
+            else _merged_forward(
+                base, state, BackTranslationState.model_validate(read or {})
+            ).model_dump(mode="json")
+        ),
+    )
     set_committed_value(session, "back_translation", written)
     for name, value in vars(BackTranslationState.model_validate(written)).items():
         if getattr(state, name) != value:

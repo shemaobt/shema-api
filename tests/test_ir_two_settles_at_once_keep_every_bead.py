@@ -10,11 +10,15 @@ a second Cloud Run instance would land it: after this settle read the coverage a
 wrote.
 """
 
+import asyncio
+import json
 import logging
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.exceptions import ConflictError
 from app.db.models.internalization_room import IRCoverageEvent, IRSession
 from app.services.internalization_room import sessions as service
 from app.services.internalization_room.canon.elements import element_keys
@@ -131,3 +135,28 @@ async def test_a_settle_landing_while_a_turn_is_in_flight_lets_the_turn_land_not
         "um settle que movesse a versão da sessão devolvia 409 a todo turno em voo"
     )
     assert landed.coverage_state[keys[0]] == LIT
+
+
+async def test_a_settle_whose_reading_never_matches_gives_up_after_five_tries_not_forever(
+    db_session: AsyncSession, monkeypatch, caplog
+) -> None:
+    keys = element_keys(P)
+    session = await service.create_session(db_session, pericope=P)
+    unmatchable = json.dumps(session.coverage_state, separators=(",", ":"))
+    await db_session.execute(
+        text("UPDATE ir_sessions SET coverage_state = :stored WHERE id = :id"),
+        {"stored": unmatchable, "id": session.id},
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    with (
+        caplog.at_level(logging.WARNING, logger=SESSIONS_LOGGER),
+        pytest.raises(ConflictError),
+    ):
+        await asyncio.wait_for(
+            service.apply_coverage(db_session, session.id, _lighting(keys[0])), timeout=5
+        )
+
+    refusals = [r for r in caplog.records if "stale read" in r.getMessage()]
+    assert len(refusals) == 5, "uma comparação que nunca casa girava para sempre, presa à conexão"
