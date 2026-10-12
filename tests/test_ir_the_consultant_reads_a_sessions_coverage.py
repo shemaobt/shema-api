@@ -115,3 +115,22 @@ async def test_each_bead_carries_one_of_her_three_states(
     assert states["being:S1:B3"] == "surfaced"
     assert states["being:S1:B2"] == "untouched"
     assert set(states.values()) == {"engaged", "surfaced", "untouched"}
+
+
+async def test_a_bead_stored_at_the_retired_partial_state_reads_mentioned_and_no_old_word_appears(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+) -> None:
+    session.coverage_state = {"scene:1": "partially_engaged", "scene:2": "engaged"}
+    await db_session.commit()
+
+    answer = await client.get(
+        f"{IR}/facilitator/sessions/{session.id}/coverage", headers=consultant
+    )
+
+    assert answer.status_code == 200, answer.text
+    assert _states(answer.json())["scene:1"] == "surfaced"
+    for word in ("partially_engaged", "partial", "aflorado", "parcialmente", "not_encountered"):
+        assert word not in answer.text

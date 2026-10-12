@@ -14,6 +14,7 @@ from app.services.internalization_room.coverage import initial_state
 _STATE_OF = {
     CoverageStatus.ENGAGED: BeadState.ENGAGED,
     CoverageStatus.SURFACED: BeadState.SURFACED,
+    CoverageStatus.PARTIALLY_ENGAGED: BeadState.SURFACED,
     CoverageStatus.NOT_ENCOUNTERED: BeadState.UNTOUCHED,
 }
 
