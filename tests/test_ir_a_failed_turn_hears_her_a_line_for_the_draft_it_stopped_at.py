@@ -148,6 +148,19 @@ async def test_an_english_failed_turn_points_to_scene_one_and_is_voiced_with_the
     assert reply["audio_url"]
 
 
+async def test_two_turns_in_a_row_that_fail_the_same_way_hear_the_same_line(
+    client, db_session: AsyncSession, monkeypatch
+) -> None:
+    the_room_agent_is(monkeypatch, turn=_DraftsInOrder(SECOND_DRAFT, SECOND_DRAFT))
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
+
+    spoken = [(await _a_take(client, session.id))["fixed_line"] for _ in range(2)]
+
+    assert spoken == ["A2", "A2"], (
+        "a segunda falha igual andava para a linha seguinte, como se as falhas fossem contadas"
+    )
+
+
 @pytest.mark.parametrize(
     ("drafts", "heard"),
     [
