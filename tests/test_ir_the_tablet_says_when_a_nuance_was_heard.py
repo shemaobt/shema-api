@@ -14,9 +14,11 @@ from tests.room_harness import (
     PREFIX,
     heard_every_part,
     press_terminei,
+    record_the_part_again,
     rehearsed_in_parts,
     room_client,
     stored_telling_back,
+    tell_back_about,
     the_analyst_is_scripted,
     the_room_speaks,
 )
@@ -237,4 +239,24 @@ async def test_a_nuance_whose_verdict_was_never_reported_heard_is_named_again(
 
     assert [_handed(speaker, brief) for brief in range(len(speaker.briefs))] == [[2], [2]], (
         "a equipe saiu enquanto o veredito tocava e a nuance nunca mais era dita"
+    )
+
+
+async def test_a_part_recorded_again_makes_its_said_nuance_sayable_even_in_the_same_words(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_2]}, {"findings": [ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    first = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    await _heard(client, session.id, first.json()["check_at"])
+    fresh = await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
+    await tell_back_about(db_session, session, fresh, transcript="parte 1 contada de volta")
+
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    assert [_handed(speaker, brief) for brief in range(len(speaker.briefs))] == [[2], [2]], (
+        "a parte foi gravada de novo e a nuance do áudio antigo calava a do novo"
     )
