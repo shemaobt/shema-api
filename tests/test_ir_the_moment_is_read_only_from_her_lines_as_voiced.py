@@ -334,3 +334,39 @@ def test_a_line_is_described_the_way_her_record_describes_it(line: _Line, descri
     assert _described(line) == described, (
         "a linha era descrita de um jeito que o registro dela nunca escreveu"
     )
+
+
+@pytest.mark.parametrize("moment", [SCENE_TWO_OPEN, ENSAIO_FINAL])
+@pytest.mark.parametrize(
+    ("voiced", "recorded"),
+    [
+        ("Vamos pra Internalização da cena 5.", "entrance 5"),
+        ("Vamos pra Articulação da cena 4.", "articulation_entrance 4"),
+        ("Estamos na Articulação da cena 0.", "where_we_are 0 (articulation)"),
+    ],
+)
+def test_a_scene_number_the_passage_does_not_have_is_kept_in_her_words(
+    moment: dict[str, Any], voiced: str, recorded: str
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": moment}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, parts=3)
+
+    assert step is not None
+    assert step.ignored == [f"{recorded}: not a part of this passage (1..3)"], (
+        "um número de cena que a passagem não tem foi descartado sem registro"
+    )
+    assert step.after.as_json() == moment
+
+
+def test_her_scene_closing_refused_after_another_moment_line_is_not_kept_as_ignored() -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": SCENE_TWO_OPEN}}]
+
+    step = moment_step(
+        heard, f"Vamos pra Articulação da cena 2. {SCENE_ONE} {CLOSING}", fail_safe=False, parts=4
+    )
+
+    assert step is not None
+    assert "ignored" not in step.as_json(), (
+        "o fechamento recusado depois de outra linha de momento entrou na lista de ignoradas"
+    )

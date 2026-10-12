@@ -207,7 +207,10 @@ def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment | None:
 @dataclass(frozen=True)
 class MomentStep:
     """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
-    reply left the room in, and the lines that moved it."""
+    reply left the room in, and the lines that moved it. `ignored` is her `ignored?: string[]`
+    (`types.ts:73`): the numbered lines she refuses, in her words — a number outside the
+    passage (`moment.ts:149`) and a numbered line heard after the send-off (`moment.ts:159`)
+    — stored only when there is one. Her other reasons are not recorded here."""
 
     before: Moment
     after: Moment
@@ -241,6 +244,8 @@ def moment_step(
         outside = line.part is not None and not 1 <= line.part <= parts
         closing_after_another = line.cause == "part_closing" and earlier
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
+        if outside:
+            ignored.append(f"{_described(line)}: not a part of this passage (1..{parts})")
         if outside or closing_after_another:
             continue
         if after.at == "ensaio_final" and line.cause in _NUMBERED:
