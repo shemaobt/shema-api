@@ -255,3 +255,28 @@ async def test_a_golden_session_open_when_a_new_canon_is_published_is_recorded_i
         "a cena do aviso de segurança foi gravada pelo mapa que a sala serve agora, onde a "
         "primeira cena ainda existe e o canon guardado já não a tem"
     )
+
+
+async def test_a_golden_session_open_when_a_new_canon_is_published_is_held_to_its_own_scenes(
+    golden, monkeypatch, tmp_path
+) -> None:
+    the_room_agent_is(monkeypatch, turn=Voice(), classifier=_nothing_is_classified)
+    kept_session = await _an_open_golden_session(golden)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p02_has_no_first_scene)
+    fresh_session = await _an_open_golden_session(golden)
+    rehearsed_first_scene = {"teamText": TEAM_LINE, "sceneRehearsals": ["S1"]}
+
+    from_fresh = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": fresh_session, **rehearsed_first_scene}
+    )
+    from_kept = await golden.post(
+        f"{GOLDEN}/turn", json={"sessionId": kept_session, **rehearsed_first_scene}
+    )
+
+    assert from_fresh.status_code == 200, (
+        "a sessão aberta depois da troca perdeu a cena 1 que serve"
+    )
+    assert from_kept.status_code == 400, (
+        "o ensaio da cena 1 foi aceito por um canon guardado que já não tem essa cena"
+    )
+    assert "has no scene S1" in from_kept.text

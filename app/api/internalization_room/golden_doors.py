@@ -143,7 +143,8 @@ async def play_golden_turn(
     if opening and session.messages:
         raise ConflictError("session already open")
     heard = _heard(payload, language=session.language)
-    rehearsed = _scene_rehearsals(payload, session.pericope)
+    with reading_the_canon_of(session.canon_pin):
+        rehearsed = _scene_rehearsals(payload, session.pericope)
     await db.commit()
 
     started = time.monotonic()
