@@ -47,17 +47,6 @@ def test_entities_without_a_wikilink_are_still_entities() -> None:
     assert any(entity.code is None for entity in entities)
 
 
-def test_an_unapproved_map_is_refused_not_degraded() -> None:
-    text = (
-        (MAPS_DIR / "P03-Ruth-1-15-18.md")
-        .read_text()
-        .replace('status: "complete"', 'status: "draft"')
-    )
-
-    with pytest.raises(ValidationError, match="not approved canon"):
-        parse_map(text, source="P03-draft")
-
-
 def test_poetry_is_refused_until_the_project_enables_it() -> None:
     text = (
         (MAPS_DIR / "P03-Ruth-1-15-18.md")

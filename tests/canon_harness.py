@@ -95,7 +95,7 @@ def the_canon_moves_on(
     return tree
 
 
-def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
+def a_fable_map(number: int = 1, *, sta_status: str = "complete", status: str = "complete") -> str:
     return textwrap.dedent(
         f"""\
         ---
@@ -105,7 +105,7 @@ def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
         bcv: "Fable 1:{number}-{number + 1}"
         genre-group: "NARRATIVE"
         genre: "HISTORICAL_NARRATIVE"
-        status: "complete"
+        status: "{status}"
         sta-status: "{sta_status}"
         ---
 
