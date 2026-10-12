@@ -164,6 +164,26 @@ async def test_only_the_fail_safe_line_is_marked_and_names_its_category(
     )
 
 
+async def test_a_take_the_room_could_not_hear_reads_as_inaudible_then_her_d_line_marked_inaudible(
+    client, db_session, room_app, script
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await the_room_opens(client, credential, session.id)
+    script.said = ""
+
+    await the_team_says(client, credential, session.id, "turno-1")
+
+    turns = await _turns(client, session.id, desk)
+    assert [
+        (t["role"], t["text"], t["fail_safe"], t["fail_safe_category"]) for t in turns[-2:]
+    ] == [
+        ("team", "(inaudible)", False, None),
+        ("guide", "Desculpa, não consegui ouvir direito — podem repetir?", True, "inaudible"),
+    ], "a Sala de Observação mostrava o pedido para repetir sem nada do lado da equipe"
+
+
 async def test_a_turn_the_tablet_resent_is_not_doubled(
     client, db_session, room_app, script
 ) -> None:

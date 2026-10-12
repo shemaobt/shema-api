@@ -142,7 +142,8 @@ async def engaged(
 
 async def stored_stamp(per_request: async_sessionmaker[AsyncSession], session_id: str):
     async with per_request() as fresh:
-        return (await get_session(fresh, session_id)).earlier_passages
+        stamp = (await get_session(fresh, session_id)).earlier_passages
+    return None if stamp is None else {key: value for key, value in stamp.items() if key != "at"}
 
 
 async def zerar(
