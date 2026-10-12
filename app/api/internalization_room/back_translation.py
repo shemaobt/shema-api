@@ -355,7 +355,11 @@ async def _finished(
             findings_remaining=0,
         )
 
-    if state.already_analysed(told) and state.verdict is not None:
+    if (
+        state.already_analysed(told)
+        and state.verdict is not None
+        and not state.verdict.used_fail_safe
+    ):
         finding = room.the_finding_that_leads(state)
         with stage("db_let_go"):
             await db.commit()

@@ -78,3 +78,25 @@ async def test_a_clean_round_whose_verdict_falls_to_the_fail_safe_refuses_approv
         (check.outcome, check.conferida)
         for check in (await stored_telling_back(db_session, session)).checks
     ] == [("fail_safe", False)]
+
+
+async def test_a_press_after_a_fail_safe_round_checks_again_instead_of_replaying_the_line(
+    client, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    report = await heard_every_part(db_session, session.id)
+    speaker.verdicts = [NOT_A_VERDICT] * 3
+    first = await press_terminei(client, session.id, report=report)
+    assert first.json()["used_fail_safe"] is True
+    speaker.verdicts = []
+
+    again = await press_terminei(client, session.id, report=report)
+
+    assert again.status_code == 200, again.text
+    assert again.json()["used_fail_safe"] is False, "a segunda pressão repetia a linha A guardada"
+    assert again.json()["checked"] is True, "a passagem limpa ficava presa na linha de segurança"
+    assert speaker.drafts == 2
+    assert [
+        (check.outcome, check.conferida)
+        for check in (await stored_telling_back(db_session, session)).checks
+    ] == [("fail_safe", False), ("pass", True)]
