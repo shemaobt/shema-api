@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.services import internalization_room as room
-from app.services.internalization_room import background
+from app.services.internalization_room import background, turn_instructions
 from app.services.internalization_room.llm import CACHE_BREAK
 from tests.text_seam_harness import BEARER, GOLDEN, RUNNER_KEY, ScriptedAgent, the_app
 from tests.turn_harness import the_room_agent_is
@@ -101,4 +101,19 @@ async def test_the_names_the_voice_tells_in_a_golden_opening_are_surfaced(
     stored = (await room.get_session(db_session, session_id)).coverage_state or {}
     assert stored.get("being:S1:B2") == "surfaced", (
         "a abertura pela porta dourada nomeava Elimeleque e a conta dele não saía do lugar"
+    )
+
+
+async def test_a_name_in_a_golden_openings_note_is_read_as_the_teams_and_engaged(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        turn_instructions, "opening_note", lambda *_: "[A equipe abriu a P01 e falou da Noemi.]"
+    )
+    session_id = await _a_p01_session_opened(client)
+
+    db_session.expire_all()
+    stored = (await room.get_session(db_session, session_id)).coverage_state or {}
+    assert stored.get("being:S1:B3") == "engaged", (
+        "a nota de abertura pela porta dourada nomeava Noemi e a conta dela não era engajada"
     )

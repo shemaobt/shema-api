@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
+from app.services.internalization_room import turn_instructions
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
@@ -147,4 +148,44 @@ async def test_the_names_an_opening_prepared_ahead_tells_are_surfaced_when_it_is
     stored = await _stored(per_request, session_id)
     assert stored.get("being:S1:B2") == "surfaced", (
         "a abertura preparada nomeava Elimeleque e a conta dele não saía do lugar"
+    )
+
+
+NOTE = "[A sessão acabou de começar. A equipe abriu a passagem P01 e falou da Noemi.]"
+
+
+def _the_note_names_noemi(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(turn_instructions, "opening_note", lambda *_: NOTE)
+
+
+async def test_a_name_in_the_opening_note_is_read_as_the_teams_and_engaged(
+    client, db_session, per_request, monkeypatch
+) -> None:
+    _the_note_names_noemi(monkeypatch)
+    tablet, session_id = await _a_p01_session(client, db_session)
+
+    await the_room_opens(client, tablet, session_id)
+
+    stored = await _stored(per_request, session_id)
+    assert stored.get("being:S1:B3") == "engaged", (
+        "a nota de abertura é a fala da equipe no turno 0, e o nome nela não era lido"
+    )
+
+
+async def test_a_name_in_the_note_of_an_opening_prepared_ahead_is_engaged(
+    client, db_session, per_request, monkeypatch
+) -> None:
+    _the_note_names_noemi(monkeypatch)
+    tablet, session_id = await _a_p01_session(client, db_session)
+    async with per_request() as fresh:
+        row = await get_session(fresh, session_id)
+        row.prepared_speech = OPENING
+        row.prepared_audio_key = "prepared/abertura.mp3"
+        await fresh.commit()
+
+    await the_room_opens(client, tablet, session_id)
+
+    stored = await _stored(per_request, session_id)
+    assert stored.get("being:S1:B3") == "engaged", (
+        "a nota da abertura preparada nomeava Noemi e a conta dela não era engajada"
     )

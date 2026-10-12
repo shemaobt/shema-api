@@ -213,6 +213,12 @@ def names_heard(
     return merge(coverage_state, pericope_num=pericope, surfaced=surfaced, engaged=engaged)
 
 
+def stored_opening_note(session: IRSession) -> str:
+    return next(
+        (str(entry["text"]) for entry in session.messages or [] if entry.get("opening_note")), ""
+    )
+
+
 def hear_the_names(session: IRSession, *, team: str, voice: str) -> None:
     if is_panorama(session.pericope):
         return
