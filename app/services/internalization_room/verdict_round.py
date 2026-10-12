@@ -155,7 +155,6 @@ async def check_the_telling_back(
     current = current_findings(state)
     finding = the_finding_that_leads(state)
     at = datetime.now(UTC)
-    state.checked = finding is None
     state.checked_at = at
 
     async def speak(handed: list[Finding] | list[Nuance]) -> TurnOutcome:
@@ -179,6 +178,7 @@ async def check_the_telling_back(
         outcome = await speak([])
 
     said = outcome.speech
+    state.checked = finding is None and not outcome.used_fail_safe
     state.checks.append(
         CheckRound(
             at=at,

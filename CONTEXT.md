@@ -246,7 +246,7 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
+The state in which the passage has been told, one whole reading of the analyst returned no finding, and the verdict spoken on it was validated, so it leaves the rotation for good. A verdict that fell to a fail-safe line confers nothing, however clean the reading. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
 **Check round** (`checks`):

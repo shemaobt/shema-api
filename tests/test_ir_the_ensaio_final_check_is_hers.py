@@ -480,6 +480,7 @@ async def test_a_nuance_verdict_that_fails_on_both_runs_is_heard_as_one_family_a
     assert len(speaker.drafts) == 2, "a rodada limpa rodava uma vez só, ou mais de uma"
     assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
     assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "a nuance que caía na linha A duas vezes voltava conferida"
     kept = (await room.get_session(db_session, result["sessionId"])).messages or []
     assert [message["fixed_line"] for message in kept] == ["A1"]
 
@@ -503,6 +504,7 @@ async def test_a_fail_safe_with_no_lone_nuance_handed_over_is_not_run_again(
     assert len(speaker.drafts) == 1, "só uma nuance sozinha ganha uma rodada limpa"
     assert result["spoken"] == THE_A_LINE_FOR_A_FIRST_DRAFT
     assert result["outcome"] == "fail_safe"
+    assert result["conferida"] is False, "uma rodada limpa dita como linha A era conferida"
 
 
 async def test_an_outage_in_the_clean_run_is_never_voiced_as_a_fail_safe(
