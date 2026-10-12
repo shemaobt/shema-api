@@ -35,11 +35,11 @@ def voice_says() -> list[str]:
 
 
 @pytest.fixture()
-def team_says(monkeypatch: pytest.MonkeyPatch, voice_says: list[str]) -> list[str]:
-    said = ["A Noemi ficou."]
+def team_says(monkeypatch: pytest.MonkeyPatch, voice_says: list[str]) -> list[HeardSpeech]:
+    said = [HeardSpeech(text="A Noemi ficou.")]
 
     async def heard(*_: Any, **__: Any) -> HeardSpeech:
-        return HeardSpeech(text=said[0])
+        return said[0]
 
     async def model(*, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
@@ -240,4 +240,25 @@ async def test_an_opening_prepared_ahead_and_dropped_because_the_team_spoke_firs
     stored = await _stored(per_request, session_id)
     assert stored.get("being:S1:B2", "not_encountered") == "not_encountered", (
         "a abertura preparada e descartada ainda movia as contas que nomeava"
+    )
+
+
+async def test_a_mother_tongue_take_engages_nothing_and_the_names_the_voice_says_are_surfaced(
+    client, db_session, per_request, voice_says, team_says
+) -> None:
+    team_says[0] = HeardSpeech(
+        text="A Noemi ficou.", language_code="ter", language_probability=0.99
+    )
+    voice_says[1] = "Vocês ensaiaram a cena de Noemi."
+    tablet, session_id = await _a_p01_session(client, db_session)
+    await the_room_opens(client, tablet, session_id)
+
+    await the_team_says(client, tablet, session_id, "turno-1")
+
+    stored = await _stored(per_request, session_id)
+    assert "engaged" not in stored.values(), (
+        "um ensaio na língua materna engajava os nomes que o transcritor escreveu nele"
+    )
+    assert stored.get("being:S1:B3") == "surfaced", (
+        "a voz nomeava Noemi depois do ensaio na língua materna e a conta não saía do lugar"
     )
