@@ -244,7 +244,7 @@ async def test_a_read_again_that_misses_her_three_seconds_keeps_each_passages_st
     }, "uma leitura lenta apagava a aprovação que a sessão já conhecia"
 
 
-async def test_the_read_again_begins_only_once_the_voices_reply_is_kept(
+async def test_the_read_again_begins_only_once_the_voices_reply_is_kept_and_voiced(
     client, db_session, per_request, monkeypatch
 ) -> None:
     _team, tablet = await a_claimed_device(db_session)
@@ -255,17 +255,29 @@ async def test_the_read_again_begins_only_once_the_voices_reply_is_kept(
         read_minutes_ago(6, P01="not_worked", P02="not_worked", P03="not_worked"),
     )
     kept: list[str] = []
+    voiced: list[str] = []
+    voices = sessions_api.room.synthesize_facilitator_speech
+
+    async def voice(text: str, **kwargs: Any) -> Any:
+        voiced.append(text)
+        return await voices(text, **kwargs)
+
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
 
     async def the_reply_already_kept() -> None:
         async with per_request() as fresh:
             messages = (await get_session(fresh, session_id)).messages or []
         kept.extend(entry["text"] for entry in messages if entry["role"] == "guide")
+        kept.extend(f"voiced: {text}" for text in voiced)
 
     await a_turn_whose_read_never_answers(
         monkeypatch, client, tablet, session_id, while_it_reads=the_reply_already_kept
     )
 
     assert GUIDE_LINE in kept, "a voz esperava a leitura das passagens anteriores para falar"
+    assert f"voiced: {GUIDE_LINE}" in kept, (
+        "a fala da voz esperava a leitura das passagens anteriores para ser sintetizada"
+    )
 
 
 async def test_a_read_again_never_makes_an_idle_session_look_active(
@@ -297,4 +309,58 @@ async def test_a_read_again_never_makes_an_idle_session_look_active(
     assert session.earlier_passages["P01"] == "approved", "o carimbo não foi lido de novo"
     assert (as_utc(session.updated_at), session.version) == (idle_since, 7), (
         "a leitura de novo fazia uma sessão parada parecer ativa"
+    )
+
+
+async def test_the_coverage_settle_never_waits_behind_the_read_again(
+    client, db_session, per_request, agent, monkeypatch
+) -> None:
+    _team, tablet = await a_claimed_device(db_session)
+    session_id = await opened_on_p04(client, tablet)
+    await the_room_opens(client, tablet, session_id)
+    await stamped(
+        per_request,
+        session_id,
+        read_minutes_ago(6, P01="not_worked", P02="not_worked", P03="not_worked"),
+    )
+    after_the_turn: list[str] = []
+    reads = statuses.read_statuses
+
+    async def settles(**_: Any) -> None:
+        after_the_turn.append("settle")
+
+    async def read(*args: Any, **kwargs: Any) -> dict[str, str]:
+        after_the_turn.append("read")
+        return await reads(*args, **kwargs)
+
+    monkeypatch.setattr(sessions_api, "settle_coverage", settles)
+    monkeypatch.setattr(statuses, "read_statuses", read)
+
+    await the_team_says(client, tablet, session_id, str(uuid.uuid4()))
+
+    assert after_the_turn == ["settle", "read"], (
+        "a leitura das passagens anteriores ia na frente, e o classificador esperava por ela"
+    )
+
+
+async def test_a_read_again_that_missed_its_three_seconds_is_read_again_on_the_next_turn(
+    client, db_session, per_request, agent, monkeypatch
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    session_id = await opened_on_p04(client, tablet)
+    await stamped(
+        per_request,
+        session_id,
+        read_minutes_ago(6, P01="not_worked", P02="not_worked", P03="not_worked"),
+    )
+    reads = statuses.read_statuses
+    await a_turn_whose_read_never_answers(monkeypatch, client, tablet, session_id)
+    monkeypatch.setattr(statuses, "read_statuses", reads)
+    await p01_approved(client, db_session, team, tablet)
+    await the_team_says(client, tablet, session_id, str(uuid.uuid4()))
+    before = len(agent.guide_systems)
+    await the_team_says(client, tablet, session_id, str(uuid.uuid4()))
+
+    assert earlier_line(agent.guide_systems[before]) == P01_APPROVED, (
+        "uma leitura de novo que estourou o prazo ficava cinco minutos sem ser lida outra vez"
     )

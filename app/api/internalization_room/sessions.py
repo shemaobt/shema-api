@@ -858,8 +858,6 @@ async def _draft_the_turn(
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
-    if earlier_passages_due(session.earlier_passages):
-        background.add_task(read_the_earlier_passages_again, session_id=session.id)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -871,6 +869,8 @@ async def _draft_the_turn(
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
         )
+    if earlier_passages_due(session.earlier_passages):
+        background.add_task(read_the_earlier_passages_again, session_id=session.id)
 
     reply = TurnResponse(
         session_id=session.id,
