@@ -939,6 +939,21 @@ def test_state_keeps_the_analysts_order() -> None:
     assert [finding.note for finding in state.findings] == ["pouco claro", "outro acréscimo"]
 
 
+def test_a_finding_stored_as_raised_by_a_check_no_longer_jumps_the_priority() -> None:
+    stored = BackTranslationState.model_validate(
+        {
+            "findings": [
+                {"kind": "unclear", "note": "pouco claro", "chunk": 1, "raised_by_check": True},
+                {"kind": "addition", "note": "o acréscimo", "segment_id": "segmento-3", "chunk": 3},
+            ]
+        }
+    )
+
+    led = the_finding_that_leads(stored)
+
+    assert led.note == "o acréscimo", "uma marca que ninguém mais escreve passava à frente"
+
+
 def test_a_row_stored_before_the_flags_reads_with_both_of_them_false() -> None:
     """Every state written before this change validates, and picks by the tier order.
 

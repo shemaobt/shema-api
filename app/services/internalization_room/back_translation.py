@@ -838,39 +838,24 @@ def _tiers(findings: list[Finding]) -> list[int]:
 def the_index_that_leads(findings: list[Finding]) -> int | None:
     """Which finding this turn is about, before any swap is looked for.
 
-    A Correction check's findings first, because what a mend broke is about the stretch the
-    team just retold: sent elsewhere in the same breath, they answer a question about a part
-    they are not looking at, and the stretch they are working on stays open behind them.
-    That precedence used to be list position and nothing else, which is why it is a flag now
-    — the Priority applied over the whole list reads straight past a position.
-
-    The flag decides *who competes*, never who wins. One check answers about one stretch and
-    can still come back with more than one thing — it reports what it saw, and the room
-    derives a loss from the count on top of that — so the Priority rules inside its own reply
-    as it does anywhere else. It is suspended against findings the check did not raise, and
-    against nothing else.
-
-    Then the **Priority**, ties in the analyst's own order. It is over the tiers and says
+    The **Priority**, ties in the analyst's own order. It is over the tiers and says
     nothing inside one, so reaching for a second key here — the frase, the stretch, the
     length of the note — would be the room inventing a precedence Marcia never ruled.
 
     At the pick and never at parse or storage. `state.findings` is what the packet, the
     resume and the correction check all read, and a list reordered on the way in would carry
-    the Priority into every one of them and take a check's finding away from the front. Pure
-    over the list for the same reason: the fresh verdict, the stored-verdict replay and the
-    resume payload each recompute the pick, and three answers that could differ is a team
-    hearing about one frase while the screen rebuilds on another.
+    the Priority into every one of them. Pure over the list for the same reason: the fresh
+    verdict, the stored-verdict replay and the resume payload each recompute the pick, and
+    three answers that could differ is a team hearing about one frase while the screen
+    rebuilds on another.
 
     The one place that says which finding leads — a second expression of this would be a
     second thing free to answer it.
     """
     if not findings:
         return None
-    competing = [at for at, finding in enumerate(findings) if finding.raised_by_check] or range(
-        len(findings)
-    )
     tier_of = _tiers(findings)
-    return min(competing, key=lambda at: (tier_of[at], at))
+    return min(range(len(findings)), key=lambda at: (tier_of[at], at))
 
 
 def _the_current_swap(findings: list[Finding]) -> list[int]:
