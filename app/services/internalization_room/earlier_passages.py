@@ -17,6 +17,8 @@ passage's release and sessions out of the reading together (ADR 0047).
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from itertools import takewhile
 
 from sqlalchemy import select
@@ -28,6 +30,11 @@ from app.services.internalization_room.canon.parse_map import load_book, load_ma
 from app.services.internalization_room.coverage import is_panorama
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
+
+logger = logging.getLogger(__name__)
+
+OPEN_READ_BOUND_S = 3.0
+TURN_READ_BOUND_S = 1.5
 
 
 async def earlier_passages(
@@ -44,6 +51,19 @@ async def earlier_passages(
     ]
     if not earlier:
         return None
+    try:
+        async with asyncio.timeout(OPEN_READ_BOUND_S), AsyncSession(db.bind) as reader:
+            return await read_statuses(reader, project_id=project_id, earlier=earlier)
+    except TimeoutError:
+        logger.warning(
+            "The earlier passages of %s were not read within %s s; the fact is left out",
+            pericope,
+            OPEN_READ_BOUND_S,
+        )
+        return None
+
+
+async def read_statuses(db: AsyncSession, *, project_id: str, earlier: list[str]) -> dict[str, str]:
     approved = set(
         await db.scalars(
             select(IRRelease.pericope).where(

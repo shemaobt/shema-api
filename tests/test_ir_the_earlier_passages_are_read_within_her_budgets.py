@@ -1,0 +1,169 @@
+"""ENG-1360 — the team's statuses are read within her budgets, or the fact is left out.
+
+Her app gives the read 3 s when a session is created (`EARLIER_READ_BUDGET_MS`,
+`src/turn/earlierPassagesRead.ts:55`) and 1.5 s before a turn whose session has no stamp
+(`TURN_EARLIER_BUDGET_MS`, `app/api/turn/route.ts:33`). The fact is complete or absent: a read
+that misses its budget leaves the line out for that turn, never a guess. The budget is passed on
+the loop's clock, never on the wall's.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import httpx
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.api.internalization_room import sessions as sessions_api
+from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.services.internalization_room import earlier_passages as statuses
+from app.services.internalization_room import prepare_opening as prepare_opening_module
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.sessions import get_session
+from tests.hearing_harness import the_loop_clock_passes
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
+from tests.room_harness import room_client, the_bucket_is_in_memory
+from tests.tablet_turn_harness import the_turn_is_scripted
+from tests.text_seam_harness import ScriptedAgent
+
+EARLIER = "EARLIER PASSAGES FOR THIS TEAM:"
+
+
+@pytest.fixture()
+def agent(monkeypatch: pytest.MonkeyPatch) -> ScriptedAgent:
+    guide = ScriptedAgent([])
+
+    async def heard(*_: Any, **__: Any) -> HeardSpeech:
+        return HeardSpeech(text="Noemi voltou para Belem com Rute")
+
+    async def no_opening_ahead(*_: Any, **__: Any) -> None:
+        return None
+
+    the_turn_is_scripted(monkeypatch, heard=heard, model=guide)
+    monkeypatch.setattr(sessions_api, "prepare_opening", no_opening_ahead)
+    return guide
+
+
+@pytest.fixture()
+def per_request(test_engine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, per_request, agent, monkeypatch: pytest.MonkeyPatch):
+    the_bucket_is_in_memory(monkeypatch)
+    async with room_client(db_session, monkeypatch, per_request=per_request) as c:
+        yield c
+
+
+async def opened(client: httpx.AsyncClient, tablet: str, pericope: str) -> dict[str, Any]:
+    answered = await client.post(
+        f"{PREFIX}/sessions",
+        headers=team_headers(tablet),
+        json={"language": "pt", "pericope": pericope},
+    )
+    assert answered.status_code == 200, answered.text[:300]
+    return answered.json()
+
+
+async def stored_stamp(per_request: async_sessionmaker[AsyncSession], session_id: str):
+    async with per_request() as fresh:
+        return (await get_session(fresh, session_id)).earlier_passages
+
+
+def earlier_line(system_prompt: str) -> str | None:
+    lines = [line for line in system_prompt.splitlines() if line.startswith(EARLIER)]
+    return lines[0] if lines else None
+
+
+def the_statuses_never_answer(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
+    started = asyncio.Event()
+
+    async def never(*_: Any, **__: Any) -> dict[str, str]:
+        started.set()
+        await asyncio.Event().wait()
+        return {}
+
+    monkeypatch.setattr(statuses, "read_statuses", never)
+    return started
+
+
+async def the_read_begins(started: asyncio.Event, request: asyncio.Task[Any]) -> None:
+    reading = asyncio.ensure_future(started.wait())
+    await asyncio.wait({reading, request}, return_when=asyncio.FIRST_COMPLETED)
+    reading.cancel()
+    assert not request.done(), f"the request ended before the read began: {request.result()!r}"
+
+
+async def answered_once_the_clock_passes(
+    monkeypatch: pytest.MonkeyPatch, request: asyncio.Task[Any], seconds: float, reason: str
+) -> Any:
+    the_loop_clock_passes(monkeypatch, seconds)
+    try:
+        done, _ = await asyncio.wait({request}, timeout=5)
+        assert done, reason
+    finally:
+        request.cancel()
+        await asyncio.wait({request})
+    return request.result()
+
+
+def test_her_budgets_are_three_seconds_at_the_open_and_one_and_a_half_before_a_turn() -> None:
+    assert (statuses.OPEN_READ_BOUND_S, statuses.TURN_READ_BOUND_S) == (3.0, 1.5)
+
+
+async def test_an_open_whose_statuses_do_not_answer_in_three_seconds_opens_with_no_stamp(
+    client, db_session, per_request, monkeypatch
+) -> None:
+    _team, tablet = await a_claimed_device(db_session)
+    started = the_statuses_never_answer(monkeypatch)
+    opening = asyncio.create_task(opened(client, tablet, "P04"))
+
+    await the_read_begins(started, opening)
+    session = await answered_once_the_clock_passes(
+        monkeypatch,
+        opening,
+        statuses.OPEN_READ_BOUND_S + 0.5,
+        "uma leitura dos estados que não respondia segurava a abertura da passagem sem fim",
+    )
+
+    assert await stored_stamp(per_request, session["session_id"]) is None
+
+
+async def test_an_opening_prepared_on_the_panorama_is_written_with_no_line_once_three_seconds_pass(
+    db_session, agent, monkeypatch
+) -> None:
+    team, _ = await a_claimed_device(db_session)
+    db_session.add(
+        IRSession(
+            id="panorama-1",
+            pericope="OV-Ruth",
+            project_id=team.id,
+            status=IRSessionStatus.IN_PROGRESS,
+            messages=[],
+            coverage_state={},
+            kept_takes={},
+            back_translation={},
+            language="pt",
+        )
+    )
+    await db_session.commit()
+
+    async def voices(text: str, **_: Any) -> tuple[Any, bool]:
+        return (type("Voiced", (), {"key": "abertura-1"})(), False)
+
+    monkeypatch.setattr(prepare_opening_module, "synthesize_facilitator_speech", voices)
+    started = the_statuses_never_answer(monkeypatch)
+    preparing = asyncio.create_task(prepare_opening_module.prepare_opening("panorama-1", "P04"))
+
+    await the_read_begins(started, preparing)
+    await answered_once_the_clock_passes(
+        monkeypatch,
+        preparing,
+        statuses.OPEN_READ_BOUND_S + 0.5,
+        "uma leitura dos estados que não respondia segurava a abertura preparada no panorama",
+    )
+
+    assert earlier_line(agent.guide_systems[0]) is None
