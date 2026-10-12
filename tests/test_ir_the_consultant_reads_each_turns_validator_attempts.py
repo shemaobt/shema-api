@@ -142,3 +142,36 @@ async def test_a_turn_the_validator_corrected_carries_the_corrected_text_that_wa
             "note": None,
         }
     ]
+
+
+async def test_a_turn_that_ended_in_a_fail_safe_serves_all_its_attempts_with_the_note_of_the_one_that_failed(  # noqa: E501
+    client, db_session, room_app, the_room_hears
+) -> None:
+    issue = _issue("imported_knowledge", "Rute casou")
+    unreadable = json.dumps({"issues": [_issue("imported_knowledge", "Rute casou")]})
+    the_room_hears(
+        ["Rute casou com Malom.", "Vamos ficar nesta cena."],
+        [_verdict("regenerate", [issue]), unreadable, unreadable],
+    )
+
+    turn = await _the_last_turn_as_the_desk_reads_it(client, db_session, room_app)
+
+    assert turn["voice"]["outcome"] == "fail_safe"
+    assert turn["voice"]["trace"] == [
+        {
+            "attempt": 1,
+            "draft": "Rute casou com Malom.",
+            "verdict": "regenerate",
+            "issues": [issue],
+            "corrected": None,
+            "note": None,
+        },
+        {
+            "attempt": 2,
+            "draft": "Vamos ficar nesta cena.",
+            "verdict": None,
+            "issues": [],
+            "corrected": None,
+            "note": "The Validator's reply could not be read, so this draft was not judged.",
+        },
+    ]
