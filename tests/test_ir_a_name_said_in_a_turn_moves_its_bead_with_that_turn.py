@@ -10,6 +10,7 @@ none of them at all.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -21,25 +22,32 @@ from app.services.internalization_room.sessions import get_session
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
-from tests.text_seam_harness import ScriptedAgent
 
 OPENING = "Vamos ouvir uma história juntos."
 REPLY = "Isso. Contem mais."
 
 
 @pytest.fixture()
-def team_says(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+def voice_says() -> list[str]:
+    return [OPENING, REPLY]
+
+
+@pytest.fixture()
+def team_says(monkeypatch: pytest.MonkeyPatch, voice_says: list[str]) -> list[str]:
     said = ["A Noemi ficou."]
 
     async def heard(*_: Any, **__: Any) -> HeardSpeech:
         return HeardSpeech(text=said[0])
 
+    async def model(*, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return voice_says.pop(0)
+
     async def no_opening_ahead(*_: Any, **__: Any) -> None:
         return None
 
-    the_turn_is_scripted(
-        monkeypatch, heard=heard, model=ScriptedAgent([OPENING, None, REPLY, None])
-    )
+    the_turn_is_scripted(monkeypatch, heard=heard, model=model)
     monkeypatch.setattr(sessions_api, "prepare_opening", no_opening_ahead)
     return said
 
@@ -85,4 +93,22 @@ async def test_the_team_saying_noemi_engages_naomi_on_that_turns_reply_with_no_c
     )
     assert answered.json()["coverage"]["engaged"] >= 3, (
         "a resposta do turno voltava com as contas de antes do nome dito"
+    )
+
+
+async def test_the_voice_naming_elimelech_surfaces_him_and_leaves_naomi_engaged(
+    client, db_session, per_request, voice_says
+) -> None:
+    voice_says[1] = "E a Noemi foi com o Elimeleque."
+    tablet, session_id = await _a_p01_session(client, db_session)
+    await the_room_opens(client, tablet, session_id)
+
+    await the_team_says(client, tablet, session_id, "turno-1")
+
+    stored = await _stored(per_request, session_id)
+    assert [stored.get(f"being:S{scene}:B2") for scene in (1, 2)] == ["surfaced"] * 2, (
+        "a voz dizia Elimeleque na resposta e a conta dele ficava como não tocada"
+    )
+    assert stored.get("being:S1:B3") == "engaged", (
+        "Noemi, dita pela equipe, descia para surfaced quando a voz também a nomeava"
     )

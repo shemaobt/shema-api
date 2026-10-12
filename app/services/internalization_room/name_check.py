@@ -28,20 +28,24 @@ def _keys(element: Element, book: str) -> list[str]:
     return names + [form for name in names for form in _forms().get(name, [])]
 
 
-def names_heard(coverage_state: dict[str, str], *, team: str, pericope: str) -> dict[str, str]:
+def names_heard(
+    coverage_state: dict[str, str], *, team: str, voice: str, pericope: str
+) -> dict[str, str]:
     book = load_map(pericope).book
-    said = team.lower()
-    engaged = [
-        element.key
+    said, answered = team.lower(), voice.lower()
+    named = [
+        (element.key, _keys(element, book))
         for element in remaining(coverage_state, pericope)
-        if element.kind in _NAMED_KINDS and any(key in said for key in _keys(element, book))
+        if element.kind in _NAMED_KINDS
     ]
-    return merge(coverage_state, pericope_num=pericope, engaged=engaged)
+    engaged = [key for key, keys in named if any(k in said for k in keys)]
+    surfaced = [key for key, keys in named if any(k in answered for k in keys)]
+    return merge(coverage_state, pericope_num=pericope, surfaced=surfaced, engaged=engaged)
 
 
-def hear_the_names(session: IRSession, *, team: str) -> None:
+def hear_the_names(session: IRSession, *, team: str, voice: str) -> None:
     if is_panorama(session.pericope):
         return
     session.coverage_state = names_heard(
-        session.coverage_state or {}, team=team, pericope=session.pericope
+        session.coverage_state or {}, team=team, voice=voice, pericope=session.pericope
     )

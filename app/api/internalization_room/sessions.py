@@ -860,7 +860,7 @@ async def _draft_the_turn(
 
     session = await _write_the_turn(db, session, outcome=outcome, opening=opening)
     if not opening:
-        hear_the_names(session, team=outcome.transcript)
+        hear_the_names(session, team=outcome.transcript, voice=outcome.speech)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
