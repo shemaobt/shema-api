@@ -129,3 +129,11 @@ def test_a_name_with_one_distinctive_word_is_named_by_that_words_portuguese_form
     assert _team_says("P05", "o capataz respondeu")["being:S4:B15"] == "engaged", (
         "«capataz» não engajava «The Foreman»"
     )
+
+
+def test_mara_the_name_naomi_takes_for_herself_names_naomi() -> None:
+    heard = _team_says("P02", "ela disse: me chamem de Mara")
+
+    assert heard["being:S1:B3"] == "engaged", (
+        "«Mara», a forma pela qual Noemi se chama, não a engajava"
+    )

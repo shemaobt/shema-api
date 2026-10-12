@@ -171,6 +171,7 @@ def _keys(element: Element, book: str, elements: tuple[Element, ...], pericope: 
         words = [_NOT_A_WORD_LETTER.sub("", word.lower()) for word in shown.split()]
         tokens += [word for word in words if len(word) >= 5 and word not in _GENERIC]
     whole = names + [form for name in names for form in _whole_forms(name)] + hebrew
+    whole += entry.get("referential_forms") or []
     parts = [form for name in names for form in _word_forms(name)] + tokens
     taken = set().union(*(_own_names(book, other) for other in beings - {_code(element)}))
     if entry.get("kind") == "PERSON" and element.scene is not None:
