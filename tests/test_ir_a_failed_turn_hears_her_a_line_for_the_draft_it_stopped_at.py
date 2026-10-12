@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus
-from app.services.internalization_room.conversation import conversation_of
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.book_material import build_book_material
+from app.services.internalization_room.conversation import conversation_of
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.prompts import get_prompt_text

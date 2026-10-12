@@ -156,11 +156,11 @@ async def test_a_question_folded_into_a_statement_is_voiced_as_its_own_sentence_
 async def test_a_verse_range_is_never_cut_where_its_colon_and_dash_fall(
     client, db_session: AsyncSession, guide: _Guide, elevenlabs: _Elevenlabs
 ) -> None:
-    reply = "Vocês lembram do trecho de Rute 1:6–14 que acabamos de ler?"
+    reply = "Vocês lembram do trecho de Rute 1:6\u201314 que acabamos de ler?"
 
     said, _ = await _the_team_hears(client, db_session, guide, elevenlabs, reply)
 
-    assert said == [reply], "a referência 1:6–14 era cortada no dois-pontos ou no travessão"
+    assert said == [reply], "a referência de versículos era cortada no dois-pontos ou no travessão"
 
 
 async def test_a_dash_inside_a_quoted_phrase_is_never_cut(
