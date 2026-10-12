@@ -62,9 +62,6 @@ ERROR_CODE_UNKNOWN_REFERENCE: Final = "UNKNOWN_REFERENCE"
 ERROR_CODE_NOT_FOUND = "NOT_FOUND"
 ERROR_CODE_INTERNAL = "INTERNAL_ERROR"
 ERROR_CODE_UPSTREAM = "UPSTREAM_ERROR"
-#: A model answered and the answer could not be read. Not UPSTREAM_ERROR: the provider was
-#: up, and a code that says otherwise sends the investigation to the wrong place.
-ERROR_CODE_UNREADABLE_REPLY: Final = "UNREADABLE_REPLY"
 
 #: A device whose credential was revoked. Its own code because the tablet acts on it: it
 #: forgets the credential it holds and shows its claim code again, which is the wrong
@@ -264,22 +261,6 @@ def upstream_or_validation_error(status_code: int, message: str) -> Exception:
     if status_code in (401, 403, 429) or status_code >= 500:
         return UpstreamServiceError(message)
     return ValidationError(message)
-
-
-class UnreadableReply(Exception):
-    """A model answered, and the answer could not be read — not a provider that is down.
-
-    Kept apart from `UpstreamServiceError` because the two send an investigation to
-    opposite places. On 2026-09-02 the analyst answered a real session with valid JSON
-    and valid findings, the parser refused the reply over a contradiction it had no rule
-    for, and the route raised the upstream error: the log said the provider had failed,
-    the team heard that the service was unavailable, and a whole investigation went
-    looking for an outage that never happened. Whoever raises this has the reply in
-    hand; the parser that refused it is expected to have logged it with the reason.
-
-    Still a 502: the reply *is* an invalid response from upstream, in the sense that
-    status code has always had. Only the code and the log change.
-    """
 
 
 class TranscriptionDefect(Exception):
@@ -506,14 +487,6 @@ async def handle_upstream_service_error(
     )
 
 
-async def handle_unreadable_reply(_request: Request, exc: UnreadableReply) -> JSONResponse:
-    logger.warning("Model reply could not be read: %s", exc)
-    return JSONResponse(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        content=_error_body(str(exc), ERROR_CODE_UNREADABLE_REPLY),
-    )
-
-
 async def handle_not_found_error(_request: Request, exc: NotFoundError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -612,6 +585,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StoredAnswer, handle_stored_answer)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
-    app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
     app.add_exception_handler(ElementLabelsBroken, handle_element_labels_broken)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)

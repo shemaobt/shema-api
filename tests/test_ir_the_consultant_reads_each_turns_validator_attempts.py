@@ -205,6 +205,7 @@ async def test_a_step_that_kept_only_a_note_reads_as_stored_with_an_empty_draft(
     answered = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/turns", headers=desk)
 
     assert answered.status_code == 200, answered.text[:300]
+    assert answered.json()["turns"][0]["voice"]["attempts"] == 0
     assert answered.json()["turns"][0]["voice"]["trace"] == [
         {
             "attempt": 1,

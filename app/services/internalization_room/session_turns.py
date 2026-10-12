@@ -151,7 +151,11 @@ def _voice_side(
     return TurnVoiceSide(
         outcome=outcome,
         boundary=is_boundary_turn(outcome, text, opening=opening),
-        attempts=len(guide.get("attempts") or []),
+        attempts=sum(
+            1
+            for attempt in guide.get("attempts") or []
+            if attempt.get("draft") or not attempt.get("note")
+        ),
         trace=[TurnTraceStep.model_validate(step) for step in guide.get("attempts") or []],
         recognition_ms=guide.get("recognition_ms"),
         reply_ms=guide.get("reply_ms"),
