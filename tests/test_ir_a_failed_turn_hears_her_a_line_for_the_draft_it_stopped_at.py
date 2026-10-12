@@ -148,6 +148,42 @@ async def test_an_english_failed_turn_points_to_scene_one_and_is_voiced_with_the
     assert reply["audio_url"]
 
 
+@pytest.mark.parametrize(
+    ("drafts", "heard"),
+    [
+        (
+            SECOND_DRAFT,
+            "Let's take that gently. Tell me what you're seeing in this part of the story so far"
+            " — this is the part about naomi's last appeal.",
+        ),
+        (
+            THIRD_DRAFT,
+            "There's a lot here. Let's slow down and stay with this scene for a moment"
+            " — this is the part about naomi's last appeal.",
+        ),
+    ],
+    ids=["second-draft", "third-draft"],
+)
+async def test_an_english_failed_turn_hears_the_a_line_of_its_draft_with_the_pointer(
+    client, db_session: AsyncSession, monkeypatch, drafts: list[str], heard: str
+) -> None:
+    voiced: list[str] = []
+
+    async def _voice_it(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
+        voiced.append(text)
+        return await _voice(text)
+
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice_it)
+    the_room_agent_is(monkeypatch, turn=_DraftsInOrder(drafts))
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="en", pericope=P)
+
+    await _a_take(client, session.id)
+
+    assert voiced == [heard], (
+        "a linha A em inglês voltava sempre a mesma, e a primeira das quatro, que ela nunca fala"
+    )
+
+
 async def test_an_english_failed_turn_with_its_pointer_still_reads_as_unrepairable(
     client, db_session: AsyncSession, monkeypatch
 ) -> None:
