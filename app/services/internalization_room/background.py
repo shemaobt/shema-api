@@ -106,7 +106,9 @@ async def read_the_earlier_passages_again(*, session_id: str) -> None:
         if stamp is None:
             return
         await db.execute(
-            update(IRSession).where(IRSession.id == session_id).values(earlier_passages=stamp)
+            update(IRSession)
+            .where(IRSession.id == session_id)
+            .values(earlier_passages=stamp, updated_at=IRSession.updated_at)
         )
         await db.commit()
 

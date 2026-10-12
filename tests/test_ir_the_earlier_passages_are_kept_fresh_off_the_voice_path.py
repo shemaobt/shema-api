@@ -12,9 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
 from app.db.models.internalization_room import IRSession
+from app.services.internalization_room import background
 from app.services.internalization_room import earlier_passages as statuses
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
+from app.utils.stored_time import as_utc
 from tests.hearing_harness import the_loop_clock_passes
 from tests.release_harness import (
     PREFIX,
@@ -25,7 +27,7 @@ from tests.release_harness import (
 )
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.tablet_turn_harness import the_room_opens, the_team_says, the_turn_is_scripted
-from tests.text_seam_harness import ScriptedAgent
+from tests.text_seam_harness import GUIDE_LINE, ScriptedAgent
 
 EARLIER = "EARLIER PASSAGES FOR THIS TEAM:"
 NONE_WORKED = (
@@ -240,3 +242,59 @@ async def test_a_read_again_that_misses_her_three_seconds_keeps_each_passages_st
         "P03": "not_worked",
         "unread": "P01, P02, P03",
     }, "uma leitura lenta apagava a aprovação que a sessão já conhecia"
+
+
+async def test_the_read_again_begins_only_once_the_voices_reply_is_kept(
+    client, db_session, per_request, monkeypatch
+) -> None:
+    _team, tablet = await a_claimed_device(db_session)
+    session_id = await opened_on_p04(client, tablet)
+    await stamped(
+        per_request,
+        session_id,
+        read_minutes_ago(6, P01="not_worked", P02="not_worked", P03="not_worked"),
+    )
+    kept: list[str] = []
+
+    async def the_reply_already_kept() -> None:
+        async with per_request() as fresh:
+            messages = (await get_session(fresh, session_id)).messages or []
+        kept.extend(entry["text"] for entry in messages if entry["role"] == "guide")
+
+    await a_turn_whose_read_never_answers(
+        monkeypatch, client, tablet, session_id, while_it_reads=the_reply_already_kept
+    )
+
+    assert GUIDE_LINE in kept, "a voz esperava a leitura das passagens anteriores para falar"
+
+
+async def test_a_read_again_never_makes_an_idle_session_look_active(
+    client, db_session, per_request
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    session_id = await opened_on_p04(client, tablet)
+    idle_since = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
+    async with per_request() as fresh:
+        await fresh.execute(
+            update(IRSession)
+            .where(IRSession.id == session_id)
+            .values(
+                earlier_passages=read_minutes_ago(
+                    6, P01="not_worked", P02="not_worked", P03="not_worked"
+                ),
+                updated_at=idle_since,
+                version=7,
+            )
+        )
+        await fresh.commit()
+    await p01_approved(client, db_session, team, tablet)
+
+    await background.read_the_earlier_passages_again(session_id=session_id)
+
+    async with per_request() as fresh:
+        session = await get_session(fresh, session_id)
+    assert session.earlier_passages is not None
+    assert session.earlier_passages["P01"] == "approved", "o carimbo não foi lido de novo"
+    assert (as_utc(session.updated_at), session.version) == (idle_since, 7), (
+        "a leitura de novo fazia uma sessão parada parecer ativa"
+    )
