@@ -35,7 +35,14 @@ def voice_says() -> list[str]:
 
 
 @pytest.fixture()
-def team_says(monkeypatch: pytest.MonkeyPatch, voice_says: list[str]) -> list[HeardSpeech]:
+def validator_says() -> list[str]:
+    return ["pass"]
+
+
+@pytest.fixture()
+def team_says(
+    monkeypatch: pytest.MonkeyPatch, voice_says: list[str], validator_says: list[str]
+) -> list[HeardSpeech]:
     said = [HeardSpeech(text="A Noemi ficou.")]
 
     async def heard(*_: Any, **__: Any) -> HeardSpeech:
@@ -43,8 +50,8 @@ def team_says(monkeypatch: pytest.MonkeyPatch, voice_says: list[str]) -> list[He
 
     async def model(*, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return voice_says.pop(0)
+            return json.dumps({"verdict": validator_says[0], "issues": ["fora do mapa"]})
+        return voice_says.pop(0) if voice_says else REPLY
 
     async def no_opening_ahead(*_: Any, **__: Any) -> None:
         return None
@@ -261,4 +268,22 @@ async def test_a_mother_tongue_take_engages_nothing_and_the_names_the_voice_says
     )
     assert stored.get("being:S1:B3") == "surfaced", (
         "a voz nomeava Noemi depois do ensaio na língua materna e a conta não saía do lugar"
+    )
+
+
+async def test_a_turn_that_ends_in_a_fail_safe_line_still_engages_the_name_the_team_said(
+    client, db_session, per_request, validator_says
+) -> None:
+    tablet, session_id = await _a_p01_session(client, db_session)
+    await the_room_opens(client, tablet, session_id)
+    validator_says[0] = "regenerate"
+
+    await the_team_says(client, tablet, session_id, "turno-1")
+
+    async with per_request() as fresh:
+        guide = (await get_session(fresh, session_id)).messages[-1]
+    assert guide.get("category"), "o turno não terminou na fala de fail-safe"
+    stored = await _stored(per_request, session_id)
+    assert stored.get("being:S1:B3") == "engaged", (
+        "a voz caía no fail-safe e a Noemi que a equipe disse ficava sem conta"
     )
