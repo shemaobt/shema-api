@@ -789,7 +789,10 @@ def test_none_of_her_scene_titles_loses_a_word_in_portuguese() -> None:
         title
         for title in titles
         if speakable_text(title, "pt") != title.replace("YHWH", "Senhor Jeová")
-    ] == []
+    ] == [], (
+        "o cabeçalho do arquivo diz que a voz não lê os títulos, mas o endereço da parte os "
+        "põe no bloco que o Speaker recebe (part_names.addresses_for) e ele pode citá-los"
+    )
 
 
 def _map_scene_headings() -> list[str]:
