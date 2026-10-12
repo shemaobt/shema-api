@@ -14,11 +14,13 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.models.internalization_room import TurnResponse, TurnTraceStep, TurnValidatorIssue
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import append_exchange, create_session
 from tests.baker import make_app, make_role
 from tests.release_harness import PREFIX, P, a_claimed_device, at_the_desk
 from tests.room_harness import room_client
+from tests.room_route_audit_harness import models_in, room_app_routes
 from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
 
 
@@ -175,3 +177,10 @@ async def test_a_turn_that_ended_in_a_fail_safe_serves_all_its_attempts_with_the
             "note": "The Validator's reply could not be read, so this draft was not judged.",
         },
     ]
+
+
+def test_no_answer_a_tablet_can_reach_can_carry_a_trace_step() -> None:
+    reachable = {model for route in room_app_routes() for model in models_in(route.response_model)}
+
+    assert TurnResponse in reachable
+    assert {TurnTraceStep, TurnValidatorIssue}.isdisjoint(reachable)
