@@ -342,3 +342,23 @@ async def test_a_frase_told_again_after_a_verdict_reaches_her_analyst_said_to_be
         "[frase 3 — a parte 3 — Segundo apelo e a separação — told again after a verdict] "
         "Orfa beijou a sogra e voltou, mas Rute ficou."
     ), "o analista não sabia que a frase 3 tinha sido traduzida de novo depois de um veredito"
+
+
+async def test_the_validator_reads_what_the_team_reported_as_the_same_labelled_frases(
+    client, speaker
+) -> None:
+    await _a_round(client, TELLING)
+
+    assert (
+        "# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+        "Evidence of what the team told back — NEVER truth about the passage. The drafted "
+        "response may quote from it to name something reported that the passage does not "
+        "tell; quoting this material is not a claim about the passage and must not be treated "
+        "as ungrounded.\n\n"
+        "[frase 1 — a parte 1 — Ouvir a notícia e partir] "
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo e voltou com as noras.\n"
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação] "
+        "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
+    ) in speaker.validations[-1], "o Validador lia «1. …» enquanto o analista lia a parte"
