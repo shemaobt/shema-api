@@ -454,20 +454,22 @@ def _refused(condition: str, raw: str, session: str) -> None:
     logger.warning("BT analyst reply refused (%s) for session %s: %s", condition, session, raw)
 
 
-def _landed_without_a_frase(raw: str, session: str) -> None:
-    """A missing element the analyst named no readable frase for, counted rather than guessed.
+def _landed_without_a_frase(kind: FindingKind, raw: str, session: str) -> None:
+    """A finding the analyst named no readable frase for, counted rather than guessed.
 
     It is the one silent landing in this parser: an unrecognised `where` is refused out loud
     above, and a `where` left off lands on the frase the reply did name, which is the rule and
-    not an accident (ADR 0007). A chunk left off degrades to no address at all — the team is
-    sent to record more and go back to the rehearsal — and nothing said so, so neither the
-    golden scripts nor production could say how often the model leaves it out. Her prompt item
-    leaves the number optional while our output block requires it, and the item is not ours to
-    edit, so this counts until she rules.
+    not an accident (ADR 0007). A chunk left off, or one outside the reading, degrades to no
+    address at all for every kind — the finding still reaches the team, without a number — and
+    nothing said so, so neither the golden scripts nor production could say how often the model
+    leaves it out. Her prompt leaves the number optional for a missing element while our output
+    block requires it, and the item is not ours to edit, so this counts until she rules.
 
     The reply is behind it whole, as every other line in this file carries one.
     """
-    logger.warning("BT analyst missing finding without a chunk for session %s: %s", session, raw)
+    logger.warning(
+        "BT analyst %s finding without a chunk for session %s: %s", kind.value, session, raw
+    )
 
 
 def _dropped(entries: list[Any], raw: str, about: str) -> None:
@@ -555,8 +557,8 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             raw_reply=raw,
             session=session,
         )
-        if kind is FindingKind.MISSING and chunk is None:
-            _landed_without_a_frase(raw, session)
+        if chunk is None:
+            _landed_without_a_frase(kind, raw, session)
         findings.append(
             Finding.model_validate(
                 {

@@ -787,3 +787,25 @@ async def test_a_finding_that_survives_the_drop_is_what_the_room_says(
     assert body["audio_url"] != clip_url(STALE_CLIP), (
         "o que a equipe ouve é sobre a falta, não a fala de ontem sobre pouca evidência"
     )
+
+
+async def test_an_addition_and_an_unclear_with_no_readable_frase_each_leave_a_line(
+    patch_analyst, caplog: pytest.LogCaptureFixture
+) -> None:
+    reply = json.dumps(
+        {
+            "findings": [
+                {"kind": "addition", "note": f"sem frase {MARK}"},
+                {"kind": "unclear", "note": "frase fora", "frase": 9},
+            ]
+        }
+    )
+    with caplog.at_level(logging.WARNING, logger=PARSER_LOGGER):
+        analysis = await _read(reply, patch_analyst)
+
+    assert analysis is not None
+    assert "BT analyst addition finding without a chunk" in caplog.text, (
+        "o acréscimo sem frase legível pousava sem nenhuma linha no log"
+    )
+    assert "BT analyst unclear finding without a chunk" in caplog.text
+    assert MARK in caplog.text, "a linha traz a resposta inteira"
