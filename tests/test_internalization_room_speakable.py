@@ -686,6 +686,7 @@ _MAPS = Path(__file__).resolve().parent.parent / (
 _LABELS = Path(__file__).resolve().parent.parent / (
     "app/services/internalization_room/canon/element-labels"
 )
+_TITLES = _LABELS.parent / "ui-labels.pt.json"
 
 
 def _links_in_the_vendored_maps() -> list[str]:
@@ -773,6 +774,22 @@ def test_no_catalogue_label_loses_a_word_in_portuguese() -> None:
 
 def test_no_catalogue_label_loses_a_word_in_english() -> None:
     assert _labels_that_change("en", "the LORD") == []
+
+
+def _her_scene_titles() -> list[str]:
+    listed = json.loads(_TITLES.read_text(encoding="utf-8"))
+    return [title for scenes in listed["scenes"].values() for title in scenes.values()]
+
+
+def test_none_of_her_scene_titles_loses_a_word_in_portuguese() -> None:
+    titles = _her_scene_titles()
+
+    assert len(titles) > 100
+    assert [
+        title
+        for title in titles
+        if speakable_text(title, "pt") != title.replace("YHWH", "Senhor Jeová")
+    ] == []
 
 
 def test_a_line_with_no_code_is_spoken_as_written_but_for_whitespace_runs_and_edges() -> None:
