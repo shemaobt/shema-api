@@ -589,7 +589,11 @@ async def append_exchange(
         messages.append({"role": "team", "text": outcome.room_note, "room_note": True, **stamp})
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance, **stamp})
-    elif outcome is not None and outcome.fixed_line.startswith(FailSafe.INAUDIBLE):
+    elif (
+        outcome is not None
+        and outcome.mother_tongue is not None
+        and outcome.fixed_line.startswith(FailSafe.INAUDIBLE)
+    ):
         messages.append({"role": "team", "text": "(inaudible)", **stamp})
     guide: dict[str, Any] = {"role": "guide", "text": guide_response, **stamp}
     if outcome is not None:

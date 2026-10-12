@@ -882,3 +882,18 @@ async def test_the_d_1_keeps_the_reason_it_was_said(
     assert [attempt["note"] for attempt in attempts] == [
         "The Analyst's reply could not be read, so there was no verdict."
     ]
+
+
+async def test_the_d_1_does_not_say_the_team_was_inaudible(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    kept = (await room.get_session(db_session, session_id)).messages or []
+
+    assert [message["role"] for message in kept] == ["guide"], (
+        "o analista falhou, a equipe foi ouvida: a voz lia depois que a equipe estava inaudível"
+    )
