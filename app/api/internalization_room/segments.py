@@ -18,6 +18,7 @@ from app.models.internalization_room import DivideSegmentRequest, SegmentsRespon
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
@@ -143,7 +144,7 @@ async def replace(
         kind=IRTakeKind.RETRO,
         scope=session.pericope,
         audio=audio_bytes,
-        pass_number=segment.pass_number,
+        pass_number=pass_of_a_telling(room.back_translation_of(session)),
         ordinal=segment.ordinal,
         content_type=file.content_type or "audio/mp4",
     )

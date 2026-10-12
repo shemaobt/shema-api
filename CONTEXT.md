@@ -104,7 +104,7 @@ The numbered position of a stretch in the list the analyst receives in one readi
 _Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name), chunk_index (the takes column is `ordinal`)
 
 **Pass** (`pass_number`):
-How many times a stretch has been told: one on the first telling, two when told again after a finding.
+Which side of a check a stretch was told on: one before the analyst has read the telling-back, two for anything told after it, a first telling of a new stretch included.
 _Avoid_: attempt, version, Passe, tellings (the count of every telling of the stretch, kept on the row)
 
 **Telling back**:

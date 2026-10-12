@@ -768,7 +768,7 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
     current = standing[0]
     assert current.id != replaced.id
     assert current.ordinal == replaced.ordinal
-    assert current.pass_number == 2
+    assert current.pass_number == 1, "nenhuma conferência tinha lido a equipe ainda"
     assert current.tellings == 2
 
     retired = (

@@ -229,10 +229,9 @@ async def test_a_rehearsal_told_whole_and_recorded_again_is_untold(
 ) -> None:
     """A passage recorded in one go is one part, and recording it again leaves it untold too.
 
-    The verb that retires stretches does not fire here — an upload carrying no number says
-    nothing about which part it replaces — so the telling the team already gave stands, on a
-    recording that is no longer the part. The rule is about the part having nothing told on it
-    and not about anything being retired, so this is the same refusal.
+    The telling the team gave went with the recording it was a slice of, so the session has no
+    telling-back left as well as a part nobody told: the gate names both, and the second is the
+    same refusal a part recorded again gets.
     """
     session = await ready_session(db_session)
     told_whole = await the_one_part_of(db_session, session)
@@ -243,7 +242,7 @@ async def test_a_rehearsal_told_whole_and_recorded_again_is_untold(
     fresh = await _recorded_again(client, session.id, part=None)
     await the_upload_landed_at(db_session, fresh, after(told_whole))
 
-    assert await release_blockers(db_session, session) == [UNTOLD_PART]
+    assert await release_blockers(db_session, session) == ["no_telling_back", UNTOLD_PART]
 
 
 async def test_an_old_composed_row_still_yields_one_take_per_number(

@@ -27,9 +27,19 @@ from app.services.internalization_room.back_translation import BackTranslationSt
 from app.services.internalization_room.segments import capture_segment, first_telling_of
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
+    back_translation_of,
     raise_a_warning,
     save_back_translation,
 )
+
+
+def pass_of_a_telling(state: BackTranslationState) -> int:
+    """One before the analyst has read the telling-back, two once it has, clean or not.
+
+    Hers is the same floor, decided by the server and never by the telling: a frase told again
+    before any check is still the first pass, and a new frase after one is the second.
+    """
+    return 1 if state.never_analysed else 2
 
 
 async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRSegment) -> bool:
@@ -104,14 +114,22 @@ async def capture_and_note_a_hard_stretch(
     for anybody, on a telling the team believes landed.
 
     `state` is the telling-back state for the routes that carry one; the per-stretch correction
-    does not, and passes nothing. It sits here rather than in the router because the router does
-    not touch the database (ADR 0009), and here rather than in `segments` because this composes
-    the count and the halt, which is what this module is between the two services for.
+    passes none, and its state is read off the session here. It sits here rather than in the
+    router because the router does not touch the database (ADR 0009), and here rather than in
+    `segments` because this composes the count and the halt, which is what this module is
+    between the two services for.
+
+    The pass is `pass_of_a_telling`'s, whatever the door sends in `pass_number`. And a capture
+    after a check undoes what the check left: `checked` goes false and the stored verdict goes,
+    so approval is refused until a new clean check, while `checked_at` stays to say when the
+    analyst last read the team. The correction writes that state back too, in this same
+    transaction.
 
     The scope a state is stored under is defaulted here for the same reason. Two doors reach
     this capture — the tablet's chunks route and the text seam — and both wrote the default
     themselves, so the rule held until somebody opened a third door.
     """
+    standing = state if state is not None else back_translation_of(session)
     captured = await capture_segment(
         db,
         session,
@@ -120,13 +138,16 @@ async def capture_and_note_a_hard_stretch(
         ends_ms=ends_ms,
         bridge_take_id=bridge_take_id,
         transcript=transcript,
-        pass_number=pass_number,
+        pass_number=pass_of_a_telling(standing),
         replaces=replaces,
         commit=False,
     )
-    if state is not None:
-        state.scope = state.scope or session.pericope
-        await save_back_translation(db, session, state, commit=False)
+    if not standing.never_analysed:
+        standing.checked = False
+        standing.verdict = None
+    if state is not None or not standing.never_analysed:
+        standing.scope = standing.scope or session.pericope
+        await save_back_translation(db, session, standing, commit=False)
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()
     return crossed
