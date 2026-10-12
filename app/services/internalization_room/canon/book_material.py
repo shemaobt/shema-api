@@ -221,8 +221,6 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
     book = meaning_map.book
     if book not in SERVED_BOOKS:
         return f"{pericope}: the {book} canon is not served in this release"
-    if pericope in _skeleton_registers(book):
-        return f"{pericope}: the high-risk register is still a skeleton, with no entry written"
     survey_complete = meaning_map.sta_status == SURVEYED_STATUS
     register_complete = _register_complete(book).get(pericope)
     if register_complete is None:
@@ -238,6 +236,8 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
             f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
             f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
         )
+    if pericope in _skeleton_registers(book):
+        return f"{pericope}: the high-risk register is still a skeleton, with no entry written"
     return None
 
 

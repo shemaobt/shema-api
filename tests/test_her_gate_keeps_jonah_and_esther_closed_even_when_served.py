@@ -36,3 +36,12 @@ def test_the_progression_never_lands_a_team_on_jonah_or_esther(
     jonah_and_esther_are_served: None, book: str
 ) -> None:
     assert resolve(set(), book=book) is None
+
+
+def test_esthers_refusal_names_her_checklist_and_her_survey_disagreeing(
+    jonah_and_esther_are_served: None,
+) -> None:
+    reason = book_material.unwalkable(parse_map.load_map("E01"))
+
+    assert reason is not None
+    assert "disagree" in reason
