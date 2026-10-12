@@ -12,6 +12,7 @@ exists only once the module's client fixture has called ``a_linked_tablet`` with
 
 from __future__ import annotations
 
+import random
 import uuid
 from dataclasses import dataclass
 
@@ -82,5 +83,7 @@ async def a_linked_tablet(
 
 async def _a_language(db: AsyncSession) -> Language:
     taken = set((await db.execute(select(Language.code))).scalars())
-    code = next(code for code in (uuid.uuid4().hex[:3] for _ in range(1000)) if code not in taken)
+    code = next(
+        code for code in (f"{random.randrange(1000):03d}" for _ in range(1000)) if code not in taken
+    )
     return await make_language(db, name=f"Lingua {code}", code=code)
