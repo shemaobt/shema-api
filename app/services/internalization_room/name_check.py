@@ -99,11 +99,27 @@ def _bare(form: str) -> str:
     )
 
 
+def _name_plain(name: str) -> str:
+    return " ".join(_NOT_A_NAME_LETTER.sub(" ", unicodedata.normalize("NFC", name.lower())).split())
+
+
 def _content_words(name: str) -> list[str]:
-    plain = " ".join(
-        _NOT_A_NAME_LETTER.sub(" ", unicodedata.normalize("NFC", name.lower())).split()
-    )
-    return [word for word in plain.split(" ") if len(word) >= 3 and word not in _STOP]
+    return [word for word in _name_plain(name).split(" ") if len(word) >= 3 and word not in _STOP]
+
+
+def _word_said(word: str) -> list[str]:
+    return _forms().get(word, []) + _forms().get(word.removesuffix("'s"), [])
+
+
+def _whole_forms(name: str) -> list[str]:
+    words = _content_words(name)
+    single = _word_said(words[0]) if len(words) == 1 else []
+    return _with_bare(_forms().get(_name_plain(name), []) + single)
+
+
+def _word_forms(name: str) -> list[str]:
+    words = _content_words(name)
+    return _with_bare([form for word in words if len(words) > 1 for form in _word_said(word)])
 
 
 def _code(element: Element) -> str:
@@ -120,26 +136,17 @@ def _own_names(book: str, code: str) -> set[str]:
     if entry.get("kind") != "PERSON" or not english:
         return set()
     single = _content_words(english)[:1] if len(_content_words(english)) == 1 else []
-    return {
-        _plain(name) for name in [english, *single, *_with_bare(_forms().get(english.lower(), []))]
-    }
-
-
-def _session_forms(text: str) -> list[str]:
-    words = _content_words(text)
-    found = _forms().get(text.lower(), []) + (_forms().get(words[0], []) if len(words) == 1 else [])
-    found += [
-        form
-        for word in (words if len(words) > 1 else [])
-        for form in _forms().get(word, []) + _forms().get(word.removesuffix("'s"), [])
-    ]
-    return _with_bare(found)
+    return {_plain(name) for name in [english, *single, *_whole_forms(english)]}
 
 
 def _carried(book: str, peer: Element, role: str) -> set[str]:
     english = (registry_entry(book, _code(peer)) or {}).get("english") or ""
     texts = [text for text in (peer.label, role.replace("_", " "), english) if text]
-    return {_plain(word) for text in texts for word in _content_words(text) + _session_forms(text)}
+    return {
+        _plain(word)
+        for text in texts
+        for word in _content_words(text) + _whole_forms(text) + _word_forms(text)
+    }
 
 
 def _keys(element: Element, book: str, elements: tuple[Element, ...], pericope: str) -> list[str]:
@@ -163,20 +170,8 @@ def _keys(element: Element, book: str, elements: tuple[Element, ...], pericope: 
     if not entry:
         words = [_NOT_A_WORD_LETTER.sub("", word.lower()) for word in shown.split()]
         tokens += [word for word in words if len(word) >= 5 and word not in _GENERIC]
-    whole = names + _with_bare([form for name in names for form in _forms().get(name, [])])
-    whole += hebrew
-    parts = (
-        _with_bare(
-            [
-                form
-                for name in names
-                if len(_content_words(name)) > 1
-                for word in _content_words(name)
-                for form in _forms().get(word, []) + _forms().get(word.removesuffix("'s"), [])
-            ]
-        )
-        + tokens
-    )
+    whole = names + [form for name in names for form in _whole_forms(name)] + hebrew
+    parts = [form for name in names for form in _word_forms(name)] + tokens
     taken = set().union(*(_own_names(book, other) for other in beings - {_code(element)}))
     if entry.get("kind") == "PERSON" and element.scene is not None:
         roles = roles_in_scene(pericope, element.scene)

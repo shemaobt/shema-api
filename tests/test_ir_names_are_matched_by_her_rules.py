@@ -120,3 +120,12 @@ def test_someone_or_unnamed_names_no_withheld_being_and_the_wife_of_the_dead_nam
     assert _team_says("P11", "Ruth the Moabite, the wife of the dead")[withheld["P11"]] == (
         "engaged"
     ), "«the wife of the dead» não engajava o morto sem nome de P11"
+
+
+def test_a_name_with_one_distinctive_word_is_named_by_that_words_portuguese_form() -> None:
+    assert _team_says("P09", "ela disse que ele é resgatador")["object:S3:CB_0001"] == (
+        "engaged"
+    ), "«resgatador» não engajava «a redeemer», cujo nome é só essa palavra"
+    assert _team_says("P05", "o capataz respondeu")["being:S4:B15"] == "engaged", (
+        "«capataz» não engajava «The Foreman»"
+    )
