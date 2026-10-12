@@ -96,3 +96,11 @@ def test_resgatador_names_the_nearer_redeemer_only_where_boaz_is_not_the_redeeme
     assert _team_says("P11", "o resgatador passou por ali")["being:S1:B19"] == "engaged", (
         "«resgatador» não engajava o resgatador mais próximo onde Boaz só convoca"
     )
+
+
+def test_a_long_word_of_a_label_the_names_list_does_not_hold_names_the_element() -> None:
+    heard = _team_says("P01", "they stayed there for many years")
+
+    assert heard["object:S3:TH_TEN_YEARS_APPROXIMATELY"] == "engaged", (
+        "«years», palavra do rótulo «about ten years» que a lista de nomes não tem, não o engajava"
+    )

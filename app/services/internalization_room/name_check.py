@@ -19,6 +19,7 @@ _NAMED_KINDS = {ElementKind.BEING, ElementKind.PLACE, ElementKind.OBJECT, Elemen
 
 _NOT_A_LETTER = re.compile(r"[^\w\s]|_")
 _NOT_A_NAME_LETTER = re.compile(r"[^\w'\s]|_")
+_NOT_A_WORD_LETTER = re.compile(r"[\W_]")
 _PROPER_NOUN = re.compile(r"^[A-Z][^\W\d_]{3,}$")
 _STOP = {
     "the",
@@ -148,6 +149,9 @@ def _keys(element: Element, book: str, elements: tuple[Element, ...], pericope: 
         for word in english.split()
         if _PROPER_NOUN.match(word) and word.lower() not in _GENERIC
     ]
+    if not entry:
+        words = [_NOT_A_WORD_LETTER.sub("", word.lower()) for word in element.label.split()]
+        tokens += [word for word in words if len(word) >= 5 and word not in _GENERIC]
     whole = names + _with_bare([form for name in names for form in _forms().get(name, [])])
     whole += hebrew
     parts = (
