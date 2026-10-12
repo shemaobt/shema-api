@@ -7,7 +7,6 @@ known price per turn, so the money is the test's own arithmetic and not a model'
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -16,14 +15,20 @@ import httpx
 import pytest
 
 from scripts import golden_runner
-from tests.golden_spend_harness import charged_call, the_room_answers
-from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, RUNNER_KEY, the_judge_answers
+from tests.golden_spend_harness import (
+    GOLDEN_PRICED,
+    STAMP,
+    charged_call,
+    golden_args,
+    golden_shelf,
+    the_room_answers,
+)
+from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, the_judge_answers
 
-STAMP = "2026-10-08T12-00-00"
-
-
-PRICED = [charged_call("guide", 2.0), charged_call("validator", 1.0)]
-WITH_ONE_UNPRICED = [*PRICED, charged_call("classifier", None, input_tokens=0, output_tokens=0)]
+WITH_ONE_UNPRICED = [
+    *GOLDEN_PRICED,
+    charged_call("classifier", None, input_tokens=0, output_tokens=0),
+]
 
 
 def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]]) -> list[str]:
@@ -43,7 +48,7 @@ def _room_charging(monkeypatch: pytest.MonkeyPatch, usage: list[dict[str, Any]])
 
 @pytest.fixture()
 def opened(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    return _room_charging(monkeypatch, PRICED)
+    return _room_charging(monkeypatch, GOLDEN_PRICED)
 
 
 @pytest.fixture()
@@ -51,48 +56,14 @@ def opened_with_a_call_the_table_never_priced(monkeypatch: pytest.MonkeyPatch) -
     return _room_charging(monkeypatch, WITH_ONE_UNPRICED)
 
 
-def _shelf(tmp_path: Path, *scripts: tuple[str, str, int]) -> Path:
-    sessions = tmp_path / "sessions"
-    sessions.mkdir()
-    for name, pericope, turns in scripts:
-        (sessions / f"{name}.json").write_text(
-            json.dumps(
-                {
-                    "name": name,
-                    "pericopeId": pericope,
-                    "language": "Brazilian Portuguese",
-                    "turns": [{"team": f"fala {n}"} for n in range(turns)],
-                }
-            ),
-            encoding="utf-8",
-        )
-    return sessions
-
-
-def _args(sessions: Path, out: Path, **over: Any) -> argparse.Namespace:
-    given: dict[str, Any] = {
-        "base_url": "http://room/api/internalization-room/",
-        "script": None,
-        "sessions": str(sessions),
-        "only": None,
-        "out": str(out),
-        "turns": None,
-        "access_code": RUNNER_KEY,
-        "stamp": STAMP,
-        "rejudge": None,
-        "budget_usd": None,
-    }
-    return argparse.Namespace(**{**given, **over})
-
-
 async def test_a_run_past_its_budget_starts_no_further_session_and_names_them(
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
     the_judge_answers(monkeypatch, json.dumps(approving))
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1), ("P02-c", "P02", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1), ("P02-c", "P02", 1))
 
-    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=2.0))
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=2.0))
 
     assert opened == ["P01"], (
         "um turno de US$ 3 passa dos US$ 2: a segunda sessão nem abre, a terceira também"
@@ -108,10 +79,10 @@ async def test_a_session_in_flight_when_the_budget_is_crossed_is_played_whole_an
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     judge = the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 3), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 3), ("P01-b", "P01", 1))
     out = tmp_path / "reports"
 
-    await golden_runner.run(_args(sessions, out, budget_usd=2.0))
+    await golden_runner.run(golden_args(sessions, out, budget_usd=2.0))
 
     played = json.loads((out / f"P01-a.{STAMP}.json").read_text(encoding="utf-8"))
     assert [turn["idx"] for turn in played["turns"]] == [0, 1, 2], (
@@ -128,9 +99,9 @@ async def test_the_last_session_crossing_the_budget_is_a_finished_run_and_not_a_
 ) -> None:
     approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
     the_judge_answers(monkeypatch, json.dumps(approving))
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1))
 
-    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=2.0))
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=2.0))
 
     assert exit_code == 0, "nada ficou por começar: a rodada que acabou além do orçamento acabou"
     assert "budget" not in capsys.readouterr().err
@@ -141,9 +112,9 @@ async def test_a_run_given_no_budget_stops_at_twenty_dollars(
 ) -> None:
     the_judge_answers(monkeypatch)
     monkeypatch.delenv("GOLDEN_BUDGET_USD", raising=False)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 7), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 7), ("P01-b", "P01", 1))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports"))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
 
     assert opened == ["P01"], (
         "sete turnos de US$ 3 são US$ 21, e o teto de uma rodada sem orçamento é US$ 20"
@@ -155,9 +126,9 @@ async def test_the_budget_the_environment_provides_is_the_one_a_run_without_a_fl
 ) -> None:
     the_judge_answers(monkeypatch)
     monkeypatch.setenv("GOLDEN_BUDGET_USD", "30")
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 7), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 7), ("P01-b", "P01", 1))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports"))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports"))
 
     assert opened == ["P01", "P01"], "US$ 21 não chegam aos US$ 30 que o ambiente deu"
 
@@ -167,9 +138,9 @@ async def test_the_flag_beats_the_environment(
 ) -> None:
     the_judge_answers(monkeypatch)
     monkeypatch.setenv("GOLDEN_BUDGET_USD", "100")
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=1.0))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=1.0))
 
     assert opened == ["P01"]
 
@@ -179,9 +150,9 @@ async def test_each_sessions_line_shows_what_it_cost_and_the_run_ends_with_the_t
 ) -> None:
     approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
     the_judge_answers(monkeypatch, json.dumps(approving))
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 2))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=100.0))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=100.0))
 
     shown = capsys.readouterr().out
     assert "  PASS · P01-a · judge=pass · mechanical=0 · cost US$ 3.00\n" in shown, (
@@ -200,9 +171,9 @@ async def test_the_total_and_the_stop_say_how_many_calls_the_budget_could_not_se
     capsys,
 ) -> None:
     the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 2), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2), ("P01-b", "P01", 1))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=5.0))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=5.0))
 
     shown = capsys.readouterr()
     assert (
@@ -222,9 +193,9 @@ async def test_one_call_the_budget_could_not_see_is_a_call_and_not_calls(
     capsys,
 ) -> None:
     the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=100.0))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=100.0))
 
     assert (
         "1 call had no table price; the budget counted it at the highest table price\n"
@@ -236,10 +207,10 @@ async def test_the_readme_of_a_stopped_run_says_it_stopped_and_names_what_it_lef
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 2), ("P01-b", "P01", 1), ("P02-c", "P02", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2), ("P01-b", "P01", 1), ("P02-c", "P02", 1))
     out = tmp_path / "reports"
 
-    await golden_runner.run(_args(sessions, out, budget_usd=5.0))
+    await golden_runner.run(golden_args(sessions, out, budget_usd=5.0))
 
     assert (
         "Rodada parada pelo orçamento de US$ 5.00, já em US$ 6.00. "
@@ -297,7 +268,9 @@ async def test_a_rejudge_counts_its_judge_calls_and_stops_before_the_export_it_c
     earlier = _earlier_run(tmp_path / "earlier", "P01-a", "P01-b", "P01-c")
     out = tmp_path / "rejudged"
 
-    exit_code = await golden_runner.run(_args(earlier, out, rejudge=str(earlier), budget_usd=2.0))
+    exit_code = await golden_runner.run(
+        golden_args(earlier, out, rejudge=str(earlier), budget_usd=2.0)
+    )
 
     assert judged == ["P01-a"], "a primeira chamada do juiz, US$ 3, já passou dos US$ 2"
     assert exit_code == 3
@@ -315,9 +288,9 @@ async def test_a_session_that_failed_keeps_the_gates_one_when_the_budget_then_st
     opened: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
 
-    exit_code = await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=2.0))
+    exit_code = await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=2.0))
 
     assert exit_code == 1, (
         "a sessão reprovada é o portão: o 3 só diz que a rodada parou e que nada mais deu errado"
@@ -331,9 +304,9 @@ async def test_an_unpriced_rung_is_budgeted_at_the_dearest_price_and_still_stops
     unpriced = [charged_call("guide", None, input_tokens=1_000_000, output_tokens=100_000)]
     opened = _room_charging(monkeypatch, unpriced)
     the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=5.0))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=5.0))
 
     shown = capsys.readouterr()
     assert opened == ["P01"], (
@@ -362,9 +335,9 @@ async def test_an_unpriced_rungs_cache_tokens_are_budgeted_at_the_dearest_read_a
     ]
     opened = _room_charging(monkeypatch, unpriced)
     the_judge_answers(monkeypatch)
-    sessions = _shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P01-b", "P01", 1))
 
-    await golden_runner.run(_args(sessions, tmp_path / "reports", budget_usd=2.4))
+    await golden_runner.run(golden_args(sessions, tmp_path / "reports", budget_usd=2.4))
 
     assert opened == ["P01"]
     assert "reached at US$ 2.50;" in capsys.readouterr().err, (
