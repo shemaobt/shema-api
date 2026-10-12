@@ -1201,8 +1201,12 @@ class SessionCoverageResponse(BaseModel):
     `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
     coverage when the read happens by the code that renders it for the Guide: what the voice
     will be handed on its next turn if nothing changes, without the room facts that follow it.
+
+    A Panorama do Livro has no coverage: `panorama` is true, there are no groups and no ledger,
+    and the Desk shows her line «O Panorama não tem cobertura.»
     """
 
     session_id: str
     groups: list[SessionCoverageGroup]
-    ledger: str
+    panorama: bool
+    ledger: str | None

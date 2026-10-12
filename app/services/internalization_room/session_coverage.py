@@ -9,7 +9,7 @@ from app.models.internalization_room import (
     SessionCoverageResponse,
 )
 from app.services.internalization_room.canon.elements import ElementKind, elements_for
-from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.coverage import initial_state, is_panorama
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 
 _STATE_OF = {
@@ -21,6 +21,8 @@ _STATE_OF = {
 
 
 def coverage_of(session: IRSession) -> SessionCoverageResponse:
+    if is_panorama(session.pericope):
+        return SessionCoverageResponse(session_id=session.id, groups=[], panorama=True, ledger=None)
     elements = elements_for(session.pericope)
     stored = {**initial_state(session.pericope), **(session.coverage_state or {})}
     groups = []
@@ -39,5 +41,6 @@ def coverage_of(session: IRSession) -> SessionCoverageResponse:
     return SessionCoverageResponse(
         session_id=session.id,
         groups=groups,
+        panorama=False,
         ledger=coverage_status_block(session.coverage_state or {}, session.pericope),
     )

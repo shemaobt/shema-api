@@ -17,12 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.db.models.project import Project
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.llm import CACHE_BREAK
-from app.services.internalization_room.sessions import append_exchange, apply_coverage
+from app.services.internalization_room.sessions import (
+    append_exchange,
+    apply_coverage,
+    create_session,
+)
 from tests.baker import (
     grant_room_app_role,
     make_language,
@@ -74,10 +79,14 @@ async def consultant(db_session: AsyncSession) -> dict[str, str]:
 
 
 @pytest.fixture()
-async def session(db_session: AsyncSession) -> IRSession:
+async def team(db_session: AsyncSession) -> Project:
     language = await make_language(db_session, name="Lang a", code="la")
-    project = await make_project(db_session, language.id, name="Team a")
-    return await open_ir_session(db_session, pericope=P, project_id=project.id)
+    return await make_project(db_session, language.id, name="Team a")
+
+
+@pytest.fixture()
+async def session(db_session: AsyncSession, team: Project) -> IRSession:
+    return await open_ir_session(db_session, pericope=P, project_id=team.id)
 
 
 async def _coverage(
@@ -223,3 +232,21 @@ async def test_a_turn_that_engaged_an_element_shows_it_engaged_on_the_next_read(
     assert "WORKED WITH BY THE TEAM (engaged): (nothing yet" in before["ledger"]
     assert _states(after)["scene:1"] == "engaged"
     assert "WORKED WITH BY THE TEAM (engaged): S1 (v.1\u20132)\n" in after["ledger"]
+
+
+async def test_a_panorama_is_flagged_and_has_no_beads_and_no_ledger(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    team: Project,
+    db_session: AsyncSession,
+) -> None:
+    panorama = await create_session(db_session, pericope="OV-Ruth", project_id=team.id)
+    await db_session.commit()
+
+    body = await _coverage(client, consultant, panorama.id)
+
+    assert body["panorama"] is True
+    assert body["groups"] == []
+    assert body["ledger"] is None
+    assert (await _coverage(client, consultant, session.id))["panorama"] is False
