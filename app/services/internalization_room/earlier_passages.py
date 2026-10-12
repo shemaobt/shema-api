@@ -60,6 +60,7 @@ async def earlier_passages(
     project_id: str | None,
     pericope: str,
     before_a_turn: bool = False,
+    prior: Mapping[str, str] | None = None,
 ) -> dict[str, str] | None:
     if project_id is None or is_panorama(pericope):
         return None
@@ -80,13 +81,18 @@ async def earlier_passages(
     except TimeoutError:
         unread = ", ".join(earlier)
         logger.warning(
-            "[earlier] team %s, %s: %s not read within %s s — read as not worked yet",
+            "[earlier] team %s, %s: %s not read within %s s — kept from the stamp before, "
+            "or read as not worked yet",
             project_id,
             pericope,
             unread,
             bound_s,
         )
-        return {**dict.fromkeys(earlier, EarlierPassageStatus.NOT_WORKED), "unread": unread}
+        kept = prior or {}
+        return {
+            **{passage: kept.get(passage, EarlierPassageStatus.NOT_WORKED) for passage in earlier},
+            "unread": unread,
+        }
 
 
 def earlier_passages_due(stamp: Mapping[str, str] | None) -> bool:

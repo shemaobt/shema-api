@@ -97,7 +97,12 @@ async def settle_coverage(
 async def read_the_earlier_passages_again(*, session_id: str) -> None:
     async with AsyncSessionLocal() as db:
         session = await get_session(db, session_id)
-        stamp = await earlier_passages(db, project_id=session.project_id, pericope=session.pericope)
+        stamp = await earlier_passages(
+            db,
+            project_id=session.project_id,
+            pericope=session.pericope,
+            prior=session.earlier_passages,
+        )
         if stamp is None:
             return
         await db.execute(
