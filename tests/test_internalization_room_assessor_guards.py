@@ -26,15 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.comprehension.probe import ProbePurpose
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
+from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
-    save_comprehension,
 )
 from tests.turn_harness import the_room_agent_is
 
@@ -49,6 +46,7 @@ RETIRED_MODULES = (
     "app.services.internalization_room.comprehension.question_contract",
     "app.services.internalization_room.comprehension.stt_recovery",
     "app.services.internalization_room.comprehension.no_report",
+    "app.services.internalization_room.comprehension.probe",
 )
 
 
@@ -64,28 +62,10 @@ def test_no_module_of_the_probe_machinery_can_be_imported() -> None:
     assert not alive, f"the probe machinery is back: {alive}"
 
 
-def test_no_field_of_the_session_remembers_the_probe_machinery() -> None:
-    retired = {
-        "assessor_failures",
-        "stt_recovery",
-        "no_report_attempts",
-        "adaptive_free_retell_attempted",
-    }
-
-    assert not retired & set(ComprehensionState.model_fields)
-
-
 def test_no_turn_can_carry_a_call_for_a_person() -> None:
     """The field outlived its last writer, and the route still read it. A turn that could
     say a person is needed is the server deciding it, and that call is the tablet's."""
     assert "needs_person" not in {field.name for field in dataclasses.fields(TurnOutcome)}
-
-
-def test_the_one_purpose_left_is_the_recording_handoff_consent() -> None:
-    """The purposes were the contract: each one told the Guide what it could and could not
-    say next. The consent question is the app's own fixed sentence and the only reason a
-    probe is still raised at all."""
-    assert [purpose.value for purpose in ProbePurpose] == ["recording_handoff_consent"]
 
 
 PROBE_BLOCK_MARKS = (
@@ -109,12 +89,12 @@ async def _a_room_that_has_asked_something(db: AsyncSession) -> IRSession:
 
 async def _the_team_answers(
     db: AsyncSession, session: IRSession, text: str, *, heard_as: str | None = None
-) -> tuple[ComprehensionTurn, IRSession]:
+) -> tuple[TurnOutcome, IRSession]:
     """One whole turn as the endpoint runs it, so what one turn leaves the next one reads.
 
     `heard_as` is the language the transcriber was sure it heard; at the room's threshold,
     a language other than the session's is the team speaking their own tongue."""
-    turn = await run_comprehension_turn(
+    outcome = await run_comprehension_turn(
         db,
         session,
         speech=HeardSpeech(
@@ -125,15 +105,14 @@ async def _the_team_answers(
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
-    session = await save_comprehension(db, session, turn.state)
     session = await append_exchange(
         db,
         session,
-        team_utterance=turn.outcome.transcript,
-        guide_response=turn.outcome.speech,
-        outcome=turn.outcome,
+        team_utterance=outcome.transcript,
+        guide_response=outcome.speech,
+        outcome=outcome,
     )
-    return turn, session
+    return outcome, session
 
 
 class _RecordingModels:
@@ -189,13 +168,13 @@ async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached
     the_room_agent_is(monkeypatch, turn=models)
     session = await _a_room_that_has_asked_something(db_session)
 
-    turn, _ = await _the_team_answers(
+    outcome, _ = await _the_team_answers(
         db_session, session, text="é difícil explicar isso em português"
     )
 
-    assert turn.outcome.speech == GUIDE_LINE
-    assert not turn.outcome.used_fail_safe
-    assert not turn.outcome.degraded
+    assert outcome.speech == GUIDE_LINE
+    assert not outcome.used_fail_safe
+    assert not outcome.degraded
     assert models.guide and models.validator
     to_the_guide = _marks_the_app_added(models.guide, GUIDE)
     to_the_validator = _marks_the_app_added(models.validator, VALIDATOR)

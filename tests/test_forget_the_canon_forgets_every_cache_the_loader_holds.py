@@ -25,7 +25,6 @@ def test_the_discovery_finds_the_caches_the_ticket_names() -> None:
         "_passage_labels",
         "_beings_by_scene",
         "_portuguese",
-        "checkpoints_for",
     } <= found
 
 
