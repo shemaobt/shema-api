@@ -138,7 +138,7 @@ async def test_a_facilitator_reads_the_conversation_as_turns_in_order(
         ("guide", GUIDE_LINE),
         ("team", SECOND_ANSWER),
     ]
-    assert [t["role"] for t in turns[5:]] == ["guide", "room", "guide"]
+    assert [t["role"] for t in turns[5:]] == ["guide", "team", "guide"]
     assert turns[6]["text"] == (
         "[A equipe falou na língua materna; sem transcrição — nenhuma palavra chegou até você.]"
     )
