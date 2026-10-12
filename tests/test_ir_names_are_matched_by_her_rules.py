@@ -55,3 +55,12 @@ def test_belem_said_without_its_accent_still_engages_bethlehem() -> None:
     assert heard["place:S1:PL1"] == "engaged", (
         "a transcrição sem o acento de «Belém» não engajava Belém"
     )
+
+
+def test_one_word_of_fields_of_moab_names_it_in_portuguese_and_in_english() -> None:
+    assert _team_says("P01", "foram pros campos de Moabe")["place:S1:PL2"] == "engaged", (
+        "«Moabe», a palavra que distingue «Fields of Moab», não engajava o lugar"
+    )
+    assert _team_says("P01", "they went to Moab")["place:S1:PL2"] == "engaged", (
+        "«Moab», o nome próprio dentro de «Fields of Moab», não engajava o lugar"
+    )

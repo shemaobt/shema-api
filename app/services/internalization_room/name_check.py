@@ -18,6 +18,63 @@ SESSION_FORMS = Path(__file__).parent / "canon" / "session-forms.json"
 _NAMED_KINDS = {ElementKind.BEING, ElementKind.PLACE, ElementKind.OBJECT, ElementKind.TIME}
 
 _NOT_A_LETTER = re.compile(r"[^\w\s]|_")
+_NOT_A_NAME_LETTER = re.compile(r"[^\w'\s]|_")
+_PROPER_NOUN = re.compile(r"^[A-Z][^\W\d_]{3,}$")
+_STOP = {
+    "the",
+    "of",
+    "in",
+    "and",
+    "a",
+    "an",
+    "to",
+    "at",
+    "on",
+    "by",
+    "for",
+    "with",
+    "his",
+    "her",
+    "their",
+    "its",
+    "one",
+    "each",
+    "own",
+}
+_GENERIC = {
+    "fields",
+    "field",
+    "land",
+    "days",
+    "women",
+    "woman",
+    "house",
+    "sons",
+    "son",
+    "two",
+    "the",
+    "of",
+    "in",
+    "and",
+    "a",
+    "about",
+    "their",
+    "his",
+    "her",
+    "after",
+    "before",
+    "until",
+    "when",
+    "where",
+    "with",
+    "from",
+    "into",
+    "did",
+    "not",
+    "who",
+    "whole",
+    "went",
+}
 _HEBREW = re.compile("[\u0590-\u05ff]")
 
 
@@ -33,6 +90,13 @@ def _bare(form: str) -> str:
     )
 
 
+def _content_words(name: str) -> list[str]:
+    plain = " ".join(
+        _NOT_A_NAME_LETTER.sub(" ", unicodedata.normalize("NFC", name.lower())).split()
+    )
+    return [word for word in plain.split(" ") if len(word) >= 3 and word not in _STOP]
+
+
 def _keys(element: Element, book: str) -> list[str]:
     entry = registry_entry(book, element.key.rsplit(":", 1)[-1]) or {}
     english = entry.get("english") or ""
@@ -43,7 +107,19 @@ def _keys(element: Element, book: str) -> list[str]:
         return hebrew
     names = [name.lower() for name in (element.label, english) if name]
     forms_said = [form for name in names for form in _forms().get(name, [])]
-    return names + forms_said + [_bare(form) for form in forms_said] + hebrew
+    forms_said += [
+        form
+        for name in names
+        if len(_content_words(name)) > 1
+        for word in _content_words(name)
+        for form in _forms().get(word, []) + _forms().get(word.removesuffix("'s"), [])
+    ]
+    tokens = [
+        word
+        for word in english.split()
+        if _PROPER_NOUN.match(word) and word.lower() not in _GENERIC
+    ]
+    return names + forms_said + [_bare(form) for form in forms_said] + tokens + hebrew
 
 
 def _plain(text: str) -> str:
