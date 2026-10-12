@@ -126,6 +126,9 @@ async def check_the_telling_back(
         )
         if read is None:
             line, name = choose(FailSafe.INAUDIBLE, language)
+            state.checks.append(
+                CheckRound(at=datetime.now(UTC), spoken=line, outcome="fail_safe", conferida=False)
+            )
             return TellingBackVerdict(
                 finding=None,
                 current=[],
