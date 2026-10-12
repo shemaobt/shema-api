@@ -47,8 +47,10 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
     in_a_voice_the_room_has,
 )
 from app.services.internalization_room.takes import current_parts
-from app.services.internalization_room.validated_turn import TurnOutcome
+from app.services.internalization_room.validated_turn import Attempt, TurnOutcome
 from app.services.internalization_room.verdict_turn import run_verdict_turn
+
+UNREADABLE_ANALYSIS_NOTE = "The Analyst's reply could not be read, so there was no verdict."
 
 
 @dataclass(frozen=True)
@@ -134,6 +136,7 @@ async def check_the_telling_back(
                     used_fail_safe=True,
                     degraded=True,
                     fixed_line=name,
+                    attempts=[Attempt(attempt=1, draft="", note=UNREADABLE_ANALYSIS_NOTE).stored()],
                 ),
                 checked=False,
                 findings_remaining=0,

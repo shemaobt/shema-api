@@ -865,3 +865,20 @@ async def test_an_addition_and_an_unclear_with_no_readable_frase_each_leave_a_li
     )
     assert "BT analyst unclear finding without a chunk" in caplog.text
     assert MARK in caplog.text, "a linha traz a resposta inteira"
+
+
+async def test_the_d_1_keeps_the_reason_it_was_said(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    kept = (await room.get_session(db_session, session_id)).messages or []
+
+    guide = next(message for message in kept if message["role"] == "guide")
+    attempts = guide["attempts"]
+    assert [attempt["note"] for attempt in attempts] == [
+        "The Analyst's reply could not be read, so there was no verdict."
+    ]
