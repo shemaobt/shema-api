@@ -20,7 +20,6 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.exceptions import UnreadableReply
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import (
     THE_WHOLE_PASSAGE,
@@ -37,6 +36,7 @@ from app.services.internalization_room.back_translation import (
     the_finding_that_leads,
 )
 from app.services.internalization_room.background import the_reading_ahead
+from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
@@ -47,8 +47,10 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
     in_a_voice_the_room_has,
 )
 from app.services.internalization_room.takes import current_parts
-from app.services.internalization_room.validated_turn import TurnOutcome
+from app.services.internalization_room.validated_turn import Attempt, TurnOutcome
 from app.services.internalization_room.verdict_turn import run_verdict_turn
+
+UNREADABLE_ANALYSIS_NOTE = "The Analyst's reply could not be read, so there was no verdict."
 
 
 @dataclass(frozen=True)
@@ -85,9 +87,10 @@ async def check_the_telling_back(
 ) -> TellingBackVerdict:
     """Read what the team told back, settle the findings, and voice one of them.
 
-    Nothing is saved on a reading that could not be made: `checked` strikes the passage off
-    the wheel for good, so a passage blessed because the analyst was unreachable would be
-    finished by an outage.
+    Nothing is saved as a verdict on a reading that could not be made: `checked` strikes the
+    passage off the wheel for good, so a passage blessed because the analyst was unreachable
+    would be finished by an outage. A reply the analyst gave and the room could not read is
+    heard as her first D line and kept as a turn, with no verdict behind it.
 
     `takes` is the session's recordings in reading order, which is where the address the voice
     says comes from: a finding names a stretch, a stretch is a slice of a **Part**, and only the
@@ -107,6 +110,7 @@ async def check_the_telling_back(
         scene_titles(session),
         language,
     )
+    told_back = segments_block(told, addresses, language)
     if not state.already_analysed(told):
         read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
@@ -120,7 +124,26 @@ async def check_the_telling_back(
             session_id=session.id,
         )
         if read is None:
-            raise UnreadableReply("a resposta do analista não pôde ser lida")
+            line, name = choose(FailSafe.INAUDIBLE, language)
+            return TellingBackVerdict(
+                finding=None,
+                current=[],
+                read_this_round=[],
+                said=line,
+                outcome=TurnOutcome(
+                    speech=line,
+                    transcript="",
+                    used_fail_safe=True,
+                    degraded=True,
+                    fixed_line=name,
+                    attempts=[Attempt(attempt=1, draft="", note=UNREADABLE_ANALYSIS_NOTE).stored()],
+                ),
+                checked=False,
+                findings_remaining=findings_remaining(
+                    findings_on_stretches_that_count(state.findings, (one.id for one in told))
+                ),
+                told_back=told_back,
+            )
         read_this_round = read.findings
         nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
@@ -133,20 +156,25 @@ async def check_the_telling_back(
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
-    told_back = segments_block(told, addresses, language)
-    outcome = await run_verdict_turn(
-        findings_text=findings_block(current or nuances[:1], addresses),
-        scope=THE_WHOLE_PASSAGE,
-        pericope_num=session.pericope,
-        messages=session.messages or [],
-        telling_back=told_back,
-        speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
-        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
-        session_language=LANGUAGE_NAMES[language],
-        language_code=language,
-        settings=settings,
-        session_id=session.id,
-    )
+    async def speak(handed: list[Finding] | list[Nuance]) -> TurnOutcome:
+        return await run_verdict_turn(
+            findings_text=findings_block(handed, addresses),
+            scope=THE_WHOLE_PASSAGE,
+            pericope_num=session.pericope,
+            messages=session.messages or [],
+            telling_back=told_back,
+            speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
+            validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+            session_language=LANGUAGE_NAMES[language],
+            language_code=language,
+            settings=settings,
+            session_id=session.id,
+        )
+
+    a_lone_nuance = not current and bool(nuances)
+    outcome = await speak(current or nuances[:1])
+    if outcome.used_fail_safe and a_lone_nuance:
+        outcome = await speak([])
 
     said = outcome.speech
     return TellingBackVerdict(
