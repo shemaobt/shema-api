@@ -56,6 +56,13 @@ def _beings_by_scene(pericope_num: str) -> dict[int, list[dict]]:
     }
 
 
+def roles_in_scene(pericope_num: str, scene: int) -> dict[str, str]:
+    return {
+        entry["being_id"]: entry.get("role_in_scene") or ""
+        for entry in _beings_by_scene(pericope_num)[scene]
+    }
+
+
 def _gloss(line: str) -> str | None:
     gloss = _NAMED_LINK.sub("", line.strip().rsplit("/", 1)[-1].strip())
     if gloss and "[[" not in gloss and not _FLAG_NOTE.match(gloss):
@@ -71,6 +78,10 @@ def _glosses(body: str) -> dict[str, str]:
         if gloss:
             glosses.setdefault(code, gloss)
     return glosses
+
+
+def registry_entry(book: str, code: str) -> dict | None:
+    return _names_list(book).get(code)
 
 
 def _retired_or_reserved(code: str, entry: dict) -> bool:
