@@ -1,26 +1,3 @@
-"""ENG-589 — a passage whose preservation layer nobody wrote is refused, not walked.
-
-The completion floor the design names is *every concrete element of the map — each scene,
-being, place, object, time, significant absence, **and preserved element** — engaged*. The
-passage whose Compilation Log has no `do_not_decide` audit entry at all gets a coverage spine
-built without a single `preserved:` bead and a comprehension pack without a single
-`preserved_element` checkpoint. Nothing refused it: the room walked it, met a floor that was
-missing its top row, and handed Refine a package claiming the floor was met.
-
-Two tests carry the slice, in opposite directions.
-
-**`test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer`** is the
-gate. It fails against the original code by the session being created normally.
-
-**`test_a_passage_that_carries_its_preservation_layer_still_opens`** is the counterweight,
-and is the more important of the two. A guard that overshoots takes the whole book down —
-every passage that carries its layer, and the room with them.
-
-The canon is read here rather than named: a test that wrote a range of passages would keep
-passing on the day the project writes a layer it had counted as missing, which is exactly the
-day it must stop.
-"""
-
 from __future__ import annotations
 
 import json
@@ -39,7 +16,6 @@ from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_bo
 from app.services.internalization_room.sessions import create_session
 from tests.canon_harness import (
     A_FABLE_LOG_WITH_A_COMPLETE_REGISTER,
-    A_FABLE_LOG_WITHOUT_ONE,
     a_fable_map,
     forget_the_canon,
 )
@@ -91,38 +67,6 @@ def a_passage_whose_survey_is_pending(
     forget_the_canon()
 
 
-@pytest.fixture
-def a_finished_passage_whose_log_records_no_rule(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[str]:
-    maps = tmp_path / "meaning-map"
-    logs = tmp_path / "compilation-log"
-    maps.mkdir()
-    logs.mkdir()
-    (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(), encoding="utf-8")
-    (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
-        A_FABLE_LOG_WITHOUT_ONE, encoding="utf-8"
-    )
-
-    monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
-    monkeypatch.setattr(book_material, "LOGS_DIR", logs)
-    monkeypatch.setattr(book_material, "SERVED_BOOKS", frozenset({"Ruth", "Fable"}))
-    forget_the_canon()
-    yield "Q01"
-    forget_the_canon()
-
-
-async def test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer(
-    db_session: AsyncSession, a_finished_passage_whose_log_records_no_rule: str
-) -> None:
-    with pytest.raises(ValidationError) as refusal:
-        await create_session(db_session, pericope=a_finished_passage_whose_log_records_no_rule)
-
-    said = str(refusal.value)
-    assert a_finished_passage_whose_log_records_no_rule in said
-    assert "no preservation layer" in said
-
-
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
@@ -136,26 +80,6 @@ async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     assert session.pericope == WITH_LAYER
     assert preserved
     assert set(preserved) <= set(session.coverage_state)
-
-
-async def test_every_passage_the_canon_offers_either_carries_the_layer_or_is_refused(
-    db_session: AsyncSession,
-) -> None:
-    """The rule, stated over the whole canon, so the next book cannot come in the same door."""
-    opened = {}
-    for pericope in CANON:
-        try:
-            await create_session(db_session, pericope=pericope)
-        except ValidationError:
-            opened[pericope] = False
-        else:
-            opened[pericope] = True
-
-    carries_the_layer = {
-        pericope: any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
-        for pericope in CANON
-    }
-    assert opened == carries_the_layer
 
 
 async def test_a_map_whose_survey_is_pending_is_not_consumable_canon(

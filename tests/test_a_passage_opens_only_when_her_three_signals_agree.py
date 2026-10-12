@@ -8,8 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon import book_material, parse_map
+from app.services.internalization_room.progression import resolve
 from app.services.internalization_room.sessions import create_session
-from tests.canon_harness import A_FABLE_LOG_WITH_A_LAYER, a_fable_map, forget_the_canon
+from tests.canon_harness import (
+    A_FABLE_LOG_WITH_A_COMPLETE_REGISTER_AND_NO_RULE,
+    A_FABLE_LOG_WITH_A_LAYER,
+    a_fable_map,
+    forget_the_canon,
+)
 
 
 @pytest.fixture
@@ -45,3 +51,12 @@ async def test_a_log_that_does_not_mark_the_register_complete_keeps_the_passage_
     assert pericope in reason
     with pytest.raises(ValidationError):
         await create_session(db_session, pericope=pericope)
+
+
+def test_a_passage_whose_three_signals_agree_opens_with_no_preservation_rule_recorded(
+    a_passage_with_its_log: Callable[[str], str],
+) -> None:
+    pericope = a_passage_with_its_log(A_FABLE_LOG_WITH_A_COMPLETE_REGISTER_AND_NO_RULE)
+
+    assert book_material.unwalkable(parse_map.load_map(pericope)) is None
+    assert resolve(set(), book="Fable") == pericope

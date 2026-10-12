@@ -169,3 +169,6 @@ A_FABLE_LOG_WITH_A_COMPLETE_REGISTER = _a_fable_log(
 A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER = _a_fable_log(
     [_A_RULE], {"high_risk_register_complete": False}
 )
+A_FABLE_LOG_WITH_A_COMPLETE_REGISTER_AND_NO_RULE = _a_fable_log(
+    [{**_A_RULE, "do_not_decide": False}], {"high_risk_register_complete": True}
+)

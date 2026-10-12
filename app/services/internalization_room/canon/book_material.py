@@ -200,18 +200,13 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
 
     The same refusal, asked rather than raised. The wheel offers the passages a team can
     choose from and the progression names the one it lands on next, and both have to know
-    which passages open at all — a copy of these three conditions in either of them would stop
+    which passages open at all — a copy of these conditions in either of them would stop
     matching this one the day a fourth signal joins.
     """
     pericope = meaning_map.pericope_num
     book = meaning_map.book
     if book not in SERVED_BOOKS:
         return f"{pericope}: the {book} canon is not served in this release"
-    if not any(rule.pericope == pericope for rule in preservation_rules(book)):
-        return (
-            f"{pericope}: no preservation layer in the {book} canon — the passage's "
-            "withholdings were never written, so its completion floor cannot be met"
-        )
     survey_complete = meaning_map.sta_status == SURVEYED_STATUS
     register_complete = _register_complete(book).get(pericope)
     if register_complete is None:
@@ -231,19 +226,7 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
 
 
 def require_walkable(meaning_map: MeaningMap) -> None:
-    """Refuse a passage no team should be walked through, and name which layer is missing.
-
-    The completion floor is every concrete element of the map engaged — each scene, being,
-    place, object, time, significant absence, *and preserved element*. A passage with no
-    withholdings recorded gets a coverage spine with no `preserved:` beads and a
-    comprehension pack with no `preserved_element` checkpoints, meets that shortened floor,
-    and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
-    passage; running costs Refine a false assurance, which is the more expensive of the two.
-
-    The three signals are read separately on purpose. A passage the project has not finished
-    tends to lack both — no preservation layer *and* a pending survey — but agreement is not
-    either one being read, and a layer written before the survey closes would otherwise walk.
-    """
+    """Refuse a passage no team should be walked through, and name which layer is missing."""
     reason = unwalkable(meaning_map)
     if reason is not None:
         raise ValidationError(reason)
