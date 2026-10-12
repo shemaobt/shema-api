@@ -45,6 +45,7 @@ from app.services.internalization_room.back_translation import (
     Finding,
     FindingKind,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.hearing import spoken_words_only
 from app.services.internalization_room.sessions import resolve_pericope
@@ -176,13 +177,14 @@ async def play_a_round(
         told = room.told_back(await room.final_segments(db, session.id))
         takes = await takes_of(db, session.id)
         await db.commit()
-        verdict = await room.check_the_telling_back(
-            session,
-            state=state,
-            told=told,
-            takes=takes,
-            settings=get_settings(),
-        )
+        with reading_the_canon_of(session.canon_pin):
+            verdict = await room.check_the_telling_back(
+                session,
+                state=state,
+                told=told,
+                takes=takes,
+                settings=get_settings(),
+            )
         await room.save_the_spoken_verdict(
             db,
             session,

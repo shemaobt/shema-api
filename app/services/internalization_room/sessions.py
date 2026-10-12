@@ -569,7 +569,8 @@ async def append_exchange(
 
     What the room heard of the team's take — the language, its probability, the
     mother-tongue decision and the take's length — goes on the Guide's entry too, because a
-    mother-tongue turn and a missed one write no team entry. Only a turn the room heard
+    mother-tongue turn writes no team entry and a missed one writes only «(inaudible)», her
+    mark for a team that spoke and was not heard. Only a turn the room heard
     carries them; the opening and the telling-back verdict write none. What the Guide was
     handed as the team's turn rides with them: empty on a miss, which reached no Guide.
 
@@ -588,6 +589,8 @@ async def append_exchange(
         messages.append({"role": "room", "text": outcome.room_note, **stamp})
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance, **stamp})
+    elif outcome is not None and outcome.fixed_line.startswith(FailSafe.INAUDIBLE):
+        messages.append({"role": "team", "text": "(inaudible)", **stamp})
     guide: dict[str, Any] = {"role": "guide", "text": guide_response, **stamp}
     if outcome is not None:
         guide["outcome"] = _containment_of(outcome)
