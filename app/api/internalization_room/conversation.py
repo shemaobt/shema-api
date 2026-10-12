@@ -4,9 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import ReaderUser
 from app.core.database import get_db
-from app.models.internalization_room import ConversationResponse, SessionTurnsResponse
+from app.models.internalization_room import (
+    ConversationResponse,
+    SessionCoverageResponse,
+    SessionTurnsResponse,
+)
 from app.services import internalization_room as room
 from app.services.internalization_room.conversation import conversation_of
+from app.services.internalization_room.session_coverage import coverage_of
 from app.services.internalization_room.session_turns import turn_clip_url, turns_of
 
 router = APIRouter()
@@ -32,6 +37,17 @@ async def read_the_turns(
 ) -> SessionTurnsResponse:
     session = await room.get_session_for_reader(db, user, session_id)
     return turns_of(session)
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/coverage",
+    response_model=SessionCoverageResponse,
+)
+async def read_the_coverage(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> SessionCoverageResponse:
+    session = await room.get_session_for_reader(db, user, session_id)
+    return coverage_of(session)
 
 
 @router.get(
