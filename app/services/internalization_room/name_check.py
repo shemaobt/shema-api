@@ -27,10 +27,11 @@ def _keys(element: Element, book: str) -> list[str]:
     english = entry.get("english") or ""
     label = element.label.lower()
     forms = [form.lower() for form in entry.get("referential_forms") or []]
+    hebrew = [entry["hebrew_cons"]] if entry.get("hebrew_cons") else []
     if label != english.lower() and label in forms:
-        return []
+        return hebrew
     names = [name.lower() for name in (element.label, english) if name]
-    return names + [form for name in names for form in _forms().get(name, [])]
+    return names + [form for name in names for form in _forms().get(name, [])] + hebrew
 
 
 def names_heard(

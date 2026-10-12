@@ -22,3 +22,12 @@ def test_noemi_does_not_engage_the_woman_naomi_is_stripped_to_in_scene_four() ->
     assert heard["being:S4:B3"] == "not_encountered", (
         "«Noemi» engajava «the woman», a forma que tira o nome dela na cena 4"
     )
+
+
+def test_the_hebrew_echo_of_naomi_engages_her_and_the_woman_in_scene_four() -> None:
+    heard = _team_says("P01", "ela era נעמי")
+
+    assert heard["being:S4:B3"] == "engaged", (
+        "o eco hebraico do nome, a única chave da forma «the woman», não engajava a cena 4"
+    )
+    assert heard["being:S1:B3"] == "engaged", "o eco hebraico de Noemi não engajava Noemi"
