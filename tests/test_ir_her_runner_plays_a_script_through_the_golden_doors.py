@@ -255,7 +255,7 @@ async def test_a_team_turn_with_no_words_reaches_the_inaudible_ladder_not_a_refu
     assert agent.guide_inputs == [], "a fala vazia chegou ao Guia em vez da escada de inaudível"
 
 
-async def test_an_interruption_with_words_stores_the_rooms_note_apart_from_the_teams_words(
+async def test_an_interruption_with_words_is_kept_as_her_note_then_their_words_on_the_teams_side(
     client, monkeypatch, db_session: AsyncSession
 ) -> None:
     settled: list[str] = []
@@ -274,13 +274,13 @@ async def test_an_interruption_with_words_stores_the_rooms_note_apart_from_the_t
     assert answered.status_code == 200, answered.text
     session = await room.get_session(db_session, session_id)
     await db_session.refresh(session)
-    assert _spoken(session.messages) == [
-        {"role": "team", "text": HER_OPENING_NOTE},
-        {"role": "guide", "text": GUIDE_LINE},
-        {"role": "room", "text": INTERRUPTED_NOTE},
-        {"role": "team", "text": CUT_IN},
-        {"role": "guide", "text": GUIDE_LINE},
-    ], "a nota da interrupção ficava gravada como fala da equipe"
+    assert [(m["role"], m["text"], m.get("room_note", False)) for m in session.messages] == [
+        ("team", HER_OPENING_NOTE, False),
+        ("guide", GUIDE_LINE, False),
+        ("team", INTERRUPTED_NOTE, True),
+        ("team", CUT_IN, False),
+        ("guide", GUIDE_LINE, False),
+    ], "a nota da interrupção ficava numa entrada da sala, fora do lado da equipe"
     assert settled == [CUT_IN], "o analista pago lia a nota da sala como palavras da equipe"
 
 
