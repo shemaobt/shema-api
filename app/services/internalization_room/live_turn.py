@@ -36,6 +36,7 @@ from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
@@ -92,6 +93,10 @@ async def run_comprehension_turn(
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
 
+    if session.earlier_passages is None:
+        session.earlier_passages = await earlier_passages(
+            db, project_id=session.project_id, pericope=pericope, before_a_turn=True
+        )
     outcome = await speak_back(
         mother_tongue=mother_tongue,
         take_ms=speech.take_ms,

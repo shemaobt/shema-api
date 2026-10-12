@@ -38,7 +38,11 @@ TURN_READ_BOUND_S = 1.5
 
 
 async def earlier_passages(
-    db: AsyncSession, *, project_id: str | None, pericope: str
+    db: AsyncSession,
+    *,
+    project_id: str | None,
+    pericope: str,
+    before_a_turn: bool = False,
 ) -> dict[str, str] | None:
     if project_id is None or is_panorama(pericope):
         return None
@@ -51,14 +55,15 @@ async def earlier_passages(
     ]
     if not earlier:
         return None
+    bound_s = TURN_READ_BOUND_S if before_a_turn else OPEN_READ_BOUND_S
     try:
-        async with asyncio.timeout(OPEN_READ_BOUND_S), AsyncSession(db.bind) as reader:
+        async with asyncio.timeout(bound_s), AsyncSession(db.bind) as reader:
             return await read_statuses(reader, project_id=project_id, earlier=earlier)
     except TimeoutError:
         logger.warning(
             "The earlier passages of %s were not read within %s s; the fact is left out",
             pericope,
-            OPEN_READ_BOUND_S,
+            bound_s,
         )
         return None
 

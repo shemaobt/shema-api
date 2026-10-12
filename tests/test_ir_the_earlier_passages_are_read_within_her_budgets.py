@@ -23,9 +23,15 @@ from app.services.internalization_room import prepare_opening as prepare_opening
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from tests.hearing_harness import the_loop_clock_passes
-from tests.release_harness import PREFIX, a_claimed_device, team_headers
+from tests.release_harness import (
+    PREFIX,
+    a_claimed_device,
+    ready_session,
+    team_headers,
+    team_release,
+)
 from tests.room_harness import room_client, the_bucket_is_in_memory
-from tests.tablet_turn_harness import the_turn_is_scripted
+from tests.tablet_turn_harness import the_room_opens, the_turn_is_scripted
 from tests.text_seam_harness import ScriptedAgent
 
 EARLIER = "EARLIER PASSAGES FOR THIS TEAM:"
@@ -167,3 +173,59 @@ async def test_an_opening_prepared_on_the_panorama_is_written_with_no_line_once_
     )
 
     assert earlier_line(agent.guide_systems[0]) is None
+
+
+async def test_a_turn_whose_session_has_no_stamp_reads_it_and_goes_on_with_no_line_past_its_budget(
+    client, db_session, agent, monkeypatch
+) -> None:
+    monkeypatch.setattr(statuses, "OPEN_READ_BOUND_S", 100.0)
+    monkeypatch.setattr(statuses, "TURN_READ_BOUND_S", 50.0)
+    _team, tablet = await a_claimed_device(db_session)
+    started = the_statuses_never_answer(monkeypatch)
+    opening = asyncio.create_task(opened(client, tablet, "P04"))
+    await the_read_begins(started, opening)
+    session = await answered_once_the_clock_passes(
+        monkeypatch, opening, statuses.OPEN_READ_BOUND_S + 0.5, "a abertura não respondeu"
+    )
+    started.clear()
+
+    speaking = asyncio.create_task(the_room_opens(client, tablet, session["session_id"]))
+    await the_read_begins(started, speaking)
+    await answered_once_the_clock_passes(
+        monkeypatch,
+        speaking,
+        statuses.TURN_READ_BOUND_S + 0.5,
+        "uma leitura dos estados que não respondia segurava o turno além do seu prazo",
+    )
+
+    assert earlier_line(agent.guide_systems[-1]) is None
+
+
+async def test_a_turn_whose_session_has_no_stamp_tells_the_guide_what_it_read_and_keeps_it(
+    client, db_session, per_request, agent, monkeypatch
+) -> None:
+    team, tablet = await a_claimed_device(db_session)
+    p01 = await ready_session(db_session, pericope="P01", project_id=team.id)
+    approval = await client.post(team_release(p01.id), headers=team_headers(tablet))
+    assert approval.status_code == 200, approval.text[:300]
+    reads = statuses.read_statuses
+    started = the_statuses_never_answer(monkeypatch)
+    opening = asyncio.create_task(opened(client, tablet, "P04"))
+    await the_read_begins(started, opening)
+    session = await answered_once_the_clock_passes(
+        monkeypatch, opening, statuses.OPEN_READ_BOUND_S + 0.5, "a abertura não respondeu"
+    )
+    assert await stored_stamp(per_request, session["session_id"]) is None
+    monkeypatch.setattr(statuses, "read_statuses", reads)
+
+    await the_room_opens(client, tablet, session["session_id"])
+
+    assert earlier_line(agent.guide_systems[-1]) == (
+        "EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1\N{EN DASH}5. "
+        "Not worked yet: Ruth 1:6\N{EN DASH}14, Ruth 1:15\N{EN DASH}18."
+    ), "um turno sem carimbo nunca lia os estados, e a voz não sabia o que a equipe fez"
+    assert await stored_stamp(per_request, session["session_id"]) == {
+        "P01": "approved",
+        "P02": "not_worked",
+        "P03": "not_worked",
+    }, "o carimbo lido antes do turno se perdia e cada turno lia de novo"
