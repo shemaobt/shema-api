@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.core.room_enums import ElementKind
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.elements import Element
+from app.services.internalization_room.canon.elements import Element, elements_for
 from app.services.internalization_room.canon.names import registry_entry
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import is_panorama, merge, remaining
@@ -97,8 +97,27 @@ def _content_words(name: str) -> list[str]:
     return [word for word in plain.split(" ") if len(word) >= 3 and word not in _STOP]
 
 
-def _keys(element: Element, book: str) -> list[str]:
-    entry = registry_entry(book, element.key.rsplit(":", 1)[-1]) or {}
+def _code(element: Element) -> str:
+    return element.key.rsplit(":", 1)[-1]
+
+
+def _with_bare(forms: list[str]) -> list[str]:
+    return forms + [_bare(form) for form in forms]
+
+
+def _own_names(book: str, code: str) -> set[str]:
+    entry = registry_entry(book, code) or {}
+    english = entry.get("english") or ""
+    if entry.get("kind") != "PERSON" or not english:
+        return set()
+    single = _content_words(english)[:1] if len(_content_words(english)) == 1 else []
+    return {
+        _plain(name) for name in [english, *single, *_with_bare(_forms().get(english.lower(), []))]
+    }
+
+
+def _keys(element: Element, book: str, beings: set[str]) -> list[str]:
+    entry = registry_entry(book, _code(element)) or {}
     english = entry.get("english") or ""
     label = element.label.lower()
     forms = [form.lower() for form in entry.get("referential_forms") or []]
@@ -106,20 +125,27 @@ def _keys(element: Element, book: str) -> list[str]:
     if label != english.lower() and label in forms:
         return hebrew
     names = [name.lower() for name in (element.label, english) if name]
-    forms_said = [form for name in names for form in _forms().get(name, [])]
-    forms_said += [
-        form
-        for name in names
-        if len(_content_words(name)) > 1
-        for word in _content_words(name)
-        for form in _forms().get(word, []) + _forms().get(word.removesuffix("'s"), [])
-    ]
     tokens = [
         word
         for word in english.split()
         if _PROPER_NOUN.match(word) and word.lower() not in _GENERIC
     ]
-    return names + forms_said + [_bare(form) for form in forms_said] + tokens + hebrew
+    whole = names + _with_bare([form for name in names for form in _forms().get(name, [])])
+    whole += hebrew
+    parts = (
+        _with_bare(
+            [
+                form
+                for name in names
+                if len(_content_words(name)) > 1
+                for word in _content_words(name)
+                for form in _forms().get(word, []) + _forms().get(word.removesuffix("'s"), [])
+            ]
+        )
+        + tokens
+    )
+    taken = set().union(*(_own_names(book, other) for other in beings - {_code(element)}))
+    return whole + [part for part in parts if _plain(part) not in taken]
 
 
 def _plain(text: str) -> str:
@@ -135,8 +161,11 @@ def names_heard(
     coverage_state: dict[str, str], *, team: str, voice: str, pericope: str
 ) -> dict[str, str]:
     book = load_map(pericope).book
+    beings = {
+        _code(element) for element in elements_for(pericope) if element.kind is ElementKind.BEING
+    }
     named = [
-        (element.key, _keys(element, book))
+        (element.key, _keys(element, book, beings))
         for element in remaining(coverage_state, pericope)
         if element.kind in _NAMED_KINDS
     ]

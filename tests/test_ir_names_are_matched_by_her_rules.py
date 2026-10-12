@@ -64,3 +64,26 @@ def test_one_word_of_fields_of_moab_names_it_in_portuguese_and_in_english() -> N
     assert _team_says("P01", "they went to Moab")["place:S1:PL2"] == "engaged", (
         "«Moab», o nome próprio dentro de «Fields of Moab», não engajava o lugar"
     )
+
+
+def test_os_juizes_alone_names_the_judges_and_not_the_days_when_the_judges_judged() -> None:
+    days = "time:S1:TM_PERIOD_OF_JUDGES"
+
+    assert _team_says("P01", "os juízes mandavam")[days] == "not_encountered", (
+        "«juízes», o nome dos Juízes, engajava sozinho o tempo em que os juízes julgavam"
+    )
+    assert _team_says("P01", "no tempo dos juízes")[days] == "engaged", (
+        "a frase inteira do tempo dos juízes não engajava o tempo"
+    )
+
+
+def test_ruth_alone_is_ruths_name_and_never_the_young_men_ruth_did_not_go_after() -> None:
+    young_men = "being:S3:B32"
+
+    assert _team_says("P09", "Ruth lay down")[young_men] == "not_encountered", (
+        "«Ruth», o nome dela, engajava sozinho os rapazes atrás de quem ela não foi"
+    )
+    assert _team_says("P09", "Rute foi pra eira e deitou")[young_men] == "not_encountered"
+    assert _team_says("P09", "ela não foi atrás dos rapazes")[young_men] == "engaged", (
+        "«rapazes», o nome inteiro deles, não engajava os rapazes"
+    )
