@@ -10,6 +10,8 @@ a second Cloud Run instance would land it: after this settle read the coverage a
 wrote.
 """
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -19,6 +21,7 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 
 P = "P03"
+SESSIONS_LOGGER = "app.services.internalization_room.sessions"
 LIT = CoverageStatus.ENGAGED.value
 DARK = CoverageStatus.NOT_ENCOUNTERED.value
 
@@ -91,3 +94,21 @@ async def test_two_settles_at_once_lighting_the_same_bead_leave_one_event_for_it
         "o segundo settle contava a transição contra a leitura velha, e a conta ganhava dois "
         "toques para um só acendimento"
     )
+
+
+async def test_a_settle_refused_for_a_stale_read_says_so_in_the_log_before_it_is_redone(
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch,
+    caplog,
+) -> None:
+    keys = element_keys(P)
+    session = await service.create_session(db_session, pericope=P)
+    _a_rival_settles_after_the_read(monkeypatch, rival_factory, _lighting(keys[1]))
+
+    with caplog.at_level(logging.WARNING, logger=SESSIONS_LOGGER):
+        await service.apply_coverage(db_session, session.id, _lighting(keys[0]))
+
+    stale = [r.getMessage() for r in caplog.records if "stale read" in r.getMessage()]
+    assert len(stale) == 1, "a leitura velha era escrita por cima calada, sem linha nenhuma no log"
+    assert session.id in stale[0] and "coverage_state" in stale[0]

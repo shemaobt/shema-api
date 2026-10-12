@@ -733,7 +733,14 @@ async def _written_unless_moved(
         .values({column: value})
         .execution_options(synchronize_session=False)
     )
-    return bool(written.rowcount == 1)
+    if written.rowcount == 1:
+        return True
+    logger.warning(
+        "Session %s: a stale read of %s was refused and is redone on the fresh reading",
+        session_id,
+        column.key,
+    )
+    return False
 
 
 async def apply_coverage(
