@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session, get_session
 from tests.device_harness import TABLET_TEAM
 from tests.opening_harness import GUIDE_OPENING, NOTE_PT_P01, a_scripted_room, ask_for_the_opening
+from tests.release_harness import PREFIX
 from tests.room_harness import room_client
+from tests.tablet_turn_harness import the_turn_is_scripted
 
 
 @pytest.fixture()
@@ -83,3 +88,37 @@ async def test_an_english_passage_stores_her_english_note_not_the_portuguese_one
         ),
         ("guide", GUIDE_OPENING),
     ], "uma sessão em inglês guardava a nota em português"
+
+
+async def test_the_voice_hears_her_note_as_the_teams_turn_before_its_own_opening(
+    db_session: AsyncSession, client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversations: list[Any] = []
+
+    async def heard(*_: Any, **__: Any) -> HeardSpeech:
+        return HeardSpeech(text="Noemi voltou para Belém")
+
+    async def model(*, system_prompt: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        conversations.append(kwargs.get("conversation"))
+        return GUIDE_OPENING
+
+    the_turn_is_scripted(monkeypatch, heard=heard, model=model)
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="P01", language="pt"
+    )
+    await ask_for_the_opening(client, session.id)
+
+    spoken = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        data={"turn_id": "fala"},
+        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert spoken.status_code == 200, spoken.text[:300]
+    assert conversations[0] == []
+    assert conversations[1] == [
+        {"role": "user", "text": NOTE_PT_P01},
+        {"role": "assistant", "text": GUIDE_OPENING},
+    ], "a segunda fala da equipe chegava à voz sem a nota que a fez abrir"
