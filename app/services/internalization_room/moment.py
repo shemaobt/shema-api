@@ -286,6 +286,8 @@ def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str 
         and moment.at in ("familiarization", "articulation")
     ):
         return "another moment line came earlier in the same reply"
+    if line.cause == "part_closing" and moment.at == "familiarization" and not moment.closed:
+        return "the Familiarization's closing (F3) was not heard"
     return None
 
 

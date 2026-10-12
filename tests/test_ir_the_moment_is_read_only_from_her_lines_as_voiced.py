@@ -393,3 +393,13 @@ def test_her_scene_closing_that_ends_a_scene_opening_is_not_ignored() -> None:
     assert _ignored(SCENE_TWO_OPEN, voiced) == [], (
         "o fechamento que termina a abertura da própria cena entrou na lista de ignoradas"
     )
+
+
+def test_her_scene_closing_before_f3_is_kept_as_ignored_in_her_words() -> None:
+    assert _ignored(FAMILIARIZATION, f"{SCENE_ONE} {CLOSING}") == [
+        "part_closing: the Familiarization's closing (F3) was not heard"
+    ], "o fechamento de cena antes do fechamento da Familiarização foi descartado sem registro"
+
+
+def test_her_scene_closing_after_the_familiarization_closed_is_not_ignored() -> None:
+    assert _ignored(FAMILIARIZATION_CLOSED, f"{SCENE_ONE} {CLOSING}") == []
