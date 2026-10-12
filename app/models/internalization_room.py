@@ -1162,7 +1162,7 @@ class TurnTraceStep(BaseModel):
 
     attempt: int
     draft: str
-    issues: list[TurnValidatorIssue]
+    issues: list[TurnValidatorIssue] = Field(default_factory=list)
     verdict: str | None = None
     corrected: str | None = None
     note: str | None = None

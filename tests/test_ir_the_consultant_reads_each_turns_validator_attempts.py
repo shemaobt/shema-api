@@ -184,3 +184,34 @@ def test_no_answer_a_tablet_can_reach_can_carry_a_trace_step() -> None:
 
     assert TurnResponse in reachable
     assert {TurnTraceStep, TurnValidatorIssue}.isdisjoint(reachable)
+
+
+async def test_a_step_that_kept_only_a_note_reads_as_stored_with_an_empty_draft(
+    client, db_session, room_app
+) -> None:
+    project, _tablet = await a_claimed_device(db_session)
+    desk, _ = await at_the_desk(db_session, room_app, project)
+    session = await create_session(db_session, project_id=project.id, language="pt", pericope=P)
+    session.messages = [
+        {
+            "role": "guide",
+            "text": "Vamos de novo.",
+            "outcome": "fail_safe",
+            "attempts": [{"attempt": 1, "draft": "", "note": "A leitura não pôde ser feita."}],
+        }
+    ]
+    await db_session.commit()
+
+    answered = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/turns", headers=desk)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert answered.json()["turns"][0]["voice"]["trace"] == [
+        {
+            "attempt": 1,
+            "draft": "",
+            "verdict": None,
+            "issues": [],
+            "corrected": None,
+            "note": "A leitura não pôde ser feita.",
+        }
+    ]
