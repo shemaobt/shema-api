@@ -725,7 +725,8 @@ async def run(args: argparse.Namespace) -> int:
         return await rejudge(args)
     scripts = [load_script(path) for path in scripts_to_play(args)]
     if not scripts:
-        print(f"golden: no session named {args.only}", file=sys.stderr)
+        asked = f"session named {args.only}" if args.only else f"sessions under {args.sessions}"
+        print(f"golden: no {asked}", file=sys.stderr)
         return 2
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"Authorization": f"Bearer {args.access_code}"} if args.access_code else {}
