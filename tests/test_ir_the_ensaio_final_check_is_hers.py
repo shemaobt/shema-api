@@ -351,6 +351,25 @@ async def test_a_frase_told_again_after_a_verdict_reaches_her_analyst_said_to_be
     ), "o analista não sabia que a frase 3 tinha sido traduzida de novo depois de um veredito"
 
 
+async def test_a_new_frase_told_in_a_later_round_reaches_her_analyst_as_told_again(
+    client, analyst
+) -> None:
+    first = await _a_round(client, [*TELLING[:2], {**TELLING[2], "coversTo": 30}])
+    new = {
+        "clipKey": "S3",
+        "coversFrom": 30,
+        "coversTo": 45,
+        "text": "E Rute disse: aonde você for, eu irei.",
+    }
+
+    await _a_round(client, [new], session_id=first["sessionId"])
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "[frase 4 — a parte 3 — Segundo apelo e a separação — told again after a verdict] "
+        "E Rute disse: aonde você for, eu irei."
+    ), "uma frase nova numa rodada depois do veredito chegava à analista como primeira passada"
+
+
 async def test_the_validator_reads_what_the_team_reported_as_the_same_labelled_frases(
     client, speaker
 ) -> None:
