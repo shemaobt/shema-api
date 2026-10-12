@@ -43,6 +43,10 @@ A run stops before the next session once what it has spent reaches `--budget-usd
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
 is played whole and judged first. It names the sessions it did not start on stderr and exits 3,
 unless a session failed, which keeps its 1.
+
+An error that kills the run — a timeout, a reply that is not JSON — still leaves its README and
+its cost total, the session that died among the rows and its paid turns in the sum, with a line
+saying what killed it; the error is then raised as it was.
 """
 
 from __future__ import annotations
@@ -511,7 +515,8 @@ async def play_session(
     stamp: str,
     turns: int | None,
     prompt_repeats: bool,
-) -> SessionResult:
+    results: list[SessionResult],
+) -> None:
     """One session, opened and played, and its two files written whatever happened after turn 0.
 
     A refusal is a result, not an exception: the pericope a room does not hold, the key it
@@ -526,8 +531,10 @@ async def play_session(
         session_id = await open_session(script, client)
     except httpx.HTTPStatusError as refused:
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
-        return SessionResult(script.name, None, [], _refusal(refused))
+        results.append(SessionResult(script.name, None, [], _refusal(refused)))
+        return
     result = SessionResult(script.name, session_id, played)
+    results.append(result)
     try:
         await play(script, client, session_id=session_id, played=played, turns=turns)
     except httpx.HTTPStatusError as refused:
@@ -546,7 +553,6 @@ async def play_session(
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
         await judge(script, result, out=out, stamp=stamp, prompt_repeats=prompt_repeats)
-    return result
 
 
 def shares_judge_prompt(script: Script, batch: list[Script]) -> bool:
@@ -735,12 +741,12 @@ async def run(args: argparse.Namespace) -> int:
     budget = budget_of(args)
     results: list[SessionResult] = []
     not_started: list[str] = []
-    async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
-        for position, script in enumerate(scripts):
-            if _spent(results) >= budget:
-                not_started = [later.name for later in scripts[position:]]
-                break
-            results.append(
+    try:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
+            for position, script in enumerate(scripts):
+                if _spent(results) >= budget:
+                    not_started = [later.name for later in scripts[position:]]
+                    break
                 await play_session(
                     script,
                     client,
@@ -749,8 +755,12 @@ async def run(args: argparse.Namespace) -> int:
                     stamp=stamp,
                     turns=args.turns,
                     prompt_repeats=shares_judge_prompt(script, scripts),
+                    results=results,
                 )
-            )
+    except Exception as killed:
+        halted = f"Rodada interrompida por {type(killed).__name__}: {killed}."
+        close(results, out=out, base_url=base_url, stamp=stamp, halted=halted)
+        raise
     return finish(
         results,
         out=out,
