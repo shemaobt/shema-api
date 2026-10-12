@@ -38,7 +38,7 @@ from app.services.internalization_room.canon.labels import LABELS_DIR
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
 from tests.canon_harness import (
-    A_FABLE_LOG_WITH_A_LAYER,
+    A_FABLE_LOG_WITH_A_COMPLETE_REGISTER,
     A_FABLE_LOG_WITHOUT_ONE,
     a_fable_map,
     forget_the_canon,
@@ -80,7 +80,7 @@ def a_passage_whose_survey_is_pending(
     logs.mkdir()
     (maps / "Q01-Fable-1-1-2.md").write_text(a_fable_map(sta_status="pending"), encoding="utf-8")
     (logs / "Q01-Fable-1-1-2-COMPILATION-LOG.md").write_text(
-        A_FABLE_LOG_WITH_A_LAYER, encoding="utf-8"
+        A_FABLE_LOG_WITH_A_COMPLETE_REGISTER, encoding="utf-8"
     )
 
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)

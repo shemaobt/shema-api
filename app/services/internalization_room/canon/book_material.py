@@ -214,7 +214,9 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
         )
     survey_complete = meaning_map.sta_status == SURVEYED_STATUS
     register_complete = _register_complete(book).get(pericope)
-    if register_complete is not None and register_complete != survey_complete:
+    if register_complete is None:
+        return f"{pericope}: the Compilation Log does not mark the high-risk register complete"
+    if register_complete != survey_complete:
         return (
             f"{pericope}: the checklist says the high-risk register is "
             f"{'complete' if register_complete else 'incomplete'} but the survey is "

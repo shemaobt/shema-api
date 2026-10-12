@@ -56,7 +56,7 @@ from tests.baker import (
     make_project,
 )
 from tests.canon_harness import (
-    A_FABLE_LOG_WITH_A_LAYER,
+    A_FABLE_LOG_WITH_A_COMPLETE_REGISTER,
     A_FABLE_LOG_WITHOUT_ONE,
     a_fable_map,
     forget_the_canon,
@@ -86,7 +86,7 @@ def a_book_whose_walkable_passages_end_before_it_does(
         stem = f"Q0{number}-Fable-1-{number}-{number + 1}"
         (maps / f"{stem}.md").write_text(a_fable_map(number), encoding="utf-8")
         (logs / f"{stem}-COMPILATION-LOG.md").write_text(
-            A_FABLE_LOG_WITH_A_LAYER if carries_its_layer else A_FABLE_LOG_WITHOUT_ONE,
+            A_FABLE_LOG_WITH_A_COMPLETE_REGISTER if carries_its_layer else A_FABLE_LOG_WITHOUT_ONE,
             encoding="utf-8",
         )
 
