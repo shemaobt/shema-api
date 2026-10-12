@@ -1,11 +1,3 @@
-"""ENG-1378 — the name check matches names by her rules, on the labels of her canon.
-
-Her matcher (`concreteMatch.ts`, `sessionForms.ts` at 18fa7c4) decides which words name an
-element. Every expectation below is one of her own cases from `src/coverage/coverageTest.ts`,
-read on our canon: a check that matched less would leave a bead the team named untouched,
-and one that matched more would credit the team with what they never said.
-"""
-
 from __future__ import annotations
 
 from app.services.internalization_room.coverage import initial_state

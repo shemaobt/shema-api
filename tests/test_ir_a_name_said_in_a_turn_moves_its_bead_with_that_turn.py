@@ -1,13 +1,3 @@
-"""ENG-1378 — a name said in a turn moves its bead with that turn's own reply.
-
-Her room checks names inside every turn, once the reply is made (her `oralTurn.ts:88-90`,
-PRD ch.13): a being, place, object or time the team names — «Noemi» for Naomi — is engaged,
-one the voice names is surfaced, and the turn is saved and answered with them
-(`route.ts:247`). Ours left every bead to the classifier that runs after the reply has
-shipped, so the beads lagged a turn behind for names, and a classifier that failed moved
-none of them at all.
-"""
-
 from __future__ import annotations
 
 import json

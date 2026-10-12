@@ -1,12 +1,3 @@
-"""ENG-1378 — a name the team says is engaged even when the coverage reader fails.
-
-The name check needs no model (her `tracker.ts:70-76`, PRD ch.13), so a turn whose
-classifier raises still leaves Naomi engaged, and the Guide reads her among what the team
-worked with on the next turn — the ledger is rendered from the stored coverage before the
-Guide speaks, as hers is (`liveTurn.ts:503`). Ours left the tracker untouched on a failed
-reading (`classify_coverage.py:266-268`), so a «Noemi» said on that turn was never counted.
-"""
-
 from __future__ import annotations
 
 import json
