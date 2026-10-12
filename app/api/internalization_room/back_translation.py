@@ -20,6 +20,7 @@ from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
+from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
@@ -107,7 +108,7 @@ async def add_chunk(
         if retelling
         else None
     )
-    pass_number = 2 if retelling else 1
+    pass_number = pass_of_a_telling(state)
 
     # The bytes are kept before anything is asked of them. Transcribing first put the one
     # irreplaceable thing behind a network call to another company: `heard` only catches
