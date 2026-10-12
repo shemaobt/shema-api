@@ -138,3 +138,16 @@ async def test_bold_marks_and_a_bulleted_list_are_never_read_aloud_and_stay_in_t
         "Noemi voltou a Belém: Rute ficou com ela. Orfa voltou para casa. O que vocês acham?"
     ], "a voz leu os asteriscos e os marcadores da lista, que a equipe só podia ouvir como ruído"
     assert stored == reply, "o turno guardado perdeu as marcas que o Guia escreveu"
+
+
+async def test_a_question_folded_into_a_statement_is_voiced_as_its_own_sentence_and_stored_whole(
+    client, db_session: AsyncSession, guide: _Guide, elevenlabs: _Elevenlabs
+) -> None:
+    reply = "Noemi voltou para Belém — o que vocês acham que ela sentiu?"
+
+    said, stored = await _the_team_hears(client, db_session, guide, elevenlabs, reply)
+
+    assert said == ["Noemi voltou para Belém. O que vocês acham que ela sentiu?"], (
+        "a pergunta dobrada no fim da frase era lida com a entonação de afirmação"
+    )
+    assert stored == reply, "o turno guardado foi cortado como a fala"
