@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
     PREFIX,
     heard_every_part,
@@ -133,3 +134,41 @@ async def test_only_the_first_report_that_a_verdict_was_heard_counts(
     assert again.json() == {"marked": False}, "ouvir a resposta de novo contava como outra escuta"
     [kept] = (await stored_telling_back(db_session, session)).checks
     assert kept.heard_at == first.heard_at, "a segunda escuta apagava a hora da primeira"
+
+
+async def test_a_report_naming_no_round_of_this_session_marks_nothing(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    await press_terminei(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    heard = await _heard(client, session.id, "2026-01-01T00:00:00Z")
+
+    assert heard.status_code == 200, heard.text
+    assert heard.json() == {"marked": False}
+    assert [one.heard_at for one in (await stored_telling_back(db_session, session)).checks] == [
+        None
+    ], "uma marca que não é de rodada nenhuma dava o último veredito por ouvido"
+
+
+async def test_a_report_from_another_projects_tablet_is_refused_and_marks_nothing(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    owner, owner_credential = await a_claimed_device(db_session, email="owner@example.com")
+    _stranger, stranger_credential = await a_claimed_device(
+        db_session, email="stranger@example.com"
+    )
+    session, _parts = await rehearsed_in_parts(db_session, 3, project_id=owner.id)
+    client.headers.update(team_headers(owner_credential))
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+
+    refused = await _heard(
+        client, session.id, pressed.json()["check_at"], **team_headers(stranger_credential)
+    )
+
+    assert refused.status_code == 404, refused.text
+    assert [one.heard_at for one in (await stored_telling_back(db_session, session)).checks] == [
+        None
+    ], "o tablet de outro projeto dava o veredito desta equipe por ouvido"
