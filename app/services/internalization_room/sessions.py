@@ -149,7 +149,8 @@ async def create_session(
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
     the session and never in its messages, so a session holding one has still not spoken. A
     caller that hands one in (the Golden door) is taken at its word; otherwise the room reads
-    it itself when the session is created (`earlier_passages`), and nothing rewrites it later.
+    it itself when the session is created (`earlier_passages`), and again after a turn once it
+    is five minutes old.
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
