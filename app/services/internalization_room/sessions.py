@@ -1085,6 +1085,17 @@ def back_translation_of(session: IRSession) -> BackTranslationState:
     return BackTranslationState.model_validate(session.back_translation or {})
 
 
+def _merged_forward(
+    read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
+) -> BackTranslationState:
+    fresh.findings = [
+        *fresh.findings,
+        *(one for one in wanted.findings if one not in read.findings),
+    ]
+    fresh.checks = [*fresh.checks, *(one for one in wanted.checks if one not in read.checks)]
+    return fresh
+
+
 async def save_back_translation(
     db: AsyncSession, session: IRSession, state: BackTranslationState, *, commit: bool = True
 ) -> IRSession:
@@ -1093,7 +1104,16 @@ async def save_back_translation(
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
     """
-    session.back_translation = state.model_dump(mode="json")
+    read: dict[str, Any] | None = session.back_translation
+    base = back_translation_of(session)
+    written = state.model_dump(mode="json")
+    while not await _written_unless_moved(
+        db, session.id, IRSession.back_translation, read, written
+    ):
+        read = await db.scalar(select(IRSession.back_translation).where(IRSession.id == session.id))
+        fresh = BackTranslationState.model_validate(read or {})
+        written = _merged_forward(base, state, fresh).model_dump(mode="json")
+    set_committed_value(session, "back_translation", written)
     if commit:
         await db.commit()
         await db.refresh(session)
