@@ -1,11 +1,3 @@
-"""ENG-1329 — what the team hears is the Guide's reply in its speakable form; what is kept is not.
-
-Every case goes through the room's own turn door with the real synthesis path: ElevenLabs is
-the fake and records the exact text it was asked to say, so the expectation is what the team
-hears, and the stored message is read back from the session to prove the Guide's own words
-were never rewritten.
-"""
-
 from __future__ import annotations
 
 import json
