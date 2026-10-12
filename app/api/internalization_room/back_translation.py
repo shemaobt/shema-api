@@ -11,13 +11,16 @@ from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationVerdictResponse,
+    FindingView,
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.back_translation import Finding
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
+from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
@@ -32,6 +35,13 @@ from app.services.internalization_room.voice_handles import clip_url
 router = APIRouter()
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def finding_views(findings: list[Finding]) -> list[FindingView]:
+    return [
+        FindingView(kind=one.kind.value, frase=one.chunk, segment_id=one.segment_id)
+        for one in findings
+    ]
 
 
 async def add_chunk(
@@ -98,7 +108,7 @@ async def add_chunk(
         if retelling
         else None
     )
-    pass_number = 2 if retelling else 1
+    pass_number = pass_of_a_telling(state)
 
     # The bytes are kept before anything is asked of them. Transcribing first put the one
     # irreplaceable thing behind a network call to another company: `heard` only catches
@@ -373,6 +383,7 @@ async def _finished(
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
+            findings=finding_views(state.findings),
             findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=state.verdict.used_fail_safe,
         )
@@ -413,6 +424,7 @@ async def _finished(
         checked=verdict.checked,
         finding_kind=verdict.finding.kind if verdict.finding else None,
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
+        findings=finding_views(state.findings),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
     )
