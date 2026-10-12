@@ -283,7 +283,9 @@ async def finish(
     is byte-for-byte the first one: the app is not told which press it made, because a second
     shape would be a contract change to say something no caller asked about. The one exception
     is a verdict voiced in a voice the room no longer has: its words are voiced again in the
-    room's voice, so the clip's address changes and the rest of the reply does not.
+    room's voice, so the clip's address changes and the rest of the reply does not. A verdict
+    that fell to the fail-safe is not served at all: it conferred nothing, so the press is a
+    check of its own on the reading already made, as every press of hers is.
 
     What counts as the same question is `already_analysed`, the record the analyst was already
     guarded by — one signal, so the four steps of a press can never disagree about whether the
@@ -365,7 +367,11 @@ async def _finished(
             findings_remaining=0,
         )
 
-    if state.already_analysed(told) and state.verdict is not None:
+    if (
+        state.already_analysed(told)
+        and state.verdict is not None
+        and not state.verdict.used_fail_safe
+    ):
         finding = room.the_finding_that_leads(state)
         with stage("db_let_go"):
             await db.commit()
