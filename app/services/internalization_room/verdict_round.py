@@ -24,6 +24,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession
 from app.services.internalization_room.back_translation import (
     THE_WHOLE_PASSAGE,
     BackTranslationState,
+    CheckRound,
     Finding,
     Nuance,
     VoicedVerdict,
@@ -47,7 +48,7 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
     in_a_voice_the_room_has,
 )
 from app.services.internalization_room.takes import current_parts
-from app.services.internalization_room.validated_turn import Attempt, TurnOutcome
+from app.services.internalization_room.validated_turn import Attempt, TurnOutcome, outcome_tag
 from app.services.internalization_room.verdict_turn import run_verdict_turn
 
 UNREADABLE_ANALYSIS_NOTE = "The Analyst's reply could not be read, so there was no verdict."
@@ -153,8 +154,9 @@ async def check_the_telling_back(
 
     current = current_findings(state)
     finding = the_finding_that_leads(state)
+    at = datetime.now(UTC)
     state.checked = finding is None
-    state.checked_at = datetime.now(UTC)
+    state.checked_at = at
 
     async def speak(handed: list[Finding] | list[Nuance]) -> TurnOutcome:
         return await run_verdict_turn(
@@ -177,6 +179,15 @@ async def check_the_telling_back(
         outcome = await speak([])
 
     said = outcome.speech
+    state.checks.append(
+        CheckRound(
+            at=at,
+            findings=list(state.findings),
+            spoken=said,
+            outcome=outcome_tag(outcome),
+            conferida=state.checked,
+        )
+    )
     return TellingBackVerdict(
         finding=finding,
         current=current,

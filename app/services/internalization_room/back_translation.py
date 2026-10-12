@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSegment, IRTake
 from app.models.internalization_room import PlayedTake
+from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import analysis_ladder
@@ -196,6 +197,14 @@ class VoicedVerdict(BaseModel):
     used_fail_safe: bool = False
 
 
+class CheckRound(BaseModel):
+    at: datetime
+    findings: list[Finding] = Field(default_factory=list)
+    spoken: str
+    outcome: Outcome
+    conferida: bool
+
+
 class BackTranslationState(BaseModel):
     """What a telling-back knows that is about the session rather than about one stretch.
 
@@ -271,6 +280,7 @@ class BackTranslationState(BaseModel):
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
     read_ahead: ReadAhead | None = None
+    checks: list[CheckRound] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod

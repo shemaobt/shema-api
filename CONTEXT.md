@@ -249,6 +249,10 @@ _Avoid_: erased, discarded, Substituída
 The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
+**Check round** (`checks`):
+One reading of the telling-back and the verdict spoken on it, kept in the passage's history with its time, its findings with the analyst's notes, the words spoken, the outcome and whether it conferred. Rounds are unlimited, and a later round never overwrites an earlier one.
+_Avoid_: attempt (a **Superseded** recording), Rodada
+
 **Heard the rehearsal** (`unheard_parts`):
 The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
 _Avoid_: complete playback, Ouviu o ensaio

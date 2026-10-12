@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from app.core.config import Settings
+from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.fail_safe import unrepairable
 from app.services.internalization_room.llm import (
     TruncatedReply,
@@ -120,6 +121,20 @@ class TurnOutcome:
     interrupted: CutPoint | None = None
     #: The rung of the ladder that answered the Guide's last draft; ``None`` when no model did.
     model: str | None = None
+
+
+def outcome_tag(outcome: TurnOutcome) -> Outcome:
+    """The tag the judge is defined against, read off what the turn already records.
+
+    A turn that fell to a pre-approved line says so. A voiced turn carrying the Validator's
+    issues is one the Validator mended: its contract lists no issues on a `pass`, and the only
+    other verdict that voices anything is `correct`, which lists every problem it repaired.
+    """
+    if outcome.used_fail_safe:
+        return "fail_safe"
+    if outcome.issues:
+        return "corrected"
+    return "pass"
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:

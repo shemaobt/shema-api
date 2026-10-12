@@ -522,3 +522,32 @@ async def test_an_outage_in_the_clean_run_is_never_voiced_as_a_fail_safe(
     assert played.json()["code"] == ERROR_CODE_UPSTREAM
     kept = (await room.get_session(db_session, session_id)).messages or []
     assert kept == [], "uma queda do modelo era guardada como se a sala tivesse falado"
+
+
+AN_ADDITION_ON_FRASE_3 = {"kind": "addition", "note": "Ela voltou «à noite».", "frase": 3}
+
+
+async def _the_kept_rounds(db_session: AsyncSession, session_id: str) -> list:
+    return room.back_translation_of(await room.get_session(db_session, session_id)).checks
+
+
+async def test_a_clean_round_after_a_finding_confers_and_the_first_round_is_still_kept(
+    client, analyst, db_session
+) -> None:
+    analyst.readings = [{"findings": [AN_ADDITION_ON_FRASE_3]}, {"findings": []}]
+    first = await _a_round(client, TELLING)
+    retold = {**TELLING[2], "text": "Orfa beijou a sogra e voltou; Rute ficou.", "supersedes": 2}
+
+    second = await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert second["conferida"] is True
+    kept = await _the_kept_rounds(db_session, first["sessionId"])
+    assert [(check.outcome, check.conferida, check.spoken) for check in kept] == [
+        ("pass", False, SAID),
+        ("pass", True, SAID),
+    ], "cada leitura sobrescrevia a anterior e a primeira rodada se perdia"
+    assert [[finding.note for finding in check.findings] for check in kept] == [
+        ["Ela voltou «à noite»."],
+        [],
+    ], "os achados da primeira passada, com a nota do Analista, sumiam"
+    assert kept[0].at < kept[1].at

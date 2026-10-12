@@ -66,6 +66,7 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
     in_a_voice_the_room_has,
     synthesize_facilitator_speech,
 )
+from app.services.internalization_room.validated_turn import outcome_tag
 from app.services.internalization_room.verdict_round import (
     TellingBackVerdict,
     check_the_telling_back,
@@ -107,6 +108,7 @@ __all__ = [
     "mark_needs_person",
     "note_a_hard_stretch",
     "open_session",
+    "outcome_tag",
     "parent_of",
     "person_arrived",
     "raise_a_warning",
