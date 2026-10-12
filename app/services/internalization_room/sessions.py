@@ -742,7 +742,9 @@ async def _written_unless_moved(
         update(IRSession)
         .where(
             IRSession.id == session_id,
-            cast(column, _STORED_JSON) == cast(literal(read, JSON), _STORED_JSON),
+            cast(column, _STORED_JSON).is_not_distinct_from(
+                cast(literal(read, JSON), _STORED_JSON)
+            ),
         )
         .values({column: value})
         .execution_options(synchronize_session=False)
