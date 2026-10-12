@@ -100,7 +100,8 @@ async def opened(client: httpx.AsyncClient, tablet: str, pericope: str) -> dict[
 
 async def stored_stamp(per_request: async_sessionmaker[AsyncSession], session_id: str):
     async with per_request() as fresh:
-        return (await get_session(fresh, session_id)).earlier_passages
+        stamp = (await get_session(fresh, session_id)).earlier_passages
+    return None if stamp is None else {key: value for key, value in stamp.items() if key != "at"}
 
 
 async def p01_approved(client: httpx.AsyncClient, db: AsyncSession, team: Any, tablet: str) -> None:
@@ -124,6 +125,10 @@ async def minted_before_the_stamp(
 def earlier_line(system_prompt: str) -> str | None:
     lines = [line for line in system_prompt.splitlines() if line.startswith(EARLIER)]
     return lines[0] if lines else None
+
+
+async def the_stamp_is_left_alone(**_: Any) -> None:
+    return None
 
 
 def the_statuses_never_answer(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
@@ -225,6 +230,7 @@ async def test_a_turn_whose_session_has_no_stamp_goes_on_past_its_budget_telling
 ) -> None:
     monkeypatch.setattr(statuses, "OPEN_READ_BOUND_S", 100.0)
     monkeypatch.setattr(statuses, "TURN_READ_BOUND_S", 50.0)
+    monkeypatch.setattr(sessions_api, "read_the_earlier_passages_again", the_stamp_is_left_alone)
     team, tablet = await a_claimed_device(db_session)
     await p01_approved(client, db_session, team, tablet)
     session_id = await minted_before_the_stamp(client, per_request, tablet)

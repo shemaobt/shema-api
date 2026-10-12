@@ -3,7 +3,8 @@
 Her open reads it before the session exists (`app/api/session/route.ts`), so the voice's very
 first words already know which earlier passages the team approved, started or never worked; a
 session that has none reads it before its next turn (`app/api/turn/route.ts`). Either way the
-session keeps the stamp for its whole life: a passage approved later does not rewrite it.
+session keeps the stamp, and her turn route reads it again off the voice's path once it is five
+minutes old, so a passage approved later reaches the voice on a later turn, never mid-step.
 **Approved** is a live release of the passage; **started** is a live session of it the team
 entered, in any language (`entered`); **not worked** is neither.
 
@@ -32,6 +33,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from itertools import takewhile
 
 from sqlalchemy import select
@@ -48,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 OPEN_READ_BOUND_S = 3.0
 TURN_READ_BOUND_S = 1.5
+READ_AGAIN_AFTER = timedelta(minutes=5)
 
 
 async def earlier_passages(
@@ -69,9 +73,10 @@ async def earlier_passages(
     if not earlier:
         return None
     bound_s = TURN_READ_BOUND_S if before_a_turn else OPEN_READ_BOUND_S
+    at = datetime.now(UTC).isoformat()
     try:
         async with asyncio.timeout(bound_s), AsyncSession(db.bind) as reader:
-            return await read_statuses(reader, project_id=project_id, earlier=earlier)
+            return {**await read_statuses(reader, project_id=project_id, earlier=earlier), "at": at}
     except TimeoutError:
         unread = ", ".join(earlier)
         logger.warning(
@@ -82,6 +87,13 @@ async def earlier_passages(
             bound_s,
         )
         return {**dict.fromkeys(earlier, EarlierPassageStatus.NOT_WORKED), "unread": unread}
+
+
+def earlier_passages_due(stamp: Mapping[str, str] | None) -> bool:
+    if stamp is None:
+        return False
+    at = stamp.get("at")
+    return at is None or datetime.now(UTC) - datetime.fromisoformat(at) >= READ_AGAIN_AFTER
 
 
 async def read_statuses(db: AsyncSession, *, project_id: str, earlier: list[str]) -> dict[str, str]:
@@ -115,4 +127,4 @@ def _status(passage: str, approved: set[str], started: set[str]) -> EarlierPassa
     return EarlierPassageStatus.NOT_WORKED
 
 
-__all__ = ["earlier_passages"]
+__all__ = ["earlier_passages", "earlier_passages_due"]
