@@ -1196,7 +1196,9 @@ class SessionCoverageResponse(BaseModel):
     `groups` carry the beads by kind in her fixed order, which is the order of `ElementKind`:
     «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
     «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
-    listed. Each bead carries the map's element label as written.
+    listed. Each bead carries the map's element label as written, in the map's own English,
+    which is what her record shows (`e.label`). The Portuguese names of the beads live in
+    `labelled_elements`, which the Desk's session portrait (`team_sessions.py`) reads.
 
     `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
     coverage when the read happens by the code that renders it for the Guide: what the voice
