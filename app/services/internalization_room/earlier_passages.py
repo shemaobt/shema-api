@@ -61,11 +61,12 @@ async def earlier_passages(
             return await read_statuses(reader, project_id=project_id, earlier=earlier)
     except TimeoutError:
         logger.warning(
-            "The earlier passages of %s were not read within %s s; the fact is left out",
+            "[earlier] %s: %s could not be read within %s s — read as not worked yet",
             pericope,
+            ", ".join(earlier),
             bound_s,
         )
-        return None
+        return dict.fromkeys(earlier, EarlierPassageStatus.NOT_WORKED)
 
 
 async def read_statuses(db: AsyncSession, *, project_id: str, earlier: list[str]) -> dict[str, str]:

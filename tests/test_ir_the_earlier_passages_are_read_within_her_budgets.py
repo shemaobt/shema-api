@@ -1,10 +1,10 @@
-"""ENG-1360 — the team's statuses are read within her budgets, or the fact is left out.
+"""ENG-1360 — the team's statuses are read within her budgets; a slow read errs toward unworked.
 
 Her app gives the read 3 s when a session is created (`EARLIER_READ_BUDGET_MS`,
 `src/turn/earlierPassagesRead.ts:55`) and 1.5 s before a turn whose session has no stamp
-(`TURN_EARLIER_BUDGET_MS`, `app/api/turn/route.ts:33`). The fact is complete or absent: a read
-that misses its budget leaves the line out for that turn, never a guess. The budget is passed on
-the loop's clock, never on the wall's.
+(`TURN_EARLIER_BUDGET_MS`, `app/api/turn/route.ts:33`). A passage not read in time reads
+«not worked yet», so the stamp stays complete and the voice tells that passage as the story's.
+The budget is passed on the loop's clock, never on the wall's.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
@@ -35,6 +36,18 @@ from tests.tablet_turn_harness import the_room_opens, the_turn_is_scripted
 from tests.text_seam_harness import ScriptedAgent
 
 EARLIER = "EARLIER PASSAGES FOR THIS TEAM:"
+ALL_THREE_NOT_WORKED = (
+    "EARLIER PASSAGES FOR THIS TEAM: Not worked yet: Ruth 1:1\N{EN DASH}5, "
+    "Ruth 1:6\N{EN DASH}14, Ruth 1:15\N{EN DASH}18."
+)
+ALL_THREE_STAMPED_NOT_WORKED = {"P01": "not_worked", "P02": "not_worked", "P03": "not_worked"}
+P01_UNDER_HER_NOTICE = (
+    "**Ruth 1:1\N{EN DASH}5** — The famine, the family's sojourn, and the emptying of the "
+    "household\n"
+    "(This team has not worked this passage yet. If you speak of anything below, tell it as "
+    "the story's — 'a história conta que…' (English sessions: 'the story tells that…') — only "
+    "what is needed, in a few words; never 'lembrem', never 'na última parte'.)"
+)
 
 
 @pytest.fixture()
@@ -79,6 +92,24 @@ async def stored_stamp(per_request: async_sessionmaker[AsyncSession], session_id
         return (await get_session(fresh, session_id)).earlier_passages
 
 
+async def p01_approved(client: httpx.AsyncClient, db: AsyncSession, team: Any, tablet: str) -> None:
+    p01 = await ready_session(db, pericope="P01", project_id=team.id)
+    approval = await client.post(team_release(p01.id), headers=team_headers(tablet))
+    assert approval.status_code == 200, approval.text[:300]
+
+
+async def minted_before_the_stamp(
+    client: httpx.AsyncClient, per_request: async_sessionmaker[AsyncSession], tablet: str
+) -> str:
+    session_id = (await opened(client, tablet, "P04"))["session_id"]
+    async with per_request() as fresh:
+        await fresh.execute(
+            update(IRSession).where(IRSession.id == session_id).values(earlier_passages=None)
+        )
+        await fresh.commit()
+    return session_id
+
+
 def earlier_line(system_prompt: str) -> str | None:
     lines = [line for line in system_prompt.splitlines() if line.startswith(EARLIER)]
     return lines[0] if lines else None
@@ -120,10 +151,11 @@ def test_her_budgets_are_three_seconds_at_the_open_and_one_and_a_half_before_a_t
     assert (statuses.OPEN_READ_BOUND_S, statuses.TURN_READ_BOUND_S) == (3.0, 1.5)
 
 
-async def test_an_open_whose_statuses_do_not_answer_in_three_seconds_opens_with_no_stamp(
+async def test_an_open_whose_statuses_do_not_answer_in_three_seconds_stamps_each_not_worked_yet(
     client, db_session, per_request, monkeypatch
 ) -> None:
-    _team, tablet = await a_claimed_device(db_session)
+    team, tablet = await a_claimed_device(db_session)
+    await p01_approved(client, db_session, team, tablet)
     started = the_statuses_never_answer(monkeypatch)
     opening = asyncio.create_task(opened(client, tablet, "P04"))
 
@@ -135,10 +167,12 @@ async def test_an_open_whose_statuses_do_not_answer_in_three_seconds_opens_with_
         "uma leitura dos estados que não respondia segurava a abertura da passagem sem fim",
     )
 
-    assert await stored_stamp(per_request, session["session_id"]) is None
+    assert await stored_stamp(per_request, session["session_id"]) == ALL_THREE_STAMPED_NOT_WORKED, (
+        "uma leitura lenta deixava a sessão sem carimbo, e a voz sem saber que nada foi lido"
+    )
 
 
-async def test_an_opening_prepared_on_the_panorama_is_written_with_no_line_once_three_seconds_pass(
+async def test_an_opening_prepared_on_the_panorama_reads_each_not_worked_yet_past_three_seconds(
     db_session, agent, monkeypatch
 ) -> None:
     team, _ = await a_claimed_device(db_session)
@@ -172,24 +206,20 @@ async def test_an_opening_prepared_on_the_panorama_is_written_with_no_line_once_
         "uma leitura dos estados que não respondia segurava a abertura preparada no panorama",
     )
 
-    assert earlier_line(agent.guide_systems[0]) is None
+    assert earlier_line(agent.guide_systems[0]) == ALL_THREE_NOT_WORKED
 
 
-async def test_a_turn_whose_session_has_no_stamp_reads_it_and_goes_on_with_no_line_past_its_budget(
-    client, db_session, agent, monkeypatch
+async def test_a_turn_whose_session_has_no_stamp_goes_on_past_its_budget_telling_each_as_the_storys(
+    client, db_session, per_request, agent, monkeypatch
 ) -> None:
     monkeypatch.setattr(statuses, "OPEN_READ_BOUND_S", 100.0)
     monkeypatch.setattr(statuses, "TURN_READ_BOUND_S", 50.0)
-    _team, tablet = await a_claimed_device(db_session)
+    team, tablet = await a_claimed_device(db_session)
+    await p01_approved(client, db_session, team, tablet)
+    session_id = await minted_before_the_stamp(client, per_request, tablet)
     started = the_statuses_never_answer(monkeypatch)
-    opening = asyncio.create_task(opened(client, tablet, "P04"))
-    await the_read_begins(started, opening)
-    session = await answered_once_the_clock_passes(
-        monkeypatch, opening, statuses.OPEN_READ_BOUND_S + 0.5, "a abertura não respondeu"
-    )
-    started.clear()
 
-    speaking = asyncio.create_task(the_room_opens(client, tablet, session["session_id"]))
+    speaking = asyncio.create_task(the_room_opens(client, tablet, session_id))
     await the_read_begins(started, speaking)
     await answered_once_the_clock_passes(
         monkeypatch,
@@ -198,33 +228,28 @@ async def test_a_turn_whose_session_has_no_stamp_reads_it_and_goes_on_with_no_li
         "uma leitura dos estados que não respondia segurava o turno além do seu prazo",
     )
 
-    assert earlier_line(agent.guide_systems[-1]) is None
+    assert earlier_line(agent.guide_systems[-1]) == ALL_THREE_NOT_WORKED, (
+        "um turno cuja leitura não respondia ficava sem a linha das passagens anteriores"
+    )
+    assert P01_UNDER_HER_NOTICE in agent.guide_systems[-1], (
+        "a passagem que não se pôde ler chegava à voz sem o aviso dela"
+    )
 
 
 async def test_a_turn_whose_session_has_no_stamp_tells_the_guide_what_it_read_and_keeps_it(
     client, db_session, per_request, agent, monkeypatch
 ) -> None:
     team, tablet = await a_claimed_device(db_session)
-    p01 = await ready_session(db_session, pericope="P01", project_id=team.id)
-    approval = await client.post(team_release(p01.id), headers=team_headers(tablet))
-    assert approval.status_code == 200, approval.text[:300]
-    reads = statuses.read_statuses
-    started = the_statuses_never_answer(monkeypatch)
-    opening = asyncio.create_task(opened(client, tablet, "P04"))
-    await the_read_begins(started, opening)
-    session = await answered_once_the_clock_passes(
-        monkeypatch, opening, statuses.OPEN_READ_BOUND_S + 0.5, "a abertura não respondeu"
-    )
-    assert await stored_stamp(per_request, session["session_id"]) is None
-    monkeypatch.setattr(statuses, "read_statuses", reads)
+    await p01_approved(client, db_session, team, tablet)
+    session_id = await minted_before_the_stamp(client, per_request, tablet)
 
-    await the_room_opens(client, tablet, session["session_id"])
+    await the_room_opens(client, tablet, session_id)
 
     assert earlier_line(agent.guide_systems[-1]) == (
         "EARLIER PASSAGES FOR THIS TEAM: Approved: Ruth 1:1\N{EN DASH}5. "
         "Not worked yet: Ruth 1:6\N{EN DASH}14, Ruth 1:15\N{EN DASH}18."
     ), "um turno sem carimbo nunca lia os estados, e a voz não sabia o que a equipe fez"
-    assert await stored_stamp(per_request, session["session_id"]) == {
+    assert await stored_stamp(per_request, session_id) == {
         "P01": "approved",
         "P02": "not_worked",
         "P03": "not_worked",
