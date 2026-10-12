@@ -3,13 +3,11 @@ name: Test
 on:
   pull_request:
 
-  # See the note in `checks.yml` for why `integration/**` is here at all.
-  #
-  # The narrowness of the filter is this file's own concern more than any other's: this job
-  # is the one measured between 6 and 56 minutes (ENG-556), and the chain is merged a step
-  # at a time, so every branch added here is paid once per step by the slowest job there is.
+  # A push to `main` is a report on the merge commit, not a gate: the deploy does not wait
+  # for it. Any other branch added here is paid by the slowest job there is (ENG-556).
   push:
     branches:
+      - main
       - 'integration/**'
 
 env:

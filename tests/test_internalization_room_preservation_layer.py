@@ -9,8 +9,8 @@ missing its top row, and handed Refine a package claiming the floor was met.
 
 Two tests carry the slice, in opposite directions.
 
-**`test_a_passage_with_no_preservation_layer_does_not_open`** is the gate. It fails against
-the original code by the session being created normally.
+**`test_a_finished_passage_with_no_recorded_rule_does_not_open_and_names_the_layer`** is the
+gate. It fails against the original code by the session being created normally.
 
 **`test_a_passage_that_carries_its_preservation_layer_still_opens`** is the counterweight,
 and is the more important of the two. A guard that overshoots takes the whole book down —

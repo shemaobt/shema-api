@@ -35,8 +35,9 @@ R10 = (
     "marriage_components. Reconstructor must not infer or state the pairing here."
 )
 
-#: Her heading and framing sentence, quoted from `src/turn/mapText.ts:102-104` in
-#: `Tripod-Internalization`, so the expectation cannot be rebuilt the way the block is.
+#: Her heading and framing sentence, quoted from `src/turn/mapText.ts:140-142` in
+#: `Tripod-Internalization` at her freeze (18fa7c4), so the expectation cannot be rebuilt the
+#: way the block is.
 PROHIBITIONS = (
     "## PRESERVATION RULES — do_not_decide (HARD CONSTRAINTS)\n"
     "These are explicit prohibitions from the Compilation Log. The response must honor "
@@ -78,7 +79,8 @@ HONOUR = (
 LIVED_NOTHING = "The team has not yet lived any passage"
 
 
-#: The story-so-far usage note as the ticket quotes it from `app/lib/liveTurn.ts:108-110`.
+#: The story-so-far usage note, quoted from `app/lib/liveTurn.ts:165-166` in
+#: `Tripod-Internalization` at her freeze (18fa7c4).
 GROUNDED = (
     "Grounded material: it may be used to answer the team's questions about the story so "
     "far and to situate the current passage in the book. Nothing beyond these passages and "

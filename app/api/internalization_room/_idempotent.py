@@ -31,7 +31,7 @@ async def claim_the_key(
     request: Request,
     session_id: str,
     _device_id: str = device_dep,
-    project_id: str | None = device_project_dep,
+    project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     key = request.headers.get("idempotency-key")

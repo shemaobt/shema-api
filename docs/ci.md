@@ -3,8 +3,10 @@
 Checks, Test and Migrations are the pull request gates: they run on every pull request, and also
 on `integration/**` pushes, which have no pull request of their own. That filter stays narrow on
 purpose, because the test job has been measured between 6 and 56 minutes and a chain merged
-one step at a time pays the slowest job once per step. The rest run on their own triggers,
-named in the table.
+one step at a time pays the slowest job once per step. The Test job also runs on a push to
+`main`, so a crossing of two green pull requests shows on the commit it landed on; that run
+blocks no merge and no deploy, and the deploy workflow does not wait for it. The rest run on
+their own triggers, named in the table.
 
 A test that spawns a process to prove what it proves does not run in the Test job: the
 fifteen that walk a migration carry the `migration` marker and run in Migrations, which

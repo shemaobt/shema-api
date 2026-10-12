@@ -16,7 +16,7 @@ over with the raw enum value a facilitator cannot read.
 
 from fastapi import APIRouter
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import ReaderUser
 from app.models.internalization_room import CoverageLegendResponse, LegendName
 from app.services.internalization_room.canon.labels import LANGUAGES, legend
 
@@ -24,12 +24,12 @@ facilitator_legend_router = APIRouter()
 
 
 @facilitator_legend_router.get("", response_model=CoverageLegendResponse)
-async def read_coverage_legend_route(user: FacilitatorUser) -> CoverageLegendResponse:
+async def read_coverage_legend_route(user: ReaderUser) -> CoverageLegendResponse:
     """Every coverage state and every element kind, named in the two languages.
 
     There is no team and no passage in the signature, and there is nothing to scope on: the
     answer is the canon's vocabulary and names nothing about the installation. It is still
-    behind `FacilitatorUser` rather than merely behind the door, because a single route under
+    behind `ReaderUser` rather than merely behind the door, because a single route under
     this prefix that was not is the one somebody points at later to argue the others need not
     be — and because `get_current_user` is *any* authenticated user of the platform, which is
     not the same set as the people this Desk is for.

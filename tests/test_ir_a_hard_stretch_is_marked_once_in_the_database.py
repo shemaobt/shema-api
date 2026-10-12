@@ -40,11 +40,11 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     DESK,
     DEVICE,
     IR,
-    ROOM_KEY,
     SLICES,
     Facilitator,
     P,
@@ -101,12 +101,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.api.internalization_room import router as room_router
     from app.api.internalization_room import segments as segments_api
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room import takes as takes_service
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
 
@@ -130,7 +128,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -237,6 +238,8 @@ async def _crossed_and_attended(client, db: AsyncSession, facilitator: Facilitat
     The stamps this leaves are the record the second writer must not touch.
     """
     session_id = await _a_session(db, team_id=facilitator.team_id)
+    tablet = await a_linked_tablet(db, team_id=facilitator.team_id)
+    client.headers.update(tablet.headers)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 1)
     for telling in range(RETELLS_BEFORE_A_WARNING - 1):
@@ -245,9 +248,7 @@ async def _crossed_and_attended(client, db: AsyncSession, facilitator: Facilitat
         )
         assert answered.status_code == 200, answered.text
 
-    arrived = await client.post(
-        f"{IR}/sessions/{session_id}/person-arrived", headers={"X-Room-Key": ROOM_KEY}
-    )
+    arrived = await client.post(f"{IR}/sessions/{session_id}/person-arrived")
     assert arrived.status_code == 200, arrived.text
     attended = await _attend(client, session_id, facilitator)
     assert attended.status_code == 200, attended.text
@@ -398,7 +399,7 @@ async def test_the_stretch_row_and_the_mark_land_together_on_the_replace_route(
     with pytest.raises(RuntimeError):
         await client.post(
             f"{IR}/sessions/{session_id}/segments/{stretch_id}/replace",
-            headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+            headers={"X-Room-Device": DEVICE},
             data={"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)},
             files={"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")},
         )

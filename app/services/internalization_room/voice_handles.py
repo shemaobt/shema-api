@@ -13,6 +13,7 @@ _QUESTIONS_PREFIX = "internalization-room/questions/"
 ROUTE = "/api/internalization-room/voice"
 TEAM_AUDIO_ROUTE = "/api/internalization-room/questions/audio"
 FACILITATOR_AUDIO_ROUTE = "/api/internalization-room/facilitator/questions/audio"
+FACILITATOR_SESSIONS_ROUTE = "/api/internalization-room/facilitator/sessions"
 
 
 def to_handle(key: str) -> str:
@@ -110,3 +111,8 @@ def facilitator_audio_url(key: str) -> str:
     Served by the signed-in route, because a facilitator holds no device key.
     """
     return f"{FACILITATOR_AUDIO_ROUTE}/{to_handle(key)}" if key else ""
+
+
+def turn_audio_url(session_id: str, number: int) -> str:
+    """The address the Desk is handed for one voice turn's clip, served by the signed-in door."""
+    return f"{FACILITATOR_SESSIONS_ROUTE}/{session_id}/turns/{number}/audio"

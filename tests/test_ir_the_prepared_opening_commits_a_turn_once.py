@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import get_settings
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.voice_handles import clip_url
-from tests.release_harness import KEY, PREFIX
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX
 from tests.room_harness import counting_commits, room_client
 
 P = "P03"
@@ -59,7 +60,7 @@ def commits(test_engine) -> Iterator[list[object]]:
 
 async def _a_session_with_a_line_ready(db_session: AsyncSession) -> str:
     """What the background preparation leaves behind when it wins the race (ENG-1034)."""
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     parked = await get_session(db_session, session.id)
     parked.prepared_speech = PREPARED
     parked.prepared_audio_key = PREPARED_KEY
@@ -76,7 +77,6 @@ async def test_a_prepared_opening_with_a_turn_id_lands_in_one_commit_after_its_c
 
     opened = await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": "abertura-1"},
     )
 
@@ -93,7 +93,7 @@ async def test_a_prepared_opening_with_no_turn_id_also_lands_in_one_commit_after
     session_id = await _a_session_with_a_line_ready(db_session)
     commits.clear()
 
-    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert len(commits) == 2, (
@@ -127,9 +127,7 @@ async def test_two_requests_racing_the_same_prepared_opening_both_hear_it_and_it
         if not rivals:
             rivals.append(
                 asyncio.create_task(
-                    per_request_client.post(
-                        f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
-                    )
+                    per_request_client.post(f"{PREFIX}/sessions/{session_id}/turns")
                 )
             )
             await asyncio.wait(rivals, timeout=0.2)
@@ -137,9 +135,7 @@ async def test_two_requests_racing_the_same_prepared_opening_both_hear_it_and_it
 
     monkeypatch.setattr(sessions_api, "take_prepared", take_prepared_while_a_rival_asks_too)
 
-    first = await per_request_client.post(
-        f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
-    )
+    first = await per_request_client.post(f"{PREFIX}/sessions/{session_id}/turns")
     lost = await asyncio.wait_for(rivals[0], timeout=10)
 
     assert first.status_code == 200, first.text[:300]

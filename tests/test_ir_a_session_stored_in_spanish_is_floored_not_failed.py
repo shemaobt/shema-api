@@ -31,13 +31,14 @@ from app.services.internalization_room import (
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
+from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import (
     nothing_settles,
     the_take_lasts,
     the_transcriber_hears,
     the_transcriber_hears_no_words,
 )
-from tests.release_harness import KEY, PREFIX
+from tests.release_harness import PREFIX
 from tests.room_harness import (
     heard_every_part,
     press_terminei,
@@ -81,7 +82,9 @@ def _the_floor_is(monkeypatch: pytest.MonkeyPatch, language: str) -> None:
 
 
 async def _a_row_stored_in_spanish(db_session: AsyncSession, pericope: str) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=pericope)
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, language="pt", pericope=pericope
+    )
     session.language = "es"
     await db_session.commit()
     return session
@@ -112,7 +115,7 @@ async def test_a_panorama_turn_on_a_row_stored_in_spanish_is_told_the_rooms_lang
     codes = _the_codes_a_turn_was_given(monkeypatch, sessions_api.room, "run_panorama_turn")
     session = await _a_row_stored_in_spanish(db_session, PANORAMA)
 
-    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text
     assert f"**{named}**" in guide.guide_systems[0], (
@@ -137,7 +140,6 @@ async def test_a_passage_turn_on_a_row_stored_in_spanish_is_told_the_rooms_langu
 
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )
 
@@ -169,7 +171,6 @@ async def test_a_mother_tongue_take_on_a_row_stored_in_spanish_reaches_the_guide
 
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )
 
@@ -192,7 +193,6 @@ async def test_a_take_in_the_floors_language_on_a_row_stored_in_spanish_is_the_t
     for _ in range(2):
         answered = await tablet.post(
             f"{PREFIX}/sessions/{session.id}/turns",
-            headers={"X-Room-Key": KEY},
             files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
         )
         assert answered.status_code == 200, answered.text
@@ -401,7 +401,6 @@ async def test_a_miss_on_a_row_stored_in_spanish_is_kept_in_the_rooms_language(
 
     answered = await tablet.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )
 

@@ -22,13 +22,13 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.platform.tts import SynthesizedSpeech
 from tests.deploy_harness import deploy_command
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 OV = "OV-Ruth"
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 
 def _settings() -> Settings:
@@ -47,11 +47,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         entry = SynthesizedSpeech(
@@ -78,23 +75,23 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
 async def _open_panorama(client: httpx.AsyncClient) -> str:
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", "language": "pt"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "OV", "language": "pt"})
     session_id: str = created.json()["session_id"]
-    await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    await client.post(f"{PREFIX}/sessions/{session_id}/turns")
     return session_id
 
 
 async def _speak(client: httpx.AsyncClient, session_id: str, filename: str) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": (filename, b"audio", "audio/m4a")},
     )
 
@@ -420,13 +417,9 @@ async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turn
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
 
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", "language": "pt"}
-    )
+    created = await client.post(f"{PREFIX}/sessions", json={"pericope": "OV", "language": "pt"})
     session_id = created.json()["session_id"]
-    opening = await client.post(
-        f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
-    )
+    opening = await client.post(f"{PREFIX}/sessions/{session_id}/turns")
 
     turns = [opening] + [await _speak(client, session_id, f"q{n}.m4a") for n in range(2, 6)]
 

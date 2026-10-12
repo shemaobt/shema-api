@@ -41,7 +41,7 @@ def settles(status_code: int) -> bool:
 
 
 async def claim(
-    key: str, route: str, request_hash: str, *, session_id: str, project_id: str | None
+    key: str, route: str, request_hash: str, *, session_id: str, project_id: str
 ) -> Claim | Replay:
     async with AsyncSessionLocal() as db:
         await session_for_room_caller(db, session_id, project_id)

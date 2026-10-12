@@ -37,9 +37,10 @@ from app.services.platform.tts import SpeechStore
 from app.services.project.facilitated_scope import (
     TEAM_NOT_FOUND,
     confined_to,
-    facilitated_project_ids,
+    readable_project_ids,
 )
 from app.services.project.facilitates_project import facilitates_project
+from app.services.project.reads_project import reads_project
 
 logger = logging.getLogger(__name__)
 
@@ -173,36 +174,25 @@ def _no_such_question(question_id: str) -> str:
     """The message the room's routes refuse a question with, written once.
 
     Every refusal it serves must be **identical**, not merely similar: absent, unowned,
-    another team's (the facilitator's three, ENG-534), another device's and another
-    project's (the tablet's two, ``get_question_for_device`` below — ENG-534 left the
-    device one written by hand in the router and said so here; ENG-1147 moved it and added
-    the project). A caller who can tell them apart asks for ids until one answers
-    differently, and a question that exists is a team that exists. Two call sites drifting
-    by a word is all it takes to hand that back.
+    another team's (the facilitator's three, ENG-534), and one the tablet does not reach
+    (``get_question_this_tablet_reaches`` below). A caller who can tell them apart asks for
+    ids until one answers differently, and a question that exists is a team that exists.
     """
     return f"Question {question_id} not found"
 
 
-async def get_question_for_device(
-    db: AsyncSession, question_id: str, *, device_id: str, project_id: str | None
+async def get_question_this_tablet_reaches(
+    db: AsyncSession, question_id: str, *, project_id: str
 ) -> IRQuestion:
-    """The question, if this tablet raised it and, when the tablet names a project, in it.
+    """The question, if it is this tablet's team's.
 
-    The device id is self-declared (``require_device``), so on its own it is a claim, not a
-    proof: any caller that guesses a question's id and its device's id could mark it heard.
-    The project is what the credential proves, and ``question_for_room_caller`` beside this
-    already reads the reply's audio on that rule — the audio and the mark answered
-    different callers until this helper made them agree. Same rule, same shape: a caller
-    that names a project reaches only that project's questions; the shared key names none
-    and keeps the by-id read, as everywhere else in the room. The list the tablet pulls
-    (``replies_for``) reads on the same rule, so the list, the audio and the mark agree on
-    who may touch a question.
+    A reply belongs to the team, so any tablet of the team may mark it heard, and the mark
+    counts for all of them. A question that names no team is nobody's to reach (ADR 0057).
+    The list (``replies_for``) and the audio (``question_for_room_caller``) read on the same
+    rule.
     """
     question = await get_question(db, question_id)
-    if question.device_id != device_id:
-        raise NotFoundError(_no_such_question(question_id))
-    owned_elsewhere = project_id is not None and question.project_id is not None
-    if owned_elsewhere and question.project_id != project_id:
+    if question.project_id != project_id:
         raise NotFoundError(_no_such_question(question_id))
     return question
 
@@ -229,6 +219,14 @@ async def get_question_for_facilitator(
     return question
 
 
+async def get_question_for_reader(db: AsyncSession, user: User, question_id: str) -> IRQuestion:
+    """``get_question_for_facilitator`` for a read: a consultant reads every team's question."""
+    question = await get_question(db, question_id)
+    if question.project_id is None or not await reads_project(db, user, question.project_id):
+        raise NotFoundError(_no_such_question(question_id))
+    return question
+
+
 async def _question_by_audio_key(db: AsyncSession, key: str) -> IRQuestion | None:
     """The question this key addresses — its own recording or the reply to it — or None.
 
@@ -249,12 +247,12 @@ async def _question_by_audio_key(db: AsyncSession, key: str) -> IRQuestion | Non
     )
 
 
-async def audio_of_a_question_this_facilitator_facilitates(
+async def audio_of_a_question_this_reader_reads(
     db: AsyncSession, user: User, key: str
 ) -> IRQuestion:
-    """The question an audio key belongs to, if the caller facilitates its team.
+    """The question an audio key belongs to, if the caller reads its team.
 
-    The routes that name a question by id are scoped by ``get_question_for_facilitator``.
+    The routes that name a question by id are scoped by ``get_question_for_reader``.
     A key is the other way to name one: it addresses a team's recording or a facilitator's
     spoken reply, and holding the role has never been owning either. Same rule, reached
     from the other direction.
@@ -272,29 +270,21 @@ async def audio_of_a_question_this_facilitator_facilitates(
     found = await _question_by_audio_key(db, key)
     if found is None:
         raise NotFoundError("No such audio")
-    if found.project_id is None or not await facilitates_project(db, user, found.project_id):
+    if found.project_id is None or not await reads_project(db, user, found.project_id):
         raise NotFoundError("No such audio")
     return found
 
 
-async def question_for_room_caller(
-    db: AsyncSession, key: str, project_id: str | None
-) -> IRQuestion:
+async def question_for_room_caller(db: AsyncSession, key: str, project_id: str) -> IRQuestion:
     """The question an audio key addresses, on the room's own ownership rule.
 
-    Same rule as ``session_for_room_caller``: a device that names a project reads only
-    that project's own questions. A question naming none is reached by whoever asks —
-    unlike ``audio_of_a_question_this_facilitator_facilitates``, which refuses one — because
-    it is the common shape today: the room's app does not send its device credential yet
-    (see ``get_question_for_facilitator``'s own note on this), so refusing an unowned
-    question here would leave most of the table unreachable by the very team that raised
-    the hand. The shared key names no device and so no project, and keeps the by-id read
-    its real facilitator flow has always depended on.
+    A tablet reads only its own team's questions. A question naming no team — raised on
+    the retired shared key — is nobody's to reach, as a session naming none is (ADR 0057).
     """
     found = await _question_by_audio_key(db, key)
     if found is None:
         raise NotFoundError("No such audio")
-    if project_id is not None and found.project_id is not None and found.project_id != project_id:
+    if found.project_id != project_id:
         raise NotFoundError("No such audio")
     return found
 
@@ -406,7 +396,7 @@ async def inbox_page(
     """The facilitator's inbox: their teams' questions, in RF-04's order, beside the count.
 
     **The scope holds with or without ``team_id``.** Without it the page is the caller's
-    teams; with a team they do not facilitate the request is refused. The parameter narrows
+    teams; with a team they do not read the request is refused. The parameter narrows
     what they already reach and never widens it — the route answered the whole installation
     before this, and a facilitator read hands that were never addressed to them.
 
@@ -421,11 +411,11 @@ async def inbox_page(
     and low is the honest direction: there is nothing to attribute the row to.
     """
     if team_id is not None:
-        if not await facilitates_project(db, user, team_id):
+        if not await reads_project(db, user, team_id):
             raise NotFoundError(TEAM_NOT_FOUND)
         restriction = IRQuestion.project_id == team_id
     else:
-        restriction = confined_to(IRQuestion.project_id, await facilitated_project_ids(db, user))
+        restriction = confined_to(IRQuestion.project_id, await readable_project_ids(db, user))
 
     page = select(IRQuestion).where(restriction)
     if wanted is not None:
@@ -524,32 +514,19 @@ async def resolve_elsewhere(
     return question
 
 
-async def replies_for(
-    db: AsyncSession, device_id: str, *, project_id: str | None
-) -> list[IRQuestion]:
-    """Answers this device has not heard yet, from any session it ever held, in its project.
+async def replies_for(db: AsyncSession, *, project_id: str) -> list[IRQuestion]:
+    """Answers the team has not heard yet, from any session it ever held.
 
     A facilitator may answer hours later, when that passage is long closed. Scoping the
     reply to its session would drop it silently.
-
-    The project is the third filter, after the device and the unheard answer, and it reads on
-    the rule ``question_for_room_caller`` and ``get_question_for_device`` beside it apply:
-    a caller that names one lists that project's questions and the ones that name none.
-    ``project_id=None`` is the shared key, which names no project, and it turns the rule off
-    and keeps the list by device.
     """
-    query = (
+    result = await db.execute(
         select(IRQuestion)
-        .where(IRQuestion.device_id == device_id)
+        .where(IRQuestion.project_id == project_id)
         .where(IRQuestion.status == IRQuestionStatus.ANSWERED)
         .where(IRQuestion.heard_at.is_(None))
         .order_by(IRQuestion.answered_at)
     )
-    if project_id is not None:
-        query = query.where(
-            or_(IRQuestion.project_id.is_(None), IRQuestion.project_id == project_id)
-        )
-    result = await db.execute(query)
     return list(result.scalars())
 
 
@@ -611,8 +588,8 @@ class SignedAudio:
 async def listen_address(key: str, *, settings: Settings | None = None) -> SignedAudio:
     """A short-lived signed address for a question or a reply, and when it dies.
 
-    The only address these ever had was the clip route, which is gated on the room key —
-    the tablet's credential. A facilitator signs in as a person and carries no room key,
+    The only address these ever had was the clip route, which is gated on the tablet's
+    device credential. A facilitator signs in as a person and carries none,
     so every play button in their queue answered 401 and the hand was dead on their side
     as surely as it was on the team's.
 

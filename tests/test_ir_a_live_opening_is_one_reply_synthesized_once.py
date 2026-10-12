@@ -21,10 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.sessions import create_session
 from app.services.platform import tts
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.turn_harness import the_room_agent_is
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 
 WHOLE = "O todo da passagem.\n\nA cena e o convite."
 HEARD_WHOLE = "O todo da passagem. A cena e o convite."
@@ -79,7 +79,6 @@ async def _client(
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
     monkeypatch.setattr(tts, "_default_store", lambda _: bucket)
@@ -93,12 +92,13 @@ async def _client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    return httpx.AsyncClient(transport=transport, base_url="http://test", headers=tablet.headers)
 
 
 async def _opened(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     return await asyncio.wait_for(
-        client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}),
+        client.post(f"{PREFIX}/sessions/{session_id}/turns"),
         timeout=5,
     )
 
@@ -115,7 +115,9 @@ async def test_a_passage_opening_the_guide_cut_with_the_old_scene_mark_is_still_
         return MARKED
 
     the_room_agent_is(monkeypatch, turn=guide)
-    session = await create_session(db_session, language="pt", pericope="P03")
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, language="pt", pericope="P03"
+    )
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         opened = await _opened(client, session.id)
@@ -142,7 +144,7 @@ async def test_a_one_reply_opening_is_synthesized_once_in_the_words_the_team_hea
         return TurnOutcome(speech=WHOLE, transcript="")
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
-    session = await create_session(db_session, language="pt", pericope="OV")
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
         opened = await _opened(client, session.id)

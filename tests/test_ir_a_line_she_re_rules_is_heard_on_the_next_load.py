@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.services.internalization_room import fail_safe
 from app.services.platform import tts
-from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client
 
-THE_TABLET = {"X-Room-Key": KEY}
+THE_TABLET = {}
 
 ACKS_AS_RULED = """
 ### F. Instant acknowledgements
@@ -499,7 +499,7 @@ async def test_a_tablet_with_a_credential_hears_its_line_voiced_with_the_read_le
 @pytest.mark.parametrize(
     ("spoken", "notices"),
     [
-        ("pt", {"gravacao_presa", "microfone"}),
+        ("pt", {"sem_conexao", "gravacao_presa", "microfone"}),
         ("en", {"sem_conexao", "gravacao_presa", "microfone"}),
     ],
 )

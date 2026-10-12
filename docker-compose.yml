@@ -102,9 +102,6 @@ services:
       # de producao. GCS_PLATFORM_BUCKET acima nao tem essa protecao (o fallback dele
       # e o nome de producao; decisao separada).
       GCS_OC_BUCKET: ${GCS_OC_BUCKET:-tripod-image-uploads-staging}
-      # Chave de dispositivo da Sala de Internalizacao. Valor de dev no local;
-      # em producao vem dos segredos, como as demais credenciais.
-      INTERNALIZATION_ROOM_API_KEY: ${INTERNALIZATION_ROOM_API_KEY:-sala-local-dev}
       # A voz da Sala tem chave propria. Vazio cai na chave compartilhada.
       INTERNALIZATION_ROOM_ELEVENLABS_API_KEY: ${INTERNALIZATION_ROOM_ELEVENLABS_API_KEY:-}
     dns:
@@ -126,7 +123,7 @@ services:
     # the path CLAUDE.md §7 documents, so fixing only the image would leave the boot failure
     # standing on the way almost everybody actually starts the backend.
     command: >
-      sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade heads && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade heads && mkdir -p /app/.worktrees && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude /app/.worktrees"
 
   bhsa-fetcher:
     build:

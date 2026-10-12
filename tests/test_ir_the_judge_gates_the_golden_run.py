@@ -31,7 +31,7 @@ FROZEN_JUDGE_PROMPT = "app/services/internalization_room/prompts/golden_judge_sy
 def test_the_judge_reads_her_prompt_at_the_freeze_by_its_fingerprint() -> None:
     ours = FROZEN["prompts/golden_judge_system_prompt.md"]
 
-    assert ours == FROZEN_JUDGE_PROMPT, "o juiz dela mora entre os nove prompts dela"
+    assert ours == FROZEN_JUDGE_PROMPT, "o juiz dela mora entre os oito prompts dela em uso"
     assert REPO_ROOT / ours == golden_judge.HER_PROMPT, (
         "o juiz lia a cópia de 533b6e3, de 103 linhas, sem as decisões de setembro"
     )

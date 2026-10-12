@@ -18,6 +18,7 @@ from app.services.internalization_room.prompt_blocks import (
     validator_map_block,
 )
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
+from tests.canon_harness import forget_the_canon
 from tests.text_seam_harness import the_judge_answers
 from tests.turn_harness import (
     GUIDE,
@@ -172,11 +173,9 @@ def an_earlier_arc_with_a_slugged_link(
             encoding="utf-8",
         )
     monkeypatch.setattr(parse_map, "MAPS_DIR", maps)
-    parse_map.load_map.cache_clear()
-    parse_map.load_book.cache_clear()
+    forget_the_canon()
     yield "P02"
-    parse_map.load_map.cache_clear()
-    parse_map.load_book.cache_clear()
+    forget_the_canon()
 
 
 async def test_an_earlier_digest_with_a_slugged_link_reaches_both_roles_as_its_code_alone(
@@ -244,9 +243,9 @@ def a_passage_without_its_coordinates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[str]:
     monkeypatch.setattr(book_material, "COORDINATES_DIR", tmp_path)
-    book_material.significant_absences.cache_clear()
+    forget_the_canon()
     yield "P01"
-    book_material.significant_absences.cache_clear()
+    forget_the_canon()
 
 
 def test_a_passage_without_its_coordinates_is_refused_by_name(

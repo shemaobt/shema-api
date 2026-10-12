@@ -34,6 +34,7 @@ from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import questions as service
 from app.services.platform.storage import StoredObject
 from tests.baker import make_app, make_role, make_user, make_user_app_role
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
@@ -125,7 +126,10 @@ async def client(db_session, store, settings, monkeypatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -212,18 +216,19 @@ async def test_playing_a_question_carries_no_shared_room_key(client, db_session,
     assert played.json()["url"], "a rota devolve o endereco assinado no corpo (ENG-533)"
 
 
-async def test_the_room_key_alone_does_not_open_the_question(client, db_session, room_app, store):
+async def test_a_tablets_device_credential_alone_does_not_open_the_question(
+    client, db_session, room_app, store
+):
     """The half of Behaviour 2 the absence check cannot reach.
 
     A route that took either credential would satisfy every assertion above, since those
-    only ever describe the request the test chose to send. This one sends the shared key
-    on its own: it is the same on every tablet and names no one.
+    only ever describe the request the test chose to send. This one sends a tablet's
+    device credential on its own: it names a device, not a person.
     """
     question = await a_raised_hand(db_session, store)
 
     played = await client.get(
         f"{IR}/facilitator/questions/{question.id}/audio",
-        headers={"X-Room-Key": "sala-local-dev"},
         follow_redirects=False,
     )
 

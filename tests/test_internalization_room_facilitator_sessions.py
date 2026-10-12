@@ -25,10 +25,10 @@ from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room import takes as take_service
 from app.services.platform.storage import StoredObject
 from tests.baker import make_app, make_role, make_user, make_user_app_role
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
-ROOM_KEY = "sala-de-teste"
 
 
 class MemoryStore:
@@ -64,11 +64,8 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from fastapi import FastAPI
 
     from app.api.internalization_room import router as room_router
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=IR)
@@ -79,7 +76,10 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         yield c
 
 
@@ -139,11 +139,10 @@ async def _record_a_take(db_session: AsyncSession, session):
     )
 
 
-async def _halt(client: httpx.AsyncClient, session_id: str) -> None:
-    """The way the room actually halts: the tablet says it cannot go on without a person."""
-    asked = await client.post(
-        f"{IR}/sessions/{session_id}/needs-person", headers={"X-Room-Key": ROOM_KEY}
-    )
+async def _halt(client: httpx.AsyncClient, db_session: AsyncSession, session) -> None:
+    """The way the room actually halts: the team's tablet says it cannot go on without a person."""
+    tablet = await a_linked_tablet(db_session, team_id=session.project_id)
+    asked = await client.post(f"{IR}/sessions/{session.id}/needs-person", headers=tablet.headers)
     assert asked.status_code == 200, asked.text[:200]
 
 
@@ -151,7 +150,7 @@ async def test_a_room_that_halted_for_a_person_is_visible_to_one(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
     session = await _a_session(db_session)
-    await _halt(client, session.id)
+    await _halt(client, db_session, session)
 
     listed = await client.get(
         f"{IR}/facilitator/sessions", headers=await _facilitator(db_session, room_app)
@@ -169,7 +168,7 @@ async def test_the_id_the_listing_gives_opens_the_door_it_addresses(
     """A listing whose ids do not work anywhere has moved the problem, not closed it."""
     session = await _a_session(db_session)
     take = await _record_a_take(db_session, session)
-    await _halt(client, session.id)
+    await _halt(client, db_session, session)
     headers = await _facilitator(db_session, room_app)
 
     listed = await client.get(f"{IR}/facilitator/sessions", headers=headers)
@@ -214,7 +213,7 @@ async def test_a_session_still_under_way_is_not_in_the_listing(
     """The list is a queue of what waits on a person, not a dump of every session."""
     under_way = await _a_session(db_session)
     halted = await _a_session(db_session)
-    await _halt(client, halted.id)
+    await _halt(client, db_session, halted)
     finished = await _a_session(db_session)
     finished.status = IRSessionStatus.DONE
     await db_session.commit()
@@ -234,8 +233,8 @@ async def test_the_most_recent_session_is_at_the_front(
     """A queue that does not put the newest first is not a queue."""
     older = await _a_session(db_session)
     newer = await _a_session(db_session)
-    await _halt(client, older.id)
-    await _halt(client, newer.id)
+    await _halt(client, db_session, older)
+    await _halt(client, db_session, newer)
     moment = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
     older.updated_at = moment - timedelta(hours=1)
     newer.updated_at = moment
@@ -253,7 +252,7 @@ async def test_without_a_login_the_listing_does_not_answer(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
     session = await _a_session(db_session)
-    await _halt(client, session.id)
+    await _halt(client, db_session, session)
 
     assert (await client.get(f"{IR}/facilitator/sessions")).status_code == 401
 
@@ -263,9 +262,9 @@ async def test_the_room_key_does_not_open_the_facilitator_listing(
 ) -> None:
     """The key is the same on every tablet — it identifies the app, not a person."""
     session = await _a_session(db_session)
-    await _halt(client, session.id)
+    await _halt(client, db_session, session)
 
-    listed = await client.get(f"{IR}/facilitator/sessions", headers={"X-Room-Key": ROOM_KEY})
+    listed = await client.get(f"{IR}/facilitator/sessions")
 
     assert listed.status_code == 401
 
@@ -285,7 +284,7 @@ async def test_a_facilitator_of_another_team_does_not_see_the_halted_room(
     """
     theirs = await _team(db_session, name="Equipe de outra gente")
     session = await _a_session(db_session, team=theirs)
-    await _halt(client, session.id)
+    await _halt(client, db_session, session)
 
     outsider = await _facilitator(db_session, room_app)
 
@@ -309,7 +308,7 @@ async def test_the_facilitator_of_the_team_still_sees_it(
     """
     theirs = await _team(db_session, name="Equipe de outra gente")
     session = await _a_session(db_session, team=theirs)
-    await _halt(client, session.id)
+    await _halt(client, db_session, session)
 
     insider = await _facilitator(db_session, room_app, team=theirs)
 

@@ -37,6 +37,14 @@ _Avoid_: project (in prose; it is the schema's word for the same entity), user, 
 The facilitator's web app, consumer of the routes for questions, halts and sessions by team, and of a session's conversation and retroverification file.
 _Avoid_: panel, dashboard, Mesa
 
+**Consultant**:
+A reader of every team's work in the Desk, who arrives after the fact to judge a passage: a platform role on the internalization-room app, not a link to a team, admitted to every read door and refused at every write (ADR 0058). A facilitator can hold it too and still acts only on the teams they facilitate.
+_Avoid_: observer, auditor, read-only facilitator, Consultor
+
+**Reader**:
+Whoever may open the Desk's read doors: a facilitator or a consultant. A reader reads the teams their scope opens — a facilitator their own, a consultant every team — and reading changes nothing.
+_Avoid_: viewer, observer, user (in prose), Leitor
+
 **Nudge**:
 A message on a team's stream from the server to the Desk saying that something the Desk shows changed — sessions, hands, halts, takes, stretches, verdict or release — naming what and carrying no data. The Desk reads that thing again through its routes.
 _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
@@ -44,6 +52,10 @@ _Avoid_: event, notification, push, update, Aviso (a Warning), Cutucada
 **Attention** (*Atendimento*):
 What waits for an action of the facilitator in one team, shown as a band on the pericope's line of that team's Desk: the halted rooms, the rooms under a warning and the halted tablets, each with its reason and since when; the team's card carries the count, hands included. A raised hand is answered in the Internalization phase, where it was raised; a finished passage waits for nobody there.
 _Avoid_: inbox, queue (the server's word for the halted-rooms listing), dashboard, Pendências
+
+**Reply** (*resposta*):
+The facilitator's voice answer to a team's raised-hand question. It belongs to the team: it shows on every tablet of the team, and counts as heard for all of them once one of them played it to the end. A question that names no team is reached by no tablet.
+_Avoid_: answer (in prose), heard the rehearsal (a different listening)
 
 **Phase** (*fase*):
 One of the four stretches of the team's work on a pericope as the Desk shows them, in order: Internalization (the conversation with the Guide and the necklace), Rehearsal, Telling back (said *Tradução*) and Retroverification (the verdicts, the findings, the corrections and the release). A phase is the Desk's reading of the Stations: the Conversation is the Internalization, the findings and the approval are the Retroverification.
@@ -134,6 +146,14 @@ _Avoid_: bead for an element of the Map, progress, checklist, Colar, conta, Soun
 **Panorama**:
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice. The seven doors that record, tell back or check refuse a panorama with one code; the conversation's turns door does not, because the panorama is a conversation, and neither do the release doors.
 _Avoid_: introduction
+
+**Prepared opening**:
+The passage's first Guide line, written and voiced in the background on the Panorama before the team opens its passage.
+_Avoid_: ready line, prepared line
+
+**Hand-over**:
+The move of a Prepared opening from the Panorama onto the session of the passage the team opens, once and only to the passage and language it was written for.
+_Avoid_: handing off, transfer
 
 **Book material**:
 What the Panorama voice reads as its standard of truth for one book: the digest of every published passage in story order, then the **Preservation notes**. Built from the vendored canon at its pin, never written by hand.
@@ -277,6 +297,14 @@ _Avoid_: lease, lock, kickoff lease
 A turn that carries the team's recording: what they said goes in, the Guide's next line comes out. A team turn sent while the **Opening** is being drafted waits for it.
 _Avoid_: audio turn, retell turn
 
+**Attempt**:
+One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Visit.
+_Avoid_: try, round, redraft (the count of drafts after the first), Tentativa
+
+**Attempt note**:
+What the room itself says about an attempt when something in it went wrong: the Validator's reply could not be read. Written by the room, never by the Validator, and absent on an ordinary attempt. Not a **Room note**, which is handed to the Guide.
+_Avoid_: Validator's note, comment, Nota da tentativa
+
 **Closed passage**:
 A session whose passage was closed: done, with its end stamped. It never blocks again, though a warning may still stand on it.
 _Avoid_: finished session, ended room, Passagem fechada
@@ -317,6 +345,14 @@ _Avoid_: stage, phase, status (the session's own three states), Estação
 The Internalization's lines between the team and the Guide, as the Desk reads them: ordered turns of the team, the Guide and the room's own notes, each with its moment and, when the Guide gave way to a fixed line, the fail-safe's category.
 _Avoid_: transcript, chat, history
 
+**Turns** (of a session):
+The Conversation read as pairs, oldest first: the team's side (how the take was heard, whether it cut the voice off, and what the Guide received of it) and the voice's side (how containment ended, the attempts, the times, the model, the line voiced and its clip). The opening has no team side; the telling-back round is not part of it.
+_Avoid_: transcript, timeline, Transcrição ao vivo
+
+**Boundary turn**:
+A voice turn that fell to a fail-safe, or that, past the opening, hands the question to the team's own facilitator or says the passage does not tell. Derived when the turns are read, never stored.
+_Avoid_: fronteira, edge turn
+
 **Refine**:
 The later product stage that receives the packet. It does not live on this server.
 _Avoid_: review, refinement
@@ -348,7 +384,7 @@ The summary of a **Release**'s check that the **Packet** carries beside its **Ve
 _Avoid_: check state, manifest check, conferência
 
 **Retroverification file** (`retroverificacao`):
-The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team; the analyst's note lives here and nowhere else.
+The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team or a consultant; the analyst's note lives here and nowhere else.
 _Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
 
 ### Process lines
@@ -388,9 +424,17 @@ _Avoid_: rehearsal (the whole passage's recording), practised scenes, Ensaios de
 **Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
 The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
 every door behind it.
-_Avoid_: api key (the room's own is a different door), token, password, Chave do runner
+_Avoid_: api key, token, password, Chave do runner
 
 ### Build
+
+**Claim code**:
+The code the server mints for one tablet before it belongs to any team; a facilitator spends it once from the Desk to link that tablet to a team. The doors that mint it, tell the tablet it was spent and hand over the credential open to anyone, because the code is only worth what a facilitator spends on it.
+_Avoid_: código, pairing code, device code, credential
+
+**Device credential** (`X-Device-Credential`):
+The token one tablet collects once after its claim code was spent and sends on every request to the room; the server keeps only its hash and compares it on every request, so unlinking the tablet from the Desk locks it out at its next request. It is the only thing that opens a team door.
+_Avoid_: room key, api key, token, session
 
 **Build**:
 The image a deploy runs, named by its git SHA (the build id); answered at `/api/version`.
@@ -417,6 +461,11 @@ _Avoid_: editing, polishing, correction, Limpeza
 The property of a transcript that carries what was said without cleanup, completion or
 summary.
 _Avoid_: literal, raw, Literal
+
+**Pending object** (`pending_blob_name`):
+The Oral Collector object name handed out for an upload of a recording that confirm-upload
+has not yet accepted.
+_Avoid_: staged blob, temporary upload, draft audio
 
 **App** (`apps`):
 One application this server serves, holding the roles that access to it is granted through.

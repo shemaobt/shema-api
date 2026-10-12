@@ -1,10 +1,10 @@
 """What the bead classifier is handed each turn, and what it is allowed to move.
 
-Her injection contract (`prompts/vendor/classifier_system_prompt.md`, runtime injection 1):
-the elements go as structured entries carrying their **current status**, and only the ones
-still at `not_encountered` or `surfaced`. The offer is every bead short of `engaged`, of any
-scene or of none — the Scene pointer is never a scope on it — and an id that was not offered
-moves nothing.
+Her injection contract (`app/services/internalization_room/prompts/classifier_system_prompt.md`,
+runtime injection 1): the elements go as structured entries carrying their **current status**,
+and only the ones still at `not_encountered` or `surfaced`. The offer is every bead short of
+`engaged`, of any scene or of none — the Scene pointer is never a scope on it — and an id that
+was not offered moves nothing.
 """
 
 from __future__ import annotations

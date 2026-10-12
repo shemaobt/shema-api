@@ -30,7 +30,6 @@ from app.db.models.internalization_room import (
 )
 from app.db.models.project import Project
 from app.models.internalization_room import PlayedTake
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -52,6 +51,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
+from tests.device_harness import TABLET_TEAM, LinkedTablet, a_linked_tablet
 
 P = "P03"
 
@@ -61,7 +61,6 @@ P02 = "P02"
 CLIP_MS = 61000
 
 PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 APP_KEY = "internalization-room"
 
 #: What the team said on frase 1, and what the story says instead. Scene 1 of
@@ -85,7 +84,6 @@ TABLET = "tablet-da-sala"
 def team_headers(credential: str) -> dict[str, str]:
     """What a tablet calls the room's own routes with."""
     return {
-        "X-Room-Key": KEY,
         DEVICE_CREDENTIAL_HEADER: credential,
         "X-Room-Device": TABLET,
     }
@@ -99,15 +97,24 @@ async def a_claimed_device(
     `language_name` is the team's mother tongue; two teams in one case need two emails, whose
     first three letters make the language's code.
     """
+    project, _facilitator, [tablet] = await claimed_tablets_of_one_team(
+        db, email=email, language_name=language_name, tablets=1
+    )
+    return project, tablet.credential
+
+
+async def claimed_tablets_of_one_team(
+    db: AsyncSession, *, email: str, tablets: int, language_name: str | None = None
+) -> tuple[Project, User, list[LinkedTablet]]:
+    """A team, the facilitator who claimed its tablets, and that many tablets claimed to it."""
     user = await make_user(db, email=email)
     language = await make_language(db, name=language_name or f"Lang {email}", code=email[:3])
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=project.id
-    )
-    return project, claimed.credential
+    claimed = [
+        await a_linked_tablet(db, team_id=project.id, facilitator=user) for _ in range(tablets)
+    ]
+    return project, user, claimed
 
 
 async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
@@ -302,7 +309,7 @@ async def rehearsed_session(
     db: AsyncSession,
     *,
     pericope: str = P,
-    project_id: str | None = None,
+    project_id: str | None = TABLET_TEAM,
     language: str | None = None,
     ordinal: int | None = None,
 ) -> tuple[IRSession, IRTake]:
@@ -336,7 +343,7 @@ async def ready_session(
     db: AsyncSession,
     *,
     pericope: str = P,
-    project_id: str | None = None,
+    project_id: str | None = TABLET_TEAM,
     ordinal: int | None = None,
     tell: Callable[[AsyncSession, IRSession], Awaitable[BackTranslationState]] | None = None,
 ):

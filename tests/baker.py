@@ -199,7 +199,12 @@ FACILITATOR_ROLE_KEY = "facilitator"
 
 
 async def grant_facilitator_app_role(db: AsyncSession, user_id: str) -> UserAppRole:
-    """Give a user the app role every facilitator route requires.
+    """Give a user the app role every facilitator route requires."""
+    return await grant_room_app_role(db, user_id, FACILITATOR_ROLE_KEY)
+
+
+async def grant_room_app_role(db: AsyncSession, user_id: str, role_key: str) -> UserAppRole:
+    """Give a user a role on the internalization-room app.
 
     The rows `20260812_room04` registers do not exist here: the suite builds its schema with
     ``create_all`` and never runs a migration. So the app and the role are created on first
@@ -217,14 +222,10 @@ async def grant_facilitator_app_role(db: AsyncSession, user_id: str) -> UserAppR
         app = await make_app(db, app_key=FACILITATOR_APP_KEY, name="Sala de Internalização")
 
     role = (
-        await db.execute(
-            select(Role).where(Role.app_id == app.id, Role.role_key == FACILITATOR_ROLE_KEY)
-        )
+        await db.execute(select(Role).where(Role.app_id == app.id, Role.role_key == role_key))
     ).scalar_one_or_none()
     if role is None:
-        role = await make_role(
-            db, app.id, role_key=FACILITATOR_ROLE_KEY, label="Facilitador", is_system=True
-        )
+        role = await make_role(db, app.id, role_key=role_key, label=role_key, is_system=True)
 
     return await make_user_app_role(db, user_id, app.id, role.id)
 
@@ -953,6 +954,8 @@ async def keep_a_take(
     *,
     kind: IRTakeKind = IRTakeKind.ENSAIO,
     audio: bytes = b"a equipe gravou",
+    ordinal: int | None = None,
+    pass_number: int | None = None,
 ) -> IRTake:
     """Audio the team recorded, kept the way the room keeps it.
 
@@ -969,6 +972,8 @@ async def keep_a_take(
         kind=kind,
         scope=session.pericope,
         audio=audio,
+        ordinal=ordinal,
+        pass_number=pass_number,
         store=_BucketInMemory(),
     )
 

@@ -23,10 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.services import internalization_room as room
 from app.services.platform.storage import StoredObject
+from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import ready_for_release as _ready_for_release
 from tests.take_harness import (
     DEVICE,
-    KEY,
     PREFIX,
     a_failed_capture_then_two_good_ones,
     open_session,
@@ -76,11 +76,8 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
     from app.api.internalization_room import back_translation as bt_api
     from app.api.internalization_room import router
     from app.api.internalization_room import segments as segments_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
-
-    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
     said: list[str] = []
 
@@ -99,7 +96,10 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=tablet.headers
+    ) as c:
         c.said = said  # type: ignore[attr-defined]
         yield c
 
@@ -116,14 +116,14 @@ async def _replace(
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/segments/{segment_id}/replace",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        headers={"X-Room-Device": DEVICE},
         data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
         files={"file": ("de-novo.m4a", audio, "audio/mp4")},
     )
 
 
 async def _told_so_far(client: httpx.AsyncClient, session_id: str) -> list[dict[str, Any]]:
-    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    state = await client.get(f"{PREFIX}/sessions/{session_id}")
     assert state.status_code == 200, state.text
     return list(state.json()["back_translation"]["segments"])
 

@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.facilitator._deps import FacilitatorUser
+from app.api.facilitator._deps import ReaderUser
 from app.api.facilitator.teams import TEAM_NOT_FOUND
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.services.internalization_room.nudge_channel import subscribe
-from app.services.project.facilitates_project import facilitates_project
+from app.services.project.reads_project import reads_project
 
 KEEP_ALIVE_SECONDS = 15.0
 
@@ -19,9 +19,9 @@ facilitator_nudges_router = APIRouter()
 
 @facilitator_nudges_router.get("/{team_id}/nudges")
 async def nudge_channel(
-    team_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+    team_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
 ) -> StreamingResponse:
-    if not await facilitates_project(db, user, team_id):
+    if not await reads_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
     async def _nudges() -> AsyncIterator[bytes]:

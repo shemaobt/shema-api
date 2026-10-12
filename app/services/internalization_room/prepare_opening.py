@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -38,6 +40,11 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     Failure here is silent to the session, not to the log: the prepared line is an
     optimisation and the session opens perfectly well without one, but a refusal or a
     transport error still leaves a WARNING behind, naming the session and the pericope.
+
+    The landing never counts as the team's activity. `updated_at` is written its own value, as
+    a column expression and never a Python value read earlier: the Desk reads it as the last
+    time anyone spoke, and a preparation that took a minute would otherwise stamp a panorama
+    nobody is in as live, or overwrite the newer stamp of a turn that landed while it ran.
     """
     try:
         async with AsyncSessionLocal() as db:
@@ -109,10 +116,17 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 )
                 return
             speech, _ = await synthesize_facilitator_speech(outcome.speech, language=spoken)
-            panorama = await get_session(db, panorama_session_id)
-            panorama.prepared_speech = outcome.speech
-            panorama.prepared_audio_key = speech.key
-            panorama.prepared_pericope = pericope
+            await db.execute(
+                update(IRSession)
+                .where(IRSession.id == panorama_session_id)
+                .values(
+                    prepared_speech=outcome.speech,
+                    prepared_audio_key=speech.key,
+                    prepared_pericope=pericope,
+                    prepared_attempts=outcome.attempts,
+                    updated_at=IRSession.updated_at,
+                )
+            )
             await db.commit()
     except Exception as error:
         logger.warning(
@@ -125,7 +139,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
         )
 
 
-def hand_over(prepared: IRSession, opening: IRSession) -> bool:
+async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -> bool:
     """Move a ready opening onto the session that will speak it, once and to the right passage.
 
     The line is written from one passage's meaning map, and the panorama writes it before the
@@ -151,6 +165,11 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     A session the team has already spoken in is refused too. The open door returns the team's
     resumed session (ADR 0045), and a line parked there is never read: only an opening takes
     it, and that session has had its opening.
+
+    Moving a line is not the team's activity, on either row. `updated_at` is written its own
+    value, as a column expression: the Desk reads it as the last time anyone spoke, so the
+    hand-over would otherwise stamp the panorama as live, and the passage's session with it
+    before its Guide has said a word. The session moves when the Guide speaks its opening.
     """
     if not prepared.prepared_speech or not prepared.prepared_audio_key:
         return False
@@ -160,19 +179,36 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
         return False
     if opening.messages:
         return False
-    opening.prepared_speech = prepared.prepared_speech
-    opening.prepared_audio_key = prepared.prepared_audio_key
+    await db.execute(
+        update(IRSession)
+        .where(IRSession.id == opening.id)
+        .values(
+            prepared_speech=prepared.prepared_speech,
+            prepared_audio_key=prepared.prepared_audio_key,
+            prepared_attempts=prepared.prepared_attempts,
+            updated_at=IRSession.updated_at,
+        )
+    )
     # Spent. Working ahead buys one opening, not one per session that mentions the
     # panorama.
-    prepared.prepared_speech = None
-    prepared.prepared_audio_key = None
-    prepared.prepared_pericope = None
+    await db.execute(
+        update(IRSession)
+        .where(IRSession.id == prepared.id)
+        .values(
+            prepared_speech=None,
+            prepared_audio_key=None,
+            prepared_pericope=None,
+            prepared_attempts=None,
+            updated_at=IRSession.updated_at,
+        )
+    )
+    await db.commit()
     return True
 
 
 async def take_prepared(
     db: AsyncSession, session: IRSession, *, commit: bool = True
-) -> tuple[str, str] | None:
+) -> tuple[str, str, list[dict[str, Any]]] | None:
     """The line this session was handed, consumed once so a later turn never repeats it.
 
     A panorama is handed nothing, even when a ready line is sitting on its own row — that row
@@ -194,6 +230,8 @@ async def take_prepared(
     session.prepared_speech = None
     session.prepared_audio_key = None
     session.prepared_pericope = None
+    attempts = session.prepared_attempts or []
+    session.prepared_attempts = None
     if commit:
         await db.commit()
-    return speech, key
+    return speech, key, attempts

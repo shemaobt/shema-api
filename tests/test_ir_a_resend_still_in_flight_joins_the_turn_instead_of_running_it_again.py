@@ -27,6 +27,7 @@ from app.services.internalization_room.sessions import create_session, get_sessi
 from app.services.internalization_room.synthesize_facilitator_speech import facilitator_speech_key
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
+from tests.device_harness import TABLET_TEAM
 from tests.opening_harness import ask_for_the_opening
 from tests.release_harness import P
 from tests.room_harness import room_client
@@ -68,7 +69,7 @@ class _CountingVoice:
 async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer_alike(
     db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _GuideStillThinking()
     voice = _CountingVoice()
     the_room_agent_is(monkeypatch, turn=guide)
@@ -103,7 +104,9 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
 async def test_a_panoramas_opening_asked_again_in_flight_is_composed_and_voiced_once_not_twice(
     db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await create_session(db_session, pericope="OV-Ruth", language="pt")
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="OV-Ruth", language="pt"
+    )
     guide = _GuideStillThinking()
     voice = _CountingVoice()
     the_room_agent_is(monkeypatch, turn=guide)
@@ -143,7 +146,7 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
     Whether the deployed server cancels a handler when its client hangs up is the server's
     business and has changed across releases; the turn in flight must not depend on it.
     """
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _GuideStillThinking()
     the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _CountingVoice())
@@ -181,7 +184,7 @@ async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_no
         )
         return entry, False
 
-    session = await create_session(db_session, pericope=P, language="pt")
+    session = await create_session(db_session, project_id=TABLET_TEAM, pericope=P, language="pt")
     guide = _GuideStillThinking()
     the_room_agent_is(monkeypatch, turn=guide)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _slow_voice)

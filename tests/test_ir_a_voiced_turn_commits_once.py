@@ -25,7 +25,8 @@ from app.services.internalization_room.sessions import (
     unattend,
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
-from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
+from tests.device_harness import TABLET_TEAM
+from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 from tests.turn_harness import the_room_agent_is
 
@@ -107,7 +108,7 @@ async def client(
 
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     return await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
@@ -124,7 +125,6 @@ async def _the_team_answers(
 ) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
-        headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
         data=data,
     )
@@ -182,10 +182,10 @@ async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
 async def test_an_opening_the_room_voices_live_lands_in_one_commit_after_its_claim(
     client: httpx.AsyncClient, db_session: AsyncSession, commits: list[object]
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     commits.clear()
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert len(commits) == 2, (
@@ -247,7 +247,7 @@ async def test_a_person_asked_for_while_the_guide_composes_the_opening_is_still_
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     async def the_tablet_asks_for_a_person() -> None:
         async with rival_factory() as rival:
@@ -256,7 +256,7 @@ async def test_a_person_asked_for_while_the_guide_composes_the_opening_is_still_
 
     models.while_the_guide_thinks = the_tablet_asks_for_a_person
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert models.while_the_guide_thinks is None, "o Guia falso não compôs a abertura"
@@ -421,10 +421,10 @@ async def test_an_opening_the_room_voices_live_is_composed_with_the_database_let
     voice: _Voice,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert held == {"guide": False, "validator": False, "voice": False}, (
@@ -442,9 +442,7 @@ async def test_a_line_said_again_is_voiced_with_the_database_let_go(
 ) -> None:
     held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
 
-    again = await client.post(
-        f"{PREFIX}/sessions/{waiting_room.id}/turns", headers={"X-Room-Key": KEY}
-    )
+    again = await client.post(f"{PREFIX}/sessions/{waiting_room.id}/turns")
 
     assert again.status_code == 200, again.text[:300]
     assert held == {"voice": False}, (
@@ -459,12 +457,11 @@ async def test_an_opening_the_tablet_names_is_composed_with_every_session_let_go
     voice: _Voice,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
     held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
 
     opened = await client.post(
         f"{PREFIX}/sessions/{session.id}/turns",
-        headers={"X-Room-Key": KEY},
         data={"turn_id": "abertura-1"},
     )
 
@@ -733,7 +730,7 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_p
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="pt", pericope=P)
 
     async def the_tablet_asks_and_a_facilitator_marks_the_visit() -> None:
         async with rival_factory() as rival:
@@ -743,7 +740,7 @@ async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_p
 
     models.while_the_guide_thinks = the_tablet_asks_and_a_facilitator_marks_the_visit
 
-    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns")
 
     assert opened.status_code == 200, opened.text[:300]
     assert models.while_the_guide_thinks is None, "o Guia falso não compôs a abertura"

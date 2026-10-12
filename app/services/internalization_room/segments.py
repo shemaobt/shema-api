@@ -272,8 +272,8 @@ async def divide_segment(
 async def segment_for_session(db: AsyncSession, session_id: str, segment_id: str) -> IRSegment:
     """One stretch of **this** session, by its address.
 
-    The room key is one string shipped in every tablet, so it says nothing about whose work is
-    being reached; the session in the path is what does. Scoped here rather than by the caller,
+    The stretch id alone says nothing about whose work is being reached; the session in the
+    path is what does. Scoped here rather than by the caller,
     because a lookup that returns any stretch to anybody is a lookup every route has to
     remember to fence.
 
