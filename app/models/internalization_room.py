@@ -338,6 +338,12 @@ class SegmentsResponse(BaseModel):
     needs_person: bool = False
 
 
+class FindingView(BaseModel):
+    kind: str
+    frase: int | None = None
+    segment_id: str | None = None
+
+
 class BackTranslationProgress(BaseModel):
     """Where a telling-back stopped, so a tablet can be handed it back.
 
@@ -355,6 +361,7 @@ class BackTranslationProgress(BaseModel):
     checked: bool = False
     finding_segment_id: str | None = None
     finding_kind: str | None = None
+    findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
 
 
@@ -499,6 +506,15 @@ class FinishBackTranslationRequest(BaseModel):
 
 
 class BackTranslationVerdictResponse(BaseModel):
+    """What `terminei` answers: the verdict's voice and the findings of the check that gave it.
+
+    `findings` is every finding of the check, in the analyst's order, as a kind, a frase number
+    and a stretch, and never the analyst's note. It rides beside the leading finding and does
+    not replace it. An errand answer, which is not a check's, carries no list: the session
+    read is the standing truth, and a tablet that needs the marks after an errand reads them
+    there.
+    """
+
     session_id: str
     audio_url: str = ""
     fixed_line: str = ""
@@ -531,6 +547,7 @@ class BackTranslationVerdictResponse(BaseModel):
     #: have to explain, while one reading it off `untold_segment_id` would look for a stretch
     #: that does not exist. Empty on every answer that is not this refusal.
     untold_take_ids: list[str] = Field(default_factory=list)
+    findings: list[FindingView] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
 

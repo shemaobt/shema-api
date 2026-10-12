@@ -79,7 +79,7 @@ async def _replaced(client: httpx.AsyncClient, session_id: str, stretch: IRSegme
 
 async def _told_on_a_new_slice(
     client: httpx.AsyncClient, session_id: str, beside: IRSegment
-) -> None:
+) -> httpx.Response:
     answered = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
         headers={"X-Room-Device": TABLET},
@@ -91,6 +91,7 @@ async def _told_on_a_new_slice(
         files={"file": ("nova.m4a", b"uma frase nova depois da conferencia", "audio/mp4")},
     )
     assert answered.status_code == 200, answered.text
+    return answered
 
 
 def _line_of(reading: str, words: str) -> str:
@@ -198,3 +199,47 @@ async def test_a_frase_told_again_before_any_check_reaches_her_analyst_as_a_firs
         "uma frase contada de novo antes de qualquer conferência chegava à analista "
         "como contada depois de um veredito"
     )
+
+
+async def test_a_new_frase_told_after_a_check_is_the_second_pass_in_its_recording_and_answer(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    session_id, stretches = await _checked(client, db_session)
+
+    answered = await _told_on_a_new_slice(client, session_id, stretches[-1])
+
+    told = next(one for one in await current(db_session, session_id) if one.transcript == RETOLD)
+    assert told.bridge_take_id is not None
+    recording = await take_by_id(db_session, told.bridge_take_id)
+    assert recording.pass_number == 2, (
+        "a gravação da frase nova contada depois da conferência ficava na primeira passada"
+    )
+    assert answered.json()["pass_number"] == 2
+
+
+async def test_a_frase_told_again_before_any_check_is_the_first_pass_in_its_recording_and_answer(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ScriptedAnalyst
+) -> None:
+    session, _parts = await rehearsed_in_parts_of(db_session, [3])
+    stretch = (await final_segments(db_session, session.id))[1]
+
+    answered = await client.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": stretch.take_id,
+            "starts_ms": str(stretch.starts_ms),
+            "ends_ms": str(stretch.ends_ms),
+            "retelling": "true",
+        },
+        files={"file": ("de-novo.m4a", b"a frase dois antes de conferir", "audio/mp4")},
+    )
+
+    assert answered.status_code == 200, answered.text
+    told = next(one for one in await current(db_session, session.id) if one.transcript == RETOLD)
+    assert told.bridge_take_id is not None
+    recording = await take_by_id(db_session, told.bridge_take_id)
+    assert recording.pass_number == 1, (
+        "a gravação da frase contada de novo antes de qualquer conferência ficava na segunda"
+    )
+    assert answered.json()["pass_number"] == 1
