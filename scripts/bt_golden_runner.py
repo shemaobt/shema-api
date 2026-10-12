@@ -307,7 +307,10 @@ async def play_script(path: Path, args: argparse.Namespace) -> tuple[int, list[P
     played: list[Played] = []
     refused: httpx.HTTPStatusError | None = None
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
-        session_id = await open_session(script, client)
+        try:
+            session_id = await open_session(script, client)
+        except httpx.HTTPStatusError as turned_away:
+            return _refused(turned_away), played
         try:
             await play(script, client, session_id=session_id, played=played)
         except httpx.HTTPStatusError as stopped:
@@ -345,10 +348,7 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--budget-usd", type=float, default=None)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
-    try:
-        return asyncio.run(run(parser.parse_args()))
-    except httpx.HTTPStatusError as refused:
-        return _refused(refused)
+    return asyncio.run(run(parser.parse_args()))
 
 
 if __name__ == "__main__":
