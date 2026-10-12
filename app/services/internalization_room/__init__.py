@@ -70,6 +70,7 @@ from app.services.internalization_room.validated_turn import outcome_tag
 from app.services.internalization_room.verdict_round import (
     TellingBackVerdict,
     check_the_telling_back,
+    mark_the_verdict_heard,
     save_the_spoken_verdict,
     the_stored_verdicts_clip,
 )
@@ -106,6 +107,7 @@ __all__ = [
     "hard_stretches_of",
     "in_a_voice_the_room_has",
     "mark_needs_person",
+    "mark_the_verdict_heard",
     "note_a_hard_stretch",
     "open_session",
     "outcome_tag",

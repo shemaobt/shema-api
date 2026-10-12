@@ -13,6 +13,8 @@ from app.models.internalization_room import (
     BackTranslationVerdictResponse,
     FindingView,
     FinishBackTranslationRequest,
+    VerdictHeardRequest,
+    VerdictHeardResponse,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.back_translation import Finding
@@ -299,6 +301,21 @@ async def finish(
         verdict = await _finished(session, payload, db)
     nudge(session.project_id, "verdict")
     return verdict
+
+
+@router.post(
+    "/sessions/{session_id}/back-translation/heard",
+    response_model=VerdictHeardResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def verdict_heard(
+    session_id: str,
+    payload: VerdictHeardRequest,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> VerdictHeardResponse:
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    return VerdictHeardResponse(marked=await room.mark_the_verdict_heard(db, session, payload.at))
 
 
 async def _finished(

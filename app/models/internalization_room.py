@@ -553,6 +553,14 @@ class BackTranslationVerdictResponse(BaseModel):
     check_at: datetime | None = None
 
 
+class VerdictHeardRequest(BaseModel):
+    at: datetime
+
+
+class VerdictHeardResponse(BaseModel):
+    marked: bool
+
+
 class NeedsPersonResponse(BaseModel):
     session_id: str
     needs_person: bool
