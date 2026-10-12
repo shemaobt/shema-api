@@ -1146,10 +1146,33 @@ class TurnTeamSide(BaseModel):
 TurnOutcomeCode = Literal["validated", "corrected", "fail_safe", "no_record"]
 
 
+class TurnValidatorIssue(BaseModel):
+    problem: str | None = None
+    claim: str | None = None
+    explanation: str | None = None
+
+
+class TurnTraceStep(BaseModel):
+    """One draft of the Guide's and what the Validator and the room made of it: her trace step.
+
+    `verdict` is `pass`, `correct` or `regenerate`, and is null when the Validator's reply could
+    not be read, which is when `note` says so. `corrected` is the text that was voiced when the
+    Validator corrected the draft.
+    """
+
+    attempt: int
+    draft: str
+    issues: list[TurnValidatorIssue]
+    verdict: str | None = None
+    corrected: str | None = None
+    note: str | None = None
+
+
 class TurnVoiceSide(BaseModel):
     outcome: TurnOutcomeCode
     boundary: bool
     attempts: int
+    trace: list[TurnTraceStep]
     recognition_ms: int | None
     reply_ms: int | None
     synthesis_ms: int | None

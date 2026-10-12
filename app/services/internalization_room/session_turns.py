@@ -11,6 +11,7 @@ from app.models.internalization_room import (
     SessionTurnsResponse,
     TurnOutcomeCode,
     TurnTeamSide,
+    TurnTraceStep,
     TurnVoiceSide,
 )
 from app.services.internalization_room.conversation import the_conversation
@@ -151,6 +152,7 @@ def _voice_side(
         outcome=outcome,
         boundary=is_boundary_turn(outcome, text, opening=opening),
         attempts=len(guide.get("attempts") or []),
+        trace=[TurnTraceStep.model_validate(step) for step in guide.get("attempts") or []],
         recognition_ms=guide.get("recognition_ms"),
         reply_ms=guide.get("reply_ms"),
         synthesis_ms=guide.get("synthesis_ms"),

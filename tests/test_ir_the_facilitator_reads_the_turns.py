@@ -638,6 +638,7 @@ async def test_a_turn_stored_before_this_change_reads_its_missing_facts_as_null(
         "outcome": "validated",
         "boundary": False,
         "attempts": 0,
+        "trace": [],
         "recognition_ms": None,
         "reply_ms": None,
         "synthesis_ms": None,
