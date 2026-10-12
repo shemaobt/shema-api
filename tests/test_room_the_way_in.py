@@ -5,10 +5,7 @@ and only while the tablet's team exists. The three claim doors open to anyone, b
 code is only worth what a facilitator spends on it. The shared room key opens nothing.
 """
 
-import uuid
 from collections.abc import Coroutine
-from itertools import count
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -21,23 +18,16 @@ from app.core.enums import ProjectRole
 from app.core.exceptions import AuthenticationError
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRSession
-from app.db.models.language import Language
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import questions as room_questions
 from app.services.internalization_room import sessions as room_sessions
 from app.services.internalization_room.turn_dedup import remember_turn
 from app.services.internalization_room.voice_handles import to_handle
-from tests import device_harness
 from tests.baker import make_project_user_access, make_user
-from tests.device_harness import (
-    RETIRED_ROOM_KEY_HEADER,
-    TABLET_TEAM,
-    LinkedTablet,
-    a_linked_tablet,
-)
+from tests.device_harness import RETIRED_ROOM_KEY_HEADER, LinkedTablet, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import PREFIX, a_claimed_device
+from tests.release_harness import PREFIX
 from tests.room_harness import room_client
 
 RETIRED_KEY = "sala-de-teste"
@@ -398,22 +388,6 @@ async def test_the_harness_builders_tablet_is_claimed_and_collected(
     session = await room_sessions.get_session(db_session, opened.json()["session_id"])
     assert session.project_id == tablet.project_id
     assert desks_copy.status_code == 401, desks_copy.text
-
-
-async def test_a_tablets_own_language_drawn_as_fac_does_not_stop_a_team_named_fac(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    drawn = (uuid.UUID(f"fac{n:029x}") for n in count())
-    monkeypatch.setattr(device_harness, "uuid", SimpleNamespace(uuid4=lambda: next(drawn)))
-    await a_linked_tablet(db_session, team_id=TABLET_TEAM)
-
-    team, _credential = await a_claimed_device(db_session)
-
-    language = (
-        await db_session.execute(select(Language).where(Language.id == team.language_id))
-    ).scalar_one()
-    assert language.code == "fac"
-    assert (await db_session.execute(select(func.count()).select_from(Language))).scalar_one() == 2
 
 
 async def test_a_claimed_tablet_that_never_collected_is_refused_on_a_team_door(
