@@ -1203,10 +1203,13 @@ class SessionCoverageResponse(BaseModel):
     will be handed on its next turn if nothing changes, without the room facts that follow it.
 
     A Panorama do Livro has no coverage: `panorama` is true, there are no groups and no ledger,
-    and the Desk shows her line «O Panorama não tem cobertura.»
+    and the Desk shows her line «O Panorama não tem cobertura.» A passage whose map gives no
+    coverage element has `no_elements` true and no groups, and the Desk shows «Sem elementos de
+    cobertura.»
     """
 
     session_id: str
     groups: list[SessionCoverageGroup]
     panorama: bool
+    no_elements: bool
     ledger: str | None

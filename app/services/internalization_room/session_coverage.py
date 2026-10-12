@@ -22,7 +22,9 @@ _STATE_OF = {
 
 def coverage_of(session: IRSession) -> SessionCoverageResponse:
     if is_panorama(session.pericope):
-        return SessionCoverageResponse(session_id=session.id, groups=[], panorama=True, ledger=None)
+        return SessionCoverageResponse(
+            session_id=session.id, groups=[], panorama=True, no_elements=False, ledger=None
+        )
     elements = elements_for(session.pericope)
     stored = {**initial_state(session.pericope), **(session.coverage_state or {})}
     groups = []
@@ -42,5 +44,6 @@ def coverage_of(session: IRSession) -> SessionCoverageResponse:
         session_id=session.id,
         groups=groups,
         panorama=False,
+        no_elements=not groups,
         ledger=coverage_status_block(session.coverage_state or {}, session.pericope),
     )

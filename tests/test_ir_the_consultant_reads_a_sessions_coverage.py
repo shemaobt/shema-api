@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.db.models.project import Project
+from app.services.internalization_room import session_coverage
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hearing import HeardSpeech
@@ -247,6 +248,23 @@ async def test_a_panorama_is_flagged_and_has_no_beads_and_no_ledger(
     body = await _coverage(client, consultant, panorama.id)
 
     assert body["panorama"] is True
+    assert body["no_elements"] is False
     assert body["groups"] == []
     assert body["ledger"] is None
     assert (await _coverage(client, consultant, session.id))["panorama"] is False
+
+
+async def test_a_passage_with_no_coverage_elements_is_flagged_apart_from_a_panorama(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert (await _coverage(client, consultant, session.id))["no_elements"] is False
+
+    monkeypatch.setattr(session_coverage, "elements_for", lambda pericope: ())
+    body = await _coverage(client, consultant, session.id)
+
+    assert body["no_elements"] is True
+    assert body["panorama"] is False
+    assert body["groups"] == []
