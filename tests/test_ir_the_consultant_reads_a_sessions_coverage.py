@@ -18,10 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.llm import CACHE_BREAK
-from app.services.internalization_room.sessions import append_exchange
+from app.services.internalization_room.sessions import append_exchange, apply_coverage
 from tests.baker import (
     grant_room_app_role,
     make_language,
@@ -191,3 +192,34 @@ async def test_the_ledger_served_is_byte_for_byte_the_one_the_guide_reads_next(
         "RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:\n  being: Naomi\n  place: Bethlehem\n"
         in ledger
     )
+
+
+async def test_a_turn_that_engaged_an_element_shows_it_engaged_on_the_next_read(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = await _coverage(client, consultant, session.id)
+
+    async def classifier(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        decision = {"element_id": "scene:1", "new_status": "engaged", "evidence": "a fome"}
+        return json.dumps({"decisions": [decision]})
+
+    the_room_agent_is(monkeypatch, classifier=classifier)
+    settled = await classify_coverage(
+        coverage_state=session.coverage_state or {},
+        team_utterance="a fome levou a família de Belém para Moabe",
+        guide_response="isso mesmo",
+        classifier_prompt=default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"],
+        pericope_num=P,
+        settings=Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake"),
+    )
+    await apply_coverage(db_session, session.id, settled)
+    after = await _coverage(client, consultant, session.id)
+
+    assert _states(before)["scene:1"] == "untouched"
+    assert "WORKED WITH BY THE TEAM (engaged): (nothing yet" in before["ledger"]
+    assert _states(after)["scene:1"] == "engaged"
+    assert "WORKED WITH BY THE TEAM (engaged): S1 (v.1\u20132)\n" in after["ledger"]
