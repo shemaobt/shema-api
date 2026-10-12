@@ -1197,7 +1197,12 @@ class SessionCoverageResponse(BaseModel):
     «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
     «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
     listed. Each bead carries the map's element label as written.
+
+    `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
+    coverage when the read happens by the code that renders it for the Guide: what the voice
+    will be handed on its next turn if nothing changes, without the room facts that follow it.
     """
 
     session_id: str
     groups: list[SessionCoverageGroup]
+    ledger: str

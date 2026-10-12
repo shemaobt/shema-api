@@ -10,6 +10,7 @@ from app.models.internalization_room import (
 )
 from app.services.internalization_room.canon.elements import ElementKind, elements_for
 from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.prompt_blocks import coverage_status_block
 
 _STATE_OF = {
     CoverageStatus.ENGAGED: BeadState.ENGAGED,
@@ -35,4 +36,8 @@ def coverage_of(session: IRSession) -> SessionCoverageResponse:
         ]
         if beads:
             groups.append(SessionCoverageGroup(kind=kind, beads=beads))
-    return SessionCoverageResponse(session_id=session.id, groups=groups)
+    return SessionCoverageResponse(
+        session_id=session.id,
+        groups=groups,
+        ledger=coverage_status_block(session.coverage_state or {}, session.pericope),
+    )

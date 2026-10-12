@@ -6,6 +6,7 @@ who belongs to no team.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -14,7 +15,13 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.core.config import Settings
+from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.live_turn import run_comprehension_turn
+from app.services.internalization_room.llm import CACHE_BREAK
+from app.services.internalization_room.sessions import append_exchange
 from tests.baker import (
     grant_room_app_role,
     make_language,
@@ -22,6 +29,7 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.turn_harness import the_room_agent_is
 
 IR = "/api/internalization-room"
 P = "P01"
@@ -134,3 +142,52 @@ async def test_a_bead_stored_at_the_retired_partial_state_reads_mentioned_and_no
     assert _states(answer.json())["scene:1"] == "surfaced"
     for word in ("partially_engaged", "partial", "aflorado", "parcialmente", "not_encountered"):
         assert word not in answer.text
+
+
+class _RecordingGuide:
+    def __init__(self) -> None:
+        self.systems: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        self.systems.append(system_prompt)
+        return "A famine comes, and a family leaves Bethlehem. How would you tell that part?"
+
+
+async def test_the_ledger_served_is_byte_for_byte_the_one_the_guide_reads_next(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    session: IRSession,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session.coverage_state = {
+        "scene:1": "engaged",
+        "being:S1:B3": "surfaced",
+        "place:S1:PL1": "partially_engaged",
+    }
+    await db_session.commit()
+    guide = _RecordingGuide()
+    the_room_agent_is(monkeypatch, turn=guide)
+
+    ledger = (await _coverage(client, consultant, session.id))["ledger"]
+    session = await append_exchange(db_session, session, team_utterance="", guide_response="hi")
+    await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="we can start"),
+        opening=False,
+        guide_prompt=default_prompt(IRPromptKey.GUIDE)["prompt"],
+        validator_prompt=default_prompt(IRPromptKey.VALIDATOR)["prompt"],
+        settings=Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake"),
+    )
+
+    heard = guide.systems[0].partition(CACHE_BREAK)[2].lstrip("\n")
+    assert heard.startswith(ledger)
+    assert heard[len(ledger) :].startswith("\n\nMOMENT:")
+    assert "WORKED WITH BY THE TEAM (engaged): S1 (v.1\u20132)" in ledger
+    assert (
+        "RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:\n  being: Naomi\n  place: Bethlehem\n"
+        in ledger
+    )
