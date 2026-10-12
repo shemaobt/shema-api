@@ -323,7 +323,7 @@ async def test_a_standing_finding_keeps_its_stretch_when_frase_three_is_divided(
     third = told[2]
     release = await approve_release(db_session, session, device_id=TABLET)
     numbered = [
-        line.removeprefix("[frase ").split(" ", 1)[0]
+        line.removeprefix("[frase ").split("]", 1)[0].split(" ", 1)[0]
         for line in segments_block(told, Addresses()).splitlines()
     ]
     assert numbered == [str(entry["frase"]) for entry in _frozen(release)], (
