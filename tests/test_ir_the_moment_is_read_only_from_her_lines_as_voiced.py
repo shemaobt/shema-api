@@ -300,3 +300,20 @@ def test_every_numbered_line_after_the_send_off_is_kept_in_her_words(
     assert step.ignored == [f"{recorded}: after the send-off (Ensaio Final)"], (
         "uma linha de onde estamos depois da despedida foi ignorada sem ser anotada do jeito dela"
     )
+
+
+@pytest.mark.parametrize(
+    "voiced",
+    [f"{SCENE_ONE} {CLOSING}", FENCE, SEND_OFF, "Boa. Podem continuar."],
+)
+def test_after_the_send_off_her_closing_her_fence_and_plain_words_leave_nothing_ignored(
+    voiced: str,
+) -> None:
+    heard = [{"role": "guide", "text": "", "moment": {"after": ENSAIO_FINAL}}]
+
+    step = moment_step(heard, voiced, fail_safe=False, parts=4)
+
+    assert step is not None
+    assert "ignored" not in step.as_json(), (
+        "uma fala que não era linha numerada entrou na lista de ignoradas depois da despedida"
+    )
