@@ -25,6 +25,7 @@ from app.services.internalization_room.back_translation import analyse_telling_b
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.languages import LANGUAGE_NAMES, ROOM_LANGUAGES
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.run_turn import run_turn
 from tests.turn_harness import NOTHING_TOLD_BACK, the_room_agent_is
 
@@ -161,6 +162,7 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         session_language=LANGUAGE_NAMES[language_code],
         language_code=language_code,
         settings=_settings(),
@@ -184,6 +186,7 @@ async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         session_language=named,
         language_code=code,
         settings=_settings(),

@@ -13,6 +13,7 @@ def has_substantive_team_history(messages: list[dict[str, Any]]) -> bool:
     return any(
         message.get("role") == "team"
         and not message.get("opening_note")
+        and not message.get("room_note")
         and spoken_words_only(message.get("text", ""))
         for message in messages
     )

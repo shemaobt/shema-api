@@ -154,7 +154,7 @@ async def test_the_verdict_opens_on_her_kickoff_with_no_history_and_the_validato
 
 def _handed(speaker: Speaker) -> str:
     system = speaker.drafts[-1]["system_prompt"].replace(CACHE_BREAK, "")
-    return system.split(f"## The findings for {PASSAGE}\n\n", 1)[1]
+    return system.split("## The findings for the whole passage\n\n", 1)[1]
 
 
 async def test_a_clean_round_hands_her_speaker_an_empty_list_and_says_only_her_words(
@@ -308,3 +308,98 @@ async def test_of_two_nuances_only_the_one_on_the_lowest_frase_is_handed(
     assert [one["frase"] for one in json.loads(_handed(speaker))] == [1], (
         "a voz dizia a primeira nuance da resposta, não a da frase mais baixa"
     )
+
+
+async def test_each_frase_reaches_her_analyst_labelled_with_its_part(client, analyst) -> None:
+    await _a_round(client, TELLING)
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "## The telling-back (numbered frases, in listening order)\n\n"
+        "[frase 1 — a parte 1 — Ouvir a notícia e partir] "
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo e voltou com as noras.\n"
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação] "
+        "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
+    ), "o analista lia «1. …» sem a parte; o dela lê «[frase 1 — a parte 1 — …]»"
+
+
+async def test_a_frase_told_again_after_a_verdict_reaches_her_analyst_said_to_be_so(
+    client, analyst
+) -> None:
+    first = await _a_round(client, TELLING)
+    retold = {
+        **TELLING[2],
+        "text": "Orfa beijou a sogra e voltou, mas Rute ficou.",
+        "supersedes": 2,
+    }
+
+    await _a_round(client, [retold], session_id=first["sessionId"])
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação — told again after a verdict] "
+        "Orfa beijou a sogra e voltou, mas Rute ficou."
+    ), "o analista não sabia que a frase 3 tinha sido traduzida de novo depois de um veredito"
+
+
+async def test_the_validator_reads_what_the_team_reported_as_the_same_labelled_frases(
+    client, speaker
+) -> None:
+    await _a_round(client, TELLING)
+
+    assert (
+        "# WHAT THE TEAM REPORTED (their back-translation of their own recording)\n"
+        "Evidence of what the team told back — NEVER truth about the passage. The drafted "
+        "response may quote from it to name something reported that the passage does not "
+        "tell; quoting this material is not a claim about the passage and must not be treated "
+        "as ungrounded.\n\n"
+        "[frase 1 — a parte 1 — Ouvir a notícia e partir] "
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo e voltou com as noras.\n"
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação] "
+        "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
+    ) in speaker.validations[-1], "o Validador lia «1. …» enquanto o analista lia a parte"
+
+
+async def test_her_analyst_and_her_speaker_are_told_the_check_is_of_the_whole_passage(
+    client, analyst, speaker
+) -> None:
+    await _a_round(client, TELLING)
+
+    assert (
+        "compare the telling-back against the map for the whole passage and report findings"
+        in analyst.asked[-1]["system_prompt"]
+    ), "o analista comparava «para P02», o código da passagem, não «the whole passage»"
+    assert (
+        "Speak the\nverdict for the whole passage — one warm turn."
+        in speaker.drafts[-1]["system_prompt"]
+    ), "o falante dava o veredito «for P02»"
+
+
+async def test_an_addition_with_no_readable_frase_reaches_her_speaker_without_a_number(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{"kind": "addition", "note": "Ela voltou «à noite»."}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {"kind": "addition", "note": "Ela voltou «à noite».", "repair": "part"}
+    ], "o acréscimo sem número de frase era jogado fora e a rodada nem tinha veredito"
+    assert result["conferida"] is False
+
+
+async def test_an_unclear_frase_named_out_of_range_reaches_her_speaker_without_a_number(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [{"kind": "unclear", "note": "Não deu.", "frase": 9}]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert json.loads(_handed(speaker)) == [
+        {"kind": "unclear", "note": "Não deu.", "repair": "part"}
+    ], "o pouco claro numa frase que não existe era jogado fora"
+    assert result["conferida"] is False
