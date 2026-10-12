@@ -238,3 +238,18 @@ async def test_a_second_different_detail_on_a_frase_whose_first_was_said_is_name
     assert [one["quote"] for one in _handed(speaker)] == ["Rute se agarrou"], (
         "uma nuance era a sua frase: um segundo detalhe na mesma frase nunca era dito"
     )
+
+
+@pytest.mark.parametrize("copy", ["a Noemi à noite", "noite"], ids=["longer", "shorter"])
+async def test_a_longer_or_shorter_copy_of_the_said_words_on_the_same_frase_is_the_same_detail(
+    client, analyst, speaker, copy
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}, {"findings": [{**ON_FRASE_3, "quote": copy}]}]
+    speaker.line = NAMES_FRASE_3
+    first = await _a_round(client, TELLING)
+
+    await _a_round(client, [FRASE_1_AGAIN], session_id=first["sessionId"])
+
+    assert _handed(speaker) == [], (
+        "o Analista copiava um trecho maior ou menor e a mesma nuance era dita de novo"
+    )

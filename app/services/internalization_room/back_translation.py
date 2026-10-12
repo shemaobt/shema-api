@@ -975,9 +975,14 @@ def nuances_said(checks: list[CheckRound]) -> list[Nuance]:
 
 def said_before(nuance: Nuance, said: list[Nuance]) -> bool:
     return any(
-        one.segment_id == nuance.segment_id and _words_of(one.quote) == _words_of(nuance.quote)
+        one.segment_id == nuance.segment_id and _the_same_words(one.quote, nuance.quote)
         for one in said
     )
+
+
+def _the_same_words(said: str, found: str) -> bool:
+    shorter, longer = sorted((f" {_words_of(said)} ", f" {_words_of(found)} "), key=len)
+    return shorter in longer
 
 
 def findings_block(findings: list[Finding] | list[Nuance], addresses: Addresses) -> str:
