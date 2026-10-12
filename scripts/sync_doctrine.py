@@ -136,6 +136,7 @@ FROZEN = {
     **{f"golden/bt/{name}.json": f"golden/bt/{name}.json" for name in HER_BT_SCRIPTS},
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
     "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
+    "src/coverage/sessionForms.ts": "app/services/internalization_room/canon/sessionForms.ts",
 }
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"

@@ -3,7 +3,10 @@
 The transcriber raises for silence, for a clipped recording, and for a file the encoder
 mangled. Left to propagate, each of those becomes a 4xx — and the app has one drawing for
 every failure it cannot act on, the one that says the network is down. A team would be told
-the internet failed because somebody sat too far from the microphone.
+the internet failed because somebody sat too far from the microphone, so `heard` reads them
+as nothing made out. A turn's take is read differently: a recognizer that refuses it is an
+outage, as in Marcia's app, which throws on any status that is not OK (`elevenlabs.ts:103`)
+and answers 502 to the throw (`route.ts:224-227`), while silence stays a miss.
 """
 
 from types import SimpleNamespace
