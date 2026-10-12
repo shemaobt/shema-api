@@ -792,6 +792,34 @@ def test_none_of_her_scene_titles_loses_a_word_in_portuguese() -> None:
     ] == []
 
 
+def _map_scene_headings() -> list[str]:
+    return [
+        heading
+        for map_file in sorted(_MAPS.glob("*.md"))
+        for heading in re.findall(
+            r"^### Scene \d+ — (.+?) \([^)]*\)\s*$",
+            map_file.read_text(encoding="utf-8"),
+            re.M,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "language, divine_name", [("pt", "Senhor Jeová"), ("en", "the LORD")], ids=["pt", "en"]
+)
+def test_none_of_the_maps_scene_headings_loses_a_word_in_either_language(
+    language: str, divine_name: str
+) -> None:
+    headings = _map_scene_headings()
+
+    assert len(headings) > 40
+    assert [
+        heading
+        for heading in headings
+        if speakable_text(heading, language) != heading.replace("YHWH", divine_name)
+    ] == []
+
+
 def test_a_line_with_no_code_is_spoken_as_written_but_for_whitespace_runs_and_edges() -> None:
     text = "Em Rute 1:6,  depois de dez anos, Noemi volta ; Senhor, LORD, 40 .  "
 
