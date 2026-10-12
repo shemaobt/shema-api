@@ -1118,9 +1118,10 @@ async def retire_the_part_recorded_again(
     divided parents and their pieces alike; the findings that pointed at them, a **Swap** whole;
     and the check, which starts over because the passage the team is standing on has changed.
     Zero is a number the text seam uses, so it counts; a take with none is the rehearsal told
-    whole, and this verb leaves it alone. That ground is answered at `terminei` instead: a
-    current part no standing stretch is a slice of refuses the check and is named there
-    (ADR 0027), which is the question the number cannot settle.
+    whole, which is one part of its own, so a second take with none is that part again and
+    retires the stretches of the first. The part that now stands is a current part no standing
+    stretch is a slice of, and `terminei` refuses the check and names it (ADR 0027) until the
+    team tells it back.
 
     What it leaves: the other parts' stretches, their words and their listening. A part recorded
     again is unheard by construction — a new take is a recording nobody has played — so the
@@ -1145,7 +1146,7 @@ async def retire_the_part_recorded_again(
     carrying findings about audio nobody will hear again, which is the state this exists to
     make unreachable.
     """
-    if take.kind is not IRTakeKind.ENSAIO or take.ordinal is None:
+    if take.kind is not IRTakeKind.ENSAIO:
         return
 
     takes = await takes_of(db, session.id)

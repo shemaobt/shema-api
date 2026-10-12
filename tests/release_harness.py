@@ -324,8 +324,9 @@ async def rehearsed_session(
     that under a case would change what the room answers rather than what it is asked.
 
     ``ordinal`` is the number the tablet sends beside a part, and none is the passage recorded
-    in one go. A case about recording that part again names one, because the verb for *this
-    part again* reads the number and nothing else (ADR 0023).
+    in one go. A case about recording a numbered part again names one, because the verb for
+    *this part again* reads the number, and the passage told whole is the part that has none
+    (ADR 0023).
     """
     session = await create_session(db, pericope=pericope, project_id=project_id, language=language)
     session.coverage_state = merge(

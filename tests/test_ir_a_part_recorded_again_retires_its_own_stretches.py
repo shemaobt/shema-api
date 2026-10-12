@@ -17,8 +17,8 @@ its neighbours instead of after them. Every consumer of that order is here: the 
 divided stretches, and the numbered list the **Analyst** is handed.
 
 The packet also says which takes the rehearsal is: one per part, the newest, with the grain it
-was told in. The rehearsal thrown away whole keeps its own route and goes on retiring
-everything.
+was told in. A rehearsal told whole and recorded whole again is the same verb, because a take
+with no number is the one part that carries none.
 """
 
 from __future__ import annotations
@@ -66,6 +66,7 @@ from tests.room_harness import (
     REHEARSED_AT,
     press_terminei,
     rehearsed_in_parts,
+    rehearsed_in_parts_of,
     room_client,
     stored_telling_back,
     tell_back_about,
@@ -547,28 +548,61 @@ async def test_a_rehearsal_told_whole_reads_whole(db_session: AsyncSession) -> N
     assert len(audio["rehearsal_takes"]) == 1
 
 
-async def test_a_whole_recording_uploaded_again_retires_nothing(
+async def test_a_whole_recording_uploaded_again_retires_the_stretches_of_the_one_it_replaces(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """The rehearsal thrown away whole is the restart route's business, not this verb's.
+    """The passage recorded in one go and recorded in one go again is that part again.
 
-    An upload carrying no part number says nothing about which part it replaces, and a verb
-    that guessed would retire a telling-back the team never asked to lose. Two takes with no
-    number agree on it, which is what makes the guess available and the guard necessary.
-
-    The telling stands on the session's own rehearsal take, and that is the whole case: over a
-    stretch pointing at a recording that is not there, the verb would find nothing to retire
-    whatever it decided, and the case would pass without ever asking the question.
+    A take with no number is the one part of its own that carries none, so a second take with no
+    number replaces it exactly as a second take under a number replaces that number. Left
+    standing, the three stretches told on the first recording were read beside the ones told on
+    the second, by the analyst and by the Validator alike, with no part to name them.
     """
-    session, take = await rehearsed_session(db_session)
-    await tell_back_about(db_session, session, take)
-    await _with_findings(db_session, session, [])
-    before = await _standing_ids(db_session, session.id)
+    session, (_whole,) = await rehearsed_in_parts_of(db_session, [3], told_whole=True)
+    told = await _standing_ids(db_session, session.id)
+    assert len(told) == 3, "the case starts from a whole rehearsal told in three frases"
+
+    fresh = await _recorded_again(client, session, part=None)
+    retold = await _told_on(db_session, session, fresh)
+
+    assert await _standing_ids(db_session, session.id) == [retold.id]
+    read = (await _packet(db_session, session))["back_translation"]["segments"]
+    assert [(row["segment_id"], row["frase"]) for row in read] == [(retold.id, 1)]
+
+
+async def test_the_stretches_of_a_whole_recording_replaced_are_kept_as_history(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Retired, never deleted: the three frases of the first recording travel as abandoned."""
+    session, (_whole,) = await rehearsed_in_parts_of(db_session, [3], told_whole=True)
+    told = await _standing_ids(db_session, session.id)
 
     await _recorded_again(client, session, part=None)
 
-    assert await _standing_ids(db_session, session.id) == before
-    assert (await stored_telling_back(db_session, session)).checked is True
+    packet = await _packet(db_session, session)
+    kept = [row["segment_id"] for row in packet["back_translation"]["superseded_segments"]]
+    assert sorted(kept) == sorted(told), "the three stretches told on the first recording"
+
+
+async def test_findings_on_a_whole_recording_replaced_leave_and_the_check_starts_over(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """A finding about audio the team recorded over is about nothing, whole or in parts."""
+    session, (_whole,) = await rehearsed_in_parts_of(db_session, [3], told_whole=True)
+    first, *_rest = await _standing_ids(db_session, session.id)
+    await _with_findings(
+        db_session,
+        session,
+        [Finding(kind=FindingKind.UNCLEAR, note="nao deu para entender", segment_id=first)],
+        verdict=True,
+    )
+
+    await _recorded_again(client, session, part=None)
+
+    left = await stored_telling_back(db_session, session)
+    assert left.findings == []
+    assert left.checked is False
+    assert left.verdict is None
 
 
 async def test_a_new_part_number_retires_nothing(
@@ -582,6 +616,19 @@ async def test_a_new_part_number_retires_nothing(
 
     assert await _standing_ids(db_session, session.id) == before
     assert len((await _packet(db_session, session))["audio"]["rehearsal_takes"]) == 4
+
+
+async def test_a_whole_recording_uploaded_over_numbered_parts_retires_none_of_them(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """A take with no number is the part with no number, and the numbered parts are not it."""
+    session, _parts = await rehearsed_in_parts_of(db_session, [2, 1])
+    before = await _standing_ids(db_session, session.id)
+    assert len(before) == 3, "the case starts from two numbered parts told in three frases"
+
+    await _recorded_again(client, session, part=None)
+
+    assert await _standing_ids(db_session, session.id) == before
 
 
 async def test_the_same_bytes_sent_again_leave_the_check_alone(
@@ -638,6 +685,30 @@ async def test_a_retry_of_a_replaced_take_leaves_the_part_that_replaced_it(
     assert retried == replaced, "the same audio is the take that already holds it"
     assert told.id in await _standing_ids(db_session, session.id)
     assert (await _stored(db_session, told)).superseded_at is None
+    assert (await stored_telling_back(db_session, session)).checked is True
+
+
+async def test_a_retry_of_a_replaced_whole_take_leaves_the_whole_that_replaced_it(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The outbox draining an old whole recording is not the team recording the passage again.
+
+    The same question as for a number: which take is the part now. The first re-record is moved
+    back in time because a whole take carries no pass and SQLite stamps two uploads of one case
+    on the same instant.
+    """
+    session, _whole = await rehearsed_in_parts_of(db_session, [3], told_whole=True)
+    replaced = await _recorded_again(client, session, part=None, audio=b"a primeira inteira")
+    await the_upload_landed_at(db_session, replaced, REHEARSED_AT + timedelta(hours=1))
+    await _told_on(db_session, session, replaced, transcript="a passagem inteira, primeira vez")
+    standing = await _recorded_again(client, session, part=None, audio=b"a segunda inteira")
+    told = await _told_on(db_session, session, standing)
+    await _with_findings(db_session, session, [])
+
+    retried = await _recorded_again(client, session, part=None, audio=b"a primeira inteira")
+
+    assert retried == replaced, "the same audio is the take that already holds it"
+    assert await _standing_ids(db_session, session.id) == [told.id]
     assert (await stored_telling_back(db_session, session)).checked is True
 
 
