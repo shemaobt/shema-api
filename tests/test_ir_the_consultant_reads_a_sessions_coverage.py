@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -37,8 +38,12 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.canon_harness import the_canon_moves_on
 from tests.turn_harness import the_room_agent_is
 
+NEW_PIN = "a" * 40
+BEINGS = "**3A — Beings**\n"
+ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
 IR = "/api/internalization-room"
 P = "P01"
 HER_KINDS = [
@@ -309,3 +314,27 @@ async def test_a_reader_of_another_project_is_refused_as_the_other_reader_routes
         "consultant": 200,
         "turns of the stranger": 404,
     }
+
+
+def _the_kept_p03_names_elimelech(tree: Path) -> None:
+    (page,) = (tree / "vendor" / "meaning-map").glob("P03-*.md")
+    page.write_text(page.read_text(encoding="utf-8").replace(BEINGS, BEINGS + ELIMELECH))
+
+
+async def test_a_session_opened_under_an_older_canon_is_read_in_that_canon(
+    client: httpx.AsyncClient,
+    consultant: dict[str, str],
+    team: Project,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    older = await open_ir_session(db_session, pericope="P03", project_id=team.id)
+    await db_session.commit()
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_names_elimelech)
+
+    body = await _coverage(client, consultant, older.id)
+
+    assert _labels(body)["being:S1:B2"] == "Elimelech"
+    assert "Elimelech" in body["ledger"]
+    assert _states(body)["being:S1:B2"] == "untouched"
