@@ -417,3 +417,16 @@ def test_her_scene_closing_in_an_articulation_is_kept_as_ignored_with_no_rehears
     assert _ignored(SCENE_TWO_FENCED, f"{SCENE_ONE} {CLOSING}") == [
         "part_closing: no scene rehearsal of part 2 has come back"
     ], "o fechamento na Articulação foi descartado sem registro, sem dizer qual ensaio faltava"
+
+
+@pytest.mark.parametrize("moment", [SCENE_TWO_OPEN, SCENE_TWO_PRACTISED, ENSAIO_FINAL])
+def test_her_familiarization_closing_outside_the_familiarization_is_kept_as_ignored(
+    moment: dict[str, Any],
+) -> None:
+    assert _ignored(moment, F3) == ["familiarization_closing: outside the Familiarization"], (
+        "o fechamento da Familiarização dito fora dela foi descartado sem registro"
+    )
+
+
+def test_her_familiarization_closing_in_the_familiarization_is_not_ignored() -> None:
+    assert _ignored(FAMILIARIZATION, F3) == []

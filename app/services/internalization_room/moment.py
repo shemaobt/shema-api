@@ -208,9 +208,10 @@ def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment | None:
 class MomentStep:
     """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
     reply left the room in, and the lines that moved it. `ignored` is her `ignored?: string[]`
-    (`types.ts:73`): the numbered lines she refuses, in her words — a number outside the
-    passage (`moment.ts:149`) and a numbered line heard after the send-off (`moment.ts:159`)
-    — stored only when there is one. Her other reasons are not recorded here."""
+    (`types.ts:73`): every line her `step()` declines, in her words, filled where hers fills it
+    (`moment.ts:149-189`) and stored only when there is one. Two things she records are not
+    here, because no rehearsal reaches the server yet: a scene told ahead, and the numberless
+    opening's note on her closing."""
 
     before: Moment
     after: Moment
@@ -296,6 +297,8 @@ def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str 
         if moment.part >= parts:
             return "after the last part"
         return f"no scene rehearsal of part {moment.part} has come back"
+    if line.cause == "familiarization_closing" and moment.at != "familiarization":
+        return "outside the Familiarization"
     return None
 
 
