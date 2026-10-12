@@ -416,7 +416,9 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 }
 
 
-def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str:
+def segments_block(
+    segments: list[IRSegment], addresses: Addresses, language_code: str = FLOOR
+) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
     Numbered from one over the list it is given, so the number is a position in *this* call
@@ -429,7 +431,8 @@ def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str
     if not segments:
         return _NOTHING_TOLD_BACK_YET.get(language_code, _NOTHING_TOLD_BACK_YET[FLOOR])
     return "\n".join(
-        f"{position}. {segment.transcript}" for position, segment in enumerate(segments, start=1)
+        f"[frase {position} — {addresses.part_of(segment.id)}] {segment.transcript}"
+        for position, segment in enumerate(segments, start=1)
     )
 
 
@@ -736,6 +739,7 @@ async def analyse_telling_back(
     scope: str,
     pericope_num: str,
     analyst_prompt: str,
+    addresses: Addresses,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     language_code: str = FLOOR,
     settings: Settings | None = None,
@@ -763,7 +767,7 @@ async def analyse_telling_back(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
-        SEGMENTS=segments_block(segments, language_code),
+        SEGMENTS=segments_block(segments, addresses, language_code),
     )
     try:
         raw = await room_agent().analyst.call_agent(

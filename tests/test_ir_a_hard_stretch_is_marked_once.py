@@ -31,6 +31,7 @@ from app.db.models.internalization_room import (
 )
 from app.services.internalization_room import halt
 from app.services.internalization_room import sessions as room
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from tests.baker import (
     grant_facilitator_app_role,
@@ -419,7 +420,12 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
 
     async def _analyst(**kwargs: Any) -> BtAnalysis:
         readings.append(
-            {**kwargs, "segments": bt_api.room.segments_block(kwargs["segments"]), "session_id": ""}
+            {
+                **kwargs,
+                "segments": bt_api.room.segments_block(kwargs["segments"], kwargs["addresses"]),
+                "addresses": "",
+                "session_id": "",
+            }
         )
         return BtAnalysis(findings=[])
 
@@ -508,6 +514,7 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
             scope=P,
             pericope_num=P,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+            addresses=Addresses(),
         )
         return list(said)
 

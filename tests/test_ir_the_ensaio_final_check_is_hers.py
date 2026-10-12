@@ -308,3 +308,17 @@ async def test_of_two_nuances_only_the_one_on_the_lowest_frase_is_handed(
     assert [one["frase"] for one in json.loads(_handed(speaker))] == [1], (
         "a voz dizia a primeira nuance da resposta, não a da frase mais baixa"
     )
+
+
+async def test_each_frase_reaches_her_analyst_labelled_with_its_part(client, analyst) -> None:
+    await _a_round(client, TELLING)
+
+    assert analyst.asked[-1]["system_prompt"].endswith(
+        "## The telling-back (numbered frases, in listening order)\n\n"
+        "[frase 1 — a parte 1 — Ouvir a notícia e partir] "
+        "Noemi ouviu que o Senhor tinha dado pão ao seu povo e voltou com as noras.\n"
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] "
+        "No caminho ela mandou as noras de volta, beijou as duas, e elas choraram alto.\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação] "
+        "Orfa beijou a sogra e voltou, mas Rute se agarrou a Noemi à noite."
+    ), "o analista lia «1. …» sem a parte; o dela lê «[frase 1 — a parte 1 — …]»"

@@ -620,3 +620,23 @@ async def test_a_reading_ahead_that_cannot_reach_the_database_is_logged_and_drop
         await background.read_ahead(session_id="a-session-the-stretch-already-answered")
 
     assert "Reading ahead failed for session a-session-the-stretch-already-answered" in caplog.text
+
+
+async def test_the_reading_ahead_hands_the_analyst_each_frase_labelled_with_its_part(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (_, _, third) = await rehearsed_in_parts_of(db_session, [1, 1, 1], pericope="P02")
+
+    async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+        await _tell(client, session.id, third, starts_ms=1000, ends_ms=2000)
+
+    assert analyst.shown[-1].endswith(
+        "[frase 1 — a parte 1 — Ouvir a notícia e partir] a frase 1, contada de volta\n"
+        "[frase 2 — a parte 2 — Primeiro apelo e recusa] a frase 2, contada de volta\n"
+        "[frase 3 — a parte 3 — Segundo apelo e a separação] a frase 3, contada de volta\n"
+        "[frase 4 — a parte 3 — Segundo apelo e a separação] algo que a equipe contou"
+    ), "a leitura adiantada lia as frases sem a parte, e o terminei servia essa leitura"

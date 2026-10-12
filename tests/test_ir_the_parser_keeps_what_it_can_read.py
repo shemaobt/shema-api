@@ -37,6 +37,7 @@ from app.services.internalization_room import sessions as room
 from app.services.internalization_room import verdict_round
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
@@ -124,6 +125,7 @@ async def _read(reply: str, patch_analyst):
         scope=PASSAGE,
         pericope_num=PASSAGE,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 

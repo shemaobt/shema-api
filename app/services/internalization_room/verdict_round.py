@@ -112,6 +112,7 @@ async def check_the_telling_back(
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+            addresses=addresses,
             session_language=LANGUAGE_NAMES[language],
             language_code=language,
             settings=settings,
@@ -131,7 +132,7 @@ async def check_the_telling_back(
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
-    told_back = segments_block(told, language)
+    told_back = segments_block(told, addresses, language)
     outcome = await run_verdict_turn(
         findings_text=findings_block(current or nuances[:1], addresses),
         scope=state.scope or session.pericope,

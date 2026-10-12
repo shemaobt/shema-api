@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import TranscriptionDefect
 from app.core.stage_clock import count, stage, stopwatch
-from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession
+from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.models.internalization_room import CoverageFrame
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -25,6 +25,7 @@ from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.languages import LANGUAGE_NAMES, room_language
+from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.segments import (
@@ -165,7 +166,7 @@ async def read_ahead(*, session_id: str) -> None:
             ):
                 return
             with counted_for(session_id):
-                running = asyncio.create_task(_read_and_keep(db, session, state, told))
+                running = asyncio.create_task(_read_and_keep(db, session, state, told, takes))
                 _reading[session_id] = (key, running)
                 try:
                     await asyncio.wait([running])
@@ -177,16 +178,22 @@ async def read_ahead(*, session_id: str) -> None:
 
 
 async def _read_and_keep(
-    db: AsyncSession, session: IRSession, state: BackTranslationState, told: list[IRSegment]
+    db: AsyncSession,
+    session: IRSession,
+    state: BackTranslationState,
+    told: list[IRSegment],
+    takes: list[IRTake],
 ) -> BackTranslationState | None:
     try:
         language = room_language(session.language)
+        addresses = addresses_for(told, current_parts(takes), scene_titles(session), language)
         with reading_the_canon_of(session.canon_pin):
             read = await analyse_telling_back(
                 segments=told,
                 scope=state.scope or session.pericope,
                 pericope_num=session.pericope,
                 analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+                addresses=addresses,
                 session_language=LANGUAGE_NAMES[language],
                 language_code=language,
                 settings=get_settings(),

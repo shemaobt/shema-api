@@ -120,14 +120,19 @@ def patch_speaker(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_the_chunks_go_to_the_analyst_in_listening_order() -> None:
-    block = segments_block(told_stretches())
+    told = told_stretches()
+    block = segments_block(
+        told, Addresses(by_stretch={told[0].id: "a parte 1", told[1].id: "a parte 2"})
+    )
 
-    assert block.splitlines()[0].startswith("1. Noemi")
-    assert block.splitlines()[1].startswith("2. Rute")
+    assert block.splitlines() == [
+        "[frase 1 — a parte 1] Noemi mandou Rute voltar.",
+        "[frase 2 — a parte 2] Rute disse que ia junto.",
+    ]
 
 
 def test_an_empty_telling_back_says_so_rather_than_looking_complete() -> None:
-    assert "ainda não traduziu" in segments_block([], language_code="pt")
+    assert "ainda não traduziu" in segments_block([], Addresses(), language_code="pt")
 
 
 async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> None:
@@ -138,6 +143,7 @@ async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> No
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -162,6 +168,7 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -184,6 +191,7 @@ async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -303,6 +311,7 @@ async def test_the_analyst_pointer_is_resolved_to_the_stretch_it_names(patch_ana
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -335,6 +344,7 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -369,6 +379,7 @@ async def test_a_missing_that_cannot_name_a_piece_falls_back_to_the_whole(
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -399,6 +410,7 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
                 scope=P,
                 pericope_num=P,
                 analyst_prompt=ANALYST,
+                addresses=Addresses(),
                 settings=settings(),
             )
     finally:
@@ -442,6 +454,7 @@ async def test_a_retired_kind_reads_as_addition(
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
+            addresses=Addresses(),
             settings=settings(),
         )
 
@@ -470,6 +483,7 @@ async def test_one_malformed_finding_rejects_the_whole_reading(patch_analyst) ->
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -490,6 +504,7 @@ async def test_a_thin_reading_that_names_no_difference_is_no_finding(patch_analy
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -518,6 +533,7 @@ async def test_an_evidence_flag_of_any_shape_is_read_and_ignored(patch_analyst) 
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
@@ -551,6 +567,7 @@ async def test_the_retired_evidence_kind_is_dropped_and_the_rest_of_the_reply_ke
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
+            addresses=Addresses(),
             settings=settings(),
         )
 
@@ -1002,7 +1019,7 @@ async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
         scope=P,
         pericope_num=P,
         messages=[],
-        telling_back=segments_block(told),
+        telling_back=segments_block(told, Addresses()),
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
         settings=settings(),
@@ -1119,6 +1136,7 @@ async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehear
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 
