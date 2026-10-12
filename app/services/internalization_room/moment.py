@@ -274,6 +274,10 @@ def _described(line: _Line) -> str:
 
 
 def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str | None:
+    """Her `step()` reasons for a line it declines, in her order and her words (`moment.ts`
+    :149-189), for the Observation Room. Her closing in an Articulation is declined for want of
+    a rehearsal of that part that came back; no rehearsal reaches the server yet, so here that
+    is every closing in an Articulation."""
     if line.part is not None and not 1 <= line.part <= parts:
         return f"not a part of this passage (1..{parts})"
     if moment.at == "ensaio_final" and line.cause in _NUMBERED:
@@ -288,9 +292,10 @@ def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str 
         return "another moment line came earlier in the same reply"
     if line.cause == "part_closing" and moment.at == "familiarization" and not moment.closed:
         return "the Familiarization's closing (F3) was not heard"
-    if line.cause == "part_closing" and moment.at == "articulation":
-        if moment.part is not None and moment.part >= parts:
+    if line.cause == "part_closing" and moment.at == "articulation" and moment.part is not None:
+        if moment.part >= parts:
             return "after the last part"
+        return f"no scene rehearsal of part {moment.part} has come back"
     return None
 
 

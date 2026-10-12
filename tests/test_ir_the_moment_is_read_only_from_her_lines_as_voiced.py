@@ -411,3 +411,9 @@ def test_her_scene_closing_after_the_last_part_is_kept_as_ignored_in_her_words()
     assert _ignored(last, f"{SCENE_ONE} {CLOSING}") == ["part_closing: after the last part"], (
         "o fechamento depois da última cena foi descartado sem registro"
     )
+
+
+def test_her_scene_closing_in_an_articulation_is_kept_as_ignored_with_no_rehearsal_back() -> None:
+    assert _ignored(SCENE_TWO_FENCED, f"{SCENE_ONE} {CLOSING}") == [
+        "part_closing: no scene rehearsal of part 2 has come back"
+    ], "o fechamento na Articulação foi descartado sem registro, sem dizer qual ensaio faltava"
