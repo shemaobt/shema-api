@@ -379,3 +379,25 @@ async def test_the_attempt_kept_for_a_reply_cut_at_its_ceiling_names_the_cut(
             "note": "validator error: validator reply cut at max_tokens=8192",
         }
     ], "a verdict cut at its ceiling kept the note of a reply that merely could not be read"
+
+
+async def test_the_cut_note_prints_the_ceiling_the_validator_call_was_sent(
+    patch_agent,
+) -> None:
+    sent: list[int] = []
+
+    class Cut(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            if "corrected_response" not in system_prompt:
+                return "rascunho"
+            sent.append(kwargs["max_output_tokens"])
+            raise TruncatedReply("{")
+
+    patch_agent(Cut(verdicts=[]))
+
+    outcome = await _a_turn("sessao-16")
+
+    assert len(sent) == 1
+    assert outcome.attempts[0]["note"] == (
+        f"validator error: validator reply cut at max_tokens={sent[0]}"
+    ), "the note named a ceiling the Validator call was not sent with"
