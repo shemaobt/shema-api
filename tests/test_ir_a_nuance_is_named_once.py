@@ -253,3 +253,22 @@ async def test_a_longer_or_shorter_copy_of_the_said_words_on_the_same_frase_is_t
     assert _handed(speaker) == [], (
         "o Analista copiava um trecho maior ou menor e a mesma nuance era dita de novo"
     )
+
+
+async def test_the_same_words_already_said_placed_on_another_current_frase_count_as_said(
+    client, analyst, speaker
+) -> None:
+    frase_1_at_night = {
+        **TELLING[0],
+        "text": "Noemi soube que havia pão e voltou com as noras à noite.",
+        "supersedes": 0,
+    }
+    analyst.readings = [{"findings": [ON_FRASE_3]}, {"findings": [{**ON_FRASE_3, "frase": 1}]}]
+    speaker.line = NAMES_FRASE_3
+    first = await _a_round(client, TELLING)
+
+    await _a_round(client, [frase_1_at_night], session_id=first["sessionId"])
+
+    assert _handed(speaker) == [], (
+        "o Analista punha o mesmo detalhe uma frase ao lado e a voz o dizia de novo"
+    )

@@ -180,7 +180,7 @@ async def check_the_telling_back(
 
     said_already = nuances_said(state.checks)
     for one in nuances:
-        if said_before(one, said_already):
+        if said_before(one, said_already, {segment.id for segment in told}):
             one.voiced = "before"
     offered = None if current else next((one for one in nuances if one.voiced is None), None)
     outcome = await speak(current or ([offered] if offered else []))
