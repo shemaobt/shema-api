@@ -34,6 +34,7 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.tts import SynthesizedSpeech
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.opening_harness import NOTE_PT_P03
 from tests.turn_harness import the_room_agent_is
 
 MODEL = "claude-fable-5-1"
@@ -285,7 +286,7 @@ async def test_a_turn_that_failed_writes_no_exchange_and_leaves_the_status_where
     assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
     before = await get_session(db_session, session_id)
     status_before, messages_before = before.status, list(before.messages or [])
-    assert status_before == "in_progress" and len(messages_before) == 1
+    assert status_before == "in_progress" and len(messages_before) == 2
 
     answered = await _the_team_answers(client, session_id)
 
@@ -316,9 +317,10 @@ async def test_once_the_provider_answers_again_the_next_tap_is_a_normal_turn_on_
     assert spoken == [GUIDE_LINE], "a batida seguinte é um turno normal, sem linha enlatada"
     session = await get_session(db_session, session_id)
     spoken_lines = [{"role": m["role"], "text": m["text"]} for m in session.messages or []]
-    assert spoken_lines == [{"role": "guide", "text": GUIDE_LINE}], (
-        "a sessão é a mesma, e só o turno que respondeu ficou gravado"
-    )
+    assert spoken_lines == [
+        {"role": "team", "text": NOTE_PT_P03},
+        {"role": "guide", "text": GUIDE_LINE},
+    ], "a sessão é a mesma, e só o turno que respondeu ficou gravado"
 
 
 async def test_a_session_at_done_still_takes_a_turn_because_the_circle_is_alive(

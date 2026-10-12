@@ -117,6 +117,8 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
     turns: list[tuple[dict[str, Any], bool]] = []
     said_before = False
     for message in the_conversation(session):
+        if message.get("opening_note"):
+            continue
         if message.get("role") == "guide":
             turns.append((message, not said_before and "mother_tongue" not in message))
         said_before = True
