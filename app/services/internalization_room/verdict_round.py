@@ -139,7 +139,9 @@ async def check_the_telling_back(
                     attempts=[Attempt(attempt=1, draft="", note=UNREADABLE_ANALYSIS_NOTE).stored()],
                 ),
                 checked=False,
-                findings_remaining=0,
+                findings_remaining=findings_remaining(
+                    findings_on_stretches_that_count(state.findings, (one.id for one in told))
+                ),
                 told_back=told_back,
             )
         read_this_round = read.findings

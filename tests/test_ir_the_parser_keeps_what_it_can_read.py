@@ -45,6 +45,7 @@ from app.services.internalization_room import verdict_round
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
 from app.services.internalization_room.part_names import Addresses
+from app.services.internalization_room.session_turns import turns_of
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
@@ -897,3 +898,65 @@ async def test_the_d_1_does_not_say_the_team_was_inaudible(
     assert [message["role"] for message in kept] == ["guide"], (
         "o analista falhou, a equipe foi ouvida: a voz lia depois que a equipe estava inaudível"
     )
+
+
+async def test_a_d_1_over_a_standing_finding_still_counts_it(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = CAPTURED_REPLY
+    session_id = await _four_stretches_told(client)
+    first = await _finish(client, db_session, session_id)
+    assert first.json()["findings_remaining"] == 1
+
+    session = await room.get_session(db_session, session_id)
+    stored = dict(session.back_translation)
+    stored["analysed_segment_ids"] = None
+    session.back_translation = stored
+    await db_session.commit()
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+
+    answered = await _finish(client, db_session, session_id)
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["fixed_line"] == "D0"
+    assert body["findings_remaining"] == 1, "o achado da rodada anterior continua de pé"
+    assert (await _resumed(client, session_id))["finding_kind"] == FindingKind.ADDITION.value
+
+
+async def test_a_turn_that_drafted_nothing_reads_zero_attempts_and_keeps_its_reason(
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
+) -> None:
+    analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
+    session_id = await _four_stretches_told(client)
+    await _finish(client, db_session, session_id)
+
+    db_session.expire_all()
+    session = await room.get_session(db_session, session_id)
+    guide = next(message for message in session.messages if message["role"] == "guide")
+    session.messages = [{key: value for key, value in guide.items() if key != "told_back"}]
+
+    (turn,) = turns_of(session).turns
+    assert turn.voice.attempts == 0
+    assert guide["attempts"][0]["note"] == (
+        "The Analyst's reply could not be read, so there was no verdict."
+    )
+
+
+async def test_a_guide_that_drafted_nothing_is_still_an_attempt_in_the_turn_view() -> None:
+    session = IRSession(
+        id="sessao-1",
+        messages=[
+            {
+                "role": "guide",
+                "text": "Desculpa, não consegui ouvir direito — podem repetir?",
+                "outcome": "fail_safe",
+                "category": "D",
+                "attempts": [{"attempt": 1, "draft": ""}],
+            }
+        ],
+    )
+
+    (turn,) = turns_of(session).turns
+
+    assert turn.voice.attempts == 1

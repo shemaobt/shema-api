@@ -99,7 +99,8 @@ class TurnOutcome:
     draft: str = ""
     verdict: str = ""
     #: Every draft of the turn, oldest first, with what the Validator and the room made of
-    #: it. Empty on a turn that asked no Validator.
+    #: it. Empty on a turn that asked no Validator. A check's D-1 keeps one entry with no draft,
+    #: carrying only the reason it was said.
     attempts: list[dict[str, Any]] = field(default_factory=list)
     room_note: str = ""
     #: The turn the Guide was handed in the team's place: their words behind any room note,
