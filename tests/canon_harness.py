@@ -32,6 +32,8 @@ from app.services.internalization_room.canon import (
 )
 from app.services.internalization_room.comprehension import checkpoints
 
+HER_CANON = Path(__file__).parent / "fixtures" / "her-canon-5b5c8d2"
+
 
 def forget_the_canon() -> None:
     parse_map.load_map.cache_clear()

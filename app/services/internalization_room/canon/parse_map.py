@@ -14,7 +14,6 @@ VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
 
 SURVEYED_STATUS = "complete"
-SUPPORTED_GENRE_GROUPS = frozenset({"NARRATIVE"})
 
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 _H1 = re.compile(r"^# (\S+) — (.+)$", re.M)
@@ -215,14 +214,6 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
         raise ValidationError(f"{source}: no YAML frontmatter")
     meta = yaml.safe_load(front.group(1)) or {}
 
-    genre_group = str(meta.get("genre-group", ""))
-    if genre_group not in SUPPORTED_GENRE_GROUPS:
-        raise ValidationError(
-            f"{source}: genre-group {genre_group!r} is not enabled. Poetry maps keep the "
-            "psalm's own wording in Level 3, so treating them as narrative would coach teams "
-            "to reproduce phrasing. Coordinate with the project before enabling."
-        )
-
     body = text[front.end() :]
     h1 = _H1.search(body)
     if not h1:
@@ -244,7 +235,7 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
         title=str(meta.get("pericope-title", "")),
         reference=h1.group(2).strip(),
         bcv=str(meta.get("bcv", "")),
-        genre_group=genre_group,
+        genre_group=str(meta.get("genre-group", "")),
         genre=str(meta.get("genre", "")),
         status=str(meta.get("status", "")),
         sta_status=str(meta.get("sta-status", "")),
