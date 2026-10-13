@@ -16,8 +16,8 @@ pass removes: "Naomi" said in scene 1 must not answer for "the woman" in scene 4
 
 **A folded rule's events land on the absences it folds into.** ``preserved:R6`` in P01 is
 the missing act of God, which is the silence of scenes 1, 2 and 4; one recorded event
-becomes one row on each of those absence beads, with the same status and instant. The
-matcher is the spine's own, so what folds here is exactly what folds in ``elements_of``.
+becomes one row on each of those absence beads, with the same status and instant. What
+folds is what the spine folded on 16 September, written out below.
 
 **The axes need no rows.** A bead with no event reads ``not_encountered``, which is the
 honest answer for every session recorded before the axes existed.
@@ -35,14 +35,10 @@ Revises: 20260916_ver01
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 
 from alembic import op
-
-if TYPE_CHECKING:
-    from app.services.internalization_room.canon.parse_map import MeaningMap
 
 revision = "20260916_spine01"
 down_revision = "20260916_ver01"
@@ -155,47 +151,29 @@ ENTITY_KEYS = {
         object:S1:CB_0047 object:S1:CB_0048
     """.split(),
 }
+RULE_FOLDS = {
+    "P01": {
+        "preserved:R6": ["absence:1", "absence:2", "absence:4"],
+        "preserved:R7": ["absence:2", "absence:4"],
+    },
+    "P07": {"preserved:R13": ["absence:3"]},
+}
 
 
-def _entity_keys(meaning_map: MeaningMap) -> list[tuple[str, str]]:
+def _entity_keys(pericope: str) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
-    for key in ENTITY_KEYS[meaning_map.pericope_num]:
+    for key in ENTITY_KEYS[pericope]:
         kind, _scene, tail = key.split(":", 2)
         pairs.append((f"{kind}:{tail}", key))
     return pairs
 
 
-def _entity_moves(meaning_map: MeaningMap) -> dict[str, str]:
+def _entity_moves(pericope: str) -> dict[str, str]:
     """Old entity key → the per-scene key of the scene the old bead stood in (its first)."""
     moves: dict[str, str] = {}
-    for old, new in _entity_keys(meaning_map):
+    for old, new in _entity_keys(pericope):
         moves.setdefault(old, new)
     return moves
-
-
-def _rule_folds(meaning_map: MeaningMap) -> dict[str, list[str]]:
-    """Old preservation-rule key → the absence keys of the scenes it folds into."""
-    from app.services.internalization_room.canon.book_material import preservation_rules
-    from app.services.internalization_room.canon.parse_map import ROOM_BOOK
-
-    folds: dict[str, list[str]] = {}
-    for rule in preservation_rules(ROOM_BOOK):
-        if rule.pericope != meaning_map.pericope_num:
-            continue
-        into = [
-            f"absence:{scene.number}"
-            for scene in meaning_map.scenes
-            if scene.absence and rule.folds_into(scene.absence)
-        ]
-        if into:
-            folds[f"preserved:{rule.rule_id}"] = into
-    return folds
-
-
-def _maps() -> tuple[MeaningMap, ...]:
-    from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-
-    return load_book(ROOM_BOOK)
 
 
 def _rekey(pericope: str, old: str, new: str) -> None:
@@ -209,11 +187,10 @@ def _rekey(pericope: str, old: str, new: str) -> None:
 
 def upgrade() -> None:
     bind = op.get_bind()
-    for meaning_map in _maps():
-        pericope = meaning_map.pericope_num
-        for old, new in _entity_moves(meaning_map).items():
+    for pericope in ENTITY_KEYS:
+        for old, new in _entity_moves(pericope).items():
             _rekey(pericope, old, new)
-        for old, absences in _rule_folds(meaning_map).items():
+        for old, absences in RULE_FOLDS.get(pericope, {}).items():
             first, *others = absences
             if others:
                 rows = bind.execute(
@@ -249,6 +226,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for meaning_map in _maps():
-        for old, new in _entity_keys(meaning_map):
-            _rekey(meaning_map.pericope_num, new, old)
+    for pericope in ENTITY_KEYS:
+        for old, new in _entity_keys(pericope):
+            _rekey(pericope, new, old)

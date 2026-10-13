@@ -34,6 +34,9 @@ RECORDED = [
     ("P01", "being:B999", "surfaced"),
     ("P03", "being:B3", "surfaced"),
     ("P03", "place:the-road", "surfaced"),
+    ("P01", "preserved:R7", "surfaced"),
+    ("P07", "preserved:R13", "engaged"),
+    ("P14", "preserved:R3", "surfaced"),
 ]
 
 RECORDED_SINCE = [
@@ -52,6 +55,18 @@ def asked(*args, **kwargs):
 
 elements.elements_of = asked
 """
+
+WITHOUT_THE_CANON = (
+    WITHOUT_THE_SPINE_BUILDER
+    + """
+import app.services.internalization_room.canon.book_material as book_material
+import app.services.internalization_room.canon.parse_map as parse_map
+
+book_material.preservation_rules = asked
+parse_map.load_book = asked
+parse_map.load_map = asked
+"""
+)
 
 
 async def _build_and_seed(database_url: str, recorded: list[tuple[str, str, str]]) -> str:
@@ -218,3 +233,25 @@ async def test_the_way_down_puts_back_every_scene_of_an_entity_without_the_build
         ("P01", "being:B3", "surfaced"),
         ("P03", "place:where-wherever", "surfaced"),
     }
+
+
+async def test_the_rules_it_folds_are_the_ones_it_carries_not_the_canons(
+    recorded_under_the_old_keys,
+) -> None:
+    url = recorded_under_the_old_keys
+
+    up = run_alembic(url, "upgrade", REVISION, before=WITHOUT_THE_CANON)
+    assert up.returncode == 0, up.stderr
+
+    events = await _events(url)
+    assert {
+        ("P01", "absence:1", "engaged"),
+        ("P01", "absence:2", "engaged"),
+        ("P01", "absence:4", "engaged"),
+        ("P01", "absence:2", "surfaced"),
+        ("P01", "absence:4", "surfaced"),
+        ("P07", "absence:3", "engaged"),
+    } <= events
+    assert ("P14", "preserved:R3", "surfaced") in events, (
+        "the rule of P14 that today's canon folds into a silence was not folded on the day"
+    )
