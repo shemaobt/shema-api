@@ -13,6 +13,7 @@ from app.services.platform.tts import (
     cache_key,
     etag_of,
     fetch_clip,
+    speech_key,
     synthesize_speech,
     synthesize_speech_key,
 )
@@ -180,6 +181,7 @@ async def test_the_key_is_addressed_by_content_voice_model_and_format() -> None:
         voice_id=VOICES["pt-BR"],
         model="eleven_multilingual_v2",
         output_format="mp3_44100_128",
+        language_hint="pt",
     )
     assert key.startswith(f"tts/{VOICES['pt-BR']}/eleven_multilingual_v2/mp3_44100_128/")
     assert key.endswith(".mp3")
@@ -239,6 +241,47 @@ async def test_the_same_text_in_another_language_uses_another_voice_and_clip() -
     assert VOICES["pt-BR"] in urls[0]
     assert VOICES["en-US"] in urls[1]
     assert VOICES["pt-BR"] != VOICES["en-US"]  # NATIVE voices, not a single multilingual one
+
+
+async def test_a_pt_and_an_en_caller_with_the_same_voice_and_model_never_share_a_clip() -> None:
+    store = MemoryStore()
+    client = _client(_ok(b"pt"), _ok(b"en"))
+
+    await synthesize_speech(
+        QUESTION,
+        language="pt-BR",
+        voice_id="v",
+        model="m",
+        settings=_settings(),
+        client=client,
+        store=store,
+    )
+    english = await synthesize_speech(
+        QUESTION,
+        language="en-US",
+        voice_id="v",
+        model="m",
+        settings=_settings(),
+        client=client,
+        store=store,
+    )
+
+    assert client.post.await_count == 2
+    assert english.audio == b"en"
+    assert speech_key(
+        QUESTION, language="pt-BR", voice_id="v", model="m", settings=_settings()
+    ) != speech_key(QUESTION, language="en-US", voice_id="v", model="m", settings=_settings())
+
+
+async def test_a_caller_that_states_no_language_keeps_the_key_it_had() -> None:
+    assert speech_key(
+        QUESTION,
+        language="pt-BR",
+        voice_id="v",
+        model="m",
+        states_language=False,
+        settings=_settings(),
+    ) == cache_key(QUESTION, voice_id="v", model="m", output_format="mp3_44100_128")
 
 
 async def test_a_language_without_a_configured_voice_is_an_explicit_error() -> None:
