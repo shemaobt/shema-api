@@ -33,10 +33,28 @@ RECORDED = [
     ("P01", "scene:2", "engaged"),
     ("P01", "being:B999", "surfaced"),
     ("P03", "being:B3", "surfaced"),
+    ("P03", "place:the-road", "surfaced"),
 ]
 
+RECORDED_SINCE = [
+    ("P01", "being:S4:B3", "engaged"),
+    ("P01", "being:S2:B3", "surfaced"),
+    ("P03", "place:S2:where-wherever", "surfaced"),
+]
 
-async def _build_and_seed(database_url: str) -> str:
+WITHOUT_THE_SPINE_BUILDER = """
+import app.services.internalization_room.canon.elements as elements
+
+
+def asked(*args, **kwargs):
+    raise RuntimeError("the migration asked today's spine builder")
+
+
+elements.elements_of = asked
+"""
+
+
+async def _build_and_seed(database_url: str, recorded: list[tuple[str, str, str]]) -> str:
     engine = create_async_engine(database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -53,7 +71,7 @@ async def _build_and_seed(database_url: str) -> str:
             ),
             {"id": session_id, "project_id": project_id, "now": WHEN},
         )
-        for pericope, element_key, status in RECORDED:
+        for pericope, element_key, status in recorded:
             await conn.execute(
                 text(
                     f"INSERT INTO {TABLE} (id, session_id, project_id, pericope, element_key,"
@@ -87,9 +105,19 @@ async def _events(database_url: str) -> set[tuple[str, str, str]]:
 @pytest.fixture()
 async def recorded_under_the_old_keys(tmp_path) -> str:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'spine.db'}"
-    await _build_and_seed(database_url)
+    await _build_and_seed(database_url, RECORDED)
 
     stamped = run_alembic(database_url, "stamp", PREVIOUS_REVISION)
+    assert stamped.returncode == 0, stamped.stderr
+    return database_url
+
+
+@pytest.fixture()
+async def recorded_under_the_new_keys(tmp_path) -> str:
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'spine.db'}"
+    await _build_and_seed(database_url, RECORDED_SINCE)
+
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
     return database_url
 
@@ -157,3 +185,36 @@ async def test_the_way_down_puts_the_entity_keys_back(recorded_under_the_old_key
         key.split(":")[1].startswith("S") for _p, key, _s in events if key.count(":") == 2
     )
     assert ("P01", "absence:1", "engaged") in events
+
+
+async def test_the_entity_keys_it_writes_are_the_ones_it_carries_not_the_builders(
+    recorded_under_the_old_keys,
+) -> None:
+    url = recorded_under_the_old_keys
+
+    up = run_alembic(url, "upgrade", REVISION, before=WITHOUT_THE_SPINE_BUILDER)
+    assert up.returncode == 0, up.stderr
+
+    events = await _events(url)
+    assert {
+        ("P01", "being:S1:B3", "engaged"),
+        ("P01", "place:S1:PL2", "surfaced"),
+        ("P03", "being:S1:B3", "surfaced"),
+        ("P03", "place:S1:the-road", "surfaced"),
+    } <= events, "an upgrade that asks today's builder writes today's keys, not the ones of the day"
+
+
+async def test_the_way_down_puts_back_every_scene_of_an_entity_without_the_builder(
+    recorded_under_the_new_keys,
+) -> None:
+    url = recorded_under_the_new_keys
+
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION, before=WITHOUT_THE_SPINE_BUILDER)
+    assert down.returncode == 0, down.stderr
+
+    events = await _events(url)
+    assert events == {
+        ("P01", "being:B3", "engaged"),
+        ("P01", "being:B3", "surfaced"),
+        ("P03", "place:where-wherever", "surfaced"),
+    }
