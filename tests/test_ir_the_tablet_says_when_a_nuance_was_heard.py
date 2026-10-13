@@ -346,3 +346,22 @@ async def test_the_consultants_file_says_which_nuances_the_voice_already_said(
         (2, "contada de volta", "a história conta de outro jeito", True),
         (3, "parte 2", "a história diz qual parte", False),
     ], "a consultora não via as nuances nem se a voz já as tinha dito"
+
+
+async def test_a_part_recorded_again_takes_its_nuance_out_of_the_consultants_file(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 3)
+    analyst.readings = [{"findings": [ON_FRASE_3, ON_FRASE_2]}]
+    speaker.line = NAMES_FRASE_2
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    await _heard(client, session.id, pressed.json()["check_at"])
+
+    await record_the_part_again(db_session, session, parts[1], sha256="f" * 64)
+
+    read = await retroverification_file(db_session, await get_session(db_session, session.id))
+    assert [(one.chunk, one.said) for one in read.nuances] == [(3, False)], (
+        "a nuance de um trecho aposentado seguia na ficha, dita como ainda não dita"
+    )
