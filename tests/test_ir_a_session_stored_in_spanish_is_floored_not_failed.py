@@ -19,6 +19,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import back_translation as back_translation_api
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
@@ -26,12 +27,15 @@ from app.services.internalization_room import (
     back_translation_of,
     background,
     check_the_telling_back,
+    hearing,
+    takes,
     verdict_round,
 )
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
 from tests.device_harness import TABLET_TEAM
+from tests.hard_stretch_harness import AUDIO, DEVICE, MemoryStore
 from tests.hearing_harness import (
     nothing_settles,
     the_take_lasts,
@@ -40,6 +44,7 @@ from tests.hearing_harness import (
 )
 from tests.release_harness import PREFIX
 from tests.room_harness import (
+    PART_MS,
     heard_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -409,4 +414,44 @@ async def test_a_miss_on_a_row_stored_in_spanish_is_kept_in_the_rooms_language(
     kept = (await get_session(db_session, session_id)).messages
     assert [message["text"] for message in kept if message["role"] == "guide"] == [line], (
         "a conversa guardava a fala de um toque perdido na língua do `es` guardado"
+    )
+
+
+def _the_hints_a_telling_back_was_heard_with(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    hints: list[str] = []
+
+    async def transcriber(*_: Any, language: str, **__: Any) -> str:
+        hints.append(language)
+        return PORTUGUESE
+
+    async def unread(**_: Any) -> None:
+        return None
+
+    bucket = MemoryStore()
+    monkeypatch.setattr(hearing, "transcribe_audio", transcriber)
+    monkeypatch.setattr(back_translation_api, "read_ahead", unread)
+    monkeypatch.setattr(takes, "_store", lambda *_, **__: bucket)
+    return hints
+
+
+@pytest.mark.parametrize("floor", ["en", "pt"])
+async def test_a_telling_back_on_a_row_stored_in_spanish_is_transcribed_in_the_rooms_language(
+    db_session: AsyncSession, tablet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    hints = _the_hints_a_telling_back_was_heard_with(monkeypatch)
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    session.language = "es"
+    await db_session.commit()
+
+    told = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
+        headers={"X-Room-Device": DEVICE},
+        data={"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS), "retelling": "true"},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert told.status_code == 200, told.text
+    assert hints == [floor], (
+        "a explicação de uma sessão guardada em espanhol era transcrita como espanhol"
     )
