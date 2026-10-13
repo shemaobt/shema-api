@@ -55,7 +55,7 @@ _WORDS: dict[str, AddressWords] = {
 
 
 def words_for(language_code: str) -> AddressWords:
-    """What this session says an address in, falling back to the floor like every other table."""
+    """What this session says an address in, falling back to the authored English like the rest."""
     return _WORDS.get(language_code, _WORDS[AUTHORED])
 
 

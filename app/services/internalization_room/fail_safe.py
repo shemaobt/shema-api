@@ -78,7 +78,7 @@ def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     lookup without that fallback, so a guard can ask whether a language the room claims to
     speak has actually had its lines written.
 
-    The untagged authored block counts as the floor's own and not as a borrowing: the file
+    The untagged authored block counts as English's own and not as a borrowing: the file
     says of it *"Written here in English; localize per session language"*, so it is English
     that happens to be untagged rather than English standing in for something unwritten.
     """

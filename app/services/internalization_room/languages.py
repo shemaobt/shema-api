@@ -34,14 +34,14 @@ LANGUAGE_NAMES: dict[str, str] = {
 def floor(settings: Settings | None = None) -> str:
     """What a caller that names no language gets, for every caller that has to decide it.
 
-    Read through the setting rather than off ``AUTHORED`` directly, because the floor is the one
+    Read through the setting rather than off ``UNNAMED`` directly, because the floor is the one
     knob that has to be movable without a deploy of new code. Holding a fleet on Portuguese
     while an app that names its language is still on its way to the stores is the whole reason
     it exists, and a floor only the synthesizer honoured would have left the sessions and the
     wheel answering English underneath it — which is the failure it is set to prevent.
 
     Normalized, so a typo in an environment cannot claim a language the room does not speak;
-    an unusable value falls back to the constant rather than reaching the room.
+    an unusable value falls back to ``UNNAMED`` rather than reaching the room.
     """
     named = (settings or get_settings()).internalization_room_default_language
     return normalize(named) or UNNAMED
