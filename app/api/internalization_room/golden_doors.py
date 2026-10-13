@@ -39,7 +39,7 @@ from app.models.internalization_room_golden_doors import (
 from app.services import internalization_room as room
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.kept import reading_the_canon_of
-from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
+from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.name_check import hear_the_names, stored_opening_note
 from app.services.internalization_room.prompts import get_prompt_text
