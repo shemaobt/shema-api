@@ -26,14 +26,15 @@ async def latest_releases(db: AsyncSession, project_id: str) -> dict[str, Passag
         select(IRRelease.pericope, IRRelease.version, IRRelease.forced_at, IRRelease.approved_at)
         .join(IRSession, IRSession.id == IRRelease.session_id)
         .where(IRRelease.project_id == project_id, live())
-        .order_by(IRRelease.version)
+        .order_by(IRRelease.version.desc())
     )
-    return {
-        row.pericope: PassageRelease(
-            version=row.version, forced_at=row.forced_at, approved_at=row.approved_at
-        )
-        for row in rows
-    }
+    latest: dict[str, PassageRelease] = {}
+    for row in rows:
+        if row.pericope not in latest:
+            latest[row.pericope] = PassageRelease(
+                version=row.version, forced_at=row.forced_at, approved_at=row.approved_at
+            )
+    return latest
 
 
 async def open_findings(db: AsyncSession, project_id: str) -> dict[str, int]:

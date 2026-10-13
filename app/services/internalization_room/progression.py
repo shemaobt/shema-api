@@ -146,7 +146,7 @@ def standing(
     return [
         PericopeStanding(
             pericope=meaning_map.pericope_num,
-            reference=_portuguese_reference(meaning_map.bcv),
+            reference=portuguese_reference(meaning_map.bcv),
             title=meaning_map.title,
             position=_position(meaning_map.pericope_num, finished, here),
             release=releases.get(meaning_map.pericope_num),
@@ -161,7 +161,7 @@ _EN_DASH = "\u2013"
 _BCV = re.compile(rf"(?P<book>.+) (?P<chapter>\d+):(?P<first>\d+)[-{_EN_DASH}](?P<last>\d+)")
 
 
-def _portuguese_reference(bcv: str) -> str:
+def portuguese_reference(bcv: str) -> str:
     """The map's ``bcv`` as the Desk reads it: the book in Portuguese, then an en dash.
 
     The canon mixes a hyphen and an en dash; the Desk reads one form. A book without a

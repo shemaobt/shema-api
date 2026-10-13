@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from httpx import ASGITransport
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +25,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
 from tests.baker import having_finished_the_passage, make_app, make_role, open_ir_session
-from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.opening_harness import desk_routes
 from tests.release_harness import (
     APP_KEY,
     PREFIX,
@@ -43,6 +42,7 @@ from tests.release_harness import (
     team_release,
     told_back_with_an_open_finding,
 )
+from tests.room_harness import room_client
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST = CANON[0]
@@ -51,47 +51,14 @@ EN_DASH = "\u2013"
 
 
 @pytest.fixture()
-async def room(db_session: AsyncSession):
-    from fastapi import FastAPI
-
-    from app.api.internalization_room import router
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
-
-    test_app = FastAPI()
-    test_app.include_router(router, prefix=PREFIX)
-    register_exception_handlers(test_app)
-
-    async def _get_db():
-        yield db_session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    tablet = await a_linked_tablet(db_session, team_id=TABLET_TEAM)
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test", headers=tablet.headers
-    ) as c:
+async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    async with room_client(db_session, monkeypatch) as c:
         yield c
 
 
 @pytest.fixture()
 async def desk_client(db_session: AsyncSession):
-    from fastapi import FastAPI
-
-    from app.api.facilitator.teams import facilitator_teams_router
-    from app.core.database import get_db
-    from app.core.exceptions import register_exception_handlers
-
-    test_app = FastAPI()
-    test_app.include_router(facilitator_teams_router, prefix="/api/facilitator/teams")
-    register_exception_handlers(test_app)
-
-    async def _get_db():
-        yield db_session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as c:
+    async with desk_routes(db_session) as c:
         yield c
 
 
