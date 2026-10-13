@@ -192,10 +192,12 @@ PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
 def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
     """The line for one step of the telling-back or of the external check, and its name.
 
-    A fail-safe answers a failure and rotates, on the authored file's own instruction. A
-    process line marks a step, and her prose says of both families that *"the order is
-    fixed and read by position"*: rotating them would voice the thanks where the step means
-    the invitation. So there is no ``turn`` here, and the same step always answers the same.
+    A fail-safe answers a failure, so which of its lines is said follows the failure: the
+    draft that gave up for A, the wait for the untold stretch, her first line for the
+    inaudible. A process line marks a step, and her prose says of both families that *"the
+    order is fixed and read by position"*: rotating them would voice the thanks where the
+    step means the invitation. So there is no ``turn`` here, and the same step always
+    answers the same.
 
     The language resolution is ``choose``'s, unchanged — the code read through
     ``room_language``, so the region is dropped and a language the room does not speak lands
