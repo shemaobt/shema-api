@@ -24,3 +24,24 @@ def test_each_pin_given_with_keep_reaches_the_sync(monkeypatch: pytest.MonkeyPat
     assert seen == [
         ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
     ]
+
+
+def test_a_pin_to_keep_that_is_not_a_whole_sha_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        ["sync_internalization_canon.py", "--sync", "--keep", OLDER, "--keep", "bbbbbbb"],
+    )
+    monkeypatch.setattr(
+        canon,
+        "sync",
+        lambda pin=None, keep=(): pytest.fail(
+            "sync() dropped the tree of a short sha it was told to keep"
+        ),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        canon.main()
+
+    assert excinfo.value.code != 0

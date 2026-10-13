@@ -346,6 +346,8 @@ def main() -> int:
         parser.error("--pin needs --sync")
     if args.pin and not SHA_RE.fullmatch(args.pin):
         parser.error("--pin needs a full 40-character sha, not a ref")
+    if not all(SHA_RE.fullmatch(keep) for keep in args.keep):
+        parser.error("--keep needs a full 40-character sha, the name of a kept tree")
     return sync(pin=args.pin, keep=tuple(args.keep)) if args.sync else check()
 
 
