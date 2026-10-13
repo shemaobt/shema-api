@@ -1170,7 +1170,9 @@ async def save_back_translation(
     commit: bool = True,
     rule: Callable[[BackTranslationState], Awaitable[None]] | None = None,
 ) -> IRSession:
-    """Write the telling-back state whole, which is how it is always read and rewritten.
+    """Write the telling-back state, merged onto what is stored if another write landed first.
+
+    ``rule`` is what the caller decided on the state it read, applied again to the merged one.
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
