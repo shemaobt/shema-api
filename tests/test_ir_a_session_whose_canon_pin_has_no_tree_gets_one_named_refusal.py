@@ -163,6 +163,42 @@ async def test_the_desk_necklace_of_a_team_whose_pin_lost_its_tree_is_refused_by
     assert session.canon_pin in necklace.json()["detail"]
 
 
+async def test_the_team_list_names_every_other_teams_passage_when_one_teams_pin_lost_its_tree(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (gone_team, fresh_team) = await _a_desk_over_two_teams(db_session)
+    await open_ir_session(db_session, pericope=P, project_id=gone_team.id)
+    shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN))
+    await open_ir_session(db_session, pericope=P, project_id=fresh_team.id)
+
+    async with desk_routes(db_session) as at_desk:
+        listed = await at_desk.get("/api/facilitator/teams", headers=desk)
+
+    assert listed.status_code == 200, listed.text[:300]
+    passages = {team["team_id"]: team["active_passage"] for team in listed.json()["teams"]}
+    assert passages == {
+        gone_team.id: {"pericope": P, "reference": None},
+        fresh_team.id: {"pericope": P, "reference": "Ruth 1:1\u20135"},
+    }, "uma equipe sem árvore derrubava a lista de equipes inteira, as outras junto"
+
+
+async def test_a_team_whose_pin_lost_its_tree_is_still_found_by_its_passage_in_a_search(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (gone_team, fresh_team) = await _a_desk_over_two_teams(db_session)
+    await open_ir_session(db_session, pericope=P, project_id=gone_team.id)
+    shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN))
+    await open_ir_session(db_session, pericope=P, project_id=fresh_team.id)
+
+    async with desk_routes(db_session) as at_desk:
+        found = await at_desk.get("/api/facilitator/teams", params={"search": P}, headers=desk)
+
+    assert found.status_code == 200, found.text[:300]
+    assert {team["team_id"] for team in found.json()["teams"]} == {gone_team.id, fresh_team.id}, (
+        "a busca lia a referência da passagem e quebrava na equipe que não tinha uma"
+    )
+
+
 async def _a_hand_raised_on_naomi(db: AsyncSession, team_id: str, session_id: str) -> str:
     question = IRQuestion(
         device_id="aparelho",
