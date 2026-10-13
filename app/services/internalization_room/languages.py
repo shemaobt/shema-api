@@ -1,17 +1,18 @@
 """Which languages the room claims to speak, and what a caller that names none gets.
 
 The room used to speak one language decided at deploy time. It now speaks the language the
-app asks for, and the app asks for whatever the tablet is set to — so this module is the
-whole of the room's answer to "which languages exist".
+app asks for, and the app asks for the language the team chose on the tablet — so this module
+is the whole of the room's answer to "which languages exist".
 
 The tuple is written out rather than derived from the authored files. Claiming a language
 has to be a deliberate act: derived from the prompts, a language would start being claimed
 the moment somebody dropped a half-finished block in, and the guard that fails when a
 claimed language is unwritten could never go red.
 
-English is the floor for a caller that names nothing, which is the instinct the authored
-fail-safe blocks already have — an unwritten language falls back to the authored English
-line, because silence is the one outcome worse than the wrong language.
+Brazilian Portuguese is what a caller that names nothing gets: a session is Portuguese unless
+the team chose English, as in Marcia's app. ``FLOOR`` stays English, the language the untagged
+blocks are authored in: an unwritten language falls back to that authored line, because
+silence is the one outcome worse than the wrong language.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from app.core.config import Settings, get_settings
 ROOM_LANGUAGES: tuple[str, ...] = ("en", "pt")
 
 FLOOR = "en"
+
+UNNAMED = "pt"
 
 LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
@@ -41,7 +44,7 @@ def floor(settings: Settings | None = None) -> str:
     an unusable value falls back to the constant rather than reaching the room.
     """
     named = (settings or get_settings()).internalization_room_default_language
-    return normalize(named) or FLOOR
+    return normalize(named) or UNNAMED
 
 
 def room_language(stored: str | None) -> str:

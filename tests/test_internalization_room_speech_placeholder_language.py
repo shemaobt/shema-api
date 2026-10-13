@@ -176,7 +176,7 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
 
 
 @pytest.mark.parametrize(("named", "code"), [("French", "fr"), ("Spanish", "es")])
-async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
+async def test_a_language_the_room_does_not_claim_gets_the_portuguese_floor(
     monkeypatch: pytest.MonkeyPatch, named: str, code: str
 ) -> None:
     captured = _patch_analyst_capture(monkeypatch)
@@ -193,5 +193,5 @@ async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
     )
 
     system = captured["system"]
-    assert NOTHING_TOLD_BACK["en"] in system
-    assert NOTHING_TOLD_BACK["pt"] not in system
+    assert NOTHING_TOLD_BACK["pt"] in system
+    assert NOTHING_TOLD_BACK["en"] not in system

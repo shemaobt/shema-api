@@ -415,7 +415,7 @@ async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for
     assert set(in_portuguese).isdisjoint(in_english)
 
 
-async def test_the_wheel_asked_for_nothing_speaks_the_floor(
+async def test_the_wheel_asked_with_no_language_is_portuguese(
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
 ) -> None:
@@ -429,8 +429,8 @@ async def test_the_wheel_asked_for_nothing_speaks_the_floor(
 
     await route.passages("Ruth", db=db_session)
 
-    assert line_for("P01", FLOOR) in said
-    assert line_for("P01", "pt") not in said
+    assert line_for("P01", "pt") in said
+    assert line_for("P01", "en") not in said
 
 
 def test_the_line_for_ruth_2_17_23_names_the_passage_and_not_the_redeemer() -> None:
