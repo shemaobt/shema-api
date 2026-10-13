@@ -34,6 +34,7 @@ Revises: 20260916_ver01
 
 from __future__ import annotations
 
+import re
 import uuid
 
 import sqlalchemy as sa
@@ -46,6 +47,7 @@ branch_labels = None
 depends_on = None
 
 TABLE = "ir_coverage_events"
+SCENE_KEY = re.compile(r"^(being|place|object|time):S\d+:(.+)$")
 ENTITY_KEYS = {
     "P01": """
         being:S1:B2 being:S1:B3 being:S1:B4 being:S1:B5 being:S1:B1 being:S1:B6 place:S1:PL1
@@ -226,6 +228,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for pericope in ENTITY_KEYS:
-        for old, new in _entity_keys(pericope):
-            _rekey(pericope, new, old)
+    stored = op.get_bind().execute(sa.text(f"SELECT DISTINCT pericope, element_key FROM {TABLE}"))
+    for pericope, key in stored.all():
+        scene_key = SCENE_KEY.match(key)
+        if scene_key:
+            _rekey(pericope, key, f"{scene_key[1]}:{scene_key[2]}")

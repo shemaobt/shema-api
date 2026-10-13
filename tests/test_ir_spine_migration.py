@@ -43,6 +43,7 @@ RECORDED_SINCE = [
     ("P01", "being:S4:B3", "engaged"),
     ("P01", "being:S2:B3", "surfaced"),
     ("P03", "place:S2:where-wherever", "surfaced"),
+    ("P03", "place:S1:PL_LAND_OF_JUDAH", "surfaced"),
 ]
 
 WITHOUT_THE_SPINE_BUILDER = """
@@ -219,7 +220,7 @@ async def test_the_entity_keys_it_writes_are_the_ones_it_carries_not_the_builder
     } <= events, "an upgrade that asks today's builder writes today's keys, not the ones of the day"
 
 
-async def test_the_way_down_puts_back_every_scene_of_an_entity_without_the_builder(
+async def test_the_way_down_puts_back_any_scene_key_of_an_entity_the_table_carries_or_not(
     recorded_under_the_new_keys,
 ) -> None:
     url = recorded_under_the_new_keys
@@ -232,7 +233,8 @@ async def test_the_way_down_puts_back_every_scene_of_an_entity_without_the_build
         ("P01", "being:B3", "engaged"),
         ("P01", "being:B3", "surfaced"),
         ("P03", "place:where-wherever", "surfaced"),
-    }
+        ("P03", "place:PL_LAND_OF_JUDAH", "surfaced"),
+    }, "a bead today's spine serves that the table of the day lacks kept its scene on the way down"
 
 
 async def test_the_rules_it_folds_are_the_ones_it_carries_not_the_canons(
