@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any, TypeVar
@@ -733,10 +733,10 @@ async def _written_forward(
     session_id: str,
     column: _JSONColumn,
     read: _Stored | None,
-    onto: Callable[[_Stored | None], _Stored],
+    onto: Callable[[_Stored | None], Awaitable[_Stored]],
 ) -> tuple[_Stored | None, _Stored]:
     for tries_left in reversed(range(_TRIES)):
-        value = onto(read)
+        value = await onto(read)
         if value == read or await _written_unless_moved(db, session_id, column, read, value):
             return read, value
         if not tries_left:
@@ -795,12 +795,12 @@ async def apply_coverage(
     conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
+
+    async def onto(read: dict[str, Any] | None) -> dict[str, str]:
+        return furthest(read or {}, coverage_state, pericope_num=session.pericope)
+
     kept, settled = await _written_forward(
-        db,
-        session.id,
-        IRSession.coverage_state,
-        session.coverage_state,
-        lambda read: furthest(read or {}, coverage_state, pericope_num=session.pericope),
+        db, session.id, IRSession.coverage_state, session.coverage_state, onto
     )
     record_transitions(db, session, before=kept or {}, after=settled)
     set_committed_value(session, "coverage_state", settled)
@@ -1168,7 +1168,7 @@ async def save_back_translation(
     state: BackTranslationState,
     *,
     commit: bool = True,
-    rule: Callable[[BackTranslationState], None] | None = None,
+    rule: Callable[[BackTranslationState], Awaitable[None]] | None = None,
 ) -> IRSession:
     """Write the telling-back state whole, which is how it is always read and rewritten.
 
@@ -1178,12 +1178,12 @@ async def save_back_translation(
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
 
-    def onto(read: dict[str, Any] | None) -> dict[str, Any]:
+    async def onto(read: dict[str, Any] | None) -> dict[str, Any]:
         if read == session.back_translation:
             return written
         merged = _merged_forward(base, state, BackTranslationState.model_validate(read or {}))
         if rule is not None:
-            rule(merged)
+            await rule(merged)
         return merged.model_dump(mode="json")
 
     _, written = await _written_forward(
@@ -1306,14 +1306,14 @@ async def retire_the_part_recorded_again(
 
     retired_ids = {row.id for row in retired}
 
-    def recorded_again(standing: BackTranslationState) -> None:
+    async def recorded_again(standing: BackTranslationState) -> None:
         standing.findings = findings_after_a_part_is_recorded_again(standing.findings, retired_ids)
         standing.nuances = [one for one in standing.nuances if one.segment_id not in retired_ids]
         standing.checked = False
         standing.verdict = None
 
     state = back_translation_of(session)
-    recorded_again(state)
+    await recorded_again(state)
     await save_back_translation(db, session, state, commit=False, rule=recorded_again)
     await db.commit()
     await db.refresh(session)
