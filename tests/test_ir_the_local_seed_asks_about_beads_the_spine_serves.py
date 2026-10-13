@@ -10,8 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.services.internalization_room.canon.elements import elements_of
-from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
+from app.services.internalization_room.canon.elements import element_keys
 
 SEED = Path(__file__).resolve().parent.parent / "scripts" / "seed_local_content.sql"
 
@@ -51,12 +50,12 @@ def _questions() -> list[dict[str, str]]:
 
 def test_every_question_the_seed_raises_points_at_a_bead_its_passage_serves() -> None:
     questions = _questions()
-    assert questions, "the seed was read and no question came out of it"
+    inserts = SEED.read_text().lower().count("insert into ir_questions")
+    assert len(questions) == inserts > 0, "an insert of the seed was not read as a question"
 
     for question in questions:
         pericope = question["pericope"].strip("'")
-        served = {e.key for e in elements_of(load_map(pericope), book=ROOM_BOOK)}
-        assert question["element_key"].strip("'") in served, (
+        assert question["element_key"].strip("'") in element_keys(pericope), (
             f"{question['id']} asks about {question['element_key']}, "
             f"which {pericope}'s spine does not yield"
         )
