@@ -37,6 +37,7 @@ INTO_THE_LAST_SCENE_PT = "Vamos pra Internalização da última cena."
 INTO_THE_LAST_SCENE_EN = "Let's go to the Internalization of the last scene."
 VENDORED_FIRST_SCENE = "Famine and exile to Moab"
 KEPT_FIRST_SCENE = "The kept first scene of the book"
+PREPARED = "Vamos começar pela Familiarização. Primeiro eu conto a passagem inteira."
 INTO_THE_LAST_SCENE = {
     "before": {"at": "familiarization"},
     "after": {"at": "internalization", "part": 2},
@@ -68,6 +69,19 @@ class Speaker:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
         return self.said
+
+
+async def _a_panorama_with_a_line_ready_for_p01(db: AsyncSession) -> IRSession:
+    panorama = await create_session(db, pericope="OV-Ruth", language="pt")
+    panorama.prepared_speech = PREPARED
+    panorama.prepared_audio_key = "tts/prepared.mp3"
+    panorama.prepared_pericope = "P01"
+    await db.commit()
+    return panorama
+
+
+async def _prepared_speech_of(db: AsyncSession, session_id: str) -> str | None:
+    return await db.scalar(select(IRSession.prepared_speech).where(IRSession.id == session_id))
 
 
 async def _the_last_step_of(db: AsyncSession, session_id: str) -> dict[str, Any]:
@@ -167,3 +181,18 @@ async def test_the_opening_prepared_on_a_panorama_open_when_a_new_canon_is_publi
         "a abertura preparada no panorama foi escrita do mapa novo, não do mapa da sessão"
     )
     assert VENDORED_FIRST_SCENE not in written_from
+
+
+async def test_a_line_prepared_on_a_panorama_of_another_canon_is_not_handed_to_the_passage(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    panorama = await _a_panorama_with_a_line_ready_for_p01(db_session)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN)
+    passage = await create_session(db_session, pericope="P01", language="pt")
+    await db_session.commit()
+
+    assert await preparing.hand_over(db_session, panorama, passage) is False, (
+        "a linha escrita no mapa antigo foi entregue a uma sessão aberta no mapa novo"
+    )
+    assert await _prepared_speech_of(db_session, passage.id) is None
+    assert await _prepared_speech_of(db_session, panorama.id) == PREPARED

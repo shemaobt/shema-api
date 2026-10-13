@@ -181,6 +181,8 @@ async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -
         return False
     if prepared.language != opening.language:
         return False
+    if prepared.canon_pin != opening.canon_pin:
+        return False
     if opening.messages:
         return False
     await db.execute(
