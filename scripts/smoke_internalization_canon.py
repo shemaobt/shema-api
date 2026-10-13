@@ -61,6 +61,12 @@ def problems() -> list[str]:
                     f"{tag}: her Portuguese titles name {', '.join(keyed)}, "
                     f"but the map's scenes are {', '.join(scenes)}"
                 )
+            titled = portuguese_titles().get(tag, {})
+            found.extend(
+                f"{tag}: her Portuguese title of scene {key[1:]} is empty"
+                for key in scenes
+                if key in titled and not titled[key].strip()
+            )
             reference, arc, *_ = pericope_digest(meaning_map).split("\n")
             if not REFERENCE_LINE.fullmatch(reference):
                 found.append(f"{tag}: the digest has no reference line")

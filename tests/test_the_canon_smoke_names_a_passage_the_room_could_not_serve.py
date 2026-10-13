@@ -95,6 +95,21 @@ def test_her_titles_keyed_otherwise_than_the_maps_scenes_fail_and_are_named(
     )
 
 
+@pytest.mark.parametrize("title", ["", "   "], ids=["empty", "blank"])
+def test_a_served_scene_whose_portuguese_title_is_empty_or_blank_fails_and_is_named(
+    title: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    listed = json.loads(titles.PORTUGUESE_TITLES.read_text(encoding="utf-8"))
+    listed["scenes"]["P08"]["S2"] = title
+    edited = tmp_path / "ui-labels.pt.json"
+    edited.write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(titles, "PORTUGUESE_TITLES", edited)
+
+    assert smoke.problems() == ["P08: her Portuguese title of scene 2 is empty"], (
+        "um título vazio passava e a sala dizia o cabeçalho em inglês numa sessão em português"
+    )
+
+
 @pytest.mark.parametrize(
     ("update", "named"),
     [
