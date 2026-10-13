@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.earlier_passages import earlier_passages
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
@@ -50,28 +51,31 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
         async with AsyncSessionLocal() as db:
             panorama = await get_session(db, panorama_session_id)
             spoken = panorama.language
-            if pericope is None:
-                pericope = await active_passage(db, project_id=panorama.project_id)
-            if pericope is None:
-                logger.info("Nothing left to prepare: the team has closed every passage")
-                return
-            stamp = await earlier_passages(db, project_id=panorama.project_id, pericope=pericope)
-            await db.commit()
-            outcome = await run_turn(
-                transcript="",
-                coverage_state={},
-                messages=[],
-                guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
-                validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
-                pericope_num=pericope,
-                opening=True,
-                session_language=LANGUAGE_NAMES[spoken],
-                language_code=spoken,
-                settings=get_settings(),
-                session_id=panorama_session_id,
-                prepared_pericope=pericope,
-                earlier_passages=stamp,
-            )
+            with reading_the_canon_of(panorama.canon_pin):
+                if pericope is None:
+                    pericope = await active_passage(db, project_id=panorama.project_id)
+                if pericope is None:
+                    logger.info("Nothing left to prepare: the team has closed every passage")
+                    return
+                stamp = await earlier_passages(
+                    db, project_id=panorama.project_id, pericope=pericope
+                )
+                await db.commit()
+                outcome = await run_turn(
+                    transcript="",
+                    coverage_state={},
+                    messages=[],
+                    guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
+                    validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+                    pericope_num=pericope,
+                    opening=True,
+                    session_language=LANGUAGE_NAMES[spoken],
+                    language_code=spoken,
+                    settings=get_settings(),
+                    session_id=panorama_session_id,
+                    prepared_pericope=pericope,
+                    earlier_passages=stamp,
+                )
             if outcome.used_fail_safe and not outcome.draft:
                 logger.warning(
                     "Prepared opening fell to the fail-safe on an empty draft for session %s, "

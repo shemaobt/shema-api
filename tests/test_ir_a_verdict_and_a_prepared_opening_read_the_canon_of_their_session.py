@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.services import internalization_room as room
+from app.services.internalization_room import prepare_opening as preparing
+from app.services.internalization_room.sessions import create_session
 from tests.canon_harness import the_canon_moves_on
 from tests.release_harness import a_claimed_device, team_headers
 from tests.room_harness import (
@@ -23,7 +26,7 @@ from tests.room_harness import (
     the_analyst_reads,
     the_room_speaks,
 )
-from tests.text_seam_harness import RUNNER_KEY
+from tests.text_seam_harness import RUNNER_KEY, ScriptedAgent
 from tests.turn_harness import the_room_agent_is
 
 NEW_PIN = "a" * 40
@@ -32,6 +35,8 @@ THE_LAST_SCENE = "### Scene 3 —"
 THE_PROPOSITIONS = "## 4. Level 3"
 INTO_THE_LAST_SCENE_PT = "Vamos pra Internalização da última cena."
 INTO_THE_LAST_SCENE_EN = "Let's go to the Internalization of the last scene."
+VENDORED_FIRST_SCENE = "Famine and exile to Moab"
+KEPT_FIRST_SCENE = "The kept first scene of the book"
 INTO_THE_LAST_SCENE = {
     "before": {"at": "familiarization"},
     "after": {"at": "internalization", "part": 2},
@@ -47,6 +52,12 @@ def _the_kept_map_has_no_last_scene(pericope: str) -> Callable[[Path], None]:
         page.write_text(told[:last] + told[told.index(THE_PROPOSITIONS) :], encoding="utf-8")
 
     return keeping
+
+
+def _the_kept_p01_names_its_first_scene_its_own_way(tree: Path) -> None:
+    (page,) = (tree / "vendor" / "meaning-map").glob("P01-*.md")
+    told = page.read_text(encoding="utf-8")
+    page.write_text(told.replace(VENDORED_FIRST_SCENE, KEPT_FIRST_SCENE), encoding="utf-8")
 
 
 class Speaker:
@@ -131,3 +142,28 @@ async def test_a_verdict_played_through_the_text_seam_moves_the_moment_by_the_sc
     assert await _the_last_step_of(db_session, session_id) == INTO_THE_LAST_SCENE, (
         "a rodada da costura contou as cenas do mapa novo, e a última cena da sessão era outra"
     )
+
+
+async def test_the_opening_prepared_on_a_panorama_open_when_a_new_canon_is_published_is_written_from_its_own_map(  # noqa: E501
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    voice = ScriptedAgent([])
+    the_room_agent_is(monkeypatch, turn=voice)
+
+    async def _voiced(*_: object, **__: object) -> tuple[SimpleNamespace, None]:
+        return SimpleNamespace(key="tts/prepared.mp3"), None
+
+    monkeypatch.setattr(preparing, "synthesize_facilitator_speech", _voiced)
+    panorama = await create_session(db_session, pericope="OV-Ruth", language="pt")
+    await db_session.commit()
+    the_canon_moves_on(
+        monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p01_names_its_first_scene_its_own_way
+    )
+
+    await preparing.prepare_opening(panorama.id, pericope="P01")
+
+    (written_from,) = voice.guide_systems
+    assert KEPT_FIRST_SCENE in written_from, (
+        "a abertura preparada no panorama foi escrita do mapa novo, não do mapa da sessão"
+    )
+    assert VENDORED_FIRST_SCENE not in written_from
