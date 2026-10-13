@@ -121,17 +121,17 @@ async def canon_pins_by_session(
     return dict(result.tuples().all())
 
 
-def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead]:
-    with reading_the_canon_of(session.canon_pin):
-        return _portrait(session.pericope, portrait)
+def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead] | None:
+    try:
+        with reading_the_canon_of(session.canon_pin):
+            return _portrait(session.pericope, portrait)
+    except CanonNotKept:
+        return None
 
 
 def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
     end = end_of(session)
-    try:
-        beads: list[SessionBead] | None = beads_of(session, portrait)
-    except CanonNotKept:
-        beads = None
+    beads = beads_of(session, portrait)
     return TeamSessionResponse(
         session_id=session.id,
         pericope=session.pericope,

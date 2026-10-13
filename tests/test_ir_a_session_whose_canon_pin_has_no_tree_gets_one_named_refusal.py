@@ -47,7 +47,7 @@ from tests.baker import (
 )
 from tests.canon_harness import forget_the_canon, the_canon_moves_on
 from tests.device_harness import TABLET_TEAM
-from tests.opening_harness import desk_routes
+from tests.opening_harness import desk_routes, desk_sessions_routes
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client
 
@@ -234,6 +234,27 @@ async def test_a_teams_history_draws_every_other_conversation_when_one_lost_its_
     labels = {bead["key"]: bead["label_en"] for bead in cards[fresh]}
     assert labels[NAOMI_IN_THE_FIRST_SCENE] == "Naomi", (
         "uma conversa sem árvore derrubava o histórico inteiro da equipe"
+    )
+
+
+async def test_the_desk_sessions_page_lists_every_other_session_when_one_lost_its_tree(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (team, _) = await _a_desk_over_two_teams(db_session)
+    gone, fresh = await _an_entered_session_before_and_after_the_tree_is_dropped(
+        db_session, team.id, monkeypatch, tmp_path
+    )
+
+    async with desk_sessions_routes(db_session) as at_desk:
+        page = await at_desk.get("/api/facilitator/sessions", headers=desk)
+
+    assert page.status_code == 200, page.text[:300]
+    counts = {
+        row["session_id"]: (row["engaged_elements"], row["total_elements"])
+        for row in page.json()["sessions"]
+    }
+    assert counts == {gone: (None, None), fresh: (0, 47)}, (
+        "uma sessão sem árvore derrubava a página de sessões da Mesa inteira"
     )
 
 
