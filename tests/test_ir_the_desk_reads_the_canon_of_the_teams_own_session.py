@@ -34,6 +34,10 @@ SECOND_SCENE_HEADING = "### Scene 2 —"
 RUTH_IN_THE_SECOND_SCENE = "being:S2:B9"
 KEPT_RUTH_LABEL = "Ruth, as the kept catalogue names her"
 
+FIRST = "P01"
+SERVED_FIRST_REFERENCE = "Ruth 1:1\u20135"
+KEPT_FIRST_REFERENCE = f"{SERVED_FIRST_REFERENCE}, as the kept map titles it"
+
 _codes = itertools.count()
 
 
@@ -53,6 +57,17 @@ def _the_kept_p03_has_its_own_beads_and_labels(tree: Path) -> None:
     }
     labels[P][RUTH_IN_THE_SECOND_SCENE] = {"en": KEPT_RUTH_LABEL, "pt": None}
     catalogue.write_text(json.dumps(labels, ensure_ascii=False), encoding="utf-8")
+
+
+def _the_kept_p01_is_titled_its_own_way(tree: Path) -> None:
+    (page,) = (tree / "vendor" / "meaning-map").glob(f"{FIRST}-*.md")
+    told = page.read_text(encoding="utf-8")
+    page.write_text(
+        told.replace(
+            f"# {FIRST} — {SERVED_FIRST_REFERENCE}\n", f"# {FIRST} — {KEPT_FIRST_REFERENCE}\n"
+        ),
+        encoding="utf-8",
+    )
 
 
 async def _a_desk_over_two_teams(db: AsyncSession):
@@ -95,3 +110,23 @@ async def test_a_team_whose_session_kept_the_old_canon_is_shown_that_canons_neck
     assert kept_beads[RUTH_IN_THE_SECOND_SCENE] == KEPT_RUTH_LABEL
     assert "scene:S1" in fresh_beads, "a equipe aberta depois da troca deixou de ler o canon novo"
     assert fresh_beads[RUTH_IN_THE_SECOND_SCENE] == "Ruth"
+
+
+async def test_a_team_whose_session_kept_the_old_canon_is_shown_that_canons_reference(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (kept_team, fresh_team) = await _a_desk_over_two_teams(db_session)
+    await open_ir_session(db_session, pericope=FIRST, project_id=kept_team.id)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p01_is_titled_its_own_way)
+    await open_ir_session(db_session, pericope=FIRST, project_id=fresh_team.id)
+
+    async with desk_routes(db_session) as at_desk:
+        fresh = await at_desk.get(f"/api/facilitator/teams/{fresh_team.id}", headers=desk)
+        kept = await at_desk.get(f"/api/facilitator/teams/{kept_team.id}", headers=desk)
+
+    assert kept.status_code == 200 and fresh.status_code == 200, kept.text[:300]
+    assert kept.json()["active_passage"] == {
+        "pericope": FIRST,
+        "reference": KEPT_FIRST_REFERENCE,
+    }, "a página da equipe nomeou a passagem pelo canon novo"
+    assert fresh.json()["active_passage"]["reference"] == SERVED_FIRST_REFERENCE
