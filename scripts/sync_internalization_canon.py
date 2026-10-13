@@ -344,6 +344,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.pin and not args.sync:
         parser.error("--pin needs --sync")
+    if args.keep and not args.sync:
+        parser.error("--keep needs --sync")
     if args.pin and not SHA_RE.fullmatch(args.pin):
         parser.error("--pin needs a full 40-character sha, not a ref")
     if not all(SHA_RE.fullmatch(keep) for keep in args.keep):

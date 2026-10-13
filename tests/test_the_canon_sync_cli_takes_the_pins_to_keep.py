@@ -45,3 +45,13 @@ def test_a_pin_to_keep_that_is_not_a_whole_sha_is_rejected(
         canon.main()
 
     assert excinfo.value.code != 0
+
+
+def test_a_pin_to_keep_without_sync_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["sync_internalization_canon.py", "--check", "--keep", OLDER])
+    monkeypatch.setattr(canon, "check", lambda: pytest.fail("check() ran with an ignored --keep"))
+
+    with pytest.raises(SystemExit) as excinfo:
+        canon.main()
+
+    assert excinfo.value.code != 0
