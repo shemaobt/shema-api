@@ -1,4 +1,4 @@
-"""A scene rehearsal's restarts, and the restart that set each frase aside
+"""A scene rehearsal's restarts, the attempt each frase names, and the restart that set it aside
 
 Revision ID: 20261013_scene04
 Revises: 20261013_scene03
@@ -30,9 +30,11 @@ def upgrade() -> None:
     )
     op.create_index("ix_ir_scene_restarts_rehearsal_id", "ir_scene_restarts", ["rehearsal_id"])
     op.create_index("ix_ir_scene_restarts_session_id", "ir_scene_restarts", ["session_id"])
+    op.add_column("ir_scene_frases", sa.Column("attempt", sa.String(length=36), nullable=True))
     op.add_column("ir_scene_frases", sa.Column("restart_id", sa.String(length=36), nullable=True))
 
 
 def downgrade() -> None:
     op.drop_column("ir_scene_frases", "restart_id")
+    op.drop_column("ir_scene_frases", "attempt")
     op.drop_table("ir_scene_restarts")

@@ -110,7 +110,7 @@ async def test_the_restarts_table_and_the_frases_restart_come_and_go_with_their_
     down = run_alembic(url, "downgrade", FRASES_REVISION)
     assert down.returncode == 0, down.stderr
     assert "ir_scene_restarts" not in await tables_of(url)
-    assert "restart_id" not in await columns_of(url, "ir_scene_frases")
+    assert not {"attempt", "restart_id"} & await columns_of(url, "ir_scene_frases")
 
     up = run_alembic(url, "upgrade", RESTARTS_REVISION)
 
@@ -118,4 +118,4 @@ async def test_the_restarts_table_and_the_frases_restart_come_and_go_with_their_
     assert {"rehearsal_id", "session_id", "n", "restarted_at", "snapshot", "archive_id"} <= (
         await columns_of(url, "ir_scene_restarts")
     )
-    assert "restart_id" in await columns_of(url, "ir_scene_frases")
+    assert {"attempt", "restart_id"} <= await columns_of(url, "ir_scene_frases")

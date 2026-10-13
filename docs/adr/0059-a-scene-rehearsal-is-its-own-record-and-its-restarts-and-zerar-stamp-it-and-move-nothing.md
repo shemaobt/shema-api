@@ -19,11 +19,14 @@ Decided with the Definer on 2026-10-13:
 - A **Restart** is a numbered row with the record's snapshot, and the frases it sets aside
   carry its id. Zerar stamps the scene tables with its **Archive** like the five before them
   (ADR 0047). A frase that lands while its rehearsal is archived carries the same stamp.
-- A frase names the attempt it was recorded in: `after_restart`, the restart its attempt
-  follows, or none before the first. The tablet reads the current one off the rehearsal. A
-  frase from an attempt a later restart closed is kept, set aside by that restart, never
-  current. A restart and a frase landing take the rehearsal's row lock, so one always reads
-  the other, and the restart door replays its answer under the house's Idempotency-Key.
+- The tablet mints each restart's attempt id, a uuid, and sends it with the restart and with
+  every frase recorded after it; the first attempt names none. The server keeps it as the
+  restart's id, which makes the same restart sent twice the first one. A frase of an attempt
+  a later restart closed is kept, set aside by that restart, never current. A frase naming an
+  attempt whose restart has not landed yet is held, in no list, until that restart lands and
+  makes it current. A restart and a frase landing take the rehearsal's row lock, so one
+  always reads the other, and each takes the rehearsal's archive stamp if a Zerar got there
+  first.
 - The tablet's doors carry no words of the team and no classifier guess (ENG-1335). The
   frases' words, the restarts' snapshots and the guess are the reader door's, which reads a
   session its Zerar archived (ADR 0052).

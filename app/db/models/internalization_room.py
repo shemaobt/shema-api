@@ -506,6 +506,8 @@ class IRSceneFrase(Base):
     content_type: Mapped[str] = mapped_column(String(64))
     verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     transcript: Mapped[str] = mapped_column(Text)
+    #: The attempt the frase was recorded in: the restart it follows, or none before the first.
+    attempt: Mapped[str | None] = mapped_column(String(36), nullable=True)
     restart_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
