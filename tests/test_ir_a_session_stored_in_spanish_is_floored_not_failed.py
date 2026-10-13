@@ -19,19 +19,29 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import back_translation as back_translation_api
+from app.api.internalization_room import segments as segments_api
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRQuestion, IRSession
 from app.services.internalization_room import (
     back_translation_of,
     background,
     check_the_telling_back,
+    hearing,
+    questions,
+    takes,
     verdict_round,
 )
+from app.services.internalization_room.back_translation import segments_block
 from app.services.internalization_room.canon.labels import labelled_elements
+from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.part_names import Addresses
+from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
 from tests.device_harness import TABLET_TEAM
+from tests.hard_stretch_harness import AUDIO, DEVICE, MemoryStore
 from tests.hearing_harness import (
     nothing_settles,
     the_take_lasts,
@@ -40,8 +50,10 @@ from tests.hearing_harness import (
 )
 from tests.release_harness import PREFIX
 from tests.room_harness import (
+    PART_MS,
     heard_every_part,
     press_terminei,
+    record_the_part_again,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
     room_client,
@@ -409,4 +421,196 @@ async def test_a_miss_on_a_row_stored_in_spanish_is_kept_in_the_rooms_language(
     kept = (await get_session(db_session, session_id)).messages
     assert [message["text"] for message in kept if message["role"] == "guide"] == [line], (
         "a conversa guardava a fala de um toque perdido na língua do `es` guardado"
+    )
+
+
+def _the_hints_a_telling_back_was_heard_with(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    hints: list[str] = []
+
+    async def transcriber(*_: Any, language: str, **__: Any) -> str:
+        hints.append(language)
+        return PORTUGUESE
+
+    async def unread(**_: Any) -> None:
+        return None
+
+    bucket = MemoryStore()
+    monkeypatch.setattr(hearing, "transcribe_audio", transcriber)
+    monkeypatch.setattr(back_translation_api, "read_ahead", unread)
+    monkeypatch.setattr(segments_api, "read_ahead", unread)
+    monkeypatch.setattr(takes, "_store", lambda *_, **__: bucket)
+    return hints
+
+
+@pytest.mark.parametrize("floor", ["en", "pt"])
+async def test_a_telling_back_on_a_row_stored_in_spanish_is_transcribed_in_the_rooms_language(
+    db_session: AsyncSession, tablet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    hints = _the_hints_a_telling_back_was_heard_with(monkeypatch)
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    session.language = "es"
+    await db_session.commit()
+
+    told = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
+        headers={"X-Room-Device": DEVICE},
+        data={"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS), "retelling": "true"},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert told.status_code == 200, told.text
+    assert hints == [floor], (
+        "a explicação de uma sessão guardada em espanhol era transcrita como espanhol"
+    )
+
+
+@pytest.mark.parametrize("floor", ["en", "pt"])
+async def test_a_correction_on_a_row_stored_in_spanish_is_transcribed_in_the_rooms_language(
+    db_session: AsyncSession, tablet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    hints = _the_hints_a_telling_back_was_heard_with(monkeypatch)
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    session.language = "es"
+    await db_session.commit()
+    (stretch,) = await final_segments(db_session, session.id)
+
+    corrected = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace",
+        headers={"X-Room-Device": DEVICE},
+        data={"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert corrected.status_code == 200, corrected.text
+    assert hints == [floor], (
+        "a correção de uma sessão guardada em espanhol era transcrita como espanhol"
+    )
+
+
+@pytest.mark.parametrize("floor", ["en", "pt"])
+async def test_a_raised_hand_on_a_row_stored_in_spanish_is_transcribed_in_the_rooms_language(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    hints: list[str] = []
+
+    async def transcriber(audio: bytes, *, language: str, mime_type: str) -> str:
+        hints.append(language)
+        return "por que Noemi voltou sozinha?"
+
+    monkeypatch.setattr(questions, "transcribe_speech", transcriber)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await _a_row_stored_in_spanish(db_session, PASSAGE)
+    db_session.add(
+        IRQuestion(
+            id="pergunta-es",
+            device_id=DEVICE,
+            session_id=session.id,
+            pericope=PASSAGE,
+            audio_key="perguntas/pergunta-es.m4a",
+        )
+    )
+    await db_session.commit()
+
+    await background.transcribe_question(question_id="pergunta-es", audio=b"uma pergunta")
+
+    assert hints == [floor], (
+        "a pergunta de uma sessão guardada em espanhol era transcrita como espanhol"
+    )
+
+
+def test_a_miss_line_for_a_row_stored_in_spanish_is_the_floors_on_a_fleet_held_on_portuguese(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+
+    line, _ = choose(FailSafe.INAUDIBLE, "es")
+
+    assert line == "Desculpa, não consegui ouvir direito — podem repetir?", (
+        "a fala de um toque perdido caía no inglês fixo, não no piso da frota"
+    )
+
+
+async def test_an_untold_part_on_a_row_stored_in_spanish_is_named_in_the_portuguese_floor(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+    room = the_room_speaks(monkeypatch)
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    await record_the_part_again(db_session, session, part, sha256="d" * 64)
+    session.language = "es"
+    await db_session.commit()
+
+    async with room_client(db_session, monkeypatch) as door:
+        pressed = await press_terminei(door, session.id)
+
+    assert pressed.status_code == 200, pressed.text
+    assert room.said[-1] == (
+        "Ainda falta parte da passagem para vocês me traduzirem. "
+        "Vamos terminar isso primeiro, e depois eu confiro tudo junto."
+    ), "a voz portuguesa lia em inglês a parte que faltava traduzir"
+
+
+async def test_an_unheard_part_on_a_row_stored_in_spanish_is_named_in_the_portuguese_floor(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+    room = the_room_speaks(monkeypatch)
+    session, _ = await rehearsed_in_parts(db_session, 1)
+    session.language = "es"
+    await db_session.commit()
+
+    async with room_client(db_session, monkeypatch) as door:
+        pressed = await press_terminei(door, session.id)
+
+    assert pressed.status_code == 200, pressed.text
+    assert room.said[-1] == "Ainda falta ouvir um trecho da gravação antes de eu conferir.", (
+        "a voz portuguesa lia em inglês o trecho que faltava ouvir"
+    )
+
+
+def test_nothing_told_back_on_a_row_stored_in_spanish_reads_in_the_portuguese_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+
+    block = segments_block([], Addresses(), language_code="es")
+
+    assert block == "(a equipe ainda não traduziu nada)", (
+        "o vazio da retroverificação caía no inglês fixo, não no piso da frota"
+    )
+
+
+def test_portuguese_heard_on_a_row_stored_in_spanish_is_the_teams_answer_on_a_portuguese_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+
+    heard = hearing.HeardSpeech(
+        text=PORTUGUESE, bridge_language="es", language_code="pt", language_probability=0.99
+    )
+
+    assert not heard.mother_tongue, (
+        "o português ouvido contra o `es` guardado era medido pela régua inglesa fixa"
+    )
+
+
+async def test_a_turn_on_a_row_stored_in_spanish_leaves_spanish_stored(
+    db_session: AsyncSession, tablet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.99)
+    session_id = (await _a_row_stored_in_spanish(db_session, PASSAGE)).id
+
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200, answered.text
+    db_session.expire_all()
+    assert (await get_session(db_session, session_id)).language == "es", (
+        "o turno gravava a língua da sala por cima do `es` guardado"
     )

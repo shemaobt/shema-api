@@ -17,7 +17,7 @@ from app.db.models.internalization_room import IRSegment, IRTake
 from app.models.internalization_room import PlayedTake
 from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
+from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, room_language
 from app.services.internalization_room.llm import analysis_ladder
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prompt_blocks import validator_map_block
@@ -453,7 +453,7 @@ def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) ->
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own
 #: language. Keyed by the language code, in the shape the other per-language tables use — an
-#: unclaimed language falls back to the authored English line.
+#: unclaimed language reads the line of the fleet's floor.
 _NOTHING_TOLD_BACK_YET: dict[str, str] = {
     "pt": "(a equipe ainda não traduziu nada)",
     "en": "(the team has not translated anything yet)",
@@ -473,7 +473,7 @@ def segments_block(
     are the team's own words, verbatim, in whatever language they spoke.
     """
     if not segments:
-        return _NOTHING_TOLD_BACK_YET.get(language_code, _NOTHING_TOLD_BACK_YET[FLOOR])
+        return _NOTHING_TOLD_BACK_YET[room_language(language_code)]
     lines = []
     for position, segment in enumerate(segments, start=1):
         label = [f"frase {position}", addresses.part_of(segment.id)]
