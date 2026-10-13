@@ -78,7 +78,7 @@ def _view(
         pericope=rehearsal.pericope,
         n=rehearsal.n,
         scene=rehearsal.scene,
-        scene_said=rehearsal.scene_said,
+        scene_said=rehearsal.scene_said.value if rehearsal.scene_said else None,
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
@@ -113,7 +113,7 @@ def _reader_view(
         pericope=rehearsal.pericope,
         n=rehearsal.n,
         scene=rehearsal.scene,
-        scene_said=rehearsal.scene_said,
+        scene_said=rehearsal.scene_said.value if rehearsal.scene_said else None,
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
@@ -137,8 +137,8 @@ def _reader_view(
 
 
 async def _the_record(db: AsyncSession, rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
-    frases = await scenes.frases_of(db, [rehearsal.id])
     restarts = await scenes.restarts_of(db, [rehearsal.id])
+    frases = await scenes.frases_of(db, restarts)
     return _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
 
 
@@ -189,8 +189,8 @@ async def list_scene_rehearsals(
     session = await _session(db, session_id, project_id)
     rehearsals = await scenes.scene_rehearsals_of_the_passage(db, session)
     ids = [rehearsal.id for rehearsal in rehearsals]
-    frases = await scenes.frases_of(db, ids)
     restarts = await scenes.restarts_of(db, ids)
+    frases = await scenes.frases_of(db, restarts)
     return SceneRehearsalsResponse(
         pericope=session.pericope,
         scene_rehearsals=[
@@ -292,8 +292,8 @@ async def facilitator_scene_rehearsals(
     session = await room.get_session_for_reader(db, user, session_id)
     rehearsals = await scenes.scene_rehearsals_of_the_session(db, session.id)
     ids = [rehearsal.id for rehearsal in rehearsals]
-    frases = await scenes.frases_of(db, ids)
     restarts = await scenes.restarts_of(db, ids)
+    frases = await scenes.frases_of(db, restarts)
     set_aside = await scenes.set_aside_frases(db, ids)
     held = await scenes.held_frases(db, ids)
     return ReaderSceneRehearsalsResponse(

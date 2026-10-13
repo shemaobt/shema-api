@@ -432,7 +432,7 @@ async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
         rehearsals = await scene_rehearsals_of_the_passage(db, owned.session)
         assert len(rehearsals) == 1, "um estranho gravou uma cena numa sessão de outro projeto"
     elif tag == "scene-frase":
-        frases = await frases_of(db, [owned.scene.id])
+        frases = await frases_of(db, await restarts_of(db, [owned.scene.id]))
         assert frases[owned.scene.id] == [], "um estranho traduziu a cena de outro projeto"
     elif tag == "scene-restart":
         restarts = await restarts_of(db, [owned.scene.id])

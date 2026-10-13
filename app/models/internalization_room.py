@@ -865,7 +865,7 @@ class SceneRehearsalFacts(BaseModel):
     pericope: str
     n: int
     scene: str | None = None
-    scene_said: str | None = None
+    scene_said: Literal["recording", "later"] | None = None
     duration_ms: int | None = None
     content_type: str
     verified: bool = False
