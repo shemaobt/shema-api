@@ -44,6 +44,7 @@ from app.services.internalization_room import questions as question_service
 from app.services.internalization_room.scene_rehearsals import (
     frases_of,
     keep_scene_rehearsal,
+    restarts_of,
     scene_rehearsals_of_the_passage,
 )
 from app.services.internalization_room.segments import capture_segment, final_segments
@@ -92,6 +93,7 @@ COVERED = {
     ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals"),
     ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/audio"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/restart"),
 }
 
 #: Routes that already resolve their session through the ownership rule, proved by a suite
@@ -288,6 +290,7 @@ def cases(owned: Owned) -> list[dict]:
             data={"starts_ms": "0", "ends_ms": "1000"},
             files={"file": ("frase.m4a", b"uma frase", "audio/mp4")},
         ),
+        _case("scene-restart", method="POST", path=f"/sessions/{s}/scene-rehearsals/{r}/restart"),
     ]
 
 
@@ -378,6 +381,7 @@ TAGS = [
     "list-scenes",
     "scene-audio",
     "scene-frase",
+    "scene-restart",
 ]
 
 
@@ -425,6 +429,9 @@ async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
     elif tag == "scene-frase":
         frases = await frases_of(db, [owned.scene.id])
         assert frases[owned.scene.id] == [], "um estranho traduziu a cena de outro projeto"
+    elif tag == "scene-restart":
+        restarts = await restarts_of(db, [owned.scene.id])
+        assert restarts[owned.scene.id] == [], "um estranho recomeçou a cena de outro projeto"
     elif tag == "needs-person":
         session = await get_session(db, owned.session.id)
         assert session.status is IRSessionStatus.IN_PROGRESS, (

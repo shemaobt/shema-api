@@ -19,6 +19,7 @@ from app.db.models.internalization_room import (
     IRRelease,
     IRSceneFrase,
     IRSceneRehearsal,
+    IRSceneRestart,
     IRSegment,
     IRSession,
     IRTake,
@@ -32,6 +33,7 @@ Stamped = (
     | type[IRRelease]
     | type[IRSceneRehearsal]
     | type[IRSceneFrase]
+    | type[IRSceneRestart]
 )
 
 

@@ -11,6 +11,7 @@ they assert.
 from __future__ import annotations
 
 import io
+import json
 import uuid
 import wave
 from collections.abc import Awaitable, Callable
@@ -575,3 +576,169 @@ async def test_no_statement_of_a_session_read_or_create_names_the_unread_kept_ta
 
     assert any("ir_sessions" in statement for statement in said)
     assert [statement for statement in said if "kept_takes" in statement] == []
+
+
+async def restart(
+    room: Room, session_id: str, rehearsal_id: str, *, key: str | None = None
+) -> httpx.Response:
+    return await room.client.post(
+        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart",
+        headers={} if key is None else {"Idempotency-Key": key},
+    )
+
+
+async def restarted(room: Room, session_id: str, rehearsal_id: str) -> str:
+    answered = await restart(room, session_id, rehearsal_id)
+    assert answered.status_code == 200, answered.text
+    return str(answered.json()["after_restart"])
+
+
+async def translate_after(
+    room: Room,
+    session_id: str,
+    rehearsal_id: str,
+    place: tuple[int, int],
+    audio: bytes,
+    after_restart: str,
+) -> httpx.Response:
+    starts, ends = place
+    return await room.client.post(
+        f"{IR}/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
+        data={"starts_ms": str(starts), "ends_ms": str(ends), "after_restart": after_restart},
+        files={"file": ("frase.wav", audio, "audio/wav")},
+    )
+
+
+async def snapshots(db: AsyncSession, rehearsal_id: str) -> list[dict[str, Any]]:
+    found = await db.execute(
+        text("SELECT snapshot FROM ir_scene_restarts WHERE rehearsal_id = :r ORDER BY n"),
+        {"r": rehearsal_id},
+    )
+    return [json.loads(row) if isinstance(row, str) else row for row in found.scalars()]
+
+
+async def test_recomecar_after_two_frases_archives_them_with_the_record_as_it_was(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    two = await translated(room, session_id, rehearsal_id, [(0, 5000), (5000, 11000)])
+
+    answered = await restart(room, session_id, rehearsal_id)
+
+    assert answered.status_code == 200, answered.text
+    (rehearsal,) = await read_by_b(room, session_id)
+    assert rehearsal["frases"] == []
+    assert rehearsal["after_restart"] == answered.json()["after_restart"]
+    assert (rehearsal["rehearsal_id"], rehearsal["n"]) == (rehearsal_id, 1)
+    assert abs(rehearsal["duration_ms"] - 40_000) <= 50
+    (snapshot,) = await snapshots(db_session, rehearsal_id)
+    assert [f["frase_id"] for f in snapshot["frases"]] == two
+    assert await count(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == 2
+    kept = list(room.bucket.objects.values())
+    assert recording(1, 100) in kept and recording(1, 101) in kept
+    assert SCENE in kept
+
+
+async def test_the_same_restart_sent_twice_is_one_restart(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    await translated(room, session_id, rehearsal_id, [(0, 5000)])
+    first = await restart(room, session_id, rehearsal_id, key="recomecar-1")
+    assert first.status_code == 200, first.text
+    after = first.json()["after_restart"]
+    kept = await translate_after(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 800), after
+    )
+    assert kept.status_code == 200, kept.text
+
+    again = await restart(room, session_id, rehearsal_id, key="recomecar-1")
+
+    assert again.status_code == 200, again.text
+    assert again.json()["after_restart"] == after
+    assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 1
+    assert current(await frases_read_by_b(room, session_id)) == [(0, 4000)]
+
+
+async def test_a_frase_recorded_before_a_restart_and_sent_after_it_is_set_aside(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    await translated(room, session_id, rehearsal_id, [(0, 5000)])
+    after = await restarted(room, session_id, rehearsal_id)
+
+    late = await translate(room, session_id, rehearsal_id, (5000, 11000), recording(1, 600))
+    fresh = await translate_after(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 601), after
+    )
+
+    assert late.status_code == 200, late.text
+    assert fresh.status_code == 200, fresh.text
+    assert current(await frases_read_by_b(room, session_id)) == [(0, 4000)]
+    assert await count(db_session, "ir_scene_frases", "restart_id", after) == 2
+
+
+async def test_a_frase_heard_while_the_translation_restarts_is_set_aside_with_the_ones_before_it(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    await translated(room, session_id, rehearsal_id, [(0, 5000)])
+
+    async def recomeca() -> None:
+        await restarted(room, session_id, rehearsal_id)
+
+    room.while_hearing.append(recomeca)
+    late = await translate(room, session_id, rehearsal_id, (5000, 11000), recording(1, 700))
+
+    assert late.status_code == 200, late.text
+    assert await frases_read_by_b(room, session_id) == []
+    assert await count(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == 2
+
+
+async def test_a_frase_naming_a_restart_the_rehearsal_never_had_is_refused(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+
+    refused = await translate_after(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), str(uuid.uuid4())
+    )
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "UNKNOWN_REFERENCE"
+    assert await frases_read_by_b(room, session_id) == []
+
+
+async def test_a_sent_rehearsal_takes_no_restart(room: Room, db_session: AsyncSession) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    await write(db_session, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+
+    refused = await restart(room, session_id, rehearsal_id)
+
+    assert refused.status_code == 409, refused.text
+    assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 0
+
+
+async def test_a_zerar_stamps_the_scene_rehearsals_restarts(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    await translated(room, session_id, rehearsal_id, [(0, 5000), (5000, 11000)])
+    await restarted(room, session_id, rehearsal_id)
+
+    archive_id = await zerar(room)
+
+    assert await stamps(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == [
+        archive_id
+    ]
+    assert await stamps(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == [
+        archive_id,
+        archive_id,
+    ]

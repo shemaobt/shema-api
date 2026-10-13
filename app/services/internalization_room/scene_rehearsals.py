@@ -1,8 +1,8 @@
 """The **Scene rehearsal**: a scene recorded whole in the mother tongue, and its frases.
 
 The recording is stored as sent and never heard by the recognizer or the voice; only its
-**Scene frases** are, in the session's bridge language. Nothing here is ever deleted
-(ADR 0059).
+**Scene frases** are, in the session's bridge language. A **Restart** stamps the frases it sets
+aside and keeps a copy of the record as it was. Nothing here is ever deleted (ADR 0059).
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -23,9 +23,11 @@ from app.core.exceptions import (
 from app.db.models.internalization_room import (
     IRSceneFrase,
     IRSceneRehearsal,
+    IRSceneRestart,
     IRSceneSaid,
     IRSession,
 )
+from app.models.internalization_room import SceneRestartSnapshot, SceneSnapshotFrase
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import room_language
@@ -135,12 +137,18 @@ async def scene_rehearsal_in_session(
 
 
 async def frases_of(
-    db: AsyncSession, rehearsal_ids: Sequence[str]
+    db: AsyncSession, rehearsal_ids: Sequence[str], *, set_aside_by: str | None = None
 ) -> dict[str, list[IRSceneFrase]]:
-    """Each rehearsal's frases, replaced ones included, in place order."""
+    """Each rehearsal's frases since its last restart, or those `set_aside_by` one, replaced
+    ones included, in place order."""
     found = await db.scalars(
         select(IRSceneFrase)
-        .where(IRSceneFrase.rehearsal_id.in_(rehearsal_ids))
+        .where(
+            IRSceneFrase.rehearsal_id.in_(rehearsal_ids),
+            IRSceneFrase.restart_id.is_(None)
+            if set_aside_by is None
+            else IRSceneFrase.restart_id == set_aside_by,
+        )
         .order_by(IRSceneFrase.starts_ms, IRSceneFrase.created_at)
     )
     frases: dict[str, list[IRSceneFrase]] = {rehearsal_id: [] for rehearsal_id in rehearsal_ids}
@@ -151,6 +159,35 @@ async def frases_of(
 
 def replaced_by(frases: Sequence[IRSceneFrase]) -> dict[str, str]:
     return {frase.replaces_id: frase.id for frase in frases if frase.replaces_id is not None}
+
+
+async def restarts_of(
+    db: AsyncSession, rehearsal_ids: Sequence[str]
+) -> dict[str, list[IRSceneRestart]]:
+    found = await db.scalars(
+        select(IRSceneRestart)
+        .where(IRSceneRestart.rehearsal_id.in_(rehearsal_ids))
+        .order_by(IRSceneRestart.n)
+    )
+    restarts: dict[str, list[IRSceneRestart]] = {rehearsal_id: [] for rehearsal_id in rehearsal_ids}
+    for restart in found:
+        restarts[restart.rehearsal_id].append(restart)
+    return restarts
+
+
+def _closing(restarts: Sequence[IRSceneRestart], after_restart: str | None) -> str | None:
+    """The restart that closed the attempt a frase was recorded in, or ``None`` while it is open.
+
+    A frase names the restart its attempt follows. Sent after the next restart had landed, it
+    belongs to the attempt that restart set aside, and is set aside with it.
+    """
+    attempt = 0
+    if after_restart is not None:
+        ids = [restart.id for restart in restarts]
+        if after_restart not in ids:
+            raise UnknownReferenceError(f"Restart {after_restart} is not one of this scene's")
+        attempt = ids.index(after_restart) + 1
+    return restarts[attempt].id if attempt < len(restarts) else None
 
 
 def _refuse_a_sent(rehearsal: IRSceneRehearsal) -> None:
@@ -168,15 +205,15 @@ def _refuse_a_place_outside(rehearsal: IRSceneRehearsal, starts_ms: int, ends_ms
 
 
 async def _current_of_the_chain(
-    db: AsyncSession, rehearsal: IRSceneRehearsal, replaces: str
+    db: AsyncSession, rehearsal: IRSceneRehearsal, replaces: str, set_aside_by: str | None
 ) -> str:
     """The current frase of the chain `replaces` belongs to, whichever version it names.
 
     A team that records one frase again offline, and again, can only name the version it had.
     """
-    frases = (await frases_of(db, [rehearsal.id]))[rehearsal.id]
+    frases = (await frases_of(db, [rehearsal.id], set_aside_by=set_aside_by))[rehearsal.id]
     if replaces not in {frase.id for frase in frases}:
-        raise UnknownReferenceError(f"Scene frase {replaces} is not a frase of this scene")
+        raise UnknownReferenceError(f"Scene frase {replaces} is not a frase of this attempt")
     replacing = replaced_by(frases)
     current = replaces
     while current in replacing:
@@ -203,6 +240,7 @@ async def keep_a_frase(
     starts_ms: int,
     ends_ms: int,
     replaces: str | None,
+    after_restart: str | None,
     audio: bytes,
     content_type: str,
     filename: str | None,
@@ -212,8 +250,9 @@ async def keep_a_frase(
 
     The bytes are stored before they are heard, so a frase with no words keeps its audio and
     is refused as `WordlessTelling`, becoming no frase. Hearing takes seconds, so what it lands
-    on is read again under the rehearsal's lock: a rehearsal sent meanwhile refuses the frase,
-    one archived meanwhile stamps it, and a frase replaced meanwhile is replaced at its newest.
+    on is read again under the rehearsal's lock, which a restart takes too: a rehearsal sent
+    meanwhile refuses the frase, one archived meanwhile stamps it, one restarted meanwhile sets
+    it aside, and a frase replaced meanwhile is replaced at its newest.
     """
     sha256 = recording_digest(audio)
     already = await db.scalar(
@@ -225,8 +264,9 @@ async def keep_a_frase(
         return already
     _refuse_a_sent(rehearsal)
     _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
+    set_aside_by = _closing((await restarts_of(db, [rehearsal.id]))[rehearsal.id], after_restart)
     if replaces is not None:
-        await _current_of_the_chain(db, rehearsal, replaces)
+        await _current_of_the_chain(db, rehearsal, replaces, set_aside_by)
     await db.commit()
 
     folder = f"{_prefix(session.id, rehearsal.sha256)}/frases/{sha256}"
@@ -244,6 +284,12 @@ async def keep_a_frase(
         raise WordlessTelling()
     rehearsal = await _locked(db, rehearsal.id)
     _refuse_a_sent(rehearsal)
+    set_aside_by = _closing((await restarts_of(db, [rehearsal.id]))[rehearsal.id], after_restart)
+    chain_head = (
+        None
+        if replaces is None
+        else await _current_of_the_chain(db, rehearsal, replaces, set_aside_by)
+    )
 
     frase = IRSceneFrase(
         id=str(uuid.uuid4()),
@@ -251,10 +297,9 @@ async def keep_a_frase(
         session_id=session.id,
         starts_ms=starts_ms,
         ends_ms=ends_ms,
-        replaces_id=None
-        if replaces is None
-        else await _current_of_the_chain(db, rehearsal, replaces),
+        replaces_id=chain_head,
         transcript=text,
+        restart_id=set_aside_by,
         storage_key=stored.storage_key,
         size_bytes=stored.size_bytes,
         sha256=stored.sha256,
@@ -266,3 +311,50 @@ async def keep_a_frase(
     db.add(frase)
     await db.commit()
     return frase
+
+
+async def restart_the_scene_translation(
+    db: AsyncSession, rehearsal: IRSceneRehearsal
+) -> IRSceneRestart:
+    """«recomeçar a tradução»: a numbered restart with the record as it was, its frases stamped.
+
+    Taken under the rehearsal's lock, as a frase lands: a frase either lands before it and is
+    set aside by it, or after it and reads it.
+    """
+    rehearsal = await _locked(db, rehearsal.id)
+    _refuse_a_sent(rehearsal)
+    frases = (await frases_of(db, [rehearsal.id]))[rehearsal.id]
+    done = (await restarts_of(db, [rehearsal.id]))[rehearsal.id]
+    restart = IRSceneRestart(
+        id=str(uuid.uuid4()),
+        rehearsal_id=rehearsal.id,
+        session_id=rehearsal.session_id,
+        n=len(done) + 1,
+        snapshot=SceneRestartSnapshot(
+            n=rehearsal.n,
+            scene=rehearsal.scene,
+            scene_said=rehearsal.scene_said,
+            scene_guess=rehearsal.scene_guess,
+            duration_ms=rehearsal.duration_ms,
+            sha256=rehearsal.sha256,
+            frases=[
+                SceneSnapshotFrase(
+                    frase_id=frase.id,
+                    starts_ms=frase.starts_ms,
+                    ends_ms=frase.ends_ms,
+                    replaces=frase.replaces_id,
+                    transcript=frase.transcript,
+                )
+                for frase in frases
+            ],
+        ).model_dump(),
+    )
+    db.add(restart)
+    await db.execute(
+        update(IRSceneFrase)
+        .where(IRSceneFrase.id.in_([frase.id for frase in frases]))
+        .values(restart_id=restart.id)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    return restart

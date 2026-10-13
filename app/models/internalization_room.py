@@ -873,12 +873,35 @@ class SceneRehearsalView(BaseModel):
     verified: bool = False
     recorded_at: str = ""
     sent_at: str | None = None
+    #: The **Restart** the current frases follow, which a frase names to say it belongs to
+    #: this attempt; null before the first restart.
+    after_restart: str | None = None
     frases: list[SceneFraseView]
 
 
 class SceneRehearsalsResponse(BaseModel):
     pericope: str
     scene_rehearsals: list[SceneRehearsalView]
+
+
+class SceneSnapshotFrase(BaseModel):
+    frase_id: str
+    starts_ms: int
+    ends_ms: int
+    replaces: str | None
+    transcript: str
+
+
+class SceneRestartSnapshot(BaseModel):
+    """The scene rehearsal as it stood when its translation restarted."""
+
+    n: int
+    scene: str | None
+    scene_said: str | None
+    scene_guess: str | None
+    duration_ms: int | None
+    sha256: str
+    frases: list[SceneSnapshotFrase]
 
 
 class ReleaseResponse(BaseModel):
