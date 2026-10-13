@@ -6,6 +6,7 @@ takes no such read: it keeps the pins it is told to keep and drops every other k
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -101,3 +102,48 @@ def test_a_sync_says_which_kept_trees_it_dropped_and_which_it_kept_before_its_pi
         "  dropped kept/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     ], "the sync dropped kept canons without a word"
     assert said[-1] == "pinned at 5b5c8d2b3ae7632279c07017224f861ae369b0d7"
+
+
+def test_a_sync_with_nothing_new_published_drops_no_kept_tree(
+    a_canon_pinned_beside_two_kept_trees: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    canon_dir = a_canon_pinned_beside_two_kept_trees
+
+    assert canon.sync() == 0
+
+    assert capsys.readouterr().out.splitlines()[-1] == "UP_TO_DATE"
+    assert sorted(path.name for path in (canon_dir / "kept").iterdir()) == [OLDER, OLDEST], (
+        "a sync that changed nothing dropped the canon open sessions read"
+    )
+
+
+def _off_the_main_line(compiler: Compiler) -> None:
+    compiler.relation = None
+
+
+def _with_nothing_consumable(compiler: Compiler) -> None:
+    compiler.files.clear()
+
+
+def _with_a_names_list_pins_json_does_not_record(compiler: Compiler) -> None:
+    compiler.fingerprints["ruth"] = "0" * 64
+
+
+@pytest.mark.parametrize(
+    "refused",
+    [_off_the_main_line, _with_nothing_consumable, _with_a_names_list_pins_json_does_not_record],
+)
+def test_a_refused_sync_drops_no_kept_tree(
+    a_compiler_pinned_beside_its_labels: Compiler,
+    a_canon_pinned_beside_two_kept_trees: Path,
+    refused: Callable[[Compiler], None],
+) -> None:
+    a_compiler_pinned_beside_its_labels.sha = NEXT
+    refused(a_compiler_pinned_beside_its_labels)
+
+    assert canon.sync(pin=NEXT) == 1
+
+    kept = a_canon_pinned_beside_two_kept_trees / "kept"
+    assert sorted(path.name for path in kept.iterdir()) == [OLDER, OLDEST], (
+        "a refused sync dropped the canon open sessions read"
+    )
