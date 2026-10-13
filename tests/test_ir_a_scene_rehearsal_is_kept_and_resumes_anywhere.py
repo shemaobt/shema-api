@@ -1089,3 +1089,24 @@ async def test_one_read_of_a_rehearsal_reads_its_restarts_once(
         event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
 
     assert len([s for s in said if "FROM ir_scene_restarts" in s]) == 1
+
+
+async def test_one_read_at_the_desk_reads_the_restarts_once(
+    room: Room, db_session: AsyncSession, test_engine
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    attempt = await restarted(room, session_id, rehearsal_id)
+    await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt)
+    said: list[str] = []
+
+    def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+        said.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
+    try:
+        await read_by_the_reader(room, session_id)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
+
+    assert len([s for s in said if "FROM ir_scene_restarts" in s]) == 1

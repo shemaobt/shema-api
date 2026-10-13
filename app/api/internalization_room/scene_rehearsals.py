@@ -295,7 +295,7 @@ async def facilitator_scene_rehearsals(
     restarts = await scenes.restarts_of(db, ids)
     frases = await scenes.frases_of(db, restarts)
     set_aside = await scenes.set_aside_frases(db, ids)
-    held = await scenes.held_frases(db, ids)
+    held = await scenes.held_frases(db, restarts)
     return ReaderSceneRehearsalsResponse(
         session_id=session.id,
         scene_rehearsals=[

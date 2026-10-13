@@ -232,12 +232,13 @@ async def set_aside_frases(
 
 
 async def held_frases(
-    db: AsyncSession, rehearsal_ids: Sequence[str]
+    db: AsyncSession, restarts: dict[str, list[IRSceneRestart]]
 ) -> dict[str, dict[str, list[IRSceneFrase]]]:
-    """By rehearsal and by attempt, the frases naming an attempt whose restart never landed."""
+    """By rehearsal and by attempt, the frases naming an attempt whose restart never landed,
+    measured against the restarts the caller already read."""
+    rehearsal_ids = list(restarts)
     landed = {
-        rehearsal_id: {restart.id for restart in restarts}
-        for rehearsal_id, restarts in (await restarts_of(db, rehearsal_ids)).items()
+        rehearsal_id: {restart.id for restart in done} for rehearsal_id, done in restarts.items()
     }
     found = await db.scalars(
         select(IRSceneFrase)
