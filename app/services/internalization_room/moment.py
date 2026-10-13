@@ -357,6 +357,8 @@ def moment_fact(messages: list[dict[str, Any]], pericope_num: str) -> str:
     if moment is None:
         return ""
     parts = len(scene_ids_for(pericope_num))
+    if moment.part is not None and not 1 <= moment.part <= parts:
+        return ""
     if moment.at == "internalization":
         return f"MOMENT: Internalization of part {moment.part} of {parts} {_DASH} the part is open."
     if moment.at == "articulation":
