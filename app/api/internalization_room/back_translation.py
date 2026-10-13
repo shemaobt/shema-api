@@ -400,26 +400,22 @@ async def _finished(
             findings_remaining=0,
         )
 
-    if (
-        state.already_analysed(told)
-        and state.verdict is not None
-        and not state.verdict.used_fail_safe
-        and not state.its_named_nuance_was_heard
-    ):
+    stored = state.the_verdict_to_serve(told)
+    if stored is not None:
         finding = room.the_finding_that_leads(state)
         with stage("db_let_go"):
             await db.commit()
-        clip = await room.the_stored_verdicts_clip(session, state.verdict)
+        clip = await room.the_stored_verdicts_clip(session, stored)
         return BackTranslationVerdictResponse(
             session_id=session.id,
             audio_url=clip_url(clip) if clip else "",
-            fixed_line=state.verdict.fixed_line,
+            fixed_line=stored.fixed_line,
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
             findings=finding_views(state.findings),
             findings_remaining=room.findings_remaining(state.findings),
-            used_fail_safe=state.verdict.used_fail_safe,
+            used_fail_safe=stored.used_fail_safe,
             check_at=state.checks[-1].at if state.checks else None,
             named_nuance=named_nuance_view(state),
         )

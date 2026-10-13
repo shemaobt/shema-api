@@ -57,8 +57,10 @@ NAMES_FRASE_3 = (
 class Analyst:
     def __init__(self) -> None:
         self.readings: list[dict[str, Any]] = []
+        self.read = 0
 
     async def __call__(self, **_: Any) -> str:
+        self.read += 1
         return json.dumps(self.readings.pop(0) if self.readings else {"findings": []})
 
 
@@ -320,3 +322,36 @@ async def test_the_round_reports_the_nuance_it_named_and_never_one_said_before(
 
     assert _reported(first) == [("nuance", 3, "«à noite» — foi naquela mesma noite")]
     assert _reported(second) == [], "a nuance já dita voltava na lista da rodada seguinte"
+
+
+async def test_a_round_with_nothing_new_after_a_heard_nuance_is_a_new_round_on_the_same_reading(
+    client, analyst, speaker, db_session
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}]
+    speaker.line = NAMES_FRASE_3
+    first = await _a_round(client, TELLING)
+    speaker.line = CLEAN
+
+    again = await _a_round(client, [], session_id=first["sessionId"])
+
+    assert analyst.read == 1, "uma rodada sem nada novo pedia outra leitura ao Analista"
+    assert (again["spoken"], again["conferida"], again["findings"]) == (CLEAN, True, []), (
+        "o roteiro dela apertava terminei de novo e a costura recusava a rodada"
+    )
+    kept = await _the_kept_rounds(db_session, first["sessionId"])
+    assert [[one.voiced for one in check.nuances] for check in kept] == [["now"], ["before"]]
+
+
+async def test_a_round_with_nothing_new_after_a_clean_round_is_served_the_verdict_already_reached(
+    client, analyst, speaker, db_session
+) -> None:
+    first = await _a_round(client, TELLING)
+    speaker.line = "outra coisa"
+
+    again = await _a_round(client, [], session_id=first["sessionId"])
+
+    assert (again["spoken"], again["conferida"]) == (CLEAN, True), (
+        "a costura falava de novo onde terminei serve o veredito já dado"
+    )
+    assert len(speaker.drafts) == 1
+    assert len(await _the_kept_rounds(db_session, first["sessionId"])) == 1

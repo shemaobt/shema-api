@@ -77,6 +77,27 @@ def _the_round_findings(current: list[Finding], all_of_them: list[Finding]) -> l
     return [*current, *(one for one in all_of_them if id(one) not in voiced)]
 
 
+def _reported(current: list[Finding], state: BackTranslationState) -> list[RoundFinding]:
+    return [
+        RoundFinding(
+            kind=finding.kind.value,
+            note=finding.note,
+            frase=finding.chunk,
+            stretchId=finding.segment_id,
+        )
+        for finding in _the_round_findings(current, state.findings)
+    ] + [
+        RoundFinding(
+            kind="nuance",
+            note=f"«{one.quote}» — {one.story}",
+            frase=one.chunk,
+            stretchId=one.segment_id,
+        )
+        for one in state.checks[-1].nuances
+        if one.voiced != "before"
+    ]
+
+
 @router.post(
     "/text-seam/back-translation/session",
     response_model=DeclaredBackTranslationSessionResponse,
@@ -145,20 +166,24 @@ async def play_a_round(
 
     The verdict is the one `terminei` reaches, from the Analyst's reading to the Speaker's
     words, and it is voiced as text: the seam synthesizes nothing, so the clip key it records
-    is empty and only the words are kept. What it does not carry are four of the answers
-    `terminei` gives before that point — the untold-stretch halt, the untold-part halt, the
-    unheard-part halt and the cached verdict of a second press — because they are about a
-    tablet and a team. The unheard part is the one it could never meet anyway: the session
-    declares every clip listened to through before round one.
+    is empty and only the words are kept. What it does not carry are three of the answers
+    `terminei` gives before that point — the untold-stretch halt, the untold-part halt and the
+    unheard-part halt — because they are about a tablet and a team. The unheard part is the one
+    it could never meet anyway: the session declares every clip listened to through before
+    round one.
 
-    A round with no frases is refused here instead: read as a telling-back, it would ask the
-    analyst to compare nothing against the map, get no findings back, and report a golden
-    round as `conferida` that nobody ever told. So is a round with any frase that has no words
+    A round with no frases after a reading is a press with nothing new, which is how her
+    scripts press again (P02-nuance-esta-noite round 2, P02-nuance-espera round 3): it is
+    served the verdict already reached, or is a new round on the same reading, by the rule
+    `terminei` applies to a second press. A round with no frases before any reading is refused
+    instead: read as a telling-back, it would ask the analyst to compare nothing against the
+    map, get no findings back, and report a golden round as `conferida` that nobody ever told.
+    So is a round with any frase that has no words
     in it: 422 `WORDLESS_TELLING` naming the frases, before anything is captured.
     """
-    if not payload.frases:
-        raise ValidationError("a round with no frases is not a round")
     session = await room.get_session(db, payload.sessionId)
+    if not payload.frases and room.back_translation_of(session).never_analysed:
+        raise ValidationError("a round with no frases is not a round")
     refuse_a_panorama(session.pericope)
     words = [spoken_words_only(frase.text) for frase in payload.frases]
     wordless = [number for number, said in enumerate(words, start=1) if not said]
@@ -176,6 +201,18 @@ async def play_a_round(
         told = room.told_back(await room.final_segments(db, session.id))
         takes = await takes_of(db, session.id)
         await db.commit()
+        if state.the_verdict_to_serve(told) is not None:
+            return TextRoundResponse(
+                sessionId=session.id,
+                findings=_reported(room.current_findings(state), state),
+                spoken=state.checks[-1].spoken,
+                outcome=state.checks[-1].outcome,
+                conferida=state.checked,
+                findingsRemaining=room.findings_remaining(state.findings),
+                missingWithoutFrase=0,
+                usage=calls,
+                roundMs=round((time.monotonic() - started) * 1000),
+            )
         with reading_the_canon_of(session.canon_pin):
             verdict = await room.check_the_telling_back(
                 session,
@@ -197,25 +234,7 @@ async def play_a_round(
 
     return TextRoundResponse(
         sessionId=session.id,
-        findings=[
-            RoundFinding(
-                kind=finding.kind.value,
-                note=finding.note,
-                frase=finding.chunk,
-                stretchId=finding.segment_id,
-            )
-            for finding in _the_round_findings(verdict.current, state.findings)
-        ]
-        + [
-            RoundFinding(
-                kind="nuance",
-                note=f"«{one.quote}» — {one.story}",
-                frase=one.chunk,
-                stretchId=one.segment_id,
-            )
-            for one in state.checks[-1].nuances
-            if one.voiced != "before"
-        ],
+        findings=_reported(verdict.current, state),
         spoken=verdict.said,
         outcome=room.outcome_tag(verdict.outcome),
         conferida=verdict.checked,

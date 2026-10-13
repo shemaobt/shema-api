@@ -323,6 +323,16 @@ class BackTranslationState(BaseModel):
             return None
         return self.read_ahead
 
+    def the_verdict_to_serve(self, told: list[IRSegment]) -> VoicedVerdict | None:
+        if (
+            not self.already_analysed(told)
+            or self.verdict is None
+            or self.verdict.used_fail_safe
+            or self.its_named_nuance_was_heard
+        ):
+            return None
+        return self.verdict
+
     @property
     def its_named_nuance_was_heard(self) -> bool:
         last = self.checks[-1] if self.checks else None
