@@ -28,6 +28,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
 from app.services.internalization_room.entered import latest_entered_first
+from app.services.internalization_room.latest_by_passage import latest_releases
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import finished_passages, resolve, standing
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
@@ -44,9 +45,9 @@ async def read_facilitator_team(
     and one that is not the caller's are indistinguishable from here, which is what lets the
     route answer them with one refusal. Telling them apart is the enumeration ENG-443 closed.
 
-    Three statements and none of them grows: the team's row, the passages it has finished, and
-    the necklace of the passage it is standing on. The second serves both the active passage
-    and ``closed_total`` from one read rather than asking twice.
+    Four statements and none of them grows: the team's row, the passages it has finished, its
+    latest releases, and the necklace of the passage it is standing on. The second serves both
+    the active passage and ``closed_total`` from one read rather than asking twice.
 
     The necklace read was measured on a throwaway Postgres 17 with 210,000 events over 200
     teams, ``ANALYZE``d and not against an empty table: a **Bitmap Index Scan** on
@@ -66,7 +67,8 @@ async def read_facilitator_team(
     if row is None:
         return None
 
-    closed = sum(1 for entry in standing(finished) if entry.position is PericopePosition.CLOSED)
+    passages = standing(finished, releases=await latest_releases(db, team_id), findings={})
+    closed = sum(1 for entry in passages if entry.position is PericopePosition.CLOSED)
     active = None
     if here is not None:
         try:
@@ -90,6 +92,7 @@ async def read_facilitator_team(
         last_activity_at=row.last_activity_at,
         facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
+        approved_total=sum(1 for entry in passages if entry.approved),
         scene_the_team_is_in=await _scene_they_are_in(
             db, team_id=team_id, pericope=here, pin=row.canon_pin
         ),
