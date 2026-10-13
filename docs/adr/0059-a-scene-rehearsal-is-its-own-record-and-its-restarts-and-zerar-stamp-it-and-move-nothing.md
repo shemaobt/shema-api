@@ -12,15 +12,18 @@ Our room had nowhere to keep one, and the team must resume an unsent rehearsal f
 
 Decided with the Definer on 2026-10-13:
 
-- Tables of their own, starting with `ir_scene_rehearsals`. The recording is not a third take
-  kind in `ir_takes`: every reader of that table (the takes lists, the current parts, the
-  archive snapshot, the packet) would read it as a passage **Part**. The bytes still go
-  through the take store, content-addressed.
-- Zerar stamps the scene tables with its **Archive** like the five before them (ADR 0047).
+- Tables of their own, starting with `ir_scene_rehearsals` and `ir_scene_frases`. The recording
+  is not a third take kind in `ir_takes`: every reader of that table (the takes lists, the
+  current parts, the archive snapshot, the packet) would read it as a passage **Part**. The
+  bytes still go through the take store, content-addressed.
+- Zerar stamps the scene tables with its **Archive** like the five before them (ADR 0047). A
+  frase that lands while its rehearsal is archived carries the same stamp.
 - The tablet's doors carry no words of the team and no classifier guess (ENG-1335).
 - The tablet's list covers the whole passage across its live sessions and names each item's
   session and its `n`, numbered per session, so a new session sees the passage's live
-  rehearsals before any turn. A sent rehearsal stays listed and can still be heard.
+  rehearsals before any turn. A sent rehearsal refuses new frases with 409.
+- A frase may name any version of the frase it replaces: an offline tablet can only name the
+  version it had, so the server replaces that chain's current frase.
 - `ir_sessions.kept_takes`, written only as `{}` and read by nothing, is left out of the
   mapper and defaults to `{}`, so no statement names it. A later migration drops it once no
   revision still serving reads it: the deploy migrates before the new revision takes traffic.
