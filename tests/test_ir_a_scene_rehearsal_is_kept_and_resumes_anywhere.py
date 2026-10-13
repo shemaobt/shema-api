@@ -1005,3 +1005,23 @@ async def test_the_readers_held_frases_leave_the_list_as_their_restarts_land(
     (read,) = await read_by_the_reader(room, session_id)
     assert read["held"] == []
     assert [f["ends_ms"] for f in read["frases"]] == [6000]
+
+
+async def test_a_held_frase_stays_held_when_a_sibling_rehearsals_restart_of_that_attempt_lands(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    sibling_id = await recorded(room, session_id, recording(10, 2))
+    z = str(uuid.uuid4())
+    held = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), z)
+    assert held.status_code == 200, held.text
+
+    assert (await restart(room, session_id, sibling_id, z)).status_code == 200
+
+    mine = next(
+        r for r in await read_by_the_reader(room, session_id) if r["rehearsal_id"] == rehearsal_id
+    )
+    assert [(h["attempt"], [f["ends_ms"] for f in h["frases"]]) for h in mine["held"]] == [
+        (z, [4000])
+    ]
