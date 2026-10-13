@@ -21,7 +21,11 @@ Decided with the Definer on 2026-10-13:
   (ADR 0047). A frase that lands while its rehearsal is archived carries the same stamp.
 - The tablet mints each restart's attempt id, a uuid, and sends it with the restart and with
   every frase recorded after it; the first attempt names none. The server keeps it as the
-  restart's id, which makes the same restart sent twice the first one. A frase of an attempt
+  restart's id, which makes the same restart sent twice the first one. A restart also names
+  the attempt it closes, the rehearsal's `after_restart` when the tablet restarted, none for
+  the first; one closing an attempt that is not the current one is refused with 409, so the
+  outbox retries it after its predecessor lands and restarts never become current out of
+  order. A frase of an attempt
   a later restart closed is kept, set aside by that restart, never current. A frase naming an
   attempt whose restart has not landed yet is held, in no list, until that restart lands and
   makes it current. A restart and a frase landing take the rehearsal's row lock, so one
