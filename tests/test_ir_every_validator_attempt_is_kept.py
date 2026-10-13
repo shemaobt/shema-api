@@ -182,6 +182,43 @@ async def test_a_turn_that_ended_in_a_fail_safe_keeps_all_its_attempts(
     ]
 
 
+async def test_an_empty_redraft_after_a_send_back_stores_no_issues_on_the_fail_safe_record(
+    client, db_session: AsyncSession, the_room_hears
+) -> None:
+    the_room_hears(
+        ["Rute casou com Malom.", ""],
+        [_verdict("regenerate", [_issue("imported_knowledge", "Rute casou")])],
+    )
+    session = await _a_session(db_session)
+
+    kept = await _a_turn(client, db_session, session.id)
+
+    assert kept["outcome"] == "fail_safe"
+    assert kept["draft"] == ""
+    assert kept["issues"] == [], "the record kept the issues of a draft that was not the last"
+
+
+async def test_an_empty_redraft_after_a_send_back_leaves_each_attempt_its_own_issues(
+    client, db_session: AsyncSession, the_room_hears
+) -> None:
+    issue = _issue("imported_knowledge", "Rute casou")
+    the_room_hears(["Rute casou com Malom.", ""], [_verdict("regenerate", [issue])])
+    session = await _a_session(db_session)
+
+    kept = await _a_turn(client, db_session, session.id)
+
+    assert kept["attempts"] == [
+        {
+            "attempt": 1,
+            "draft": "Rute casou com Malom.",
+            "verdict": "regenerate",
+            "issues": [issue],
+        },
+        {"attempt": 2, "draft": "", "issues": [], "note": ANY},
+    ]
+    assert kept["attempts"][1]["note"].strip()
+
+
 async def test_an_attempt_whose_validator_reply_could_not_be_read_keeps_its_draft_and_attempt_note(
     client, db_session: AsyncSession, the_room_hears
 ) -> None:
