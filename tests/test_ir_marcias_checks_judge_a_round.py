@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import Any
 
 from scripts.bt_golden_checks import check_round
+from scripts.bt_golden_runner import load_script
+from scripts.sync_doctrine import REPO_ROOT
 
 #: A turn that passes every unconditional check of hers: it says `vocês`, says `tradu`,
 #: addresses nobody in the singular, names one frase, carries no banned verb, no `o mapa`
@@ -311,3 +313,68 @@ def test_her_approved_wording_for_a_whole_sentence_meets_the_key() -> None:
     assert check_round(_acrescimo(ASKS_THE_WHOLE_SENTENCE), ACRESCIMO_ROUND_ONE) == [], (
         "a frase aprovada pela Marcia em 2026-09-21 é a que o script dela espera"
     )
+
+
+def test_a_voice_that_sends_the_team_to_a_part_or_a_scene_fails_even_beside_the_whole_ask() -> None:
+    part = _acrescimo(ASKS_THE_WHOLE_SENTENCE + " Ou gravem essa parte de novo.")
+    scene = _acrescimo(ASKS_THE_WHOLE_SENTENCE + " Ou regravem a cena.")
+
+    assert check_round(part, ACRESCIMO_ROUND_ONE) == [
+        "the voice sends the team to a PART on a recording that can take a sentence: "
+        '"gravem essa parte"'
+    ], "a gravação que aceita a frase inteira ainda mandava gravar um pedaço"
+    assert check_round(scene, ACRESCIMO_ROUND_ONE) == [
+        "the voice sends the team to a PART on a recording that can take a sentence: "
+        '"regravem a cena"'
+    ]
+
+
+def test_a_whole_ask_about_another_frase_is_not_the_whole_ask_for_this_one() -> None:
+    other = _acrescimo(
+        ASKS_THE_WHOLE_SENTENCE.replace(
+            "regravem a frase 2 inteira — a frase toda, nunca só um pedaço —",
+            "regravem a frase 3 inteira",
+        )
+    )
+
+    assert (
+        'the voice does not ask to record frase 2 again WHOLE ("regravem a frase 2 inteira" / '
+        '"essa frase inteira" / "a frase toda")'
+    ) in check_round(other, ACRESCIMO_ROUND_ONE), (
+        "pedir a frase 3 inteira não repara a frase 2 que o script plantou"
+    )
+
+
+def test_a_round_whose_script_does_not_carry_the_key_keeps_the_part_wording_it_always_had() -> None:
+    without_the_key = {
+        name: value
+        for name, value in ACRESCIMO_ROUND_ONE.items()
+        if name != "spoken_whole_sentence"
+    }
+    legacy = _acrescimo(
+        "Na frase 2 vocês traduziram que o homem vendeu a casa — isso a história não conta. "
+        "Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na frase "
+        "2 e traduzam de novo. Se está no áudio, gravem essa parte de novo — a parte 1."
+    )
+
+    assert check_round(legacy, without_the_key) == [], (
+        "os cinco scripts mais velhos, sem contentType, ainda mandam gravar a parte"
+    )
+
+
+def test_the_vendored_acrescimo_script_fails_a_voice_that_sends_the_team_to_a_part() -> None:
+    script = load_script(REPO_ROOT / "golden/bt/P01-regravar-frase-acrescimo.json")
+    expect = script.rounds[0].expect
+    legacy = _acrescimo(
+        "Na frase 2 vocês traduziram que o homem vendeu a casa — isso a história não conta. "
+        "Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na frase "
+        "2 e traduzam de novo. Se está no áudio, gravem essa parte de novo — a parte 1."
+    )
+
+    assert check_round(legacy, expect) == [
+        'the voice does not ask to record frase 2 again WHOLE ("regravem a frase 2 inteira" / '
+        '"essa frase inteira" / "a frase toda")',
+        "the voice sends the team to a PART on a recording that can take a sentence: "
+        '"gravem essa parte"',
+    ], "o script P01-regravar-frase-acrescimo esperava a frase inteira e ninguém conferia"
+    assert check_round(_acrescimo(ASKS_THE_WHOLE_SENTENCE), expect) == []

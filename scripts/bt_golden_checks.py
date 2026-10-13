@@ -45,6 +45,9 @@ _TRADU = re.compile(r"tradu", re.IGNORECASE)
 _THE_MAP = re.compile(r"\bo mapa\b", re.IGNORECASE)
 _BLESSING = re.compile(r"vão com deus|deus (?:os|te) abençoe|amém", re.IGNORECASE)
 _A_FRASE = re.compile(r"frase\s+\d+", re.IGNORECASE)
+_A_PART_AGAIN = re.compile(
+    r"grav\w+ (?:de novo )?(?:essa|a) parte|regrav\w+ (?:essa|a) (?:parte|cena)", re.IGNORECASE
+)
 
 
 def _js(flag: bool) -> str:
@@ -189,12 +192,19 @@ def asks_the_whole_sentence(spoken: str, number: int) -> list[str]:
         spoken,
         re.IGNORECASE,
     )
-    if asked:
-        return []
-    return [
-        f'the voice does not ask to record frase {number} again WHOLE ("regravem a frase '
-        f'{number} inteira" / "essa frase inteira" / "a frase toda")'
-    ]
+    fails = []
+    if not asked:
+        fails.append(
+            f'the voice does not ask to record frase {number} again WHOLE ("regravem a frase '
+            f'{number} inteira" / "essa frase inteira" / "a frase toda")'
+        )
+    part = _A_PART_AGAIN.search(spoken)
+    if part:
+        fails.append(
+            "the voice sends the team to a PART on a recording that can take a sentence: "
+            f'"{part.group(0)}"'
+        )
+    return fails
 
 
 def one_frase_per_turn(spoken: str) -> list[str]:
