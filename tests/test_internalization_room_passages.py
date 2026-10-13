@@ -58,6 +58,8 @@ NAMED_IN_ENGLISH: dict[str, str] = {
     "P14": "Ruth 4:18-22",
 }
 
+A_TEAM = "a-team-with-no-release"
+
 
 async def _instantly_voiced(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
     return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
@@ -205,7 +207,7 @@ async def test_every_passage_the_wheel_offers_says_its_own_kind(
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     assert [view.kind for view in answer.passages] == ["passage"] * len(answer.passages)
 
@@ -220,11 +222,13 @@ async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
     without_panorama = [
         view.pericope
-        for view in (await route.passages("Ruth", language="pt", db=db_session)).passages
+        for view in (
+            await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
+        ).passages
     ]
 
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "Rute, o livro")
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     first = answer.passages[0]
     assert (first.kind, first.pericope) == ("panorama", "panorama")
@@ -252,7 +256,7 @@ async def test_the_panorama_opens_with_marcias_approved_wording(
 
     for spoken, wording in (("pt", "Rute — o livro inteiro"), ("en", "Ruth — the whole book")):
         said.clear()
-        answer = await route.passages("Ruth", language=spoken, db=db_session)
+        answer = await route.passages("Ruth", language=spoken, project_id=A_TEAM, db=db_session)
 
         first = answer.passages[0]
         assert (first.kind, first.pericope) == ("panorama", "panorama")
@@ -268,7 +272,7 @@ async def test_the_panorama_stays_off_the_wheel_with_no_line_to_say_it(
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     assert all(view.kind != "panorama" for view in answer.passages)
 
@@ -286,7 +290,7 @@ async def test_the_wheel_offers_no_passage_the_session_would_refuse(
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     refused = []
     for view in answer.passages:
@@ -315,7 +319,7 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     offered = [view.pericope for view in answer.passages if view.kind == "passage"]
     opens = [
@@ -350,7 +354,7 @@ async def test_every_passage_arrives_with_its_necklace_already_counted(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instant)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     for view in answer.passages:
         if view.kind != "passage":
@@ -385,7 +389,7 @@ async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _slow)
 
-    answer = await route.passages("Ruth", language="pt", db=db_session)
+    answer = await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
 
     assert len(answer.passages) > 1
     assert peak > 1, "uma linha por vez é o que estourava o orçamento do cliente"
@@ -406,9 +410,9 @@ async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
 
-    await route.passages("Ruth", language="pt", db=db_session)
+    await route.passages("Ruth", language="pt", project_id=A_TEAM, db=db_session)
     in_portuguese = said.pop("spoken")
-    await route.passages("Ruth", language="en", db=db_session)
+    await route.passages("Ruth", language="en", project_id=A_TEAM, db=db_session)
     in_english = said.pop("spoken")
 
     assert len(in_portuguese) == len(in_english)
@@ -427,7 +431,7 @@ async def test_the_wheel_asked_for_nothing_speaks_the_floor(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
 
-    await route.passages("Ruth", db=db_session)
+    await route.passages("Ruth", project_id=A_TEAM, db=db_session)
 
     assert line_for("P01", FLOOR) in said
     assert line_for("P01", "pt") not in said

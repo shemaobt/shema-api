@@ -419,6 +419,8 @@ class PassageView(BaseModel):
     audio_url: str
     beads: int = 0
     absence_index: int = -1
+    #: The team holds a live Release of this passage, from any tablet, forced or not.
+    approved: bool = False
 
 
 class BookPassagesResponse(BaseModel):
