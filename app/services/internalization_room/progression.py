@@ -118,8 +118,8 @@ def resolve(finished: Collection[str], *, book: str = ROOM_BOOK) -> str | None:
 def standing(
     finished: Collection[str],
     *,
-    releases: Mapping[str, PassageRelease] | None = None,
-    findings: Mapping[str, int] | None = None,
+    releases: Mapping[str, PassageRelease],
+    findings: Mapping[str, int],
     book: str = ROOM_BOOK,
 ) -> list[PericopeStanding]:
     """All fourteen with their position already resolved — closed, current, or future.
@@ -141,8 +141,6 @@ def standing(
     from each other.
     """
     here = resolve(finished, book=book)
-    releases = releases or {}
-    findings = findings or {}
     return [
         PericopeStanding(
             pericope=meaning_map.pericope_num,

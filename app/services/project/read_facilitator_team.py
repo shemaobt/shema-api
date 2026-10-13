@@ -67,7 +67,7 @@ async def read_facilitator_team(
     if row is None:
         return None
 
-    passages = standing(finished, releases=await latest_releases(db, team_id))
+    passages = standing(finished, releases=await latest_releases(db, team_id), findings={})
     closed = sum(1 for entry in passages if entry.position is PericopePosition.CLOSED)
     active = None
     if here is not None:
