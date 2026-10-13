@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import back_translation as bt_api
 from app.api.internalization_room import segments as segments_api
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRSegment, IRSession
 from app.services.internalization_room.back_translation import VoicedVerdict
 from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import final_segments
@@ -93,6 +93,20 @@ async def test_a_frase_told_while_a_check_passes_leaves_the_passage_unchecked_no
     )
 
 
+async def _a_frase_told_beside(client, session_id: str, beside: IRSegment) -> None:
+    answered = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Device": TABLET},
+        data={
+            "take_id": beside.take_id,
+            "starts_ms": str(beside.ends_ms),
+            "ends_ms": str(beside.ends_ms + 1000),
+        },
+        files={"file": ("nova.m4a", b"uma frase nova antes de conferir", "audio/mp4")},
+    )
+    assert answered.status_code == 200, answered.text
+
+
 async def test_a_frase_corrected_while_a_clean_check_lands_is_unchecked_not_approved(
     client,
     db_session: AsyncSession,
@@ -100,6 +114,14 @@ async def test_a_frase_corrected_while_a_clean_check_lands_is_unchecked_not_appr
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session, _parts = await rehearsed_in_parts_of(db_session, [2])
+
+    async def heard(*_: Any, **__: Any) -> str:
+        return "e Rute ficou com Noemi"
+
+    monkeypatch.setattr(bt_api, "heard", heard)
+    await _a_frase_told_beside(
+        client, session.id, (await final_segments(db_session, session.id))[-1]
+    )
     told = await final_segments(db_session, session.id)
 
     async def heard_while_a_clean_check_lands(*_: Any, **__: Any) -> str:
@@ -195,17 +217,7 @@ async def test_a_frase_corrected_on_a_passage_never_checked_leaves_the_session_r
     monkeypatch.setattr(segments_api, "heard", heard)
     monkeypatch.setattr(bt_api, "heard", heard)
 
-    first = await client.post(
-        f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
-        headers={"X-Room-Device": TABLET},
-        data={
-            "take_id": told[-1].take_id,
-            "starts_ms": str(told[-1].ends_ms),
-            "ends_ms": str(told[-1].ends_ms + 1000),
-        },
-        files={"file": ("nova.m4a", b"uma frase nova antes de conferir", "audio/mp4")},
-    )
-    assert first.status_code == 200, first.text
+    await _a_frase_told_beside(client, session.id, told[-1])
     last_active = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
     async with rival_factory() as setup:
         await setup.execute(
