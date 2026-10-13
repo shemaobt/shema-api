@@ -18,6 +18,7 @@ pytestmark = pytest.mark.migration
 TABLES_REVISION = "20261013_scene01"
 DEFAULT_REVISION = "20261013_scene02"
 FRASES_REVISION = "20261013_scene03"
+RESTARTS_REVISION = "20261013_scene04"
 PREVIOUS_REVISION = "20261012_spine02"
 
 SCENE_TABLES = {"ir_scene_rehearsals"}
@@ -100,3 +101,21 @@ async def test_the_scene_frases_table_comes_and_goes_with_its_migration(tmp_path
         await columns_of(url, "ir_scene_frases")
     )
     assert {"transcript", "archive_id"} <= await columns_of(url, "ir_scene_frases")
+
+
+async def test_the_restarts_table_and_the_frases_restart_come_and_go_with_their_migration(
+    tmp_path,
+) -> None:
+    url = await _at(tmp_path, RESTARTS_REVISION)
+    down = run_alembic(url, "downgrade", FRASES_REVISION)
+    assert down.returncode == 0, down.stderr
+    assert "ir_scene_restarts" not in await tables_of(url)
+    assert not {"attempt", "restart_id"} & await columns_of(url, "ir_scene_frases")
+
+    up = run_alembic(url, "upgrade", RESTARTS_REVISION)
+
+    assert up.returncode == 0, up.stderr
+    assert {"rehearsal_id", "session_id", "n", "restarted_at", "snapshot", "archive_id"} <= (
+        await columns_of(url, "ir_scene_restarts")
+    )
+    assert {"attempt", "restart_id"} <= await columns_of(url, "ir_scene_frases")

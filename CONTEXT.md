@@ -265,7 +265,7 @@ _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part nev
 A superseded stretch that never got a replacement: what recording a **Part** again leaves
 behind on that part's stretches, and what a session told back and started over before
 2026-09-18 still carries as history.
-_Avoid_: erased, discarded, cancelled, Abandonada, restart (retired: the telling-back started over)
+_Avoid_: erased, discarded, cancelled, Abandonada, restart (a **Scene rehearsal**'s, not this)
 
 ### Verdict closings
 
@@ -318,7 +318,7 @@ The facilitator's act of giving a team a clean pericope: it creates an **Archive
 _Avoid_: reset, zero, clear, wipe
 
 **Archive** (`ir_archives`, `archive_id`):
-What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals** and their frases included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
+What Zerar leaves behind: one row per reset of a pericope, every language at once, and a stamp on every row of that pericope's work, its **Scene rehearsals**, their frases and their **Restarts** included. The team's doors answer an archived session as gone, and the doors that pick or list a team's work leave archived rows out, while the facilitator still reads an archived session by its id. Nothing moves and nothing is deleted; the raised-hand questions are never stamped (ADRs 0047 and 0052). A resend under a turn id the session already answered replays that answer even on an archived session, because the replay is read before the session is resolved (ADR 0043); a new turn or a look at a turn is refused.
 _Avoid_: soft delete, trash, backup, Arquivo
 
 **Needs a person** (`needs_person`):
@@ -432,6 +432,10 @@ _Avoid_: Part (a take of the whole passage), take, scene take, Ensaio
 **Scene frase** (`ir_scene_frases`):
 One piece of a **Scene rehearsal** told in the bridge language, with its place in the scene recording. A replaced frase stays, marked by the one that replaced it; a frase with no words is refused and is no frase.
 _Avoid_: Stretch (a slice of a rehearsal take of the passage), chunk, segment
+
+**Restart** (`ir_scene_restarts`; «recomeçar a tradução»):
+A numbered mark beside a **Scene rehearsal** that sets its frases so far aside, keeping a copy of the record as it was. The rehearsal then has no current frases; a frase recorded before it and sent after it is set aside with the rest. Nothing is deleted.
+_Avoid_: reset, Zerar (the facilitator's, over the whole pericope), Recomeço
 
 **Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
 The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to

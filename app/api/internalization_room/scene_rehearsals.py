@@ -3,13 +3,20 @@
 The tablet's doors carry no words of the team and no classifier guess (ENG-1335).
 """
 
+import uuid
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
-from app.db.models.internalization_room import IRSceneFrase, IRSceneRehearsal, IRSession
+from app.db.models.internalization_room import (
+    IRSceneFrase,
+    IRSceneRehearsal,
+    IRSceneRestart,
+    IRSession,
+)
 from app.models.internalization_room import (
     SceneFraseView,
     SceneRehearsalsResponse,
@@ -34,7 +41,9 @@ def _frase_view(frase: IRSceneFrase, replacing: dict[str, str]) -> SceneFraseVie
     )
 
 
-def _view(rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase]) -> SceneRehearsalView:
+def _view(
+    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
+) -> SceneRehearsalView:
     replacing = scenes.replaced_by(frases)
     return SceneRehearsalView(
         rehearsal_id=rehearsal.id,
@@ -48,13 +57,15 @@ def _view(rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase]) -> SceneRehea
         verified=rehearsal.verified_at is not None,
         recorded_at=as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else "",
         sent_at=as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None,
+        after_restart=scenes.current_attempt(restarts),
         frases=[_frase_view(frase, replacing) for frase in frases],
     )
 
 
 async def _the_record(db: AsyncSession, rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
-    frases = await scenes.frases_of(db, [rehearsal.id])
-    return _view(rehearsal, frases[rehearsal.id])
+    restarts = await scenes.restarts_of(db, [rehearsal.id])
+    frases = await scenes.frases_of(db, restarts)
+    return _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
 
 
 async def _session(db: AsyncSession, session_id: str, project_id: str) -> IRSession:
@@ -103,10 +114,15 @@ async def list_scene_rehearsals(
     """The passage's live scene rehearsals, from every session of it, each naming its own."""
     session = await _session(db, session_id, project_id)
     rehearsals = await scenes.scene_rehearsals_of_the_passage(db, session)
-    frases = await scenes.frases_of(db, [rehearsal.id for rehearsal in rehearsals])
+    ids = [rehearsal.id for rehearsal in rehearsals]
+    restarts = await scenes.restarts_of(db, ids)
+    frases = await scenes.frases_of(db, restarts)
     return SceneRehearsalsResponse(
         pericope=session.pericope,
-        scene_rehearsals=[_view(rehearsal, frases[rehearsal.id]) for rehearsal in rehearsals],
+        scene_rehearsals=[
+            _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
+            for rehearsal in rehearsals
+        ],
     )
 
 
@@ -142,6 +158,7 @@ async def keep_scene_frase(
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
     replaces: str | None = Form(default=None),
+    after_restart: uuid.UUID | None = Form(default=None),
     file: UploadFile = File(...),
     project_id: str = device_project_dep,
     store: TakeStore = Depends(take_store),
@@ -156,9 +173,35 @@ async def keep_scene_frase(
         starts_ms=starts_ms,
         ends_ms=ends_ms,
         replaces=replaces,
+        after_restart=None if after_restart is None else str(after_restart),
         audio=await file.read(),
         content_type=file.content_type or AUDIO_MIME,
         filename=file.filename,
         store=store,
+    )
+    return await _the_record(db, rehearsal)
+
+
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart",
+    response_model=SceneRehearsalView,
+    dependencies=[linked_tablet_dep],
+)
+async def restart_scene_translation(
+    session_id: str,
+    rehearsal_id: str,
+    attempt: uuid.UUID = Form(...),
+    closes: uuid.UUID | None = Form(default=None),
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SceneRehearsalView:
+    """«recomeçar a tradução» into the attempt the tablet minted, whose id the outbox resends
+    unchanged: the same restart sent twice is answered as the first. `closes` names the attempt
+    it ends, the rehearsal's `after_restart` when the tablet restarted; a restart closing any
+    other is refused with 409 and retried once its predecessor has landed."""
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    await scenes.restart_the_scene_translation(
+        db, rehearsal, attempt=str(attempt), closes=None if closes is None else str(closes)
     )
     return await _the_record(db, rehearsal)
