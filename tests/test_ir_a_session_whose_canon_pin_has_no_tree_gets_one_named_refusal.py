@@ -27,10 +27,15 @@ from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.db.models.project import Project
 from app.services.auth.issue_tokens import issue_tokens
 from app.services.internalization_room.canon import kept
-from app.services.internalization_room.canon.book_material import significant_absences
+from app.services.internalization_room.canon.book_material import (
+    preservation_rules,
+    significant_absences,
+    vendor_pin,
+)
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.names import registry_entry, verse_ranges
 from app.services.internalization_room.canon.parse_map import load_book, load_map
+from app.services.internalization_room.canon.titles import scene_title
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -102,6 +107,26 @@ def test_every_reader_of_a_pin_with_no_tree_refuses_by_naming_that_pin(
 
     assert a_pin_with_no_tree in str(refused.value), (
         "cada leitor falhava do seu jeito: 400, FileNotFoundError ou StopIteration, sem o pin"
+    )
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        lambda: preservation_rules("Ruth"),
+        lambda: vendor_pin(),
+        lambda: scene_title(P, 1, "The family leaves Bethlehem", "pt"),
+    ],
+    ids=["rules", "pin", "portuguese-title"],
+)
+def test_a_pin_with_no_tree_is_refused_never_read_as_no_rules_or_an_english_title(
+    read: Callable[[], Any], a_pin_with_no_tree: str
+) -> None:
+    with kept.reading_the_canon_of(a_pin_with_no_tree), pytest.raises(CanonNotKept) as refused:
+        read()
+
+    assert a_pin_with_no_tree in str(refused.value), (
+        "sem árvore, as regras liam vazio, o pin virava «unpinned» e a cena voltava ao inglês"
     )
 
 
