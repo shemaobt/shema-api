@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,18 @@ def _p01_labels_with(label: str, monkeypatch: pytest.MonkeyPatch) -> None:
         return labels
 
     monkeypatch.setattr(smoke, "labelled_elements", labelled)
+
+
+def _titles_with(
+    edit: Callable[[dict[str, dict[str, str]]], None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    listed = json.loads(titles.PORTUGUESE_TITLES.read_text(encoding="utf-8"))
+    edit(listed["scenes"])
+    edited = tmp_path / "ui-labels.pt.json"
+    edited.write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(titles, "PORTUGUESE_TITLES", edited)
 
 
 def test_the_canon_at_her_pin_passes_the_smoke() -> None:
@@ -58,11 +71,11 @@ def test_a_scene_with_no_title_fails_and_is_named(monkeypatch: pytest.MonkeyPatc
 def test_one_of_her_three_titles_edited_after_a_sync_fails_and_is_named(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    listed = json.loads(titles.PORTUGUESE_TITLES.read_text(encoding="utf-8"))
-    listed["scenes"]["P10"]["S2"] = "Em casa: o relato e «fique quieta»"
-    edited = tmp_path / "ui-labels.pt.json"
-    edited.write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(titles, "PORTUGUESE_TITLES", edited)
+    _titles_with(
+        lambda scenes: scenes["P10"].update(S2="Em casa: o relato e «fique quieta»"),
+        tmp_path,
+        monkeypatch,
+    )
 
     assert smoke.problems() == [
         "P10: scene 2 is titled 'Em casa: o relato e «fique quieta»', not her approved"
@@ -81,14 +94,13 @@ def test_one_of_her_three_titles_edited_after_a_sync_fails_and_is_named(
 def test_her_titles_keyed_otherwise_than_the_maps_scenes_fail_and_are_named(
     change: str, named: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    listed = json.loads(titles.PORTUGUESE_TITLES.read_text(encoding="utf-8"))
-    if change.startswith("-"):
-        del listed["scenes"]["P08"][change[1:]]
-    else:
-        listed["scenes"]["P08"][change] = "Uma cena que o mapa dividiu de outro jeito"
-    edited = tmp_path / "ui-labels.pt.json"
-    edited.write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(titles, "PORTUGUESE_TITLES", edited)
+    def edit(scenes: dict[str, dict[str, str]]) -> None:
+        if change.startswith("-"):
+            del scenes["P08"][change[1:]]
+        else:
+            scenes["P08"][change] = "Uma cena que o mapa dividiu de outro jeito"
+
+    _titles_with(edit, tmp_path, monkeypatch)
 
     assert smoke.problems() == [named], (
         "um re-pin que redividia as cenas deixava um título antigo sob um S<n> reaproveitado"
@@ -99,14 +111,10 @@ def test_her_titles_keyed_otherwise_than_the_maps_scenes_fail_and_are_named(
 def test_a_served_scene_whose_portuguese_title_is_empty_or_blank_fails_and_is_named(
     title: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    listed = json.loads(titles.PORTUGUESE_TITLES.read_text(encoding="utf-8"))
-    listed["scenes"]["P08"]["S2"] = title
-    edited = tmp_path / "ui-labels.pt.json"
-    edited.write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(titles, "PORTUGUESE_TITLES", edited)
+    _titles_with(lambda scenes: scenes["P08"].update(S2=title), tmp_path, monkeypatch)
 
     assert smoke.problems() == ["P08: her Portuguese title of scene 2 is empty"], (
-        "um título vazio passava e a sala dizia o cabeçalho em inglês numa sessão em português"
+        "um título vazio ou em branco passava sem nada ficar vermelho"
     )
 
 
