@@ -190,6 +190,7 @@ async def clip(
     gate_passed = False
     try:
         caller = await linked_tablet(db, x_device_credential=x_device_credential)
+        await db.commit()
         gate_passed = True
     finally:
         if not gate_passed and read_task is not None:
