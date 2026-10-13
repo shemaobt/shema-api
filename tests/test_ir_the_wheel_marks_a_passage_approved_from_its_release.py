@@ -8,7 +8,6 @@ release and the mark goes with it. A passage rehearsed, talked in or never opene
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -36,13 +35,8 @@ from tests.tablet_turn_harness import the_room_opens, the_turn_is_scripted
 from tests.text_seam_harness import ScriptedAgent
 
 
-async def _instantly_voiced(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
-    return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
-
-
 @pytest.fixture(autouse=True)
-def the_voice_is_instant(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+def the_panorama_has_no_line(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
 
