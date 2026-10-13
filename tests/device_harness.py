@@ -12,21 +12,18 @@ exists only once the module's client fixture has called ``a_linked_tablet`` with
 
 from __future__ import annotations
 
-import random
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.db.models.auth import User
-from app.db.models.language import Language
 from app.db.models.project import Project
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.collect_device_credential import collect_device_credential
-from tests.baker import make_language, make_project_user_access, make_user
+from tests.baker import a_language, make_project_user_access, make_user
 
 #: The header the shared room key travelled in, named only by the cases proving it opens nothing.
 RETIRED_ROOM_KEY_HEADER = "X-Room-Key"
@@ -61,7 +58,7 @@ async def a_linked_tablet(
         project = Project(
             id=team_id or str(uuid.uuid4()),
             name=f"Equipe {uuid.uuid4().hex[:6]}",
-            language_id=(await _a_language(db)).id,
+            language_id=(await a_language(db)).id,
         )
         db.add(project)
         await db.commit()
@@ -79,11 +76,3 @@ async def a_linked_tablet(
         credential=await collect_device_credential(db, claimed.device.id),
         desk_copy=claimed.credential,
     )
-
-
-async def _a_language(db: AsyncSession) -> Language:
-    taken = set((await db.execute(select(Language.code))).scalars())
-    code = next(
-        code for code in (f"{random.randrange(1000):03d}" for _ in range(1000)) if code not in taken
-    )
-    return await make_language(db, name=f"Lingua {code}", code=code)
