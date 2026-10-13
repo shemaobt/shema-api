@@ -31,7 +31,6 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.coverage_events import necklaces_of
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.live import live
-from app.services.internalization_room.progression import portuguese_reference
 from app.services.internalization_room.session_end import as_utc, end_of
 from app.services.internalization_room.takes import READING_ORDER, current_parts
 from app.services.internalization_room.team_sessions import beads_of, needs_person
@@ -99,8 +98,7 @@ async def desk_sessions_page(
     rehearsals = await _kept_rehearsals(db, ids)
     released = await _released(db, ids)
     references = {
-        meaning_map.pericope_num: portuguese_reference(meaning_map.bcv)
-        for meaning_map in load_book(ROOM_BOOK)
+        meaning_map.pericope_num: meaning_map.reference for meaning_map in load_book(ROOM_BOOK)
     }
 
     return DeskSessionsPage(

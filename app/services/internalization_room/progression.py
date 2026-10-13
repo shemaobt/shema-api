@@ -71,13 +71,11 @@ still below the floor. Turning that into someone being *told* is ENG-482 (CS-06)
 
 from __future__ import annotations
 
-import re
 from collections.abc import Collection, Mapping, Sequence
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.served_books import PORTUGUESE_NAMES
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
 from app.models.internalization_room import PassageRelease, PericopePosition, PericopeStanding
 from app.services.internalization_room.canon.book_material import unwalkable
@@ -144,7 +142,7 @@ def standing(
     return [
         PericopeStanding(
             pericope=meaning_map.pericope_num,
-            reference=portuguese_reference(meaning_map.bcv),
+            reference=meaning_map.reference,
             title=meaning_map.title,
             position=_position(meaning_map.pericope_num, finished, here),
             release=releases.get(meaning_map.pericope_num),
@@ -153,23 +151,6 @@ def standing(
         )
         for meaning_map in load_book(book)
     ]
-
-
-_EN_DASH = "\u2013"
-_BCV = re.compile(rf"(?P<book>.+) (?P<chapter>\d+):(?P<first>\d+)[-{_EN_DASH}](?P<last>\d+)")
-
-
-def portuguese_reference(bcv: str) -> str:
-    """The map's ``bcv`` as the Desk reads it: the book in Portuguese, then an en dash.
-
-    The canon mixes a hyphen and an en dash; the Desk reads one form. A book without a
-    Portuguese name raises rather than fall back to the English one.
-    """
-    parts = _BCV.fullmatch(bcv)
-    if parts is None:
-        raise ValueError(f"not a reference: {bcv!r}")
-    book = PORTUGUESE_NAMES[parts["book"]]
-    return f"{book} {parts['chapter']}:{parts['first']}{_EN_DASH}{parts['last']}"
 
 
 def _position(pericope: str, finished: Collection[str], here: str | None) -> PericopePosition:

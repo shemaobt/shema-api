@@ -1,4 +1,4 @@
-"""ENG-1597 — each passage the Desk lists carries its latest release and a reference in one form.
+"""ENG-1597 — each passage the Desk lists carries its latest release and whether it is approved.
 
 Marcia's rows read the release, «versão 2 · forçada às 14h10», and her count is of approved
 passages: a finished session without a release approves nothing. The cases build releases,
@@ -8,7 +8,6 @@ routes answer.
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -47,7 +46,6 @@ from tests.room_harness import room_client
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST = CANON[0]
 PANORAMA = f"OV-{ROOM_BOOK}"
-EN_DASH = "\u2013"
 
 
 @pytest.fixture()
@@ -218,32 +216,6 @@ async def test_an_archived_release_does_not_approve_the_passage(
     assert archived["release"] is None
     assert archived["approved"] is False
     assert approved_again["release"]["version"] == 2
-
-
-async def test_p14s_reference_is_written_with_an_en_dash_in_portuguese(
-    desk_client, db_session, room_app
-) -> None:
-    team, _tablet = await a_claimed_device(db_session)
-    desk, _ = await at_the_desk(db_session, room_app, team)
-
-    assert (await listed(desk_client, desk, team.id))["P14"]["reference"] == f"Rute 4:18{EN_DASH}22"
-
-
-async def test_p02s_reference_is_written_in_portuguese(desk_client, db_session, room_app) -> None:
-    team, _tablet = await a_claimed_device(db_session)
-    desk, _ = await at_the_desk(db_session, room_app, team)
-
-    assert (await listed(desk_client, desk, team.id))["P02"]["reference"] == f"Rute 1:6{EN_DASH}14"
-
-
-async def test_every_passages_reference_has_one_form(desk_client, db_session, room_app) -> None:
-    team, _tablet = await a_claimed_device(db_session)
-    desk, _ = await at_the_desk(db_session, room_app, team)
-
-    references = [entry["reference"] for entry in await listing(desk_client, desk, team.id)]
-
-    assert len(references) == 14
-    assert all(re.fullmatch(rf"Rute \d+:\d+{EN_DASH}\d+", reference) for reference in references)
 
 
 async def test_the_listing_holds_the_fourteen_passages_and_no_panorama(

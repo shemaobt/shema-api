@@ -126,7 +126,7 @@ async def test_each_passage_carries_both_of_the_names_the_desk_draws(client, db_
 
     # Spelled with the escape because the canon writes an en dash here and a hyphen in a
     # test file is invisible.
-    assert first["reference"] == "Rute 1:1\u20135"
+    assert first["reference"] == "Ruth 1:1\u20135"
     assert first["title"]
 
 
