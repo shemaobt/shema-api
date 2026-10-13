@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -150,6 +150,14 @@ class Nuance(BaseModel):
     segment_id: str
     quote: str
     story: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+    voiced: Literal["now", "before"] | None = None
+
+    @property
+    def audio(self) -> tuple[str, int, int]:
+        return (self.take_id, self.starts_ms, self.ends_ms)
 
 
 class BtAnalysis(BaseModel):
@@ -203,6 +211,8 @@ class CheckRound(BaseModel):
     spoken: str
     outcome: Outcome
     conferida: bool
+    nuances: list[Nuance] = Field(default_factory=list)
+    heard_at: datetime | None = None
 
 
 class BackTranslationState(BaseModel):
@@ -281,6 +291,7 @@ class BackTranslationState(BaseModel):
     verdict: VoicedVerdict | None = None
     read_ahead: ReadAhead | None = None
     checks: list[CheckRound] = Field(default_factory=list)
+    nuances: list[Nuance] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -311,6 +322,25 @@ class BackTranslationState(BaseModel):
         ]:
             return None
         return self.read_ahead
+
+    def the_verdict_to_serve(self, told: list[IRSegment]) -> VoicedVerdict | None:
+        if (
+            not self.already_analysed(told)
+            or self.verdict is None
+            or self.verdict.used_fail_safe
+            or self.its_named_nuance_was_heard
+        ):
+            return None
+        return self.verdict
+
+    @property
+    def its_named_nuance_was_heard(self) -> bool:
+        last = self.checks[-1] if self.checks else None
+        return (
+            last is not None
+            and last.heard_at is not None
+            and any(one.voiced == "now" for one in last.nuances)
+        )
 
     @property
     def never_analysed(self) -> bool:
@@ -600,12 +630,16 @@ def _a_nuance(entry: dict[str, Any], segments: list[IRSegment]) -> Nuance | None
     story = str(entry.get("story", "")).strip()
     if chunk is None or not story or not _stands_in(quote, segments[chunk - 1].transcript):
         return None
+    segment = segments[chunk - 1]
     return Nuance(
         note=str(entry.get("note", "")).strip() or f"«{quote}» — {story}",
         chunk=chunk,
-        segment_id=segments[chunk - 1].id,
+        segment_id=segment.id,
         quote=quote,
         story=story,
+        take_id=segment.take_id,
+        starts_ms=segment.starts_ms,
+        ends_ms=segment.ends_ms,
     )
 
 
@@ -959,6 +993,29 @@ def findings_remaining(findings: list[Finding]) -> int:
     much of the round is still ahead of them, and a swap costs them one stop, not two.
     """
     return len(findings) - len(_swaps(findings))
+
+
+def nuances_said(checks: list[CheckRound]) -> list[Nuance]:
+    return [
+        one
+        for check in checks
+        for one in check.nuances
+        if one.voiced == "before" or (one.voiced == "now" and check.heard_at is not None)
+    ]
+
+
+def said_before(nuance: Nuance, said: list[Nuance], told: list[IRSegment]) -> bool:
+    live = {(segment.take_id, segment.starts_ms, segment.ends_ms) for segment in told}
+    return any(
+        (one.audio == nuance.audio and _the_same_words(one.quote, nuance.quote))
+        or (one.audio in live and _words_of(one.quote) == _words_of(nuance.quote))
+        for one in said
+    )
+
+
+def _the_same_words(said: str, found: str) -> bool:
+    shorter, longer = sorted((f" {_words_of(said)} ", f" {_words_of(found)} "), key=len)
+    return shorter in longer
 
 
 def findings_block(findings: list[Finding] | list[Nuance], addresses: Addresses) -> str:
