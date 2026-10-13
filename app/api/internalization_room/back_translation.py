@@ -26,7 +26,10 @@ from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
-from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
+from app.services.internalization_room.segments import (
+    refuse_a_slice_that_is_not_one,
+    refuse_a_telling_over_part_of_a_frase,
+)
 from app.services.internalization_room.takes import (
     current_parts,
     rehearsal_take_of,
@@ -114,6 +117,7 @@ async def add_chunk(
 
     state = room.back_translation_of(session)
     told = await room.final_segments(db, session.id)
+    refuse_a_telling_over_part_of_a_frase(told, rehearsal.id, starts_ms, ends_ms)
     retold = (
         await room.current_stretch_at(
             db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms

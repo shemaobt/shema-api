@@ -300,6 +300,43 @@ async def test_an_empty_draft_after_a_send_back_does_not_blame_the_issues_that_s
     ], "the first redraft's issues were printed as the reason the empty draft fell"
 
 
+async def test_an_empty_draft_after_a_send_back_leaves_the_outcome_with_no_issues(
+    patch_agent,
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}],
+            drafts=["Vamos começar.", ""],
+        )
+    )
+
+    outcome = await _a_turn("sessao-15")
+
+    assert outcome.used_fail_safe is True
+    assert outcome.draft == ""
+    assert outcome.issues == [], "the empty redraft carried the issues of the draft before it"
+
+
+async def test_an_empty_draft_after_two_send_backs_leaves_the_outcome_with_no_issues(
+    patch_agent,
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[
+                {"verdict": "regenerate", "issues": [{"problem": "off_topic"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+            ],
+            drafts=["Vamos começar.", "Rute casou com Malom.", ""],
+        )
+    )
+
+    outcome = await _a_turn("sessao-16")
+
+    assert outcome.used_fail_safe is True
+    assert outcome.redrafts == 2
+    assert outcome.issues == [], "the empty redraft carried the issues of the second draft"
+
+
 async def test_an_empty_first_draft_names_the_session_and_says_the_validator_never_saw_it(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
