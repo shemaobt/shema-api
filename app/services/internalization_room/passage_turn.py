@@ -57,7 +57,7 @@ async def run_turn(
     cfg = settings or get_settings()
 
     if not opening and not transcript.strip():
-        speech, line = inaudible_ladder(messages, language_code)
+        speech, line = inaudible_ladder(language_code)
         return TurnOutcome(
             speech=speech,
             transcript="",

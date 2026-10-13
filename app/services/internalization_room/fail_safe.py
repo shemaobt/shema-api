@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import re
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
 from app.services.internalization_room.languages import FLOOR, room_language
@@ -160,11 +160,10 @@ def unrepairable(draft: int, language_code: str, first_scene: str = "") -> tuple
     return f"{line.rstrip('.!?')} — this is the part about {pointer}.", ""
 
 
-def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
+def inaudible_ladder(language_code: str) -> tuple[str, str]:
     """The D line for one more miss: always her first, however many came before it.
 
-    Her rule is ``didntCatchThat(0)``, one line for every miss, so the conversation it is
-    handed no longer decides which line is said.
+    Her rule is ``didntCatchThat(0)``, one line for every miss.
     """
     return choose(FailSafe.INAUDIBLE, language_code)
 

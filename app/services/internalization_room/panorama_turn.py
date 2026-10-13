@@ -51,7 +51,7 @@ async def run_panorama_turn(
         interrupted=speech.interrupted,
     )
     if handed is None:
-        outcome = a_miss(messages, language_code)
+        outcome = a_miss(language_code)
     else:
         outcome = handed.kept_apart(
             await _voiced_after_validation(
