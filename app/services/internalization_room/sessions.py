@@ -39,6 +39,7 @@ from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import halt, turn_instructions
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
+    CheckRound,
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
@@ -1131,6 +1132,24 @@ def _standing_forward(read: list[_Kept], wanted: list[_Kept], fresh: list[_Kept]
     return [*_less(fresh, _less(read, wanted)), *_less(wanted, read)]
 
 
+def _rounds_forward(
+    read: list[CheckRound], wanted: list[CheckRound], fresh: list[CheckRound]
+) -> list[CheckRound]:
+    before = {one.at: one for one in read}
+    stamped = {one.at: one for one in wanted if one.at in before and one != before[one.at]}
+    kept = [
+        one.model_copy(update=_changed(before[one.at], stamped[one.at]))
+        if one.at in stamped
+        else one
+        for one in fresh
+    ]
+    return [*kept, *(one for one in wanted if one.at not in before)]
+
+
+def _changed(read: CheckRound, wanted: CheckRound) -> dict[str, Any]:
+    return {name: value for name, value in vars(wanted).items() if getattr(read, name) != value}
+
+
 def _merged_forward(
     read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
 ) -> BackTranslationState:
@@ -1139,7 +1158,7 @@ def _merged_forward(
             setattr(fresh, name, getattr(wanted, name))
     fresh.findings = _standing_forward(read.findings, wanted.findings, fresh.findings)
     fresh.nuances = _standing_forward(read.nuances, wanted.nuances, fresh.nuances)
-    fresh.checks = [*fresh.checks, *_less(wanted.checks, read.checks)]
+    fresh.checks = _rounds_forward(read.checks, wanted.checks, fresh.checks)
     return fresh
 
 

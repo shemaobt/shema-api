@@ -24,6 +24,7 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     Nuance,
 )
+from app.services.internalization_room.verdict_round import mark_the_verdict_heard
 
 P = "P03"
 SESSIONS_LOGGER = "app.services.internalization_room.sessions"
@@ -250,4 +251,30 @@ async def test_a_nuance_one_write_took_away_stays_away_and_the_other_writes_nuan
     stored = await _stored(rival_factory, session.id)
     assert [nuance.story for nuance in stored.nuances] == ["Rute fica com Noemi"], (
         "a escrita refeita gravava a lista de detalhes inteira, e o detalhe novo da outra sumia"
+    )
+
+
+async def test_a_heard_stamp_redone_over_a_newer_round_stamps_its_own_round_not_a_copy(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    state = service.back_translation_of(session)
+    state.checks.append(_round("primeira rodada"))
+    await service.save_back_translation(db_session, session, state)
+    heard_round = state.checks[0].at
+    async with rival_factory() as checking_db, rival_factory() as hearing_db:
+        checking, checking_state = await _read(checking_db, session.id)
+        hearing, _ = await _read(hearing_db, session.id)
+
+        checking_state.checks.append(_round("segunda rodada"))
+        await service.save_back_translation(checking_db, checking, checking_state)
+        assert await mark_the_verdict_heard(hearing_db, hearing, heard_round)
+
+    stored = await _stored(rival_factory, session.id)
+    assert [(check.spoken, check.heard_at is not None) for check in stored.checks] == [
+        ("primeira rodada", True),
+        ("segunda rodada", False),
+    ], (
+        "o carimbo refeito sobre a rodada nova entrava como uma rodada a mais no fim, e a sala "
+        "dava a rodada nova como ouvida"
     )
