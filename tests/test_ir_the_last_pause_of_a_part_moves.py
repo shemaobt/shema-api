@@ -236,3 +236,48 @@ async def test_a_frase_that_is_no_longer_the_last_is_refused_at_the_capture_as_w
         )
 
     assert refused.value.code == "PAUSE_ONLY_ON_THE_LAST_FRASE"
+
+
+async def test_an_earlier_pause_moved_too_close_to_its_start_is_refused_as_not_the_last_first(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    session, _ = await _rehearsed(db_session)
+    earlier = (await final_segments(db_session, session.id))[-2]
+
+    refused = await _move(client, session.id, earlier, ends_ms=1100)
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "PAUSE_ONLY_ON_THE_LAST_FRASE", (
+        "a recusa trocava a ordem dela: a pausa só se move na última frase vem primeiro"
+    )
+
+
+async def test_a_pause_exactly_a_fifth_of_a_second_after_the_start_moves(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    session, _ = await _rehearsed(db_session)
+    last = (await final_segments(db_session, session.id))[-1]
+
+    moved = await _move(client, session.id, last, ends_ms=2200)
+
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["segments"][-1]["ends_ms"] == 2200, (
+        "uma frase de 200 ms, o mínimo dela, era recusada"
+    )
+
+
+async def test_a_part_whose_length_was_never_heard_bounds_the_pause_by_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession, transcribed: list[bytes]
+) -> None:
+    session, _ = await _rehearsed(db_session)
+    state = back_translation_of(session)
+    state.played_by_take = []
+    await save_back_translation(db_session, session, state)
+    last = (await final_segments(db_session, session.id))[-1]
+
+    moved = await _move(client, session.id, last, ends_ms=9000)
+
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["segments"][-1]["ends_ms"] == 9000, (
+        "sem a duração ouvida a pausa era recusada, e a regra dela deixa aberto"
+    )
