@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -40,18 +41,31 @@ async def _stored(rival_factory: async_sessionmaker[AsyncSession], session_id: s
         return await service.get_session(fresh_db, session_id)
 
 
-async def test_a_halt_raised_while_the_floor_was_settling_stands_instead_of_reading_done(
+async def test_a_halt_raised_while_the_floor_was_settling_stands_and_its_lift_reads_done(
     db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession], monkeypatch
 ) -> None:
     session = await service.create_session(db_session, pericope=P)
     _a_rival_lands_after_the_read(monkeypatch, rival_factory, service.mark_needs_person)
 
+    before = datetime.now(UTC)
     await service.apply_coverage(db_session, session.id, _the_whole_floor())
+    after = datetime.now(UTC)
 
-    stored = await _stored(rival_factory, session.id)
-    assert (stored.status, stored.ended_at) == (IRSessionStatus.NEEDS_PERSON, None), (
+    halted = await _stored(rival_factory, session.id)
+    assert halted.status is IRSessionStatus.NEEDS_PERSON, (
         "o fechamento gravava done por cima do pedido de pessoa, e o tablet esperava alguém "
         "numa passagem que a linha dizia encerrada"
+    )
+    assert halted.ended_at is not None and before <= halted.ended_at <= after, (
+        "o fechamento recusado largava o carimbo do piso junto com o status, e nada mais "
+        "dizia que a passagem tinha sido terminada"
+    )
+    async with rival_factory() as visit_db:
+        visited = await service.get_session(visit_db, session.id)
+        lifted = await service.attend(visit_db, visited, by="facilitator")
+    assert (lifted.status, lifted.ended_at) == (IRSessionStatus.DONE, halted.ended_at), (
+        "a visita levantava o pedido para em andamento, e a passagem terminada nunca entrava "
+        "nas concluídas"
     )
 
 
@@ -89,6 +103,24 @@ async def test_a_visit_undone_while_the_floor_was_settling_brings_the_halt_back_
     await service.apply_coverage(db_session, session.id, _the_whole_floor())
 
     stored = await _stored(rival_factory, session.id)
-    assert (stored.status, stored.ended_at) == (IRSessionStatus.NEEDS_PERSON, None), (
+    assert stored.status is IRSessionStatus.NEEDS_PERSON, (
         "a visita desfeita devolvia o pedido de pessoa, e o fechamento gravava done por cima dele"
+    )
+    assert stored.ended_at is not None, "o fechamento recusado largava o carimbo do piso"
+
+
+async def test_a_room_already_halted_when_the_floor_is_met_keeps_the_halt_and_the_stamp(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    await service.mark_needs_person(db_session, session)
+
+    before = datetime.now(UTC)
+    await service.apply_coverage(db_session, session.id, _the_whole_floor())
+    after = datetime.now(UTC)
+
+    halted = await _stored(rival_factory, session.id)
+    assert halted.status is IRSessionStatus.NEEDS_PERSON
+    assert halted.ended_at is not None and before <= halted.ended_at <= after, (
+        "o piso cumprido numa sala parada não deixava carimbo, e a visita a devolvia em andamento"
     )

@@ -801,19 +801,20 @@ async def apply_coverage(
     )
     record_transitions(db, session, before=kept or {}, after=settled)
     set_committed_value(session, "coverage_state", settled)
-    if (
-        not is_panorama(session.pericope)
-        and session_is_done(session)
-        and session.status is IRSessionStatus.IN_PROGRESS
-    ):
+    if not is_panorama(session.pericope) and session_is_done(session) and session.ended_at is None:
         await db.execute(
             update(IRSession)
-            .where(
-                IRSession.id == session.id,
-                IRSession.status == IRSessionStatus.IN_PROGRESS,
-                IRSession.ended_at.is_(None),
+            .where(IRSession.id == session.id, IRSession.ended_at.is_(None))
+            .values(
+                status=case(
+                    (
+                        IRSession.status == IRSessionStatus.IN_PROGRESS,
+                        literal(IRSessionStatus.DONE, IRSession.status.type),
+                    ),
+                    else_=IRSession.status,
+                ),
+                ended_at=datetime.now(UTC),
             )
-            .values(status=IRSessionStatus.DONE, ended_at=datetime.now(UTC))
             .execution_options(synchronize_session=False)
         )
     await db.commit()
