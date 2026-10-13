@@ -54,7 +54,7 @@ class ActivePassageView(BaseModel):
     """
 
     pericope: str
-    reference: str
+    reference: str | None
 
 
 class FacilitatorTeamView(BaseModel):

@@ -147,8 +147,10 @@ def _item(
             for line in session.messages or []
             if line.get("role") == "guide" and not line.get("told_back")
         ),
-        engaged_elements=sum(1 for bead in beads if bead.status == CoverageStatus.ENGAGED.value),
-        total_elements=len(beads),
+        engaged_elements=None
+        if beads is None
+        else sum(1 for bead in beads if bead.status == CoverageStatus.ENGAGED.value),
+        total_elements=None if beads is None else len(beads),
         kept_rehearsals=kept_rehearsals,
         has_release=has_release,
         listener_count=None,
