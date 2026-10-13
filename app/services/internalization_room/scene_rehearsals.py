@@ -123,6 +123,18 @@ async def scene_rehearsals_of_the_passage(
     return list(found)
 
 
+async def scene_rehearsals_of_the_session(
+    db: AsyncSession, session_id: str
+) -> list[IRSceneRehearsal]:
+    """Every scene rehearsal recorded in this session, archived or not, for the reader."""
+    found = await db.scalars(
+        select(IRSceneRehearsal)
+        .where(IRSceneRehearsal.session_id == session_id)
+        .order_by(IRSceneRehearsal.n)
+    )
+    return list(found)
+
+
 async def scene_rehearsal_in_session(
     db: AsyncSession, session_id: str, rehearsal_id: str
 ) -> IRSceneRehearsal:

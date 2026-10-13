@@ -742,3 +742,63 @@ async def test_a_zerar_stamps_the_scene_rehearsals_restarts(
         archive_id,
         archive_id,
     ]
+
+
+async def read_by_the_reader(room: Room, session_id: str) -> list[dict[str, Any]]:
+    listed = await room.client.get(
+        f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", headers=room.desk
+    )
+    assert listed.status_code == 200, listed.text
+    return list(listed.json()["scene_rehearsals"])
+
+
+async def test_the_reader_opens_a_zerada_sessions_scene_rehearsal_with_its_restart_and_its_words(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    two = await translated(room, session_id, rehearsal_id, [(0, 5000), (5000, 11000)])
+    await restarted(room, session_id, rehearsal_id)
+    archive_id = await zerar(room)
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    assert read["rehearsal_id"] == rehearsal_id
+    assert read["archive_id"] == archive_id
+    (restart_read,) = read["restarts"]
+    assert restart_read["restarted_at"]
+    assert [(f["frase_id"], f["transcript"]) for f in restart_read["snapshot"]["frases"]] == [
+        (two[0], SAID),
+        (two[1], SAID),
+    ]
+
+
+async def test_the_reader_reads_the_current_frases_words(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    room.answers.extend(["a primeira frase", "a segunda frase"])
+    await translated(room, session_id, rehearsal_id, [(0, 5000), (5000, 11000)])
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    assert [(f["starts_ms"], f["transcript"]) for f in read["frases"]] == [
+        (0, "a primeira frase"),
+        (5000, "a segunda frase"),
+    ]
+
+
+async def test_the_reader_shows_the_classifiers_guess_beside_the_teams_label(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert (read["scene"], read["scene_said"], read["scene_guess"]) == ("S2", "recording", None)
+
+    await write(db_session, "scene_guess", "S3", rehearsal_id)
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert (read["scene"], read["scene_guess"]) == ("S2", "S3")

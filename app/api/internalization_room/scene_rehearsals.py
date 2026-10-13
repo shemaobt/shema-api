@@ -1,12 +1,14 @@
 """The scene rehearsal's doors: the tablet keeps it, translates it and resumes it anywhere.
 
-The tablet's doors carry no words of the team and no classifier guess (ENG-1335).
+The tablet's doors carry no words of the team and no classifier guess (ENG-1335); the reader
+door is the facilitator's, and still reads a rehearsal its Zerar archived (ADR 0052).
 """
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.facilitator._deps import ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
@@ -17,9 +19,15 @@ from app.db.models.internalization_room import (
     IRSession,
 )
 from app.models.internalization_room import (
+    ReaderSceneFraseView,
+    ReaderSceneRehearsalsResponse,
+    ReaderSceneRehearsalView,
     SceneFraseView,
+    SceneRehearsalFacts,
     SceneRehearsalsResponse,
     SceneRehearsalView,
+    SceneRestartSnapshot,
+    SceneRestartView,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room import scene_rehearsals as scenes
@@ -40,11 +48,8 @@ def _frase_view(frase: IRSceneFrase, replacing: dict[str, str]) -> SceneFraseVie
     )
 
 
-def _view(
-    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
-) -> SceneRehearsalView:
-    replacing = scenes.replaced_by(frases)
-    return SceneRehearsalView(
+def _facts(rehearsal: IRSceneRehearsal, restarts: list[IRSceneRestart]) -> SceneRehearsalFacts:
+    return SceneRehearsalFacts(
         rehearsal_id=rehearsal.id,
         session_id=rehearsal.session_id,
         pericope=rehearsal.pericope,
@@ -57,7 +62,41 @@ def _view(
         recorded_at=as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else "",
         sent_at=as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None,
         after_restart=restarts[-1].id if restarts else None,
+    )
+
+
+def _view(
+    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
+) -> SceneRehearsalView:
+    replacing = scenes.replaced_by(frases)
+    return SceneRehearsalView(
+        **_facts(rehearsal, restarts).model_dump(),
         frases=[_frase_view(frase, replacing) for frase in frases],
+    )
+
+
+def _reader_view(
+    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
+) -> ReaderSceneRehearsalView:
+    replacing = scenes.replaced_by(frases)
+    return ReaderSceneRehearsalView(
+        **_facts(rehearsal, restarts).model_dump(),
+        frases=[
+            ReaderSceneFraseView(
+                **_frase_view(frase, replacing).model_dump(), transcript=frase.transcript
+            )
+            for frase in frases
+        ],
+        scene_guess=rehearsal.scene_guess,
+        archive_id=rehearsal.archive_id,
+        restarts=[
+            SceneRestartView(
+                restart_id=restart.id,
+                restarted_at=as_utc(restart.restarted_at).isoformat(),
+                snapshot=SceneRestartSnapshot.model_validate(restart.snapshot),
+            )
+            for restart in restarts
+        ],
     )
 
 
@@ -203,3 +242,25 @@ router.add_api_route(
     dependencies=[linked_tablet_dep, idempotency_dep],
     route_class_override=IdempotentRoute,
 )
+
+
+@router.get(
+    "/facilitator/sessions/{session_id}/scene-rehearsals",
+    response_model=ReaderSceneRehearsalsResponse,
+)
+async def facilitator_scene_rehearsals(
+    session_id: str, user: ReaderUser, db: AsyncSession = Depends(get_db)
+) -> ReaderSceneRehearsalsResponse:
+    """The session's scene rehearsals with their words, restarts and guess, archived or not."""
+    session = await room.get_session_for_reader(db, user, session_id)
+    rehearsals = await scenes.scene_rehearsals_of_the_session(db, session.id)
+    ids = [rehearsal.id for rehearsal in rehearsals]
+    frases = await scenes.frases_of(db, ids)
+    restarts = await scenes.restarts_of(db, ids)
+    return ReaderSceneRehearsalsResponse(
+        session_id=session.id,
+        scene_rehearsals=[
+            _reader_view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
+            for rehearsal in rehearsals
+        ],
+    )
