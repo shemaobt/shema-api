@@ -233,8 +233,11 @@ def _prune(keep: tuple[str, ...]) -> None:
     kept = VENDOR.parent / "kept"
     if kept.is_dir():
         for tree in sorted(kept.iterdir()):
-            if tree.name not in keep:
+            if tree.name in keep:
+                print(f"  kept kept/{tree.name}")
+            else:
                 shutil.rmtree(tree)
+                print(f"  dropped kept/{tree.name}")
 
 
 def _pin_record(sha: str, maps: list[str]) -> str:

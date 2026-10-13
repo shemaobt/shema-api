@@ -86,3 +86,18 @@ def test_a_re_pin_drops_the_tree_it_keeps_for_the_pin_it_replaces_when_not_told_
     assert sorted(path.name for path in (tmp_path / "kept").iterdir()) == [], (
         "a re-pin left the canon it replaced under kept/ though no one asked to keep it"
     )
+
+
+def test_a_sync_says_which_kept_trees_it_dropped_and_which_it_kept_before_its_pin(
+    a_canon_pinned_beside_two_kept_trees: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    capsys.readouterr()
+
+    assert canon.sync(pin=SHA, keep=(OLDER,)) == 0
+
+    said = capsys.readouterr().out.splitlines()
+    assert [line for line in said if "kept/" in line] == [
+        "  kept kept/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "  dropped kept/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    ], "the sync dropped kept canons without a word"
+    assert said[-1] == "pinned at 5b5c8d2b3ae7632279c07017224f861ae369b0d7"
