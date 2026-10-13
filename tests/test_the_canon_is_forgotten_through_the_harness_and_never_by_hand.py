@@ -14,9 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from tests.canon_harness import the_caches_the_loader_holds
+from tests.canon_harness import the_caches_of_the_prompts, the_caches_the_loader_holds
 
 TESTS = Path(__file__).resolve().parent
+
+
+def _the_caches_the_harness_forgets() -> set[str]:
+    held = the_caches_the_loader_holds() + the_caches_of_the_prompts()
+    return {name for name, _ in held}
 
 
 def _names_in(expression: ast.AST) -> set[str]:
@@ -78,13 +83,13 @@ def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], lis
 
 
 CLEARS_ONE_THING_AND_NAMES_ANOTHER = """\
-from app.services.internalization_room import fail_safe
+from app.core.config import get_settings
 from app.services.internalization_room.canon.parse_map import load_map
 
 
 def test_a_case() -> None:
     assert load_map("P01")
-    fail_safe._sections.cache_clear()
+    get_settings.cache_clear()
 """
 
 A_NAME_ANOTHER_CASE_FEEDS_FROM_THE_CANON = """\
@@ -142,6 +147,31 @@ def test_a_case() -> None:
     forget()
 """
 
+CLEARS_THE_FAIL_SAFE_SECTIONS = """\
+from app.services.internalization_room import fail_safe
+
+
+def test_a_case() -> None:
+    fail_safe._sections.cache_clear()
+"""
+
+CLEARS_THE_FAIL_SAFE_FILE_THROUGH_AN_ALIAS = """\
+from app.services.internalization_room import fail_safe
+
+
+def test_a_case() -> None:
+    real_loader = fail_safe.fail_safe_utterances
+    real_loader.cache_clear()
+"""
+
+CLEARS_THE_PROMPT_LOADER = """\
+from app.services.internalization_room import _default_prompts
+
+
+def test_a_case() -> None:
+    _default_prompts.load_prompt.cache_clear()
+"""
+
 
 def _planted(tmp_path: Path, source: str) -> Path:
     module = tmp_path / "test_a_planted_case.py"
@@ -152,7 +182,7 @@ def _planted(tmp_path: Path, source: str) -> Path:
 def test_a_clear_of_another_cache_is_not_a_clear_of_the_canon_for_naming_one(
     tmp_path: Path,
 ) -> None:
-    canon_caches = {name for name, _ in the_caches_the_loader_holds()}
+    canon_caches = _the_caches_the_harness_forgets()
 
     of_the_canon, of_something_else = _the_clears_in(
         _planted(tmp_path, CLEARS_ONE_THING_AND_NAMES_ANOTHER), canon_caches
@@ -164,7 +194,7 @@ def test_a_clear_of_another_cache_is_not_a_clear_of_the_canon_for_naming_one(
 def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear(
     tmp_path: Path,
 ) -> None:
-    canon_caches = {name for name, _ in the_caches_the_loader_holds()}
+    canon_caches = _the_caches_the_harness_forgets()
 
     of_the_canon, of_something_else = _the_clears_in(
         _planted(tmp_path, A_NAME_ANOTHER_CASE_FEEDS_FROM_THE_CANON), canon_caches
@@ -191,25 +221,44 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
     tmp_path: Path, source: str, line: int
 ) -> None:
-    canon_caches = {name for name, _ in the_caches_the_loader_holds()}
+    canon_caches = _the_caches_the_harness_forgets()
 
     of_the_canon, of_something_else = _the_clears_in(_planted(tmp_path, source), canon_caches)
 
     assert (of_the_canon, of_something_else) == ([line], [])
 
 
-def test_no_test_clears_a_cache_of_the_canon_by_hand() -> None:
-    canon_caches = {name for name, _ in the_caches_the_loader_holds()}
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [
+        (CLEARS_THE_FAIL_SAFE_SECTIONS, 5),
+        (CLEARS_THE_FAIL_SAFE_FILE_THROUGH_AN_ALIAS, 6),
+        (CLEARS_THE_PROMPT_LOADER, 5),
+    ],
+    ids=["the fail-safe sections", "the fail-safe file by an alias", "the prompt loader"],
+)
+def test_a_clear_of_a_prompt_cache_is_read_as_one_the_harness_owns(
+    tmp_path: Path, source: str, line: int
+) -> None:
+    of_the_harness, of_something_else = _the_clears_in(
+        _planted(tmp_path, source), _the_caches_the_harness_forgets()
+    )
+
+    assert (of_the_harness, of_something_else) == ([line], [])
+
+
+def test_no_test_clears_a_cache_the_harness_forgets_by_hand() -> None:
+    owned = _the_caches_the_harness_forgets()
     by_hand: list[str] = []
-    of_something_else: list[str] = []
     for module in sorted(TESTS.rglob("*.py")):
         if module.name == "canon_harness.py":
             continue
-        of_the_canon, of_something_other = _the_clears_in(module, canon_caches)
-        by_hand.extend(f"{module.relative_to(TESTS)}:{line}" for line in of_the_canon)
-        of_something_else.extend(
-            f"{module.relative_to(TESTS)}:{line}" for line in of_something_other
-        )
+        of_the_harness, _ = _the_clears_in(module, owned)
+        by_hand.extend(f"{module.relative_to(TESTS)}:{line}" for line in of_the_harness)
+    in_the_harness, _ = _the_clears_in(TESTS / "canon_harness.py", owned)
 
-    assert of_something_else, "no clear of any cache was read: the detector is what is broken"
-    assert by_hand == [], "the canon is forgotten through canon_harness.forget_the_canon"
+    assert in_the_harness, "no clear was read in the harness: the detector is what is broken"
+    assert by_hand == [], (
+        "the canon is forgotten through canon_harness.forget_the_canon "
+        "and the prompts through canon_harness.forget_the_prompts"
+    )

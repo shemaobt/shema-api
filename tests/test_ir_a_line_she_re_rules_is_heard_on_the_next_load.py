@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.services.internalization_room import fail_safe
 from app.services.platform import tts
+from tests.canon_harness import forget_the_prompts
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import room_client
 
@@ -231,11 +232,11 @@ def elevenlabs(monkeypatch: pytest.MonkeyPatch) -> ElevenLabs:
 def deploy(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str], None]]:
     def deployed(her_file: str) -> None:
         monkeypatch.setattr(fail_safe, "fail_safe_utterances", lambda: her_file)
-        fail_safe._sections.cache_clear()
+        forget_the_prompts()
         tts.forget_what_is_kept()
 
     yield deployed
-    fail_safe._sections.cache_clear()
+    forget_the_prompts()
 
 
 async def heard(client: httpx.AsyncClient, line: str, language: str) -> tuple[str, str]:
