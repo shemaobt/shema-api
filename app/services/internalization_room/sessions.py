@@ -806,8 +806,16 @@ async def apply_coverage(
         and session_is_done(session)
         and session.status is IRSessionStatus.IN_PROGRESS
     ):
-        session.status = IRSessionStatus.DONE
-        session.ended_at = datetime.now(UTC)
+        await db.execute(
+            update(IRSession)
+            .where(
+                IRSession.id == session.id,
+                IRSession.status == IRSessionStatus.IN_PROGRESS,
+                IRSession.ended_at.is_(None),
+            )
+            .values(status=IRSessionStatus.DONE, ended_at=datetime.now(UTC))
+            .execution_options(synchronize_session=False)
+        )
     await db.commit()
     await db.refresh(session)
     return session
