@@ -32,6 +32,7 @@ from app.services.internalization_room.fail_safe import (
 )
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.room_agent import room_agent
+from tests.canon_harness import forget_the_prompts
 from tests.turn_harness import the_room_agent_is
 
 MODEL_SEAMS: tuple[str, ...] = (
@@ -235,15 +236,14 @@ def test_a_family_whose_block_is_not_loaded_raises_rather_than_reading_past_the_
     without_x = '### P. Process lines\n- "one"\n- "two"\n- "three"\n- "four"\n'
     real_loader = fail_safe.fail_safe_utterances
     fail_safe.fail_safe_utterances = lambda: without_x  # type: ignore[assignment]
-    fail_safe._sections.cache_clear()
+    forget_the_prompts()
     try:
         assert process_line("P", "start") == ("one", "P0")
         with pytest.raises(UnknownProcessLine):
             process_line("X", "open")
     finally:
         fail_safe.fail_safe_utterances = real_loader  # type: ignore[assignment]
-        fail_safe._sections.cache_clear()
-        real_loader.cache_clear()
+        forget_the_prompts()
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
