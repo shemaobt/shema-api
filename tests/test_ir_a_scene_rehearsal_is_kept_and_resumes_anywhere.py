@@ -10,6 +10,7 @@ they assert.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import uuid
@@ -874,3 +875,45 @@ async def test_a_restart_whose_attempt_is_another_scene_rehearsals_restart_is_re
     assert refused.status_code == 422, refused.text
     assert refused.json()["code"] == "UNKNOWN_REFERENCE"
     assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 0
+
+
+async def test_two_scenes_kept_at_once_in_one_session_take_the_next_two_numbers(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+
+    first, second = await asyncio.gather(
+        record(room, session_id, recording(5, 3)), record(room, session_id, recording(5, 4))
+    )
+
+    assert (first.status_code, second.status_code) == (200, 200), (first.text, second.text)
+    assert sorted([first.json()["n"], second.json()["n"]]) == [1, 2]
+
+
+async def test_a_scene_with_no_audio_is_refused_as_no_recording(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+
+    refused = await record(room, session_id, b"")
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["detail"] == "A recording with no audio is not a recording"
+
+
+async def test_a_frase_resent_while_it_is_still_heard_is_one_frase(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    frase = recording(1, 100)
+    resent: list[httpx.Response] = []
+
+    async def resend() -> None:
+        resent.append(await translate(room, session_id, rehearsal_id, (0, 5000), frase))
+
+    room.while_hearing.append(resend)
+    first = await translate(room, session_id, rehearsal_id, (0, 5000), frase)
+
+    assert (first.status_code, resent[0].status_code) == (200, 200), first.text
+    assert await count(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == 1

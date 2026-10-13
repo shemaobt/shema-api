@@ -51,7 +51,7 @@ def _view(
         pericope=rehearsal.pericope,
         n=rehearsal.n,
         scene=rehearsal.scene,
-        scene_said=rehearsal.scene_said,
+        scene_said=rehearsal.scene_said.value if rehearsal.scene_said else None,
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
