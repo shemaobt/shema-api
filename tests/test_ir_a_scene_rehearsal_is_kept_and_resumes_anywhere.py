@@ -861,6 +861,21 @@ async def test_an_earlier_restart_resent_after_a_later_one_landed_changes_nothin
     assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 2
 
 
+async def test_a_restart_whose_attempt_is_another_scene_rehearsals_restart_is_refused(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    sibling_id = await recorded(room, session_id, recording(10, 2))
+    theirs = await restarted(room, session_id, sibling_id)
+
+    refused = await restart(room, session_id, rehearsal_id, theirs)
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "UNKNOWN_REFERENCE"
+    assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 0
+
+
 async def read_by_the_reader(room: Room, session_id: str) -> list[dict[str, Any]]:
     listed = await room.client.get(
         f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", headers=room.desk

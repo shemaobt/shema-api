@@ -18,6 +18,7 @@ from app.api.internalization_room import back_translation as bt_api
 from app.services.internalization_room.takes import takes_of
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import (
+    PART_MS,
     Analyst,
     Room,
     played_every_part,
@@ -74,7 +75,12 @@ async def _send_chunk(
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
         headers=headers,
-        data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000"},
+        data={
+            "take_id": take_id,
+            "starts_ms": "0",
+            "ends_ms": str(PART_MS),
+            "retelling": "true",
+        },
         files={"file": ("trecho.m4a", b"a equipe explicou este trecho", "audio/mp4")},
     )
 
