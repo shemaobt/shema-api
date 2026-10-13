@@ -164,7 +164,7 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def sync(pin: str | None = None) -> int:
+def sync(pin: str | None = None, keep: tuple[str, ...] = ()) -> int:
     if pin and not _on_main_line(pin):
         print(
             f"pin {pin} is not on the compiler's main line — "
@@ -192,7 +192,7 @@ def sync(pin: str | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-    _prune()
+    _prune(keep)
     if PIN_FILE.exists() and (held := pinned_commit(PIN_FILE.read_text())) != sha:
         _keep(held)
     files = []
@@ -228,11 +228,12 @@ def _keep(pin: str) -> None:
     shutil.copy(VENDOR.parent / "ui-labels.pt.json", kept / "ui-labels.pt.json")
 
 
-def _prune() -> None:
+def _prune(keep: tuple[str, ...]) -> None:
     kept = VENDOR.parent / "kept"
     if kept.is_dir():
         for tree in sorted(kept.iterdir()):
-            shutil.rmtree(tree)
+            if tree.name not in keep:
+                shutil.rmtree(tree)
 
 
 def _pin_record(sha: str, maps: list[str]) -> str:

@@ -46,3 +46,18 @@ def test_a_sync_drops_every_kept_tree_and_leaves_the_pinned_canon_as_it_is(
         "meaning-map/P01-Ruth-1-1-5.md": b"map P01-Ruth-1-1-5",
         "registry/ruth.aliases.json": b"aliases ruth",
     }
+
+
+def test_a_sync_keeps_the_tree_of_a_pin_it_is_told_to_keep_and_drops_the_other(
+    a_canon_pinned_beside_two_kept_trees: Path,
+) -> None:
+    canon_dir = a_canon_pinned_beside_two_kept_trees
+
+    assert canon.sync(pin=SHA, keep=(OLDER,)) == 0
+
+    assert sorted(path.name for path in (canon_dir / "kept").iterdir()) == [OLDER], (
+        "the sync dropped the canon of a pin it was told a session still reads"
+    )
+    assert (canon_dir / "kept" / OLDER / "vendor" / "VENDOR_PIN").read_text() == (
+        f"pin_commit: {OLDER}\n"
+    )
