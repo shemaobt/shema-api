@@ -147,3 +147,43 @@ def test_a_refused_sync_drops_no_kept_tree(
     assert sorted(path.name for path in kept.iterdir()) == [OLDER, OLDEST], (
         "a refused sync dropped the canon open sessions read"
     )
+
+
+@pytest.mark.parametrize(
+    ("pin", "named"),
+    [
+        (NEXT, "cccccccccccccccccccccccccccccccccccccccc"),
+        (SHA, "5b5c8d2b3ae7632279c07017224f861ae369b0d7"),
+    ],
+    ids=["the new pin on a re-pin", "the pin a same-pin sync replaces nothing of"],
+)
+def test_a_pin_to_keep_that_names_no_kept_tree_and_not_the_replaced_pin_is_refused(
+    a_compiler_pinned_beside_its_labels: Compiler,
+    a_canon_pinned_beside_two_kept_trees: Path,
+    capsys: pytest.CaptureFixture[str],
+    pin: str,
+    named: str,
+) -> None:
+    canon_dir = a_canon_pinned_beside_two_kept_trees
+    before = {path: path.read_bytes() for path in canon_dir.rglob("*") if path.is_file()}
+    a_compiler_pinned_beside_its_labels.sha = pin
+
+    assert canon.sync(pin=pin, keep=(pin,)) == 1
+
+    assert f"--keep {named}" in capsys.readouterr().err
+    assert {path: path.read_bytes() for path in canon_dir.rglob("*") if path.is_file()} == (
+        before
+    ), "a pin to keep that named no tree let the sync drop the tree it was meant to keep"
+
+
+def test_a_re_pin_told_to_keep_the_pin_it_replaces_keeps_its_tree_and_drops_the_others(
+    a_compiler_pinned_beside_its_labels: Compiler, a_canon_pinned_beside_two_kept_trees: Path
+) -> None:
+    a_compiler_pinned_beside_its_labels.sha = NEXT
+
+    assert canon.sync(pin=NEXT, keep=(SHA,)) == 0
+
+    kept = a_canon_pinned_beside_two_kept_trees / "kept"
+    assert sorted(path.name for path in kept.iterdir()) == [
+        "5b5c8d2b3ae7632279c07017224f861ae369b0d7"
+    ], "the sync refused to keep the canon of the pin it was replacing"

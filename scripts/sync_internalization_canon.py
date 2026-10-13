@@ -194,7 +194,16 @@ def sync(pin: str | None = None, keep: tuple[str, ...] = ()) -> int:
                 file=sys.stderr,
             )
             return 1
-    if PIN_FILE.exists() and (held := pinned_commit(PIN_FILE.read_text())) != sha:
+    held = pinned_commit(PIN_FILE.read_text()) if PIN_FILE.exists() else sha
+    for kept in keep:
+        if not (kept == held != sha or (VENDOR.parent / "kept" / kept).is_dir()):
+            print(
+                f"--keep {kept} names no kept tree and not the pin this sync replaces — "
+                "refusing to drop the canon it was meant to keep",
+                file=sys.stderr,
+            )
+            return 1
+    if held != sha:
         _keep(held)
     _prune(keep)
     files = []
