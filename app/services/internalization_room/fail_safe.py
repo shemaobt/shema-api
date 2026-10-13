@@ -26,7 +26,7 @@ _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
 
 #: The instant acknowledgements her app ever plays, in either language: it fetches the F lines
-#: with ``i < 3`` (``app/page.tsx:279`` at her freeze). Her file, kept byte for byte, carries a
+#: with ``i < 3`` (``app/page.tsx:280`` at her freeze). Her file, kept byte for byte, carries a
 #: fourth in each block, «Right.» and «Tá.», that the team could never hear from her, so the
 #: room reads no further than she does — the ruling of 2026-10-06.
 ACKNOWLEDGEMENTS_SHE_PLAYS = 3
