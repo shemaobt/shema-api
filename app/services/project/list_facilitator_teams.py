@@ -183,7 +183,9 @@ async def list_facilitator_teams(
     scope = await readable_projects(db, user)
     rows = (await db.execute(team_cards(scope))).all()
     here = await active_passages(db, project_ids=[row.id for row in rows])
-    pins = await canon_pins_of(db, [row.id for row in rows])
+    pins = await canon_pins_of(
+        db, [(row.id, pericope) for row in rows if (pericope := here[row.id]) is not None]
+    )
     facilitated = await writable_project_ids(db, user)
 
     every_team = [

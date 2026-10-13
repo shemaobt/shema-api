@@ -16,12 +16,15 @@ from pathlib import Path
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
+from app.services.internalization_room.canon import kept as canon
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import apply_coverage, create_session
+from app.services.internalization_room.team_sessions import canon_pins_of
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -281,3 +284,29 @@ async def test_the_desk_reads_the_session_the_team_entered_not_a_later_one_nobod
     assert labels[NAOMI_IN_THE_FIRST_SCENE] == KEPT_NAOMI_LABEL, (
         "o colar da equipe leu a sessão aberta depois, em que ninguém entrou"
     )
+
+
+async def test_the_pins_are_read_for_the_passages_asked_one_row_each_not_for_every_session(
+    db_session: AsyncSession, test_engine: AsyncEngine
+) -> None:
+    _, (team, _) = await _a_desk_over_two_teams(db_session)
+    for pericope, language in ((FIRST, "en"), (FIRST, "pt"), ("P02", "en"), (P, "en")):
+        await create_session(db_session, pericope=pericope, project_id=team.id, language=language)
+    asked: list[tuple[str, tuple]] = []
+
+    def _record(conn, cursor, statement, parameters, context, executemany) -> None:
+        if "canon_pin" in statement:
+            asked.append((statement, parameters))
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _record)
+    try:
+        pins = await canon_pins_of(db_session, [(team.id, FIRST)])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
+
+    assert pins == {(team.id, FIRST): canon.deployed_pin()}, (
+        "os pinos vieram de passagens que ninguém pediu"
+    )
+    ((statement, parameters),) = asked
+    read = await (await db_session.connection()).exec_driver_sql(statement, parameters)
+    assert len(read.all()) == 1, "a leitura trouxe uma linha por sessão, não uma por passagem"

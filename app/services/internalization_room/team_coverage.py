@@ -38,7 +38,7 @@ async def team_necklace(db: AsyncSession, *, team_id: str, pericope: str) -> lis
     is our file being wrong, not this passage being outside the pilot, and the two must not
     arrive at the same door.
     """
-    pins = await canon_pins_of(db, [team_id])
+    pins = await canon_pins_of(db, [(team_id, pericope)])
     try:
         with reading_the_canon_of(pins.get((team_id, pericope))):
             beads = labelled_elements(pericope)

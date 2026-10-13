@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus
@@ -88,17 +88,27 @@ async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
 
 
 async def canon_pins_of(
-    db: AsyncSession, project_ids: Collection[str]
+    db: AsyncSession, pairs: Collection[tuple[str, str]]
 ) -> dict[tuple[str, str], str | None]:
-    result = await db.execute(
-        select(IRSession.project_id, IRSession.pericope, IRSession.canon_pin)
-        .where(IRSession.project_id.in_(project_ids), live())
-        .order_by(*latest_entered_first())
+    ranked = (
+        select(
+            IRSession.project_id,
+            IRSession.pericope,
+            IRSession.canon_pin,
+            func.row_number()
+            .over(
+                partition_by=(IRSession.project_id, IRSession.pericope),
+                order_by=latest_entered_first(),
+            )
+            .label("rank"),
+        )
+        .where(tuple_(IRSession.project_id, IRSession.pericope).in_(pairs), live())
+        .subquery()
     )
-    pins: dict[tuple[str, str], str | None] = {}
-    for team, pericope, pin in result.all():
-        pins.setdefault((team, pericope), pin)
-    return pins
+    result = await db.execute(
+        select(ranked.c.project_id, ranked.c.pericope, ranked.c.canon_pin).where(ranked.c.rank == 1)
+    )
+    return {(team, pericope): pin for team, pericope, pin in result.all()}
 
 
 async def canon_pins_by_session(
