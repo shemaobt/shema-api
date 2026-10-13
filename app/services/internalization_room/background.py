@@ -202,7 +202,11 @@ async def _read_and_keep(
             )
         if read is None:
             return None
-        ahead = ReadAhead(segment_ids=[segment.id for segment in told], findings=read.findings)
+        ahead = ReadAhead(
+            segment_ids=[segment.id for segment in told],
+            findings=read.findings,
+            nuances=read.nuances,
+        )
         await db.refresh(session)
         kept = back_translation_of(session)
         kept.read_ahead = ahead

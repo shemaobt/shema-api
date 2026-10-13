@@ -13,6 +13,8 @@ from app.models.internalization_room import (
     BackTranslationVerdictResponse,
     FindingView,
     FinishBackTranslationRequest,
+    VerdictHeardRequest,
+    VerdictHeardResponse,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.back_translation import Finding
@@ -42,6 +44,16 @@ def finding_views(findings: list[Finding]) -> list[FindingView]:
         FindingView(kind=one.kind.value, frase=one.chunk, segment_id=one.segment_id)
         for one in findings
     ]
+
+
+def named_nuance_view(state: room.BackTranslationState) -> FindingView | None:
+    named = next(
+        (one for one in (state.checks[-1].nuances if state.checks else []) if one.voiced == "now"),
+        None,
+    )
+    if named is None:
+        return None
+    return FindingView(kind="nuance", frase=named.chunk, segment_id=named.segment_id)
 
 
 async def add_chunk(
@@ -287,6 +299,12 @@ async def finish(
     that fell to the fail-safe is not served at all: it conferred nothing, so the press is a
     check of its own on the reading already made, as every press of hers is.
 
+    Nor is a verdict whose nuance the team has since heard to its end. Served, it would name
+    that nuance again, which a nuance once said must never be (acceptance 5 of ENG-1198). The
+    press is a new round on the same reading instead: it names the next nuance not yet said,
+    or speaks the clean verdict when none is left. Falling through only while an unsaid nuance
+    remains would replay the heard one in exactly the case where nothing is left to name.
+
     What counts as the same question is `already_analysed`, the record the analyst was already
     guarded by — one signal, so the four steps of a press can never disagree about whether the
     team told back anything new. A press that reached the analyst and then failed saves no
@@ -299,6 +317,21 @@ async def finish(
         verdict = await _finished(session, payload, db)
     nudge(session.project_id, "verdict")
     return verdict
+
+
+@router.post(
+    "/sessions/{session_id}/back-translation/heard",
+    response_model=VerdictHeardResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def verdict_heard(
+    session_id: str,
+    payload: VerdictHeardRequest,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> VerdictHeardResponse:
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    return VerdictHeardResponse(marked=await room.mark_the_verdict_heard(db, session, payload.at))
 
 
 async def _finished(
@@ -367,25 +400,24 @@ async def _finished(
             findings_remaining=0,
         )
 
-    if (
-        state.already_analysed(told)
-        and state.verdict is not None
-        and not state.verdict.used_fail_safe
-    ):
+    stored = state.the_verdict_to_serve(told)
+    if stored is not None:
         finding = room.the_finding_that_leads(state)
         with stage("db_let_go"):
             await db.commit()
-        clip = await room.the_stored_verdicts_clip(session, state.verdict)
+        clip = await room.the_stored_verdicts_clip(session, stored)
         return BackTranslationVerdictResponse(
             session_id=session.id,
             audio_url=clip_url(clip) if clip else "",
-            fixed_line=state.verdict.fixed_line,
+            fixed_line=stored.fixed_line,
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
             findings=finding_views(state.findings),
             findings_remaining=room.findings_remaining(state.findings),
-            used_fail_safe=state.verdict.used_fail_safe,
+            used_fail_safe=stored.used_fail_safe,
+            check_at=state.checks[-1].at if state.checks else None,
+            named_nuance=named_nuance_view(state),
         )
 
     with stage("db_let_go"):
@@ -427,4 +459,6 @@ async def _finished(
         findings=finding_views(state.findings),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
+        check_at=state.checks[-1].at,
+        named_nuance=named_nuance_view(state),
     )

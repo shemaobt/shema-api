@@ -1163,9 +1163,9 @@ async def retire_the_part_recorded_again(
         return
 
     state = back_translation_of(session)
-    state.findings = findings_after_a_part_is_recorded_again(
-        state.findings, {row.id for row in retired}
-    )
+    gone = {row.id for row in retired}
+    state.findings = findings_after_a_part_is_recorded_again(state.findings, gone)
+    state.nuances = [one for one in state.nuances if one.segment_id not in gone]
     state.checked = False
     state.verdict = None
     await save_back_translation(db, session, state, commit=False)
