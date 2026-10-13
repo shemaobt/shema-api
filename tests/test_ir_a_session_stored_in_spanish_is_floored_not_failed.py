@@ -33,8 +33,10 @@ from app.services.internalization_room import (
     takes,
     verdict_round,
 )
+from app.services.internalization_room.back_translation import segments_block
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
@@ -566,4 +568,16 @@ async def test_an_unheard_part_on_a_row_stored_in_spanish_is_named_in_the_portug
     assert pressed.status_code == 200, pressed.text
     assert room.said[-1] == "Ainda falta ouvir um trecho da gravação antes de eu conferir.", (
         "a voz portuguesa lia em inglês o trecho que faltava ouvir"
+    )
+
+
+def test_nothing_told_back_on_a_row_stored_in_spanish_reads_in_the_portuguese_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+
+    block = segments_block([], Addresses(), language_code="es")
+
+    assert block == "(a equipe ainda não traduziu nada)", (
+        "o vazio da retroverificação caía no inglês fixo, não no piso da frota"
     )
