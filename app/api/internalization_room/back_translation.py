@@ -299,6 +299,12 @@ async def finish(
     that fell to the fail-safe is not served at all: it conferred nothing, so the press is a
     check of its own on the reading already made, as every press of hers is.
 
+    Nor is a verdict whose nuance the team has since heard to its end. Served, it would name
+    that nuance again, which a nuance once said must never be (acceptance 5 of ENG-1198). The
+    press is a new round on the same reading instead: it names the next nuance not yet said,
+    or speaks the clean verdict when none is left. Falling through only while an unsaid nuance
+    remains would replay the heard one in exactly the case where nothing is left to name.
+
     What counts as the same question is `already_analysed`, the record the analyst was already
     guarded by — one signal, so the four steps of a press can never disagree about whether the
     team told back anything new. A press that reached the analyst and then failed saves no
