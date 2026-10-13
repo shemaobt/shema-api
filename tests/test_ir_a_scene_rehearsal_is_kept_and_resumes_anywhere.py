@@ -10,6 +10,7 @@ they assert.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import uuid
 import wave
@@ -367,3 +368,27 @@ async def test_no_statement_of_a_session_read_or_create_names_the_unread_kept_ta
 
     assert any("ir_sessions" in statement for statement in said)
     assert [statement for statement in said if "kept_takes" in statement] == []
+
+
+async def test_two_scenes_kept_at_once_in_one_session_take_the_next_two_numbers(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+
+    first, second = await asyncio.gather(
+        record(room, session_id, recording(5, 3)), record(room, session_id, recording(5, 4))
+    )
+
+    assert (first.status_code, second.status_code) == (200, 200), (first.text, second.text)
+    assert sorted([first.json()["n"], second.json()["n"]]) == [1, 2]
+
+
+async def test_a_scene_with_no_audio_is_refused_as_no_recording(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+
+    refused = await record(room, session_id, b"")
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["detail"] == "A recording with no audio is not a recording"
