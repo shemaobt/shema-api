@@ -46,6 +46,7 @@ from tests.baker import (
 )
 from tests.canon_harness import forget_the_canon, the_canon_moves_on
 from tests.device_harness import TABLET_TEAM
+from tests.opening_harness import desk_routes
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client
 
@@ -141,6 +142,25 @@ async def _a_desk_over_two_teams(db: AsyncSession) -> tuple[dict[str, str], list
         teams.append(team)
     access, _refresh = await issue_tokens(db, user)
     return {"Authorization": f"Bearer {access}"}, teams
+
+
+async def test_the_desk_necklace_of_a_team_whose_pin_lost_its_tree_is_refused_by_it_not_unknown(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (gone_team, _) = await _a_desk_over_two_teams(db_session)
+    session = await open_ir_session(db_session, pericope=P, project_id=gone_team.id)
+    shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN))
+
+    async with desk_routes(db_session) as at_desk:
+        necklace = await at_desk.get(
+            f"/api/facilitator/teams/{gone_team.id}/coverage", params={"pericope": P}, headers=desk
+        )
+
+    assert necklace.status_code == 409, necklace.text[:300]
+    assert necklace.json()["code"] == "CANON_NOT_KEPT", (
+        "a Mesa ouvia 404, como se a passagem nunca tivesse existido no canon"
+    )
+    assert session.canon_pin in necklace.json()["detail"]
 
 
 async def _a_hand_raised_on_naomi(db: AsyncSession, team_id: str, session_id: str) -> str:
