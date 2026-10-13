@@ -602,3 +602,21 @@ async def test_a_scene_with_no_audio_is_refused_as_no_recording(
 
     assert refused.status_code == 400, refused.text
     assert refused.json()["detail"] == "A recording with no audio is not a recording"
+
+
+async def test_a_frase_resent_while_it_is_still_heard_is_one_frase(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    frase = recording(1, 100)
+    resent: list[httpx.Response] = []
+
+    async def resend() -> None:
+        resent.append(await translate(room, session_id, rehearsal_id, (0, 5000), frase))
+
+    room.while_hearing.append(resend)
+    first = await translate(room, session_id, rehearsal_id, (0, 5000), frase)
+
+    assert (first.status_code, resent[0].status_code) == (200, 200), first.text
+    assert await count(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == 1

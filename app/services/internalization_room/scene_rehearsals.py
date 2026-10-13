@@ -209,6 +209,15 @@ async def _current_of_the_chain(
     return current
 
 
+async def _the_same_frase(db: AsyncSession, rehearsal_id: str, sha256: str) -> IRSceneFrase | None:
+    found: IRSceneFrase | None = await db.scalar(
+        select(IRSceneFrase).where(
+            IRSceneFrase.rehearsal_id == rehearsal_id, IRSceneFrase.sha256 == sha256
+        )
+    )
+    return found
+
+
 async def _locked(db: AsyncSession, rehearsal_id: str) -> IRSceneRehearsal:
     """The rehearsal read again under a row lock, so what lands on it lands one at a time."""
     found = await db.scalars(
@@ -237,15 +246,12 @@ async def keep_a_frase(
 
     The bytes are stored before they are heard, so a frase with no words keeps its audio and
     is refused as `WordlessTelling`, becoming no frase. Hearing takes seconds, so what it lands
-    on is read again under the rehearsal's lock: a rehearsal sent meanwhile refuses the frase,
+    on is read again under the rehearsal's lock: the same frase resent meanwhile is answered with
+    the first, a rehearsal sent meanwhile refuses the frase,
     one archived meanwhile stamps it, and a frase replaced meanwhile is replaced at its newest.
     """
     sha256 = recording_digest(audio)
-    already = await db.scalar(
-        select(IRSceneFrase).where(
-            IRSceneFrase.rehearsal_id == rehearsal.id, IRSceneFrase.sha256 == sha256
-        )
-    )
+    already = await _the_same_frase(db, rehearsal.id, sha256)
     if already is not None:
         return already
     _refuse_a_sent(rehearsal)
@@ -268,6 +274,9 @@ async def keep_a_frase(
     if not text.strip():
         raise WordlessTelling()
     rehearsal = await _locked(db, rehearsal.id)
+    already = await _the_same_frase(db, rehearsal.id, sha256)
+    if already is not None:
+        return already
     _refuse_a_sent(rehearsal)
 
     frase = IRSceneFrase(
