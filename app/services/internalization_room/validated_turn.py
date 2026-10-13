@@ -369,6 +369,7 @@ async def _voiced_after_validation(
         if not draft:
             attempts[-1] = replace(attempts[-1], note=EMPTY_DRAFT_REASON)
             verdict: dict[str, Any] = {}
+            issues = []
             break
 
         reported = her_block(TEAM_REPORTED_HEADING, telling_back)
