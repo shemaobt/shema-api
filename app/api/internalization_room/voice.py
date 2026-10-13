@@ -281,6 +281,7 @@ async def _the_stored_line_voiced(
     db: AsyncSession, *, key: str, session_id: str, project_id: str, store: SpeechStore
 ) -> bytes | None:
     stored = await session_for_room_caller(db, session_id, project_id)
+    await db.commit()
     line = next(
         (
             message["text"]
