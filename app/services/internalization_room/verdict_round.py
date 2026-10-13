@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import (
     THE_WHOLE_PASSAGE,
@@ -259,10 +260,19 @@ async def save_the_spoken_verdict(
     return session
 
 
+def _to_the_millisecond(moment: datetime) -> datetime:
+    return moment.replace(microsecond=moment.microsecond // 1000 * 1000)
+
+
 async def mark_the_verdict_heard(db: AsyncSession, session: IRSession, at: datetime) -> bool:
     state = back_translation_of(session)
-    heard = next((one for one in state.checks if one.at == at), None)
-    if heard is None or heard.heard_at is not None:
+    heard = next(
+        (one for one in state.checks if _to_the_millisecond(one.at) == _to_the_millisecond(at)),
+        None,
+    )
+    if heard is None:
+        raise NotFoundError("No check round carries this stamp")
+    if heard.heard_at is not None:
         return False
     heard.heard_at = datetime.now(UTC)
     await save_back_translation(db, session, state)

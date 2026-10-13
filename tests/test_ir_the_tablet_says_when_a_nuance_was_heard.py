@@ -145,7 +145,7 @@ async def test_only_the_first_report_that_a_verdict_was_heard_counts(
     assert kept.heard_at == first.heard_at, "a segunda escuta apagava a hora da primeira"
 
 
-async def test_a_report_naming_no_round_of_this_session_marks_nothing(
+async def test_a_report_naming_no_round_of_this_session_is_refused_and_marks_nothing(
     client, analyst, speaker, db_session: AsyncSession
 ) -> None:
     session, _parts = await rehearsed_in_parts(db_session, 3)
@@ -153,11 +153,28 @@ async def test_a_report_naming_no_round_of_this_session_marks_nothing(
 
     heard = await _heard(client, session.id, "2026-01-01T00:00:00Z")
 
-    assert heard.status_code == 200, heard.text
-    assert heard.json() == {"marked": False}
+    assert heard.status_code == 404, "uma marca de rodada nenhuma era aceita em silêncio"
     assert [one.heard_at for one in (await stored_telling_back(db_session, session)).checks] == [
         None
     ], "uma marca que não é de rodada nenhuma dava o último veredito por ouvido"
+
+
+async def test_a_stamp_echoed_back_to_the_millisecond_still_marks_its_round(
+    client, analyst, speaker, db_session: AsyncSession
+) -> None:
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    pressed = await press_terminei(
+        client, session.id, report=await heard_every_part(db_session, session.id)
+    )
+    stamp = _stamp(pressed)
+    assert stamp is not None
+
+    heard = await _heard(client, session.id, stamp.isoformat(timespec="milliseconds"))
+
+    assert heard.status_code == 200, heard.text
+    assert heard.json() == {"marked": True}, (
+        "o tablet devolvia a marca em milissegundos e o veredito nunca contava como ouvido"
+    )
 
 
 async def test_a_report_from_another_projects_tablet_is_refused_and_marks_nothing(
