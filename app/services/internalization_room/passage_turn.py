@@ -35,7 +35,6 @@ async def run_turn(
     opening: bool = False,
     settings: Settings | None = None,
     session_id: str = "?",
-    ask_for_movements: bool = False,
     prepared_pericope: str | None = None,
     earlier_passages: dict[str, str] | None = None,
 ) -> TurnOutcome:
@@ -99,7 +98,6 @@ async def run_turn(
         opening_instruction=opening_note(pericope_num, language_code),
         settings=cfg,
         session_id=session_id,
-        ask_for_movements=ask_for_movements,
         prepared_pericope=prepared_pericope,
         earlier_passages=earlier,
         first_scene=load_map(pericope_num).scenes[0].title,

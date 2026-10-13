@@ -1,24 +1,36 @@
 {
   "P01": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": "O arco da passagem inteira"
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": "Onde a passagem está na história"
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": "Para que a passagem é contada"
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "absence:S1": {
       "en": "No word of God acting",
       "pt": "Nenhuma palavra de Deus agindo"
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "A death with no cause and no grief",
       "pt": "Uma morte sem causa e sem luto"
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "Ten years and no child",
       "pt": "Dez anos e nenhum filho"
     },
-    "absence:4": {
+    "absence:S4": {
       "en": "The line stops, and no one mourns",
       "pt": "A linhagem para, e ninguém chora"
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
-      "pt": "O arco da passagem inteira"
     },
     "being:S1:B1": {
       "en": "The judges",
@@ -84,6 +96,10 @@
       "en": "Ruth",
       "pt": "Rute"
     },
+    "being:S4:B2": {
+      "en": "Elimelech",
+      "pt": "Elimeleque"
+    },
     "being:S4:B3": {
       "en": "The woman",
       "pt": "A mulher"
@@ -96,13 +112,13 @@
       "en": "Chilion",
       "pt": "Quiliom"
     },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": "Onde a passagem está na história"
+    "being:S4:B8": {
+      "en": "Orpah",
+      "pt": "Orfa"
     },
-    "function": {
-      "en": "What the passage is told for",
-      "pt": "Para que a passagem é contada"
+    "being:S4:B9": {
+      "en": "Ruth",
+      "pt": "Rute"
     },
     "object:S1:CB_0030": {
       "en": "Living as a foreigner",
@@ -155,28 +171,36 @@
     "time:S1:TM_PERIOD_OF_JUDGES": {
       "en": "The days of the judges",
       "pt": "Os dias dos juízes"
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": "O tom e o ritmo da narração"
     }
   },
   "P02": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": "O arco da passagem inteira"
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": "Onde a passagem está na história"
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": "Para que a passagem é contada"
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "absence:S1": {
       "en": "God gives bread; Naomi gets up on her own",
       "pt": "Deus dá pão; Noemi se levanta por si"
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "The kindness is assumed, never told",
       "pt": "A bondade é suposta, nunca contada"
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "Orpah turns back, and no one answers Naomi",
       "pt": "Orfa volta atrás, e ninguém responde a Noemi"
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
-      "pt": "O arco da passagem inteira"
     },
     "being:S1:B10": {
       "en": "YHWH",
@@ -214,6 +238,14 @@
       "en": "His people",
       "pt": "O seu povo"
     },
+    "being:S2:B4": {
+      "en": "Mahlon",
+      "pt": "Malom"
+    },
+    "being:S2:B5": {
+      "en": "Chilion",
+      "pt": "Quiliom"
+    },
     "being:S2:B8": {
       "en": "Orpah",
       "pt": "Orfa"
@@ -237,14 +269,6 @@
     "being:S3:B9": {
       "en": "Ruth",
       "pt": "Rute"
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": "Onde a passagem está na história"
-    },
-    "function": {
-      "en": "What the passage is told for",
-      "pt": "Para que a passagem é contada"
     },
     "object:S1:CB_0012": {
       "en": "Bread",
@@ -270,21 +294,9 @@
       "en": "The land of Judah",
       "pt": "A terra de Judá"
     },
-    "place:S1:the-road": {
-      "en": "The road",
-      "pt": "O caminho"
-    },
     "place:S2:PL_EACH_HER_MOTHERS_HOUSE": {
       "en": "Each to her mother's house",
       "pt": "Cada uma à casa de sua mãe"
-    },
-    "place:S2:the-road": {
-      "en": "The road",
-      "pt": "O caminho"
-    },
-    "place:S3:the-road": {
-      "en": "The road",
-      "pt": "O caminho"
     },
     "preserved:R1": {
       "en": "God acts here for the first time",
@@ -301,27 +313,35 @@
     "preserved:R5": {
       "en": "Which wife married which son is still withheld",
       "pt": "Ainda não se diz qual esposa é de qual filho"
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": "O tom e o ritmo da narração"
     }
   },
   "P03": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "Moab unnamed, and its gods too",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "No one calls Ruth the Moabite here",
       "pt": null
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "Naomi's silence after the vow",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B3": {
@@ -360,32 +380,16 @@
       "en": "Ruth",
       "pt": null
     },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
-      "pt": null
-    },
     "place:S1:PL2": {
       "en": "Fields of Moab",
       "pt": null
     },
-    "place:S1:the-road": {
-      "en": "The road",
+    "place:S1:PL_LAND_OF_JUDAH": {
+      "en": "The land of Judah",
       "pt": null
     },
-    "place:S2:the-road": {
-      "en": "The road",
-      "pt": null
-    },
-    "place:S2:where-wherever": {
-      "en": "The open «wherever» of the vow",
-      "pt": null
-    },
-    "place:S3:the-road": {
-      "en": "The road",
+    "place:S2:PL_LAND_OF_JUDAH": {
+      "en": "The land of Judah",
       "pt": null
     },
     "preserved:R1": {
@@ -411,27 +415,35 @@
     "preserved:R7": {
       "en": "The Moabite epithet stays away",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P04": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "Why Naomi is barely recognised",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "The women answer nothing",
       "pt": null
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "Nothing of what the harvest will bring",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B24": {
@@ -474,32 +486,12 @@
       "en": "Ruth",
       "pt": null
     },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
-      "pt": null
-    },
     "object:S3:CB_0026": {
       "en": "Barley harvest",
       "pt": null
     },
     "place:S1:PL1": {
       "en": "Bethlehem",
-      "pt": null
-    },
-    "place:S1:PL2": {
-      "en": "Fields of Moab",
-      "pt": null
-    },
-    "place:S2:PL1": {
-      "en": "Bethlehem",
-      "pt": null
-    },
-    "place:S2:out-back-the-going-and-coming-in": {
-      "en": "Out and back, in Naomi's words",
       "pt": null
     },
     "place:S3:PL1": {
@@ -538,35 +530,43 @@
       "en": "The narrator keeps calling her Naomi",
       "pt": null
     },
-    "time:S3:at-the-beginning-of-the-barley-h": {
+    "time:S3:TM_BARLEY_HARVEST_BEGINNING": {
       "en": "The start of the barley harvest",
-      "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
       "pt": null
     }
   },
   "P05": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": "O arco da passagem inteira"
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": "Onde a passagem está na história"
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": "Para que a passagem é contada"
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "absence:S1": {
       "en": "Boaz is named, and nothing more",
       "pt": "Boaz é nomeado, e nada mais"
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "Naomi names no field, and no kinsman",
       "pt": "Noemi não aponta campo nem parente"
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "No one says God led her there",
       "pt": "Ninguém diz que Deus a levou ali"
     },
-    "absence:4": {
+    "absence:S4": {
       "en": "The foreman never says her name",
       "pt": "O capataz nunca diz o nome dela"
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
-      "pt": "O arco da passagem inteira"
     },
     "being:S1:B13": {
       "en": "Boaz",
@@ -632,14 +632,6 @@
       "en": "Ruth the Moabitess",
       "pt": "Rute, a moabita"
     },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": "Onde a passagem está na história"
-    },
-    "function": {
-      "en": "What the passage is told for",
-      "pt": "Para que a passagem é contada"
-    },
     "object:S1:CB_0032": {
       "en": "Chayil",
       "pt": "Chayil"
@@ -660,17 +652,17 @@
       "en": "Chance",
       "pt": "O acaso"
     },
-    "object:S4:from-morning-until-now-how-long-": {
+    "object:S4:TH_WITHIN_DAY_FROM_MORNING_UNTIL_NOW": {
       "en": "From morning until now",
       "pt": "Desde a manhã até agora"
+    },
+    "place:S2:PL5": {
+      "en": "The field",
+      "pt": "O campo"
     },
     "place:S2:PL_NAOMIS_DWELLING": {
       "en": "Where Naomi is staying",
       "pt": "Onde Noemi está morando"
-    },
-    "place:S2:the-field-the-place-she-means-to": {
-      "en": "The field she means to go to",
-      "pt": "O campo aonde ela quer ir"
     },
     "place:S3:PL1": {
       "en": "Bethlehem",
@@ -715,31 +707,39 @@
     "preserved:R4": {
       "en": "Chance or providence — the text will not say",
       "pt": "Acaso ou providência — o texto não diz"
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": "O tom e o ritmo da narração"
     }
   },
   "P06": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "Boaz never gives his name",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "Moab unnamed, and the pairing withheld",
       "pt": null
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "No word at the meal",
       "pt": null
     },
-    "absence:4": {
+    "absence:S4": {
       "en": "The order is given over Ruth's head",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B13": {
@@ -774,12 +774,8 @@
       "en": "Ruth",
       "pt": null
     },
-    "being:S2:ruth-s-deceased-husband-your-hus": {
+    "being:S2:B?": {
       "en": "Someone the text leaves unnamed here",
-      "pt": null
-    },
-    "being:S2:ruth-s-father-and-mother-your-fa": {
-      "en": "Your father and your mother",
       "pt": null
     },
     "being:S3:B13": {
@@ -804,14 +800,6 @@
     },
     "being:S4:B9": {
       "en": "Ruth",
-      "pt": null
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
       "pt": null
     },
     "object:S1:CB_0034": {
@@ -862,20 +850,8 @@
       "en": "Another field",
       "pt": null
     },
-    "place:S1:the-vessels": {
-      "en": "The vessels",
-      "pt": null
-    },
     "place:S2:PL5_BOAZ_PORTION": {
       "en": "This field",
-      "pt": null
-    },
-    "place:S2:a-people-you-did-not-know": {
-      "en": "A people you did not know",
-      "pt": null
-    },
-    "place:S2:the-land-of-your-birth": {
-      "en": "The land of your birth",
       "pt": null
     },
     "place:S3:PL5_BOAZ_PORTION": {
@@ -886,7 +862,7 @@
       "en": "This field",
       "pt": null
     },
-    "place:S4:among-the-sheaves": {
+    "place:S4:PL_AMONG_SHEAVES": {
       "en": "Among the sheaves",
       "pt": null
     },
@@ -913,31 +889,47 @@
     "time:S3:TM_MEALTIME": {
       "en": "Mealtime",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P07": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "Nothing is withheld here",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "Naomi says nothing at the sight",
       "pt": null
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "Naomi names the redeemer and stops",
       "pt": null
     },
-    "absence:4": {
+    "absence:S4": {
       "en": "Both harvests pass in silence",
       "pt": null
     },
-    "arc": {
-      "en": "The arc of the whole passage",
+    "being:S1:B13": {
+      "en": "Boaz",
+      "pt": null
+    },
+    "being:S1:B3": {
+      "en": "Her mother-in-law",
       "pt": null
     },
     "being:S1:B9": {
@@ -972,16 +964,24 @@
       "en": "One of our redeemers",
       "pt": null
     },
+    "being:S3:B2": {
+      "en": "Elimelech",
+      "pt": null
+    },
     "being:S3:B3": {
       "en": "Her mother-in-law",
       "pt": null
     },
-    "being:S3:B9": {
-      "en": "Ruth",
+    "being:S3:B4": {
+      "en": "Mahlon",
       "pt": null
     },
-    "being:S3:the-dead-of-the-household-the-de": {
-      "en": "The dead",
+    "being:S3:B5": {
+      "en": "Chilion",
+      "pt": null
+    },
+    "being:S3:B9": {
+      "en": "Ruth",
       "pt": null
     },
     "being:S4:B13": {
@@ -998,14 +998,6 @@
     },
     "being:S4:B9": {
       "en": "Ruth",
-      "pt": null
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
       "pt": null
     },
     "object:S1:CB_0034": {
@@ -1123,23 +1115,31 @@
     "time:S4:TM_EXTENDED_HARVEST_SPAN": {
       "en": "Until both harvests end",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P08": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "The plan never says marriage",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "Ruth asks nothing",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B13": {
@@ -1164,14 +1164,6 @@
     },
     "being:S2:B9": {
       "en": "My daughter",
-      "pt": null
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
       "pt": null
     },
     "object:S1:CB_0014": {
@@ -1233,27 +1225,35 @@
     "preserved:R9": {
       "en": "Naomi her mother-in-law; Boaz our kinsman",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P09": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "No word spoken all night",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "Ruth speaks where she was to wait",
       "pt": null
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "Boaz pledges the redeeming, not the marriage",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B13": {
@@ -1276,6 +1276,14 @@
       "en": "A redeemer",
       "pt": null
     },
+    "being:S2:B2": {
+      "en": "Elimelech",
+      "pt": null
+    },
+    "being:S2:B3": {
+      "en": "Her mother-in-law",
+      "pt": null
+    },
     "being:S2:B9": {
       "en": "Ruth",
       "pt": null
@@ -1292,6 +1300,10 @@
       "en": "A redeemer nearer than I",
       "pt": null
     },
+    "being:S3:B2": {
+      "en": "Elimelech",
+      "pt": null
+    },
     "being:S3:B21": {
       "en": "The whole assembly at the gate",
       "pt": null
@@ -1302,14 +1314,6 @@
     },
     "being:S3:B9": {
       "en": "Ruth",
-      "pt": null
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
       "pt": null
     },
     "object:S1:CB_0042": {
@@ -1407,23 +1411,31 @@
     "time:S3:TM_NIGHT_UNTIL_MORNING": {
       "en": "The night … in the morning",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P10": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "No farewell, and the measure unnamed",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "Naomi's question gets no answer",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B13": {
@@ -1446,14 +1458,6 @@
       "en": "The woman",
       "pt": null
     },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
-      "pt": null
-    },
     "object:S1:CB_0042": {
       "en": "The place of his feet",
       "pt": null
@@ -1464,10 +1468,6 @@
     },
     "object:S1:O16": {
       "en": "Six of barley",
-      "pt": null
-    },
-    "object:S2:CB_0024": {
-      "en": "Full and empty, the pair behind the word",
       "pt": null
     },
     "object:S2:CB_0043": {
@@ -1533,31 +1533,39 @@
     "time:S2:TM_TODAY": {
       "en": "Today",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P11": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "The nearer redeemer has no name",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "Ruth is left out of the offer",
       "pt": null
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "The ruin he fears is never explained",
       "pt": null
     },
-    "absence:4": {
+    "absence:S4": {
       "en": "The sandal changes hands off-stage",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B13": {
@@ -1608,7 +1616,7 @@
       "en": "Ruth the Moabite, the wife of the dead",
       "pt": null
     },
-    "being:S3:the-dead-the-dead": {
+    "being:S3:B?": {
       "en": "The dead (unnamed here)",
       "pt": null
     },
@@ -1618,14 +1626,6 @@
     },
     "being:S4:B19": {
       "en": "Friend So-and-so",
-      "pt": null
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
       "pt": null
     },
     "object:S1:CB_0001": {
@@ -1747,23 +1747,31 @@
     "time:S4:TM_FORMER_TIMES": {
       "en": "Formerly in Israel",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P12": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "Named at the gate, and not there",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "The blessing is spoken over her, not to her",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B13": {
@@ -1796,10 +1804,6 @@
     },
     "being:S1:B9": {
       "en": "Ruth the Moabite, the wife of Mahlon",
-      "pt": null
-    },
-    "being:S1:the-dead-the-dead": {
-      "en": "The dead",
       "pt": null
     },
     "being:S2:B10": {
@@ -1836,14 +1840,6 @@
     },
     "being:S2:B9": {
       "en": "Ruth the Moabite, the wife of Mahlon",
-      "pt": null
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
       "pt": null
     },
     "object:S1:CB_0001": {
@@ -1933,27 +1929,35 @@
     "time:S1:TM_TODAY": {
       "en": "Today",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P13": {
-    "absence:1": {
+    "L1:arc": {
+      "en": "The arc of the whole passage",
+      "pt": null
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": null
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": null
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": null
+    },
+    "absence:S1": {
       "en": "No wedding, no waiting, no birth told",
       "pt": null
     },
-    "absence:2": {
+    "absence:S2": {
       "en": "The women bless Naomi, and do not name Ruth",
       "pt": null
     },
-    "absence:3": {
+    "absence:S3": {
       "en": "Ruth is absent from her own ending",
-      "pt": null
-    },
-    "arc": {
-      "en": "The arc of the whole passage",
       "pt": null
     },
     "being:S1:B10": {
@@ -1968,7 +1972,7 @@
       "en": "Ruth",
       "pt": null
     },
-    "being:S1:the-child-a-son": {
+    "being:S1:B?": {
       "en": "A son",
       "pt": null
     },
@@ -1988,7 +1992,7 @@
       "en": "Ruth",
       "pt": null
     },
-    "being:S2:the-child-a-redeemer": {
+    "being:S2:B?": {
       "en": "A redeemer",
       "pt": null
     },
@@ -2006,14 +2010,6 @@
     },
     "being:S3:B3": {
       "en": "Naomi",
-      "pt": null
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": null
-    },
-    "function": {
-      "en": "What the passage is told for",
       "pt": null
     },
     "object:S2:CB_0001": {
@@ -2079,20 +2075,28 @@
     "preserved:R9": {
       "en": "The child is not counted as the dead's son",
       "pt": null
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": null
     }
   },
   "P14": {
-    "absence:1": {
-      "en": "No mother is named, and David gets no comment",
-      "pt": "Nenhuma mãe é nomeada, e Davi não recebe comentário"
-    },
-    "arc": {
+    "L1:arc": {
       "en": "The arc of the whole passage",
       "pt": "O arco da passagem inteira"
+    },
+    "L1:context": {
+      "en": "Where the passage stands in the story",
+      "pt": "Onde a passagem está na história"
+    },
+    "L1:function": {
+      "en": "What the passage is told for",
+      "pt": "Para que a passagem é contada"
+    },
+    "L1:tone": {
+      "en": "The tone and pace of the telling",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "absence:S1": {
+      "en": "No mother is named, and David gets no comment",
+      "pt": "Nenhuma mãe é nomeada, e Davi não recebe comentário"
     },
     "being:S1:B13": {
       "en": "Boaz",
@@ -2109,26 +2113,6 @@
     "being:S1:B27": {
       "en": "Perez, Hezron, Ram, Amminadab, Nahshon, Salmon",
       "pt": "Perez, Hezrom, Rão, Aminadabe, Naassom, Salmom"
-    },
-    "context": {
-      "en": "Where the passage stands in the story",
-      "pt": "Onde a passagem está na história"
-    },
-    "function": {
-      "en": "What the passage is told for",
-      "pt": "Para que a passagem é contada"
-    },
-    "object:S1:CB_0005": {
-      "en": "The line of names",
-      "pt": "A linha dos nomes"
-    },
-    "object:S1:CB_0047": {
-      "en": "The name «Obed»",
-      "pt": "O nome «Obede»"
-    },
-    "object:S1:CB_0048": {
-      "en": "The name «David»",
-      "pt": "O nome «David»"
     },
     "object:S1:CB_0049": {
       "en": "The formula that opens the list",
@@ -2153,10 +2137,6 @@
     "preserved:R6": {
       "en": "Perez, the name spoken at the gate",
       "pt": "Perez, o nome dito na porta"
-    },
-    "tone": {
-      "en": "The tone and pace of the telling",
-      "pt": "O tom e o ritmo da narração"
     }
   }
 }

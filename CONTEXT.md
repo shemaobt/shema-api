@@ -104,7 +104,7 @@ The numbered position of a stretch in the list the analyst receives in one readi
 _Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name), chunk_index (the takes column is `ordinal`)
 
 **Pass** (`pass_number`):
-How many times a stretch has been told: one on the first telling, two when told again after a finding.
+Which side of a check a stretch was told on: one before the analyst has read the telling-back, two for anything told after it, a first telling of a new stretch included.
 _Avoid_: attempt, version, Passe, tellings (the count of every telling of the stretch, kept on the row)
 
 **Telling back**:
@@ -182,12 +182,8 @@ What an element of the Meaning Map is. Six kinds sit in a scene of the passage �
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it; the Guide's ledger block stopped carrying it in ENG-1358, as her live ledger never prints it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
+The scene the ledger last places the team in: the first scene whose elements are not all engaged, once the team has spoken, and none at all before that. It is information — a turn's record keeps it; the Guide's ledger block stopped carrying it in ENG-1358, as her live ledger never prints it — and never a scope on what a turn may move.
 _Avoid_: current scene (the retired heading of the ledger's scene line, which the ledger no longer prints; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
-
-**Invited scene** (`invited_scene_id`):
-The scene a rehearsal invitation is about: the first scene of the passage still owed a rehearsal on the turn the Guide invites, kept with the turn's record and credited when the team reports the rehearsal done. Never the **Scene pointer**, which has not settled when the invitation is spoken.
-_Avoid_: current scene, pointer, practised scene (the credit's result, not its target), Cena convidada
 
 **Coverage event** (`ir_coverage_events`):
 One recorded movement of an element from one coverage state to the next.
@@ -250,8 +246,12 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
+The state in which the passage has been told, one whole reading of the analyst returned no finding, and the verdict spoken on it was validated, so it leaves the rotation for good. A verdict that fell to a fail-safe line confers nothing, however clean the reading. Thin evidence about a legible stretch does not prevent it. A reply that named findings and lost every one to an unreadable **Chunk** is not a reading that returned no finding: it is refused, and confers nothing.
 _Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
+
+**Check round** (`checks`):
+One reading of the telling-back and the verdict spoken on it, kept in the passage's history with its time, its findings with the analyst's notes, the words spoken, the outcome and whether it conferred. Rounds are unlimited, and a later round never overwrites an earlier one.
+_Avoid_: attempt (a **Superseded** recording), Rodada
 
 **Heard the rehearsal** (`unheard_parts`):
 The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
@@ -376,7 +376,7 @@ The file a release hands to Refine: the rehearsal, the telling-back with its fin
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Blocker**:
-One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor and comprehension readiness are facts of the ledger, never blockers). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
+One of the codes a refused approval names, one string each: the gate's eight plus `no_project` (the conversation's coverage floor is a fact of the ledger, never a blocker). A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
 _Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
 
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
@@ -418,7 +418,7 @@ A fact about the room the app hands the Guide in place of the team's words, brac
 _Avoid_: system message, prompt, instruction, Nota da sala
 
 **Earlier passages**:
-This team's status on each earlier passage of the book (approved, started, or not worked yet), stamped once when the session is created, kept on the session and handed to the Guide as a fact, complete or not at all.
+This team's status on each earlier passage of the book (approved, started, or not worked yet), stamped when the session is created and read again after a turn once it is five minutes old, kept on the session and handed to the Guide as a fact, complete or not at all.
 _Avoid_: history, progress, story so far (the digests of those passages, not the team's status on them), Passagens anteriores
 
 **Scene rehearsals**:

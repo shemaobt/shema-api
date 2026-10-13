@@ -23,6 +23,7 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import analyse_telling_back
+from app.services.internalization_room.part_names import Addresses
 from tests.turn_harness import the_room_agent_is
 
 LOGGER_NAME = "app.services.internalization_room.back_translation"
@@ -96,6 +97,7 @@ async def test_an_accepted_analysis_reading_leaves_an_info_record(
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
+            addresses=Addresses(),
             settings=_settings(),
             session_id=SESSION_ID,
         )
@@ -132,6 +134,7 @@ async def test_the_teams_own_words_do_not_reach_this_logger(
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
+            addresses=Addresses(),
             settings=_settings(),
             session_id=SESSION_ID,
         )
@@ -155,6 +158,7 @@ async def test_a_refused_reading_leaves_only_the_refusal_trace(
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
+            addresses=Addresses(),
             settings=_settings(),
             session_id=SESSION_ID,
         )

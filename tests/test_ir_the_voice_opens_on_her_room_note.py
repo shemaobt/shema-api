@@ -37,6 +37,7 @@ class ListeningAgent:
     ) -> None:
         self.draft = draft
         self.guide_turns: list[str] = []
+        self.guide_systems: list[str] = []
         self.validator_systems: list[str] = []
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
@@ -44,6 +45,7 @@ class ListeningAgent:
             self.validator_systems.append(system_prompt)
             return json.dumps({"verdict": "pass", "issues": []})
         self.guide_turns.append(user_content)
+        self.guide_systems.append(system_prompt)
         return self.draft
 
 
@@ -209,3 +211,65 @@ async def test_the_opening_written_ahead_during_a_panorama_is_asked_with_her_not
         "[The session has just begun. The team opened passage P01 and is at the table, "
         "ready to begin. Speak first.]"
     ], "a abertura escrita durante o Panorama ainda pedia ao Guide o nosso roteiro"
+
+
+HER_SECTION_ON_THE_NOTES = (
+    "## Opening the session, and the notes the app hands you\n\n"
+    "Sometimes a team turn begins with a short note in brackets"
+)
+HER_RULE_ON_THE_NOTES = (
+    "These notes come from the app, not from the team. They are facts about the room. Use them "
+    "to decide what to do; never read them aloud, and never treat them as words the team said."
+)
+
+
+async def test_the_guide_is_told_the_notes_are_facts_about_the_room_and_never_to_be_read_aloud(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = ListeningAgent()
+    the_room_agent_is(monkeypatch, turn=agent)
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(),
+        opening=True,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert HER_SECTION_ON_THE_NOTES in agent.guide_systems[0], (
+        "o Guia recebia a nota entre colchetes sem a seção dela dizendo o que fazer com ela"
+    )
+    assert HER_RULE_ON_THE_NOTES in agent.guide_systems[0]
+
+
+async def test_the_panorama_is_told_the_same_about_the_notes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = ListeningAgent()
+    the_room_agent_is(monkeypatch, turn=agent)
+
+    await run_panorama_turn(
+        speech=HeardSpeech(),
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        session_language="Brazilian Portuguese",
+        language_code="pt",
+        opening=True,
+        settings=_settings(),
+    )
+
+    system = " ".join(agent.guide_systems[0].split())
+    assert "## Opening the session, and the notes the app hands you" in system, (
+        "o Panorama recebia a nota entre colchetes sem a seção dela dizendo o que fazer com ela"
+    )
+    assert (
+        "These notes come from the app, not from the team. They are facts about the room: use "
+        "them to decide what to do; never read them aloud, never treat them as words the team said."
+    ) in system

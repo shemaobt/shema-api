@@ -1,4 +1,5 @@
 import base64
+import itertools
 from datetime import UTC, datetime, timedelta
 
 from google_crc32c import Checksum
@@ -45,21 +46,10 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus, initial_state
 from app.services.internalization_room.sessions import (
     apply_coverage,
     create_session,
-    save_comprehension,
 )
 from app.services.internalization_room.takes import store_take
 from app.services.oral_collector.review_flags import (
@@ -252,6 +242,20 @@ async def make_language(
     await db.commit()
     await db.refresh(lang)
     return lang
+
+
+_language_codes = itertools.count()
+
+
+def _next_language_code() -> str:
+    return f"{next(_language_codes) % 1000:03d}"
+
+
+async def a_language(
+    db: AsyncSession, *, name: str | None = None, code: str | None = None
+) -> Language:
+    code = code or _next_language_code()
+    return await make_language(db, name=name or f"Lingua {code}", code=code)
 
 
 async def make_organization(
@@ -989,36 +993,18 @@ async def keep_a_take(
     )
 
 
-def fully_supported_comprehension(pericope: str) -> ComprehensionState:
-    """The comprehension gate met: every checkpoint demonstrated, every scene practised."""
-    return ComprehensionState(
-        ledger=[
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-            )
-            for index, checkpoint in enumerate(checkpoints_for(pericope))
-        ],
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
-
-
 async def having_finished_the_passage(db: AsyncSession, session: IRSession) -> IRSession:
     """Take one conversation to the end of its passage the way the room does.
 
-    Three facts, because the room asks for three and they are not the same fact. Every bead
-    engaged and the comprehension gate met are what `session_is_done` reads, and what lets
-    the room send the team to record. The recording kept is what finishes the
-    passage — the ledger informs, it never ends the conversation.
+    Two facts, because the room asks for two and they are not the same fact. Every bead
+    engaged is what `session_is_done` reads, and what lets the room send the team to record.
+    The recording kept is what finishes the passage — the ledger informs, it never ends the
+    conversation.
 
-    Written through `apply_coverage`, `save_comprehension` and `store_take` rather than by
+    Written through `apply_coverage` and `store_take` rather than by
     setting fields, so a fixture cannot agree with a reader that reads a finished passage
     differently from how one is actually finished.
     """
-    await save_comprehension(db, session, fully_supported_comprehension(session.pericope))
     settled = await apply_coverage(
         db,
         session.id,

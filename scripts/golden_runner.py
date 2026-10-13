@@ -43,6 +43,12 @@ A run stops before the next session once what it has spent reaches `--budget-usd
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
 is played whole and judged first. It names the sessions it did not start on stderr and exits 3,
 unless a session failed, which keeps its 1.
+
+An error that kills the run — a timeout, a reply that is not JSON — still leaves its README and
+its cost total, the session that died among the rows and its paid turns in the sum, with a line
+saying what killed it; the error is then raised as it was. Where `--out` already holds a
+README, a finished run's, the dead run's goes beside it as `README.<stamp>.md` and the first is
+left as it was.
 """
 
 from __future__ import annotations
@@ -511,7 +517,8 @@ async def play_session(
     stamp: str,
     turns: int | None,
     prompt_repeats: bool,
-) -> SessionResult:
+    results: list[SessionResult],
+) -> None:
     """One session, opened and played, and its two files written whatever happened after turn 0.
 
     A refusal is a result, not an exception: the pericope a room does not hold, the key it
@@ -526,8 +533,13 @@ async def play_session(
         session_id = await open_session(script, client)
     except httpx.HTTPStatusError as refused:
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
-        return SessionResult(script.name, None, [], _refusal(refused))
+        results.append(SessionResult(script.name, None, [], _refusal(refused)))
+        return
+    except Exception:
+        results.append(SessionResult(script.name, None, []))
+        raise
     result = SessionResult(script.name, session_id, played)
+    results.append(result)
     try:
         await play(script, client, session_id=session_id, played=played, turns=turns)
     except httpx.HTTPStatusError as refused:
@@ -546,7 +558,6 @@ async def play_session(
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
         await judge(script, result, out=out, stamp=stamp, prompt_repeats=prompt_repeats)
-    return result
 
 
 def shares_judge_prompt(script: Script, batch: list[Script]) -> bool:
@@ -725,7 +736,8 @@ async def run(args: argparse.Namespace) -> int:
         return await rejudge(args)
     scripts = [load_script(path) for path in scripts_to_play(args)]
     if not scripts:
-        print(f"golden: no session named {args.only}", file=sys.stderr)
+        asked = f"session named {args.only}" if args.only else f"sessions under {args.sessions}"
+        print(f"golden: no {asked}", file=sys.stderr)
         return 2
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"Authorization": f"Bearer {args.access_code}"} if args.access_code else {}
@@ -734,12 +746,14 @@ async def run(args: argparse.Namespace) -> int:
     budget = budget_of(args)
     results: list[SessionResult] = []
     not_started: list[str] = []
-    async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
-        for position, script in enumerate(scripts):
-            if _spent(results) >= budget:
-                not_started = [later.name for later in scripts[position:]]
-                break
-            results.append(
+    playing = scripts[0].name
+    try:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
+            for position, script in enumerate(scripts):
+                playing = script.name
+                if _spent(results) >= budget:
+                    not_started = [later.name for later in scripts[position:]]
+                    break
                 await play_session(
                     script,
                     client,
@@ -748,8 +762,13 @@ async def run(args: argparse.Namespace) -> int:
                     stamp=stamp,
                     turns=args.turns,
                     prompt_repeats=shares_judge_prompt(script, scripts),
+                    results=results,
                 )
-            )
+    except Exception as killed:
+        halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
+        readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
+        close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
+        raise
     return finish(
         results,
         out=out,
@@ -874,10 +893,16 @@ async def rejudge(args: argparse.Namespace) -> int:
 
 
 def close(
-    results: list[SessionResult], *, out: Path, base_url: str, stamp: str, halted: str = ""
+    results: list[SessionResult],
+    *,
+    out: Path,
+    base_url: str,
+    stamp: str,
+    halted: str = "",
+    readme: str = "README.md",
 ) -> int:
     out.mkdir(parents=True, exist_ok=True)
-    (out / "README.md").write_text(
+    (out / readme).write_text(
         summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins(), halted=halted),
         encoding="utf-8",
     )
@@ -893,7 +918,7 @@ def close(
     if by_role or unpriced:
         table = f" — {split(by_role)}" if by_role else ""
         print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
-    print(f"\n{passed}/{len(results)} golden sessions pass · {out / 'README.md'}")
+    print(f"\n{passed}/{len(results)} golden sessions pass · {out / readme}")
     return 0 if passed == len(results) else 1
 
 

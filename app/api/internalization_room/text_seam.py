@@ -17,8 +17,7 @@ from fastapi import Depends, Header
 
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError, NotFoundError, ValidationError
-from app.models.internalization_room_text_seam import ModelCall, Outcome
-from app.services import internalization_room as room
+from app.models.internalization_room_text_seam import ModelCall
 from app.services.internalization_room.languages import LANGUAGE_NAMES, normalize
 
 #: The header the back-translation seam reads the runner key in. The Golden doors read the
@@ -95,20 +94,6 @@ def _collecting_model_calls() -> Iterator[list[ModelCall]]:
         yield calls
     finally:
         _COLLECTING.reset(token)
-
-
-def _outcome_tag(outcome: room.TurnOutcome) -> Outcome:
-    """The tag the judge is defined against, read off what the turn already records.
-
-    A turn that fell to a pre-approved line says so. A voiced turn carrying the Validator's
-    issues is one the Validator mended: its contract lists no issues on a `pass`, and the only
-    other verdict that voices anything is `correct`, which lists every problem it repaired.
-    """
-    if outcome.used_fail_safe:
-        return "fail_safe"
-    if outcome.issues:
-        return "corrected"
-    return "pass"
 
 
 def _language_code(named: str) -> str:

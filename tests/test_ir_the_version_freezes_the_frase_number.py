@@ -33,6 +33,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     segments_block,
 )
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     approve_release,
@@ -321,7 +322,10 @@ async def test_a_standing_finding_keeps_its_stretch_when_frase_three_is_divided(
     told = await final_segments(db_session, session.id)
     third = told[2]
     release = await approve_release(db_session, session, device_id=TABLET)
-    numbered = [line.split(". ", 1)[0] for line in segments_block(told).splitlines()]
+    numbered = [
+        line.removeprefix("[frase ").split("]", 1)[0].split(" ", 1)[0]
+        for line in segments_block(told, Addresses()).splitlines()
+    ]
     assert numbered == [str(entry["frase"]) for entry in _frozen(release)], (
         "a analista e o pacote contam a mesma lista, senão o número do achado não é a frase"
     )

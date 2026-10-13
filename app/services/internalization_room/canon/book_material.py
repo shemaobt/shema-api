@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-from functools import lru_cache
 
 from pydantic import BaseModel
 
@@ -130,11 +129,11 @@ def _extract_checklist(text: str) -> dict:
     return {}
 
 
-@lru_cache(maxsize=8)
+@per_canon(maxsize=8)
 def _register_complete(book: str) -> dict[str, bool]:
     """The checklist's own `high_risk_register_complete` flag, per pericope, for one book."""
     complete: dict[str, bool] = {}
-    for path in sorted(LOGS_DIR.glob(f"*-{book}-*-COMPILATION-LOG.md")):
+    for path in sorted(canon_path(LOGS_DIR).glob(f"*-{book}-*-COMPILATION-LOG.md")):
         pericope = path.name.split("-", 1)[0]
         checklist = _extract_checklist(path.read_text(encoding="utf-8"))
         if "high_risk_register_complete" in checklist:

@@ -33,6 +33,7 @@ from app.models.internalization_room import (
     RetroverificationFinding,
     RetroverificationHardStretch,
     RetroverificationListening,
+    RetroverificationNuance,
     RetroverificationRelease,
     RetroverificationStretch,
     RetroverificationTake,
@@ -41,7 +42,9 @@ from app.models.internalization_room import (
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
+    nuances_said,
     rehearsed_parts,
+    said_before,
     unheard_parts,
 )
 from app.services.internalization_room.hard_stretches import hard_stretches_of
@@ -333,6 +336,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             history=_history_of(stretch, replaces),
         )
 
+    said = nuances_said(telling_back.checks)
     numbered = [
         _stretch_view(
             stretch, frozen.get(stretch.id) if frozen is not None else live.get(stretch.id)
@@ -368,6 +372,16 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             if _walked_forward(row.id, replaced_by, standing) is None
         ],
         findings=[_finding_view(finding) for finding in telling_back.findings],
+        nuances=[
+            RetroverificationNuance(
+                chunk=nuance.chunk,
+                segment_id=nuance.segment_id,
+                quote=nuance.quote,
+                story=nuance.story,
+                said=said_before(nuance, said, told),
+            )
+            for nuance in telling_back.nuances
+        ],
         superseded_attempts=[
             RetroverificationAttempt(
                 findings=[_finding_view(finding) for finding in attempt.findings],

@@ -117,14 +117,15 @@ async def speak_back(
     validator_prompt: str,
     pericope: str,
     settings: Settings,
+    earlier_passages: dict[str, str] | None,
     interrupted: bool = False,
 ) -> TurnOutcome:
     """The Guide's reply to the team's turn, or the inaudible ladder's line in its place.
 
     The room's notes — the team cut the Guide short, the team spoke in the mother tongue —
     are handed to the Guide in front of the team's words, and come back as the room's, apart
-    from them, so the conversation keeps them as the room's entry and only the team's words
-    are ever settled. Words the recognizer made of a mother-tongue take never travel.
+    from them, so the conversation keeps them as her note on the team's side and only the
+    team's words are ever settled. Words the recognizer made of a mother-tongue take never travel.
 
     A take with no words that is not the mother tongue is a miss, and draws the ladder's line
     whether or not it followed a cut: nothing reaches the Guide.
@@ -153,7 +154,6 @@ async def speak_back(
         opening=opening,
         settings=settings,
         session_id=session.id,
-        ask_for_movements=opening and not messages,
-        earlier_passages=session.earlier_passages,
+        earlier_passages=earlier_passages,
     )
     return handed.kept_apart(outcome)

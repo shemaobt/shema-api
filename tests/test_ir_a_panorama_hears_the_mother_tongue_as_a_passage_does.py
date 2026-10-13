@@ -254,7 +254,7 @@ async def test_a_panorama_mother_tongue_turn_hands_the_validator_her_note_not_th
     assert TERENA_AS_SPANISH not in judged
 
 
-async def test_a_panorama_mother_tongue_turn_keeps_the_note_as_the_rooms_entry_and_writes_no_team_entry(  # noqa: E501
+async def test_a_panorama_mother_tongue_turn_keeps_her_note_as_its_only_team_entry(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     guide: ScriptedAgent,
@@ -268,9 +268,9 @@ async def test_a_panorama_mother_tongue_turn_keeps_the_note_as_the_rooms_entry_a
     await _the_team_sends_a_take(tablet, session)
 
     written = (await _the_conversation(db_session, session.id))[before:]
-    assert [(entry["role"], entry["text"]) for entry in written] == [
-        ("room", _note(40)),
-        ("guide", GUIDE_LINE),
+    assert [(e["role"], e["text"], e.get("room_note", False)) for e in written] == [
+        ("team", _note(40), True),
+        ("guide", GUIDE_LINE, False),
     ]
 
 
@@ -312,8 +312,8 @@ async def test_a_panorama_take_that_cut_the_guide_short_reaches_the_guide_and_th
     assert len(models.validator_systems) == 1
     assert f"{INTERRUPTION} {PORTUGUESE}" in models.validator_systems[0]
     written = (await _the_conversation(db_session, session.id))[before:]
-    assert [(entry["role"], entry["text"]) for entry in written] == [
-        ("room", INTERRUPTION),
-        ("team", PORTUGUESE),
-        ("guide", GUIDE_LINE),
+    assert [(e["role"], e["text"], e.get("room_note", False)) for e in written] == [
+        ("team", INTERRUPTION, True),
+        ("team", PORTUGUESE, False),
+        ("guide", GUIDE_LINE, False),
     ]

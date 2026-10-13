@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, NamedTuple
 
 import regex
@@ -207,14 +207,26 @@ def moment_at_turn_start(messages: list[dict[str, Any]]) -> Moment | None:
 @dataclass(frozen=True)
 class MomentStep:
     """Her `MomentStep` (`src/session/types.ts`): the moment a turn began in, the one its
-    reply left the room in, and the lines that moved it."""
+    reply left the room in, and the lines that moved it. `ignored` is her `ignored?: string[]`
+    (`types.ts:73`): every line her `step()` declines, in her words, filled where hers fills it
+    (`moment.ts:149-189`) and stored only when there is one. Two things she records are not
+    here, because no rehearsal reaches the server yet: a scene told ahead, and the numberless
+    opening's note on her closing."""
 
     before: Moment
     after: Moment
     by: list[Cause]
+    ignored: list[str] = field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
-        return {"before": self.before.as_json(), "after": self.after.as_json(), "by": self.by}
+        stored: dict[str, Any] = {
+            "before": self.before.as_json(),
+            "after": self.after.as_json(),
+            "by": self.by,
+        }
+        if self.ignored:
+            stored["ignored"] = self.ignored
+        return stored
 
 
 def moment_step(
@@ -227,18 +239,25 @@ def moment_step(
         return None
     after = before
     by: list[Cause] = []
+    ignored: list[str] = []
     earlier = False
     for line in [] if fail_safe else _triggers(_folded(voiced), parts):
         outside = line.part is not None and not 1 <= line.part <= parts
         closing_after_another = line.cause == "part_closing" and earlier
+        declined = _declined(after, line, parts=parts, earlier=earlier)
         earlier = earlier or line.part is not None or line.cause in ("where_we_are", "fence")
+        if declined:
+            ignored.append(f"{_described(line)}: {declined}")
         if outside or closing_after_another:
             continue
         moved = _moved(after, line)
         if moved != after:
             by.append(line.cause)
         after = moved
-    return MomentStep(before=before, after=after, by=by)
+    return MomentStep(before=before, after=after, by=by, ignored=ignored)
+
+
+_NUMBERED = ("entrance", "articulation_entrance", "where_we_are")
 
 
 class _Line(NamedTuple):
@@ -246,6 +265,41 @@ class _Line(NamedTuple):
     cause: Cause
     part: int | None = None
     to: At | None = None
+
+
+def _described(line: _Line) -> str:
+    where = f" ({line.to})" if line.to else ""
+    if line.part is None:
+        return f"{line.cause}{where}"
+    return f"{line.cause} {line.part}{where if line.cause == 'where_we_are' else ''}"
+
+
+def _declined(moment: Moment, line: _Line, *, parts: int, earlier: bool) -> str | None:
+    """Her `step()` reasons for a line it declines, in her order and her words (`moment.ts`
+    :149-189), for the Observation Room. Her closing in an Articulation is declined for want of
+    a rehearsal of that part that came back; no rehearsal reaches the server yet, so here that
+    is every closing in an Articulation."""
+    if line.part is not None and not 1 <= line.part <= parts:
+        return f"not a part of this passage (1..{parts})"
+    if moment.at == "ensaio_final" and line.cause in _NUMBERED:
+        return "after the send-off (Ensaio Final)"
+    if moment.at == "familiarization" and line.cause == "fence":
+        return "in the Familiarization, no part number"
+    if (
+        earlier
+        and line.cause == "part_closing"
+        and moment.at in ("familiarization", "articulation")
+    ):
+        return "another moment line came earlier in the same reply"
+    if line.cause == "part_closing" and moment.at == "familiarization" and not moment.closed:
+        return "the Familiarization's closing (F3) was not heard"
+    if line.cause == "part_closing" and moment.at == "articulation" and moment.part is not None:
+        if moment.part >= parts:
+            return "after the last part"
+        return f"no scene rehearsal of part {moment.part} has come back"
+    if line.cause == "familiarization_closing" and moment.at != "familiarization":
+        return "outside the Familiarization"
+    return None
 
 
 def _triggers(folded: str, parts: int) -> list[_Line]:

@@ -195,6 +195,14 @@ def test_the_portuguese_acknowledgements_are_her_three_and_ta_is_not_among_them(
     ]
 
 
+def test_the_english_acknowledgements_are_her_three_and_right_is_not_among_them() -> None:
+    assert localized(FailSafe.INSTANT_ACK, "en") == [
+        "Mm-hm.",
+        "Okay.",
+        "Mmm \u2014 let me think about that for a moment.",
+    ]
+
+
 def test_a_kind_with_one_line_always_answers_with_it() -> None:
     assert choose(FailSafe.HARD_STOP, "pt", turn=7)[1] == "E0"
 

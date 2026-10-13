@@ -17,10 +17,7 @@ from app.services.internalization_room.hard_stretches import (
     hard_stretches_of,
     note_a_hard_stretch,
 )
-from app.services.internalization_room.live_turn import (
-    ComprehensionTurn,
-    run_comprehension_turn,
-)
+from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.run_turn import (
     TurnOutcome,
     run_panorama_turn,
@@ -48,7 +45,6 @@ from app.services.internalization_room.sessions import (
     apply_coverage,
     attend,
     back_translation_of,
-    comprehension_of,
     create_session,
     get_session,
     get_session_for_facilitator,
@@ -60,10 +56,10 @@ from app.services.internalization_room.sessions import (
     report_playback,
     retire_the_part_recorded_again,
     save_back_translation,
-    save_comprehension,
     session_for_room_caller,
     session_is_done,
     sessions_waiting_on_a_person,
+    start_the_translation_over,
     stored_as_done,
     unattend,
 )
@@ -71,16 +67,18 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
     in_a_voice_the_room_has,
     synthesize_facilitator_speech,
 )
+from app.services.internalization_room.validated_turn import outcome_tag
 from app.services.internalization_room.verdict_round import (
     TellingBackVerdict,
     check_the_telling_back,
+    mark_the_verdict_heard,
     save_the_spoken_verdict,
+    the_round_is_heard_at_once,
     the_stored_verdicts_clip,
 )
 
 __all__ = [
     "BackTranslationState",
-    "ComprehensionTurn",
     "Finding",
     "TellingBackVerdict",
     "TurnOutcome",
@@ -94,7 +92,6 @@ __all__ = [
     "capture_segment",
     "check_the_telling_back",
     "classify_coverage",
-    "comprehension_of",
     "create_session",
     "current_findings",
     "current_segments",
@@ -112,8 +109,10 @@ __all__ = [
     "hard_stretches_of",
     "in_a_voice_the_room_has",
     "mark_needs_person",
+    "mark_the_verdict_heard",
     "note_a_hard_stretch",
     "open_session",
+    "outcome_tag",
     "parent_of",
     "person_arrived",
     "raise_a_warning",
@@ -126,7 +125,6 @@ __all__ = [
     "run_turn",
     "run_verdict_turn",
     "save_back_translation",
-    "save_comprehension",
     "save_the_spoken_verdict",
     "segment_by_id",
     "segment_for_session",
@@ -134,9 +132,11 @@ __all__ = [
     "session_for_room_caller",
     "session_is_done",
     "sessions_waiting_on_a_person",
+    "start_the_translation_over",
     "stored_as_done",
     "synthesize_facilitator_speech",
     "the_finding_that_leads",
+    "the_round_is_heard_at_once",
     "the_stored_verdicts_clip",
     "told_back",
     "unattend",

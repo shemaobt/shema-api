@@ -173,12 +173,14 @@ async def heard_speech(
 
     Every take the recognizer heard is measured, the one it found no words in included: a
     take with no words is told apart from a long rehearsal only by its length, and the record
-    keeps the length of every turn. A take the recognizer refused is a miss, as it always
-    was: it was never heard, so it is neither measured nor the mother tongue, and a
-    recognizer that refuses everything draws the D line rather than a room note on every
-    long take.
+    keeps the length of every turn. A take the recognizer refused is an outage, as in
+    Marcia's route, which throws on any status that is not OK: it was never heard, so it is
+    neither measured nor the mother tongue, and the turn answers 502 instead of the D line.
+    An empty recording is never sent to the recognizer and stays a miss.
     """
     mother_tongue_floor = (settings or get_settings()).internalization_room_mother_tongue_floor
+    if not audio:
+        return HeardSpeech(bridge_language=language, mother_tongue_floor=mother_tongue_floor)
     try:
         result = await transcribe_audio_detailed(
             audio, filename=filename, mime_type=mime_type, settings=settings
@@ -190,8 +192,7 @@ async def heard_speech(
             language_probability=nothing.language_probability,
         )
     except ValidationError as refusal:
-        logger.info("The recognizer refused %d bytes of audio: %s", len(audio), refusal)
-        return HeardSpeech(bridge_language=language, mother_tongue_floor=mother_tongue_floor)
+        raise UpstreamServiceError(str(refusal)) from refusal
     measured = await _length_of(audio)
     return HeardSpeech(
         text=spoken_words_only(result.text),

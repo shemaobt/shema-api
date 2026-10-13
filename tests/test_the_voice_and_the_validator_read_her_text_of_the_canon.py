@@ -13,6 +13,7 @@ from app.services.internalization_room import golden_judge
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import analyse_telling_back
 from app.services.internalization_room.canon import book_material, parse_map
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prompt_blocks import (
     meaning_map_block,
     validator_map_block,
@@ -203,6 +204,7 @@ async def test_the_ensaio_final_analyst_reads_the_validators_whole_material(
         scope="P03",
         pericope_num="P03",
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=settings(),
     )
 

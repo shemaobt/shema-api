@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSegment, IRTake
 from app.models.internalization_room import PlayedTake
+from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import analysis_ladder
@@ -149,6 +150,14 @@ class Nuance(BaseModel):
     segment_id: str
     quote: str
     story: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+    voiced: Literal["now", "before"] | None = None
+
+    @property
+    def audio(self) -> tuple[str, int, int]:
+        return (self.take_id, self.starts_ms, self.ends_ms)
 
 
 class BtAnalysis(BaseModel):
@@ -175,6 +184,7 @@ class SupersededAttempt(BaseModel):
     played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
+    checks: list[CheckRound] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -196,6 +206,16 @@ class VoicedVerdict(BaseModel):
     used_fail_safe: bool = False
 
 
+class CheckRound(BaseModel):
+    at: datetime
+    findings: list[Finding] = Field(default_factory=list)
+    spoken: str
+    outcome: Outcome
+    conferida: bool
+    nuances: list[Nuance] = Field(default_factory=list)
+    heard_at: datetime | None = None
+
+
 class BackTranslationState(BaseModel):
     """What a telling-back knows that is about the session rather than about one stretch.
 
@@ -214,9 +234,10 @@ class BackTranslationState(BaseModel):
     #:
     #: `None` for a telling-back no verdict has reached, and for every row written before this
     #: field existed: the state is a JSON column revalidated on every request, so an older row
-    #: loads with it absent and nothing was migrated (the precedent `chunk` set). No route
-    #: starts a whole telling-back over yet — `retire_every_segment` and `superseded` are
-    #: written only by tests — so nothing clears this today. Recording one part again
+    #: loads with it absent and nothing was migrated (the precedent `chunk` set). And `None`
+    #: after «recomeçar a tradução»: `sessions.start_the_translation_over` archives every
+    #: round on a superseded attempt and clears this with them, so the packet shows no
+    #: `lastCheckAt` until the passage told again is checked. Recording one part again
     #: (`sessions.retire_the_part_recorded_again`, from the take upload) sets `checked` back
     #: to false and leaves this standing: the analyst did last read the team then, which is
     #: what `lastCheckAt` asks, so the packet shows `checked: false` beside that moment until
@@ -271,6 +292,8 @@ class BackTranslationState(BaseModel):
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
     read_ahead: ReadAhead | None = None
+    checks: list[CheckRound] = Field(default_factory=list)
+    nuances: list[Nuance] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -302,6 +325,25 @@ class BackTranslationState(BaseModel):
             return None
         return self.read_ahead
 
+    def the_verdict_to_serve(self, told: list[IRSegment]) -> VoicedVerdict | None:
+        if (
+            not self.already_analysed(told)
+            or self.verdict is None
+            or self.verdict.used_fail_safe
+            or self.its_named_nuance_was_heard
+        ):
+            return None
+        return self.verdict
+
+    @property
+    def its_named_nuance_was_heard(self) -> bool:
+        last = self.checks[-1] if self.checks else None
+        return (
+            last is not None
+            and last.heard_at is not None
+            and any(one.voiced == "now" for one in last.nuances)
+        )
+
     @property
     def never_analysed(self) -> bool:
         """The analyst has not read this telling-back at all.
@@ -314,6 +356,8 @@ class BackTranslationState(BaseModel):
 
 
 PLAYBACK_TOLERANCE_MS = 750
+
+THE_WHOLE_PASSAGE = "the whole passage"
 
 
 def played_ranges_cover_clip(
@@ -416,7 +460,9 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 }
 
 
-def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str:
+def segments_block(
+    segments: list[IRSegment], addresses: Addresses, language_code: str = FLOOR
+) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
     Numbered from one over the list it is given, so the number is a position in *this* call
@@ -428,9 +474,13 @@ def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str
     """
     if not segments:
         return _NOTHING_TOLD_BACK_YET.get(language_code, _NOTHING_TOLD_BACK_YET[FLOOR])
-    return "\n".join(
-        f"{position}. {segment.transcript}" for position, segment in enumerate(segments, start=1)
-    )
+    lines = []
+    for position, segment in enumerate(segments, start=1):
+        label = [f"frase {position}", addresses.part_of(segment.id)]
+        if segment.pass_number == 2:
+            label.append("told again after a verdict")
+        lines.append(f"[{' — '.join(one for one in label if one)}] {segment.transcript}")
+    return "\n".join(lines)
 
 
 def _refused(condition: str, raw: str, session: str) -> None:
@@ -446,46 +496,21 @@ def _refused(condition: str, raw: str, session: str) -> None:
     logger.warning("BT analyst reply refused (%s) for session %s: %s", condition, session, raw)
 
 
-def _landed_without_a_frase(raw: str, session: str) -> None:
-    """A missing element the analyst named no readable frase for, counted rather than guessed.
+def _landed_without_a_frase(kind: FindingKind, raw: str, session: str) -> None:
+    """A finding the analyst named no readable frase for, counted rather than guessed.
 
     It is the one silent landing in this parser: an unrecognised `where` is refused out loud
     above, and a `where` left off lands on the frase the reply did name, which is the rule and
-    not an accident (ADR 0007). A chunk left off degrades to no address at all — the team is
-    sent to record more and go back to the rehearsal — and nothing said so, so neither the
-    golden scripts nor production could say how often the model leaves it out. Her prompt item
-    leaves the number optional while our output block requires it, and the item is not ours to
-    edit, so this counts until she rules.
-
-    The reply is behind it whole, as every other line in this file carries one.
-    """
-    logger.warning("BT analyst missing finding without a chunk for session %s: %s", session, raw)
-
-
-def _dropped_without_a_frase(kind: FindingKind, note: str, raw: str, session: str) -> None:
-    """An addition or an unclear the analyst named no readable frase for; dropped, not raised.
-
-    A missing element still lands with no chunk at all — the story simply has not been told
-    that far, and `_landed_without_a_frase` counts it. The other two kinds are a statement
-    about a chunk, and one naming none, or one outside the reading the analyst was given,
-    names nothing the team can act on: it goes the way the retired evidence kind does,
-    dropped and the rest of the reply read, rather than reaching the tablet as a finding
-    with no stretch.
-
-    Said only once the reading has been accepted, the way `_dropped` is: a reply that drops
-    every one of its findings to this rule is refused instead (`_parse_analysis`), and
-    announcing a drop it then threw away whole would send the next investigation to the
-    wrong place.
+    not an accident (ADR 0007). A chunk left off, or one outside the reading, degrades to no
+    address at all for every kind — the finding still reaches the team, without a number — and
+    nothing said so, so neither the golden scripts nor production could say how often the model
+    leaves it out. Her prompt leaves the number optional for a missing element while our output
+    block requires it, and the item is not ours to edit, so this counts until she rules.
 
     The reply is behind it whole, as every other line in this file carries one.
     """
     logger.warning(
-        "BT reply named %s with no readable frase (note: %s); dropped it and read the rest "
-        "for session %s: %s",
-        kind.value,
-        note,
-        session,
-        raw,
+        "BT analyst %s finding without a chunk for session %s: %s", kind.value, session, raw
     )
 
 
@@ -528,14 +553,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     kept, because refusing a reply whole over a name the prompt itself stopped offering is
     the ENG-719 failure with a different trigger — a team stopped three times by a round
     with no verdict, for a reading the room could have used.
-
-    An addition or an unclear naming no chunk this reading has, or one outside it, is
-    dropped the same way (ENG-1145) — but a reply left with nothing at all once every one of
-    its findings dropped for that reason is not a clean reading: it is refused like a
-    malformed reply, through the same `_refused` this function already returns None from,
-    because a reply that named findings and lost every one of them to an unreadable frase is
-    the ENG-719 failure again — a good telling-back blessed on the strength of a reply that
-    said nothing usable.
     """
     session = _session_of(segments)
     text = raw.strip()
@@ -557,7 +574,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     ]
 
     findings: list[Finding] = []
-    dropped_without_a_frase: list[tuple[FindingKind, str]] = []
     for entry in considered:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
@@ -575,9 +591,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             return None
         frase = entry.get("frase", entry.get("chunk"))
         chunk = _chunk_named(frase, segments)
-        if chunk is None and kind is not FindingKind.MISSING:
-            dropped_without_a_frase.append((kind, note))
-            continue
         lands_on = _segment_pointed_at(
             frase,
             segments,
@@ -586,8 +599,8 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             raw_reply=raw,
             session=session,
         )
-        if kind is FindingKind.MISSING and chunk is None:
-            _landed_without_a_frase(raw, session)
+        if chunk is None:
+            _landed_without_a_frase(kind, raw, session)
         findings.append(
             Finding.model_validate(
                 {
@@ -599,12 +612,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             )
         )
 
-    if considered and not findings:
-        _refused("every finding named no readable frase", raw, session)
-        return None
-
-    for kind, note in dropped_without_a_frase:
-        _dropped_without_a_frase(kind, note, raw, session)
     _dropped(reported, raw, f"session {session}")
     nuances = [_a_nuance(one, segments) for one in reported if _is_a_nuance(one)]
     return BtAnalysis(findings=findings, nuances=[one for one in nuances if one is not None])
@@ -625,12 +632,16 @@ def _a_nuance(entry: dict[str, Any], segments: list[IRSegment]) -> Nuance | None
     story = str(entry.get("story", "")).strip()
     if chunk is None or not story or not _stands_in(quote, segments[chunk - 1].transcript):
         return None
+    segment = segments[chunk - 1]
     return Nuance(
         note=str(entry.get("note", "")).strip() or f"«{quote}» — {story}",
         chunk=chunk,
-        segment_id=segments[chunk - 1].id,
+        segment_id=segment.id,
         quote=quote,
         story=story,
+        take_id=segment.take_id,
+        starts_ms=segment.starts_ms,
+        ends_ms=segment.ends_ms,
     )
 
 
@@ -736,6 +747,7 @@ async def analyse_telling_back(
     scope: str,
     pericope_num: str,
     analyst_prompt: str,
+    addresses: Addresses,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     language_code: str = FLOOR,
     settings: Settings | None = None,
@@ -763,7 +775,7 @@ async def analyse_telling_back(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=validator_map_block(pericope_num, load_map(pericope_num).book),
-        SEGMENTS=segments_block(segments, language_code),
+        SEGMENTS=segments_block(segments, addresses, language_code),
     )
     try:
         raw = await room_agent().analyst.call_agent(
@@ -862,39 +874,24 @@ def _tiers(findings: list[Finding]) -> list[int]:
 def the_index_that_leads(findings: list[Finding]) -> int | None:
     """Which finding this turn is about, before any swap is looked for.
 
-    A Correction check's findings first, because what a mend broke is about the stretch the
-    team just retold: sent elsewhere in the same breath, they answer a question about a part
-    they are not looking at, and the stretch they are working on stays open behind them.
-    That precedence used to be list position and nothing else, which is why it is a flag now
-    — the Priority applied over the whole list reads straight past a position.
-
-    The flag decides *who competes*, never who wins. One check answers about one stretch and
-    can still come back with more than one thing — it reports what it saw, and the room
-    derives a loss from the count on top of that — so the Priority rules inside its own reply
-    as it does anywhere else. It is suspended against findings the check did not raise, and
-    against nothing else.
-
-    Then the **Priority**, ties in the analyst's own order. It is over the tiers and says
+    The **Priority**, ties in the analyst's own order. It is over the tiers and says
     nothing inside one, so reaching for a second key here — the frase, the stretch, the
     length of the note — would be the room inventing a precedence Marcia never ruled.
 
     At the pick and never at parse or storage. `state.findings` is what the packet, the
     resume and the correction check all read, and a list reordered on the way in would carry
-    the Priority into every one of them and take a check's finding away from the front. Pure
-    over the list for the same reason: the fresh verdict, the stored-verdict replay and the
-    resume payload each recompute the pick, and three answers that could differ is a team
-    hearing about one frase while the screen rebuilds on another.
+    the Priority into every one of them. Pure over the list for the same reason: the fresh
+    verdict, the stored-verdict replay and the resume payload each recompute the pick, and
+    three answers that could differ is a team hearing about one frase while the screen
+    rebuilds on another.
 
     The one place that says which finding leads — a second expression of this would be a
     second thing free to answer it.
     """
     if not findings:
         return None
-    competing = [at for at, finding in enumerate(findings) if finding.raised_by_check] or range(
-        len(findings)
-    )
     tier_of = _tiers(findings)
-    return min(competing, key=lambda at: (tier_of[at], at))
+    return min(range(len(findings)), key=lambda at: (tier_of[at], at))
 
 
 def _the_current_swap(findings: list[Finding]) -> list[int]:
@@ -998,6 +995,29 @@ def findings_remaining(findings: list[Finding]) -> int:
     much of the round is still ahead of them, and a swap costs them one stop, not two.
     """
     return len(findings) - len(_swaps(findings))
+
+
+def nuances_said(checks: list[CheckRound]) -> list[Nuance]:
+    return [
+        one
+        for check in checks
+        for one in check.nuances
+        if one.voiced == "before" or (one.voiced == "now" and check.heard_at is not None)
+    ]
+
+
+def said_before(nuance: Nuance, said: list[Nuance], told: list[IRSegment]) -> bool:
+    live = {(segment.take_id, segment.starts_ms, segment.ends_ms) for segment in told}
+    return any(
+        (one.audio == nuance.audio and _the_same_words(one.quote, nuance.quote))
+        or (one.audio in live and _words_of(one.quote) == _words_of(nuance.quote))
+        for one in said
+    )
+
+
+def _the_same_words(said: str, found: str) -> bool:
+    shorter, longer = sorted((f" {_words_of(said)} ", f" {_words_of(found)} "), key=len)
+    return shorter in longer
 
 
 def findings_block(findings: list[Finding] | list[Nuance], addresses: Addresses) -> str:

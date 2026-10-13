@@ -9,11 +9,9 @@ from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.render import render
 from app.services.internalization_room.run_turn import (
     MAX_REDRAFTS,
-    OPENING_MOVEMENT_MARK,
     coverage_status_block,
     detects_peer_cue,
     run_turn,
-    split_opening_movements,
 )
 from tests.turn_harness import (
     GUIDE,
@@ -33,39 +31,6 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
         return the_agent_answers(monkeypatch, agent)
 
     return _install
-
-
-def test_a_marked_opening_comes_back_as_two_movements() -> None:
-    text, movements = split_opening_movements(
-        "O todo da passagem.\n[[CENA]]\nA primeira cena, e o convite."
-    )
-
-    assert movements == ["O todo da passagem.", "A primeira cena, e o convite."]
-    assert OPENING_MOVEMENT_MARK not in text
-    assert text == "O todo da passagem.\n\nA primeira cena, e o convite."
-
-
-@pytest.mark.parametrize(
-    "draft",
-    [
-        "Uma abertura inteira sem marca nenhuma.",
-        "O todo [[CENA]] e a cena na mesma linha.",
-        "O todo.\n[[CENA]]\nA cena.\n[[CENA]]\nMais uma.",
-        "\n[[CENA]]\nSó a cena, sem o todo.",
-        "Só o todo, sem a cena.\n[[CENA]]\n",
-    ],
-)
-def test_a_half_offered_structure_is_no_structure_at_all(draft: str) -> None:
-    """Fail-closed: anything but the exact shape reads as an opening told in one breath.
-
-    A structure read wrong would cut the opening in the wrong place, and the mark itself
-    must never survive into the text — the synthesiser would say it out loud.
-    """
-    text, movements = split_opening_movements(draft)
-
-    assert movements == []
-    assert "[[" not in text
-    assert OPENING_MOVEMENT_MARK not in text
 
 
 def test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it() -> None:
@@ -93,12 +58,12 @@ def test_render_fills_every_placeholder() -> None:
 
 
 def test_the_coverage_block_lists_only_what_is_left() -> None:
-    state = merge(initial_state(P), pericope_num=P, engaged=["scene:1", "scene:2"])
+    state = merge(initial_state(P), pericope_num=P, engaged=["scene:S1", "scene:S2"])
     covered, left = coverage_status_block(state, P).split("NOT YET TOUCHED")
 
-    assert "  scene: S3 (v.18)" in left
-    assert "S1 (v.15)" not in left
-    assert "S1 (v.15)" in covered
+    assert "  scene: S3 (1:18)" in left
+    assert "S1 (1:15)" not in left
+    assert "S1 (1:15)" in covered
 
 
 def test_a_finished_map_says_nothing_remains() -> None:

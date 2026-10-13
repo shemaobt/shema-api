@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from app.core.config import Settings
+from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.fail_safe import unrepairable
 from app.services.internalization_room.llm import (
     TruncatedReply,
@@ -23,7 +24,6 @@ from app.services.internalization_room.turn_instructions import (
     TEAM_REPORTED_HEADING,
     VALIDATOR_USER_MESSAGE,
     her_block,
-    split_opening_movements,
 )
 from app.services.internalization_room.usage import (
     Spend,
@@ -41,6 +41,7 @@ MAX_REDRAFTS = 2
 UNREADABLE_REPLY_ATTEMPT_NOTE = (
     "The Validator's reply could not be read, so this draft was not judged."
 )
+EMPTY_DRAFT_REASON = "the Guide's draft was empty, so the Validator never saw it"
 
 
 def _the_validators_words(issues: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -94,17 +95,14 @@ class TurnOutcome:
     #: Which pre-approved line was spoken, when one was. The app ships these as audio, so a
     #: fail-safe is named rather than synthesized — no TTS bill, no network, no waiting.
     fixed_line: str = ""
-    #: The opening's two movements — the whole passage, then the scene and its invitation —
-    #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
-    #: mark was not exactly where it was asked for; `speech` always stays the whole text.
-    movements: list[str] = field(default_factory=list)
     #: The last words the Guide drafted and the last verdict the Validator gave on them —
     #: empty when no draft was asked for, or when no reply could be read. `issues` above is
     #: what the Validator wrote, whole; the record keeps only its text (`_the_validators_words`).
     draft: str = ""
     verdict: str = ""
     #: Every draft of the turn, oldest first, with what the Validator and the room made of
-    #: it. Empty on a turn that asked no Validator.
+    #: it. Empty on a turn that asked no Validator. A check's D-1 keeps one entry with no draft,
+    #: carrying only the reason it was said.
     attempts: list[dict[str, Any]] = field(default_factory=list)
     room_note: str = ""
     #: The turn the Guide was handed in the team's place: their words behind any room note,
@@ -126,14 +124,27 @@ class TurnOutcome:
     model: str | None = None
 
 
+def outcome_tag(outcome: TurnOutcome) -> Outcome:
+    """The tag the judge is defined against, read off what the turn already records.
+
+    A turn that fell to a pre-approved line says so. A voiced turn carrying the Validator's
+    issues is one the Validator mended: its contract lists no issues on a `pass`, and the only
+    other verdict that voices anything is `correct`, which lists every problem it repaired.
+    """
+    if outcome.used_fail_safe:
+        return "fail_safe"
+    if outcome.issues:
+        return "corrected"
+    return "pass"
+
+
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     """The session as the two speakers a model knows, oldest first and all of it.
 
-    The room stores three: the team, its own notes, and the Guide. Which of the three is the
-    assistant is the only thing being decided here — a room note collapses onto the team's
-    side the same as the team's own words do, because the API knows only two roles, and
-    nothing is left out — a session grows for as long as it runs, and what pays for the
-    length is the cache, not a window.
+    The room stores the team and the Guide, with its notes kept as team entries flagged
+    `room_note`; every entry that is not the Guide's is the user's, and nothing is left out —
+    a session grows for as long as it runs, and what pays for the length is the cache, not a
+    window.
     """
     return [
         Turn(
@@ -304,7 +315,6 @@ async def _voiced_after_validation(
     settings: Settings,
     session_id: str = "?",
     opening_instruction: str = "",
-    ask_for_movements: bool = False,
     telling_back: str = "",
     prepared_pericope: str | None = None,
     earlier_passages: str = "",
@@ -320,12 +330,6 @@ async def _voiced_after_validation(
     the kickoff's team text — and her turn loop hands that text to the Validator as what the
     team said, so with no team words the note handed to the Guide stands
     in the slot.
-
-    The movement mark is cut from the draft and never from the validated speech: the Validator
-    must judge exactly the words the team will hear, and it is told to write plain speakable
-    text, so a mark left in front of it comes back either flagged or silently dropped. When the
-    Validator returns a correction instead, the boundary the Guide drew no longer describes the
-    speech, and one clip is the honest answer.
 
     A model or provider failure — a timeout, a rejected key, credits run out, a 5xx —
     rises out of here as the `UpstreamServiceError` that `call_agent` raises it as, and
@@ -353,18 +357,16 @@ async def _voiced_after_validation(
     turn = _the_guides_turn("" if opening else transcript, opening_instruction)
 
     for attempt in range(MAX_REDRAFTS + 1):
-        drafted, model = await _draft(
+        draft, model = await _draft(
             guide_prompt=speaker_system,
             conversation=conversation,
             turn=turn,
             redraft_note=redraft_note,
             settings=settings,
         )
-        draft, movements = split_opening_movements(drafted)
-        if not ask_for_movements:
-            movements = []
         attempts.append(Attempt(attempt=attempt + 1, draft=draft))
         if not draft:
+            attempts[-1] = replace(attempts[-1], note=EMPTY_DRAFT_REASON)
             verdict: dict[str, Any] = {}
             break
 
@@ -396,11 +398,13 @@ async def _voiced_after_validation(
                 settings=settings,
             )
             verdict, refusal = _parse_verdict(raw_verdict)
+            unread_note = UNREADABLE_REPLY_ATTEMPT_NOTE
         except TruncatedReply as cut:
             raw_verdict, verdict, refusal = cut.reply, {}, "reply cut at its ceiling"
+            unread_note = "validator error: validator reply cut at max_tokens=8192"
         issues = _issues_as_dicts(verdict.get("issues"))
         if refusal is not None:
-            attempts[-1] = replace(attempts[-1], note=UNREADABLE_REPLY_ATTEMPT_NOTE)
+            attempts[-1] = replace(attempts[-1], note=unread_note)
             _refused(refusal, raw_verdict, session_id, attempt + 1)
             break
         attempts[-1] = replace(
@@ -413,7 +417,6 @@ async def _voiced_after_validation(
         elif verdict["verdict"] == "correct":
             speech = str(verdict["corrected_response"]).strip()
             attempts[-1] = replace(attempts[-1], corrected=speech)
-            movements = []
         else:
             _regenerated(raw_verdict, session_id, attempt + 1)
 
@@ -425,7 +428,6 @@ async def _voiced_after_validation(
                     peer_cue=detects_peer_cue(speech),
                     redrafts=attempt,
                     issues=issues,
-                    movements=movements,
                     draft=draft,
                     verdict=str(verdict["verdict"]),
                     attempts=[attempt.stored() for attempt in attempts],
@@ -439,7 +441,19 @@ async def _voiced_after_validation(
             )
 
         redraft_note = _redraft_note(issues)
-    logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
+    if not draft:
+        why = EMPTY_DRAFT_REASON
+    elif refusal is not None:
+        why = f"the Validator's reply could not be read ({refusal}), so the draft was never judged"
+    else:
+        why = f"the Validator sent the draft back every time: issues={issues}"
+    logger.warning(
+        "Fail-safe fired after %s redrafts for session %s: %s",
+        attempt,
+        session_id,
+        why,
+        extra={"session_id": session_id},
+    )
 
     speech, line = unrepairable(attempt + 1, language_code, first_scene)
     return _timed(

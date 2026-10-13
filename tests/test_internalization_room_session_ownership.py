@@ -105,6 +105,12 @@ TESTED_ELSEWHERE = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/finish"): (
         "test_internalization_room_back_translation_ownership.py"
     ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/heard"): (
+        "test_ir_the_tablet_says_when_a_nuance_was_heard.py"
+    ),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/back-translation/restart"): (
+        "test_ir_the_translation_starts_over.py"
+    ),
 }
 
 

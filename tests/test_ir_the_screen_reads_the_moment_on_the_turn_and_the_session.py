@@ -22,10 +22,11 @@ OPENING = "Vamos começar pela Familiarização. Primeiro eu conto a passagem in
 class _Guide:
     def __init__(self) -> None:
         self.says = OPENING
+        self.verdict: dict[str, Any] = {"verdict": "pass", "issues": []}
 
     async def __call__(self, *, system_prompt: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
+            return json.dumps(self.verdict)
         return self.says
 
 
@@ -174,3 +175,27 @@ async def test_the_opening_prepared_ahead_tells_the_screen_the_familiarization(
     assert opening["moment"] == {"at": "familiarization", "part": None, "parts": 4}, (
         "a abertura preparada de antemão chegava à tela sem momento"
     )
+
+
+async def test_a_scene_the_draft_opened_and_the_correction_dropped_never_moves_the_room(
+    client: httpx.AsyncClient, db_session: AsyncSession, guide: _Guide
+) -> None:
+    tablet, session_id = await an_opened_session(client, db_session)
+    drafted = "Vamos pra Internalização da cena 2. Noemi decide voltar."
+    guide.says = drafted
+    guide.verdict = {
+        "verdict": "correct",
+        "issues": [],
+        "corrected_response": "Noemi decide voltar pra Belém.",
+    }
+
+    reply = (await the_team_says(client, tablet, session_id, "segundo")).json()
+
+    db_session.expire_all()
+    turn = (await get_session(db_session, session_id)).messages[-1]
+    assert turn["text"] == "Noemi decide voltar pra Belém."
+    assert turn["attempts"][0]["draft"] == drafted
+    assert reply["moment"] == {"at": "familiarization", "part": None, "parts": 4}, (
+        "a tela foi pra cena 2 por uma linha que só existia no rascunho, nunca na voz"
+    )
+    assert turn["moment"]["by"] == [], "o rascunho abriu a cena 2 no registro do turno"
