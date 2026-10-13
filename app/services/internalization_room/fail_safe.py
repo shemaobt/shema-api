@@ -6,7 +6,7 @@ from functools import lru_cache
 from typing import Any, Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import FLOOR, room_language
 
 
 class FailSafe(enum.StrEnum):
@@ -62,7 +62,7 @@ def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> li
     being invisible the moment a line is synthesized from its text.
     """
     sections = _sections()
-    written = localized(kind, language_code)
+    written = localized(kind, room_language(language_code))
     if written:
         return written
     return sections.get((str(kind), None), [])

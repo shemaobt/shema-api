@@ -34,6 +34,7 @@ from app.services.internalization_room import (
     verdict_round,
 )
 from app.services.internalization_room.canon.labels import labelled_elements
+from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
@@ -50,6 +51,7 @@ from tests.room_harness import (
     PART_MS,
     heard_every_part,
     press_terminei,
+    record_the_part_again,
     rehearsed_in_parts,
     rehearsed_in_parts_of,
     room_client,
@@ -514,4 +516,54 @@ async def test_a_raised_hand_on_a_row_stored_in_spanish_is_transcribed_in_the_ro
 
     assert hints == [floor], (
         "a pergunta de uma sessão guardada em espanhol era transcrita como espanhol"
+    )
+
+
+def test_a_miss_line_for_a_row_stored_in_spanish_is_the_floors_on_a_fleet_held_on_portuguese(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+
+    line, _ = choose(FailSafe.INAUDIBLE, "es")
+
+    assert line == "Desculpa, não consegui ouvir direito — podem repetir?", (
+        "a fala de um toque perdido caía no inglês fixo, não no piso da frota"
+    )
+
+
+async def test_an_untold_part_on_a_row_stored_in_spanish_is_named_in_the_portuguese_floor(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+    room = the_room_speaks(monkeypatch)
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    await record_the_part_again(db_session, session, part, sha256="d" * 64)
+    session.language = "es"
+    await db_session.commit()
+
+    async with room_client(db_session, monkeypatch) as door:
+        pressed = await press_terminei(door, session.id)
+
+    assert pressed.status_code == 200, pressed.text
+    assert room.said[-1] == (
+        "Ainda falta parte da passagem para vocês me traduzirem. "
+        "Vamos terminar isso primeiro, e depois eu confiro tudo junto."
+    ), "a voz portuguesa lia em inglês a parte que faltava traduzir"
+
+
+async def test_an_unheard_part_on_a_row_stored_in_spanish_is_named_in_the_portuguese_floor(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+    room = the_room_speaks(monkeypatch)
+    session, _ = await rehearsed_in_parts(db_session, 1)
+    session.language = "es"
+    await db_session.commit()
+
+    async with room_client(db_session, monkeypatch) as door:
+        pressed = await press_terminei(door, session.id)
+
+    assert pressed.status_code == 200, pressed.text
+    assert room.said[-1] == "Ainda falta ouvir um trecho da gravação antes de eu conferir.", (
+        "a voz portuguesa lia em inglês o trecho que faltava ouvir"
     )
