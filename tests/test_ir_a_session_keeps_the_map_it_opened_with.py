@@ -61,8 +61,8 @@ VENDORED_RULE = "First oath-scene in the pilot."
 KEPT_RULE = "THE KEPT RULE: THE FIRST OATH-SCENE."
 VENDORED_SILENCE = "Naomi names no place;"
 KEPT_SILENCE = "THE KEPT SILENCE: NAOMI NAMES NO PLACE;"
-BEINGS = "**3A — Beings**\n"
-ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
+BEINGS = '"beings_in_scene": {\n        "entries": [\n'
+ELIMELECH = '          {"being_id": "B2", "role_in_scene": "DECEASED_KIN"},\n'
 NAOMI_IN_THE_FIRST_SCENE = '"being_id": "B3",\n            "role_in_scene": "MOTHER_IN_LAW",'
 DROPPED_BEAD = "being:S1:B2"
 KEPT_FIRST_SILENCE_AT = 11
@@ -104,7 +104,7 @@ def _the_kept_p03_has_its_own_rule_and_silence(tree: Path) -> None:
 
 
 def _the_kept_p03_has_its_own_beings(tree: Path) -> None:
-    _rewrite(tree, "meaning-map", "P03", BEINGS, BEINGS + ELIMELECH)
+    _rewrite(tree, "meaning-coordinates", "P03", BEINGS, BEINGS + ELIMELECH)
     names = tree / "vendor" / "registry" / "ruth.aliases.json"
     names.write_text(
         names.read_text(encoding="utf-8").replace(

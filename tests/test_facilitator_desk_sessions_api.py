@@ -156,7 +156,7 @@ async def test_two_teams_with_sessions_on_different_passages_one_in_english_read
         assert item["reference"] == served[item["pericope"]]
 
 
-async def test_a_session_with_7_guide_lines_5_of_19_elements_engaged_2_kept_rehearsals_and_a_release_reads_7_turns_5_of_19_2_rehearsals_and_has_a_release(  # noqa: E501
+async def test_a_session_with_7_guide_lines_5_of_16_elements_engaged_2_kept_rehearsals_and_a_release_reads_7_turns_5_of_16_2_rehearsals_and_has_a_release(  # noqa: E501
     client, db_session
 ):
     team = await a_team(db_session, "Equipe Rute")
@@ -176,7 +176,7 @@ async def test_a_session_with_7_guide_lines_5_of_19_elements_engaged_2_kept_rehe
         item["total_elements"],
         item["kept_rehearsals"],
         item["has_release"],
-    ) == (7, 5, 19, 2, True)
+    ) == (7, 5, 16, 2, True)
 
 
 async def test_a_panorama_session_is_listed_0_of_0(client, db_session):

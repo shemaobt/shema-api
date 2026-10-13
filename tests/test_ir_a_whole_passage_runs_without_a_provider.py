@@ -155,7 +155,7 @@ async def test_a_silence_only_mentioned_in_scene_one_does_not_hold_back_the_late
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     beads = elements_for("P01")
-    silence = next(element for element in beads if element.key == "absence:1")
+    silence = next(element for element in beads if element.key == "absence:S1")
     for said in THE_TEAM_LEAVES_THE_SILENCE_UNTOLD:
         assert not _words(said) & _words(_shown_label(silence)), said
     the_room_agent_is(monkeypatch, turn=ScriptedRoom(THE_GUIDE_SAYS))
@@ -186,7 +186,7 @@ async def test_a_silence_only_mentioned_in_scene_one_does_not_hold_back_the_late
         "um silêncio da cena 1 só levantado segurava a oferta na cena 1 pelo resto da sessão: "
         "a equipe contava as cenas 2, 3 e 4 e nenhuma conta delas se movia"
     )
-    assert ledger["absence:1"] == CoverageStatus.SURFACED.value, (
+    assert ledger["absence:S1"] == CoverageStatus.SURFACED.value, (
         "o Guia falou da fome e a equipe nunca tocou o silêncio: levantado, não engajado"
     )
     assert not floor_met(ledger, "P01"), (

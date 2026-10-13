@@ -102,8 +102,8 @@ async def test_her_three_hand_set_titles_are_said_character_for_character(
 @pytest.mark.parametrize(
     ("pericope", "key", "pt", "en"),
     [
-        ("P01", "scene:2", "Morte de Elimeleque", "Death of Elimelech"),
-        ("P03", "scene:1", "O último apelo de Noemi", "Naomi's last appeal"),
+        ("P01", "scene:S2", "Morte de Elimeleque", "Death of Elimelech"),
+        ("P03", "scene:S1", "O último apelo de Noemi", "Naomi's last appeal"),
     ],
     ids=["a-passage-we-titled", "a-passage-we-never-titled"],
 )
@@ -125,7 +125,7 @@ def test_a_scene_bead_of_a_passage_our_catalogue_lacks_still_carries_her_title(
     (tmp_path / "ruth.json").write_text(json.dumps(catalogue, ensure_ascii=False), encoding="utf-8")
 
     (bead,) = [
-        one for one in labelled_elements("P03", catalogue_dir=tmp_path) if one.key == "scene:1"
+        one for one in labelled_elements("P03", catalogue_dir=tmp_path) if one.key == "scene:S1"
     ]
 
     assert (bead.label_pt, bead.label_en) == ("O último apelo de Noemi", "Naomi's last appeal"), (

@@ -92,7 +92,7 @@ def test_the_first_turn_reads_her_headings_with_every_element_not_yet_touched() 
 
 
 def test_what_the_voice_raised_is_listed_apart_from_what_nobody_has_touched() -> None:
-    state = merge(initial_state(P), pericope_num=P, surfaced=["arc", "preserved:R5"])
+    state = merge(initial_state(P), pericope_num=P, surfaced=["L1:arc", "preserved:R5"])
 
     lines = coverage_status_block(state, P).splitlines()
 
@@ -108,9 +108,9 @@ def test_what_the_voice_raised_is_listed_apart_from_what_nobody_has_touched() ->
 
 
 def test_a_map_visited_to_its_last_element_says_so_under_her_heading() -> None:
-    everything_but_the_arc = [element.key for element in elements_for(P) if element.key != "arc"]
+    everything_but_the_arc = [element.key for element in elements_for(P) if element.key != "L1:arc"]
     state = merge(
-        initial_state(P), pericope_num=P, surfaced=["arc"], engaged=everything_but_the_arc
+        initial_state(P), pericope_num=P, surfaced=["L1:arc"], engaged=everything_but_the_arc
     )
 
     lines = coverage_status_block(state, P).splitlines()
@@ -144,7 +144,7 @@ def test_a_name_the_map_gives_in_several_scenes_is_listed_once() -> None:
         "  being: Elimelech, Naomi, Mahlon, Chilion, Judges, Ephrathites, Women of Moab, "
         "Orpah, Ruth, the woman"
     ) in untouched, "Naomi vinha três vezes na mesma linha"
-    assert "  place: Bethlehem, Fields of Moab, the land of Judah" in untouched
+    assert "  place: the land of Judah, Bethlehem, Fields of Moab" in untouched
     assert naomi_twice[2] == "WORKED WITH BY THE TEAM (engaged): Naomi"
 
 

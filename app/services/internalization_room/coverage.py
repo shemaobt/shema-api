@@ -172,9 +172,14 @@ def coverage_view(session: IRSession) -> CoverageView:
     (`src/session/types.ts`): `engaged` over the elements, 0 read as 1, times 12, rounded half
     up as `Math.round` rounds and never half to even as Python's `round` does.
     """
-    numbers = counts(session.coverage_state or {})
+    stored = session.coverage_state or {}
     with reading_the_canon_of(session.canon_pin):
-        absence = -1 if is_panorama(session.pericope) else absence_index(session.pericope)
+        if is_panorama(session.pericope):
+            numbers, absence = counts(stored), -1
+        else:
+            spine = initial_state(session.pericope)
+            numbers = counts({key: stored.get(key, status) for key, status in spine.items()})
+            absence = absence_index(session.pericope)
     return CoverageView(
         engaged=numbers["engaged"],
         surfaced=numbers["surfaced"],

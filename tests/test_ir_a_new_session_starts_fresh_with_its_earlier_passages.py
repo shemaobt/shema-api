@@ -184,7 +184,7 @@ async def test_a_new_ruth_p01_session_shows_12_beads_none_filled_and_no_earlier_
 async def test_a_new_sessions_coverage_reads_12_beads_and_fills_them_in_her_proportion(
     client, db_session, per_request
 ) -> None:
-    """Acceptance 5: P03 has 30 elements, and 10 engaged of 30 is 4 of her 12."""
+    """Acceptance 5: P03 has 28 elements, and 10 engaged of 28 is 4 of her 12."""
     _team, tablet = await a_claimed_device(db_session)
     session = await opened(client, tablet, {"pericope": "P03"})
 
@@ -195,11 +195,11 @@ async def test_a_new_sessions_coverage_reads_12_beads_and_fills_them_in_her_prop
 
 
 async def test_a_half_bead_rounds_up_as_her_app_rounds_it(client, db_session, per_request) -> None:
-    """P07 has 56 elements: 21 engaged is 4.5 beads, and her `Math.round` answers 5."""
+    """P04 has 32 elements: 12 engaged is 4.5 beads, and her `Math.round` answers 5."""
     _team, tablet = await a_claimed_device(db_session)
-    session = await opened(client, tablet, {"pericope": "P07"})
+    session = await opened(client, tablet, {"pericope": "P04"})
 
-    await engaged(per_request, session["session_id"], element_keys("P07")[:21])
+    await engaged(per_request, session["session_id"], element_keys("P04")[:12])
     coverage = (await read_back(client, tablet, session["session_id"]))["coverage"]
 
     assert coverage["beads_filled"] == 5

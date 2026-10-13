@@ -100,8 +100,8 @@ def test_a_long_word_of_a_label_the_names_list_does_not_hold_names_the_element()
 
 def test_someone_or_unnamed_names_no_withheld_being_and_the_wife_of_the_dead_names_hers() -> None:
     withheld = {
-        "P06": "being:S2:ruth-s-deceased-husband-your-hus",
-        "P11": "being:S3:the-dead-the-dead",
+        "P06": "being:S2:B?",
+        "P11": "being:S3:B?",
     }
 
     for pericope, key in withheld.items():
