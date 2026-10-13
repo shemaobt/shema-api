@@ -11,7 +11,7 @@ from app.core.room_enums import CoverageStatus, ElementKind
 class LabelledElement(BaseModel):
     """One bead, named in each language the Desk offers.
 
-    `key` is unique only within its pericope: `scene:1` is a different scene in every
+    `key` is unique only within its pericope: `scene:S1` is a different scene in every
     passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
 
     The two languages are named fields because that is the shape the Desk was promised, so
@@ -118,9 +118,9 @@ class ElementCoverage(BaseModel):
     showing a facilitator any count, percentage or ratio, so an aggregate must not be able to
     arrive here by being passed along from somewhere that legitimately computes one.
 
-    `scene` names the scene bead this one sits under — `scene:2`, not `2`. It is a key into
+    `scene` names the scene bead this one sits under — `scene:S2`, not `2`. It is a key into
     this same response and not a number, because the alternative is the client composing
-    `scene:{n}` to join a bead to its scene, and composing a key on the client is what the
+    `scene:S{n}` to join a bead to its scene, and composing a key on the client is what the
     label layer exists to prevent: the day the shape of a key changes, a client that builds
     one builds the wrong one, in silence, and the necklace simply stops joining up.
 
