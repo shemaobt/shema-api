@@ -91,13 +91,14 @@ jobs:
             drift check against a fresh clone of the compiler at the new pin, the canon smoke and
             `docker build`. `VENDOR_PIN` names what came in.
 
-            Where her list had no Portuguese title for a scene of the new canon, the job filled
-            one in: those titles are in `ui-labels.pt.json` and are a model's draft, not hers.
-
             Those three ran in the job that opened this change, and nothing else has: GitHub
             starts none of this repository's checks on a change opened with the job's own
             token, so the test suite has not seen this canon. Close and reopen this change to
             start them, and merge only once they pass.
+
+            The job did one more thing that is not a check. Where her list had no Portuguese
+            title for a scene of the new canon, it asked a model to fill one in: those titles
+            are in `ui-labels.pt.json` and are a model's draft, not hers.
 
             **Review the new content, then merge to ship it.** Merging deploys it, and the
             deploy waits while a team session is open. Close this change if her own pin change

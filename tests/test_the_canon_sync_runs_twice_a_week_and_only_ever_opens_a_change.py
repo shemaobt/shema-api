@@ -133,6 +133,9 @@ def test_the_change_names_the_titles_a_model_filled_in() -> None:
         "os títulos preenchidos chegavam sem que o texto os citasse"
     )
     assert "a model's draft, not hers" in body
+    assert body.index("nothing else has") < body.index("`ui-labels.pt.json`"), (
+        "o texto dizia que o trabalho fez mais uma coisa e, logo depois, que nada mais rodou"
+    )
 
 
 def test_nothing_in_it_merges() -> None:
