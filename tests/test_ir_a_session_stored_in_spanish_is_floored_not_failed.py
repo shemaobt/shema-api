@@ -20,6 +20,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import back_translation as back_translation_api
+from app.api.internalization_room import segments as segments_api
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRSession
@@ -32,6 +33,7 @@ from app.services.internalization_room import (
     verdict_round,
 )
 from app.services.internalization_room.canon.labels import labelled_elements
+from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.turn import speech
 from tests.device_harness import TABLET_TEAM
@@ -430,6 +432,7 @@ def _the_hints_a_telling_back_was_heard_with(monkeypatch: pytest.MonkeyPatch) ->
     bucket = MemoryStore()
     monkeypatch.setattr(hearing, "transcribe_audio", transcriber)
     monkeypatch.setattr(back_translation_api, "read_ahead", unread)
+    monkeypatch.setattr(segments_api, "read_ahead", unread)
     monkeypatch.setattr(takes, "_store", lambda *_, **__: bucket)
     return hints
 
@@ -454,4 +457,28 @@ async def test_a_telling_back_on_a_row_stored_in_spanish_is_transcribed_in_the_r
     assert told.status_code == 200, told.text
     assert hints == [floor], (
         "a explicação de uma sessão guardada em espanhol era transcrita como espanhol"
+    )
+
+
+@pytest.mark.parametrize("floor", ["en", "pt"])
+async def test_a_correction_on_a_row_stored_in_spanish_is_transcribed_in_the_rooms_language(
+    db_session: AsyncSession, tablet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    hints = _the_hints_a_telling_back_was_heard_with(monkeypatch)
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    session.language = "es"
+    await db_session.commit()
+    (stretch,) = await final_segments(db_session, session.id)
+
+    corrected = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace",
+        headers={"X-Room-Device": DEVICE},
+        data={"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert corrected.status_code == 200, corrected.text
+    assert hints == [floor], (
+        "a correção de uma sessão guardada em espanhol era transcrita como espanhol"
     )
