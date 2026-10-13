@@ -242,6 +242,7 @@ async def save_the_spoken_verdict(
     not checked, no verdict — and carries only findings on stretches that count.
     """
     session_id = session.id
+    base = back_translation_of(session)
 
     async def as_it_stands(read: BackTranslationState) -> None:
         standing = await final_segments(db, session_id)
@@ -251,6 +252,18 @@ async def save_the_spoken_verdict(
         if not read.already_analysed(stretches_told_back(standing)):
             read.checked = False
             read.verdict = None
+        if len(read.superseded) > len(base.superseded):
+            ours = {one.at for one in state.checks} - {one.at for one in base.checks}
+            read.superseded[-1].checks = [
+                *read.superseded[-1].checks,
+                *(one for one in read.checks if one.at in ours),
+            ]
+            read.checks = [one for one in read.checks if one.at not in ours]
+            read.nuances = [
+                one for one in read.nuances if one.segment_id in {each.id for each in standing}
+            ]
+            read.checked_at = None
+            read.analysed_segment_ids = None
 
     state.verdict = VoicedVerdict(
         clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
