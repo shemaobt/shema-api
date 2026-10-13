@@ -254,10 +254,16 @@ async def save_the_spoken_verdict(
             read.verdict = None
         if len(read.superseded) > len(base.superseded):
             ours = {one.at for one in state.checks} - {one.at for one in base.checks}
-            read.superseded[-1].checks = [
-                *read.superseded[-1].checks,
+            archive = read.superseded[-1]
+            archive.findings = [
+                *archive.findings,
+                *(one for one in state.findings if one not in archive.findings),
+            ]
+            archive.checks = [
+                *archive.checks,
                 *(one for one in read.checks if one.at in ours),
             ]
+            read.findings = []
             read.checks = [one for one in read.checks if one.at not in ours]
             read.nuances = [
                 one for one in read.nuances if one.segment_id in {each.id for each in standing}
