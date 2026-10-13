@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 
 from pydantic import BaseModel, Field
@@ -199,10 +200,14 @@ async def heard_speech(
         bridge_language=language,
         language_code=result.language_code,
         language_probability=result.language_probability,
-        take_ms=None if measured is None else round(measured, -3),
+        take_ms=None if measured is None else _to_the_second(measured),
         measured_ms=measured,
         mother_tongue_floor=mother_tongue_floor,
     )
+
+
+def _to_the_second(ms: float) -> int:
+    return math.floor(ms / 1000 + 0.5) * 1000
 
 
 async def _length_of(audio: bytes) -> int | None:

@@ -517,6 +517,22 @@ async def test_a_take_with_no_words_lasting_exactly_20_seconds_is_the_mother_ton
     assert reply["fixed_line"] == ""
 
 
+async def test_a_takes_seconds_round_half_up_as_her_math_round_does(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears_no_words(monkeypatch)
+    the_take_lasts(monkeypatch, 20_500)
+
+    await _the_team_sends_a_take(tablet, session)
+
+    assert (await _the_turns_record(db_session, session.id))["take_ms"] == 21_000
+    assert guide.guide_inputs == [_note(21)], "o Math.round dela diz 21 para 20,5 s, não 20"
+
+
 async def test_the_floor_raised_to_0_40_between_sessions_is_the_floor_the_next_sessions_turns_use(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
