@@ -241,22 +241,25 @@ async def save_the_spoken_verdict(
     back for a passage the team has since recorded again. It is stored as the upload left it —
     not checked, no verdict — and carries only findings on stretches that count.
     """
-    standing = await final_segments(db, session.id)
-    state.findings = findings_on_stretches_that_count(state.findings, (one.id for one in standing))
-    read_as_it_stands = state.already_analysed(stretches_told_back(standing))
-    if not read_as_it_stands:
-        state.checked = False
+    session_id = session.id
+
+    async def as_it_stands(read: BackTranslationState) -> None:
+        standing = await final_segments(db, session_id)
+        read.findings = findings_on_stretches_that_count(
+            read.findings, (one.id for one in standing)
+        )
+        if not read.already_analysed(stretches_told_back(standing)):
+            read.checked = False
+            read.verdict = None
+
+    state.verdict = VoicedVerdict(
+        clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
+    )
+    await as_it_stands(state)
     session = await append_exchange(
         db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
     )
-    state.verdict = (
-        VoicedVerdict(
-            clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
-        )
-        if read_as_it_stands
-        else None
-    )
-    await save_back_translation(db, session, state)
+    await save_back_translation(db, session, state, rule=as_it_stands)
     return session
 
 
