@@ -205,6 +205,16 @@ async def play_a_round(
                 stretchId=finding.segment_id,
             )
             for finding in _the_round_findings(verdict.current, state.findings)
+        ]
+        + [
+            RoundFinding(
+                kind="nuance",
+                note=f"«{one.quote}» — {one.story}",
+                frase=one.chunk,
+                stretchId=one.segment_id,
+            )
+            for one in state.checks[-1].nuances
+            if one.voiced != "before"
         ],
         spoken=verdict.said,
         outcome=room.outcome_tag(verdict.outcome),

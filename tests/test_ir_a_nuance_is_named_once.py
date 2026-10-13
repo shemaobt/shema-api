@@ -289,3 +289,34 @@ async def test_a_frase_translated_again_on_the_same_audio_keeps_its_nuance_said(
     assert _handed(speaker) == [], (
         "traduzir a frase de novo sobre o mesmo áudio fazia a voz dizer a nuance outra vez"
     )
+
+
+def _reported(result: dict) -> list[tuple[str, int | None, str]]:
+    return [(one["kind"], one["frase"], one["note"]) for one in result["findings"]]
+
+
+async def test_the_round_reports_an_unsaid_nuance_beside_a_blocking_finding(
+    client, analyst, speaker
+) -> None:
+    an_addition = {"kind": "addition", "note": "Ela voltou com as noras.", "frase": 1}
+    analyst.readings = [{"findings": [an_addition, ON_FRASE_3]}]
+
+    result = await _a_round(client, TELLING)
+
+    assert _reported(result) == [
+        ("addition", 1, "Ela voltou com as noras."),
+        ("nuance", 3, "«à noite» — foi naquela mesma noite"),
+    ], "o roteiro dourado nunca via a nuance que esperava, calada ao lado do acréscimo"
+
+
+async def test_the_round_reports_the_nuance_it_named_and_never_one_said_before(
+    client, analyst, speaker
+) -> None:
+    analyst.readings = [{"findings": [ON_FRASE_3]}, {"findings": [ON_FRASE_3]}]
+    speaker.line = NAMES_FRASE_3
+
+    first = await _a_round(client, TELLING)
+    second = await _a_round(client, [FRASE_1_AGAIN], session_id=first["sessionId"])
+
+    assert _reported(first) == [("nuance", 3, "«à noite» — foi naquela mesma noite")]
+    assert _reported(second) == [], "a nuance já dita voltava na lista da rodada seguinte"
