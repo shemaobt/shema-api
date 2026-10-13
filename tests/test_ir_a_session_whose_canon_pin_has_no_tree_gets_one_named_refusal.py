@@ -15,14 +15,10 @@ from typing import Any
 
 import httpx
 import pytest
-from fastapi import FastAPI
-from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room.questions import router as questions_router
-from app.core.database import get_db
 from app.core.enums import ProjectRole
-from app.core.exceptions import CanonNotKept, register_exception_handlers
+from app.core.exceptions import CanonNotKept
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.db.models.project import Project
 from app.services.auth.issue_tokens import issue_tokens
@@ -48,7 +44,7 @@ from tests.baker import (
 )
 from tests.canon_harness import forget_the_canon, the_canon_moves_on
 from tests.device_harness import TABLET_TEAM
-from tests.opening_harness import desk_routes, desk_sessions_routes
+from tests.opening_harness import desk_inbox_routes, desk_routes, desk_sessions_routes
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client
 
@@ -305,17 +301,7 @@ async def test_the_inbox_still_names_every_other_sessions_hands_when_one_pin_los
     gone_hand = await _a_hand_raised_on_naomi(db_session, gone_team.id, gone_session.id)
     fresh_hand = await _a_hand_raised_on_naomi(db_session, fresh_team.id, fresh_session.id)
 
-    inbox = FastAPI()
-    inbox.include_router(questions_router, prefix=PREFIX)
-    register_exception_handlers(inbox)
-
-    async def _get_db():
-        yield db_session
-
-    inbox.dependency_overrides[get_db] = _get_db
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=inbox), base_url="http://test"
-    ) as at_desk:
+    async with desk_inbox_routes(db_session) as at_desk:
         page = await at_desk.get(f"{PREFIX}/facilitator/questions", headers=desk)
 
     assert page.status_code == 200, page.text[:300]
