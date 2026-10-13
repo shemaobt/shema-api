@@ -23,12 +23,13 @@ from app.api.internalization_room import back_translation as back_translation_ap
 from app.api.internalization_room import segments as segments_api
 from app.api.internalization_room import sessions as sessions_api
 from app.core.config import get_settings
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRQuestion, IRSession
 from app.services.internalization_room import (
     back_translation_of,
     background,
     check_the_telling_back,
     hearing,
+    questions,
     takes,
     verdict_round,
 )
@@ -481,4 +482,36 @@ async def test_a_correction_on_a_row_stored_in_spanish_is_transcribed_in_the_roo
     assert corrected.status_code == 200, corrected.text
     assert hints == [floor], (
         "a correção de uma sessão guardada em espanhol era transcrita como espanhol"
+    )
+
+
+@pytest.mark.parametrize("floor", ["en", "pt"])
+async def test_a_raised_hand_on_a_row_stored_in_spanish_is_transcribed_in_the_rooms_language(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, floor: str
+) -> None:
+    _the_floor_is(monkeypatch, floor)
+    hints: list[str] = []
+
+    async def transcriber(audio: bytes, *, language: str, mime_type: str) -> str:
+        hints.append(language)
+        return "por que Noemi voltou sozinha?"
+
+    monkeypatch.setattr(questions, "transcribe_speech", transcriber)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await _a_row_stored_in_spanish(db_session, PASSAGE)
+    db_session.add(
+        IRQuestion(
+            id="pergunta-es",
+            device_id=DEVICE,
+            session_id=session.id,
+            pericope=PASSAGE,
+            audio_key="perguntas/pergunta-es.m4a",
+        )
+    )
+    await db_session.commit()
+
+    await background.transcribe_question(question_id="pergunta-es", audio=b"uma pergunta")
+
+    assert hints == [floor], (
+        "a pergunta de uma sessão guardada em espanhol era transcrita como espanhol"
     )
