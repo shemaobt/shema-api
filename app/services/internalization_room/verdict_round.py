@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -253,23 +254,26 @@ async def save_the_spoken_verdict(
             read.checked = False
             read.verdict = None
         if len(read.superseded) > len(base.superseded):
+            stored = BackTranslationState.model_validate(
+                await db.scalar(
+                    select(IRSession.back_translation).where(IRSession.id == session_id)
+                )
+                or {}
+            )
             ours = {one.at for one in state.checks} - {one.at for one in base.checks}
-            archive = read.superseded[-1]
+            archive = read.superseded[len(base.superseded)]
             archive.findings = [
                 *archive.findings,
                 *(one for one in state.findings if one not in archive.findings),
             ]
-            archive.checks = [
-                *archive.checks,
-                *(one for one in read.checks if one.at in ours),
-            ]
-            read.findings = []
-            read.checks = [one for one in read.checks if one.at not in ours]
-            read.nuances = [
-                one for one in read.nuances if one.segment_id in {each.id for each in standing}
-            ]
-            read.checked_at = None
-            read.analysed_segment_ids = None
+            archive.checks = [*archive.checks, *(one for one in state.checks if one.at in ours)]
+            read.findings = stored.findings
+            read.nuances = stored.nuances
+            read.checks = stored.checks
+            read.checked = stored.checked
+            read.checked_at = stored.checked_at
+            read.verdict = stored.verdict
+            read.analysed_segment_ids = stored.analysed_segment_ids
 
     state.verdict = VoicedVerdict(
         clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
