@@ -197,10 +197,12 @@ def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -
     fixed and read by position"*: rotating them would voice the thanks where the step means
     the invitation. So there is no ``turn`` here, and the same step always answers the same.
 
-    The language resolution is ``choose``'s, unchanged — regional, then primary, then the
-    authored English — and so is the shape of the answer, because the two consumers want
-    different halves of it: a step spoken inside a server answer needs the text, and a step
-    the tablet asks the room for by name needs the name.
+    The language resolution is ``choose``'s, unchanged — the code read through
+    ``room_language``, so the region is dropped and a language the room does not speak lands
+    on the fleet's floor, then the authored English only when that block is empty — and so
+    is the shape of the answer, because the two consumers want different halves of it: a
+    step spoken inside a server answer needs the text, and a step the tablet asks the room
+    for by name needs the name.
     """
     steps = PROCESS_STEPS.get(family)
     if steps is None or step not in steps:
