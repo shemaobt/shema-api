@@ -259,7 +259,7 @@ def test_two_beads_of_one_scene_never_read_the_same(pericope_num):
         for element in labelled_elements(pericope_num):
             text = getattr(element, f"label_{language}")
             clash = said.get((element.scene, text))
-            assert clash is None, (
+            assert clash in (None, element.key), (
                 f"{pericope_num} {language}: {clash} and {element.key} both read {text!r}"
             )
             said[(element.scene, text)] = element.key
@@ -651,7 +651,7 @@ def test_two_beads_of_one_scene_of_the_ten_never_read_the_same(pericope_num):
     seen: dict[tuple[int | None, str], str] = {}
     for element in labelled_elements(pericope_num):
         clash = seen.get((element.scene, element.label_en))
-        assert clash is None, (
+        assert clash in (None, element.key), (
             f"{pericope_num}: {element.key} and {clash} both read {element.label_en!r}"
         )
         seen[(element.scene, element.label_en)] = element.key

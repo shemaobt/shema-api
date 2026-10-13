@@ -144,7 +144,7 @@ def test_a_name_the_map_gives_in_several_scenes_is_listed_once() -> None:
         "  being: Elimelech, Naomi, Mahlon, Chilion, Judges, Ephrathites, Women of Moab, "
         "Orpah, Ruth, the woman"
     ) in untouched, "Naomi vinha três vezes na mesma linha"
-    assert "  place: Bethlehem, Fields of Moab, the land of Judah" in untouched
+    assert "  place: the land of Judah, Bethlehem, Fields of Moab" in untouched
     assert naomi_twice[2] == "WORKED WITH BY THE TEAM (engaged): Naomi"
 
 

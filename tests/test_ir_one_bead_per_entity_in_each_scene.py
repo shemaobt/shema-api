@@ -33,15 +33,43 @@ def test_scene_four_of_ruth_1_has_the_woman_in_it() -> None:
     assert beings["being:S1:B3"].label == "Naomi"
 
 
-def test_ruth_1_strings_twenty_nine_entity_beads_across_its_four_scenes() -> None:
+def test_scene_four_of_ruth_1_holds_everyone_her_coordinates_list_not_only_the_prose() -> None:
+    scene_four = [
+        (element.key, element.label)
+        for element in elements_for(P01)
+        if element.kind is ElementKind.BEING and element.scene == 4
+    ]
+
+    assert scene_four == [
+        ("being:S4:B4", "Mahlon"),
+        ("being:S4:B5", "Chilion"),
+        ("being:S4:B3", "the woman"),
+        ("being:S4:B2", "Elimelech"),
+        ("being:S4:B8", "Orpah"),
+        ("being:S4:B9", "Ruth"),
+    ], (
+        "as contas vinham da prosa do mapa, e a cena 4 ficava sem Elimeleque, Orfa e Rute, "
+        "que as coordenadas dela listam ali"
+    )
+
+
+def test_ruth_1_strings_thirty_two_entity_beads_across_its_four_scenes() -> None:
     entity_kinds = {ElementKind.BEING, ElementKind.PLACE, ElementKind.OBJECT, ElementKind.TIME}
     per_scene: dict[int, list[str]] = {}
     for element in elements_for(P01):
         if element.kind in entity_kinds and element.scene is not None:
             per_scene.setdefault(element.scene, []).append(element.key)
 
-    assert {scene: len(keys) for scene, keys in per_scene.items()} == {1: 12, 2: 5, 3: 8, 4: 4}
-    assert per_scene[4] == ["being:S4:B4", "being:S4:B5", "being:S4:B3", "place:S4:PL2"]
+    assert {scene: len(keys) for scene, keys in per_scene.items()} == {1: 12, 2: 5, 3: 8, 4: 7}
+    assert per_scene[4] == [
+        "being:S4:B4",
+        "being:S4:B5",
+        "being:S4:B3",
+        "being:S4:B2",
+        "being:S4:B8",
+        "being:S4:B9",
+        "place:S4:PL2",
+    ]
     assert len(set(element_keys(P01))) == len(element_keys(P01))
 
 
@@ -120,20 +148,20 @@ def test_the_room_asks_once_about_the_missing_act_of_god_not_twice() -> None:
     assert by_key["preserved:R10"].label.startswith("WITHHELD_PAIRING_PER_SOURCE_DISCIPLINE")
 
 
-def test_ruth_1_strings_forty_four_beads_axes_first() -> None:
+def test_ruth_1_strings_forty_seven_beads_axes_first() -> None:
     spine = elements_for(P01)
     by_kind: dict[str, int] = {}
     for element in spine:
         by_kind[element.kind.value] = by_kind.get(element.kind.value, 0) + 1
 
-    assert len(spine) == 44
+    assert len(spine) == 47
     assert by_kind == {
         "arc": 1,
         "context": 1,
         "tone": 1,
         "function": 1,
         "scene": 4,
-        "being": 19,
+        "being": 22,
         "place": 6,
         "object": 3,
         "time": 1,

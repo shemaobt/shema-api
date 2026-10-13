@@ -42,8 +42,8 @@ from tests.canon_harness import the_canon_moves_on
 from tests.turn_harness import the_room_agent_is
 
 NEW_PIN = "a" * 40
-BEINGS = "**3A — Beings**\n"
-ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
+BEINGS = '"beings_in_scene": {\n        "entries": [\n'
+ELIMELECH = '          {"being_id": "B2", "role_in_scene": "DECEASED_KIN"},\n'
 IR = "/api/internalization-room"
 P = "P01"
 HER_KINDS = [
@@ -317,7 +317,7 @@ async def test_a_reader_of_another_project_is_refused_as_the_other_reader_routes
 
 
 def _the_kept_p03_names_elimelech(tree: Path) -> None:
-    (page,) = (tree / "vendor" / "meaning-map").glob("P03-*.md")
+    (page,) = (tree / "vendor" / "meaning-coordinates").glob("P03-*.md")
     page.write_text(page.read_text(encoding="utf-8").replace(BEINGS, BEINGS + ELIMELECH))
 
 

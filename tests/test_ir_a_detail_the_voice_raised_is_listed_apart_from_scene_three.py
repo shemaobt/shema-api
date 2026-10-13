@@ -8,7 +8,7 @@ SCENE_ONE_ENGAGED_SCENE_TWO_SILENCE_RAISED = """\
 LEDGER (the app's notes — information only; you decide what comes next)
 
 WORKED WITH BY THE TEAM (engaged): S1 (v.1\N{EN DASH}2); Elimelech; Naomi; Mahlon; \
-Chilion; Judges; Ephrathites; Bethlehem; Fields of Moab; the land of Judah; Famine; sojourning; \
+Chilion; Judges; Ephrathites; the land of Judah; Bethlehem; Fields of Moab; Famine; sojourning; \
 In the Days When the Judges Judged; absence @ S1
 
 RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:

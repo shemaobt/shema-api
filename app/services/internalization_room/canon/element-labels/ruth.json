@@ -84,6 +84,10 @@
       "en": "Ruth",
       "pt": "Rute"
     },
+    "being:S4:B2": {
+      "en": "Elimelech",
+      "pt": "Elimeleque"
+    },
     "being:S4:B3": {
       "en": "The woman",
       "pt": "A mulher"
@@ -95,6 +99,14 @@
     "being:S4:B5": {
       "en": "Chilion",
       "pt": "Quiliom"
+    },
+    "being:S4:B8": {
+      "en": "Orpah",
+      "pt": "Orfa"
+    },
+    "being:S4:B9": {
+      "en": "Ruth",
+      "pt": "Rute"
     },
     "context": {
       "en": "Where the passage stands in the story",
@@ -214,6 +226,14 @@
       "en": "His people",
       "pt": "O seu povo"
     },
+    "being:S2:B4": {
+      "en": "Mahlon",
+      "pt": "Malom"
+    },
+    "being:S2:B5": {
+      "en": "Chilion",
+      "pt": "Quiliom"
+    },
     "being:S2:B8": {
       "en": "Orpah",
       "pt": "Orfa"
@@ -270,21 +290,9 @@
       "en": "The land of Judah",
       "pt": "A terra de Judá"
     },
-    "place:S1:the-road": {
-      "en": "The road",
-      "pt": "O caminho"
-    },
     "place:S2:PL_EACH_HER_MOTHERS_HOUSE": {
       "en": "Each to her mother's house",
       "pt": "Cada uma à casa de sua mãe"
-    },
-    "place:S2:the-road": {
-      "en": "The road",
-      "pt": "O caminho"
-    },
-    "place:S3:the-road": {
-      "en": "The road",
-      "pt": "O caminho"
     },
     "preserved:R1": {
       "en": "God acts here for the first time",
@@ -372,20 +380,12 @@
       "en": "Fields of Moab",
       "pt": null
     },
-    "place:S1:the-road": {
-      "en": "The road",
+    "place:S1:PL_LAND_OF_JUDAH": {
+      "en": "The land of Judah",
       "pt": null
     },
-    "place:S2:the-road": {
-      "en": "The road",
-      "pt": null
-    },
-    "place:S2:where-wherever": {
-      "en": "The open «wherever» of the vow",
-      "pt": null
-    },
-    "place:S3:the-road": {
-      "en": "The road",
+    "place:S2:PL_LAND_OF_JUDAH": {
+      "en": "The land of Judah",
       "pt": null
     },
     "preserved:R1": {
@@ -490,18 +490,6 @@
       "en": "Bethlehem",
       "pt": null
     },
-    "place:S1:PL2": {
-      "en": "Fields of Moab",
-      "pt": null
-    },
-    "place:S2:PL1": {
-      "en": "Bethlehem",
-      "pt": null
-    },
-    "place:S2:out-back-the-going-and-coming-in": {
-      "en": "Out and back, in Naomi's words",
-      "pt": null
-    },
     "place:S3:PL1": {
       "en": "Bethlehem",
       "pt": null
@@ -538,7 +526,7 @@
       "en": "The narrator keeps calling her Naomi",
       "pt": null
     },
-    "time:S3:at-the-beginning-of-the-barley-h": {
+    "time:S3:TM_BARLEY_HARVEST_BEGINNING": {
       "en": "The start of the barley harvest",
       "pt": null
     },
@@ -660,17 +648,17 @@
       "en": "Chance",
       "pt": "O acaso"
     },
-    "object:S4:from-morning-until-now-how-long-": {
+    "object:S4:TH_WITHIN_DAY_FROM_MORNING_UNTIL_NOW": {
       "en": "From morning until now",
       "pt": "Desde a manhã até agora"
+    },
+    "place:S2:PL5": {
+      "en": "The field",
+      "pt": "O campo"
     },
     "place:S2:PL_NAOMIS_DWELLING": {
       "en": "Where Naomi is staying",
       "pt": "Onde Noemi está morando"
-    },
-    "place:S2:the-field-the-place-she-means-to": {
-      "en": "The field she means to go to",
-      "pt": "O campo aonde ela quer ir"
     },
     "place:S3:PL1": {
       "en": "Bethlehem",
@@ -774,12 +762,8 @@
       "en": "Ruth",
       "pt": null
     },
-    "being:S2:ruth-s-deceased-husband-your-hus": {
+    "being:S2:B?": {
       "en": "Someone the text leaves unnamed here",
-      "pt": null
-    },
-    "being:S2:ruth-s-father-and-mother-your-fa": {
-      "en": "Your father and your mother",
       "pt": null
     },
     "being:S3:B13": {
@@ -862,20 +846,8 @@
       "en": "Another field",
       "pt": null
     },
-    "place:S1:the-vessels": {
-      "en": "The vessels",
-      "pt": null
-    },
     "place:S2:PL5_BOAZ_PORTION": {
       "en": "This field",
-      "pt": null
-    },
-    "place:S2:a-people-you-did-not-know": {
-      "en": "A people you did not know",
-      "pt": null
-    },
-    "place:S2:the-land-of-your-birth": {
-      "en": "The land of your birth",
       "pt": null
     },
     "place:S3:PL5_BOAZ_PORTION": {
@@ -886,7 +858,7 @@
       "en": "This field",
       "pt": null
     },
-    "place:S4:among-the-sheaves": {
+    "place:S4:PL_AMONG_SHEAVES": {
       "en": "Among the sheaves",
       "pt": null
     },
@@ -940,6 +912,14 @@
       "en": "The arc of the whole passage",
       "pt": null
     },
+    "being:S1:B13": {
+      "en": "Boaz",
+      "pt": null
+    },
+    "being:S1:B3": {
+      "en": "Her mother-in-law",
+      "pt": null
+    },
     "being:S1:B9": {
       "en": "Ruth",
       "pt": null
@@ -972,16 +952,24 @@
       "en": "One of our redeemers",
       "pt": null
     },
+    "being:S3:B2": {
+      "en": "Elimelech",
+      "pt": null
+    },
     "being:S3:B3": {
       "en": "Her mother-in-law",
       "pt": null
     },
-    "being:S3:B9": {
-      "en": "Ruth",
+    "being:S3:B4": {
+      "en": "Mahlon",
       "pt": null
     },
-    "being:S3:the-dead-of-the-household-the-de": {
-      "en": "The dead",
+    "being:S3:B5": {
+      "en": "Chilion",
+      "pt": null
+    },
+    "being:S3:B9": {
+      "en": "Ruth",
       "pt": null
     },
     "being:S4:B13": {
@@ -1276,6 +1264,14 @@
       "en": "A redeemer",
       "pt": null
     },
+    "being:S2:B2": {
+      "en": "Elimelech",
+      "pt": null
+    },
+    "being:S2:B3": {
+      "en": "Her mother-in-law",
+      "pt": null
+    },
     "being:S2:B9": {
       "en": "Ruth",
       "pt": null
@@ -1290,6 +1286,10 @@
     },
     "being:S3:B19": {
       "en": "A redeemer nearer than I",
+      "pt": null
+    },
+    "being:S3:B2": {
+      "en": "Elimelech",
       "pt": null
     },
     "being:S3:B21": {
@@ -1466,10 +1466,6 @@
       "en": "Six of barley",
       "pt": null
     },
-    "object:S2:CB_0024": {
-      "en": "Full and empty, the pair behind the word",
-      "pt": null
-    },
     "object:S2:CB_0043": {
       "en": "The words «your mother-in-law»",
       "pt": null
@@ -1608,7 +1604,7 @@
       "en": "Ruth the Moabite, the wife of the dead",
       "pt": null
     },
-    "being:S3:the-dead-the-dead": {
+    "being:S3:B?": {
       "en": "The dead (unnamed here)",
       "pt": null
     },
@@ -1798,10 +1794,6 @@
       "en": "Ruth the Moabite, the wife of Mahlon",
       "pt": null
     },
-    "being:S1:the-dead-the-dead": {
-      "en": "The dead",
-      "pt": null
-    },
     "being:S2:B10": {
       "en": "YHWH",
       "pt": null
@@ -1968,7 +1960,7 @@
       "en": "Ruth",
       "pt": null
     },
-    "being:S1:the-child-a-son": {
+    "being:S1:B?": {
       "en": "A son",
       "pt": null
     },
@@ -1988,7 +1980,7 @@
       "en": "Ruth",
       "pt": null
     },
-    "being:S2:the-child-a-redeemer": {
+    "being:S2:B?": {
       "en": "A redeemer",
       "pt": null
     },
@@ -2117,18 +2109,6 @@
     "function": {
       "en": "What the passage is told for",
       "pt": "Para que a passagem é contada"
-    },
-    "object:S1:CB_0005": {
-      "en": "The line of names",
-      "pt": "A linha dos nomes"
-    },
-    "object:S1:CB_0047": {
-      "en": "The name «Obed»",
-      "pt": "O nome «Obede»"
-    },
-    "object:S1:CB_0048": {
-      "en": "The name «David»",
-      "pt": "O nome «David»"
     },
     "object:S1:CB_0049": {
       "en": "The formula that opens the list",

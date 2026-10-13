@@ -52,7 +52,7 @@ SCENE_ONE_DONE_SCENE_TWO_OPEN = """\
 LEDGER (the app's notes — information only; you decide what comes next)
 
 WORKED WITH BY THE TEAM (engaged): S1 (v.1–2); Elimelech; Naomi; Mahlon; Chilion; Judges; \
-Ephrathites; Bethlehem; Fields of Moab; the land of Judah; Famine; sojourning; \
+Ephrathites; the land of Judah; Bethlehem; Fields of Moab; Famine; sojourning; \
 In the Days When the Judges Judged; absence @ S1; S2 (v.3)
 
 NOT YET TOUCHED (still deserve a visit before the session ends):

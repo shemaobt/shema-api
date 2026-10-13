@@ -58,10 +58,10 @@ NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
 #: Written out rather than derived from `elements_for`, so a canon that silently loses a bead
 #: fails here instead of agreeing with itself.
 PILOT = {
-    "P01": {"elements": 44, "scenes": [1, 2, 3, 4], "preserved": 3},
-    "P02": {"elements": 39, "scenes": [1, 2, 3], "preserved": 4},
+    "P01": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 3},
+    "P02": {"elements": 38, "scenes": [1, 2, 3], "preserved": 4},
     "P05": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P14": {"elements": 19, "scenes": [1], "preserved": 5},
+    "P14": {"elements": 16, "scenes": [1], "preserved": 5},
 }
 
 #: The four Level-1 axes open every passage, and like a preservation rule they sit in no scene.
@@ -696,6 +696,6 @@ async def test_the_unnamed_husband_of_ruth_2_11_reaches_the_desk_unnamed(
 
     body = by_key((await client.get(coverage_url(project.id, "P06"), headers=headers)).json())
 
-    assert body["being:S2:ruth-s-deceased-husband-your-hus"]["label_en"] == (
-        "Someone the text leaves unnamed here"
-    ), "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"
+    assert body["being:S2:B?"]["label_en"] == ("Someone the text leaves unnamed here"), (
+        "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"
+    )
