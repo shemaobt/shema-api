@@ -51,16 +51,16 @@ def _engaged(*keys: str) -> dict[str, str]:
 SCENE_ONE_DONE_SCENE_TWO_OPEN = """\
 LEDGER (the app's notes — information only; you decide what comes next)
 
-WORKED WITH BY THE TEAM (engaged): S1 (v.1–2); Elimelech; Naomi; Mahlon; Chilion; Judges; \
-Ephrathites; Bethlehem; Fields of Moab; the land of Judah; Famine; sojourning; \
-In the Days When the Judges Judged; absence @ S1; S2 (v.3)
+WORKED WITH BY THE TEAM (engaged): S1 (1:1-2); Elimelech; Naomi; Mahlon; Chilion; Judges; \
+Ephrathites; the land of Judah; Bethlehem; Fields of Moab; Famine; sojourning; \
+In the Days When the Judges Judged; absence @ S1; S2 (1:3)
 
 NOT YET TOUCHED (still deserve a visit before the session ends):
   arc: Level-1 arc
   context: Level-1 context
   tone: Level-1 tone
   function: Level-1 function
-  scene: S3 (v.4), S4 (v.5)
+  scene: S3 (1:4), S4 (1:5)
   being: Elimelech, Naomi, Mahlon, Chilion, Women of Moab, Orpah, Ruth, the woman
   place: Fields of Moab
   object: about ten years
@@ -68,9 +68,18 @@ NOT YET TOUCHED (still deserve a visit before the session ends):
   preserved_element: R3, R5, R10"""
 
 
+def test_a_scene_reaches_the_guide_by_her_verse_range_not_by_the_maps_heading() -> None:
+    untouched = coverage_status_block(initial_state(P), P).splitlines()
+
+    assert "  scene: S1 (1:1-2), S2 (1:3), S3 (1:4), S4 (1:5)" in untouched, (
+        "a cena chegava ao Guia como 'S1 (v.1–2)', do cabeçalho do mapa, e a dela diz "
+        "'S1 (1:1-2)', das coordenadas"
+    )
+
+
 def test_the_block_is_her_three_parts_in_labels_the_guide_can_say() -> None:
     """Scene 1 is behind the team, scene 2 is begun, and nothing is a key."""
-    state = _engaged(*_scene_keys(1), "scene:2")
+    state = _engaged(*_scene_keys(1), "scene:S2")
 
     assert coverage_status_block(state, P) == SCENE_ONE_DONE_SCENE_TWO_OPEN, (
         "o Guia recebia só REMAINING, uma linha por elemento com a chave entre colchetes e o "
@@ -132,7 +141,7 @@ AUDIT_KIND = re.compile(r"\b[A-Z][A-Z]+_[A-Z_]+\b")
     "state",
     [
         initial_state(P),
-        _engaged(*_scene_keys(1), "scene:2"),
+        _engaged(*_scene_keys(1), "scene:S2"),
         _engaged(
             *(element.key for element in elements_for(P) if element.kind is ElementKind.ABSENCE)
         ),

@@ -69,7 +69,7 @@ def _scene_title(pericope: str, scene: int, language: str) -> str | None:
     rewritten they go on holding the rule instead of the sentence it happened to produce.
     """
     for element in labelled_elements(pericope):
-        if element.key == f"scene:{scene}":
+        if element.key == f"scene:S{scene}":
             return element.label_pt if language == "pt" else element.label_en
     return None
 

@@ -46,7 +46,12 @@ def test_a_map_missing_a_level_one_section_is_refused_like_one_missing_its_arc(
 def test_the_four_axes_open_the_necklace_and_belong_to_no_scene() -> None:
     first_four = elements_for(P01)[:4]
 
-    assert [element.key for element in first_four] == ["arc", "context", "tone", "function"]
+    assert [element.key for element in first_four] == [
+        "L1:arc",
+        "L1:context",
+        "L1:tone",
+        "L1:function",
+    ]
     assert [element.kind for element in first_four] == [
         ElementKind.ARC,
         ElementKind.CONTEXT,
@@ -65,14 +70,14 @@ def test_the_four_axes_open_the_necklace_and_belong_to_no_scene() -> None:
 def test_each_axis_carries_its_own_section_of_the_map_as_detail() -> None:
     by_key = {element.key: element for element in elements_for(P01)}
 
-    assert by_key["arc"].detail.startswith("The passage opens wide, on a whole era")
-    assert by_key["context"].detail.startswith("This is where the book of Ruth begins")
-    assert "never says God did any of it" in by_key["tone"].detail
-    assert by_key["function"].detail.endswith("how the emptying began.")
-    assert by_key["scene:1"].detail == ""
+    assert by_key["L1:arc"].detail.startswith("The passage opens wide, on a whole era")
+    assert by_key["L1:context"].detail.startswith("This is where the book of Ruth begins")
+    assert "never says God did any of it" in by_key["L1:tone"].detail
+    assert by_key["L1:function"].detail.endswith("how the emptying began.")
+    assert by_key["scene:S1"].detail == ""
 
 
-AXES = ["arc", "context", "tone", "function"]
+AXES = ["L1:arc", "L1:context", "L1:tone", "L1:function"]
 
 
 def _spine(axes_at: CoverageStatus, the_rest_at: CoverageStatus) -> dict[str, str]:
@@ -89,12 +94,12 @@ def test_the_floor_lets_the_four_axes_out_at_surfaced_and_nothing_else() -> None
         "engajamento forte de uma conta que a equipe demonstra, não nomeia"
     )
 
-    an_axis_never_raised = {**axes_surfaced, "tone": CoverageStatus.NOT_ENCOUNTERED.value}
+    an_axis_never_raised = {**axes_surfaced, "L1:tone": CoverageStatus.NOT_ENCOUNTERED.value}
     assert floor_met(an_axis_never_raised, P01) is False, (
         "uma sessão fechava sem que o tom da passagem tivesse sido levantado uma vez"
     )
 
-    a_concrete_bead_only_surfaced = {**axes_surfaced, "scene:4": CoverageStatus.SURFACED.value}
+    a_concrete_bead_only_surfaced = {**axes_surfaced, "scene:S4": CoverageStatus.SURFACED.value}
     assert floor_met(a_concrete_bead_only_surfaced, P01) is False
 
 
@@ -102,7 +107,7 @@ def test_the_classifier_is_shown_each_axis_with_the_maps_own_prose() -> None:
     nothing_worked = initial_state(P01)
     shown = json.loads(_unresolved_block(nothing_worked, remaining(nothing_worked, P01)))
 
-    assert shown[0]["id"] == "arc"
+    assert shown[0]["id"] == "L1:arc"
     assert shown[0]["label"].startswith("Level-1 arc — The passage opens wide, on a whole era")
     assert shown[2]["label"].startswith("Level-1 tone — The tone is held-in and plain")
     assert "never says God did any of it" in shown[2]["label"], (
@@ -110,7 +115,7 @@ def test_the_classifier_is_shown_each_axis_with_the_maps_own_prose() -> None:
         "só tinha o nome do eixo para reconhecer isso na fala"
     )
     assert shown[4] == {
-        "id": "scene:1",
+        "id": "scene:S1",
         "kind": "scene",
         "label": "Famine and exile to Moab",
         "status": "not_encountered",

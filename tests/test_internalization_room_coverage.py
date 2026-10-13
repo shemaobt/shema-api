@@ -65,15 +65,13 @@ def test_an_entity_in_three_scenes_is_a_bead_in_each_of_them() -> None:
     assert not any(e.key == "being:B3" for e in beings)
 
 
-def test_the_same_place_written_differently_is_one_road_in_each_scene() -> None:
-    """`the road (implied; continues from P02)` and `the road (continued)` are one road."""
+def test_the_road_only_the_prose_names_is_no_bead_in_any_scene() -> None:
     places = [e for e in elements_for(P) if e.kind is ElementKind.PLACE]
 
-    assert [e.key for e in places if e.key.endswith(":the-road")] == [
-        "place:S1:the-road",
-        "place:S2:the-road",
-        "place:S3:the-road",
-    ]
+    assert [e.key for e in places if e.key.endswith(":the-road")] == [], (
+        "a estrada, que só a prosa do mapa escreve, era uma conta em cada cena e o colar dela "
+        "não tem nenhuma"
+    )
 
 
 def test_coverage_never_moves_backwards() -> None:
@@ -87,8 +85,8 @@ def test_surfaced_counts_elements_the_team_has_not_worked_yet() -> None:
     state = merge(
         initial_state(P),
         pericope_num=P,
-        surfaced=["scene:1", "scene:2"],
-        engaged=["scene:1"],
+        surfaced=["scene:S1", "scene:S2"],
+        engaged=["scene:S1"],
     )
 
     assert counts(state)["surfaced"] == 2

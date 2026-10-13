@@ -1289,6 +1289,7 @@ async def retire_the_part_recorded_again(
 
     def recorded_again(standing: BackTranslationState) -> None:
         standing.findings = findings_after_a_part_is_recorded_again(standing.findings, retired_ids)
+        standing.nuances = [one for one in standing.nuances if one.segment_id not in retired_ids]
         standing.checked = False
         standing.verdict = None
 

@@ -14,12 +14,14 @@ first, so a voice that fails leaves no verdict behind claiming to have been spok
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import (
     THE_WHOLE_PASSAGE,
@@ -33,6 +35,8 @@ from app.services.internalization_room.back_translation import (
     findings_block,
     findings_on_stretches_that_count,
     findings_remaining,
+    nuances_said,
+    said_before,
     segments_block,
     the_finding_that_leads,
 )
@@ -43,7 +47,11 @@ from app.services.internalization_room.part_names import addresses_for, scene_ti
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import final_segments
 from app.services.internalization_room.segments import told_back as stretches_told_back
-from app.services.internalization_room.sessions import append_exchange, save_back_translation
+from app.services.internalization_room.sessions import (
+    append_exchange,
+    back_translation_of,
+    save_back_translation,
+)
 from app.services.internalization_room.synthesize_facilitator_speech import (
     in_a_voice_the_room_has,
 )
@@ -103,7 +111,6 @@ async def check_the_telling_back(
     else it decides.
     """
     read_this_round: list[Finding] = []
-    nuances: list[Nuance] = []
     language = room_language(session.language)
     addresses = addresses_for(
         told,
@@ -149,7 +156,7 @@ async def check_the_telling_back(
                 told_back=told_back,
             )
         read_this_round = read.findings
-        nuances = sorted(read.nuances, key=lambda one: one.chunk)
+        state.nuances = sorted(read.nuances, key=lambda one: one.chunk)
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
 
@@ -175,10 +182,19 @@ async def check_the_telling_back(
             session_id=session.id,
         )
 
-    a_lone_nuance = not current and bool(nuances)
-    outcome = await speak(current or nuances[:1])
-    if outcome.used_fail_safe and a_lone_nuance:
+    said_already = nuances_said(state.checks)
+    nuances = [
+        one.model_copy(
+            update={"voiced": "before" if said_before(one, said_already, told) else None}
+        )
+        for one in state.nuances
+    ]
+    offered = None if current else next((one for one in nuances if one.voiced is None), None)
+    outcome = await speak(current or ([offered] if offered else []))
+    if outcome.used_fail_safe and offered is not None:
         outcome = await speak([])
+    elif offered is not None and re.search(rf"frase\s+{offered.chunk}(?!\d)", outcome.speech, re.I):
+        offered.voiced = "now"
 
     said = outcome.speech
     state.checked = finding is None and not outcome.used_fail_safe
@@ -189,6 +205,7 @@ async def check_the_telling_back(
             spoken=said,
             outcome=outcome_tag(outcome),
             conferida=state.checked,
+            nuances=nuances,
         )
     )
     return TellingBackVerdict(
@@ -241,6 +258,29 @@ async def save_the_spoken_verdict(
     )
     await save_back_translation(db, session, state)
     return session
+
+
+def the_round_is_heard_at_once(state: BackTranslationState) -> None:
+    state.checks[-1].heard_at = datetime.now(UTC)
+
+
+def _to_the_millisecond(moment: datetime) -> datetime:
+    return moment.replace(microsecond=moment.microsecond // 1000 * 1000)
+
+
+async def mark_the_verdict_heard(db: AsyncSession, session: IRSession, at: datetime) -> bool:
+    state = back_translation_of(session)
+    heard = next(
+        (one for one in state.checks if _to_the_millisecond(one.at) == _to_the_millisecond(at)),
+        None,
+    )
+    if heard is None:
+        raise NotFoundError("No check round carries this stamp")
+    if heard.heard_at is not None:
+        return False
+    heard.heard_at = datetime.now(UTC)
+    await save_back_translation(db, session, state)
+    return True
 
 
 async def the_stored_verdicts_clip(session: IRSession, verdict: VoicedVerdict) -> str:

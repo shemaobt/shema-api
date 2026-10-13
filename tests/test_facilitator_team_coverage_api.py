@@ -58,14 +58,14 @@ NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
 #: Written out rather than derived from `elements_for`, so a canon that silently loses a bead
 #: fails here instead of agreeing with itself.
 PILOT = {
-    "P01": {"elements": 44, "scenes": [1, 2, 3, 4], "preserved": 3},
-    "P02": {"elements": 39, "scenes": [1, 2, 3], "preserved": 4},
+    "P01": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 3},
+    "P02": {"elements": 38, "scenes": [1, 2, 3], "preserved": 4},
     "P05": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P14": {"elements": 19, "scenes": [1], "preserved": 5},
+    "P14": {"elements": 16, "scenes": [1], "preserved": 5},
 }
 
 #: The four Level-1 axes open every passage, and like a preservation rule they sit in no scene.
-AXES = ("arc", "context", "tone", "function")
+AXES = ("L1:arc", "L1:context", "L1:tone", "L1:function")
 
 #: Real canon, no labels written for it. Ten of Ruth's fourteen are in this position.
 UNLABELLED = "P03"
@@ -210,7 +210,7 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     expected = PILOT[pericope]
     assert len(body) == expected["elements"]
     assert sorted({e["scene"] for e in body if e["scene"] is not None}) == [
-        f"scene:{number}" for number in expected["scenes"]
+        f"scene:S{number}" for number in expected["scenes"]
     ]
     preserved = [e for e in body if e["kind"] == ElementKind.PRESERVED.value]
     assert len(preserved) == expected["preserved"]
@@ -589,7 +589,7 @@ async def test_the_scene_a_bead_sits_in_is_served_as_a_key_and_not_as_a_number(
     simply stops joining up.
 
     Asserted as membership rather than as a string, which is the difference that matters. A
-    case comparing against a literal `"scene:1"` passes just as well when the server invents a
+    case comparing against a literal `"scene:S1"` passes just as well when the server invents a
     format nothing else uses; this one only passes while the value is a key the same response
     actually carries.
     """
@@ -696,6 +696,6 @@ async def test_the_unnamed_husband_of_ruth_2_11_reaches_the_desk_unnamed(
 
     body = by_key((await client.get(coverage_url(project.id, "P06"), headers=headers)).json())
 
-    assert body["being:S2:ruth-s-deceased-husband-your-hus"]["label_en"] == (
-        "Someone the text leaves unnamed here"
-    ), "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"
+    assert body["being:S2:B?"]["label_en"] == ("Someone the text leaves unnamed here"), (
+        "a conta dizia 'Your husband', uma palavra que a regra dela recusa para esse marido"
+    )

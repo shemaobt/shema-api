@@ -289,7 +289,7 @@ async def test_the_scene_is_where_they_last_moved_and_not_where_they_have_yet_to
     """The only case that separates the two readings of the field.
 
     The team worked scene 3 most recently and still has scene 1 beads untouched. "Where they
-    are" answers `scene:3`; "the first scene with work left" would answer `scene:1`. Every
+    are" answers `scene:S3`; "the first scene with work left" would answer `scene:S1`. Every
     other scenario here answers the same under both, so without this case the meaning of the
     field would be settled by accident.
     """
@@ -301,7 +301,7 @@ async def test_the_scene_is_where_they_last_moved_and_not_where_they_have_yet_to
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
 
-    assert body["scene_the_team_is_in"] == "scene:3"
+    assert body["scene_the_team_is_in"] == "scene:S3"
     assert len(scene_one) > 2, "o cenário precisa de conta por trabalhar na cena 1"
 
 
@@ -312,7 +312,7 @@ async def test_the_scene_is_served_as_a_key_and_not_as_a_number(client, db_sessi
 
     served = (await client.get(team_url(team.id), headers=headers)).json()["scene_the_team_is_in"]
 
-    assert served == "scene:2"
+    assert served == "scene:S2"
     assert served in element_keys(FIRST), "a cena servida não é uma conta desta passagem"
 
 
@@ -321,7 +321,7 @@ async def test_a_person_moved_in_scene_four_puts_the_team_in_scene_four(client, 
 
     An entity is a bead in every scene it appears in, so Naomi in scene 4 of P01 — "the woman"
     — is her own bead with her own scene. Here the team moved scene 3's own bead and then her:
-    the answer is `scene:4`, because the bead that moved last knows where it sits.
+    the answer is `scene:S4`, because the bead that moved last knows where it sits.
     """
     _user, team, headers = await a_facilitator(db_session, email="abrange@x.com")
 
@@ -330,7 +330,7 @@ async def test_a_person_moved_in_scene_four_puts_the_team_in_scene_four(client, 
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
 
-    assert body["scene_the_team_is_in"] == "scene:4", (
+    assert body["scene_the_team_is_in"] == "scene:S4", (
         "a conta de Naomi atravessava as quatro cenas dizendo '1', e por isso não respondia"
     )
 
@@ -365,7 +365,7 @@ async def test_a_preservation_rule_does_not_move_them_out_of_the_scene_they_were
     This case asserted `None` before, on the reasoning that naming an earlier scene would put
     the team somewhere they had left. Held against the other rule that reasoning does not
     survive: the alternative is a panel that blanks out and comes back every time the team
-    touches a rule, and `scene:1` is not a guess — it is the last place they were locatable,
+    touches a rule, and `scene:S1` is not a guess — it is the last place they were locatable,
     which is the honest answer to where they are.
     """
     _user, team, headers = await a_facilitator(db_session, email="preservacao@x.com")
@@ -374,7 +374,7 @@ async def test_a_preservation_rule_does_not_move_them_out_of_the_scene_they_were
 
     assert (await client.get(team_url(team.id), headers=headers)).json()[
         "scene_the_team_is_in"
-    ] == "scene:1"
+    ] == "scene:S1"
 
 
 async def test_a_team_that_has_only_worked_the_rules_is_in_no_scene(client, db_session) -> None:
