@@ -93,6 +93,12 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
     return True
 
 
+def _a_capture_after_a_check_unchecks(standing: BackTranslationState) -> None:
+    if not standing.never_analysed:
+        standing.checked = False
+        standing.verdict = None
+
+
 async def capture_and_note_a_hard_stretch(
     db: AsyncSession,
     session: IRSession,
@@ -142,12 +148,12 @@ async def capture_and_note_a_hard_stretch(
         replaces=replaces,
         commit=False,
     )
-    if not standing.never_analysed:
-        standing.checked = False
-        standing.verdict = None
+    _a_capture_after_a_check_unchecks(standing)
     if state is not None or not standing.never_analysed:
         standing.scope = standing.scope or session.pericope
-        await save_back_translation(db, session, standing, commit=False)
+        await save_back_translation(
+            db, session, standing, commit=False, rule=_a_capture_after_a_check_unchecks
+        )
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()
     return crossed

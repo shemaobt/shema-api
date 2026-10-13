@@ -1131,7 +1131,12 @@ def _merged_forward(
 
 
 async def save_back_translation(
-    db: AsyncSession, session: IRSession, state: BackTranslationState, *, commit: bool = True
+    db: AsyncSession,
+    session: IRSession,
+    state: BackTranslationState,
+    *,
+    commit: bool = True,
+    rule: Callable[[BackTranslationState], None] | None = None,
 ) -> IRSession:
     """Write the telling-back state whole, which is how it is always read and rewritten.
 
@@ -1140,18 +1145,17 @@ async def save_back_translation(
     """
     base = back_translation_of(session)
     written = state.model_dump(mode="json")
+
+    def onto(read: dict[str, Any] | None) -> dict[str, Any]:
+        if read == session.back_translation:
+            return written
+        merged = _merged_forward(base, state, BackTranslationState.model_validate(read or {}))
+        if rule is not None:
+            rule(merged)
+        return merged.model_dump(mode="json")
+
     _, written = await _written_forward(
-        db,
-        session.id,
-        IRSession.back_translation,
-        session.back_translation,
-        lambda read: (
-            written
-            if read == session.back_translation
-            else _merged_forward(
-                base, state, BackTranslationState.model_validate(read or {})
-            ).model_dump(mode="json")
-        ),
+        db, session.id, IRSession.back_translation, session.back_translation, onto
     )
     set_committed_value(session, "back_translation", written)
     for name, value in vars(BackTranslationState.model_validate(written)).items():
