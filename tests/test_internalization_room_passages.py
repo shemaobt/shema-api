@@ -179,7 +179,7 @@ def test_every_language_the_room_claims_can_name_every_passage(spoken: str) -> N
     )
 
 
-def test_a_language_nobody_has_written_is_named_in_the_floors_words_not_in_silence() -> None:
+def test_a_language_nobody_has_written_is_named_in_the_authored_english_not_in_silence() -> None:
     """Uma roda vazia não é um idioma faltando — é um livro que acabou."""
     spoken = [line_for(m.pericope_num, "xx") for m in load_book("Ruth")]
 
