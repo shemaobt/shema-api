@@ -58,6 +58,8 @@ ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 ERROR_CODE_FRASE_OUT_OF_PLACE: Final = "FRASE_OUT_OF_PLACE"
 #: A frase or restart sent to a scene rehearsal already sent: never accepted, never retried.
 ERROR_CODE_SCENE_REHEARSAL_SENT: Final = "SCENE_REHEARSAL_SENT"
+#: A restart that closes an attempt which is not the current one yet: retried once it is.
+ERROR_CODE_RESTART_OUT_OF_ORDER: Final = "RESTART_OUT_OF_ORDER"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
 ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
 ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
@@ -171,6 +173,13 @@ class SceneRehearsalSent(ConflictError):
     """A frase or a restart for a scene rehearsal that was sent, which is frozen for good.
 
     Its own exception so the tablet's outbox can tell it from a conflict worth retrying.
+    """
+
+
+class RestartOutOfOrder(ConflictError):
+    """A restart that closes an attempt which is not the rehearsal's current one.
+
+    Its own exception so the tablet's outbox retries it once its predecessor has landed.
     """
 
 
@@ -477,6 +486,13 @@ async def handle_scene_rehearsal_sent(_request: Request, exc: SceneRehearsalSent
     )
 
 
+async def handle_restart_out_of_order(_request: Request, exc: RestartOutOfOrder) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_RESTART_OUT_OF_ORDER),
+    )
+
+
 async def handle_frase_out_of_place(_request: Request, exc: FraseOutOfPlace) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -639,6 +655,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(FraseOutOfPlace, handle_frase_out_of_place)  # type: ignore[arg-type]
     app.add_exception_handler(SceneRehearsalSent, handle_scene_rehearsal_sent)  # type: ignore[arg-type]
+    app.add_exception_handler(RestartOutOfOrder, handle_restart_out_of_order)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]

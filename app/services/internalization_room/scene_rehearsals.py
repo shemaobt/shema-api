@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     FraseOutOfPlace,
     NotFoundError,
+    RestartOutOfOrder,
     SceneRehearsalSent,
     UnknownReferenceError,
     WordlessTelling,
@@ -233,6 +234,14 @@ async def _current_of_the_chain(
     return current
 
 
+async def _refuse_another_rehearsals_attempt(
+    db: AsyncSession, rehearsal: IRSceneRehearsal, attempt: str
+) -> None:
+    named = await db.get(IRSceneRestart, attempt)
+    if named is not None and named.rehearsal_id != rehearsal.id:
+        raise UnknownReferenceError(f"Restart {attempt} belongs to another scene rehearsal")
+
+
 async def _locked(db: AsyncSession, rehearsal_id: str) -> IRSceneRehearsal:
     """The rehearsal read again under a row lock, so what lands on it lands one at a time."""
     found = await db.scalars(
@@ -276,6 +285,8 @@ async def keep_a_frase(
         return already
     _refuse_a_sent(rehearsal)
     _refuse_a_place_outside(rehearsal, starts_ms, ends_ms)
+    if after_restart is not None:
+        await _refuse_another_rehearsals_attempt(db, rehearsal, after_restart)
     if replaces is not None:
         await _current_of_the_chain(db, rehearsal, replaces, after_restart)
     await db.commit()
@@ -341,12 +352,14 @@ async def restart_the_scene_translation(
     already = await db.get(IRSceneRestart, attempt)
     if already is not None:
         if already.rehearsal_id != rehearsal.id:
-            raise ConflictError(f"Restart {attempt} belongs to another scene rehearsal")
+            raise UnknownReferenceError(f"Restart {attempt} belongs to another scene rehearsal")
         return already
     _refuse_a_sent(rehearsal)
     done = (await restarts_of(db, [rehearsal.id]))[rehearsal.id]
     if closes != current_attempt(done):
-        raise ConflictError(f"Restart {attempt} closes {closes}, which is not the current attempt")
+        raise RestartOutOfOrder(
+            f"Restart {attempt} closes {closes}, which is not the current attempt"
+        )
     frases = (await frases_of(db, [rehearsal.id]))[rehearsal.id]
     restart = IRSceneRestart(
         id=attempt,

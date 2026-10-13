@@ -23,9 +23,10 @@ Decided with the Definer on 2026-10-13:
   every frase recorded after it; the first attempt names none. The server keeps it as the
   restart's id, which makes the same restart sent twice the first one. A restart also names
   the attempt it closes, the rehearsal's `after_restart` when the tablet restarted, none for
-  the first; one closing an attempt that is not the current one is refused with 409, so the
-  outbox retries it after its predecessor lands and restarts never become current out of
-  order. A frase of an attempt
+  the first; one closing an attempt that is not the current one is refused with 409
+  `RESTART_OUT_OF_ORDER`, so the outbox retries it after its predecessor lands and restarts
+  never become current out of order. A sent rehearsal answers 409 `SCENE_REHEARSAL_SENT`,
+  which is never retried. A frase may name only its own rehearsal's restarts. A frase of an attempt
   a later restart closed is kept, set aside by that restart, never current. A frase naming an
   attempt whose restart has not landed yet is held, in no list, until that restart lands and
   makes it current. A restart and a frase landing take the rehearsal's row lock, so one
