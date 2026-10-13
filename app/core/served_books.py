@@ -1,2 +1,3 @@
 ROOM_BOOK = "Ruth"
 SERVED_BOOKS = frozenset({ROOM_BOOK})
+PORTUGUESE_NAMES = {ROOM_BOOK: "Rute"}

@@ -107,14 +107,19 @@ class FacilitatorTeamDetail(FacilitatorTeamView):
 
     #: How many of the book's passages have met the completion floor.
     #:
+    #: Counts the floor, not the walk: a passage closed out of order counts, and the team
+    #: still stands where the canon's order puts them. ``approved_total`` replaces it
+    #: (ENG-1228); it leaves once the Desk stops reading it.
+    closed_total: int
+
+    #: How many of the book's passages are approved: each has a live release. A finished
+    #: session without a release approves nothing (ENG-1228).
+    #:
     #: **The one count this product allows, and the reason has to live beside it.** It is a
     #: position in the book, not a measure of the team — every other count on every other
     #: surface is forbidden, so without the reason written down this one gets deleted by
     #: somebody who is right about the rule and wrong about the case (ENG-469).
-    #:
-    #: Counts the floor, not the walk: a passage closed out of order counts, and the team
-    #: still stands where the canon's order puts them.
-    closed_total: int
+    approved_total: int
 
 
 class TeamListingResponse(BaseModel):

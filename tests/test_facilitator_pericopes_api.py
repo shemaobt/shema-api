@@ -126,7 +126,7 @@ async def test_each_passage_carries_both_of_the_names_the_desk_draws(client, db_
 
     # Spelled with the escape because the canon writes an en dash here and a hyphen in a
     # test file is invisible.
-    assert first["reference"] == "Ruth 1:1\u20135"
+    assert first["reference"] == "Rute 1:1\u20135"
     assert first["title"]
 
 
@@ -176,7 +176,7 @@ async def test_a_team_that_finished_the_book_has_no_current_passage(client, db_s
 async def test_the_count_the_desk_draws_is_a_position_and_not_a_measure(client, db_session) -> None:
     """*"N of 14 closed"* is countable from this answer, and it is countable by the Desk.
 
-    This route serves no number of its own. The one count the product allows is a position in
+    This route serves no total of its own. The one count the product allows is a position in
     the book, and it is drawn from the positions themselves rather than served as a total that
     could be read beside another team's.
     """
@@ -186,7 +186,11 @@ async def test_the_count_the_desk_draws_is_a_position_and_not_a_measure(client, 
     body = (await client.get(pericopes_url(team.id), headers=headers)).json()
 
     assert sum(1 for entry in body if entry["position"] == "closed") == 2
-    assert all(set(entry) == {"pericope", "reference", "title", "position"} for entry in body)
+    assert all(
+        set(entry)
+        == {"pericope", "reference", "title", "position", "release", "open_findings", "approved"}
+        for entry in body
+    )
 
 
 # ------------------------------------------------ who may read it, and the fact that nobody writes

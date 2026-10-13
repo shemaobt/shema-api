@@ -155,6 +155,16 @@ class PericopePosition(StrEnum):
     FUTURE = "future"
 
 
+class PassageRelease(BaseModel):
+    """The passage's live release with the highest **Version** for the team (ADRs 0014, 0047)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    forced_at: datetime | None
+    approved_at: datetime
+
+
 class PericopeStanding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -162,6 +172,9 @@ class PericopeStanding(BaseModel):
     reference: str
     title: str
     position: PericopePosition
+    release: PassageRelease | None
+    open_findings: int
+    approved: bool
 
 
 class SessionBead(BaseModel):

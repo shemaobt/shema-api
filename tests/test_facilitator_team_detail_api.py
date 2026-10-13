@@ -417,4 +417,4 @@ async def test_the_answer_does_not_pay_per_bead_or_per_team(
     against_events = [s for s in seen if "ir_coverage_events" in s]
 
     assert len(against_events) <= 2, f"mais de duas leituras dos eventos: {against_events}"
-    assert len(seen) <= 4, f"a resposta custou {len(seen)} statements: {seen}"
+    assert len(seen) <= 5, f"a resposta custou {len(seen)} statements: {seen}"
