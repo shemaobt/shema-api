@@ -19,6 +19,7 @@ from tests.canon_harness import (
     THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT,
     the_caches_of_the_prompts,
     the_caches_the_loader_holds,
+    the_names_the_prompts_are_reached_by,
 )
 
 TESTS = Path(__file__).resolve().parent
@@ -27,16 +28,20 @@ THE_CANON_PACKAGE = "app.services.internalization_room.canon."
 
 
 def _the_caches_the_harness_forgets() -> set[str]:
-    held = the_caches_the_loader_holds() + the_caches_of_the_prompts()
-    return {name for name, _ in held}
+    canon = {name for name, _ in the_caches_the_loader_holds()}
+    return canon | the_names_the_prompts_are_reached_by()
 
 
 def _names_in(expression: ast.AST) -> set[str]:
-    return {
-        node.attr if isinstance(node, ast.Attribute) else node.id
-        for node in ast.walk(expression)
-        if isinstance(node, ast.Attribute | ast.Name)
-    }
+    names: set[str] = set()
+    for node in ast.walk(expression):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            names.add(node.attr)
+            if isinstance(node.value, ast.Name):
+                names.add(f"{node.value.id}.{node.attr}")
+    return names
 
 
 def _outermost_functions(node: ast.AST) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -169,6 +174,15 @@ from app.services.internalization_room import fail_safe
 def test_a_case() -> None:
     real_loader = fail_safe.fail_safe_utterances
     real_loader.cache_clear()
+"""
+
+CLEARS_TWO_CACHES_THAT_SHARE_A_NAME = """\
+from app.services.internalization_room import fail_safe, passage_lines
+
+
+def test_a_case() -> None:
+    passage_lines._sections.cache_clear()
+    fail_safe._sections.cache_clear()
 """
 
 CLEARS_THE_PROMPT_LOADER = """\
@@ -382,6 +396,16 @@ def test_every_cache_in_app_is_found_by_the_loader_or_listed_in_the_harness() ->
     )
 
     assert _unlisted_caches(APP, listed) == []
+
+
+def test_a_cache_that_shares_the_name_of_a_prompt_cache_is_not_the_harness_to_forget(
+    tmp_path: Path,
+) -> None:
+    of_the_harness, of_something_else = _the_clears_in(
+        _planted(tmp_path, CLEARS_TWO_CACHES_THAT_SHARE_A_NAME), _the_caches_the_harness_forgets()
+    )
+
+    assert (of_the_harness, of_something_else) == ([6], [5])
 
 
 def test_no_test_clears_a_cache_the_harness_forgets_by_hand() -> None:
