@@ -19,8 +19,21 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, StretchNoLongerCounts, ValidationError
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.core.exceptions import (
+    ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+    ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+    ERROR_CODE_PAUSE_PAST_THE_END,
+    NotFoundError,
+    PauseCannotMove,
+    StretchNoLongerCounts,
+    ValidationError,
+)
+from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, IRTake
+from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.takes import is_wav
+
+SHORTEST_FRASE_MS = 200
+END_SLACK_MS = 250
 
 
 def sits_at(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> bool:
@@ -58,6 +71,57 @@ def refuse_a_slice_the_stretch_does_not_sit_on(
         raise ValidationError(
             f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} is not this stretch's: "
             f"it sits from {segment.starts_ms} ms to {segment.ends_ms} ms of {segment.take_id}"
+        )
+
+
+async def refuse_a_slice_a_version_cannot_take(
+    db: AsyncSession,
+    session: IRSession,
+    segment: IRSegment,
+    take_id: str,
+    starts_ms: int,
+    ends_ms: int,
+) -> None:
+    if segment.take_id != take_id or segment.starts_ms != starts_ms:
+        refuse_a_slice_the_stretch_does_not_sit_on(segment, take_id, starts_ms, ends_ms)
+    if segment.ends_ms == ends_ms:
+        return
+    state = BackTranslationState.model_validate(session.back_translation or {})
+    if state.checked:
+        raise PauseCannotMove(
+            "A passage already conferida keeps its pauses where they fell",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    approved = await db.execute(select(IRRelease.id).where(IRRelease.session_id == session.id))
+    if approved.first() is not None:
+        raise PauseCannotMove(
+            "A passage already approved keeps its pauses where they fell",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    content_type = await db.execute(select(IRTake.content_type).where(IRTake.id == take_id))
+    if not is_wav(content_type.scalar_one()):
+        raise PauseCannotMove(
+            "A compressed recording keeps its pauses where they fell",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    part = [one for one in await final_segments(db, session.id) if one.take_id == take_id]
+    last = max(reversed(part), key=lambda one: one.ends_ms, default=None)
+    if last is None or last.id != segment.id:
+        raise PauseCannotMove(
+            "The pause moves only on the last frase of its part",
+            ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE,
+        )
+    if ends_ms < starts_ms + SHORTEST_FRASE_MS:
+        raise PauseCannotMove(
+            f"A frase from {starts_ms} ms to {ends_ms} ms is shorter than {SHORTEST_FRASE_MS} ms",
+            ERROR_CODE_PAUSE_CANNOT_STAND_THERE,
+        )
+    played = (one.clip_duration_ms for one in state.played_by_take if one.take_id == take_id)
+    length = next(played, 0)
+    if length and ends_ms > length + END_SLACK_MS:
+        raise PauseCannotMove(
+            f"A pause at {ends_ms} ms falls past the end of a recording of {length} ms",
+            ERROR_CODE_PAUSE_PAST_THE_END,
         )
 
 
@@ -147,7 +211,9 @@ async def capture_segment(
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
 
     if replaces is not None:
-        refuse_a_slice_the_stretch_does_not_sit_on(replaces, take_id, starts_ms, ends_ms)
+        await refuse_a_slice_a_version_cannot_take(
+            db, session, replaces, take_id, starts_ms, ends_ms
+        )
         refuse_a_version_that_tells_nothing(transcript)
         await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
         parent_id = replaces.parent_id
