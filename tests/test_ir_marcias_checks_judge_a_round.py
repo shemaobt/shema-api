@@ -266,3 +266,48 @@ def test_her_dropped_no_finding_would_have_failed_the_correct_run() -> None:
         "a finding about a detail that IS in the telling (split across frases): "
         f'"{THE_EXTRA_CAUSE}"'
     ]
+
+
+THE_SOLD_HOUSE = "O homem vendeu a casa antes de ir para Moabe, e a história não conta isso."
+
+ACRESCIMO_ROUND_ONE = {
+    "conferida": False,
+    "findings": [{"kind": "addition", "note": "vend|casa", "frase": 2}],
+    "no_kinds": ["missing"],
+    "spoken_names_frase": 2,
+    "spoken_matches": "áudio|gravação",
+    "spoken_asks_audio_or_explanation": True,
+    "spoken_whole_sentence": 2,
+}
+
+ASKS_THE_WHOLE_SENTENCE = (
+    "Na frase 2 vocês traduziram que o homem vendeu a casa que tinha — isso a história não "
+    "conta. Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na "
+    "frase 2 e traduzam de novo. Se está no áudio, regravem a frase 2 inteira — a frase toda, "
+    "nunca só um pedaço — e traduzam essa frase de novo."
+)
+
+NEVER_ASKS_TO_RECORD = (
+    "Na frase 2 vocês traduziram que o homem vendeu a casa que tinha — isso a história não "
+    "conta. Está no áudio, ou entrou agora na tradução? Se entrou só na tradução, toquem na "
+    "frase 2 e traduzam de novo. Se está no áudio, podem seguir com calma."
+)
+
+
+def _acrescimo(spoken: str) -> dict[str, Any]:
+    return _round(
+        findings=[{"kind": "addition", "note": THE_SOLD_HOUSE, "frase": 2}], spoken=spoken
+    )
+
+
+def test_a_voice_that_never_asks_to_record_the_frase_whole_fails() -> None:
+    assert check_round(_acrescimo(NEVER_ASKS_TO_RECORD), ACRESCIMO_ROUND_ONE) == [
+        'the voice does not ask to record frase 2 again WHOLE ("regravem a frase 2 inteira" / '
+        '"essa frase inteira" / "a frase toda")'
+    ], "a expectativa do script dela nunca era conferida: a voz podia não pedir nada"
+
+
+def test_her_approved_wording_for_a_whole_sentence_meets_the_key() -> None:
+    assert check_round(_acrescimo(ASKS_THE_WHOLE_SENTENCE), ACRESCIMO_ROUND_ONE) == [], (
+        "a frase aprovada pela Marcia em 2026-09-21 é a que o script dela espera"
+    )

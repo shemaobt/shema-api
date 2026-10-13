@@ -181,6 +181,22 @@ def asks_translation(spoken: str) -> list[str]:
     return ["the voice does not ask whether it entered in the translation ('na tradução')"]
 
 
+def asks_the_whole_sentence(spoken: str, number: int) -> list[str]:
+    asked = re.search(
+        rf"regrav\w+[^.]*?\bfrase(?:\s+{number}\b|(?!\s+\d))[^.]*?\binteira"
+        rf"|regrav\w+\s+inteira\s+a\s+frase|\bfrase\s+{number}\s+inteira"
+        r"|a frase toda|nunca só um pedaço",
+        spoken,
+        re.IGNORECASE,
+    )
+    if asked:
+        return []
+    return [
+        f'the voice does not ask to record frase {number} again WHOLE ("regravem a frase '
+        f'{number} inteira" / "essa frase inteira" / "a frase toda")'
+    ]
+
+
 def one_frase_per_turn(spoken: str) -> list[str]:
     named = list(dict.fromkeys(said.lower() for said in _A_FRASE.findall(spoken)))
     if len(named) <= 1:
@@ -220,5 +236,7 @@ def check_round(result: dict[str, Any], expect: dict[str, Any]) -> list[str]:
         fails += spoken_must_not_match(spoken, expect["spoken_must_not_match"])
     if expect.get("spoken_asks_audio_or_explanation"):
         fails += asks_translation(spoken)
+    if expect.get("spoken_whole_sentence") is not None:
+        fails += asks_the_whole_sentence(spoken, expect["spoken_whole_sentence"])
     fails += one_frase_per_turn(spoken)
     return fails
