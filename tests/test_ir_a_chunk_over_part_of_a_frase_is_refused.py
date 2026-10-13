@@ -7,6 +7,10 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.internalization_room import IRSegment
+from app.services.internalization_room.segments import final_segments
+from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.takes import declare_rehearsal_parts
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import (
     DEVICE,
@@ -18,7 +22,13 @@ from tests.hard_stretch_harness import (
     retro_takes,
     told,
 )
-from tests.room_harness import nothing_is_read_ahead
+from tests.room_harness import (
+    nothing_is_read_ahead,
+    room_client,
+    the_analyst_reads,
+    the_room_speaks,
+)
+from tests.text_seam_harness import RUNNER_KEY
 
 OTHER_AUDIO = b"a equipe contou de novo, de outro jeito"
 
@@ -60,6 +70,14 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         c.said = said  # type: ignore[attr-defined]
         c.asked = asked  # type: ignore[attr-defined]
         yield c
+
+
+@pytest.fixture()
+async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    the_analyst_reads(monkeypatch)
+    the_room_speaks(monkeypatch)
+    async with room_client(db_session, monkeypatch, runner_key=RUNNER_KEY) as door:
+        yield door
 
 
 async def _chunk(
@@ -178,3 +196,65 @@ async def test_the_same_milliseconds_of_another_part_are_a_first_telling_not_an_
     ] == [(first_part, 0, 9000), (second_part, 0, 9000)], (
         "cada parte é uma gravação, e os mesmos milissegundos de outra não são a mesma fala"
     )
+
+
+@pytest.mark.parametrize(
+    ("starts_ms", "ends_ms"),
+    [
+        pytest.param(0, 9000, id="the frase that stood first"),
+        pytest.param(0, 12000, id="the frase the old door wrote over it"),
+    ],
+)
+async def test_a_retelling_at_the_exact_address_of_one_of_two_overlapping_frases_is_a_version(
+    client: httpx.AsyncClient, db_session: AsyncSession, starts_ms: int, ends_ms: int
+) -> None:
+    session_id = await a_session(db_session)
+    take_id = await rehearse(client, session_id)
+    await told(client, session_id, take_id, 1)
+    db_session.add(
+        IRSegment(
+            session_id=session_id,
+            ordinal=2,
+            take_id=take_id,
+            starts_ms=0,
+            ends_ms=12000,
+            transcript="o trecho 1 com a pausa movida",
+        )
+    )
+    await db_session.commit()
+
+    told_again = await _chunk(client, session_id, take_id, starts_ms, ends_ms, retelling=True)
+
+    assert told_again.status_code == 200, told_again.text
+    retold = [
+        one for one in await _slices(db_session, session_id) if one[:2] == (starts_ms, ends_ms)
+    ]
+    assert retold == [(starts_ms, ends_ms, 2)], (
+        "o par que a porta antiga deixou recusava a recontagem dos dois endereços exatos"
+    )
+
+
+async def test_the_text_seam_refuses_a_frase_over_part_of_one_it_already_captured(
+    seam: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session = await create_session(
+        db_session, project_id=TABLET_TEAM, pericope="P03", language="pt"
+    )
+    await declare_rehearsal_parts(db_session, session, ["S1"])
+
+    refused = await seam.post(
+        f"{IR}/text-seam/back-translation/round",
+        json={
+            "sessionId": session.id,
+            "frases": [
+                {"clipKey": "S1", "coversFrom": 0, "coversTo": 9, "text": "Noemi voltou"},
+                {"clipKey": "S1", "coversFrom": 4, "coversTo": 13, "text": "Noemi e Rute"},
+            ],
+        },
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "OVERLAPS_A_STANDING_FRASE"
+    assert (4000, 13000) not in [
+        (one.starts_ms, one.ends_ms) for one in await final_segments(db_session, session.id)
+    ], "o runner gravava duas frases sobre os mesmos milissegundos"

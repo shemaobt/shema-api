@@ -168,14 +168,13 @@ def refuse_a_slice_that_is_not_one(starts_ms: int, ends_ms: int) -> None:
 def refuse_a_telling_over_part_of_a_frase(
     told: list[IRSegment], take_id: str, starts_ms: int, ends_ms: int
 ) -> None:
+    if any(sits_at(one, take_id, starts_ms, ends_ms) for one in told):
+        return
     over = next(
         (
             one
             for one in told
-            if one.take_id == take_id
-            and one.starts_ms < ends_ms
-            and starts_ms < one.ends_ms
-            and not sits_at(one, take_id, starts_ms, ends_ms)
+            if one.take_id == take_id and one.starts_ms < ends_ms and starts_ms < one.ends_ms
         ),
         None,
     )
@@ -246,6 +245,9 @@ async def capture_segment(
         ordinal = await _next_ordinal(db, session.id, parent_id)
         tellings = parent.tellings
     else:
+        refuse_a_telling_over_part_of_a_frase(
+            await final_segments(db, session.id), take_id, starts_ms, ends_ms
+        )
         parent_id = None
         ordinal = await _next_ordinal(db, session.id, parent_id)
         tellings = 1
