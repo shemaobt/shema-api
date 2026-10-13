@@ -3,7 +3,9 @@ r"""Marcia's `checkRound`, ported whole as pure functions over one round's resul
 Read from `src/golden/bt.ts` in `shemaobt/Tripod-Internalization` on 2026-09-11. The rules are
 hers and so are the failure messages, in her English, because a report of ours is read beside
 one of hers and a rule renamed on our side is a rule the two stacks no longer share. No check
-is added, none is dropped, none is loosened.
+is added, none is dropped, none is loosened. One came after that reading: `spoken_whole_sentence`,
+which she added on 2026-09-21 with the Ensaio Final and which is read from `src/golden/btChecks.ts`
+at her freeze, 18fa7c4.
 
 Her regexes carry JavaScript's `u` flag, which Python's `re` is always in, and her
 `(?<!\p{L})…(?!\p{L})` boundaries have no `\p{L}` here. `\b` is the translation: it is

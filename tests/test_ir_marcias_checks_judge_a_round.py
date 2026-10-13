@@ -3,7 +3,8 @@
 The rules and the failure messages are hers, read from `src/golden/bt.ts` in
 `shemaobt/Tripod-Internalization` on 2026-09-11 and kept in her words, because a report of
 ours goes back to her and has to be legible beside one of hers. No check is added, none is
-dropped, none is loosened.
+dropped, none is loosened. One came after that reading: `spoken_whole_sentence`, which she added
+on 2026-09-21 and which is read from `src/golden/btChecks.ts` at her freeze, 18fa7c4.
 
 The inputs are typed from her `golden/bt/*.json`; the map behind the P02 ones is
 `_spec/canon/meaning-map/P02-Ruth-1-6-14.md`, scene 1 (Ruth 1:6-7).
