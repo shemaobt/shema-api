@@ -16,7 +16,7 @@ the start is normalised here beside it.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,6 +85,17 @@ async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
     return result.scalars().all()
+
+
+async def canon_pins_of(
+    db: AsyncSession, project_ids: Collection[str]
+) -> dict[tuple[str, str], str | None]:
+    result = await db.execute(
+        select(IRSession.project_id, IRSession.pericope, IRSession.canon_pin)
+        .where(IRSession.project_id.in_(project_ids), live())
+        .order_by(IRSession.created_at, IRSession.id)
+    )
+    return {(team, pericope): pin for team, pericope, pin in result.all()}
 
 
 def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead]:
