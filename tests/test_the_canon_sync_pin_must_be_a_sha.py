@@ -18,7 +18,7 @@ SHA = "cafef00dfacade00cafef00dfacade00cafef00d"
 def test_pin_that_is_not_a_sha_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["sync_internalization_canon.py", "--sync", "--pin", "main"])
     monkeypatch.setattr(
-        canon, "sync", lambda pin=None: pytest.fail("sync() ran with a non-sha pin")
+        canon, "sync", lambda pin=None, keep=(): pytest.fail("sync() ran with a non-sha pin")
     )
 
     with pytest.raises(SystemExit) as excinfo:
@@ -30,7 +30,7 @@ def test_pin_that_is_not_a_sha_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
 def test_a_real_sha_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str | None] = []
     monkeypatch.setattr("sys.argv", ["sync_internalization_canon.py", "--sync", "--pin", SHA])
-    monkeypatch.setattr(canon, "sync", lambda pin=None: seen.append(pin) or 0)
+    monkeypatch.setattr(canon, "sync", lambda pin=None, keep=(): seen.append(pin) or 0)
 
     canon.main()
 
