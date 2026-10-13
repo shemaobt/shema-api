@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NoWordsHeard, UpstreamServiceError, ValidationError
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import FLOOR, room_language
 from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
     TranscriptionResult,
@@ -111,7 +111,7 @@ class HeardSpeech(BaseModel):
         detected = re.split(r"[-_]", (self.language_code or "").strip().lower())[0]
         if not detected:
             return False
-        spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language, _BRIDGE_LANGUAGE_CODES[FLOOR])
+        spoken = _BRIDGE_LANGUAGE_CODES[room_language(self.bridge_language)]
         if detected not in spoken:
             return True
         heard = self.language_probability
