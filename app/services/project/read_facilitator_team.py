@@ -26,6 +26,7 @@ from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
+from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import finished_passages, resolve, standing
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
@@ -95,7 +96,7 @@ def _the_canon_pin_on(pericope: str | None) -> Label[str | None]:
     return (
         select(IRSession.canon_pin)
         .where(IRSession.project_id == Project.id, IRSession.pericope == pericope, live())
-        .order_by(IRSession.created_at.desc(), IRSession.id.desc())
+        .order_by(*latest_entered_first())
         .limit(1)
         .scalar_subquery()
         .label("canon_pin")

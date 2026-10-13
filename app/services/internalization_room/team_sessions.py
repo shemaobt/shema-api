@@ -28,7 +28,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
-from app.services.internalization_room.entered import entered
+from app.services.internalization_room.entered import entered, latest_entered_first
 from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, as_utc, end_of
 
@@ -93,9 +93,12 @@ async def canon_pins_of(
     result = await db.execute(
         select(IRSession.project_id, IRSession.pericope, IRSession.canon_pin)
         .where(IRSession.project_id.in_(project_ids), live())
-        .order_by(IRSession.created_at, IRSession.id)
+        .order_by(*latest_entered_first())
     )
-    return {(team, pericope): pin for team, pericope, pin in result.all()}
+    pins: dict[tuple[str, str], str | None] = {}
+    for team, pericope, pin in result.all():
+        pins.setdefault((team, pericope), pin)
+    return pins
 
 
 async def canon_pins_by_session(

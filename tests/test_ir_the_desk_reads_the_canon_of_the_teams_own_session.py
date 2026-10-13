@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import itertools
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.sessions import apply_coverage
+from app.services.internalization_room.sessions import apply_coverage, create_session
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -43,6 +43,9 @@ KEPT_RUTH_LABEL = "Ruth, as the kept catalogue names her"
 FIRST = "P01"
 SERVED_FIRST_REFERENCE = "Ruth 1:1\u20135"
 KEPT_FIRST_REFERENCE = f"{SERVED_FIRST_REFERENCE}, as the kept map titles it"
+
+NAOMI_IN_THE_FIRST_SCENE = "being:S1:B3"
+KEPT_NAOMI_LABEL = "Naomi, as the kept catalogue names her"
 
 _codes = itertools.count()
 
@@ -74,6 +77,14 @@ def _the_kept_p01_is_titled_its_own_way(tree: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _the_kept_p01_is_titled_and_labelled_its_own_way(tree: Path) -> None:
+    _the_kept_p01_is_titled_its_own_way(tree)
+    catalogue = tree / "element-labels" / "ruth.json"
+    labels = json.loads(catalogue.read_text(encoding="utf-8"))
+    labels[FIRST][NAOMI_IN_THE_FIRST_SCENE]["en"] = KEPT_NAOMI_LABEL
+    catalogue.write_text(json.dumps(labels, ensure_ascii=False), encoding="utf-8")
 
 
 def _the_kept_p01_has_no_first_scene(tree: Path) -> None:
@@ -240,4 +251,33 @@ async def test_a_hand_raised_in_a_session_that_kept_the_old_canon_names_its_bead
     labels = {card["question_id"]: card["element_label_en"] for card in page.json()["questions"]}
     assert labels == {kept_hand: KEPT_RUTH_LABEL, fresh_hand: "Ruth"}, (
         "a caixa de perguntas nomeou a conta pelo canon de outra sessão"
+    )
+
+
+async def test_the_desk_reads_the_session_the_team_entered_not_a_later_one_nobody_entered(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (team, _) = await _a_desk_over_two_teams(db_session)
+    entered = await open_ir_session(db_session, pericope=FIRST, project_id=team.id)
+    entered.messages = [{"role": "team", "text": "a família saiu de Belém"}]
+    entered.created_at = datetime.now(UTC) - timedelta(days=1)
+    await db_session.commit()
+    the_canon_moves_on(
+        monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p01_is_titled_and_labelled_its_own_way
+    )
+    await create_session(db_session, pericope=FIRST, project_id=team.id, language="pt")
+
+    async with desk_routes(db_session) as at_desk:
+        page = await at_desk.get(f"/api/facilitator/teams/{team.id}", headers=desk)
+        necklace = await at_desk.get(
+            f"/api/facilitator/teams/{team.id}/coverage", params={"pericope": FIRST}, headers=desk
+        )
+
+    assert page.status_code == 200 and necklace.status_code == 200, page.text[:300]
+    assert page.json()["active_passage"]["reference"] == KEPT_FIRST_REFERENCE, (
+        "a página da equipe leu a sessão aberta depois, em que ninguém entrou"
+    )
+    labels = {bead["key"]: bead["label_en"] for bead in necklace.json()}
+    assert labels[NAOMI_IN_THE_FIRST_SCENE] == KEPT_NAOMI_LABEL, (
+        "o colar da equipe leu a sessão aberta depois, em que ninguém entrou"
     )
