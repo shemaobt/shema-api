@@ -212,9 +212,8 @@ async def held_frases(
 ) -> dict[str, dict[str, list[IRSceneFrase]]]:
     """By rehearsal and by attempt, the frases naming an attempt whose restart never landed."""
     landed = {
-        restart.id
-        for restarts in (await restarts_of(db, rehearsal_ids)).values()
-        for restart in restarts
+        rehearsal_id: {restart.id for restart in restarts}
+        for rehearsal_id, restarts in (await restarts_of(db, rehearsal_ids)).items()
     }
     found = await db.scalars(
         select(IRSceneFrase)
@@ -229,7 +228,7 @@ async def held_frases(
         rehearsal_id: {} for rehearsal_id in rehearsal_ids
     }
     for frase in found:
-        if frase.attempt is not None and frase.attempt not in landed:
+        if frase.attempt is not None and frase.attempt not in landed[frase.rehearsal_id]:
             held[frase.rehearsal_id].setdefault(frase.attempt, []).append(frase)
     return held
 

@@ -966,3 +966,27 @@ async def test_the_reader_reads_a_held_frase_whose_restart_never_landed(
     assert [(f["starts_ms"], f["transcript"]) for f in waiting["frases"]] == [
         (0, "esperando o recomeço")
     ]
+
+
+async def test_the_readers_held_frases_leave_the_list_as_their_restarts_land(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    x, y = str(uuid.uuid4()), str(uuid.uuid4())
+    assert (await restart(room, session_id, rehearsal_id, y, closes=x)).status_code == 409
+    fy = await translate_after(room, session_id, rehearsal_id, (0, 6000), recording(1, 601), y)
+    assert (await restart(room, session_id, rehearsal_id, x)).status_code == 200
+    fx = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), x)
+    assert (fy.status_code, fx.status_code) == (200, 200)
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert [(h["attempt"], [f["ends_ms"] for f in h["frases"]]) for h in read["held"]] == [
+        (y, [6000])
+    ]
+
+    assert (await restart(room, session_id, rehearsal_id, y, closes=x)).status_code == 200
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert read["held"] == []
+    assert [f["ends_ms"] for f in read["frases"]] == [6000]
