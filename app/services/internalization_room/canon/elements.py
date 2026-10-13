@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from functools import lru_cache
-
 from pydantic import BaseModel
 
 #: Re-exported so a reader of `elements_of` sees the values it builds on without leaving
@@ -34,7 +32,7 @@ _AXES = (
 )
 
 
-@lru_cache(maxsize=64)
+@per_canon(maxsize=64)
 def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
     """The scene each bead belongs to, for every bead that belongs to one.
 

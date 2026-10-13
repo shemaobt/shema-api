@@ -30,8 +30,10 @@ from app.models.internalization_room import (
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.background import transcribe_question
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import label_index
 from app.services.internalization_room.nudge_channel import nudge
+from app.services.internalization_room.team_sessions import canon_pins_by_session
 from app.services.internalization_room.voice_handles import (
     facilitator_audio_url,
     from_question_handle,
@@ -191,9 +193,17 @@ async def question_inbox(
     page = await service.inbox_page(
         db, user, team_id=team_id, wanted=status_wanted, limit=limit, cursor=cursor
     )
-    named = label_index({question.pericope for question in page.questions})
+    pins = await canon_pins_by_session(db, {question.session_id for question in page.questions})
+    named: dict[str | None, dict[tuple[str, str], LabelledElement]] = {}
+    for pin in {pins.get(question.session_id) for question in page.questions}:
+        with reading_the_canon_of(pin):
+            named[pin] = label_index(
+                {q.pericope for q in page.questions if pins.get(q.session_id) == pin}
+            )
     return QuestionInboxResponse(
-        questions=[_card(question, named) for question in page.questions],
+        questions=[
+            _card(question, named[pins.get(question.session_id)]) for question in page.questions
+        ],
         open_total=page.open_total,
         next_cursor=page.next_cursor,
     )

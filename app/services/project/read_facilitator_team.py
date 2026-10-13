@@ -14,15 +14,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import Label, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
+from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
 from app.models.internalization_room import PericopePosition
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
 from app.services.internalization_room.canon.elements import scene_key, scene_of
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.coverage_events import necklace_with_touches
+from app.services.internalization_room.entered import latest_entered_first
+from app.services.internalization_room.live import live
 from app.services.internalization_room.progression import finished_passages, resolve, standing
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.list_facilitator_teams import team_cards
@@ -50,23 +55,27 @@ async def read_facilitator_team(
     """
     moment = now or datetime.now(UTC)
     scope = await readable_projects(db, user)
-    row = (await db.execute(team_cards(scope).where(Project.id == team_id))).first()
+    finished = (await finished_passages(db, project_ids=[team_id])).get(team_id, set())
+    here = resolve(finished)
+    row = (
+        await db.execute(
+            team_cards(scope).where(Project.id == team_id).add_columns(_the_canon_pin_on(here))
+        )
+    ).first()
     if row is None:
         return None
 
-    finished = (await finished_passages(db, project_ids=[team_id])).get(team_id, set())
-    here = resolve(finished)
     closed = sum(1 for entry in standing(finished) if entry.position is PericopePosition.CLOSED)
+    active = None
+    if here is not None:
+        with reading_the_canon_of(row.canon_pin):
+            active = ActivePassageView(pericope=here, reference=load_map(here).reference)
 
     return FacilitatorTeamDetail(
         team_id=row.id,
         name=row.name,
         mother_tongue=row.mother_tongue,
-        active_passage=(
-            None
-            if here is None
-            else ActivePassageView(pericope=here, reference=load_map(here).reference)
-        ),
+        active_passage=active,
         state=team_state(
             book_closed=here is None,
             last_activity_at=row.last_activity_at,
@@ -77,12 +86,30 @@ async def read_facilitator_team(
         last_activity_at=row.last_activity_at,
         facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
-        scene_the_team_is_in=await _scene_they_are_in(db, team_id=team_id, pericope=here),
+        scene_the_team_is_in=await _scene_they_are_in(
+            db, team_id=team_id, pericope=here, pin=row.canon_pin
+        ),
+    )
+
+
+def _the_canon_pin_on(pericope: str | None) -> Label[str | None]:
+    return (
+        select(IRSession.canon_pin)
+        .where(IRSession.project_id == Project.id, IRSession.pericope == pericope, live())
+        .order_by(*latest_entered_first())
+        .limit(1)
+        .scalar_subquery()
+        .label("canon_pin")
     )
 
 
 async def _scene_they_are_in(
-    db: AsyncSession, *, team_id: str, pericope: str | None, book: str = ROOM_BOOK
+    db: AsyncSession,
+    *,
+    team_id: str,
+    pericope: str | None,
+    pin: str | None,
+    book: str = ROOM_BOOK,
 ) -> str | None:
     """The scene of the bead this team moved most recently, named as that scene's own bead.
 
@@ -101,7 +128,8 @@ async def _scene_they_are_in(
     if not history:
         return None
 
-    answers = scene_of(pericope, book)
+    with reading_the_canon_of(pin):
+        answers = scene_of(pericope, book)
     moved = [key for key in history if key in answers]
     if not moved:
         return None
