@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,7 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.names import registry_entry, verse_ranges
 from app.services.internalization_room.canon.parse_map import load_book, load_map
 from app.services.internalization_room.canon.titles import scene_title
+from app.services.internalization_room.sessions import create_session
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -196,6 +197,43 @@ async def test_a_team_whose_pin_lost_its_tree_is_still_found_by_its_passage_in_a
     assert found.status_code == 200, found.text[:300]
     assert {team["team_id"] for team in found.json()["teams"]} == {gone_team.id, fresh_team.id}, (
         "a busca lia a referência da passagem e quebrava na equipe que não tinha uma"
+    )
+
+
+async def _an_entered_session_before_and_after_the_tree_is_dropped(
+    db: AsyncSession, team_id: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[str, str]:
+    gone = await open_ir_session(db, pericope=P, project_id=team_id)
+    gone.messages = [{"role": "team", "text": "a família saiu de Belém"}]
+    gone.created_at = datetime.now(UTC) - timedelta(days=1)
+    await db.commit()
+    shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN))
+    fresh = await create_session(db, pericope=P, project_id=team_id, language="pt")
+    fresh.messages = [{"role": "team", "text": "Noemi voltou com Rute"}]
+    await db.commit()
+    return gone.id, fresh.id
+
+
+async def test_a_teams_history_draws_every_other_conversation_when_one_lost_its_tree(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (team, _) = await _a_desk_over_two_teams(db_session)
+    gone, fresh = await _an_entered_session_before_and_after_the_tree_is_dropped(
+        db_session, team.id, monkeypatch, tmp_path
+    )
+
+    async with desk_routes(db_session) as at_desk:
+        history = await at_desk.get(f"/api/facilitator/teams/{team.id}/sessions", headers=desk)
+
+    assert history.status_code == 200, history.text[:300]
+    cards = {card["session_id"]: card["coverage"] for card in history.json()}
+    assert set(cards) == {gone, fresh}
+    assert cards[gone] is None, (
+        "a conversa sem árvore desenhava um colar vazio, como se nada tivesse sido alcançado"
+    )
+    labels = {bead["key"]: bead["label_en"] for bead in cards[fresh]}
+    assert labels[NAOMI_IN_THE_FIRST_SCENE] == "Naomi", (
+        "uma conversa sem árvore derrubava o histórico inteiro da equipe"
     )
 
 

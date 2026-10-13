@@ -21,6 +21,7 @@ from collections.abc import Collection, Sequence
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import CanonNotKept
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.models.internalization_room import SessionBead, TeamSessionResponse
 from app.services.internalization_room import halt
@@ -127,7 +128,10 @@ def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead]:
 
 def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:
     end = end_of(session)
-    beads = beads_of(session, portrait)
+    try:
+        beads: list[SessionBead] | None = beads_of(session, portrait)
+    except CanonNotKept:
+        beads = None
     return TeamSessionResponse(
         session_id=session.id,
         pericope=session.pericope,

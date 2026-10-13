@@ -235,7 +235,7 @@ class TeamSessionResponse(BaseModel):
     #: When somebody long-pressed the halted room to say they had arrived (ENG-792). Null
     #: when nobody did, and null again on every halt after the one it answered.
     person_arrived_at: datetime | None
-    coverage: list[SessionBead]
+    coverage: list[SessionBead] | None
 
 
 class CoverageView(BaseModel):
