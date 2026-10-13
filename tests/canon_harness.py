@@ -47,6 +47,7 @@ def forget_the_canon() -> None:
     names._passage_labels.cache_clear()
     names._beings_by_scene.cache_clear()
     names.things_by_scene.cache_clear()
+    names.verse_ranges.cache_clear()
     names._glosses.cache_clear()
     titles._portuguese.cache_clear()
 

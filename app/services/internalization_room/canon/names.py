@@ -71,6 +71,14 @@ def things_by_scene(pericope_num: str) -> dict[int, dict[str, list[str]]]:
     }
 
 
+@per_canon(maxsize=64)
+def verse_ranges(pericope_num: str) -> dict[int, str]:
+    return {
+        int(scene["scene_id"].removeprefix("S")): scene["verse_range"]
+        for scene in _coordinate_scenes(pericope_num)
+    }
+
+
 def roles_in_scene(pericope_num: str, scene: int) -> dict[str, str]:
     return {
         entry["being_id"]: entry.get("role_in_scene") or ""

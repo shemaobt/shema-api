@@ -13,6 +13,7 @@ from app.services.internalization_room.canon.elements import (
     ElementKind,
     elements_for,
 )
+from app.services.internalization_room.canon.names import verse_ranges
 from app.services.internalization_room.canon.parse_map import (
     MeaningMap,
     code_only_links,
@@ -49,7 +50,7 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
     """Her ledger (`src/turn/coverageStatus.ts`, app 18fa7c4): what the team has and has not
     worked, and no line pointing at a scene. No key and no audit kind reaches it."""
     scenes = {
-        scene.number: f"S{scene.number} ({scene.verses})" for scene in load_map(pericope_num).scenes
+        number: f"S{number} ({verses})" for number, verses in verse_ranges(pericope_num).items()
     }
     merged = {**initial_state(pericope_num), **coverage_state}
     covered = [

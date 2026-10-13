@@ -124,7 +124,7 @@ async def test_a_turn_in_the_middle_of_a_session_hands_the_validator_no_ledger_a
         settings=_settings(),
     )
 
-    assert "WORKED WITH BY THE TEAM (engaged): S1 (v.15)" in recording.guide[0]
+    assert "WORKED WITH BY THE TEAM (engaged): S1 (1:15)" in recording.guide[0]
     judged = recording.validator[0]
     assert "WORKED WITH BY THE TEAM" not in judged and "NOT YET TOUCHED" not in judged, (
         "o Validador lia o livro-razão de cobertura, que é só do Guia"

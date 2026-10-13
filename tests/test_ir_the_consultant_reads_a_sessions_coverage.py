@@ -203,7 +203,7 @@ async def test_the_ledger_served_is_byte_for_byte_the_one_the_guide_reads_next(
     heard = guide.systems[0].partition(CACHE_BREAK)[2].lstrip("\n")
     assert heard.startswith(ledger)
     assert heard[len(ledger) :].startswith("\n\nMOMENT:")
-    assert "WORKED WITH BY THE TEAM (engaged): S1 (v.1\u20132)" in ledger
+    assert "WORKED WITH BY THE TEAM (engaged): S1 (1:1-2)" in ledger
     assert (
         "RAISED BY YOU, NOT YET TAKEN UP BY THE TEAM:\n  being: Naomi\n  place: Bethlehem\n"
         in ledger
@@ -238,7 +238,7 @@ async def test_a_turn_that_engaged_an_element_shows_it_engaged_on_the_next_read(
     assert _states(before)["scene:S1"] == "untouched"
     assert "WORKED WITH BY THE TEAM (engaged): (nothing yet" in before["ledger"]
     assert _states(after)["scene:S1"] == "engaged"
-    assert "WORKED WITH BY THE TEAM (engaged): S1 (v.1\u20132)\n" in after["ledger"]
+    assert "WORKED WITH BY THE TEAM (engaged): S1 (1:1-2)\n" in after["ledger"]
 
 
 async def test_a_panorama_is_flagged_and_has_no_beads_and_no_ledger(
