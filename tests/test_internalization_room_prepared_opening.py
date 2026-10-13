@@ -23,7 +23,6 @@ async def _session(db: AsyncSession, **over: object) -> IRSession:
         "status": IRSessionStatus.IN_PROGRESS,
         "messages": [],
         "coverage_state": {},
-        "kept_takes": {},
         "back_translation": {},
         "language": "pt",
     }

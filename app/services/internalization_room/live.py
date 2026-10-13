@@ -17,12 +17,20 @@ from sqlalchemy import ColumnElement
 from app.db.models.internalization_room import (
     IRCoverageEvent,
     IRRelease,
+    IRSceneRehearsal,
     IRSegment,
     IRSession,
     IRTake,
 )
 
-Stamped = type[IRSession] | type[IRTake] | type[IRSegment] | type[IRCoverageEvent] | type[IRRelease]
+Stamped = (
+    type[IRSession]
+    | type[IRTake]
+    | type[IRSegment]
+    | type[IRCoverageEvent]
+    | type[IRRelease]
+    | type[IRSceneRehearsal]
+)
 
 
 def live(table: Stamped = IRSession) -> ColumnElement[bool]:
