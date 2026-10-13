@@ -831,3 +831,25 @@ async def test_the_reader_shows_the_classifiers_guess_beside_the_teams_label(
 
     (read,) = await read_by_the_reader(room, session_id)
     assert (read["scene"], read["scene_guess"]) == ("S2", "S3")
+
+
+async def test_the_reader_reads_a_frase_that_arrived_after_its_restart_under_that_restart(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    room.answers.extend(["antes do recomeço", "chegou depois do recomeço"])
+    await translated(room, session_id, rehearsal_id, [(0, 5000)])
+    attempt = await restarted(room, session_id, rehearsal_id)
+    late = await translate(room, session_id, rehearsal_id, (5000, 11000), recording(1, 600))
+    assert late.status_code == 200, late.text
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    (restart_read,) = read["restarts"]
+    assert restart_read["restart_id"] == attempt
+    assert [(f["starts_ms"], f["transcript"]) for f in restart_read["frases"]] == [
+        (0, "antes do recomeço"),
+        (5000, "chegou depois do recomeço"),
+    ]
+    assert read["frases"] == []

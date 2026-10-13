@@ -191,6 +191,21 @@ async def frases_of(
     return frases
 
 
+async def set_aside_frases(
+    db: AsyncSession, rehearsal_ids: Sequence[str]
+) -> dict[str, list[IRSceneFrase]]:
+    """The frases each restart set aside, by restart, those that arrived after it included."""
+    found = await db.scalars(
+        select(IRSceneFrase)
+        .where(IRSceneFrase.rehearsal_id.in_(rehearsal_ids), IRSceneFrase.restart_id.is_not(None))
+        .order_by(IRSceneFrase.starts_ms, IRSceneFrase.created_at)
+    )
+    set_aside: dict[str, list[IRSceneFrase]] = {}
+    for frase in found:
+        set_aside.setdefault(str(frase.restart_id), []).append(frase)
+    return set_aside
+
+
 def replaced_by(frases: Sequence[IRSceneFrase]) -> dict[str, str]:
     return {frase.replaces_id: frase.id for frase in frases if frase.replaces_id is not None}
 

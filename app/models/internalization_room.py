@@ -912,9 +912,13 @@ class ReaderSceneFraseView(SceneFraseView):
 
 
 class SceneRestartView(BaseModel):
+    """A restart for the Desk: the record as it was, and every frase it set aside, the ones
+    that arrived after it included."""
+
     restart_id: str
     restarted_at: str
     snapshot: SceneRestartSnapshot
+    frases: list[ReaderSceneFraseView]
 
 
 class ReaderSceneRehearsalView(SceneRehearsalFacts):

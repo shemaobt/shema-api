@@ -24,7 +24,6 @@ from app.models.internalization_room import (
     ReaderSceneRehearsalsResponse,
     ReaderSceneRehearsalView,
     SceneFraseView,
-    SceneRehearsalFacts,
     SceneRehearsalsResponse,
     SceneRehearsalView,
     SceneRestartSnapshot,
@@ -49,8 +48,30 @@ def _frase_view(frase: IRSceneFrase, replacing: dict[str, str]) -> SceneFraseVie
     )
 
 
-def _facts(rehearsal: IRSceneRehearsal, restarts: list[IRSceneRestart]) -> SceneRehearsalFacts:
-    return SceneRehearsalFacts(
+def _reader_frase_view(frase: IRSceneFrase, replacing: dict[str, str]) -> ReaderSceneFraseView:
+    return ReaderSceneFraseView(
+        frase_id=frase.id,
+        starts_ms=frase.starts_ms,
+        ends_ms=frase.ends_ms,
+        replaces=frase.replaces_id,
+        replaced_by=replacing.get(frase.id),
+        transcript=frase.transcript,
+    )
+
+
+def _recorded_at(rehearsal: IRSceneRehearsal) -> str:
+    return as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else ""
+
+
+def _sent_at(rehearsal: IRSceneRehearsal) -> str | None:
+    return as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None
+
+
+def _view(
+    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
+) -> SceneRehearsalView:
+    replacing = scenes.replaced_by(frases)
+    return SceneRehearsalView(
         rehearsal_id=rehearsal.id,
         session_id=rehearsal.session_id,
         pericope=rehearsal.pericope,
@@ -60,44 +81,47 @@ def _facts(rehearsal: IRSceneRehearsal, restarts: list[IRSceneRestart]) -> Scene
         duration_ms=rehearsal.duration_ms,
         content_type=rehearsal.content_type,
         verified=rehearsal.verified_at is not None,
-        recorded_at=as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else "",
-        sent_at=as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None,
+        recorded_at=_recorded_at(rehearsal),
+        sent_at=_sent_at(rehearsal),
         after_restart=scenes.current_attempt(restarts),
-    )
-
-
-def _view(
-    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
-) -> SceneRehearsalView:
-    replacing = scenes.replaced_by(frases)
-    return SceneRehearsalView(
-        **_facts(rehearsal, restarts).model_dump(),
         frases=[_frase_view(frase, replacing) for frase in frases],
     )
 
 
+def _restart_view(restart: IRSceneRestart, set_aside: list[IRSceneFrase]) -> SceneRestartView:
+    replacing = scenes.replaced_by(set_aside)
+    return SceneRestartView(
+        restart_id=restart.id,
+        restarted_at=as_utc(restart.restarted_at).isoformat(),
+        snapshot=SceneRestartSnapshot.model_validate(restart.snapshot),
+        frases=[_reader_frase_view(frase, replacing) for frase in set_aside],
+    )
+
+
 def _reader_view(
-    rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase], restarts: list[IRSceneRestart]
+    rehearsal: IRSceneRehearsal,
+    frases: list[IRSceneFrase],
+    restarts: list[IRSceneRestart],
+    set_aside: dict[str, list[IRSceneFrase]],
 ) -> ReaderSceneRehearsalView:
     replacing = scenes.replaced_by(frases)
     return ReaderSceneRehearsalView(
-        **_facts(rehearsal, restarts).model_dump(),
-        frases=[
-            ReaderSceneFraseView(
-                **_frase_view(frase, replacing).model_dump(), transcript=frase.transcript
-            )
-            for frase in frases
-        ],
+        rehearsal_id=rehearsal.id,
+        session_id=rehearsal.session_id,
+        pericope=rehearsal.pericope,
+        n=rehearsal.n,
+        scene=rehearsal.scene,
+        scene_said=rehearsal.scene_said,
+        duration_ms=rehearsal.duration_ms,
+        content_type=rehearsal.content_type,
+        verified=rehearsal.verified_at is not None,
+        recorded_at=_recorded_at(rehearsal),
+        sent_at=_sent_at(rehearsal),
+        after_restart=scenes.current_attempt(restarts),
+        frases=[_reader_frase_view(frase, replacing) for frase in frases],
         scene_guess=rehearsal.scene_guess,
         archive_id=rehearsal.archive_id,
-        restarts=[
-            SceneRestartView(
-                restart_id=restart.id,
-                restarted_at=as_utc(restart.restarted_at).isoformat(),
-                snapshot=SceneRestartSnapshot.model_validate(restart.snapshot),
-            )
-            for restart in restarts
-        ],
+        restarts=[_restart_view(restart, set_aside.get(restart.id, [])) for restart in restarts],
     )
 
 
@@ -254,10 +278,11 @@ async def facilitator_scene_rehearsals(
     ids = [rehearsal.id for rehearsal in rehearsals]
     frases = await scenes.frases_of(db, ids)
     restarts = await scenes.restarts_of(db, ids)
+    set_aside = await scenes.set_aside_frases(db, ids)
     return ReaderSceneRehearsalsResponse(
         session_id=session.id,
         scene_rehearsals=[
-            _reader_view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
+            _reader_view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id], set_aside)
             for rehearsal in rehearsals
         ],
     )
