@@ -72,6 +72,7 @@ from app.services.internalization_room.verdict_round import (
     check_the_telling_back,
     mark_the_verdict_heard,
     save_the_spoken_verdict,
+    the_round_is_heard_at_once,
     the_stored_verdicts_clip,
 )
 
@@ -133,6 +134,7 @@ __all__ = [
     "stored_as_done",
     "synthesize_facilitator_speech",
     "the_finding_that_leads",
+    "the_round_is_heard_at_once",
     "the_stored_verdicts_clip",
     "told_back",
     "unattend",

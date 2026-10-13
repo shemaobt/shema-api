@@ -260,6 +260,10 @@ async def save_the_spoken_verdict(
     return session
 
 
+def the_round_is_heard_at_once(state: BackTranslationState) -> None:
+    state.checks[-1].heard_at = datetime.now(UTC)
+
+
 def _to_the_millisecond(moment: datetime) -> datetime:
     return moment.replace(microsecond=moment.microsecond // 1000 * 1000)
 
