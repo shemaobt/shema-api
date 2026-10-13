@@ -15,15 +15,28 @@ from tests.canon_sync_harness import SHA, Compiler, point_the_sync_at, what_is_v
 
 OLDER = "a" * 40
 OLDEST = "b" * 40
+NEXT = "c" * 40
 
 
 @pytest.fixture
-def a_canon_pinned_beside_two_kept_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def a_compiler_pinned_beside_its_labels(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Compiler:
     compiler = Compiler()
     compiler.book("ruth")
     compiler.passage("P01-Ruth-1-1-5")
     point_the_sync_at(monkeypatch, canon, compiler, tmp_path)
+    (tmp_path / "element-labels").mkdir()
+    (tmp_path / "element-labels" / "ruth.json").write_text("{}")
+    (tmp_path / "ui-labels.pt.json").write_text("{}")
     assert canon.sync(pin=SHA) == 0
+    return compiler
+
+
+@pytest.fixture
+def a_canon_pinned_beside_two_kept_trees(
+    a_compiler_pinned_beside_its_labels: Compiler, tmp_path: Path
+) -> Path:
     for pin in (OLDER, OLDEST):
         (tmp_path / "kept" / pin / "vendor").mkdir(parents=True)
         (tmp_path / "kept" / pin / "vendor" / "VENDOR_PIN").write_text(f"pin_commit: {pin}\n")
@@ -60,4 +73,16 @@ def test_a_sync_keeps_the_tree_of_a_pin_it_is_told_to_keep_and_drops_the_other(
     )
     assert (canon_dir / "kept" / OLDER / "vendor" / "VENDOR_PIN").read_text() == (
         f"pin_commit: {OLDER}\n"
+    )
+
+
+def test_a_re_pin_drops_the_tree_it_keeps_for_the_pin_it_replaces_when_not_told_to_keep_it(
+    a_compiler_pinned_beside_its_labels: Compiler, tmp_path: Path
+) -> None:
+    a_compiler_pinned_beside_its_labels.sha = NEXT
+
+    assert canon.sync(pin=NEXT) == 0
+
+    assert sorted(path.name for path in (tmp_path / "kept").iterdir()) == [], (
+        "a re-pin left the canon it replaced under kept/ though no one asked to keep it"
     )
