@@ -290,7 +290,12 @@ def cases(owned: Owned) -> list[dict]:
             data={"starts_ms": "0", "ends_ms": "1000"},
             files={"file": ("frase.m4a", b"uma frase", "audio/mp4")},
         ),
-        _case("scene-restart", method="POST", path=f"/sessions/{s}/scene-rehearsals/{r}/restart"),
+        _case(
+            "scene-restart",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/restart",
+            data={"attempt": "0f0f0f0f-0000-4000-8000-000000000001"},
+        ),
     ]
 
 

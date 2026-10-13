@@ -3,12 +3,13 @@
 The tablet's doors carry no words of the team and no classifier guess (ENG-1335).
 """
 
+import uuid
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
-from app.api.internalization_room._idempotent import IdempotentRoute, idempotency_dep
 from app.core.database import get_db
 from app.db.models.internalization_room import (
     IRSceneFrase,
@@ -56,7 +57,7 @@ def _view(
         verified=rehearsal.verified_at is not None,
         recorded_at=as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else "",
         sent_at=as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None,
-        after_restart=restarts[-1].id if restarts else None,
+        after_restart=scenes.current_attempt(restarts),
         frases=[_frase_view(frase, replacing) for frase in frases],
     )
 
@@ -157,7 +158,7 @@ async def keep_scene_frase(
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
     replaces: str | None = Form(default=None),
-    after_restart: str | None = Form(default=None),
+    after_restart: uuid.UUID | None = Form(default=None),
     file: UploadFile = File(...),
     project_id: str = device_project_dep,
     store: TakeStore = Depends(take_store),
@@ -172,7 +173,7 @@ async def keep_scene_frase(
         starts_ms=starts_ms,
         ends_ms=ends_ms,
         replaces=replaces,
-        after_restart=after_restart,
+        after_restart=None if after_restart is None else str(after_restart),
         audio=await file.read(),
         content_type=file.content_type or AUDIO_MIME,
         filename=file.filename,
@@ -181,25 +182,21 @@ async def keep_scene_frase(
     return await _the_record(db, rehearsal)
 
 
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart",
+    response_model=SceneRehearsalView,
+    dependencies=[linked_tablet_dep],
+)
 async def restart_scene_translation(
     session_id: str,
     rehearsal_id: str,
+    attempt: uuid.UUID = Form(...),
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SceneRehearsalView:
-    """«recomeçar a tradução». The outbox resends it under one Idempotency-Key, so a restart
-    whose answer was lost is answered again rather than taken twice."""
+    """«recomeçar a tradução» into the attempt the tablet minted, whose id the outbox resends
+    unchanged: the same restart sent twice is answered as the first."""
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
-    await scenes.restart_the_scene_translation(db, rehearsal)
+    await scenes.restart_the_scene_translation(db, rehearsal, attempt=str(attempt))
     return await _the_record(db, rehearsal)
-
-
-router.add_api_route(
-    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/restart",
-    restart_scene_translation,
-    methods=["POST"],
-    response_model=SceneRehearsalView,
-    dependencies=[linked_tablet_dep, idempotency_dep],
-    route_class_override=IdempotentRoute,
-)
