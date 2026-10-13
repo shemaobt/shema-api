@@ -56,7 +56,7 @@ from app.services.internalization_room.coverage import (
 )
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
-from app.services.internalization_room.entered import entered
+from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.fail_safe import FailSafe
 from app.services.internalization_room.languages import floor, normalize, room_language
 from app.services.internalization_room.live import live
@@ -313,12 +313,7 @@ async def _latest_stored(
             IRSession.language == language,
             live(),
         )
-        .order_by(
-            case((entered(), 1), else_=0).desc(),
-            IRSession.updated_at.desc(),
-            IRSession.created_at.desc(),
-            IRSession.id.desc(),
-        )
+        .order_by(*latest_entered_first())
         .limit(1)
     )
     return stored.scalar_one_or_none()
