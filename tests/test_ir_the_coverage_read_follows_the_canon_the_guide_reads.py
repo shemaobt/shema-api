@@ -26,12 +26,12 @@ from tests.tablet_turn_harness import the_team_says, the_turn_is_scripted
 
 P = "P03"
 NEW_PIN = "a" * 40
-BEINGS = "**3A — Beings**\n"
-ELIMELECH = "[[B2-Elimelech]] — אֱלִימֶלֶךְ / Elimelech\n\n"
+BEINGS = '"beings_in_scene": {\n        "entries": [\n'
+ELIMELECH = '          {"being_id": "B2", "role_in_scene": "DECEASED_KIN"},\n'
 
 
 def _the_kept_p03_names_elimelech(tree: Path) -> None:
-    (page,) = (tree / "vendor" / "meaning-map").glob("P03-*.md")
+    (page,) = (tree / "vendor" / "meaning-coordinates").glob("P03-*.md")
     page.write_text(page.read_text(encoding="utf-8").replace(BEINGS, BEINGS + ELIMELECH))
 
 
