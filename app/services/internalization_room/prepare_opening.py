@@ -166,6 +166,12 @@ async def hand_over(db: AsyncSession, prepared: IRSession, opening: IRSession) -
     would have a team meet their passage's framing in a language the rest of the session does
     not speak.
 
+    A line written under another canon is refused as well. The panorama's own pin is the
+    line's pin: the line is only ever written onto that row, it is written under that row's
+    pin, and a session's pin never moves. A passage minted after a re-pin reads the new map,
+    and handing it the old one's line would frame the team's passage from a map the rest of the
+    session never reads. The cost is the same one session writing its own opening.
+
     A session the team has already spoken in is refused too. The open door returns the team's
     resumed session (ADR 0045), and a line parked there is never read: only an opening takes
     it, and that session has had its opening.
