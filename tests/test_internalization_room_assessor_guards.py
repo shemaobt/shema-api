@@ -11,8 +11,7 @@ the only thing standing between the absence and someone rebuilding it a piece at
 no module of it can be imported, no field of a session remembers it, no purpose is left to
 hand the Guide, no block of it reaches either model, and no count of failed calls can end
 an interview. Named symbol by symbol rather than matched by prefix, the way the retired
-acousteme surface is named: the package around them is alive, and a prefix guard here would
-be widened until it meant nothing.
+acousteme surface is named: a prefix guard here would be widened until it meant nothing.
 """
 
 import dataclasses
