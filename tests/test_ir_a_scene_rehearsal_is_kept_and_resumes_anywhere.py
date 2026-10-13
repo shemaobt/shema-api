@@ -859,3 +859,18 @@ async def test_an_earlier_restart_resent_after_a_later_one_landed_changes_nothin
     assert rehearsal["after_restart"] == y
     assert current(rehearsal["frases"]) == [(0, 6000)]
     assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 2
+
+
+async def test_a_restart_whose_attempt_is_another_scene_rehearsals_restart_is_refused(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    sibling_id = await recorded(room, session_id, recording(10, 2))
+    theirs = await restarted(room, session_id, sibling_id)
+
+    refused = await restart(room, session_id, rehearsal_id, theirs)
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "UNKNOWN_REFERENCE"
+    assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 0
