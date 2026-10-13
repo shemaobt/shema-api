@@ -88,7 +88,7 @@ async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_
         "high",
         True,
     ), (
-        "effort high é o do run.ts dela (134); pensar é a regra dela; o teto é um que o juiz não "
+        "effort high é o do run.ts dela (556); pensar é a regra dela; o teto é um que o juiz não "
         "alcança — os 4000 dela cortaram um veredito em quatro nesta sala"
     )
     assert asked["schema"]["required"] == ["scores", "incidents", "pass", "summary"], (
