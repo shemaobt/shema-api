@@ -440,6 +440,7 @@ async def test_a_sent_rehearsal_takes_no_frase_and_is_still_heard(
     frase = await translate(room, session_id, rehearsal_id, (0, 5000), recording(1, 100))
 
     assert frase.status_code == 409, frase.text
+    assert frase.json()["code"] == "SCENE_REHEARSAL_SENT"
     (listed,) = await read_by_b(room, session_id)
     assert listed["rehearsal_id"] == rehearsal_id
     assert listed["sent_at"] is not None
@@ -538,6 +539,7 @@ async def test_a_frase_heard_while_the_rehearsal_is_sent_is_refused(
     late = await translate(room, session_id, rehearsal_id, (0, 5000), recording(1, 700))
 
     assert late.status_code == 409, late.text
+    assert late.json()["code"] == "SCENE_REHEARSAL_SENT"
     assert await count(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == 0
 
 

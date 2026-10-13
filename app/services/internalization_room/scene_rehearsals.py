@@ -14,9 +14,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
-    ConflictError,
     FraseOutOfPlace,
     NotFoundError,
+    SceneRehearsalSent,
     UnknownReferenceError,
     WordlessTelling,
 )
@@ -155,7 +155,7 @@ def replaced_by(frases: Sequence[IRSceneFrase]) -> dict[str, str]:
 
 def _refuse_a_sent(rehearsal: IRSceneRehearsal) -> None:
     if rehearsal.sent_at is not None:
-        raise ConflictError(f"Scene rehearsal {rehearsal.id} was sent and is frozen")
+        raise SceneRehearsalSent(f"Scene rehearsal {rehearsal.id} was sent and is frozen")
 
 
 def _refuse_a_place_outside(rehearsal: IRSceneRehearsal, starts_ms: int, ends_ms: int) -> None:
