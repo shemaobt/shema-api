@@ -176,8 +176,12 @@ async def test_a_settle_whose_reading_never_matches_gives_up_after_five_tries_no
             service.apply_coverage(db_session, session.id, _lighting(keys[0])), timeout=5
         )
 
-    refusals = [r for r in caplog.records if "stale read" in r.getMessage()]
+    refusals = [r.getMessage() for r in caplog.records if "stale read" in r.getMessage()]
     assert len(refusals) == 5, "uma comparação que nunca casa girava para sempre, presa à conexão"
+    assert ["redone" in line for line in refusals] == [True, True, True, True, False], (
+        "a última recusa dizia que a escrita seria refeita, logo antes de ela desistir"
+    )
+    assert "gives up" in refusals[-1]
 
 
 async def test_a_settle_compares_on_postgres_as_jsonb_both_sides_not_as_text(

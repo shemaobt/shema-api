@@ -734,11 +734,24 @@ async def _written_forward(
     read: _Stored | None,
     onto: Callable[[_Stored | None], _Stored],
 ) -> tuple[_Stored | None, _Stored]:
-    for _ in range(_TRIES):
+    for tries_left in reversed(range(_TRIES)):
         value = onto(read)
         if value == read or await _written_unless_moved(db, session_id, column, read, value):
             return read, value
+        if not tries_left:
+            break
+        logger.warning(
+            "Session %s: a stale read of %s was refused and is redone on the fresh reading",
+            session_id,
+            column.key,
+        )
         read = await db.scalar(select(column).where(IRSession.id == session_id))
+    logger.warning(
+        "Session %s: a stale read of %s was refused and the write gives up after %d tries",
+        session_id,
+        column.key,
+        _TRIES,
+    )
     raise ConflictError(f"Session {session_id}: {column.key} kept moving under every try")
 
 
@@ -756,14 +769,7 @@ async def _written_unless_moved(
         .values({column: value})
         .execution_options(synchronize_session=False)
     )
-    if written.rowcount == 1:
-        return True
-    logger.warning(
-        "Session %s: a stale read of %s was refused and is redone on the fresh reading",
-        session_id,
-        column.key,
-    )
-    return False
+    return written.rowcount == 1
 
 
 async def apply_coverage(
