@@ -31,12 +31,15 @@ from app.services.internalization_room.canon import (
     titles,
 )
 
+HER_CANON = Path(__file__).parent / "fixtures" / "her-canon-5b5c8d2"
+
 
 def forget_the_canon() -> None:
     parse_map.load_map.cache_clear()
     parse_map.load_book.cache_clear()
     book_material.preservation_rules.cache_clear()
     book_material._register_complete.cache_clear()
+    book_material._skeleton_registers.cache_clear()
     book_material.significant_absences.cache_clear()
     elements.elements_for.cache_clear()
     elements.scene_of.cache_clear()
@@ -95,7 +98,7 @@ def the_canon_moves_on(
     return tree
 
 
-def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
+def a_fable_map(number: int = 1, *, sta_status: str = "complete", status: str = "complete") -> str:
     return textwrap.dedent(
         f"""\
         ---
@@ -105,7 +108,7 @@ def a_fable_map(number: int = 1, *, sta_status: str = "complete") -> str:
         bcv: "Fable 1:{number}-{number + 1}"
         genre-group: "NARRATIVE"
         genre: "HISTORICAL_NARRATIVE"
-        status: "complete"
+        status: "{status}"
         sta-status: "{sta_status}"
         ---
 
@@ -166,4 +169,11 @@ A_FABLE_LOG_WITH_A_COMPLETE_REGISTER = _a_fable_log(
 )
 A_FABLE_LOG_WITH_AN_INCOMPLETE_REGISTER = _a_fable_log(
     [_A_RULE], {"high_risk_register_complete": False}
+)
+A_FABLE_LOG_WITH_A_SKELETON_IN_A_COMPLETE_REGISTER = _a_fable_log(
+    [_A_RULE, {"id": "R2", "kind": "SKELETON_PENDING_HIGH_RISK_REVIEW", "note": "pending"}],
+    {"high_risk_register_complete": True},
+)
+A_FABLE_LOG_WITH_A_COMPLETE_REGISTER_AND_NO_RULE = _a_fable_log(
+    [{**_A_RULE, "do_not_decide": False}], {"high_risk_register_complete": True}
 )

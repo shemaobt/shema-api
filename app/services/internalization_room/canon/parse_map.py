@@ -13,9 +13,7 @@ from app.services.internalization_room.canon.kept import canon_path, per_canon
 VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
 
-CONSUMABLE_STATUS = "complete"
 SURVEYED_STATUS = "complete"
-SUPPORTED_GENRE_GROUPS = frozenset({"NARRATIVE"})
 
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 _H1 = re.compile(r"^# (\S+) — (.+)$", re.M)
@@ -205,7 +203,7 @@ def _parse_propositions(body: str) -> list[Proposition]:
 
 
 def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
-    """Parse one Meaning Map. Refuses anything the project has not approved.
+    """Parse one Meaning Map.
 
     The section grammar is load-bearing: a heading that stops matching means the canon moved,
     and raising is the point — a half-parsed map would ground the Guide on a partial passage
@@ -215,20 +213,6 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
     if not front:
         raise ValidationError(f"{source}: no YAML frontmatter")
     meta = yaml.safe_load(front.group(1)) or {}
-
-    status = str(meta.get("status", ""))
-    if status != CONSUMABLE_STATUS:
-        raise ValidationError(
-            f"{source}: status is {status!r}, not {CONSUMABLE_STATUS!r} — not approved canon"
-        )
-
-    genre_group = str(meta.get("genre-group", ""))
-    if genre_group not in SUPPORTED_GENRE_GROUPS:
-        raise ValidationError(
-            f"{source}: genre-group {genre_group!r} is not enabled. Poetry maps keep the "
-            "psalm's own wording in Level 3, so treating them as narrative would coach teams "
-            "to reproduce phrasing. Coordinate with the project before enabling."
-        )
 
     body = text[front.end() :]
     h1 = _H1.search(body)
@@ -251,9 +235,9 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
         title=str(meta.get("pericope-title", "")),
         reference=h1.group(2).strip(),
         bcv=str(meta.get("bcv", "")),
-        genre_group=genre_group,
+        genre_group=str(meta.get("genre-group", "")),
         genre=str(meta.get("genre", "")),
-        status=status,
+        status=str(meta.get("status", "")),
         sta_status=str(meta.get("sta-status", "")),
         arc_prose=level_one["arc"],
         context_prose=level_one["context"],

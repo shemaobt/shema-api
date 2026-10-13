@@ -43,7 +43,10 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
     findings_after_a_part_is_recorded_again,
 )
-from app.services.internalization_room.canon.book_material import require_walkable
+from app.services.internalization_room.canon.book_material import (
+    require_walkable,
+    require_walkable_panorama,
+)
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.canon.scene_ids import scene_ids_for
@@ -356,7 +359,9 @@ async def _resolved(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if not is_panorama(pericope):
+    if is_panorama(pericope):
+        require_walkable_panorama(book_of(pericope))
+    else:
         require_walkable(load_map(pericope))
     spoken = normalize(language)
     if language is not None and spoken is None:

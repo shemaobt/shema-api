@@ -21,6 +21,8 @@ from app.services.internalization_room.canon.parse_map import (
 LOGS_DIR = VENDOR / "compilation-log"
 COORDINATES_DIR = VENDOR / "meaning-coordinates"
 
+SKELETON_KIND = "SKELETON_PENDING_HIGH_RISK_REVIEW"
+
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
 _CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
 _JSON_BLOCK = re.compile(r"```json\s*(.*?)```", re.S)
@@ -140,6 +142,18 @@ def _register_complete(book: str) -> dict[str, bool]:
 
 
 @per_canon(maxsize=8)
+def _skeleton_registers(book: str) -> frozenset[str]:
+    return frozenset(
+        path.name.split("-", 1)[0]
+        for path in sorted(canon_path(LOGS_DIR).glob(f"*-{book}-*-COMPILATION-LOG.md"))
+        if any(
+            entry.get("kind") == SKELETON_KIND
+            for entry in _extract_audit(path.read_text(encoding="utf-8"))
+        )
+    )
+
+
+@per_canon(maxsize=8)
 def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     """The book's withholdings: audit entries the project marked `do_not_decide`.
 
@@ -199,21 +213,18 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
 
     The same refusal, asked rather than raised. The wheel offers the passages a team can
     choose from and the progression names the one it lands on next, and both have to know
-    which passages open at all — a copy of these three conditions in either of them would stop
+    which passages open at all — a copy of these conditions in either of them would stop
     matching this one the day a fourth signal joins.
     """
     pericope = meaning_map.pericope_num
     book = meaning_map.book
     if book not in SERVED_BOOKS:
         return f"{pericope}: the {book} canon is not served in this release"
-    if not any(rule.pericope == pericope for rule in preservation_rules(book)):
-        return (
-            f"{pericope}: no preservation layer in the {book} canon — the passage's "
-            "withholdings were never written, so its completion floor cannot be met"
-        )
     survey_complete = meaning_map.sta_status == SURVEYED_STATUS
     register_complete = _register_complete(book).get(pericope)
-    if register_complete is not None and register_complete != survey_complete:
+    if register_complete is None:
+        return f"{pericope}: the Compilation Log does not mark the high-risk register complete"
+    if register_complete != survey_complete:
         return (
             f"{pericope}: the checklist says the high-risk register is "
             f"{'complete' if register_complete else 'incomplete'} but the survey is "
@@ -224,24 +235,30 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
             f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
             f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
         )
+    if pericope in _skeleton_registers(book):
+        return f"{pericope}: the high-risk register is still a skeleton, with no entry written"
     return None
 
 
 def require_walkable(meaning_map: MeaningMap) -> None:
-    """Refuse a passage no team should be walked through, and name which layer is missing.
-
-    The completion floor is every concrete element of the map engaged — each scene, being,
-    place, object, time, significant absence, *and preserved element*. A passage with no
-    withholdings recorded gets a coverage spine with no `preserved:` beads and a
-    comprehension pack with no `preserved_element` checkpoints, meets that shortened floor,
-    and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
-    passage; running costs Refine a false assurance, which is the more expensive of the two.
-
-    The three signals are read separately on purpose. A passage the project has not finished
-    tends to lack both — no preservation layer *and* a pending survey — but agreement is not
-    either one being read, and a layer written before the survey closes would otherwise walk.
-    """
+    """Refuse a passage no team should be walked through, with `unwalkable`'s reason: the
+    book not served, the checklist's flag missing, the flag and the survey disagreeing, the
+    survey unfinished, or the register still a skeleton."""
     reason = unwalkable(meaning_map)
+    if reason is not None:
+        raise ValidationError(reason)
+
+
+def unwalkable_panorama(book: str) -> str | None:
+    """`unwalkable` for a book's Panorama: it opens when at least one of the book's passages
+    opens, so a book whose every passage is closed is not entered through its front door."""
+    if any(unwalkable(meaning_map) is None for meaning_map in load_book(book)):
+        return None
+    return f"the {book} Panorama: no passage of the {book} canon opens"
+
+
+def require_walkable_panorama(book: str) -> None:
+    reason = unwalkable_panorama(book)
     if reason is not None:
         raise ValidationError(reason)
 

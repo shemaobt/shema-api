@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
+from app.services.internalization_room.canon.book_material import unwalkable_panorama
 from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.passage_lines import PANORAMA, offered, panorama_line_for
@@ -95,9 +96,10 @@ async def passages(
     than all fourteen, because the room's ElevenLabs key carries its own quota and a cold
     book should not spend it in one breath. Story order is the order they come back in.
 
-    The panorama, when it has a line, opens the answer — it is the book's own entry, the
-    one a team can return to for the whole rather than the part, and the app needs it first
-    to offer it as the wheel's front door rather than another spoke among fourteen.
+    The panorama, when it has a line and the book has a passage that opens, opens the
+    answer — it is the book's own entry, the one a team can return to for the whole rather
+    than the part, and the app needs it first to offer it as the wheel's front door rather
+    than another spoke among fourteen. A book whose every passage is closed offers none.
     """
     settings = get_settings()
     spoken = floor(settings) if language is None else normalize(language)
@@ -108,7 +110,7 @@ async def passages(
     speakable = offered(book, spoken)
     entries = []
     panorama_line = panorama_line_for(spoken)
-    if panorama_line:
+    if panorama_line and unwalkable_panorama(book) is None:
         entries.append(
             _voiced_panorama(panorama_line, language=spoken, settings=settings, in_flight=in_flight)
         )
