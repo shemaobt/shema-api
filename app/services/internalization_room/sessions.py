@@ -1272,12 +1272,15 @@ async def retire_the_part_recorded_again(
     if not retired:
         return
 
+    retired_ids = {row.id for row in retired}
+
+    def recorded_again(standing: BackTranslationState) -> None:
+        standing.findings = findings_after_a_part_is_recorded_again(standing.findings, retired_ids)
+        standing.checked = False
+        standing.verdict = None
+
     state = back_translation_of(session)
-    state.findings = findings_after_a_part_is_recorded_again(
-        state.findings, {row.id for row in retired}
-    )
-    state.checked = False
-    state.verdict = None
-    await save_back_translation(db, session, state, commit=False)
+    recorded_again(state)
+    await save_back_translation(db, session, state, commit=False, rule=recorded_again)
     await db.commit()
     await db.refresh(session)
