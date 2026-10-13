@@ -28,9 +28,16 @@ from sqlalchemy.ext.asyncio import create_async_engine
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
+def run_alembic(
+    database_url: str, *argv: str, before: str | None = None
+) -> subprocess.CompletedProcess:
+    command = (
+        [sys.executable, "-m", "alembic", *argv]
+        if before is None
+        else [sys.executable, "-c", f"{before}\nfrom alembic.config import main\nmain()", *argv]
+    )
     return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
+        command,
         cwd=REPO_ROOT,
         env={
             **os.environ,
