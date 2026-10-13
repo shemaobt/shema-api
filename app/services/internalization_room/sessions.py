@@ -1125,20 +1125,20 @@ def _less(items: list[_Kept], taken: list[_Kept]) -> list[_Kept]:
     return left
 
 
+def _standing_forward(read: list[_Kept], wanted: list[_Kept], fresh: list[_Kept]) -> list[_Kept]:
+    if fresh == read:
+        return wanted
+    return [*_less(fresh, _less(read, wanted)), *_less(wanted, read)]
+
+
 def _merged_forward(
     read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
 ) -> BackTranslationState:
-    for name in vars(wanted).keys() - {"findings", "checks"}:
+    for name in vars(wanted).keys() - {"findings", "nuances", "checks"}:
         if getattr(wanted, name) != getattr(read, name):
             setattr(fresh, name, getattr(wanted, name))
-    fresh.findings = (
-        wanted.findings
-        if fresh.findings == read.findings
-        else [
-            *_less(fresh.findings, _less(read.findings, wanted.findings)),
-            *_less(wanted.findings, read.findings),
-        ]
-    )
+    fresh.findings = _standing_forward(read.findings, wanted.findings, fresh.findings)
+    fresh.nuances = _standing_forward(read.nuances, wanted.nuances, fresh.nuances)
     fresh.checks = [*fresh.checks, *_less(wanted.checks, read.checks)]
     return fresh
 

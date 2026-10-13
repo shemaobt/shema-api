@@ -22,6 +22,7 @@ from app.services.internalization_room.back_translation import (
     CheckRound,
     Finding,
     FindingKind,
+    Nuance,
 )
 
 P = "P03"
@@ -30,6 +31,19 @@ SESSIONS_LOGGER = "app.services.internalization_room.sessions"
 
 def _finding(note: str) -> Finding:
     return Finding(kind=FindingKind.MISSING, note=note, chunk=1)
+
+
+def _nuance(story: str) -> Nuance:
+    return Nuance(
+        note=story,
+        chunk=1,
+        segment_id=f"trecho de {story}",
+        quote="Rute",
+        story=story,
+        take_id="parte-1",
+        starts_ms=0,
+        ends_ms=4200,
+    )
 
 
 def _round(spoken: str, *findings: Finding) -> CheckRound:
@@ -215,3 +229,25 @@ async def test_a_check_redone_over_a_write_that_left_the_findings_alone_keeps_it
         "faltou o nome de Boaz",
         "faltou a colheita",
     ], "a mescla punha o achado novo atrás dos antigos, e a sala lia como líder outro achado"
+
+
+async def test_a_nuance_one_write_took_away_stays_away_and_the_other_writes_nuance_stays(
+    db_session: AsyncSession, rival_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    session = await service.create_session(db_session, pericope=P)
+    state = service.back_translation_of(session)
+    state.nuances = [_nuance("sobre a parte gravada de novo")]
+    await service.save_back_translation(db_session, session, state)
+    async with rival_factory() as checking_db, rival_factory() as retiring_db:
+        checking, checking_state = await _read(checking_db, session.id)
+        retiring, retiring_state = await _read(retiring_db, session.id)
+
+        checking_state.nuances = [*checking_state.nuances, _nuance("Rute fica com Noemi")]
+        await service.save_back_translation(checking_db, checking, checking_state)
+        retiring_state.nuances = []
+        await service.save_back_translation(retiring_db, retiring, retiring_state)
+
+    stored = await _stored(rival_factory, session.id)
+    assert [nuance.story for nuance in stored.nuances] == ["Rute fica com Noemi"], (
+        "a escrita refeita gravava a lista de detalhes inteira, e o detalhe novo da outra sumia"
+    )
