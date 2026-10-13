@@ -196,3 +196,18 @@ async def test_a_line_prepared_on_a_panorama_of_another_canon_is_not_handed_to_t
     )
     assert await _prepared_speech_of(db_session, passage.id) is None
     assert await _prepared_speech_of(db_session, panorama.id) == PREPARED
+
+
+async def test_a_line_prepared_on_a_panorama_of_a_kept_canon_is_handed_to_a_passage_of_that_canon(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    panorama = await _a_panorama_with_a_line_ready_for_p01(db_session)
+    passage = await create_session(db_session, pericope="P01", language="pt")
+    await db_session.commit()
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN)
+
+    assert await preparing.hand_over(db_session, panorama, passage) is True, (
+        "a linha do mapa antigo deixou de chegar a uma sessão aberta no mesmo mapa"
+    )
+    assert await _prepared_speech_of(db_session, passage.id) == PREPARED
+    assert await _prepared_speech_of(db_session, panorama.id) is None
