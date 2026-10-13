@@ -165,9 +165,9 @@ class IRSession(Base):
     #: Backs the optimistic check on ``messages`` (ENG-643). It is a whole-value JSON write
     #: computed from whatever the writer read, so two turns landing together for one session
     #: would otherwise have the later commit erase the evidence the earlier one had just
-    #: added, with neither writer ever told. `coverage_state` needs no
-    #: such guard — its merge is monotonic by rank (`coverage.furthest`) and cannot regress
-    #: under the same race.
+    #: added, with neither writer ever told. `coverage_state` is not guarded here: a monotonic
+    #: merge still loses a rival's beads when its stale result is written whole, so
+    #: `apply_coverage` writes it only if it still holds what was read, without moving this.
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     #: The **Archive** a Zerar stamped this row with, null while it is live (ADR 0047). The
     #: room's doors that pick or list a team's work read live rows only; the facilitator's
