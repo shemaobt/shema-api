@@ -192,6 +192,7 @@ def sync(pin: str | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+    _prune()
     if PIN_FILE.exists() and (held := pinned_commit(PIN_FILE.read_text())) != sha:
         _keep(held)
     files = []
@@ -225,6 +226,13 @@ def _keep(pin: str) -> None:
     shutil.copytree(VENDOR, kept / "vendor", dirs_exist_ok=True)
     shutil.copytree(VENDOR.parent / "element-labels", kept / "element-labels", dirs_exist_ok=True)
     shutil.copy(VENDOR.parent / "ui-labels.pt.json", kept / "ui-labels.pt.json")
+
+
+def _prune() -> None:
+    kept = VENDOR.parent / "kept"
+    if kept.is_dir():
+        for tree in sorted(kept.iterdir()):
+            shutil.rmtree(tree)
 
 
 def _pin_record(sha: str, maps: list[str]) -> str:
