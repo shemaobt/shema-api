@@ -20,9 +20,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import takes as takes_api
+from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.back_translation import (
     Finding,
     FindingKind,
+    Nuance,
     VoicedVerdict,
 )
 from app.services.internalization_room.segments import current_segments
@@ -39,6 +41,19 @@ from tests.room_harness import (
     the_room_speaks,
     upload_a_part,
 )
+
+
+def _nuance_on(stretch: IRSegment, story: str) -> Nuance:
+    return Nuance(
+        note=story,
+        chunk=1,
+        segment_id=stretch.id,
+        quote="Rute",
+        story=story,
+        take_id=stretch.take_id,
+        starts_ms=stretch.starts_ms,
+        ends_ms=stretch.ends_ms,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -94,4 +109,42 @@ async def test_a_part_recorded_again_while_a_check_passes_starts_the_check_over_
     )
     assert [finding.note for finding in after.findings] == ["parte um"], (
         "o achado sobre a parte gravada por cima ficava na lista"
+    )
+
+
+async def test_a_part_recorded_again_while_a_check_passes_takes_that_parts_nuances_with_it(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (one, two, _three) = await rehearsed_in_parts(db_session, 3)
+    standing = {
+        stretch.take_id: stretch for stretch in await current_segments(db_session, session.id)
+    }
+    kept = takes_api.store_take
+
+    async def kept_while_a_check_passes(*args: Any, **kwargs: Any) -> Any:
+        take = await kept(*args, **kwargs)
+        async with rival_factory() as checking_db:
+            checking = await get_session(checking_db, session.id)
+            state = back_translation_of(checking)
+            state.nuances = [
+                _nuance_on(standing[one.id], "um detalhe da parte um"),
+                _nuance_on(standing[two.id], "um detalhe da parte dois"),
+            ]
+            await save_back_translation(checking_db, checking, state)
+        return take
+
+    monkeypatch.setattr(takes_api, "store_take", kept_while_a_check_passes)
+
+    answered = await upload_a_part(
+        client, session.id, part=2, audio=b"a equipe gravou a parte dois outra vez"
+    )
+    assert answered.status_code == 200, answered.text
+
+    after = await stored_telling_back(db_session, session)
+    assert [nuance.story for nuance in after.nuances] == ["um detalhe da parte um"], (
+        "o detalhe sobre a parte gravada por cima ficava na lista, e o arquivo do consultor o "
+        "dava como ainda não dito"
     )
