@@ -249,6 +249,20 @@ def require_walkable(meaning_map: MeaningMap) -> None:
         raise ValidationError(reason)
 
 
+def unwalkable_panorama(book: str) -> str | None:
+    """`unwalkable` for a book's Panorama: it opens when at least one of the book's passages
+    opens, so a book whose every passage is closed is not entered through its front door."""
+    if any(unwalkable(meaning_map) is None for meaning_map in load_book(book)):
+        return None
+    return f"the {book} Panorama: no passage of the {book} canon opens"
+
+
+def require_walkable_panorama(book: str) -> None:
+    reason = unwalkable_panorama(book)
+    if reason is not None:
+        raise ValidationError(reason)
+
+
 def pericope_digest(meaning_map: MeaningMap) -> str:
     """One passage from its map — reference, title, arc prose, scene titles, links as codes alone.
 
