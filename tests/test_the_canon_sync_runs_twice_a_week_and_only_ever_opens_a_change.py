@@ -119,6 +119,22 @@ def test_the_change_says_its_own_checks_have_not_run_and_how_to_start_them() -> 
     assert "Close and reopen this change to start them" in body
 
 
+def test_the_change_leaves_the_wait_for_a_team_session_to_the_deploy() -> None:
+    body = " ".join(_steps()[_index("peter-evans/create-pull-request")]["with"]["body"].split())
+
+    assert "the deploy waits while a team session is open" in body
+    assert "merge only outside a team session" not in body, "quem mesclava era mandado esperar"
+
+
+def test_the_change_names_the_titles_a_model_filled_in() -> None:
+    body = " ".join(_steps()[_index("peter-evans/create-pull-request")]["with"]["body"].split())
+
+    assert "`ui-labels.pt.json`" in body, (
+        "os títulos preenchidos chegavam sem que o texto os citasse"
+    )
+    assert "a model's draft, not hers" in body
+
+
 def test_nothing_in_it_merges() -> None:
     text = WORKFLOW.read_text()
 
