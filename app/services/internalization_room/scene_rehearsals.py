@@ -182,17 +182,16 @@ async def restarts_of(
 
 
 async def frases_of(
-    db: AsyncSession, rehearsal_ids: Sequence[str]
+    db: AsyncSession, restarts: dict[str, list[IRSceneRestart]]
 ) -> dict[str, list[IRSceneFrase]]:
     """Each rehearsal's frases of its current attempt, replaced ones included, in place order.
 
-    A frase naming an attempt whose restart has not landed yet is held: it is in no list until
-    that restart lands and makes its attempt the current one.
+    Handed the restarts the caller already read, so the attempt it answers with and the
+    frases it filters by come from one read. A frase naming an attempt whose restart has not
+    landed yet is held: it is in no list until that restart lands and makes it current.
     """
-    attempts = {
-        rehearsal_id: current_attempt(restarts)
-        for rehearsal_id, restarts in (await restarts_of(db, rehearsal_ids)).items()
-    }
+    rehearsal_ids = list(restarts)
+    attempts = {rehearsal_id: current_attempt(done) for rehearsal_id, done in restarts.items()}
     found = await db.scalars(
         select(IRSceneFrase)
         .where(IRSceneFrase.rehearsal_id.in_(rehearsal_ids), IRSceneFrase.restart_id.is_(None))
@@ -394,7 +393,7 @@ async def restart_the_scene_translation(
         raise RestartOutOfOrder(
             f"Restart {attempt} closes {closes}, which is not the current attempt"
         )
-    frases = (await frases_of(db, [rehearsal.id]))[rehearsal.id]
+    frases = (await frases_of(db, {rehearsal.id: done}))[rehearsal.id]
     restart = IRSceneRestart(
         id=attempt,
         rehearsal_id=rehearsal.id,

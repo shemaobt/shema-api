@@ -63,8 +63,8 @@ def _view(
 
 
 async def _the_record(db: AsyncSession, rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
-    frases = await scenes.frases_of(db, [rehearsal.id])
     restarts = await scenes.restarts_of(db, [rehearsal.id])
+    frases = await scenes.frases_of(db, restarts)
     return _view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id])
 
 
@@ -115,8 +115,8 @@ async def list_scene_rehearsals(
     session = await _session(db, session_id, project_id)
     rehearsals = await scenes.scene_rehearsals_of_the_passage(db, session)
     ids = [rehearsal.id for rehearsal in rehearsals]
-    frases = await scenes.frases_of(db, ids)
     restarts = await scenes.restarts_of(db, ids)
+    frases = await scenes.frases_of(db, restarts)
     return SceneRehearsalsResponse(
         pericope=session.pericope,
         scene_rehearsals=[
