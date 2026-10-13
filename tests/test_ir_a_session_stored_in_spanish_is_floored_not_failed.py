@@ -595,3 +595,22 @@ def test_portuguese_heard_on_a_row_stored_in_spanish_is_the_teams_answer_on_a_po
     assert not heard.mother_tongue, (
         "o português ouvido contra o `es` guardado era medido pela régua inglesa fixa"
     )
+
+
+async def test_a_turn_on_a_row_stored_in_spanish_leaves_spanish_stored(
+    db_session: AsyncSession, tablet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+    the_transcriber_hears(monkeypatch, PORTUGUESE, "pt", 0.99)
+    session_id = (await _a_row_stored_in_spanish(db_session, PASSAGE)).id
+
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200, answered.text
+    db_session.expire_all()
+    assert (await get_session(db_session, session_id)).language == "es", (
+        "o turno gravava a língua da sala por cima do `es` guardado"
+    )
