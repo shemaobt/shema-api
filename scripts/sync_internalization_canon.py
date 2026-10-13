@@ -27,8 +27,9 @@ pin it is not told to keep, the one it just made included: which pins an open se
 needs a production read, and while production carries only tests the sync takes none.
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
-compiler's main line, when the pin leaves no consumable passage at all, and when a names list's
-bytes differ from the sha256 her `_spec/pins.json` records for it.
+compiler's main line, when the pin leaves no consumable passage at all, when a names list's
+bytes differ from the sha256 her `_spec/pins.json` records for it, and when a pin given to
+`--keep` names neither a kept tree nor the pin this sync replaces.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
