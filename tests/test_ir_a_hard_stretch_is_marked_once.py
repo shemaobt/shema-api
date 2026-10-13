@@ -782,15 +782,9 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
     assert retired.superseded_by_id == current.id
 
 
-async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(
+async def test_a_chunk_over_a_divided_stretchs_slice_is_refused_not_told_over_its_pieces(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """A stretch that was divided is no longer a unit, so nothing retells it.
-
-    Looked up among every current row rather than among the leaves, the chunk would find the
-    divided parent and `capture_segment` would refuse it — a refusal where the room used to
-    take the team's work.
-    """
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 1)
@@ -807,10 +801,12 @@ async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(
         client, session_id, take_id, 1, again=True, saying="sobre a fatia inteira"
     )
 
-    assert over_the_parent.status_code == 200, over_the_parent.text
-    assert over_the_parent.json()["captured"] is True
-    born = [one for one in await _current(db_session, session_id) if one.parent_id is None]
-    assert [one.tellings for one in born] == [1, 1], (
-        "nada foi substituído, então a fatia inteira é uma stretch que ninguém contou ainda"
-    )
-    assert born[-1].ordinal == 2, "e ela toma a posição seguinte, como qualquer primeira contagem"
+    assert over_the_parent.status_code == 400, over_the_parent.text
+    assert over_the_parent.json()["code"] == "OVERLAPS_A_STANDING_FRASE"
+    standing = await _current(db_session, session_id)
+    assert [(one.starts_ms, one.ends_ms) for one in standing if one.parent_id is None] == [
+        (0, 9000)
+    ], "a fatia inteira virava uma frase nova por cima das duas metades"
+    assert sorted(
+        (one.starts_ms, one.ends_ms) for one in standing if one.parent_id is not None
+    ) == [(0, 4000), (4000, 9000)]

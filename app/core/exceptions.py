@@ -57,6 +57,7 @@ ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
 ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
 ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
+ERROR_CODE_OVERLAPS_A_STANDING_FRASE: Final = "OVERLAPS_A_STANDING_FRASE"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
 ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -234,6 +235,10 @@ class PauseCannotMove(ValidationError):
     def __init__(self, detail: str, code: str) -> None:
         super().__init__(detail)
         self.code = code
+
+
+class OverlapsAStandingFrase(ValidationError):
+    pass
 
 
 class WordlessTelling(ValidationError):
@@ -448,6 +453,15 @@ async def handle_pause_cannot_move(_request: Request, exc: PauseCannotMove) -> J
     )
 
 
+async def handle_overlaps_a_standing_frase(
+    _request: Request, exc: OverlapsAStandingFrase
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), ERROR_CODE_OVERLAPS_A_STANDING_FRASE),
+    )
+
+
 async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -609,6 +623,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
     app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
+    app.add_exception_handler(OverlapsAStandingFrase, handle_overlaps_a_standing_frase)  # type: ignore[arg-type]
     app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
