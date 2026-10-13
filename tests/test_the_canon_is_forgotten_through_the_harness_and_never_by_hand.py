@@ -62,13 +62,30 @@ def _outside_every_function(node: ast.AST) -> Iterator[ast.AST]:
 def _fed_by(nodes: Iterable[ast.AST]) -> dict[str, set[str]]:
     fed_by: dict[str, set[str]] = {}
     for node in nodes:
-        if isinstance(node, ast.For) and isinstance(node.target, ast.Name):
-            fed_by.setdefault(node.target.id, set()).update(_names_in(node.iter))
+        if isinstance(node, ast.For):
+            for bound in ast.walk(node.target):
+                if isinstance(bound, ast.Name):
+                    fed_by.setdefault(bound.id, set()).update(_names_in(node.iter))
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     fed_by.setdefault(target.id, set()).update(_names_in(node.value))
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.value is not None
+        ):
+            fed_by.setdefault(node.target.id, set()).update(_names_in(node.value))
     return fed_by
+
+
+def _resolved(names: set[str], fed_by: dict[str, set[str]]) -> set[str]:
+    resolved = set(names)
+    pending = set(names)
+    while pending:
+        pending = set().union(*(fed_by.get(name, set()) for name in pending)) - resolved
+        resolved |= pending
+    return resolved
 
 
 def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
@@ -87,9 +104,7 @@ def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], lis
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "cache_clear"
             ):
-                cleared = _names_in(node.func.value)
-                for name in list(cleared):
-                    cleared |= fed_by.get(name, set())
+                cleared = _resolved(_names_in(node.func.value), fed_by)
                 (of_the_canon if cleared & canon_caches else of_something_else).append(node.lineno)
     return sorted(of_the_canon), sorted(of_something_else)
 
@@ -134,6 +149,35 @@ from app.services.internalization_room.canon import book_material
 def test_a_case() -> None:
     for cached in (book_material.preservation_rules, book_material._register_complete):
         cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_TUPLE_LOOP = """\
+from app.services.internalization_room.canon import book_material, parse_map
+
+
+def test_a_case() -> None:
+    for named, cached in (("one", book_material.preservation_rules), ("two", parse_map.load_map)):
+        cached.cache_clear()
+"""
+
+CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+cached: object = book_material.preservation_rules
+
+
+def test_a_case() -> None:
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_NAME_FED_BY_A_NAME = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    first = book_material.preservation_rules
+    second = first
+    second.cache_clear()
 """
 
 CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP = """\
@@ -299,12 +343,18 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
     [
         (CLEARS_THE_LOADER_DIRECTLY, 5),
         (CLEARS_THROUGH_A_LOOP_VARIABLE, 6),
+        (CLEARS_THROUGH_A_TUPLE_LOOP, 6),
+        (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
+        (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_THE_CASE_AROUND_IT, 8),
     ],
     ids=[
         "named at the clear",
         "named by the loop that feeds it",
+        "named by a tuple the loop unpacks",
+        "named by an annotated assignment",
+        "named by a name that another name feeds",
         "named by the module that feeds it",
         "named by the case around the function that clears it",
     ],
@@ -416,9 +466,25 @@ def test_no_test_clears_a_cache_the_harness_forgets_by_hand() -> None:
             continue
         of_the_harness, _ = _the_clears_in(module, owned)
         by_hand.extend(f"{module.relative_to(TESTS)}:{line}" for line in of_the_harness)
-    in_the_harness, _ = _the_clears_in(TESTS / "canon_harness.py", owned)
+    harness = TESTS / "canon_harness.py"
+    in_the_harness, _ = _the_clears_in(harness, owned)
+    the_helper = next(
+        node
+        for node in ast.walk(ast.parse(harness.read_text(encoding="utf-8")))
+        if isinstance(node, ast.FunctionDef) and node.name == "forget_the_prompts"
+    )
+    the_helpers_clears = {
+        node.lineno
+        for node in ast.walk(the_helper)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "cache_clear"
+    }
 
-    assert in_the_harness, "no clear was read in the harness: the detector is what is broken"
+    assert the_helpers_clears <= set(in_the_harness), (
+        "the clears of forget_the_prompts were not read: the detector is what is broken"
+    )
+    assert the_helpers_clears, "forget_the_prompts clears nothing"
     assert by_hand == [], (
         "the canon is forgotten through canon_harness.forget_the_canon "
         "and the prompts through canon_harness.forget_the_prompts"
