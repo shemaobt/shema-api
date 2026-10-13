@@ -33,6 +33,7 @@ bytes differ from the sha256 her `_spec/pins.json` records for it.
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
     uv run python scripts/sync_internalization_canon.py --sync --pin <sha>   # re-pin to <sha>
+    uv run python scripts/sync_internalization_canon.py --sync --keep <sha>  # keep kept/<sha>/
 """
 
 from __future__ import annotations
@@ -339,12 +340,13 @@ def main() -> int:
     group.add_argument("--sync", action="store_true")
     group.add_argument("--check", action="store_true")
     parser.add_argument("--pin", metavar="<sha>")
+    parser.add_argument("--keep", metavar="<sha>", action="append", default=[])
     args = parser.parse_args()
     if args.pin and not args.sync:
         parser.error("--pin needs --sync")
     if args.pin and not SHA_RE.fullmatch(args.pin):
         parser.error("--pin needs a full 40-character sha, not a ref")
-    return sync(pin=args.pin) if args.sync else check()
+    return sync(pin=args.pin, keep=tuple(args.keep)) if args.sync else check()
 
 
 if __name__ == "__main__":
