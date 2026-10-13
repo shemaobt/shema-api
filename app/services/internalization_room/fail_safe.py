@@ -55,11 +55,13 @@ def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> li
     H family is the one exception, and it is not a fail-safe — see the supplement.
 
     The file tags its blocks by primary language (`-pt`) while the room is configured with
-    a locale (`pt-BR`), so a regional code is tried and then its primary before falling
-    back to the authored English. Without that step every family answers in English for a
-    Brazilian team. That was invisible while only the *name* of a line crossed the wire —
-    the app held the audio and the indexes match between the two blocks — and it stops
-    being invisible the moment a line is synthesized from its text.
+    a locale (`pt-BR`), so the code is read through `room_language`: the region is dropped,
+    a language the room does not speak becomes the fleet's floor, that floor's block is
+    tried first, and the authored English answers only when it has nothing written. Without
+    that step every family answers in English for a Brazilian team. That was invisible
+    while only the *name* of a line crossed the wire — the app held the audio and the
+    indexes match between the two blocks — and it stops being invisible the moment a line
+    is synthesized from its text.
     """
     sections = _sections()
     written = localized(kind, room_language(language_code))
