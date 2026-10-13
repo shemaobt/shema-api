@@ -162,3 +162,24 @@ async def test_a_team_whose_session_kept_the_old_canon_is_placed_in_that_canons_
         "a página da equipe pôs a equipe numa cena que o canon dela não tem"
     )
     assert fresh.json()["scene_the_team_is_in"] == "scene:S1"
+
+
+async def test_the_team_list_names_each_teams_passage_by_the_canon_its_own_session_kept(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (kept_team, fresh_team) = await _a_desk_over_two_teams(db_session)
+    await open_ir_session(db_session, pericope=FIRST, project_id=kept_team.id)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p01_is_titled_its_own_way)
+    await open_ir_session(db_session, pericope=FIRST, project_id=fresh_team.id)
+
+    async with desk_routes(db_session) as at_desk:
+        listed = await at_desk.get("/api/facilitator/teams", headers=desk)
+
+    assert listed.status_code == 200, listed.text[:300]
+    references = {
+        team["team_id"]: team["active_passage"]["reference"] for team in listed.json()["teams"]
+    }
+    assert references == {
+        kept_team.id: KEPT_FIRST_REFERENCE,
+        fresh_team.id: SERVED_FIRST_REFERENCE,
+    }, "a lista de equipes nomeou a passagem de uma equipe pelo canon de outra"

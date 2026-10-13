@@ -24,6 +24,7 @@ narrows with the restriction. ``open_hands_total`` counts only the teams the rea
 facilitates: a hand on a team they only read is not theirs to answer.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from sqlalchemy import Select, func, select, union_all
@@ -46,9 +47,11 @@ from app.models.team import (
     TeamFilter,
     TeamListingResponse,
 )
+from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.entered import entered
 from app.services.internalization_room.progression import active_passages
+from app.services.internalization_room.team_sessions import canon_pins_of
 from app.services.project.facilitated_scope import readable_projects, writable_project_ids
 from app.services.project.facilitated_scope import within as _within
 from app.services.project.team_restriction import as_work_queue, matching
@@ -180,6 +183,7 @@ async def list_facilitator_teams(
     scope = await readable_projects(db, user)
     rows = (await db.execute(team_cards(scope))).all()
     here = await active_passages(db, project_ids=[row.id for row in rows])
+    pins = await canon_pins_of(db, [row.id for row in rows])
     facilitated = await writable_project_ids(db, user)
 
     every_team = [
@@ -187,7 +191,7 @@ async def list_facilitator_teams(
             team_id=row.id,
             name=row.name,
             mother_tongue=row.mother_tongue,
-            active_passage=_passage(here[row.id]),
+            active_passage=_passage(row.id, here[row.id], pins),
             state=team_state(
                 book_closed=here[row.id] is None,
                 last_activity_at=row.last_activity_at,
@@ -208,7 +212,9 @@ async def list_facilitator_teams(
     )
 
 
-def _passage(pericope: str | None) -> ActivePassageView | None:
+def _passage(
+    team_id: str, pericope: str | None, pins: Mapping[tuple[str, str], str | None]
+) -> ActivePassageView | None:
     """The passage by both its names, or nothing at all at the end of the book.
 
     `None` is the answer for a team that has closed every passage, and it is a position rather
@@ -226,4 +232,5 @@ def _passage(pericope: str | None) -> ActivePassageView | None:
     """
     if pericope is None:
         return None
-    return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)
+    with reading_the_canon_of(pins.get((team_id, pericope))):
+        return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)
