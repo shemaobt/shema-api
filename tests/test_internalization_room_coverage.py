@@ -85,8 +85,8 @@ def test_surfaced_counts_elements_the_team_has_not_worked_yet() -> None:
     state = merge(
         initial_state(P),
         pericope_num=P,
-        surfaced=["scene:1", "scene:2"],
-        engaged=["scene:1"],
+        surfaced=["scene:S1", "scene:S2"],
+        engaged=["scene:S1"],
     )
 
     assert counts(state)["surfaced"] == 2

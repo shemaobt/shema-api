@@ -115,8 +115,8 @@ async def test_the_beads_come_grouped_by_kind_in_her_order_each_with_the_maps_la
 
     assert [group["kind"] for group in body["groups"]] == HER_KINDS
     labels = _labels(body)
-    assert labels["arc"] == "Level-1 arc"
-    assert labels["scene:1"] == "Famine and exile to Moab"
+    assert labels["L1:arc"] == "Level-1 arc"
+    assert labels["scene:S1"] == "Famine and exile to Moab"
     assert labels["being:S1:B2"] == "Elimelech"
     assert labels["place:S1:PL1"] == "Bethlehem"
 
@@ -131,12 +131,12 @@ async def test_each_bead_carries_one_of_her_three_states(
     session: IRSession,
     db_session: AsyncSession,
 ) -> None:
-    session.coverage_state = {"scene:1": "engaged", "being:S1:B3": "surfaced"}
+    session.coverage_state = {"scene:S1": "engaged", "being:S1:B3": "surfaced"}
     await db_session.commit()
 
     states = _states(await _coverage(client, consultant, session.id))
 
-    assert states["scene:1"] == "engaged"
+    assert states["scene:S1"] == "engaged"
     assert states["being:S1:B3"] == "surfaced"
     assert states["being:S1:B2"] == "untouched"
     assert set(states.values()) == {"engaged", "surfaced", "untouched"}
@@ -148,7 +148,7 @@ async def test_a_bead_stored_at_the_retired_partial_state_reads_mentioned_and_no
     session: IRSession,
     db_session: AsyncSession,
 ) -> None:
-    session.coverage_state = {"scene:1": "partially_engaged", "scene:2": "engaged"}
+    session.coverage_state = {"scene:S1": "partially_engaged", "scene:S2": "engaged"}
     await db_session.commit()
 
     answer = await client.get(
@@ -156,7 +156,7 @@ async def test_a_bead_stored_at_the_retired_partial_state_reads_mentioned_and_no
     )
 
     assert answer.status_code == 200, answer.text
-    assert _states(answer.json())["scene:1"] == "surfaced"
+    assert _states(answer.json())["scene:S1"] == "surfaced"
     for word in ("partially_engaged", "partial", "aflorado", "parcialmente", "not_encountered"):
         assert word not in answer.text
 
@@ -180,7 +180,7 @@ async def test_the_ledger_served_is_byte_for_byte_the_one_the_guide_reads_next(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session.coverage_state = {
-        "scene:1": "engaged",
+        "scene:S1": "engaged",
         "being:S1:B3": "surfaced",
         "place:S1:PL1": "partially_engaged",
     }
@@ -220,7 +220,7 @@ async def test_a_turn_that_engaged_an_element_shows_it_engaged_on_the_next_read(
     before = await _coverage(client, consultant, session.id)
 
     async def classifier(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        decision = {"element_id": "scene:1", "new_status": "engaged", "evidence": "a fome"}
+        decision = {"element_id": "scene:S1", "new_status": "engaged", "evidence": "a fome"}
         return json.dumps({"decisions": [decision]})
 
     the_room_agent_is(monkeypatch, classifier=classifier)
@@ -235,9 +235,9 @@ async def test_a_turn_that_engaged_an_element_shows_it_engaged_on_the_next_read(
     await apply_coverage(db_session, session.id, settled)
     after = await _coverage(client, consultant, session.id)
 
-    assert _states(before)["scene:1"] == "untouched"
+    assert _states(before)["scene:S1"] == "untouched"
     assert "WORKED WITH BY THE TEAM (engaged): (nothing yet" in before["ledger"]
-    assert _states(after)["scene:1"] == "engaged"
+    assert _states(after)["scene:S1"] == "engaged"
     assert "WORKED WITH BY THE TEAM (engaged): S1 (v.1\u20132)\n" in after["ledger"]
 
 

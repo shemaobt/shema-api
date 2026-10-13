@@ -113,6 +113,17 @@ HER_BT_SCRIPTS = (
     "P02-regravar-frase-troca",
 )
 
+HER_INGEST = (
+    "aliases.ts",
+    "compilationLog.ts",
+    "coverage.ts",
+    "forModel.ts",
+    "parseMap.ts",
+    "proseGloss.ts",
+    "referentialForms.ts",
+    "types.ts",
+)
+
 HER_PROMPTS = (
     "backtranslation_analysis_system_prompt.md",
     "backtranslation_verdict_system_prompt.md",
@@ -137,6 +148,7 @@ FROZEN = {
     "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
     "docs/DOCTRINE.md": "docs/doctrine/vendor/DOCTRINE.md",
     "src/coverage/sessionForms.ts": "app/services/internalization_room/canon/sessionForms.ts",
+    **{f"src/ingest/{name}": f"docs/doctrine/vendor/ingest/{name}" for name in HER_INGEST},
 }
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"

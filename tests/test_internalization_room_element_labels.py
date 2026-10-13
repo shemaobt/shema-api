@@ -40,7 +40,7 @@ def holed_catalogue(tmp_path):
     """A copy of the shipped catalogue with one language emptied out of one element."""
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["absence:1"]["pt"] = ""
+    holed["P01"]["absence:S1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -112,7 +112,7 @@ def _without_the_key(node, key):
 
 def test_a_bead_with_no_spanish_name_in_a_passage_that_has_some_is_not_a_hole(tmp_path):
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
-    complete["P01"]["absence:1"]["es"] = ""
+    complete["P01"]["absence:S1"]["es"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(complete), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -120,7 +120,7 @@ def test_a_bead_with_no_spanish_name_in_a_passage_that_has_some_is_not_a_hole(tm
 
     named = {e.key: e for e in labelled_elements("P01", catalogue_dir=tmp_path)}
 
-    assert named["absence:1"].label_pt and named["absence:1"].label_en
+    assert named["absence:S1"].label_pt and named["absence:S1"].label_en
 
 
 @pytest.mark.parametrize("name", ["ruth.json", "legend.json"])
@@ -139,18 +139,18 @@ def test_a_legend_with_no_spanish_anywhere_still_names_every_state_and_kind(tmp_
 
 
 def test_the_same_key_in_two_pericopes_carries_its_own_label():
-    """`scene:1` is a different scene in every pericope; so is `absence:1` and `preserved:R3`."""
+    """`scene:S1` is a different scene in every pericope; so is `absence:S1` and `preserved:R3`."""
     first = {e.key: e.label_pt for e in labelled_elements("P01")}
     last = {e.key: e.label_pt for e in labelled_elements("P14")}
 
-    assert first["scene:1"] != last["scene:1"]
-    assert first["absence:1"] != last["absence:1"]
+    assert first["scene:S1"] != last["scene:S1"]
+    assert first["absence:S1"] != last["absence:S1"]
 
 
 def test_a_hole_in_the_catalogue_is_refused_rather_than_filled_in(tmp_path):
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["absence:1"]["pt"] = ""
+    holed["P01"]["absence:S1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
@@ -160,7 +160,7 @@ def test_a_hole_in_the_catalogue_is_refused_rather_than_filled_in(tmp_path):
         labelled_elements("P01", catalogue_dir=tmp_path)
 
     said = str(refused.value)
-    assert "P01" in said and "absence:1" in said and "pt" in said
+    assert "P01" in said and "absence:S1" in said and "pt" in said
 
 
 def _shipped():
@@ -274,7 +274,7 @@ def test_a_language_nobody_added_a_field_for_is_refused_rather_than_dropped():
     """
     with pytest.raises(PydanticValidationError):
         LabelledElement(
-            key="scene:1",
+            key="scene:S1",
             kind=ElementKind.SCENE,
             scene=1,
             label_pt="a",
@@ -286,7 +286,7 @@ def test_a_language_nobody_added_a_field_for_is_refused_rather_than_dropped():
 def test_the_kind_on_the_wire_is_the_closed_set_and_not_any_string():
     with pytest.raises(PydanticValidationError):
         LabelledElement(
-            key="scene:1",
+            key="scene:S1",
             kind="scenery",
             scene=1,
             label_pt="a",
@@ -317,7 +317,7 @@ def test_the_two_refusals_do_not_answer_the_same_thing_on_the_wire(tmp_path, hol
 
     broken = client.get("/ours-is-broken")
     assert broken.status_code == 500
-    assert "absence:1" in broken.text
+    assert "absence:S1" in broken.text
 
     asked = client.get("/they-asked-for-a-passage-that-is-not-one")
     assert asked.status_code == 400
@@ -345,7 +345,7 @@ def test_a_bead_with_no_label_is_a_named_failure_not_a_blank_page(holed_catalogu
 
     assert broken.status_code == 500
     body = broken.json()
-    assert "P01" in body["detail"] and "absence:1" in body["detail"]
+    assert "P01" in body["detail"] and "absence:S1" in body["detail"]
     assert body["detail"] != "An unexpected error occurred. Please try again later."
 
 
@@ -382,7 +382,7 @@ def test_our_own_catalogue_being_broken_does_not_read_as_the_caller_s_mistake(tm
     """
     complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
     holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
-    holed["P01"]["absence:1"]["pt"] = ""
+    holed["P01"]["absence:S1"]["pt"] = ""
     (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
     (tmp_path / "legend.json").write_text(
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"

@@ -58,7 +58,7 @@ def test_render_fills_every_placeholder() -> None:
 
 
 def test_the_coverage_block_lists_only_what_is_left() -> None:
-    state = merge(initial_state(P), pericope_num=P, engaged=["scene:1", "scene:2"])
+    state = merge(initial_state(P), pericope_num=P, engaged=["scene:S1", "scene:S2"])
     covered, left = coverage_status_block(state, P).split("NOT YET TOUCHED")
 
     assert "  scene: S3 (v.18)" in left

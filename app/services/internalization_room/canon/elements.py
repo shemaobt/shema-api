@@ -56,7 +56,7 @@ def scene_key(number: int) -> str:
     naming that scene's bead, so the format has a second reader — and a format with two
     readers and one spelling is a format that drifts the moment either moves.
     """
-    return f"{ElementKind.SCENE}:{number}"
+    return f"{ElementKind.SCENE}:{scene_code(number)}"
 
 
 def scene_code(number: int) -> str:
@@ -89,7 +89,7 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
     """
     elements: list[Element] = [
         Element(
-            key=kind.value,
+            key=f"L1:{kind}",
             label=f"Level-1 {kind.value}",
             kind=kind,
             detail=" ".join(getattr(meaning_map, section).split()),
@@ -135,7 +135,7 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
             folded.update(rule.rule_id for rule in related)
             elements.append(
                 Element(
-                    key=f"{ElementKind.ABSENCE}:{scene.number}",
+                    key=f"{ElementKind.ABSENCE}:{scene_code(scene.number)}",
                     label=" — ".join([scene.absence, *(_rule_label(rule) for rule in related)]),
                     kind=ElementKind.ABSENCE,
                     scene=scene.number,

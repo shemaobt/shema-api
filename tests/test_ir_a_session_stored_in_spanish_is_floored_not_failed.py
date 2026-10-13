@@ -350,7 +350,7 @@ async def test_the_note_a_verdict_keeps_on_a_row_stored_in_spanish_is_in_the_roo
 
 def _scene_title(pericope: str, scene: int, language: str) -> str | None:
     for element in labelled_elements(pericope):
-        if element.key == f"scene:{scene}":
+        if element.key == f"scene:S{scene}":
             return element.label_pt if language == "pt" else element.label_en
     return None
 

@@ -65,7 +65,7 @@ PILOT = {
 }
 
 #: The four Level-1 axes open every passage, and like a preservation rule they sit in no scene.
-AXES = ("arc", "context", "tone", "function")
+AXES = ("L1:arc", "L1:context", "L1:tone", "L1:function")
 
 #: Real canon, no labels written for it. Ten of Ruth's fourteen are in this position.
 UNLABELLED = "P03"
@@ -210,7 +210,7 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     expected = PILOT[pericope]
     assert len(body) == expected["elements"]
     assert sorted({e["scene"] for e in body if e["scene"] is not None}) == [
-        f"scene:{number}" for number in expected["scenes"]
+        f"scene:S{number}" for number in expected["scenes"]
     ]
     preserved = [e for e in body if e["kind"] == ElementKind.PRESERVED.value]
     assert len(preserved) == expected["preserved"]
@@ -589,7 +589,7 @@ async def test_the_scene_a_bead_sits_in_is_served_as_a_key_and_not_as_a_number(
     simply stops joining up.
 
     Asserted as membership rather than as a string, which is the difference that matters. A
-    case comparing against a literal `"scene:1"` passes just as well when the server invents a
+    case comparing against a literal `"scene:S1"` passes just as well when the server invents a
     format nothing else uses; this one only passes while the value is a key the same response
     actually carries.
     """

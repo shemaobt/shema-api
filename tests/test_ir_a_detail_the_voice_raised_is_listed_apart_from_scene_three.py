@@ -29,7 +29,7 @@ NOT YET TOUCHED (still deserve a visit before the session ends):
 
 def test_a_scene_two_detail_the_voice_raised_is_listed_apart_from_scene_three_untouched() -> None:
     scene_one = [element.key for element in elements_for(P) if element.scene == 1]
-    state = merge(initial_state(P), pericope_num=P, engaged=scene_one, surfaced=["absence:2"])
+    state = merge(initial_state(P), pericope_num=P, engaged=scene_one, surfaced=["absence:S2"])
 
     assert coverage_status_block(state, P) == SCENE_ONE_ENGAGED_SCENE_TWO_SILENCE_RAISED, (
         "o que a voz levantou na cena 2 ia junto com o que ninguém tocou da cena 3"

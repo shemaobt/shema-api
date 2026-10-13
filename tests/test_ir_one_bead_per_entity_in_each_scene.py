@@ -81,9 +81,9 @@ def test_every_bead_that_sits_in_a_scene_can_say_which() -> None:
         "equipe estava — cinco das contas de P01 ficavam sem resposta"
     )
     assert answers["place:S2:PL2"] == 2
-    assert answers["scene:3"] == 3
+    assert answers["scene:S3"] == 3
     assert "preserved:R10" not in answers
-    assert "tone" not in answers
+    assert "L1:tone" not in answers
     assert set(answers) == {e.key for e in elements_for(P01) if e.scene is not None}
 
 
@@ -131,17 +131,17 @@ def test_the_room_asks_once_about_the_missing_act_of_god_not_twice() -> None:
         "'nenhum ato de Deus' era a conta absence:1 e de novo a conta preserved:R6, e a sala "
         "levantava o mesmo silêncio duas vezes"
     )
-    assert by_key["absence:1"].label.startswith("The narrator never says YHWH sent the famine")
+    assert by_key["absence:S1"].label.startswith("The narrator never says YHWH sent the famine")
     assert (
         "STRUCTURAL_ABSENCE_OF_DIVINE_AGENCY: YHWH is not named as agent"
-        in by_key["absence:1"].label
+        in by_key["absence:S1"].label
     )
-    assert "STRUCTURAL_ABSENCE_OF_GRIEF" not in by_key["absence:1"].label
-    assert "STRUCTURAL_ABSENCE_OF_DIVINE_AGENCY" in by_key["absence:4"].label
+    assert "STRUCTURAL_ABSENCE_OF_GRIEF" not in by_key["absence:S1"].label
+    assert "STRUCTURAL_ABSENCE_OF_DIVINE_AGENCY" in by_key["absence:S4"].label
     assert (
-        "STRUCTURAL_ABSENCE_OF_GRIEF: The narrator reports each death" in by_key["absence:4"].label
+        "STRUCTURAL_ABSENCE_OF_GRIEF: The narrator reports each death" in by_key["absence:S4"].label
     )
-    assert by_key["absence:3"].label == (
+    assert by_key["absence:S3"].label == (
         "No children are born to either marriage in the ten years they live there. "
         "The narrator tells us how long it was, but says nothing of any child."
     )
@@ -169,10 +169,10 @@ def test_ruth_1_strings_forty_seven_beads_axes_first() -> None:
         "preserved": 3,
     }
     assert [element.key for element in spine[:5]] == [
-        "arc",
-        "context",
-        "tone",
-        "function",
-        "scene:1",
+        "L1:arc",
+        "L1:context",
+        "L1:tone",
+        "L1:function",
+        "scene:S1",
     ]
     assert spine[-1].key == "preserved:R10"

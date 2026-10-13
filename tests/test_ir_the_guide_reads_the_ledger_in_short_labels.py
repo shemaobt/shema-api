@@ -70,7 +70,7 @@ NOT YET TOUCHED (still deserve a visit before the session ends):
 
 def test_the_block_is_her_three_parts_in_labels_the_guide_can_say() -> None:
     """Scene 1 is behind the team, scene 2 is begun, and nothing is a key."""
-    state = _engaged(*_scene_keys(1), "scene:2")
+    state = _engaged(*_scene_keys(1), "scene:S2")
 
     assert coverage_status_block(state, P) == SCENE_ONE_DONE_SCENE_TWO_OPEN, (
         "o Guia recebia só REMAINING, uma linha por elemento com a chave entre colchetes e o "
@@ -132,7 +132,7 @@ AUDIT_KIND = re.compile(r"\b[A-Z][A-Z]+_[A-Z_]+\b")
     "state",
     [
         initial_state(P),
-        _engaged(*_scene_keys(1), "scene:2"),
+        _engaged(*_scene_keys(1), "scene:S2"),
         _engaged(
             *(element.key for element in elements_for(P) if element.kind is ElementKind.ABSENCE)
         ),
