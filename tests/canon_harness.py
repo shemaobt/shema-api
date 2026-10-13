@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from app.services import internalization_room as room
-from app.services.internalization_room import _default_prompts, canon, fail_safe
+from app.services.internalization_room import _default_prompts, canon, fail_safe, name_check
 from app.services.internalization_room.canon import (
     book_material,
     elements,
@@ -50,6 +50,7 @@ def forget_the_canon() -> None:
     names.verse_ranges.cache_clear()
     names._glosses.cache_clear()
     titles._portuguese.cache_clear()
+    name_check._forms.cache_clear()
 
 
 def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
@@ -70,6 +71,10 @@ def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
                 and hasattr(value, "cache_info")
             ):
                 held.setdefault(id(value), (name, value))
+    for listed in THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT:
+        module_name, _, name = listed.rpartition(".")
+        value = getattr(importlib.import_module(module_name), name)
+        held.setdefault(id(value), (name, value))
     return list(held.values())
 
 
@@ -87,6 +92,16 @@ def the_caches_of_the_prompts() -> list[tuple[str, Any]]:
 def forget_the_prompts() -> None:
     for _, cache in _THE_PROMPT_CACHES:
         cache.cache_clear()
+
+
+THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT: tuple[str, ...] = (
+    "app.services.internalization_room.name_check._forms",
+)
+
+THE_CACHES_THAT_READ_NO_CANON: tuple[str, ...] = (
+    "app.core.config.get_settings",
+    "app.services.internalization_room.passage_lines._sections",
+)
 
 
 def the_canon_moves_on(

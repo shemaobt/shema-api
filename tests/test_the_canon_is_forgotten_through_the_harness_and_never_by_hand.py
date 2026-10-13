@@ -14,9 +14,16 @@ from pathlib import Path
 
 import pytest
 
-from tests.canon_harness import the_caches_of_the_prompts, the_caches_the_loader_holds
+from tests.canon_harness import (
+    THE_CACHES_THAT_READ_NO_CANON,
+    THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT,
+    the_caches_of_the_prompts,
+    the_caches_the_loader_holds,
+)
 
 TESTS = Path(__file__).resolve().parent
+APP = TESTS.parent / "app"
+THE_CANON_PACKAGE = "app.services.internalization_room.canon."
 
 
 def _the_caches_the_harness_forgets() -> set[str]:
@@ -173,6 +180,76 @@ def test_a_case() -> None:
 """
 
 
+def _decorator_name(decorator: ast.expr) -> str | None:
+    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    if isinstance(target, ast.Attribute):
+        return target.attr
+    return target.id if isinstance(target, ast.Name) else None
+
+
+def _unlisted_caches(root: Path, listed: set[str]) -> list[str]:
+    unlisted: list[str] = []
+    for module in sorted(root.rglob("*.py")):
+        relative = module.relative_to(root.parent)
+        dotted = ".".join(relative.with_suffix("").parts)
+        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            kinds = {_decorator_name(decorator) for decorator in node.decorator_list}
+            qualified = f"{dotted}.{node.name}"
+            if (
+                not kinds & {"lru_cache", "cache"}
+                or dotted.startswith(THE_CANON_PACKAGE)
+                or qualified in listed
+            ):
+                continue
+            unlisted.append(
+                f"{relative.as_posix()}:{node.lineno} `{node.name}` is a cache the harness "
+                "does not know. Ask: does it read anything under canon/, directly or "
+                f'through a call? If it does, list "{qualified}" in '
+                "THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT in tests/canon_harness.py; "
+                "if it does not, list it in THE_CACHES_THAT_READ_NO_CANON, in the same file."
+            )
+    return unlisted
+
+
+A_CACHE_NOBODY_LISTED = """\
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def read_the_map_again() -> str:
+    return "the map"
+"""
+
+A_CACHE_THE_LOADER_FINDS_BY_ITSELF = """\
+from app.services.internalization_room.canon import kept
+
+
+@kept.per_canon(maxsize=1)
+def read_the_map_again() -> str:
+    return "the map"
+"""
+
+A_CACHE_UNDER_THE_CANON = """\
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def read_the_map_again() -> str:
+    return "the map"
+"""
+
+A_BARE_CACHE_NOBODY_LISTED = """\
+import functools
+
+
+@functools.cache
+def read_the_map_again() -> str:
+    return "the map"
+"""
+
+
 def _planted(tmp_path: Path, source: str) -> Path:
     module = tmp_path / "test_a_planted_case.py"
     module.write_text(source, encoding="utf-8")
@@ -245,6 +322,66 @@ def test_a_clear_of_a_prompt_cache_is_read_as_one_the_harness_owns(
     )
 
     assert (of_the_harness, of_something_else) == ([line], [])
+
+
+def _an_app_holding(tmp_path: Path, at: str, source: str) -> Path:
+    module = tmp_path / "app" / at
+    module.parent.mkdir(parents=True, exist_ok=True)
+    module.write_text(source, encoding="utf-8")
+    return tmp_path / "app"
+
+
+def test_a_cache_nobody_listed_is_reported_with_where_it_is_and_what_to_do(
+    tmp_path: Path,
+) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", A_CACHE_NOBODY_LISTED)
+
+    assert _unlisted_caches(app, set()) == [
+        "app/services/a_new_cache.py:5 `read_the_map_again` is a cache the harness does not "
+        "know. Ask: does it read anything under canon/, directly or through a call? If it "
+        'does, list "app.services.a_new_cache.read_the_map_again" in '
+        "THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT in tests/canon_harness.py; if it does "
+        "not, list it in THE_CACHES_THAT_READ_NO_CANON, in the same file."
+    ]
+
+
+def test_a_bare_functools_cache_is_a_cache_too(tmp_path: Path) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", A_BARE_CACHE_NOBODY_LISTED)
+
+    assert len(_unlisted_caches(app, set())) == 1
+
+
+def test_a_cache_that_is_listed_by_name_is_not_reported(tmp_path: Path) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", A_CACHE_NOBODY_LISTED)
+
+    assert _unlisted_caches(app, {"app.services.a_new_cache.read_the_map_again"}) == []
+
+
+@pytest.mark.parametrize(
+    ("at", "source"),
+    [
+        ("services/a_new_cache.py", A_CACHE_THE_LOADER_FINDS_BY_ITSELF),
+        ("services/internalization_room/canon/a_new_cache.py", A_CACHE_UNDER_THE_CANON),
+    ],
+    ids=["declared per canon", "declared under the canon package"],
+)
+def test_a_cache_the_loader_finds_by_itself_is_not_reported(
+    tmp_path: Path, at: str, source: str
+) -> None:
+    assert _unlisted_caches(_an_app_holding(tmp_path, at, source), set()) == []
+
+
+def test_every_cache_in_app_is_found_by_the_loader_or_listed_in_the_harness() -> None:
+    prompts = {
+        f"{cache.__module__}.{cache.__qualname__}" for _, cache in the_caches_of_the_prompts()
+    }
+    listed = (
+        prompts
+        | set(THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT)
+        | set(THE_CACHES_THAT_READ_NO_CANON)
+    )
+
+    assert _unlisted_caches(APP, listed) == []
 
 
 def test_no_test_clears_a_cache_the_harness_forgets_by_hand() -> None:

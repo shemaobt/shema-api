@@ -7,6 +7,7 @@ stays cached for the rest of the worker's run.
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import pytest
@@ -14,6 +15,8 @@ import pytest
 from app.services.internalization_room import fail_safe, passage_lines
 from app.services.internalization_room.canon import kept
 from tests.canon_harness import (
+    THE_CACHES_THAT_READ_NO_CANON,
+    THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT,
     forget_the_canon,
     forget_the_prompts,
     the_caches_of_the_prompts,
@@ -31,6 +34,24 @@ def test_the_discovery_finds_the_caches_the_ticket_names() -> None:
         "_beings_by_scene",
         "_portuguese",
     } <= found
+
+
+def test_a_cache_that_reads_the_canon_from_outside_it_is_found_once_listed() -> None:
+    found = {name for name, _ in the_caches_the_loader_holds()}
+
+    assert "_forms" in found
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [*THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT, *THE_CACHES_THAT_READ_NO_CANON],
+)
+def test_every_name_the_harness_lists_is_a_cache_that_exists(listed: str) -> None:
+    module, _, name = listed.rpartition(".")
+
+    cache = getattr(importlib.import_module(module), name)
+
+    assert callable(cache.cache_clear)
 
 
 def test_a_canon_cache_declared_outside_the_canon_package_is_found(
