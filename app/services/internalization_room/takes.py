@@ -86,7 +86,7 @@ def storage_key(session_id: str, kind: IRTakeKind, sha256: str, content_type: st
 def recording_digest(audio: bytes) -> str:
     """The recording's sha256, once it is one the room keeps: some audio, at most 25 MB."""
     if not audio:
-        raise ValidationError("A take with no audio is not a take")
+        raise ValidationError("A recording with no audio is not a recording")
     if len(audio) > MAX_TAKE_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
     return hashlib.sha256(audio).hexdigest()
