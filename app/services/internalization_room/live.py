@@ -17,6 +17,7 @@ from sqlalchemy import ColumnElement
 from app.db.models.internalization_room import (
     IRCoverageEvent,
     IRRelease,
+    IRSceneFrase,
     IRSceneRehearsal,
     IRSegment,
     IRSession,
@@ -30,6 +31,7 @@ Stamped = (
     | type[IRCoverageEvent]
     | type[IRRelease]
     | type[IRSceneRehearsal]
+    | type[IRSceneFrase]
 )
 
 
