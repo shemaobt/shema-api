@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import CanonNotKept
 from app.db.models.internalization_room import IRCoverageEvent, IRSession
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.coverage import (
@@ -279,10 +280,13 @@ async def necklaces_of(
     """
     spines: dict[str, dict[str, str]] = {}
     for session in sessions:
-        with reading_the_canon_of(session.canon_pin):
-            spines[session.id] = (
-                {} if is_panorama(session.pericope) else initial_state(session.pericope)
-            )
+        try:
+            with reading_the_canon_of(session.canon_pin):
+                spines[session.id] = (
+                    {} if is_panorama(session.pericope) else initial_state(session.pericope)
+                )
+        except CanonNotKept:
+            spines[session.id] = {}
     if not spines:
         return {}
 

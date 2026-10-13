@@ -53,6 +53,7 @@ ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
+ERROR_CODE_CANON_NOT_KEPT: Final = "CANON_NOT_KEPT"
 ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
 ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
 ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
@@ -155,6 +156,10 @@ class IdempotencyKeyInFlight(ConflictError):
 
 
 class PassageClosed(ConflictError):
+    pass
+
+
+class CanonNotKept(ConflictError):
     pass
 
 
@@ -404,6 +409,13 @@ async def handle_passage_closed(_request: Request, exc: PassageClosed) -> JSONRe
     )
 
 
+async def handle_canon_not_kept(_request: Request, exc: CanonNotKept) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_CANON_NOT_KEPT),
+    )
+
+
 async def handle_panorama_records_nothing(
     _request: Request, exc: PanoramaRecordsNothing
 ) -> JSONResponse:
@@ -588,6 +600,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ReplyMovedOn, handle_reply_moved_on)  # type: ignore[arg-type]
     app.add_exception_handler(NothingToHear, handle_nothing_to_hear)  # type: ignore[arg-type]
     app.add_exception_handler(PassageClosed, handle_passage_closed)  # type: ignore[arg-type]
+    app.add_exception_handler(CanonNotKept, handle_canon_not_kept)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]

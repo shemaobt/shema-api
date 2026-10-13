@@ -15,7 +15,7 @@ from app.api.facilitator._deps import FacilitatorUser, ReaderUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import CanonNotKept, NotFoundError, ValidationError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
@@ -196,10 +196,13 @@ async def question_inbox(
     pins = await canon_pins_by_session(db, {question.session_id for question in page.questions})
     named: dict[str | None, dict[tuple[str, str], LabelledElement]] = {}
     for pin in {pins.get(question.session_id) for question in page.questions}:
-        with reading_the_canon_of(pin):
-            named[pin] = label_index(
-                {q.pericope for q in page.questions if pins.get(q.session_id) == pin}
-            )
+        try:
+            with reading_the_canon_of(pin):
+                named[pin] = label_index(
+                    {q.pericope for q in page.questions if pins.get(q.session_id) == pin}
+                )
+        except CanonNotKept:
+            named[pin] = {}
     return QuestionInboxResponse(
         questions=[
             _card(question, named[pins.get(question.session_id)]) for question in page.questions
