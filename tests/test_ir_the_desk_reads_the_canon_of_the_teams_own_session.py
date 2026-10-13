@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import itertools
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pytest
+from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import apply_coverage
 from tests.baker import (
@@ -183,3 +187,57 @@ async def test_the_team_list_names_each_teams_passage_by_the_canon_its_own_sessi
         kept_team.id: KEPT_FIRST_REFERENCE,
         fresh_team.id: SERVED_FIRST_REFERENCE,
     }, "a lista de equipes nomeou a passagem de uma equipe pelo canon de outra"
+
+
+async def _a_hand_raised_on_ruth(db: AsyncSession, team_id: str, session_id: str) -> str:
+    question = IRQuestion(
+        device_id="aparelho",
+        session_id=session_id,
+        pericope=P,
+        element_key=RUTH_IN_THE_SECOND_SCENE,
+        audio_key="pergunta.m4a",
+        status=IRQuestionStatus.OPEN,
+        project_id=team_id,
+        created_at=datetime.now(UTC),
+    )
+    db.add(question)
+    await db.commit()
+    return question.id
+
+
+async def test_a_hand_raised_in_a_session_that_kept_the_old_canon_names_its_bead_by_that_canon(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.internalization_room.questions import router as questions_router
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+
+    desk, (kept_team, fresh_team) = await _a_desk_over_two_teams(db_session)
+    kept_session = await open_ir_session(db_session, pericope=P, project_id=kept_team.id)
+    the_canon_moves_on(
+        monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p03_has_its_own_beads_and_labels
+    )
+    fresh_session = await open_ir_session(db_session, pericope=P, project_id=fresh_team.id)
+    kept_hand = await _a_hand_raised_on_ruth(db_session, kept_team.id, kept_session.id)
+    fresh_hand = await _a_hand_raised_on_ruth(db_session, fresh_team.id, fresh_session.id)
+
+    inbox = FastAPI()
+    inbox.include_router(questions_router, prefix="/api/internalization-room")
+    register_exception_handlers(inbox)
+
+    async def _get_db():
+        yield db_session
+
+    inbox.dependency_overrides[get_db] = _get_db
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=inbox), base_url="http://test"
+    ) as at_desk:
+        page = await at_desk.get("/api/internalization-room/facilitator/questions", headers=desk)
+
+    assert page.status_code == 200, page.text[:300]
+    labels = {card["question_id"]: card["element_label_en"] for card in page.json()["questions"]}
+    assert labels == {kept_hand: KEPT_RUTH_LABEL, fresh_hand: "Ruth"}, (
+        "a caixa de perguntas nomeou a conta pelo canon de outra sessão"
+    )

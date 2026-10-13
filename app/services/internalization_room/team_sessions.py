@@ -98,6 +98,15 @@ async def canon_pins_of(
     return {(team, pericope): pin for team, pericope, pin in result.all()}
 
 
+async def canon_pins_by_session(
+    db: AsyncSession, session_ids: Collection[str]
+) -> dict[str, str | None]:
+    result = await db.execute(
+        select(IRSession.id, IRSession.canon_pin).where(IRSession.id.in_(session_ids))
+    )
+    return dict(result.tuples().all())
+
+
 def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead]:
     with reading_the_canon_of(session.canon_pin):
         return _portrait(session.pericope, portrait)
