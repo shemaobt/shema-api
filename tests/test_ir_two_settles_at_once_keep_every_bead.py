@@ -15,7 +15,8 @@ import json
 import logging
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import Update, select, text
+from sqlalchemy.dialects.postgresql import asyncpg
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import ConflictError
@@ -28,6 +29,10 @@ P = "P03"
 SESSIONS_LOGGER = "app.services.internalization_room.sessions"
 LIT = CoverageStatus.ENGAGED.value
 DARK = CoverageStatus.NOT_ENCOUNTERED.value
+POSTGRES = asyncpg.dialect()
+POSTGRES_COMPARE = (
+    "CAST(ir_sessions.coverage_state AS JSONB) IS NOT DISTINCT FROM CAST($3::JSON AS JSONB)"
+)
 
 
 def _lighting(*keys: str) -> dict[str, str]:
@@ -52,6 +57,19 @@ def _a_rival_settles_after_the_read(
         return session
 
     monkeypatch.setattr(service, "get_session", racing)
+
+
+def _guarded_writes(db: AsyncSession, monkeypatch) -> list[Update]:
+    seen: list[Update] = []
+    execute = db.execute
+
+    async def watched(statement, *args, **kwargs):
+        if isinstance(statement, Update):
+            seen.append(statement)
+        return await execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db, "execute", watched)
+    return seen
 
 
 async def _stored_coverage(
@@ -160,3 +178,46 @@ async def test_a_settle_whose_reading_never_matches_gives_up_after_five_tries_no
 
     refusals = [r for r in caplog.records if "stale read" in r.getMessage()]
     assert len(refusals) == 5, "uma comparação que nunca casa girava para sempre, presa à conexão"
+
+
+async def test_a_settle_compares_on_postgres_as_jsonb_both_sides_not_as_text(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    keys = element_keys(P)
+    session = await service.create_session(db_session, pericope=P)
+    read = dict(session.coverage_state)
+    seen = _guarded_writes(db_session, monkeypatch)
+
+    await service.apply_coverage(db_session, session.id, _lighting(keys[0]))
+
+    (guarded,) = seen
+    compiled = guarded.compile(dialect=POSTGRES)
+    assert POSTGRES_COMPARE in str(compiled), (
+        "o json do Postgres não tem igualdade, e a comparação sem jsonb quebrava só em produção"
+    )
+    assert compiled.params["param_1"] == read
+
+
+async def test_a_settle_over_a_stored_json_null_binds_its_reading_as_json_null_on_postgres(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    keys = element_keys(P)
+    session = await service.create_session(db_session, pericope=P)
+    await db_session.execute(
+        text("UPDATE ir_sessions SET coverage_state = 'null' WHERE id = :id"), {"id": session.id}
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+    seen = _guarded_writes(db_session, monkeypatch)
+
+    await service.apply_coverage(db_session, session.id, _lighting(keys[0]))
+
+    (guarded,) = seen
+    compiled = guarded.compile(dialect=POSTGRES)
+    assert POSTGRES_COMPARE in str(compiled)
+    reading = compiled.binds["param_1"]
+    bound = reading.type.dialect_impl(POSTGRES).bind_processor(POSTGRES)
+    assert (reading.value, bound(reading.value) if bound else None) == (None, "null"), (
+        "a leitura nula ia como NULL do SQL, nunca casava com o null guardado, e o settle era "
+        "recusado até desistir"
+    )
