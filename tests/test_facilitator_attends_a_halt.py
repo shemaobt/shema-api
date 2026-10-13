@@ -193,7 +193,7 @@ async def facilitator_b(db_session: AsyncSession) -> Facilitator:
 # --- what the tablet and the facilitator do -----------------------------------------------
 
 
-async def a_session(db: AsyncSession, *, team_id: str, ready_to_close: bool = False):
+async def a_session(db: AsyncSession, *, team_id: str):
     """A conversation, for cases about attending or halting rather than about ENG-964's own
     boundary. It lands one turn unconditionally (ENG-964) so every case here keeps reading
     as a room the team held; this file's own subject is attending and halting, not that
@@ -739,7 +739,7 @@ async def test_undoing_the_mark_on_a_finished_passage_leaves_it_finished(
     client: httpx.AsyncClient, db_session: AsyncSession, facilitator_a: Facilitator
 ) -> None:
     """`DONE` is terminal, and the undo is not a way back into a closed passage."""
-    session = await a_session(db_session, team_id=facilitator_a.team_id, ready_to_close=True)
+    session = await a_session(db_session, team_id=facilitator_a.team_id)
     marked = await attend(client, session.id, facilitator_a)
     assert marked.status_code == 200, marked.text[:300]
     assert marked.json()["attended_at"], "não houve carimbo, logo não há limpeza a provar"
@@ -777,7 +777,7 @@ async def test_a_finished_passage_waits_on_the_queue_without_being_a_halt(
     rather than an artifact of which paths exist — and a later slice that does close a halted
     session is exactly when it starts being able to fail.
     """
-    session = await a_session(db_session, team_id=facilitator_a.team_id, ready_to_close=True)
+    session = await a_session(db_session, team_id=facilitator_a.team_id)
     await room.apply_coverage(db_session, session.id, dict.fromkeys(element_keys(P), ENGAGED))
 
     waiting = await queued(client, facilitator_a, session.id)
@@ -1033,7 +1033,7 @@ async def test_a_warning_on_a_finished_passage_leaves_it_finished(
     the_telling_is_heard: None,
 ) -> None:
     """The telling-back runs on a passage the floor closed, and a warning refuses nothing."""
-    session = await a_session(db_session, team_id=facilitator_a.team_id, ready_to_close=True)
+    session = await a_session(db_session, team_id=facilitator_a.team_id)
     await room.apply_coverage(db_session, session.id, dict.fromkeys(element_keys(P), ENGAGED))
     assert (await tablet_state(client, session.id))["status"] == "done"
 

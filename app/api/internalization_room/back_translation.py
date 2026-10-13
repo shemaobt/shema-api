@@ -24,6 +24,7 @@ from app.services.internalization_room.coverage import refuse_a_panorama
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.languages import room_language
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.takes import (
@@ -144,7 +145,7 @@ async def add_chunk(
 
     text = await heard(
         audio_bytes,
-        language=session.language,
+        language=room_language(session.language),
         filename=file.filename,
         mime_type=file.content_type,
     )

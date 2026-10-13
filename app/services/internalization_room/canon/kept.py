@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Concatenate, Generic, ParamSpec, TypeVar
 
 from app.core.canon_pin import pinned_commit
+from app.core.exceptions import CanonNotKept
 
 CANON_DIR = Path(__file__).parent
 KEPT_DIR = CANON_DIR / "kept"
@@ -36,7 +37,11 @@ def reading_the_canon_of(pin: str | None) -> Iterator[None]:
 
 def canon_path(path: Path) -> Path:
     kept = _READING.get()
-    return path if kept is None else kept / path.relative_to(CANON_DIR)
+    if kept is None:
+        return path
+    if not kept.is_dir():
+        raise CanonNotKept(f"no kept canon for pin {kept.name}")
+    return kept / path.relative_to(CANON_DIR)
 
 
 class PerCanon(Generic[P, R]):

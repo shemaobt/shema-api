@@ -27,8 +27,8 @@ class DeskSession(BaseModel):
     last_activity_at: datetime
     ended_at: datetime | None
     turns: int
-    engaged_elements: int
-    total_elements: int
+    engaged_elements: int | None
+    total_elements: int | None
     kept_rehearsals: int
     has_release: bool
     listener_count: int | None

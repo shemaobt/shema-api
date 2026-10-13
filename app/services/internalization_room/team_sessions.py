@@ -21,6 +21,7 @@ from collections.abc import Collection, Sequence
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import CanonNotKept
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.models.internalization_room import SessionBead, TeamSessionResponse
 from app.services.internalization_room import halt
@@ -120,9 +121,12 @@ async def canon_pins_by_session(
     return dict(result.tuples().all())
 
 
-def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead]:
-    with reading_the_canon_of(session.canon_pin):
-        return _portrait(session.pericope, portrait)
+def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead] | None:
+    try:
+        with reading_the_canon_of(session.canon_pin):
+            return _portrait(session.pericope, portrait)
+    except CanonNotKept:
+        return None
 
 
 def _card(session: IRSession, portrait: dict[str, str]) -> TeamSessionResponse:

@@ -176,3 +176,15 @@ async def desk_sessions_routes(
         facilitator_sessions_router, "/api/facilitator/sessions", db_session, per_request
     ) as client:
         yield client
+
+
+@asynccontextmanager
+async def desk_inbox_routes(
+    db_session: AsyncSession, *, per_request: async_sessionmaker[AsyncSession] | None = None
+) -> AsyncIterator[httpx.AsyncClient]:
+    from app.api.internalization_room.questions import router as questions_router
+
+    async with _desk_router_on_an_app(
+        questions_router, "/api/internalization-room", db_session, per_request
+    ) as client:
+        yield client

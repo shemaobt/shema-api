@@ -31,6 +31,7 @@ from sqlalchemy import Select, func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Subquery
 
+from app.core.exceptions import CanonNotKept
 from app.db.models.auth import User
 from app.db.models.device import Device
 from app.db.models.internalization_room import (
@@ -234,5 +235,8 @@ def _passage(
     """
     if pericope is None:
         return None
-    with reading_the_canon_of(pins.get((team_id, pericope))):
-        return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)
+    try:
+        with reading_the_canon_of(pins.get((team_id, pericope))):
+            return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)
+    except CanonNotKept:
+        return ActivePassageView(pericope=pericope, reference=None)
