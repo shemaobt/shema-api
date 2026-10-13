@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from app.services import internalization_room as room
-from app.services.internalization_room import canon
+from app.services.internalization_room import _default_prompts, canon, fail_safe
 from app.services.internalization_room.canon import (
     book_material,
     elements,
@@ -71,6 +71,22 @@ def the_caches_the_loader_holds() -> list[tuple[str, Any]]:
             ):
                 held.setdefault(id(value), (name, value))
     return list(held.values())
+
+
+_THE_PROMPT_CACHES: tuple[tuple[str, Any], ...] = (
+    ("_sections", fail_safe._sections),
+    ("fail_safe_utterances", fail_safe.fail_safe_utterances),
+    ("load_prompt", _default_prompts.load_prompt),
+)
+
+
+def the_caches_of_the_prompts() -> list[tuple[str, Any]]:
+    return list(_THE_PROMPT_CACHES)
+
+
+def forget_the_prompts() -> None:
+    for _, cache in _THE_PROMPT_CACHES:
+        cache.cache_clear()
 
 
 def the_canon_moves_on(
