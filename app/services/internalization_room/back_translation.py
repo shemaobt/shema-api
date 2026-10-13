@@ -184,6 +184,7 @@ class SupersededAttempt(BaseModel):
     played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
+    checks: list[CheckRound] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod

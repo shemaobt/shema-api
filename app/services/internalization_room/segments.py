@@ -496,7 +496,7 @@ async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
     went, so the whole reading goes with it.
     """
     _stop_counting(await current_segments(db, session_id))
-    await db.commit()
+    await db.flush()
 
 
 async def retire_the_segments_of(

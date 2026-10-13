@@ -84,6 +84,24 @@ async def divide(
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
 
 
+@router.post(
+    "/sessions/{session_id}/back-translation/restart",
+    response_model=SegmentsResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def restart(
+    session_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SegmentsResponse:
+    """The team starts the translation over: every frase and check is archived, never deleted."""
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    await room.start_the_translation_over(db, session)
+    nudge(session.project_id, "stretches")
+    return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+
+
 async def replace(
     session_id: str,
     segment_id: str,
