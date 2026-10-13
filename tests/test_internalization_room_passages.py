@@ -16,7 +16,7 @@ from app.services.internalization_room.canon.parse_map import (
     load_book,
     load_map,
 )
-from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
+from app.services.internalization_room.languages import AUTHORED, ROOM_LANGUAGES
 from app.services.internalization_room.passage_lines import (
     PANORAMA,
     _sections,
@@ -179,12 +179,12 @@ def test_every_language_the_room_claims_can_name_every_passage(spoken: str) -> N
     )
 
 
-def test_a_language_nobody_has_written_is_named_in_the_floors_words_not_in_silence() -> None:
+def test_a_language_nobody_has_written_is_named_in_the_authored_english_not_in_silence() -> None:
     """Uma roda vazia não é um idioma faltando — é um livro que acabou."""
     spoken = [line_for(m.pericope_num, "xx") for m in load_book("Ruth")]
 
     assert all(spoken)
-    assert spoken == [line_for(m.pericope_num, FLOOR) for m in load_book("Ruth")]
+    assert spoken == [line_for(m.pericope_num, AUTHORED) for m in load_book("Ruth")]
 
 
 @pytest.mark.parametrize("tag", ["pt", "pt-BR", "PT-br"])
@@ -415,7 +415,7 @@ async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for
     assert set(in_portuguese).isdisjoint(in_english)
 
 
-async def test_the_wheel_asked_for_nothing_speaks_the_floor(
+async def test_the_wheel_asked_with_no_language_is_portuguese(
     monkeypatch: pytest.MonkeyPatch,
     db_session: AsyncSession,
 ) -> None:
@@ -429,8 +429,8 @@ async def test_the_wheel_asked_for_nothing_speaks_the_floor(
 
     await route.passages("Ruth", db=db_session)
 
-    assert line_for("P01", FLOOR) in said
-    assert line_for("P01", "pt") not in said
+    assert line_for("P01", "pt") in said
+    assert line_for("P01", "en") not in said
 
 
 def test_the_line_for_ruth_2_17_23_names_the_passage_and_not_the_redeemer() -> None:

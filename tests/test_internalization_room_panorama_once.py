@@ -146,7 +146,7 @@ async def test_a_team_already_inside_the_book_is_written_no_opening_for_a_new_pa
     launched = await the_app_posts(client, tablet, {"pericope": "OV"})
     await the_app_posts(client, tablet, {"after_session": launched["session_id"]})
 
-    again = await the_app_posts(client, tablet, {"pericope": "OV", "language": "pt"})
+    again = await the_app_posts(client, tablet, {"pericope": "OV", "language": "en"})
 
     assert room.is_panorama(again["pericope"])
     assert again["session_id"] != launched["session_id"]
@@ -175,6 +175,6 @@ async def test_a_panorama_opened_but_never_followed_into_the_passage_is_not_hear
     tablet = await a_tablet_of(db_session, await a_team(db_session, name="Caiu no meio"))
     abandoned = await the_app_posts(client, tablet, {"pericope": "OV"})
 
-    again = await the_app_posts(client, tablet, {"pericope": "OV", "language": "pt"})
+    again = await the_app_posts(client, tablet, {"pericope": "OV", "language": "en"})
 
     assert prepared == [abandoned["session_id"], again["session_id"]]

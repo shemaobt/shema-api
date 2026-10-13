@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import ValidationError
-from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, floor, normalize
+from app.services.internalization_room.languages import LANGUAGE_NAMES, floor, normalize
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
@@ -106,17 +106,16 @@ async def test_a_session_opened_naming_a_language_answers_in_it(
     assert turn["session_language"] == "Brazilian Portuguese"
 
 
-async def test_a_session_that_names_no_language_gets_english(
+async def test_a_session_that_names_no_language_is_brazilian_portuguese(
     client: httpx.AsyncClient, spoken: list[dict[str, Any]]
 ) -> None:
-    """O piso é o inglês: um chamador que não nomeia idioma não pode cair no português."""
     created = await _open(client)
 
     await client.post(f"{PREFIX}/sessions/{created.json()['session_id']}/turns")
 
     turn = next(call for call in spoken if "session_language" in call)
-    assert turn["language_code"] == FLOOR
-    assert turn["session_language"] == "English"
+    assert turn["language_code"] == "pt"
+    assert turn["session_language"] == "Brazilian Portuguese"
 
 
 async def test_the_language_is_fixed_at_the_open_and_no_later_request_moves_it(
@@ -143,7 +142,7 @@ async def test_the_session_says_back_which_language_it_is_being_run_in(
     client: httpx.AsyncClient,
 ) -> None:
     assert (await _open(client, language="pt")).json()["language"] == "pt"
-    assert (await _open(client)).json()["language"] == FLOOR
+    assert (await _open(client)).json()["language"] == "pt"
 
 
 async def test_a_regional_tag_finds_its_own_language(client: httpx.AsyncClient) -> None:
@@ -199,7 +198,7 @@ def test_a_floor_the_room_cannot_speak_falls_back_instead_of_reaching_a_team() -
     original = settings.internalization_room_default_language
     try:
         object.__setattr__(settings, "internalization_room_default_language", "kl")
-        assert floor() == FLOOR
+        assert floor() == "pt"
     finally:
         object.__setattr__(settings, "internalization_room_default_language", original)
 

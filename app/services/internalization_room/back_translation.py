@@ -17,7 +17,7 @@ from app.db.models.internalization_room import IRSegment, IRTake
 from app.models.internalization_room import PlayedTake
 from app.models.internalization_room_text_seam import Outcome
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, room_language
+from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES, room_language
 from app.services.internalization_room.llm import analysis_ladder
 from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.prompt_blocks import validator_map_block
@@ -461,7 +461,7 @@ _NOTHING_TOLD_BACK_YET: dict[str, str] = {
 
 
 def segments_block(
-    segments: list[IRSegment], addresses: Addresses, language_code: str = FLOOR
+    segments: list[IRSegment], addresses: Addresses, language_code: str = AUTHORED
 ) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
@@ -748,8 +748,8 @@ async def analyse_telling_back(
     pericope_num: str,
     analyst_prompt: str,
     addresses: Addresses,
-    session_language: str = LANGUAGE_NAMES[FLOOR],
-    language_code: str = FLOOR,
+    session_language: str = LANGUAGE_NAMES[AUTHORED],
+    language_code: str = AUTHORED,
     settings: Settings | None = None,
     session_id: str = "",
 ) -> BtAnalysis | None:

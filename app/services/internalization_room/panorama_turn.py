@@ -4,7 +4,7 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
+from app.services.internalization_room.languages import AUTHORED, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_at_end
 from app.services.internalization_room.render import render
 from app.services.internalization_room.turn.speech import (
@@ -24,8 +24,8 @@ async def run_panorama_turn(
     validator_prompt: str,
     book: str,
     book_material: str,
-    session_language: str = LANGUAGE_NAMES[FLOOR],
-    language_code: str = FLOOR,
+    session_language: str = LANGUAGE_NAMES[AUTHORED],
+    language_code: str = AUTHORED,
     opening: bool = False,
     settings: Settings | None = None,
     session_id: str = "?",
@@ -51,7 +51,7 @@ async def run_panorama_turn(
         interrupted=speech.interrupted,
     )
     if handed is None:
-        outcome = a_miss(messages, language_code)
+        outcome = a_miss(language_code)
     else:
         outcome = handed.kept_apart(
             await _voiced_after_validation(

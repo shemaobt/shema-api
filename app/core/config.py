@@ -101,10 +101,9 @@ class Settings(BaseSettings):
     #: ``_en`` when a deployment configures one and by her otherwise.
     internalization_room_voice_id: str = "tZ2oxQJXfOrGrN7iKnta"
     internalization_room_voice_id_en: str = ""
-    #: What a caller that names no language gets. Not "the language the room speaks" any
-    #: more — the app names that on the session, because it is the tablet that knows which
-    #: language the team in front of it reads its own settings in.
-    internalization_room_default_language: str = "en"
+    #: What a caller that names no language gets: Brazilian Portuguese, as a session is in
+    #: her app unless the team chose English. The app names the team's choice on the session.
+    internalization_room_default_language: str = "pt"
     internalization_room_tts_model: str = "eleven_turbo_v2_5"
 
     gcs_bucket_name: str = ""

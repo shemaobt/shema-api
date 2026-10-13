@@ -294,8 +294,8 @@ class CreateSessionRequest(BaseModel):
     #: whether to play the panorama again — so naming it for any other session would mark that
     #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
-    #: Which language the room should speak to this team, read by the app off the tablet.
-    #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
+    #: Which language the room should speak to this team, as the team chose it on the tablet.
+    #: Named once here and fixed for the session's lifetime. Absent takes the floor, Portuguese;
     #: a language the room does not speak is refused rather than quietly answered in another.
     language: str | None = Field(default=None, max_length=8)
 
