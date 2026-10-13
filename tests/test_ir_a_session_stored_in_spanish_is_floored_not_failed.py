@@ -581,3 +581,17 @@ def test_nothing_told_back_on_a_row_stored_in_spanish_reads_in_the_portuguese_fl
     assert block == "(a equipe ainda não traduziu nada)", (
         "o vazio da retroverificação caía no inglês fixo, não no piso da frota"
     )
+
+
+def test_portuguese_heard_on_a_row_stored_in_spanish_is_the_teams_answer_on_a_portuguese_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_floor_is(monkeypatch, "pt")
+
+    heard = hearing.HeardSpeech(
+        text=PORTUGUESE, bridge_language="es", language_code="pt", language_probability=0.99
+    )
+
+    assert not heard.mother_tongue, (
+        "o português ouvido contra o `es` guardado era medido pela régua inglesa fixa"
+    )
