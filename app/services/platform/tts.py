@@ -107,29 +107,23 @@ def cache_key(
     model: str,
     output_format: str,
     voice_settings: Mapping[str, float | bool] | None = None,
-    language_hint: str | None = None,
 ) -> str:
-    """Content-addressed key: same text + voice + model + format + tuning + hint = same object.
+    """Content-addressed key: same text + voice + model + format + tuning = same object.
 
     Every input that changes the bytes belongs here. `output_format` in particular: leave it
     out and changing the setting keeps serving the old clip in the old format forever, with
     the hardcoded MIME_TYPE hiding the mismatch. `voice_settings` is the same trap one level
     down — stability and speed reshape the delivery without touching text, voice or format.
 
-    `language_hint` is the `language_code` ElevenLabs is sent, which steers the delivery of the
-    same text in the same voice: a pt and an en caller must never share bytes.
-
-    A caller that sends no tuning and no hint keeps the original key, so clips already in the
-    bucket stay addressable.
+    A caller that sends no tuning keeps the original key, so clips already in the bucket stay
+    addressable.
     """
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    folder = f"tts/{voice_id}/{model}/{output_format}"
-    if voice_settings:
-        canonical = json.dumps(dict(sorted(voice_settings.items())), separators=(",", ":"))
-        folder += "/" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
-    if language_hint:
-        folder += f"/hint-{language_hint}"
-    return f"{folder}/{digest}.mp3"
+    if not voice_settings:
+        return f"tts/{voice_id}/{model}/{output_format}/{digest}.mp3"
+    canonical = json.dumps(dict(sorted(voice_settings.items())), separators=(",", ":"))
+    tuning = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+    return f"tts/{voice_id}/{model}/{output_format}/{tuning}/{digest}.mp3"
 
 
 async def synthesize_speech(
@@ -286,7 +280,6 @@ def _addressed(
         voice_id=voice,
         model=chosen_model,
         voice_settings=voice_settings,
-        states_language=states_language,
         settings=cfg,
     )
     voiced = partial(
@@ -311,7 +304,6 @@ def speech_key(
     voice_id: str | None = None,
     model: str | None = None,
     voice_settings: Mapping[str, float | bool] | None = None,
-    states_language: bool = True,
     settings: Settings | None = None,
     **_: object,
 ) -> str:
@@ -322,7 +314,6 @@ def speech_key(
         model=model or cfg.elevenlabs_tts_model,
         output_format=cfg.elevenlabs_output_format,
         voice_settings=voice_settings,
-        language_hint=language_hint(language) if states_language else None,
     )
 
 

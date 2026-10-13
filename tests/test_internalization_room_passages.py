@@ -16,7 +16,7 @@ from app.services.internalization_room.canon.parse_map import (
     load_book,
     load_map,
 )
-from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
+from app.services.internalization_room.languages import AUTHORED, ROOM_LANGUAGES
 from app.services.internalization_room.passage_lines import (
     PANORAMA,
     _sections,
@@ -184,7 +184,7 @@ def test_a_language_nobody_has_written_is_named_in_the_floors_words_not_in_silen
     spoken = [line_for(m.pericope_num, "xx") for m in load_book("Ruth")]
 
     assert all(spoken)
-    assert spoken == [line_for(m.pericope_num, FLOOR) for m in load_book("Ruth")]
+    assert spoken == [line_for(m.pericope_num, AUTHORED) for m in load_book("Ruth")]
 
 
 @pytest.mark.parametrize("tag", ["pt", "pt-BR", "PT-br"])

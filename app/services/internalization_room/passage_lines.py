@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import load_book
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import AUTHORED
 
 _LINES_FILE = Path(__file__).parent / "prompts" / "passage_lines.md"
 _SECTION = re.compile(r"^### ([A-Za-z][A-Za-z0-9]*)-([a-z]{2})$", re.M)
@@ -29,7 +29,7 @@ def _sections() -> dict[tuple[str, str], str]:
     return parsed
 
 
-def line_for(pericope_num: str, language_code: str, *, floor: str = FLOOR) -> str:
+def line_for(pericope_num: str, language_code: str, *, floor: str = AUTHORED) -> str:
     """How the room names one passage out loud, or "" when nobody has written it yet.
 
     An empty line is not an error the team should meet: a passage the room cannot name is

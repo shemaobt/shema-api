@@ -10,7 +10,7 @@ the moment somebody dropped a half-finished block in, and the guard that fails w
 claimed language is unwritten could never go red.
 
 Brazilian Portuguese is what a caller that names nothing gets: a session is Portuguese unless
-the team chose English, as in Marcia's app. ``FLOOR`` stays English, the language the untagged
+the team chose English, as in Marcia's app. ``AUTHORED`` is English, the language the untagged
 blocks are authored in: an unwritten language falls back to that authored line, because
 silence is the one outcome worse than the wrong language.
 """
@@ -21,7 +21,7 @@ from app.core.config import Settings, get_settings
 
 ROOM_LANGUAGES: tuple[str, ...] = ("en", "pt")
 
-FLOOR = "en"
+AUTHORED = "en"
 
 UNNAMED = "pt"
 
@@ -34,7 +34,7 @@ LANGUAGE_NAMES: dict[str, str] = {
 def floor(settings: Settings | None = None) -> str:
     """What a caller that names no language gets, for every caller that has to decide it.
 
-    Read through the setting rather than off ``FLOOR`` directly, because the floor is the one
+    Read through the setting rather than off ``AUTHORED`` directly, because the floor is the one
     knob that has to be movable without a deploy of new code. Holding a fleet on Portuguese
     while an app that names its language is still on its way to the stores is the whole reason
     it exists, and a floor only the synthesizer honoured would have left the sessions and the
