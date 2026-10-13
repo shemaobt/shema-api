@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import set_committed_value
+from sqlalchemy.orm.attributes import InstrumentedAttribute, set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
@@ -723,10 +723,17 @@ _STORED_JSON = Text().with_variant(JSONB(), "postgresql")
 
 _TRIES = 5
 
+_Stored = dict[str, Any]
+_JSONColumn = InstrumentedAttribute[_Stored]
+
 
 async def _written_forward(
-    db: AsyncSession, session_id: str, column: Any, read: Any, onto: Callable[[Any], Any]
-) -> tuple[Any, Any]:
+    db: AsyncSession,
+    session_id: str,
+    column: _JSONColumn,
+    read: _Stored | None,
+    onto: Callable[[_Stored | None], _Stored],
+) -> tuple[_Stored | None, _Stored]:
     for _ in range(_TRIES):
         value = onto(read)
         if value == read or await _written_unless_moved(db, session_id, column, read, value):
@@ -736,7 +743,7 @@ async def _written_forward(
 
 
 async def _written_unless_moved(
-    db: AsyncSession, session_id: str, column: Any, read: Any, value: Any
+    db: AsyncSession, session_id: str, column: _JSONColumn, read: _Stored | None, value: _Stored
 ) -> bool:
     written = await db.execute(
         update(IRSession)
