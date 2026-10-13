@@ -85,7 +85,9 @@ async def read_facilitator_team(
         last_activity_at=row.last_activity_at,
         facilitates=team_id in await writable_project_ids(db, user),
         closed_total=closed,
-        scene_the_team_is_in=await _scene_they_are_in(db, team_id=team_id, pericope=here),
+        scene_the_team_is_in=await _scene_they_are_in(
+            db, team_id=team_id, pericope=here, pin=row.canon_pin
+        ),
     )
 
 
@@ -101,7 +103,12 @@ def _the_canon_pin_on(pericope: str | None) -> Label[str | None]:
 
 
 async def _scene_they_are_in(
-    db: AsyncSession, *, team_id: str, pericope: str | None, book: str = ROOM_BOOK
+    db: AsyncSession,
+    *,
+    team_id: str,
+    pericope: str | None,
+    pin: str | None,
+    book: str = ROOM_BOOK,
 ) -> str | None:
     """The scene of the bead this team moved most recently, named as that scene's own bead.
 
@@ -120,7 +127,8 @@ async def _scene_they_are_in(
     if not history:
         return None
 
-    answers = scene_of(pericope, book)
+    with reading_the_canon_of(pin):
+        answers = scene_of(pericope, book)
     moved = [key for key in history if key in answers]
     if not moved:
         return None

@@ -16,6 +16,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.services.internalization_room.coverage import CoverageStatus
+from app.services.internalization_room.sessions import apply_coverage
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -68,6 +70,15 @@ def _the_kept_p01_is_titled_its_own_way(tree: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _the_kept_p01_has_no_first_scene(tree: Path) -> None:
+    _the_kept_map_has_no_first_scene(tree, FIRST)
+
+
+async def _worked_the_second_scene_then_the_first(db: AsyncSession, session_id: str) -> None:
+    for scene in ("scene:S2", "scene:S1"):
+        await apply_coverage(db, session_id, {scene: CoverageStatus.ENGAGED.value})
 
 
 async def _a_desk_over_two_teams(db: AsyncSession):
@@ -130,3 +141,24 @@ async def test_a_team_whose_session_kept_the_old_canon_is_shown_that_canons_refe
         "reference": KEPT_FIRST_REFERENCE,
     }, "a página da equipe nomeou a passagem pelo canon novo"
     assert fresh.json()["active_passage"]["reference"] == SERVED_FIRST_REFERENCE
+
+
+async def test_a_team_whose_session_kept_the_old_canon_is_placed_in_that_canons_scene(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (kept_team, fresh_team) = await _a_desk_over_two_teams(db_session)
+    kept_session = await open_ir_session(db_session, pericope=FIRST, project_id=kept_team.id)
+    await _worked_the_second_scene_then_the_first(db_session, kept_session.id)
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_p01_has_no_first_scene)
+    fresh_session = await open_ir_session(db_session, pericope=FIRST, project_id=fresh_team.id)
+    await _worked_the_second_scene_then_the_first(db_session, fresh_session.id)
+
+    async with desk_routes(db_session) as at_desk:
+        fresh = await at_desk.get(f"/api/facilitator/teams/{fresh_team.id}", headers=desk)
+        kept = await at_desk.get(f"/api/facilitator/teams/{kept_team.id}", headers=desk)
+
+    assert kept.status_code == 200 and fresh.status_code == 200, kept.text[:300]
+    assert kept.json()["scene_the_team_is_in"] == "scene:S2", (
+        "a página da equipe pôs a equipe numa cena que o canon dela não tem"
+    )
+    assert fresh.json()["scene_the_team_is_in"] == "scene:S1"
