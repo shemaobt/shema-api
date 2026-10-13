@@ -57,6 +57,7 @@ TEAM_DOORS = [
     ("GET", "/sessions/{session_id}/scene-rehearsals"),
     ("POST", "/sessions/{session_id}/scene-rehearsals"),
     ("GET", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/audio"),
+    ("POST", "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases"),
     ("POST", "/sessions/{session_id}/segments/{segment_id}/divide"),
     ("POST", "/sessions/{session_id}/segments/{segment_id}/replace"),
     ("GET", "/sessions/{session_id}/takes"),

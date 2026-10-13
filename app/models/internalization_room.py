@@ -862,6 +862,16 @@ class TakesResponse(BaseModel):
     takes: list[TakeResponse]
 
 
+class SceneFraseView(BaseModel):
+    """A scene frase as the tablet reads it: its place, and what replaced it. No words."""
+
+    frase_id: str
+    starts_ms: int
+    ends_ms: int
+    replaces: str | None = None
+    replaced_by: str | None = None
+
+
 class SceneRehearsalView(BaseModel):
     """A scene rehearsal as any tablet of the team resumes it, with no words and no guess."""
 
@@ -876,6 +886,7 @@ class SceneRehearsalView(BaseModel):
     verified: bool = False
     recorded_at: str = ""
     sent_at: str | None = None
+    frases: list[SceneFraseView]
 
 
 class SceneRehearsalsResponse(BaseModel):

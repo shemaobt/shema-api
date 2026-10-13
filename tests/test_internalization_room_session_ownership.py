@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
 from app.services.internalization_room import questions as question_service
 from app.services.internalization_room.scene_rehearsals import (
+    frases_of,
     keep_scene_rehearsal,
     scene_rehearsals_of_the_passage,
 )
@@ -90,6 +91,7 @@ COVERED = {
     ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals"),
     ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals"),
     ("GET", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/audio"),
+    ("POST", f"{PREFIX}/sessions/{{session_id}}/scene-rehearsals/{{rehearsal_id}}/frases"),
 }
 
 #: Routes that already resolve their session through the ownership rule, proved by a suite
@@ -279,6 +281,13 @@ def cases(owned: Owned) -> list[dict]:
             path=f"/sessions/{s}/scene-rehearsals/{r}/audio",
             expects="redirect",
         ),
+        _case(
+            "scene-frase",
+            method="POST",
+            path=f"/sessions/{s}/scene-rehearsals/{r}/frases",
+            data={"starts_ms": "0", "ends_ms": "1000"},
+            files={"file": ("frase.m4a", b"uma frase", "audio/mp4")},
+        ),
     ]
 
 
@@ -368,6 +377,7 @@ TAGS = [
     "keep-scene",
     "list-scenes",
     "scene-audio",
+    "scene-frase",
 ]
 
 
@@ -412,6 +422,9 @@ async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
     elif tag == "keep-scene":
         rehearsals = await scene_rehearsals_of_the_passage(db, owned.session)
         assert len(rehearsals) == 1, "um estranho gravou uma cena numa sessão de outro projeto"
+    elif tag == "scene-frase":
+        frases = await frases_of(db, [owned.scene.id])
+        assert frases[owned.scene.id] == [], "um estranho traduziu a cena de outro projeto"
     elif tag == "needs-person":
         session = await get_session(db, owned.session.id)
         assert session.status is IRSessionStatus.IN_PROGRESS, (

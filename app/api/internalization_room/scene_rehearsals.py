@@ -1,4 +1,4 @@
-"""The scene rehearsal's doors: the tablet keeps it and resumes it anywhere.
+"""The scene rehearsal's doors: the tablet keeps it, translates it and resumes it anywhere.
 
 The tablet's doors carry no words of the team and no classifier guess (ENG-1335).
 """
@@ -9,8 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, linked_tablet_dep
 from app.core.database import get_db
-from app.db.models.internalization_room import IRSceneRehearsal, IRSession
-from app.models.internalization_room import SceneRehearsalsResponse, SceneRehearsalView
+from app.db.models.internalization_room import IRSceneFrase, IRSceneRehearsal, IRSession
+from app.models.internalization_room import (
+    SceneFraseView,
+    SceneRehearsalsResponse,
+    SceneRehearsalView,
+)
 from app.services import internalization_room as room
 from app.services.internalization_room import scene_rehearsals as scenes
 from app.services.internalization_room.coverage import refuse_a_panorama
@@ -20,7 +24,18 @@ from app.utils.stored_time import as_utc
 router = APIRouter()
 
 
-def _view(rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
+def _frase_view(frase: IRSceneFrase, replacing: dict[str, str]) -> SceneFraseView:
+    return SceneFraseView(
+        frase_id=frase.id,
+        starts_ms=frase.starts_ms,
+        ends_ms=frase.ends_ms,
+        replaces=frase.replaces_id,
+        replaced_by=replacing.get(frase.id),
+    )
+
+
+def _view(rehearsal: IRSceneRehearsal, frases: list[IRSceneFrase]) -> SceneRehearsalView:
+    replacing = scenes.replaced_by(frases)
     return SceneRehearsalView(
         rehearsal_id=rehearsal.id,
         session_id=rehearsal.session_id,
@@ -33,7 +48,13 @@ def _view(rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
         verified=rehearsal.verified_at is not None,
         recorded_at=as_utc(rehearsal.created_at).isoformat() if rehearsal.created_at else "",
         sent_at=as_utc(rehearsal.sent_at).isoformat() if rehearsal.sent_at else None,
+        frases=[_frase_view(frase, replacing) for frase in frases],
     )
+
+
+async def _the_record(db: AsyncSession, rehearsal: IRSceneRehearsal) -> SceneRehearsalView:
+    frases = await scenes.frases_of(db, [rehearsal.id])
+    return _view(rehearsal, frases[rehearsal.id])
 
 
 async def _session(db: AsyncSession, session_id: str, project_id: str) -> IRSession:
@@ -66,7 +87,7 @@ async def keep_scene_rehearsal(
         scene=scene,
         store=store,
     )
-    return _view(rehearsal)
+    return await _the_record(db, rehearsal)
 
 
 @router.get(
@@ -82,8 +103,10 @@ async def list_scene_rehearsals(
     """The passage's live scene rehearsals, from every session of it, each naming its own."""
     session = await _session(db, session_id, project_id)
     rehearsals = await scenes.scene_rehearsals_of_the_passage(db, session)
+    frases = await scenes.frases_of(db, [rehearsal.id for rehearsal in rehearsals])
     return SceneRehearsalsResponse(
-        pericope=session.pericope, scene_rehearsals=[_view(rehearsal) for rehearsal in rehearsals]
+        pericope=session.pericope,
+        scene_rehearsals=[_view(rehearsal, frases[rehearsal.id]) for rehearsal in rehearsals],
     )
 
 
@@ -106,3 +129,36 @@ async def listen_to_scene_rehearsal(
     return RedirectResponse(
         await listen_url(rehearsal), status_code=status.HTTP_307_TEMPORARY_REDIRECT
     )
+
+
+@router.post(
+    "/sessions/{session_id}/scene-rehearsals/{rehearsal_id}/frases",
+    response_model=SceneRehearsalView,
+    dependencies=[linked_tablet_dep],
+)
+async def keep_scene_frase(
+    session_id: str,
+    rehearsal_id: str,
+    starts_ms: int = Form(...),
+    ends_ms: int = Form(...),
+    replaces: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    project_id: str = device_project_dep,
+    store: TakeStore = Depends(take_store),
+    db: AsyncSession = Depends(get_db),
+) -> SceneRehearsalView:
+    session = await _session(db, session_id, project_id)
+    rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
+    await scenes.keep_a_frase(
+        db,
+        session,
+        rehearsal,
+        starts_ms=starts_ms,
+        ends_ms=ends_ms,
+        replaces=replaces,
+        audio=await file.read(),
+        content_type=file.content_type or AUDIO_MIME,
+        filename=file.filename,
+        store=store,
+    )
+    return await _the_record(db, rehearsal)

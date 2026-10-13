@@ -19,6 +19,7 @@ from app.db.models.internalization_room import (
     IRArchive,
     IRCoverageEvent,
     IRRelease,
+    IRSceneFrase,
     IRSceneRehearsal,
     IRSegment,
     IRSession,
@@ -39,6 +40,7 @@ _HANGING_OFF_A_SESSION = (
     IRCoverageEvent,
     IRRelease,
     IRSceneRehearsal,
+    IRSceneFrase,
 )
 
 

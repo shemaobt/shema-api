@@ -480,6 +480,38 @@ class IRSceneRehearsal(Base):
     archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
+class IRSceneFrase(Base):
+    """One **Scene frase**: a piece of the scene told in the bridge language, with its place.
+
+    ``starts_ms`` and ``ends_ms`` are relative to the scene recording. A replaced frase stays,
+    and the frase that replaced it names it in ``replaces_id``.
+    """
+
+    __tablename__ = "ir_scene_frases"
+    __table_args__ = (
+        UniqueConstraint("rehearsal_id", "sha256", name="uq_ir_scene_frases_rehearsal_sha256"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rehearsal_id: Mapped[str] = mapped_column(String(36), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    starts_ms: Mapped[int] = mapped_column(Integer)
+    ends_ms: Mapped[int] = mapped_column(Integer)
+    replaces_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    content_type: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    transcript: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
 class IRTurn(Base):
     """One turn the room has already answered, kept so a resend costs a read.
 

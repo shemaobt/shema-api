@@ -17,6 +17,7 @@ pytestmark = pytest.mark.migration
 
 TABLES_REVISION = "20261013_scene01"
 DEFAULT_REVISION = "20261013_scene02"
+FRASES_REVISION = "20261013_scene03"
 PREVIOUS_REVISION = "20261012_spine02"
 
 SCENE_TABLES = {"ir_scene_rehearsals"}
@@ -84,3 +85,18 @@ async def test_the_unread_kept_takes_column_fills_with_empty_when_a_session_leav
     await _execute(url, A_SESSION, {"session": SESSION})
     kept = await scalar(url, "SELECT kept_takes FROM ir_sessions WHERE id = :s", {"s": SESSION})
     assert kept == "{}"
+
+
+async def test_the_scene_frases_table_comes_and_goes_with_its_migration(tmp_path) -> None:
+    url = await _at(tmp_path, FRASES_REVISION)
+    down = run_alembic(url, "downgrade", DEFAULT_REVISION)
+    assert down.returncode == 0, down.stderr
+    assert "ir_scene_frases" not in await tables_of(url)
+
+    up = run_alembic(url, "upgrade", FRASES_REVISION)
+
+    assert up.returncode == 0, up.stderr
+    assert {"rehearsal_id", "session_id", "starts_ms", "ends_ms", "replaces_id"} <= (
+        await columns_of(url, "ir_scene_frases")
+    )
+    assert {"transcript", "archive_id"} <= await columns_of(url, "ir_scene_frases")
