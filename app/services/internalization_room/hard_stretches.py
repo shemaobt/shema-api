@@ -108,7 +108,6 @@ async def capture_and_note_a_hard_stretch(
     ends_ms: int,
     bridge_take_id: str | None = None,
     transcript: str | None = None,
-    pass_number: int = 1,
     replaces: IRSegment | None = None,
     state: BackTranslationState | None = None,
 ) -> bool:
@@ -125,11 +124,10 @@ async def capture_and_note_a_hard_stretch(
     `segments` because this composes the count and the halt, which is what this module is
     between the two services for.
 
-    The pass is `pass_of_a_telling`'s, whatever the door sends in `pass_number`. And a capture
-    after a check undoes what the check left: `checked` goes false and the stored verdict goes,
-    so approval is refused until a new clean check, while `checked_at` stays to say when the
-    analyst last read the team. The correction writes that state back too, in this same
-    transaction.
+    The pass is `pass_of_a_telling`'s. And a capture after a check undoes what the check left:
+    `checked` goes false and the stored verdict goes, so approval is refused until a new clean
+    check, while `checked_at` stays to say when the analyst last read the team. The correction
+    writes that state back too, in this same transaction.
 
     The scope a state is stored under is defaulted here for the same reason. Two doors reach
     this capture — the tablet's chunks route and the text seam — and both wrote the default

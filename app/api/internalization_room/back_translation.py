@@ -163,7 +163,6 @@ async def add_chunk(
         ends_ms=ends_ms,
         bridge_take_id=retro.id,
         transcript=text,
-        pass_number=pass_number,
         replaces=retold,
         state=state,
     )

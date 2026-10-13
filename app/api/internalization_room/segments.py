@@ -188,7 +188,6 @@ async def replace(
         ends_ms=ends_ms,
         bridge_take_id=retro.id,
         transcript=text,
-        pass_number=segment.pass_number,
         replaces=segment,
     )
     nudge_stretches(session.project_id, warned=crossed)
