@@ -6,7 +6,7 @@ from functools import lru_cache
 from typing import Any, Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.languages import FLOOR, room_language
 
 
 class FailSafe(enum.StrEnum):
@@ -26,7 +26,7 @@ _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
 
 #: The instant acknowledgements her app ever plays, in either language: it fetches the F lines
-#: with ``i < 3`` (``app/page.tsx:279`` at her freeze). Her file, kept byte for byte, carries a
+#: with ``i < 3`` (``app/page.tsx:280`` at her freeze). Her file, kept byte for byte, carries a
 #: fourth in each block, «Right.» and «Tá.», that the team could never hear from her, so the
 #: room reads no further than she does — the ruling of 2026-10-06.
 ACKNOWLEDGEMENTS_SHE_PLAYS = 3
@@ -55,14 +55,16 @@ def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> li
     H family is the one exception, and it is not a fail-safe — see the supplement.
 
     The file tags its blocks by primary language (`-pt`) while the room is configured with
-    a locale (`pt-BR`), so a regional code is tried and then its primary before falling
-    back to the authored English. Without that step every family answers in English for a
-    Brazilian team. That was invisible while only the *name* of a line crossed the wire —
-    the app held the audio and the indexes match between the two blocks — and it stops
-    being invisible the moment a line is synthesized from its text.
+    a locale (`pt-BR`), so the code is read through `room_language`: the region is dropped,
+    a language the room does not speak becomes the fleet's floor, that floor's block is
+    tried first, and the authored English answers only when it has nothing written. Without
+    that step every family answers in English for a Brazilian team. That was invisible
+    while only the *name* of a line crossed the wire — the app held the audio and the
+    indexes match between the two blocks — and it stops being invisible the moment a line
+    is synthesized from its text.
     """
     sections = _sections()
-    written = localized(kind, language_code)
+    written = localized(kind, room_language(language_code))
     if written:
         return written
     return sections.get((str(kind), None), [])
@@ -190,15 +192,19 @@ PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
 def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
     """The line for one step of the telling-back or of the external check, and its name.
 
-    A fail-safe answers a failure and rotates, on the authored file's own instruction. A
-    process line marks a step, and her prose says of both families that *"the order is
-    fixed and read by position"*: rotating them would voice the thanks where the step means
-    the invitation. So there is no ``turn`` here, and the same step always answers the same.
+    A fail-safe answers a failure, so which of its lines is said follows the failure: the
+    draft that gave up for A, the wait for the untold stretch, her first line for the
+    inaudible. A process line marks a step, and her prose says of both families that *"the
+    order is fixed and read by position"*: rotating them would voice the thanks where the
+    step means the invitation. So there is no ``turn`` here, and the same step always
+    answers the same.
 
-    The language resolution is ``choose``'s, unchanged — regional, then primary, then the
-    authored English — and so is the shape of the answer, because the two consumers want
-    different halves of it: a step spoken inside a server answer needs the text, and a step
-    the tablet asks the room for by name needs the name.
+    The language resolution is ``choose``'s, unchanged — the code read through
+    ``room_language``, so the region is dropped and a language the room does not speak lands
+    on the fleet's floor, then the authored English only when that block is empty — and so
+    is the shape of the answer, because the two consumers want different halves of it: a
+    step spoken inside a server answer needs the text, and a step the tablet asks the room
+    for by name needs the name.
     """
     steps = PROCESS_STEPS.get(family)
     if steps is None or step not in steps:

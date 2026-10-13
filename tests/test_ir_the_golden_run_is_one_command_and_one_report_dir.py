@@ -420,7 +420,7 @@ async def test_a_session_the_judge_approved_with_a_mechanical_fault_still_does_n
         out / "README.md"
     ).read_text(encoding="utf-8")
     assert "0/1 golden sessions pass" in capsys.readouterr().out, (
-        "passa é a regra dela (run.ts:206): juiz aprovou E zero avisos mecânicos"
+        "passa é a regra dela (run.ts:662): juiz aprovou E zero avisos mecânicos"
     )
     assert exit_code == 1
 
@@ -441,7 +441,7 @@ async def test_a_judge_that_returns_no_verdict_fails_the_session_and_the_run_goe
     ) in readme, "sem veredito não é aprovação nem aviso mecânico: é uma linha que diz o motivo"
     assert not list(out.glob("*.verdict.json")), "um veredito que não veio não é gravado"
     assert "FAIL · P01-understand-first · judge=n/a · mechanical=1" in capsys.readouterr().out, (
-        "a linha do console é a dela: judge=n/a quando o juiz não respondeu (run.ts:208)"
+        "a linha do console é a dela: judge=n/a quando o juiz não respondeu (run.ts:664)"
     )
     assert exit_code == 1
 

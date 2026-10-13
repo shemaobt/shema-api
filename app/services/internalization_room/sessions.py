@@ -46,7 +46,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
-from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
+from app.services.internalization_room.canon.scene_ids import scene_ids_for
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
