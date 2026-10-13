@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from app.services.internalization_room.canon import names
+from app.services.internalization_room.canon import elements, names
 from app.services.internalization_room.canon.elements import (
     ElementKind,
     element_keys,
@@ -32,7 +32,12 @@ def _labels_of_map(pericope: str) -> dict[str, str]:
     return {element.key: element.label for element in elements_of(meaning_map)}
 
 
-def _ruth_1_with_famine_written_as(line: str) -> dict[str, str]:
+def _ruth_1_with_famine_written_as(
+    monkeypatch: pytest.MonkeyPatch, line: str, code: str
+) -> dict[str, str]:
+    things = names.things_by_scene("P01")
+    planted = {**things, 1: {**things[1], "object": [code]}}
+    monkeypatch.setattr(elements, "things_by_scene", lambda pericope: planted)
     text = (MAPS_DIR / "P01-Ruth-1-1-5.md").read_text(encoding="utf-8")
     edited = text.replace("[[O1-Famine]] — רָעָב / famine", line)
     meaning_map = parse_map(edited, source="P01-edited")
@@ -70,10 +75,12 @@ def test_a_code_her_names_list_does_not_carry_reads_the_maps_own_gloss() -> None
 
 
 def test_a_code_found_nowhere_reads_the_placeholder_and_is_logged_once(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with caplog.at_level(logging.WARNING, logger=NAMES_LOGGER):
-        labels = _ruth_1_with_famine_written_as("רָעָב / famine ([[CB_9999-Nowhere]])")
+        labels = _ruth_1_with_famine_written_as(
+            monkeypatch, "רָעָב / famine ([[CB_9999-Nowhere]])", "CB_9999"
+        )
 
     assert labels["object:S1:CB_9999"] == UNRESOLVED, (
         "um código sem nome na lista dela nem glosa no mapa ia ao Guia com palavras nossas"
@@ -87,16 +94,20 @@ def test_a_code_found_nowhere_reads_the_placeholder_and_is_logged_once(
     "line",
     ["[[CB_9999-Nowhere]] — [[B3-Naomi]]", "[[CB_9999-Nowhere]] — active at Proposition 2"],
 )
-def test_a_bare_link_or_a_flag_note_after_the_dash_is_no_gloss(line: str) -> None:
-    labels = _ruth_1_with_famine_written_as(line)
+def test_a_bare_link_or_a_flag_note_after_the_dash_is_no_gloss(
+    monkeypatch: pytest.MonkeyPatch, line: str
+) -> None:
+    labels = _ruth_1_with_famine_written_as(monkeypatch, line, "CB_9999")
 
     assert labels["object:S1:CB_9999"] == UNRESOLVED, (
         "o que vinha depois do travessão ia ao Guia mesmo sendo um código cru ou uma nota"
     )
 
 
-def test_a_retired_entry_of_her_names_list_is_never_a_name() -> None:
-    labels = _ruth_1_with_famine_written_as("[[O17-Old-Thing]] — רָעָב / famine")
+def test_a_retired_entry_of_her_names_list_is_never_a_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = _ruth_1_with_famine_written_as(monkeypatch, "[[O17-Old-Thing]] — רָעָב / famine", "O17")
 
     assert labels["object:S1:O17"] == "famine", (
         "a entrada aposentada '[retired in V0.3; See O26]' ia ao Guia como se fosse um nome"
@@ -115,7 +126,9 @@ def test_a_reserved_or_retired_mark_on_the_entry_or_its_key_skips_it(
 ) -> None:
     monkeypatch.setattr(names, "_names_list", lambda book: {code: {"english": english}})
 
-    labels = _ruth_1_with_famine_written_as(f"[[{code}-Old-Thing]] — רָעָב / famine")
+    labels = _ruth_1_with_famine_written_as(
+        monkeypatch, f"[[{code}-Old-Thing]] — רָעָב / famine", code
+    )
 
     assert labels[f"object:S1:{code}"] == "famine"
 
@@ -130,26 +143,26 @@ def test_the_cloak_of_ruth_3_15_is_the_cloak_in_that_passage_alone() -> None:
 def test_the_unnamed_husband_of_ruth_2_11_is_given_no_name_and_no_description() -> None:
     labels = _labels("P06")
 
-    assert labels["being:S2:ruth-s-deceased-husband-your-hus"] == UNNAMED, (
+    assert labels["being:S2:B?"] == UNNAMED, (
         "o Guia lia 'Ruth's deceased husband', uma descrição que o texto não dá"
     )
     assert "deceased husband" not in coverage_status_block({}, "P06")
 
 
-def test_a_being_her_coordinates_do_not_know_reads_the_maps_own_words_for_it() -> None:
-    assert _labels("P06")["being:S2:ruth-s-father-and-mother-your-fa"] == (
-        '"your father and your mother"'
-    ), "os pais de Rute eram 'Ruth's father and mother — אָבִיךְ וְאִמֵּךְ / …', hebraico e tudo"
-    assert _labels("P07")["being:S3:the-dead-of-the-household-the-de"] == '"the dead"'
-    assert _labels("P12")["being:S1:the-dead-the-dead"] == '"the dead"'
+def test_a_being_her_coordinates_do_not_list_is_no_bead_whatever_the_map_writes() -> None:
+    assert "being:S2:ruth-s-father-and-mother-your-fa" not in _labels("P06"), (
+        "os pais de Rute, que só a prosa do mapa nomeia, eram uma conta que o colar dela não tem"
+    )
+    assert "being:S3:the-dead-of-the-household-the-de" not in _labels("P07")
+    assert "being:S1:the-dead-the-dead" not in _labels("P12")
 
 
 def test_an_unnamed_being_with_a_form_or_a_role_word_reads_it_and_nothing_more() -> None:
-    assert _labels("P11")["being:S3:the-dead-the-dead"] == "the dead (unnamed here)", (
+    assert _labels("P11")["being:S3:B?"] == "the dead (unnamed here)", (
         "o morto de 4:5 era 'The dead — הַמֵּת / \"the dead\"', a linha do mapa inteira"
     )
-    assert _labels("P13")["being:S2:the-child-a-redeemer"] == "a redeemer"
-    assert _labels("P13")["being:S1:the-child-a-son"] == "a son"
+    assert _labels("P13")["being:S2:B?"] == "a redeemer"
+    assert _labels("P13")["being:S1:B?"] == "a son"
 
 
 def test_a_form_outside_her_table_reads_its_own_words_and_is_not_called_unnamed(
@@ -159,16 +172,15 @@ def test_a_form_outside_her_table_reads_its_own_words_and_is_not_called_unnamed(
     boy = {"being_id": "B?", "role_in_scene": "SON", "referential_form": "THE_BOY"}
     monkeypatch.setattr(names, "_beings_by_scene", lambda pericope: {**coordinates, 1: [boy]})
 
-    assert _labels_of_map("P13")["being:S1:the-child-a-son"] == "the boy"
+    assert _labels_of_map("P13")["being:S1:B?"] == "the boy"
 
 
 def test_a_bead_renamed_by_her_keeps_the_key_its_coverage_is_stored_under() -> None:
     keys = element_keys("P06")
 
-    assert "being:S2:ruth-s-deceased-husband-your-hus" in keys, (
+    assert "being:S2:B?" in keys, (
         "a chave saía do rótulo, e a cobertura gravada sob a antiga ficava órfã"
     )
-    assert "being:S2:ruth-s-father-and-mother-your-fa" in keys
     assert "being:S4:B3" in element_keys("P01")
 
 
@@ -178,7 +190,7 @@ def test_every_being_ruth_leaves_unnamed_reads_on_the_desk_what_the_voice_is_tol
         pericope = meaning_map.pericope_num
         desk = {element.key: element.label_en for element in labelled_elements(pericope)}
         for element in elements_for(pericope):
-            if element.kind is ElementKind.BEING and element.key.split(":")[-1].islower():
+            if element.kind is ElementKind.BEING and element.key.endswith(names.WITHHELD_BEING):
                 said = desk[element.key]
                 if said[:1].lower() + said[1:] != element.label.strip('"'):
                     drifted.append(f"{pericope} {element.key}: {said!r} / {element.label!r}")

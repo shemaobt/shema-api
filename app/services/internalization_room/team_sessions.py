@@ -16,9 +16,9 @@ the start is normalised here beside it.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus
@@ -28,7 +28,7 @@ from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
-from app.services.internalization_room.entered import entered
+from app.services.internalization_room.entered import entered, latest_entered_first
 from app.services.internalization_room.live import live
 from app.services.internalization_room.session_end import SessionState, as_utc, end_of
 
@@ -85,6 +85,39 @@ async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
         .order_by(IRSession.created_at.desc(), IRSession.id.desc())
     )
     return result.scalars().all()
+
+
+async def canon_pins_of(
+    db: AsyncSession, pairs: Collection[tuple[str, str]]
+) -> dict[tuple[str, str], str | None]:
+    ranked = (
+        select(
+            IRSession.project_id,
+            IRSession.pericope,
+            IRSession.canon_pin,
+            func.row_number()
+            .over(
+                partition_by=(IRSession.project_id, IRSession.pericope),
+                order_by=latest_entered_first(),
+            )
+            .label("rank"),
+        )
+        .where(tuple_(IRSession.project_id, IRSession.pericope).in_(pairs), live())
+        .subquery()
+    )
+    result = await db.execute(
+        select(ranked.c.project_id, ranked.c.pericope, ranked.c.canon_pin).where(ranked.c.rank == 1)
+    )
+    return {(team, pericope): pin for team, pericope, pin in result.all()}
+
+
+async def canon_pins_by_session(
+    db: AsyncSession, session_ids: Collection[str]
+) -> dict[str, str | None]:
+    result = await db.execute(
+        select(IRSession.id, IRSession.canon_pin).where(IRSession.id.in_(session_ids))
+    )
+    return dict(result.tuples().all())
 
 
 def beads_of(session: IRSession, portrait: dict[str, str]) -> list[SessionBead]:

@@ -22,11 +22,9 @@ from app.services.internalization_room.sessions import (
     get_session,
     mark_needs_person,
     raise_a_warning,
-    save_comprehension,
     unattend,
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
-from tests.baker import fully_supported_comprehension
 from tests.device_harness import TABLET_TEAM
 from tests.release_harness import PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
@@ -203,7 +201,8 @@ async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     lit = dict(initial_state(P))
-    lit[next(iter(lit))] = CoverageStatus.ENGAGED.value
+    settled_key = next(iter(lit))
+    lit[settled_key] = CoverageStatus.ENGAGED.value
 
     async def the_last_turns_settle_lands() -> None:
         async with rival_factory() as rival:
@@ -214,9 +213,14 @@ async def test_a_bead_settled_while_the_guide_thinks_is_lit_in_the_turns_answer(
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
-    assert answered.json()["coverage"]["engaged"] == 1, (
-        "a resposta levava as contas lidas antes do Guia, e a conta acesa apagava na tela"
+    async with rival_factory() as fresh:
+        stored = (await get_session(fresh, waiting_room.id)).coverage_state
+    assert stored[settled_key] == CoverageStatus.ENGAGED.value, (
+        "o turno gravava as contas lidas antes do Guia por cima da conta acesa"
     )
+    assert answered.json()["coverage"]["engaged"] == sum(
+        status == CoverageStatus.ENGAGED.value for status in stored.values()
+    ), "a resposta levava as contas lidas antes do Guia, e a conta acesa apagava na tela"
 
 
 async def test_a_person_asked_for_while_the_guide_thinks_is_still_asked_for_after_the_turn(
@@ -565,7 +569,6 @@ async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room
     models: _Models,
     rival_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    await save_comprehension(db_session, waiting_room, fully_supported_comprehension(P))
     await mark_needs_person(db_session, waiting_room)
 
     async def a_visit_and_then_the_last_settle_close_the_passage() -> None:

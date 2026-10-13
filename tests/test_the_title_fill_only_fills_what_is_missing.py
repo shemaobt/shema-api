@@ -69,6 +69,65 @@ def test_a_fill_that_needs_a_title_without_a_key_fails_naming_the_key_and_the_sc
     assert listed.read_bytes() == before
 
 
+def _without_titles(tmp_path: Path, *scene_ids: str) -> Path:
+    listed = tmp_path / "ui-labels.pt.json"
+    without_them = json.loads(PORTUGUESE_TITLES.read_text(encoding="utf-8"))
+    for scene_id in scene_ids:
+        del without_them["scenes"]["P03"][scene_id]
+    listed.write_text(
+        json.dumps(without_them, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return listed
+
+
+def test_a_reply_that_drops_a_scene_is_refused_by_name_and_nothing_is_written(
+    tmp_path: Path,
+) -> None:
+    listed = _without_titles(tmp_path, "S2", "S3")
+    before = listed.read_bytes()
+
+    with pytest.raises(SystemExit) as refused:
+        fill.fill(listed, translate=lambda todo: {"P03": {"S3": "O silêncio de Noemi"}})
+
+    assert refused.value.code == "missing scene in translation: P03/S2", (
+        "a resposta sem uma cena caía num KeyError que não dizia qual"
+    )
+    assert listed.read_bytes() == before, "a cena que voltou era escrita mesmo com outra faltando"
+
+
+def test_a_reply_that_drops_a_whole_pericope_is_refused_by_name_and_nothing_is_written(
+    tmp_path: Path,
+) -> None:
+    listed = _without_titles(tmp_path, "S2")
+    without_it = json.loads(listed.read_text(encoding="utf-8"))
+    del without_it["scenes"]["P04"]
+    listed.write_text(json.dumps(without_it, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    before = listed.read_bytes()
+
+    with pytest.raises(SystemExit) as refused:
+        fill.fill(listed, translate=lambda todo: {"P03": {"S2": "O voto de Rute"}})
+
+    assert refused.value.code == "missing pericope in translation: P04", (
+        "a resposta sem uma perícope caía num KeyError que não dizia qual"
+    )
+    assert listed.read_bytes() == before, "a perícope que voltou era escrita com outra faltando"
+
+
+def test_a_reply_whose_title_is_blank_is_refused_as_a_dropped_scene_and_nothing_is_written(
+    tmp_path: Path,
+) -> None:
+    listed = _without_titles(tmp_path, "S2")
+    before = listed.read_bytes()
+
+    with pytest.raises(SystemExit) as refused:
+        fill.fill(listed, translate=lambda todo: {"P03": {"S2": "  \n"}})
+
+    assert refused.value.code == "missing scene in translation: P03/S2", (
+        "um título em branco era escrito e a sessão em português ouvia o título em inglês"
+    )
+    assert listed.read_bytes() == before
+
+
 def test_the_scheduled_fill_starts_without_a_key_when_every_served_scene_has_a_title(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

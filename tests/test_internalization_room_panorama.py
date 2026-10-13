@@ -23,6 +23,7 @@ from app.services.internalization_room.sessions import (
 from app.services.platform.tts import SynthesizedSpeech
 from tests.deploy_harness import deploy_command
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
+from tests.opening_harness import NOTE_PT_OV_RUTH
 from tests.turn_harness import the_room_agent_is
 
 PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
@@ -342,6 +343,7 @@ async def test_the_third_turn_still_carries_the_sessions_first_exchange(
         "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
     )
     assert [{"role": m["role"], "text": m["text"]} for m in seen_messages[2]] == [
+        {"role": "team", "text": NOTE_PT_OV_RUTH},
         opening_exchange,
         {"role": "team", "text": "pergunta dois"},
         {"role": "guide", "text": "resposta 2."},

@@ -17,6 +17,7 @@ from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn.speech import speak_back
 from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import a_golden_session
+from tests.opening_harness import NOTE_PT_P01
 from tests.text_seam_harness import (
     BEARER,
     GOLDEN,
@@ -63,6 +64,7 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "validator_prompt": VALIDATOR,
         "pericope": P,
         "settings": settings(),
+        "earlier_passages": None,
     }
     return await speak_back(**{**given, **overrides})
 
@@ -196,7 +198,7 @@ async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield client
 
 
-async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team_said(
+async def test_the_note_is_kept_on_the_teams_side_as_her_note_never_as_words_the_team_said(
     seam: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_models_answer(monkeypatch)
@@ -208,10 +210,11 @@ async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team
 
     assert answered.status_code == 200, answered.text
     session = await room.get_session(db_session, session_id)
-    assert [(m["role"], m["text"]) for m in session.messages] == [
-        ("guide", GUIDE_LINE),
-        ("room", NOTE_PT_40),
-        ("guide", GUIDE_LINE),
+    assert [(m["role"], m["text"], m.get("room_note", False)) for m in session.messages] == [
+        ("team", NOTE_PT_P01, False),
+        ("guide", GUIDE_LINE, False),
+        ("team", NOTE_PT_40, True),
+        ("guide", GUIDE_LINE, False),
     ], (
         "as palavras que o reconhecedor inventou ficavam na conversa como fala da equipe, e o "
         "Guia e o Validador as liam de volta no turno seguinte"
@@ -239,6 +242,7 @@ async def test_the_next_turn_shows_the_guide_a_fact_about_the_room_on_the_teams_
     await seam.post(f"{GOLDEN}/turn", json={"sessionId": session_id, "teamText": "a fome chegou"})
 
     assert heard[0] == [
+        {"role": "user", "text": NOTE_PT_P01},
         {"role": "assistant", "text": GUIDE_LINE},
         {"role": "user", "text": NOTE_PT_40},
         {"role": "assistant", "text": GUIDE_LINE},

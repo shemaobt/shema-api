@@ -54,9 +54,9 @@ Consequence, decided knowing it. The restart route
 (ENG-723), the Desk and the text seam never reached it, and the whole-session verb answered a
 gesture the room no longer offers — what a team re-records is the unit they rehearsed (ADR 0025),
 and the part they re-record is answered by the upload under its number. A rehearsal told whole and
-recorded again retires nothing, because that verb reads the number and an unnumbered take carries
-none; the telling the team already gave stands on a recording that is no longer the part, and this
-decision is what refuses that session at the check.
+recorded again retired nothing when this was written, because that verb read the number and an
+unnumbered take carries none, and this decision was what refused that session at the check; ADR
+0023 now records that the verb retires it too, and the refusal stands for the part that replaced it.
 
 Two more consequences, decided knowing them. **The D family stops answering any session a team
 reaches.** A rehearsal recorded and nothing told back is a current part with no stretch, so it is

@@ -11,6 +11,7 @@ from app.models.internalization_room import (
     SessionTurnsResponse,
     TurnOutcomeCode,
     TurnTeamSide,
+    TurnTraceStep,
     TurnVoiceSide,
 )
 from app.services.internalization_room.conversation import the_conversation
@@ -112,11 +113,14 @@ def _voice_turns(session: IRSession) -> list[tuple[dict[str, Any], bool]]:
 
     A turn ends on the Guide's entry, which carries the facts of both sides. The opening is a
     Guide entry with nothing said before it and no take heard: a first take the room missed
-    writes nothing before its Guide entry either, and is still the team's turn.
+    writes «(inaudible)» before its Guide entry and the take's facts on it, and is the team's
+    turn.
     """
     turns: list[tuple[dict[str, Any], bool]] = []
     said_before = False
     for message in the_conversation(session):
+        if message.get("opening_note"):
+            continue
         if message.get("role") == "guide":
             turns.append((message, not said_before and "mother_tongue" not in message))
         said_before = True
@@ -147,7 +151,12 @@ def _voice_side(
     return TurnVoiceSide(
         outcome=outcome,
         boundary=is_boundary_turn(outcome, text, opening=opening),
-        attempts=len(guide.get("attempts") or []),
+        attempts=sum(
+            1
+            for attempt in guide.get("attempts") or []
+            if attempt.get("draft") or not attempt.get("note")
+        ),
+        trace=[TurnTraceStep.model_validate(step) for step in guide.get("attempts") or []],
         recognition_ms=guide.get("recognition_ms"),
         reply_ms=guide.get("reply_ms"),
         synthesis_ms=guide.get("synthesis_ms"),

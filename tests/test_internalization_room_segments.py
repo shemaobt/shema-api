@@ -27,6 +27,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSession, IRTake, I
 from app.services.internalization_room import segments as service
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import analyse_telling_back
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.takes import store_take
 from app.services.platform.storage import StoredObject
@@ -341,6 +342,7 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
         scope=PASSAGE,
         pericope_num=PASSAGE,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 
@@ -565,6 +567,7 @@ async def test_a_piece_cut_off_and_not_yet_told_is_not_read_as_something_told(
         scope=PASSAGE,
         pericope_num=PASSAGE,
         analyst_prompt=ANALYST,
+        addresses=Addresses(),
         settings=_settings(),
     )
 

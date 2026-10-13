@@ -35,9 +35,8 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sessions import (
     create_session,
     report_playback,
-    save_comprehension,
 )
-from tests.release_harness import ensaio_take, supported_comprehension
+from tests.release_harness import ensaio_take
 from tests.room_harness import a_piece_still_to_be_told
 
 P = "P03"
@@ -48,13 +47,12 @@ UNTOLD = "untold_stretch"
 async def _told_back_and_read(db: AsyncSession) -> tuple[IRSession, IRTake]:
     """A session standing exactly on the edge of a release, and entitled to one.
 
-    Comprehension supported, consent given, coverage met, the passage rehearsed and told back
+    Consent given, coverage met, the passage rehearsed and told back
     whole, the analyst run over it, the clip played through. Every case below starts here and
     changes one thing.
     """
     session = await create_session(db, pericope=P, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P))
     take = ensaio_take(session.id, sha256="a" * 64)
     db.add(take)
     await db.commit()

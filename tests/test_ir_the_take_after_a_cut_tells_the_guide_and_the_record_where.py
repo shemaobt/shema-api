@@ -22,10 +22,10 @@ from app.services.internalization_room.sessions import create_session
 from tests.device_harness import TABLET_TEAM
 from tests.hearing_harness import (
     nothing_settles,
+    the_recognizer_answers_with_status,
     the_take_lasts,
     the_transcriber_hears,
     the_transcriber_hears_no_words,
-    the_transcriber_refuses,
 )
 from tests.release_harness import PREFIX
 from tests.room_harness import Room, room_client, the_room_speaks
@@ -150,6 +150,28 @@ async def test_a_take_sent_after_a_cut_hands_the_guide_her_interruption_note_bef
     assert guide.guide_inputs == [f"{CUT} {PORTUGUESE}"]
 
 
+async def test_an_english_session_hands_the_guide_her_english_interruption_note(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    voiced: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await create_session(db_session, project_id=TABLET_TEAM, language="en", pericope=P)
+    opened = await tablet.post(f"{PREFIX}/sessions/{session.id}/turns")
+    assert opened.status_code == 200, opened.text
+    guide.guide_inputs.clear()
+    said = "Naomi went back to Bethlehem with Ruth at the harvest"
+    the_transcriber_hears(monkeypatch, said, "en", 0.95)
+    the_take_lasts(monkeypatch, 6_000)
+
+    await _the_team_sends_a_take(tablet, session, interrupted="1")
+
+    assert guide.guide_inputs == [
+        f"[The team interrupted your previous turn at this point.] {said}"
+    ]
+
+
 async def test_a_mother_tongue_take_sent_after_a_cut_hands_the_guide_the_interruption_note_then_the_mother_tongue_note(  # noqa: E501
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
@@ -183,7 +205,7 @@ async def test_a_cut_followed_by_a_take_with_no_words_is_answered_with_d_1_and_t
     assert guide.guide_inputs == []
 
 
-async def test_a_cut_followed_by_a_take_the_recognizer_refused_is_answered_with_d_1(
+async def test_a_cut_followed_by_a_take_the_recognizer_refused_is_an_outage_not_d_1(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     guide: ScriptedAgent,
@@ -191,13 +213,20 @@ async def test_a_cut_followed_by_a_take_the_recognizer_refused_is_answered_with_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide, voiced)
-    the_transcriber_refuses(monkeypatch)
+    before = await _the_conversation(db_session, session.id)
+    the_recognizer_answers_with_status(monkeypatch, 422)
     the_take_lasts(monkeypatch, 8_000)
 
-    reply = await _the_team_sends_a_take(tablet, session, interrupted="1")
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
+        data={"interrupted": "1"},
+    )
 
-    assert reply["fixed_line"] == "D0"
+    assert answered.status_code == 502, answered.text
+    assert answered.json()["code"] == "UPSTREAM_ERROR"
     assert guide.guide_inputs == []
+    assert await _the_conversation(db_session, session.id) == before
 
 
 async def test_a_cut_followed_by_25_seconds_with_no_words_hands_the_guide_both_notes(

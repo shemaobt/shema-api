@@ -18,11 +18,12 @@ from app.models.internalization_room import DivideSegmentRequest, SegmentsRespon
 from app.services import internalization_room as room
 from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.coverage import refuse_a_panorama
+from app.services.internalization_room.hard_stretches import pass_of_a_telling
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.nudge_channel import nudge, nudge_stretches
 from app.services.internalization_room.segments import (
     divide_segment,
-    refuse_a_slice_the_stretch_does_not_sit_on,
+    refuse_a_slice_a_version_cannot_take,
     segment_for_session,
 )
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
@@ -83,6 +84,24 @@ async def divide(
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
 
 
+@router.post(
+    "/sessions/{session_id}/back-translation/restart",
+    response_model=SegmentsResponse,
+    dependencies=[linked_tablet_dep],
+)
+async def restart(
+    session_id: str,
+    project_id: str = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SegmentsResponse:
+    """The team starts the translation over: every frase and check is archived, never deleted."""
+    session = await room.session_for_room_caller(db, session_id, project_id)
+    refuse_a_panorama(session.pericope)
+    await room.start_the_translation_over(db, session)
+    nudge(session.project_id, "stretches")
+    return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+
+
 async def replace(
     session_id: str,
     segment_id: str,
@@ -128,7 +147,9 @@ async def replace(
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
-    refuse_a_slice_the_stretch_does_not_sit_on(segment, rehearsal.id, starts_ms, ends_ms)
+    await refuse_a_slice_a_version_cannot_take(
+        db, session, segment, rehearsal.id, starts_ms, ends_ms
+    )
 
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -143,7 +164,7 @@ async def replace(
         kind=IRTakeKind.RETRO,
         scope=session.pericope,
         audio=audio_bytes,
-        pass_number=segment.pass_number,
+        pass_number=pass_of_a_telling(room.back_translation_of(session)),
         ordinal=segment.ordinal,
         content_type=file.content_type or "audio/mp4",
     )

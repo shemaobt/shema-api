@@ -49,6 +49,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       # `--dist loadfile` is load-bearing, not tuning: the schema is created once per process
       # and two cases of the database's own contract depend on a module running in file order
       # on one worker. `-v` went with it, because four workers interleaving 3259 lines is not

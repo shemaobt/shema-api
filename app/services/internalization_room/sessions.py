@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar
 
-from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import ColumnElement, and_, case, delete, or_, select, update
+from sqlalchemy import (
+    JSON,
+    ColumnElement,
+    Text,
+    and_,
+    case,
+    cast,
+    delete,
+    literal,
+    or_,
+    select,
+    update,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import set_committed_value
+from sqlalchemy.orm.attributes import InstrumentedAttribute, set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, PassageClosed, ValidationError
 from app.core.room_enums import HaltKind
@@ -24,22 +36,17 @@ from app.db.models.internalization_room import (
     IRTeamSession,
 )
 from app.models.internalization_room import PlayedTake
-from app.services.internalization_room import halt
+from app.services.internalization_room import halt, turn_instructions
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
+    CheckRound,
+    SupersededAttempt,
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.kept import deployed_pin, reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.session_readiness import (
-    evaluate_session_comprehension,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -49,15 +56,16 @@ from app.services.internalization_room.coverage import (
 )
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.earlier_passages import earlier_passages as read_earlier
-from app.services.internalization_room.entered import entered
+from app.services.internalization_room.entered import latest_entered_first
 from app.services.internalization_room.fail_safe import FailSafe
-from app.services.internalization_room.languages import floor, normalize
+from app.services.internalization_room.languages import floor, normalize, room_language
 from app.services.internalization_room.live import live
 from app.services.internalization_room.moment import moment_step
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
     final_segments,
+    retire_every_segment,
     retire_the_segments_of,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
@@ -157,7 +165,8 @@ async def create_session(
     ``earlier_passages`` is this team's status on each earlier passage of the book, kept on
     the session and never in its messages, so a session holding one has still not spoken. A
     caller that hands one in (the Golden door) is taken at its word; otherwise the room reads
-    it itself when the session is created (`earlier_passages`), and nothing rewrites it later.
+    it itself when the session is created (`earlier_passages`), and again after a turn once it
+    is five minutes old.
     """
     pericope, after_panorama, spoken = await _resolved(
         db,
@@ -304,12 +313,7 @@ async def _latest_stored(
             IRSession.language == language,
             live(),
         )
-        .order_by(
-            case((entered(), 1), else_=0).desc(),
-            IRSession.updated_at.desc(),
-            IRSession.created_at.desc(),
-            IRSession.id.desc(),
-        )
+        .order_by(*latest_entered_first())
         .limit(1)
     )
     return stored.scalar_one_or_none()
@@ -476,12 +480,12 @@ async def _land(
     """Write ``values`` to this session's row, refusing the write if another turn got there
     first (ENG-643).
 
-    ``messages`` and ``comprehension`` are both whole-value JSON, computed from whatever the
-    caller had read off ``session`` before calling this — so a plain UPDATE would let a turn
-    that started a moment later, and committed a moment earlier, have its evidence silently
-    written over. The WHERE clause below is the guard: it only lands while ``version`` is
-    still what this ``session`` was read at, and the loser gets a raised conflict instead of
-    a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
+    ``messages`` is whole-value JSON, computed from whatever the caller had read off
+    ``session`` before calling this — so a plain UPDATE would let a turn that started a
+    moment later, and committed a moment earlier, have its evidence silently written over.
+    The WHERE clause below is the guard: it only lands while ``version`` is still what this
+    ``session`` was read at, and the loser gets a raised conflict instead of a clean-looking
+    overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
     sound necklace's own document, generalised to whichever columns the caller is writing.
 
     A Zerar is a write too, and moves ``version``: a turn that resolved the session while it was
@@ -530,9 +534,9 @@ async def append_exchange(
     attempts: list[dict[str, Any]] | None = None,
     scene: str | None = None,
     told_back: str = "",
-    state: ComprehensionState | None = None,
     commit: bool = True,
     scene_rehearsals: list[str] | None = None,
+    opening_note: str = "",
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -576,7 +580,8 @@ async def append_exchange(
 
     What the room heard of the team's take — the language, its probability, the
     mother-tongue decision and the take's length — goes on the Guide's entry too, because a
-    mother-tongue turn and a missed one write no team entry. Only a turn the room heard
+    mother-tongue turn writes only her note and a missed one writes only «(inaudible)», her
+    mark for a team that spoke and was not heard. Only a turn the room heard
     carries them; the opening and the telling-back verdict write none. What the Guide was
     handed as the team's turn rides with them: empty on a miss, which reached no Guide.
 
@@ -589,10 +594,18 @@ async def append_exchange(
     stamp: dict[str, Any] = {"at": datetime.now(UTC).isoformat()}
     if told_back:
         stamp["told_back"] = True
+    if opening_note:
+        messages.append({"role": "team", "text": opening_note, "opening_note": True, **stamp})
     if outcome is not None and outcome.room_note:
-        messages.append({"role": "room", "text": outcome.room_note, **stamp})
+        messages.append({"role": "team", "text": outcome.room_note, "room_note": True, **stamp})
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance, **stamp})
+    elif (
+        outcome is not None
+        and outcome.mother_tongue is not None
+        and outcome.fixed_line.startswith(FailSafe.INAUDIBLE)
+    ):
+        messages.append({"role": "team", "text": "(inaudible)", **stamp})
     guide: dict[str, Any] = {"role": "guide", "text": guide_response, **stamp}
     if outcome is not None:
         guide["outcome"] = _containment_of(outcome)
@@ -641,8 +654,6 @@ async def append_exchange(
         guide["moment"] = step.as_json()
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, **_a_teams_return(session)}
-    if state is not None:
-        values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
 
 
@@ -705,6 +716,60 @@ def _containment_of(outcome: TurnOutcome) -> str:
     return "pass"
 
 
+_STORED_JSON = Text().with_variant(JSONB(), "postgresql")
+
+
+_TRIES = 5
+
+_Stored = dict[str, Any]
+_JSONColumn = InstrumentedAttribute[_Stored]
+
+
+async def _written_forward(
+    db: AsyncSession,
+    session_id: str,
+    column: _JSONColumn,
+    read: _Stored | None,
+    onto: Callable[[_Stored | None], Awaitable[_Stored]],
+) -> tuple[_Stored | None, _Stored]:
+    for tries_left in reversed(range(_TRIES)):
+        value = await onto(read)
+        if value == read or await _written_unless_moved(db, session_id, column, read, value):
+            return read, value
+        if not tries_left:
+            break
+        logger.warning(
+            "Session %s: a stale read of %s was refused and is redone on the fresh reading",
+            session_id,
+            column.key,
+        )
+        read = await db.scalar(select(column).where(IRSession.id == session_id))
+    logger.warning(
+        "Session %s: a stale read of %s was refused and the write gives up after %d tries",
+        session_id,
+        column.key,
+        _TRIES,
+    )
+    raise ConflictError(f"Session {session_id}: {column.key} kept moving under every try")
+
+
+async def _written_unless_moved(
+    db: AsyncSession, session_id: str, column: _JSONColumn, read: _Stored | None, value: _Stored
+) -> bool:
+    written = await db.execute(
+        update(IRSession)
+        .where(
+            IRSession.id == session_id,
+            cast(column, _STORED_JSON).is_not_distinct_from(
+                cast(literal(read, JSON), _STORED_JSON)
+            ),
+        )
+        .values({column: value})
+        .execution_options(synchronize_session=False)
+    )
+    return written.rowcount == 1
+
+
 async def apply_coverage(
     db: AsyncSession, session_id: str, coverage_state: dict[str, str]
 ) -> IRSession:
@@ -727,10 +792,15 @@ async def apply_coverage(
     conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
-    kept = session.coverage_state or {}
-    settled = furthest(kept, coverage_state, pericope_num=session.pericope)
-    record_transitions(db, session, before=kept, after=settled)
-    session.coverage_state = settled
+
+    async def onto(read: dict[str, Any] | None) -> dict[str, str]:
+        return furthest(read or {}, coverage_state, pericope_num=session.pericope)
+
+    kept, settled = await _written_forward(
+        db, session.id, IRSession.coverage_state, session.coverage_state, onto
+    )
+    record_transitions(db, session, before=kept or {}, after=settled)
+    set_committed_value(session, "coverage_state", settled)
     if (
         not is_panorama(session.pericope)
         and session_is_done(session)
@@ -743,27 +813,6 @@ async def apply_coverage(
     return session
 
 
-def comprehension_of(session: IRSession) -> ComprehensionState:
-    """The comprehension state, reading past a probe this build no longer knows.
-
-    The only tolerant `model_validate` in this repository, and it is here because of a
-    count: seventeen sessions on the machine that drives the room hold an `active_probe`
-    whose purpose went with the probe machinery, and a tablet reopens a passage by an id
-    it keeps on disk with no expiry. A typed submodel that will not validate makes every
-    turn on those a 500, and the app only forgets a saved id on a 404 — so the passage
-    would be stuck on that tablet at every opening, with no way out through the app.
-
-    Only the probe is dropped, and only when the whole state refuses to load. Everything
-    else that was saved is kept, and a state that still will not load raises as before.
-    """
-    stored = dict(session.comprehension or {})
-    try:
-        return ComprehensionState.model_validate(stored)
-    except PydanticValidationError:
-        stored.pop("active_probe", None)
-        return ComprehensionState.model_validate(stored)
-
-
 def was_opened(session: IRSession) -> bool:
     """Whether the session holds a Guide line: a room note or a team entry alone does not open it.
 
@@ -771,6 +820,13 @@ def was_opened(session: IRSession) -> bool:
     holds the Guide's line is not asked for a second one.
     """
     return any(line.get("role") == "guide" for line in session.messages or [])
+
+
+def the_opening_note(session: IRSession) -> str:
+    language = room_language(session.language)
+    if is_panorama(session.pericope):
+        return turn_instructions.panorama_note(book_of(session.pericope), language)
+    return turn_instructions.opening_note(session.pericope, language)
 
 
 async def append_opening(
@@ -781,7 +837,6 @@ async def append_opening(
     outcome: TurnOutcome | None = None,
     attempts: list[dict[str, Any]] | None = None,
     scene: str | None = None,
-    state: ComprehensionState | None = None,
     commit: bool = True,
 ) -> bool:
     """The opening written as the session's first line, or dropped when the team spoke first.
@@ -810,51 +865,20 @@ async def append_opening(
         outcome=outcome,
         attempts=attempts,
         scene=scene,
-        state=state,
         commit=commit,
+        opening_note=the_opening_note(session),
     )
     return True
 
 
-async def save_comprehension(
-    db: AsyncSession, session: IRSession, state: ComprehensionState
-) -> IRSession:
-    """Write the comprehension alone, in a commit of its own — for seeding a test's session.
-
-    No route writes a turn through this any more: the voiced route (ENG-1021) and the text
-    seam (ENG-1033) hand the state to `append_exchange(state=...)`, so the comprehension and
-    the exchange land in one guarded UPDATE and one commit. A turn written through this and
-    then `append_exchange` is the two-commit pattern both of them removed.
-    """
-    return await _land(db, session, {"comprehension": state.model_dump(mode="json")})
-
-
-def semantics_ready(session: IRSession) -> bool:
-    """Whether the comprehension side of the gate is met — readiness not `needs_more_work`
-    (which already folds in per-scene mother-tongue practice)."""
-    state = comprehension_of(session)
-    readiness = evaluate_session_comprehension(
-        checkpoints=list(checkpoints_for(session.pericope)),
-        scene_ids=scene_ids_for(session.pericope),
-        ledger=state.ledger,
-        practiced_scene_ids=state.practiced_scene_ids,
-    )
-    return readiness.evaluation.outcome.value != "needs_more_work"
-
-
 def session_is_done(session: IRSession) -> bool:
-    """The advance gate, with the third term removed rather than replaced.
+    """The advance gate: the coverage floor, and nothing the team said about rehearsing.
 
-    It used to end on the team's answer to the app's own yes/no recording question. The room
-    has no such question any more, so nothing could ever write that flag again and the gate
-    would have held every session open for good. What closes a passage instead is ENG-803's
-    to say — the Guide's send-off and a rehearsal take that was kept — and until it lands the
-    floor and the practice reading close the session between them.
+    Her room calls a passage done when every element has the status its kind needs, and
+    reads neither practice, a report nor the team's words.
     """
     with reading_the_canon_of(session.canon_pin):
-        return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(
-            session
-        )
+        return floor_met(session.coverage_state or {}, session.pericope)
 
 
 async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:
@@ -1088,15 +1112,86 @@ def back_translation_of(session: IRSession) -> BackTranslationState:
     return BackTranslationState.model_validate(session.back_translation or {})
 
 
+_Kept = TypeVar("_Kept")
+
+
+def _less(items: list[_Kept], taken: list[_Kept]) -> list[_Kept]:
+    left = list(items)
+    for one in taken:
+        if one in left:
+            left.remove(one)
+    return left
+
+
+def _standing_forward(read: list[_Kept], wanted: list[_Kept], fresh: list[_Kept]) -> list[_Kept]:
+    if fresh == read:
+        return wanted
+    return [*_less(fresh, _less(read, wanted)), *_less(wanted, read)]
+
+
+def _rounds_forward(
+    read: list[CheckRound], wanted: list[CheckRound], fresh: list[CheckRound]
+) -> list[CheckRound]:
+    before = {one.at: one for one in read}
+    stamped = {one.at: one for one in wanted if one.at in before and one != before[one.at]}
+    kept = [
+        one.model_copy(update=_changed(before[one.at], stamped[one.at]))
+        if one.at in stamped
+        else one
+        for one in fresh
+    ]
+    return [*kept, *(one for one in wanted if one.at not in before)]
+
+
+def _changed(read: CheckRound, wanted: CheckRound) -> dict[str, Any]:
+    return {name: value for name, value in vars(wanted).items() if getattr(read, name) != value}
+
+
+def _merged_forward(
+    read: BackTranslationState, wanted: BackTranslationState, fresh: BackTranslationState
+) -> BackTranslationState:
+    for name in vars(wanted).keys() - {"findings", "nuances", "checks"}:
+        if getattr(wanted, name) != getattr(read, name):
+            setattr(fresh, name, getattr(wanted, name))
+    fresh.findings = _standing_forward(read.findings, wanted.findings, fresh.findings)
+    fresh.nuances = _standing_forward(read.nuances, wanted.nuances, fresh.nuances)
+    fresh.checks = _rounds_forward(read.checks, wanted.checks, fresh.checks)
+    return fresh
+
+
 async def save_back_translation(
-    db: AsyncSession, session: IRSession, state: BackTranslationState, *, commit: bool = True
+    db: AsyncSession,
+    session: IRSession,
+    state: BackTranslationState,
+    *,
+    commit: bool = True,
+    rule: Callable[[BackTranslationState], Awaitable[None]] | None = None,
 ) -> IRSession:
-    """Write the telling-back state whole, which is how it is always read and rewritten.
+    """Write the telling-back state, merged onto what is stored if another write landed first.
+
+    ``rule`` is what the caller decided on the state it read, applied again to the merged one.
 
     ``commit=False`` leaves the transaction open for a caller composing several writes into one
     — the captured telling, where the stretch row, this state and the mark are one fact.
     """
-    session.back_translation = state.model_dump(mode="json")
+    base = back_translation_of(session)
+    written = state.model_dump(mode="json")
+
+    async def onto(read: dict[str, Any] | None) -> dict[str, Any]:
+        if read == session.back_translation:
+            return written
+        merged = _merged_forward(base, state, BackTranslationState.model_validate(read or {}))
+        if rule is not None:
+            await rule(merged)
+        return merged.model_dump(mode="json")
+
+    _, written = await _written_forward(
+        db, session.id, IRSession.back_translation, session.back_translation, onto
+    )
+    set_committed_value(session, "back_translation", written)
+    for name, value in vars(BackTranslationState.model_validate(written)).items():
+        if getattr(state, name) != value:
+            setattr(state, name, value)
     if commit:
         await db.commit()
         await db.refresh(session)
@@ -1164,9 +1259,10 @@ async def retire_the_part_recorded_again(
     divided parents and their pieces alike; the findings that pointed at them, a **Swap** whole;
     and the check, which starts over because the passage the team is standing on has changed.
     Zero is a number the text seam uses, so it counts; a take with none is the rehearsal told
-    whole, and this verb leaves it alone. That ground is answered at `terminei` instead: a
-    current part no standing stretch is a slice of refuses the check and is named there
-    (ADR 0027), which is the question the number cannot settle.
+    whole, which is one part of its own, so a second take with none is that part again and
+    retires the stretches of the first. The part that now stands is a current part no standing
+    stretch is a slice of, and `terminei` refuses the check and names it (ADR 0027) until the
+    team tells it back.
 
     What it leaves: the other parts' stretches, their words and their listening. A part recorded
     again is unheard by construction — a new take is a recording nobody has played — so the
@@ -1191,7 +1287,7 @@ async def retire_the_part_recorded_again(
     carrying findings about audio nobody will hear again, which is the state this exists to
     make unreachable.
     """
-    if take.kind is not IRTakeKind.ENSAIO or take.ordinal is None:
+    if take.kind is not IRTakeKind.ENSAIO:
         return
 
     takes = await takes_of(db, session.id)
@@ -1207,12 +1303,40 @@ async def retire_the_part_recorded_again(
     if not retired:
         return
 
+    retired_ids = {row.id for row in retired}
+
+    async def recorded_again(standing: BackTranslationState) -> None:
+        standing.findings = findings_after_a_part_is_recorded_again(standing.findings, retired_ids)
+        standing.nuances = [one for one in standing.nuances if one.segment_id not in retired_ids]
+        standing.checked = False
+        standing.verdict = None
+
     state = back_translation_of(session)
-    state.findings = findings_after_a_part_is_recorded_again(
-        state.findings, {row.id for row in retired}
-    )
-    state.checked = False
-    state.verdict = None
-    await save_back_translation(db, session, state, commit=False)
+    await recorded_again(state)
+    await save_back_translation(db, session, state, commit=False, rule=recorded_again)
     await db.commit()
     await db.refresh(session)
+
+
+async def start_the_translation_over(db: AsyncSession, session: IRSession) -> None:
+    async def started_over(standing: BackTranslationState) -> None:
+        archived = standing.superseded[-1]
+        archived.findings = [
+            *archived.findings,
+            *(one for one in standing.findings if one not in archived.findings),
+        ]
+        rounds = {one.at: one for one in archived.checks} | {one.at: one for one in standing.checks}
+        archived.checks = list(rounds.values())
+        standing.findings = []
+        standing.nuances = []
+        standing.checks = []
+        standing.checked = False
+        standing.checked_at = None
+        standing.verdict = None
+        standing.analysed_segment_ids = None
+
+    state = back_translation_of(session)
+    state.superseded = [*state.superseded, SupersededAttempt()]
+    await started_over(state)
+    await retire_every_segment(db, session.id)
+    await save_back_translation(db, session, state, rule=started_over)

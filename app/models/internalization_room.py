@@ -338,6 +338,12 @@ class SegmentsResponse(BaseModel):
     needs_person: bool = False
 
 
+class FindingView(BaseModel):
+    kind: str
+    frase: int | None = None
+    segment_id: str | None = None
+
+
 class BackTranslationProgress(BaseModel):
     """Where a telling-back stopped, so a tablet can be handed it back.
 
@@ -355,6 +361,7 @@ class BackTranslationProgress(BaseModel):
     checked: bool = False
     finding_segment_id: str | None = None
     finding_kind: str | None = None
+    findings: list[FindingView] = Field(default_factory=list)
     superseded_attempts: int = 0
 
 
@@ -384,19 +391,10 @@ class SessionStateResponse(BaseModel):
     moment: MomentView | None = None
 
 
-class SpokenSegment(BaseModel):
-    #: "panorama" first, then "scene" — the app replays the scene alone for "ouvir de novo".
-    role: str
-    audio_url: str
-
-
 class TurnResponse(BaseModel):
     session_id: str
     #: Where to fetch the line the team hears this turn, empty when `fixed_line` names it
-    #: instead. Never a splice: on an ordinary turn this is the whole line, the same one an
-    #: app that ignores `segments` has always heard. On a marked opening it is the first of
-    #: the two movements below, not the whole passage — an app playing only this url now
-    #: hears the opening's first half, never its second.
+    #: instead. Never a splice: this is the whole line.
     audio_url: str = ""
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
@@ -408,10 +406,6 @@ class TurnResponse(BaseModel):
     done: bool
     turn_id: str = ""
     classification_pending: bool = False
-    #: The session's opening cut at the boundary the Guide drew itself: the whole passage
-    #: first, then the scene and its invitation. Empty on every other turn, and empty
-    #: whenever the Guide did not mark the boundary exactly where it was asked for.
-    segments: list[SpokenSegment] = Field(default_factory=list)
     moment: MomentView | None = None
 
 
@@ -512,6 +506,15 @@ class FinishBackTranslationRequest(BaseModel):
 
 
 class BackTranslationVerdictResponse(BaseModel):
+    """What `terminei` answers: the verdict's voice and the findings of the check that gave it.
+
+    `findings` is every finding of the check, in the analyst's order, as a kind, a frase number
+    and a stretch, and never the analyst's note. It rides beside the leading finding and does
+    not replace it. An errand answer, which is not a check's, carries no list: the session
+    read is the standing truth, and a tablet that needs the marks after an errand reads them
+    there.
+    """
+
     session_id: str
     audio_url: str = ""
     fixed_line: str = ""
@@ -544,8 +547,19 @@ class BackTranslationVerdictResponse(BaseModel):
     #: have to explain, while one reading it off `untold_segment_id` would look for a stretch
     #: that does not exist. Empty on every answer that is not this refusal.
     untold_take_ids: list[str] = Field(default_factory=list)
+    findings: list[FindingView] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
+    check_at: datetime | None = None
+    named_nuance: FindingView | None = None
+
+
+class VerdictHeardRequest(BaseModel):
+    at: datetime
+
+
+class VerdictHeardResponse(BaseModel):
+    marked: bool
 
 
 class NeedsPersonResponse(BaseModel):
@@ -943,6 +957,14 @@ class RetroverificationFinding(BaseModel):
     raised_by_check: bool = False
 
 
+class RetroverificationNuance(BaseModel):
+    chunk: int
+    segment_id: str
+    quote: str
+    story: str
+    said: bool
+
+
 class RetroverificationRelease(BaseModel):
     """One approved draft of the passage, as the consultant's file lists it.
 
@@ -1128,6 +1150,7 @@ class RetroverificationFile(BaseModel):
     divided: list[RetroverificationStretch] = Field(default_factory=list)
     abandoned: list[RetroverificationTelling] = Field(default_factory=list)
     findings: list[RetroverificationFinding] = Field(default_factory=list)
+    nuances: list[RetroverificationNuance] = Field(default_factory=list)
     superseded_attempts: list[RetroverificationAttempt] = Field(default_factory=list)
     listening: list[RetroverificationListening] = Field(default_factory=list)
     hard_stretches: list[RetroverificationHardStretch] = Field(default_factory=list)
@@ -1157,12 +1180,37 @@ class TurnTeamSide(BaseModel):
 
 
 TurnOutcomeCode = Literal["validated", "corrected", "fail_safe", "no_record"]
+TurnVerdictCode = Literal["pass", "correct", "regenerate"]
+
+
+class TurnValidatorIssue(BaseModel):
+    problem: str | None = None
+    claim: str | None = None
+    explanation: str | None = None
+
+
+class TurnTraceStep(BaseModel):
+    """One draft of the Guide's and what the Validator and the room made of it: her trace step.
+
+    `verdict` is `pass`, `correct` or `regenerate`, and is null when the draft was never judged:
+    the Validator's reply could not be read, or the Guide drafted nothing and the Validator was
+    never asked. `note` then says which. `corrected` is the text that was voiced when the
+    Validator corrected the draft.
+    """
+
+    attempt: int
+    draft: str
+    issues: list[TurnValidatorIssue] = Field(default_factory=list)
+    verdict: TurnVerdictCode | None = None
+    corrected: str | None = None
+    note: str | None = None
 
 
 class TurnVoiceSide(BaseModel):
     outcome: TurnOutcomeCode
     boundary: bool
     attempts: int
+    trace: list[TurnTraceStep]
     recognition_ms: int | None
     reply_ms: int | None
     synthesis_ms: int | None
@@ -1179,3 +1227,52 @@ class SessionTurn(BaseModel):
 class SessionTurnsResponse(BaseModel):
     session_id: str
     turns: list[SessionTurn]
+
+
+class BeadState(StrEnum):
+    """Her three states: «engajado», «mencionado pelo guia» and «ainda não tocado».
+
+    The words are the Desk's. The server serves these keys so the client never computes a state.
+    """
+
+    ENGAGED = "engaged"
+    SURFACED = "surfaced"
+    UNTOUCHED = "untouched"
+
+
+class SessionCoverageBead(BaseModel):
+    key: str
+    label: str
+    state: BeadState
+
+
+class SessionCoverageGroup(BaseModel):
+    kind: ElementKind
+    beads: list[SessionCoverageBead]
+
+
+class SessionCoverageResponse(BaseModel):
+    """What the consultant reads of one session's coverage: her record's «Cobertura» block.
+
+    `groups` carry the beads by kind in her fixed order, which is the order of `ElementKind`:
+    «arco», «contexto», «tom», «função», «cena», «personagem», «lugar», «objeto», «tempo»,
+    «silêncio significativo», «regra de preservação». A kind the passage has no bead of is not
+    listed. Each bead carries the map's element label as written, in the map's own English,
+    which is what her record shows (`e.label`). The Portuguese names of the beads live in
+    `labelled_elements`, which the Desk's session portrait (`team_sessions.py`) reads.
+
+    `ledger` is the coverage ledger in the voice's English, rendered from the session's stored
+    coverage when the read happens by the code that renders it for the Guide: what the voice
+    will be handed on its next turn if nothing changes, without the room facts that follow it.
+
+    A Panorama do Livro has no coverage: `panorama` is true, there are no groups and no ledger,
+    and the Desk shows her line «O Panorama não tem cobertura.» A passage whose map gives no
+    coverage element has `no_elements` true and no groups, and the Desk shows «Sem elementos de
+    cobertura.»
+    """
+
+    session_id: str
+    groups: list[SessionCoverageGroup]
+    panorama: bool
+    no_elements: bool
+    ledger: str | None

@@ -29,7 +29,6 @@ async def run_panorama_turn(
     opening: bool = False,
     settings: Settings | None = None,
     session_id: str = "?",
-    ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """One exchange of a Book Panorama — the session before a book's first passage.
 
@@ -72,7 +71,6 @@ async def run_panorama_turn(
                 opening_instruction=panorama_note(book, language_code),
                 settings=cfg,
                 session_id=session_id,
-                ask_for_movements=ask_for_movements,
             )
         )
     if not opening:

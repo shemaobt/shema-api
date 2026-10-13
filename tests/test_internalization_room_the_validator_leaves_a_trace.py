@@ -20,6 +20,7 @@ import pytest
 
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.llm import TruncatedReply
 from app.services.internalization_room.run_turn import MAX_REDRAFTS, run_turn
 from tests.turn_harness import (
     GUIDE,
@@ -269,3 +270,134 @@ async def test_a_passing_verdict_leaves_no_refusal_trace(
         record.name == LOGGER_NAME and "sessao-8" in record.getMessage()
         for record in caplog.records
     ), "o turno some do próprio logger sem deixar rasto nenhum, nem o de sempre"
+
+
+def _fail_safe_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == LOGGER_NAME and record.getMessage().startswith("Fail-safe fired")
+    ]
+
+
+async def test_an_empty_draft_after_a_send_back_does_not_blame_the_issues_that_send_back_left(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}],
+            drafts=["Vamos começar.", ""],
+        )
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-11")
+
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 1 redrafts for session sessao-11: "
+        "the Guide's draft was empty, so the Validator never saw it"
+    ], "the first redraft's issues were printed as the reason the empty draft fell"
+
+
+async def test_an_empty_first_draft_names_the_session_and_says_the_validator_never_saw_it(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    agent = patch_agent(FakeAgent(verdicts=[], drafts=[""]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-12")
+
+    assert agent.calls == ["guide"]
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 0 redrafts for session sessao-12: "
+        "the Guide's draft was empty, so the Validator never saw it"
+    ]
+
+
+async def test_an_unreadable_reply_is_not_a_send_back_in_the_fail_safe_line(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(verdicts=[{"verdict": "approve", "issues": [{"problem": "imported_knowledge"}]}])
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-13")
+
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 0 redrafts for session sessao-13: the Validator's reply could "
+        "not be read (verdict is not one of pass, correct or regenerate), so the draft was "
+        "never judged"
+    ], "a reply the room could not read was logged with its issues, as if the draft was sent back"
+
+
+async def test_three_send_backs_name_the_session_and_the_issues_of_the_last_draft(
+    patch_agent, caplog: pytest.LogCaptureFixture
+) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[
+                {"verdict": "regenerate", "issues": [{"problem": "off_topic"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "claims_to_see_the_screen"}]},
+            ]
+        )
+    )
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        outcome = await _a_turn("sessao-14")
+
+    assert outcome.used_fail_safe is True
+    assert _fail_safe_lines(caplog) == [
+        "Fail-safe fired after 2 redrafts for session sessao-14: the Validator sent the draft "
+        "back every time: issues=[{'problem': 'claims_to_see_the_screen'}]"
+    ], "the line did not say the draft was sent back, or printed an earlier draft's issues"
+
+
+async def test_the_attempt_kept_for_a_reply_cut_at_its_ceiling_names_the_cut(
+    patch_agent,
+) -> None:
+    class Cut(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            if "corrected_response" not in system_prompt:
+                return "rascunho"
+            raise TruncatedReply('{"verdict": "pass", "issues": [')
+
+    patch_agent(Cut(verdicts=[]))
+
+    outcome = await _a_turn("sessao-15")
+
+    assert outcome.used_fail_safe is True
+    assert outcome.attempts == [
+        {
+            "attempt": 1,
+            "draft": "rascunho",
+            "issues": [],
+            "note": "validator error: validator reply cut at max_tokens=8192",
+        }
+    ], "a verdict cut at its ceiling kept the note of a reply that merely could not be read"
+
+
+async def test_the_cut_note_prints_the_ceiling_the_validator_call_was_sent(
+    patch_agent,
+) -> None:
+    sent: list[int] = []
+
+    class Cut(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            if "corrected_response" not in system_prompt:
+                return "rascunho"
+            sent.append(kwargs["max_output_tokens"])
+            raise TruncatedReply("{")
+
+    patch_agent(Cut(verdicts=[]))
+
+    outcome = await _a_turn("sessao-16")
+
+    assert len(sent) == 1
+    assert outcome.attempts[0]["note"] == (
+        f"validator error: validator reply cut at max_tokens={sent[0]}"
+    ), "the note named a ceiling the Validator call was not sent with"

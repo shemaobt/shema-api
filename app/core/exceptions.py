@@ -53,6 +53,9 @@ ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
+ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
+ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
+ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
 ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -62,9 +65,6 @@ ERROR_CODE_UNKNOWN_REFERENCE: Final = "UNKNOWN_REFERENCE"
 ERROR_CODE_NOT_FOUND = "NOT_FOUND"
 ERROR_CODE_INTERNAL = "INTERNAL_ERROR"
 ERROR_CODE_UPSTREAM = "UPSTREAM_ERROR"
-#: A model answered and the answer could not be read. Not UPSTREAM_ERROR: the provider was
-#: up, and a code that says otherwise sends the investigation to the wrong place.
-ERROR_CODE_UNREADABLE_REPLY: Final = "UNREADABLE_REPLY"
 
 #: A device whose credential was revoked. Its own code because the tablet acts on it: it
 #: forgets the credential it holds and shows its claim code again, which is the wrong
@@ -225,6 +225,12 @@ class StretchNoLongerCounts(ValidationError):
     """
 
 
+class PauseCannotMove(ValidationError):
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
+
+
 class WordlessTelling(ValidationError):
     """A telling holds no words the room could make out, so it is no stretch and counts nothing.
 
@@ -264,22 +270,6 @@ def upstream_or_validation_error(status_code: int, message: str) -> Exception:
     if status_code in (401, 403, 429) or status_code >= 500:
         return UpstreamServiceError(message)
     return ValidationError(message)
-
-
-class UnreadableReply(Exception):
-    """A model answered, and the answer could not be read — not a provider that is down.
-
-    Kept apart from `UpstreamServiceError` because the two send an investigation to
-    opposite places. On 2026-09-02 the analyst answered a real session with valid JSON
-    and valid findings, the parser refused the reply over a contradiction it had no rule
-    for, and the route raised the upstream error: the log said the provider had failed,
-    the team heard that the service was unavailable, and a whole investigation went
-    looking for an outage that never happened. Whoever raises this has the reply in
-    hand; the parser that refused it is expected to have logged it with the reason.
-
-    Still a 502: the reply *is* an invalid response from upstream, in the sense that
-    status code has always had. Only the code and the log change.
-    """
 
 
 class TranscriptionDefect(Exception):
@@ -439,6 +429,13 @@ async def handle_upload_not_confirmed(_request: Request, exc: UploadNotConfirmed
     )
 
 
+async def handle_pause_cannot_move(_request: Request, exc: PauseCannotMove) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), exc.code),
+    )
+
+
 async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -503,14 +500,6 @@ async def handle_upstream_service_error(
     return JSONResponse(
         status_code=status.HTTP_502_BAD_GATEWAY,
         content=_error_body(str(exc), ERROR_CODE_UPSTREAM),
-    )
-
-
-async def handle_unreadable_reply(_request: Request, exc: UnreadableReply) -> JSONResponse:
-    logger.warning("Model reply could not be read: %s", exc)
-    return JSONResponse(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        content=_error_body(str(exc), ERROR_CODE_UNREADABLE_REPLY),
     )
 
 
@@ -606,12 +595,12 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
     app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
+    app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
     app.add_exception_handler(StoredAnswer, handle_stored_answer)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
-    app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
     app.add_exception_handler(ElementLabelsBroken, handle_element_labels_broken)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)

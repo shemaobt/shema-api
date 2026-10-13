@@ -1,20 +1,5 @@
-"""ENG-1145 — an addition or an unclear that names no readable frase is not raised.
-
-Marcia's rule ties every finding to the **Chunk** it names. A missing element still lands
-without one — the story simply has not been told that far, and the team is sent back to the
-rehearsal for it. An addition or an unclear naming no chunk at all, or one outside the reading
-the analyst was given, names nothing the team can act on: it is dropped with a log line, the
-way the retired evidence kind already is, and the rest of the reply is still read.
-
-Henok decided on 2026-09-25 that only the no-stretch branch of `closing_block` retires: an
-**unclear** the analyst still manages to land on a stretch keeps `CLOSING_SPOKEN`, because the
-boundary question it asks is unaffected by this rule. `points_at_a_stretch` already excludes
-`unclear` from the two-microphones screen, and that stays.
-"""
-
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import httpx
@@ -37,8 +22,6 @@ from tests.room_harness import (
     the_analyst_is_scripted,
     the_room_speaks,
 )
-
-PARSER_LOGGER = "app.services.internalization_room.back_translation"
 
 ADDITION_WITH_NO_FRASE = "Rute foi junto (o analista não deu o número da frase)"
 UNCLEAR_OUT_OF_RANGE = "não deu para ouvir (o analista apontou uma frase que não existe)"
@@ -78,37 +61,25 @@ def _the_reply_with_two_unreadable_frases() -> dict[str, Any]:
     }
 
 
-async def test_an_addition_and_an_unclear_with_no_readable_frase_are_dropped(
+async def test_an_addition_and_an_unclear_with_no_readable_frase_reach_the_team_unnumbered(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     analyst: ScriptedAnalyst,
     room: Room,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """T1, the ticket's test. Only the missing reaches the tablet, and the log names the rest.
-
-    Three stretches told, an addition naming no frase, an unclear naming frase 99 (there are
-    only three), and a missing after the last one. Both unreadable findings are dropped; the
-    missing is the only one the verdict carries, and it closes on the speech that sends the
-    team back to the rehearsal rather than one of the two-microphone screens.
-    """
     session, _parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [_the_reply_with_two_unreadable_frases()]
 
-    with caplog.at_level(logging.WARNING, logger=PARSER_LOGGER):
-        answered = await _finish(client, db_session, session.id)
+    answered = await _finish(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
     body = answered.json()
-    assert body["finding_kind"] == FindingKind.MISSING.value
-    assert body["finding_segment_id"] is None, "sem frase legível, a falta não tem endereço"
-    assert body["findings_remaining"] == 1
+    assert body["finding_kind"] == FindingKind.ADDITION.value, (
+        "o acréscimo sem frase legível era jogado fora e a falta falava no lugar dele"
+    )
+    assert body["finding_segment_id"] is None
+    assert body["findings_remaining"] == 3
     assert body["checked"] is False
-
-    assert (
-        f"named addition with no readable frase (note: {ADDITION_WITH_NO_FRASE})" in caplog.text
-    ), "a linha do próprio log nomeia o tipo e traz a nota, antes de ecoar a resposta bruta"
-    assert f"named unclear with no readable frase (note: {UNCLEAR_OUT_OF_RANGE})" in caplog.text
 
 
 async def test_an_addition_naming_its_frase_still_answers_on_its_stretch(
@@ -132,37 +103,31 @@ async def test_an_addition_naming_its_frase_still_answers_on_its_stretch(
     assert body["checked"] is False
 
 
-async def test_a_reply_that_drops_every_finding_it_named_is_refused(
+async def test_a_reply_whose_every_finding_names_no_readable_frase_is_still_read(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     analyst: ScriptedAnalyst,
     room: Room,
 ) -> None:
-    """T5. Henok's decision on send-back 1: a reply reduced to nothing confers nothing.
-
-    An addition naming no frase and an unclear naming frase 0 (out of range): both are
-    dropped, and nothing else was named, so the reply is unusable — refused the way a
-    malformed reply is, never read as the clean telling-back that blesses the passage. Without
-    this rule `[addition no chunk, unclear chunk 0]` came back `checked: true`.
-    """
     session, _parts = await rehearsed_in_parts(db_session, 3)
-    unusable_reply = {
-        "findings": [
-            {"kind": "addition", "note": ADDITION_WITH_NO_FRASE},
-            {"kind": "unclear", "note": UNCLEAR_OUT_OF_RANGE, "chunk": 0},
-        ]
-    }
-    analyst.readings = [unusable_reply, unusable_reply]
+    analyst.readings = [
+        {
+            "findings": [
+                {"kind": "addition", "note": ADDITION_WITH_NO_FRASE},
+                {"kind": "unclear", "note": UNCLEAR_OUT_OF_RANGE, "chunk": 0},
+            ]
+        }
+    ]
 
     answered = await _finish(client, db_session, session.id)
 
-    assert answered.status_code == 502, answered.text
-    assert answered.json()["code"] == "UNREADABLE_REPLY"
-    assert room.briefs == [], "sem leitura utilizável não há veredito: o Falante não é chamado"
-
-    again = await _finish(client, db_session, session.id)
-    assert again.status_code == 502, "nada foi salvo: o próximo terminei pergunta de novo"
-    assert analyst.readings == [], "as duas leituras consumiram a fila do analista"
+    assert answered.status_code == 200, (
+        "uma resposta cujos achados não tinham frase legível era recusada como ilegível"
+    )
+    body = answered.json()
+    assert body["finding_kind"] == FindingKind.ADDITION.value
+    assert body["findings_remaining"] == 2
+    assert body["checked"] is False
 
 
 async def test_a_reply_naming_no_finding_at_all_still_confers(
@@ -181,13 +146,12 @@ async def test_a_reply_naming_no_finding_at_all_still_confers(
     assert answered.json()["checked"] is True
 
 
-async def test_the_retroverification_file_lists_none_of_what_was_dropped(
+async def test_the_retroverification_file_lists_what_named_no_readable_frase(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     analyst: ScriptedAnalyst,
     room: Room,
 ) -> None:
-    """T4. What the room dropped reaches neither the tablet nor the consultant's file."""
     session, _parts = await rehearsed_in_parts(db_session, 3)
     analyst.readings = [_the_reply_with_two_unreadable_frases()]
 
@@ -195,7 +159,11 @@ async def test_the_retroverification_file_lists_none_of_what_was_dropped(
 
     file = await retroverification_file(db_session, await get_session(db_session, session.id))
 
-    assert [finding.kind for finding in file.findings] == [FindingKind.MISSING.value]
+    assert [finding.kind for finding in file.findings] == [
+        FindingKind.ADDITION.value,
+        FindingKind.UNCLEAR.value,
+        FindingKind.MISSING.value,
+    ], "o arquivo do consultor perdia o que o analista disse sem número de frase"
     dumped = file.model_dump_json()
-    assert ADDITION_WITH_NO_FRASE not in dumped
-    assert UNCLEAR_OUT_OF_RANGE not in dumped
+    assert ADDITION_WITH_NO_FRASE in dumped
+    assert UNCLEAR_OUT_OF_RANGE in dumped

@@ -30,7 +30,6 @@ from app.services.internalization_room.canon import (
     parse_map,
     titles,
 )
-from app.services.internalization_room.comprehension import checkpoints
 
 
 def forget_the_canon() -> None:
@@ -47,9 +46,10 @@ def forget_the_canon() -> None:
     names._names_list.cache_clear()
     names._passage_labels.cache_clear()
     names._beings_by_scene.cache_clear()
+    names.things_by_scene.cache_clear()
+    names.verse_ranges.cache_clear()
     names._glosses.cache_clear()
     titles._portuguese.cache_clear()
-    checkpoints.checkpoints_for.cache_clear()
 
 
 def the_caches_the_loader_holds() -> list[tuple[str, Any]]:

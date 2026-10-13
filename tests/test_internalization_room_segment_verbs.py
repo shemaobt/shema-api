@@ -25,7 +25,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSessionStatus, IRTake, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING, create_session
+from app.services.internalization_room.sessions import (
+    RETELLS_BEFORE_A_WARNING,
+    back_translation_of,
+    create_session,
+    get_session,
+    save_back_translation,
+)
 from app.services.platform.storage import StoredObject
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.room_harness import heard_every_part, press_terminei
@@ -548,6 +554,13 @@ async def test_the_pieces_keep_the_pass_the_stretch_they_came_from_was_told_on(
     """
     session_id = await _session(client)
     take_id = await _rehearse(client, session_id, b"o ensaio")
+    client.said.append("contado pela primeira vez")  # type: ignore[attr-defined]
+    first = await _tell(client, session_id, take_id, 0, 20000, b"primeira vez")
+    assert first.status_code == 200, first.text
+    session = await get_session(db_session, session_id)
+    state = back_translation_of(session)
+    state.analysed_segment_ids = [one["segment_id"] for one in await _units(client, session_id)]
+    await save_back_translation(db_session, session, state)
     client.said.append("contado de novo depois de um achado")  # type: ignore[attr-defined]
     retold = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",

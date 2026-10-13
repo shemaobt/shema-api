@@ -30,7 +30,7 @@ from pathlib import Path
 
 from app.models.internalization_room import CoverageLegend, LabelledElement
 from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
-from app.services.internalization_room.canon.kept import canon_path
+from app.services.internalization_room.canon.kept import canon_path, per_canon
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.canon.titles import scene_title
 from app.services.internalization_room.coverage import CoverageStatus
@@ -300,7 +300,7 @@ def _named_group(
     return resolved
 
 
-@lru_cache(maxsize=8)
+@per_canon(maxsize=8)
 def _known_pericopes(book: str) -> frozenset[str]:
     """Which passages the canon has, asked once rather than by catching the refusal.
 

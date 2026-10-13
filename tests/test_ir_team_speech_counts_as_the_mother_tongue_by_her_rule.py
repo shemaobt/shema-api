@@ -3,7 +3,7 @@
 Three conditions and nothing else: another language heard, the session's language heard under
 the mother-tongue floor, or a take with no words lasting twenty seconds or more. Every other
 take reaches the Guide as the team's words, and a short take with no words draws the D line.
-A take the recognizer refused is a miss, never the mother tongue, and a length the probe
+A take the recognizer refused is an outage, never the mother tongue, and a length the probe
 cannot give in time is an unknown length, never an error.
 """
 
@@ -24,12 +24,8 @@ from app.core.config import Settings, get_settings
 from app.db.models.internalization_room import IRSession
 from app.services import internalization_room as room
 from app.services.internalization_room import hearing
-from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.sessions import (
-    append_exchange,
-    comprehension_of,
     create_session,
-    save_comprehension,
 )
 from tests.deploy_harness import deploy_env_vars
 from tests.device_harness import TABLET_TEAM
@@ -39,20 +35,18 @@ from tests.hearing_harness import (
     the_loop_clock_passes,
     the_probe_fails,
     the_probe_never_answers,
+    the_recognizer_answers_with_status,
     the_take_lasts,
     the_transcriber_hears,
     the_transcriber_hears_no_words,
-    the_transcriber_refuses,
 )
 from tests.release_harness import PREFIX
 from tests.room_harness import room_client, the_room_speaks
 from tests.text_seam_harness import GOLDEN, RUNNER_KEY, ScriptedAgent, the_models_answer
-from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_room_agent_is
+from tests.turn_harness import P, settings, the_room_agent_is
 
 PORTUGUESE = "Noemi voltou para Belém com Rute no tempo da colheita"
 TERENA_AS_SPANISH = "koeti yoko vitukeovo enepone itukovo"
-INVITATION = "Agora ensaiem esta cena juntos na língua de vocês; quando terminarem, digam: pronto."
-CONVERSATION = "Contem mais sobre o que aconteceu com essas pessoas."
 
 
 def _note(seconds: int) -> str:
@@ -104,6 +98,12 @@ async def _the_team_sends_a_take(tablet: httpx.AsyncClient, session: IRSession) 
     assert answered.status_code == 200, answered.text
     reply: dict[str, Any] = answered.json()
     return reply
+
+
+async def _the_stored_messages(db_session: AsyncSession, session_id: str) -> list[Any]:
+    db_session.expire_all()
+    stored = await room.get_session(db_session, session_id)
+    return list(stored.messages or [])
 
 
 async def _the_turns_record(db_session: AsyncSession, session_id: str) -> dict[str, Any]:
@@ -176,6 +176,24 @@ async def test_a_take_heard_as_portuguese_exactly_at_the_floor_reaches_the_guide
     await _the_team_sends_a_take(tablet, session)
 
     assert guide.guide_inputs == [PORTUGUESE]
+
+
+async def test_three_portuguese_words_heard_at_0_40_reach_the_guide_as_those_three_words(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_transcriber_hears(monkeypatch, "Noemi voltou sozinha", "pt", 0.40)
+    the_take_lasts(monkeypatch, 2_000)
+
+    reply = await _the_team_sends_a_take(tablet, session)
+
+    assert guide.guide_inputs == ["Noemi voltou sozinha"], (
+        "uma fala curta em português abaixo da quase certeza virava nota de língua materna"
+    )
+    assert reply["fixed_line"] == ""
 
 
 async def test_clear_portuguese_at_0_9_reaches_the_guide_as_the_teams_words_and_is_never_answered_with_a_d_line(  # noqa: E501
@@ -302,28 +320,52 @@ async def test_the_recognizers_answer_with_no_words_still_names_the_language_it_
     assert (heard.value.language_code, heard.value.language_probability) == ("eng", 0.65)
 
 
-async def test_a_take_the_recognizer_refused_is_answered_with_d_1_and_never_counts_as_the_mother_tongue(  # noqa: E501
+async def test_a_take_the_recognizer_refused_is_an_outage_never_d_1_and_never_the_mother_tongue(
     db_session: AsyncSession,
     tablet: httpx.AsyncClient,
     guide: ScriptedAgent,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = await _an_open_session(db_session, tablet, guide)
-    the_transcriber_refuses(monkeypatch)
+    before = await _the_stored_messages(db_session, session.id)
+    the_recognizer_answers_with_status(monkeypatch, 422)
     the_take_lasts(monkeypatch, 25_000)
 
-    reply = await _the_team_sends_a_take(tablet, session)
-
-    assert reply["fixed_line"] == "D0", (
-        "um STT mal configurado recusava todo take e cada take longo virava língua materna"
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        files={"file": ("ensaio.m4a", b"audio", "audio/m4a")},
     )
+
+    assert answered.status_code == 502, (
+        "um STT que recusava o take virava D-1, e a sala falava como se ninguém tivesse falado"
+    )
+    assert answered.json()["code"] == "UPSTREAM_ERROR"
     assert guide.guide_inputs == []
-    assert await _the_turns_record(db_session, session.id) == {
-        "language": None,
-        "language_probability": None,
-        "mother_tongue": False,
-        "take_ms": None,
-    }
+    assert await _the_stored_messages(db_session, session.id) == before, (
+        "uma queda do STT gravava a vez da equipe como inaudível"
+    )
+
+
+async def test_an_empty_recording_that_reaches_the_server_is_answered_with_d_1_not_an_outage(
+    db_session: AsyncSession,
+    tablet: httpx.AsyncClient,
+    guide: ScriptedAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _an_open_session(db_session, tablet, guide)
+    the_recognizer_answers_with_status(monkeypatch, 200)
+    the_take_lasts(monkeypatch, 25_000)
+
+    answered = await tablet.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        files={"file": ("ensaio.m4a", b"", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200, (
+        f"uma gravação vazia chegava ao STT como se ele tivesse caído: {answered.text[:300]}"
+    )
+    assert answered.json()["fixed_line"] == "D0"
+    assert guide.guide_inputs == []
 
 
 async def test_a_take_whose_only_content_is_pause_for_30_seconds_reaches_the_guide_as_the_mother_tongue_note_saying_30_seconds(  # noqa: E501
@@ -616,41 +658,4 @@ async def test_a_low_word_confidence_portuguese_answer_is_handed_to_the_coverage
 
     assert reply["classification_pending"] is True, (
         "uma resposta em português com confiança baixa por palavra nunca chegava ao classificador"
-    )
-
-
-async def _a_heard_turn(db_session: AsyncSession, session: IRSession) -> None:
-    speech = await hearing.heard_speech(b"audio", language=session.language, settings=settings())
-    turn = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=speech,
-        opening=False,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=settings(),
-    )
-    await save_comprehension(db_session, session, turn.state)
-    await append_exchange(
-        db_session, session, team_utterance=speech.text, guide_response=turn.outcome.speech
-    )
-
-
-async def test_a_teams_report_of_a_finished_rehearsal_heard_with_low_word_confidence_credits_the_scene_the_guide_invited(  # noqa: E501
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    the_models_answer(monkeypatch, INVITATION, None, CONVERSATION, None)
-    the_take_lasts(monkeypatch, 4_000)
-    session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="abertura"
-    )
-    the_transcriber_hears(monkeypatch, "uma mulher volta para o seu povo", "pt", 0.9)
-    await _a_heard_turn(db_session, session)
-
-    the_transcriber_hears(monkeypatch, "pronto, terminamos", "pt", 0.9, transcript_confidence=0.1)
-    await _a_heard_turn(db_session, session)
-
-    assert comprehension_of(session).practiced_scene_ids == ["S1"], (
-        "o relato de ensaio terminado ouvido com confiança baixa por palavra não creditava a cena"
     )

@@ -101,39 +101,6 @@ async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
     return user, project, await auth_header(db, user)
 
 
-def _ready_comprehension(pericope: str):
-    """Calibration, evidence, practice and consent — everything the floor no longer implies.
-
-    ``session_is_done`` stopped being the coverage floor alone: it folds in semantic
-    readiness and the team's recording consent, so that a bridge-limited team is not judged
-    on Portuguese output. A scenario about *closing* has to carry all of it now.
-    """
-    from app.services.internalization_room.comprehension.checkpoints import (
-        checkpoints_for,
-        scene_ids_for,
-    )
-    from app.services.internalization_room.comprehension.evidence import (
-        EvidenceMethod,
-        EvidenceObservation,
-        EvidenceResult,
-    )
-    from app.services.internalization_room.comprehension.state import ComprehensionState
-
-    return ComprehensionState(
-        ledger=[
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-            )
-            for index, checkpoint in enumerate(checkpoints_for(pericope))
-        ],
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
-
-
 async def a_session(
     db: AsyncSession,
     *,
@@ -141,7 +108,6 @@ async def a_session(
     pericope: str = P,
     opened_at: datetime | None = None,
     updated_at: datetime | None = None,
-    ready_to_close: bool = False,
     entered: bool = True,
 ):
     """A conversation, optionally moved back in time so it can be an old one.
@@ -156,8 +122,6 @@ async def a_session(
         pericope=pericope,
         project_id=project_id,
     )
-    if ready_to_close:
-        session = await room.save_comprehension(db, session, _ready_comprehension(pericope))
     if entered:
         session = await room.append_exchange(db, session, team_utterance="oi", guide_response="ok")
     if opened_at is not None:
@@ -410,7 +374,7 @@ async def test_a_conversation_closed_by_the_floor_reads_complete_with_its_length
     client, db_session
 ):
     _user, project, headers = await a_facilitator(db_session)
-    session = await a_session(db_session, project_id=project.id, ready_to_close=True)
+    session = await a_session(db_session, project_id=project.id)
     session.created_at = datetime.now(UTC) - timedelta(minutes=34)
     await db_session.commit()
 
@@ -602,7 +566,7 @@ async def test_a_session_that_ended_is_never_reported_as_still_halted(client, db
     promises, not an artifact of which paths exist today.
     """
     _user, project, headers = await a_facilitator(db_session)
-    completed = await a_session(db_session, project_id=project.id, ready_to_close=True)
+    completed = await a_session(db_session, project_id=project.id)
     await room.apply_coverage(db_session, completed.id, dict.fromkeys(element_keys(P), ENGAGED))
 
     [card] = await read_history(client, project.id, headers)

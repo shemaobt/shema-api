@@ -672,5 +672,5 @@ async def test_a_frase_with_an_annotation_among_its_words_is_stored_and_read_wit
     assert [stretch.transcript for stretch in told] == ["Noemi disse às duas noras…"], (
         "o trecho guardava a frase crua, com o colchete do transcritor como se fosse fala da equipe"
     )
-    assert "1. Noemi disse às duas noras…" in seen[0]
+    assert "[frase 1 — a parte 2 — Primeiro apelo e recusa] Noemi disse às duas noras…" in seen[0]
     assert "[silêncio]" not in seen[0], "o analista recebia a anotação como palavras da equipe"

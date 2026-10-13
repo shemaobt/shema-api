@@ -109,8 +109,9 @@ class IRSession(Base):
     #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
     comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
-    #: This team's status on each earlier passage of the book, by pericope id, stamped once
-    #: when the session is created: read by the room, or handed in by her runner. Null on a
+    #: This team's status on each earlier passage of the book, by pericope id, stamped
+    #: when the session is created and read again after a turn once it is five minutes old:
+    #: read by the room, or handed in by her runner. Null on a
     #: book's first passage, on a Panorama and for a caller with no team.
     earlier_passages: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
@@ -161,12 +162,12 @@ class IRSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    #: Backs the optimistic check on ``messages`` and ``comprehension`` (ENG-643). Both are
-    #: whole-value JSON writes computed from whatever the writer read, so two turns landing
-    #: together for one session would otherwise have the later commit erase the evidence the
-    #: earlier one had just added, with neither writer ever told. `coverage_state` needs no
-    #: such guard — its merge is monotonic by rank (`coverage.furthest`) and cannot regress
-    #: under the same race.
+    #: Backs the optimistic check on ``messages`` (ENG-643). It is a whole-value JSON write
+    #: computed from whatever the writer read, so two turns landing together for one session
+    #: would otherwise have the later commit erase the evidence the earlier one had just
+    #: added, with neither writer ever told. `coverage_state` is not guarded here: a monotonic
+    #: merge still loses a rival's beads when its stale result is written whole, so
+    #: `apply_coverage` writes it only if it still holds what was read, without moving this.
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     #: The **Archive** a Zerar stamped this row with, null while it is live (ADR 0047). The
     #: room's doors that pick or list a team's work read live rows only; the facilitator's

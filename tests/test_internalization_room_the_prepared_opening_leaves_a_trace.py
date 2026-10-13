@@ -147,6 +147,36 @@ async def test_an_opening_whose_validator_reply_could_not_be_read_is_not_logged_
     assert record.__dict__["reason"] == "unreadable Validator reply"
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"verdict": "approve", "issues": [{"problem": "imported_knowledge"}]},
+        {"verdict": "correct", "corrected_response": "  ", "issues": []},
+    ],
+    ids=["a verdict word the room never named", "a correction with nothing in it"],
+)
+async def test_a_reply_that_names_a_verdict_but_cannot_be_used_is_still_unreadable(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    reply: dict[str, object],
+) -> None:
+    db_session.add(_panorama())
+    await db_session.commit()
+    agent = the_agent_answers(monkeypatch, FakeAgent(verdicts=[reply]))
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        await prepare_opening("panorama-1", pericope="P01")
+
+    assert agent.calls == ["guide", "validator"]
+    (record,) = _warnings(caplog)
+    assert record.getMessage() == (
+        "Prepared opening fell to the fail-safe on an unreadable Validator reply for session "
+        "panorama-1, pericope P01: the draft was never judged"
+    ), "a reply the room refused was logged as the Validator turning the draft back"
+    assert record.__dict__["reason"] == "unreadable Validator reply"
+
+
 async def test_an_opening_the_validator_refused_is_still_logged_as_the_validators(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

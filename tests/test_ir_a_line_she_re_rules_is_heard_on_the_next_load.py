@@ -436,16 +436,18 @@ async def test_the_sentence_line_she_kept_in_its_place_is_never_spoken(
     )
 
 
+@pytest.mark.parametrize("language", ["pt", "en"])
 @pytest.mark.parametrize("line", ["B0", "C1", "H0", "I0", "Z0", "F3", "F", "Fx", "f0"])
 async def test_a_line_that_is_not_in_her_file_is_never_voiced(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
     elevenlabs: ElevenLabs,
     line: str,
+    language: str,
 ) -> None:
     async with room_client(db_session, monkeypatch) as client:
         asked = await client.get(
-            f"{PREFIX}/fixed-lines/{line}", params={"language": "pt"}, headers=THE_TABLET
+            f"{PREFIX}/fixed-lines/{line}", params={"language": language}, headers=THE_TABLET
         )
 
     assert asked.status_code == 404, asked.text

@@ -503,6 +503,21 @@ async def test_a_divide_a_replace_and_a_chunk_nudge_stretches(
         assert await nudges_heard(desk) == ["stretches"], "a correção não chegou à Mesa"
 
 
+async def test_a_restart_of_the_translation_nudges_stretches(
+    desk_app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, team: Team
+) -> None:
+    session_id = await a_session(db_session, team)
+    take_id = await rehearse(client, team, session_id)
+    await tell(client, team, session_id, take_id, 0, 9000)
+
+    async with the_stream(desk_app, team.team_id, team.desk) as desk:
+        restarted = await client.post(
+            f"{IR}/sessions/{session_id}/back-translation/restart", headers=team.tablet
+        )
+        assert restarted.status_code == 200, restarted.text
+        assert await nudges_heard(desk) == ["stretches"], "o recomeço não chegou à Mesa"
+
+
 async def test_a_replace_nobody_could_make_out_changes_nothing_and_nudges_nothing(
     desk_app: FastAPI,
     client: httpx.AsyncClient,

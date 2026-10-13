@@ -300,6 +300,7 @@ async def test_a_consultant_reads_team_bs_conversation_turns_takes_release_and_r
         f"{IR}/facilitator/sessions/{session}/release",
         f"{IR}/facilitator/sessions/{session}/releases/1",
         f"{IR}/facilitator/sessions/{session}/retroverificacao",
+        f"{IR}/facilitator/sessions/{session}/coverage",
     ]
 
     for url in reads:
@@ -437,6 +438,7 @@ async def test_a_facilitator_of_a_without_consultant_cannot_reach_team_b(client,
         (f"{IR}/facilitator/questions", {"params": {"team_id": team.id}}),
         (f"{IR}/facilitator/questions/{team.question}/audio", {}),
         (f"{IR}/facilitator/sessions/{team.session}/conversation", {}),
+        (f"{IR}/facilitator/sessions/{team.session}/coverage", {}),
         (f"{IR}/facilitator/sessions/{team.session}/takes", {}),
         (f"{IR}/facilitator/takes/{team.take}/audio", {}),
     ]
