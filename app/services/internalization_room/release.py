@@ -220,7 +220,7 @@ def _attempt_view(attempt: SupersededAttempt) -> dict[str, Any]:
     is untouched: it is the record of what that reading stood on (ADR 0017).
     """
     return {
-        **attempt.model_dump(mode="json", exclude={"findings"}),
+        **attempt.model_dump(mode="json", exclude={"findings", "checks"}),
         "findings": [_finding_view(finding) for finding in attempt.findings],
     }
 

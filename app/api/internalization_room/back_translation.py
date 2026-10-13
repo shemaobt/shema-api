@@ -459,6 +459,6 @@ async def _finished(
         findings=finding_views(state.findings),
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
-        check_at=state.checks[-1].at,
+        check_at=state.checks[-1].at if state.checks else None,
         named_nuance=named_nuance_view(state),
     )

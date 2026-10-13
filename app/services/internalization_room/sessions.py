@@ -40,6 +40,7 @@ from app.services.internalization_room import halt, turn_instructions
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     CheckRound,
+    SupersededAttempt,
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
@@ -64,6 +65,7 @@ from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
     final_segments,
+    retire_every_segment,
     retire_the_segments_of,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
@@ -1314,3 +1316,27 @@ async def retire_the_part_recorded_again(
     await save_back_translation(db, session, state, commit=False, rule=recorded_again)
     await db.commit()
     await db.refresh(session)
+
+
+async def start_the_translation_over(db: AsyncSession, session: IRSession) -> None:
+    async def started_over(standing: BackTranslationState) -> None:
+        archived = standing.superseded[-1]
+        archived.findings = [
+            *archived.findings,
+            *(one for one in standing.findings if one not in archived.findings),
+        ]
+        rounds = {one.at: one for one in archived.checks} | {one.at: one for one in standing.checks}
+        archived.checks = list(rounds.values())
+        standing.findings = []
+        standing.nuances = []
+        standing.checks = []
+        standing.checked = False
+        standing.checked_at = None
+        standing.verdict = None
+        standing.analysed_segment_ids = None
+
+    state = back_translation_of(session)
+    state.superseded = [*state.superseded, SupersededAttempt()]
+    await started_over(state)
+    await retire_every_segment(db, session.id)
+    await save_back_translation(db, session, state, rule=started_over)

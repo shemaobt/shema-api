@@ -53,6 +53,9 @@ ERROR_CODE_PANORAMA_RECORDS_NOTHING: Final = "PANORAMA_RECORDS_NOTHING"
 #: this from any other 422 by the words.
 ERROR_CODE_WORDLESS_TELLING: Final = "WORDLESS_TELLING"
 ERROR_CODE_PASSAGE_CLOSED: Final = "PASSAGE_CLOSED"
+ERROR_CODE_PAUSE_ONLY_ON_THE_LAST_FRASE: Final = "PAUSE_ONLY_ON_THE_LAST_FRASE"
+ERROR_CODE_PAUSE_CANNOT_STAND_THERE: Final = "PAUSE_CANNOT_STAND_THERE"
+ERROR_CODE_PAUSE_PAST_THE_END: Final = "PAUSE_PAST_THE_END"
 ERROR_CODE_IDEMPOTENCY_KEY_IN_FLIGHT: Final = "IDEMPOTENCY_KEY_IN_FLIGHT"
 ERROR_CODE_IDEMPOTENCY_KEY_REUSED: Final = "IDEMPOTENCY_KEY_REUSED"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
@@ -220,6 +223,12 @@ class StretchNoLongerCounts(ValidationError):
 
     Its own exception for the reason ERROR_CODE_STRETCH_NO_LONGER_COUNTS gives; still a 400.
     """
+
+
+class PauseCannotMove(ValidationError):
+    def __init__(self, detail: str, code: str) -> None:
+        super().__init__(detail)
+        self.code = code
 
 
 class WordlessTelling(ValidationError):
@@ -420,6 +429,13 @@ async def handle_upload_not_confirmed(_request: Request, exc: UploadNotConfirmed
     )
 
 
+async def handle_pause_cannot_move(_request: Request, exc: PauseCannotMove) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=_error_body(str(exc), exc.code),
+    )
+
+
 async def handle_wordless_telling(_request: Request, exc: WordlessTelling) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -579,6 +595,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StretchNoLongerCounts, handle_stretch_no_longer_counts)  # type: ignore[arg-type]
     app.add_exception_handler(PanoramaRecordsNothing, handle_panorama_records_nothing)  # type: ignore[arg-type]
     app.add_exception_handler(WordlessTelling, handle_wordless_telling)  # type: ignore[arg-type]
+    app.add_exception_handler(PauseCannotMove, handle_pause_cannot_move)  # type: ignore[arg-type]
     app.add_exception_handler(UploadNotConfirmed, handle_upload_not_confirmed)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyInFlight, handle_idempotency_key_in_flight)  # type: ignore[arg-type]
     app.add_exception_handler(IdempotencyKeyReused, handle_idempotency_key_reused)  # type: ignore[arg-type]
