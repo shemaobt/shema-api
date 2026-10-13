@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -61,16 +60,6 @@ def _the_kept_p01_names_its_first_scene_its_own_way(tree: Path) -> None:
     page.write_text(told.replace(VENDORED_FIRST_SCENE, KEPT_FIRST_SCENE), encoding="utf-8")
 
 
-class Speaker:
-    def __init__(self, said: str) -> None:
-        self.said = said
-
-    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return self.said
-
-
 async def _a_panorama_with_a_line_ready_for_p01(db: AsyncSession) -> IRSession:
     panorama = await create_session(db, pericope="OV-Ruth", language="pt")
     panorama.prepared_speech = PREPARED
@@ -95,7 +84,7 @@ async def test_a_verdict_pressed_on_the_tablet_moves_the_moment_by_the_scenes_of
 ) -> None:
     the_analyst_reads(monkeypatch)
     the_room_speaks(monkeypatch)
-    the_room_agent_is(monkeypatch, turn=Speaker(INTO_THE_LAST_SCENE_PT))
+    the_room_agent_is(monkeypatch, turn=ScriptedAgent([INTO_THE_LAST_SCENE_PT]))
     project, credential = await a_claimed_device(db_session)
     session, _parts = await rehearsed_in_parts(db_session, 2, project_id=project.id)
     the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_map_has_no_last_scene(P))
@@ -116,7 +105,7 @@ async def test_a_verdict_played_through_the_text_seam_moves_the_moment_by_the_sc
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     the_analyst_reads(monkeypatch)
-    the_room_agent_is(monkeypatch, turn=Speaker(INTO_THE_LAST_SCENE_EN))
+    the_room_agent_is(monkeypatch, turn=ScriptedAgent([INTO_THE_LAST_SCENE_EN]))
     nothing_is_read_ahead(monkeypatch)
 
     async def _never_voiced(text: str, **_: Any) -> None:
