@@ -289,14 +289,6 @@ def read_the_map_again() -> str:
     return "the map"
 """
 
-A_CACHE_UNDER_THE_CANON = """\
-from functools import lru_cache
-
-
-@lru_cache(maxsize=1)
-def read_the_map_again() -> str:
-    return "the map"
-"""
 
 A_BARE_CACHE_NOBODY_LISTED = """\
 import functools
@@ -425,7 +417,7 @@ def test_a_cache_that_is_listed_by_name_is_not_reported(tmp_path: Path) -> None:
     ("at", "source"),
     [
         ("services/a_new_cache.py", A_CACHE_THE_LOADER_FINDS_BY_ITSELF),
-        ("services/internalization_room/canon/a_new_cache.py", A_CACHE_UNDER_THE_CANON),
+        ("services/internalization_room/canon/a_new_cache.py", A_CACHE_NOBODY_LISTED),
     ],
     ids=["declared per canon", "declared under the canon package"],
 )
