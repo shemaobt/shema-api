@@ -3,7 +3,9 @@ r"""Marcia's `checkRound`, ported whole as pure functions over one round's resul
 Read from `src/golden/bt.ts` in `shemaobt/Tripod-Internalization` on 2026-09-11. The rules are
 hers and so are the failure messages, in her English, because a report of ours is read beside
 one of hers and a rule renamed on our side is a rule the two stacks no longer share. No check
-is added, none is dropped, none is loosened.
+is added, none is dropped, none is loosened. One came after that reading: `spoken_whole_sentence`,
+which she added on 2026-09-21 with the Ensaio Final and which is read from `src/golden/btChecks.ts`
+at her freeze, 18fa7c4.
 
 Her regexes carry JavaScript's `u` flag, which Python's `re` is always in, and her
 `(?<!\p{L})…(?!\p{L})` boundaries have no `\p{L}` here. `\b` is the translation: it is
@@ -45,6 +47,9 @@ _TRADU = re.compile(r"tradu", re.IGNORECASE)
 _THE_MAP = re.compile(r"\bo mapa\b", re.IGNORECASE)
 _BLESSING = re.compile(r"vão com deus|deus (?:os|te) abençoe|amém", re.IGNORECASE)
 _A_FRASE = re.compile(r"frase\s+\d+", re.IGNORECASE)
+_A_PART_AGAIN = re.compile(
+    r"grav\w+ (?:de novo )?(?:essa|a) parte|regrav\w+ (?:essa|a) (?:parte|cena)", re.IGNORECASE
+)
 
 
 def _js(flag: bool) -> str:
@@ -181,6 +186,29 @@ def asks_translation(spoken: str) -> list[str]:
     return ["the voice does not ask whether it entered in the translation ('na tradução')"]
 
 
+def asks_the_whole_sentence(spoken: str, number: int) -> list[str]:
+    asked = re.search(
+        rf"regrav\w+[^.]*?\bfrase(?:\s+{number}\b|(?!\s+\d))[^.]*?\binteira"
+        rf"|regrav\w+\s+inteira\s+a\s+frase|\bfrase\s+{number}\s+inteira"
+        r"|a frase toda|nunca só um pedaço",
+        spoken,
+        re.IGNORECASE,
+    )
+    fails = []
+    if not asked:
+        fails.append(
+            f'the voice does not ask to record frase {number} again WHOLE ("regravem a frase '
+            f'{number} inteira" / "essa frase inteira" / "a frase toda")'
+        )
+    part = _A_PART_AGAIN.search(spoken)
+    if part:
+        fails.append(
+            "the voice sends the team to a PART on a recording that can take a sentence: "
+            f'"{part.group(0)}"'
+        )
+    return fails
+
+
 def one_frase_per_turn(spoken: str) -> list[str]:
     named = list(dict.fromkeys(said.lower() for said in _A_FRASE.findall(spoken)))
     if len(named) <= 1:
@@ -220,5 +248,7 @@ def check_round(result: dict[str, Any], expect: dict[str, Any]) -> list[str]:
         fails += spoken_must_not_match(spoken, expect["spoken_must_not_match"])
     if expect.get("spoken_asks_audio_or_explanation"):
         fails += asks_translation(spoken)
+    if expect.get("spoken_whole_sentence") is not None:
+        fails += asks_the_whole_sentence(spoken, expect["spoken_whole_sentence"])
     fails += one_frase_per_turn(spoken)
     return fails
