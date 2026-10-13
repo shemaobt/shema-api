@@ -185,7 +185,6 @@ async def test_the_opening_written_ahead_during_a_panorama_is_asked_with_her_not
             status=IRSessionStatus.IN_PROGRESS,
             messages=[],
             coverage_state={},
-            kept_takes={},
             back_translation={},
             language="en",
         )

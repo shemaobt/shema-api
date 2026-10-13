@@ -395,7 +395,6 @@ async def _minted(
         messages=[],
         after_panorama=after_panorama,
         coverage_state={} if is_panorama(pericope) else initial_state(pericope),
-        kept_takes={},
         back_translation={},
         language=language,
         comprehension={},

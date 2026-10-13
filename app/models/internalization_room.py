@@ -849,6 +849,27 @@ class TakesResponse(BaseModel):
     takes: list[TakeResponse]
 
 
+class SceneRehearsalView(BaseModel):
+    """A scene rehearsal as any tablet of the team resumes it, with no words and no guess."""
+
+    rehearsal_id: str
+    session_id: str
+    pericope: str
+    n: int
+    scene: str | None = None
+    scene_said: str | None = None
+    duration_ms: int | None = None
+    content_type: str
+    verified: bool = False
+    recorded_at: str = ""
+    sent_at: str | None = None
+
+
+class SceneRehearsalsResponse(BaseModel):
+    pericope: str
+    scene_rehearsals: list[SceneRehearsalView]
+
+
 class ReleaseResponse(BaseModel):
     """What the Desk is told when a mint lands: the number and the fingerprint.
 

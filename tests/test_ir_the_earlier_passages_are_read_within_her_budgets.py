@@ -182,7 +182,6 @@ async def test_an_opening_prepared_on_the_panorama_reads_each_not_worked_yet_pas
             status=IRSessionStatus.IN_PROGRESS,
             messages=[],
             coverage_state={},
-            kept_takes={},
             back_translation={},
             language="pt",
         )

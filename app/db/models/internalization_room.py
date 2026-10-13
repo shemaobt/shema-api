@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -48,6 +48,10 @@ class IRSession(Base):
     __tablename__ = "ir_sessions"
     __table_args__ = (Index("ix_ir_sessions_status_created", "status", "created_at"),)
 
+    @declared_attr.directive
+    def __mapper_args__(cls) -> dict[str, Any]:
+        return {"exclude_properties": ["kept_takes"]}
+
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     pericope: Mapped[str] = mapped_column(String(120))
     status: Mapped[IRSessionStatus] = mapped_column(
@@ -77,7 +81,9 @@ class IRSession(Base):
     #: stored on the opening (ADR 0054). Null while nothing is prepared.
     prepared_attempts: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    #: Written and read by nothing, and left out of the mapper so that no statement names it:
+    #: the revision serving while a later migration drops it must not ask for it (ADR 0059).
+    kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, server_default="{}")
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     #: Whose conversation this was. Null when the room app did not identify itself with a
     #: device credential, which is every session until ENG-454 ships that half — see the
@@ -411,6 +417,62 @@ class IRTake(Base):
     crc32c: Mapped[str] = mapped_column(String(16))
     content_type: Mapped[str] = mapped_column(String(64))
     verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+    #: The **Archive** of this row's session, stamped with it (``IRSession.archive_id``).
+    archive_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class IRSceneSaid(enum.StrEnum):
+    """When the team said a scene rehearsal's scene: as they recorded it, or afterwards."""
+
+    RECORDING = "recording"
+    LATER = "later"
+
+
+class IRSceneRehearsal(Base):
+    """One **Scene rehearsal**: the scene recorded whole in the mother tongue, and its record.
+
+    The recording is stored as sent and never reaches the recognizer or the voice; only its
+    **Scene frases** are heard. Its own table rather than a third take kind, because every
+    reader of ``ir_takes`` would read it as a passage **Part** (ADR 0059).
+    """
+
+    __tablename__ = "ir_scene_rehearsals"
+    __table_args__ = (
+        UniqueConstraint("session_id", "sha256", name="uq_ir_scene_rehearsals_session_sha256"),
+        UniqueConstraint("session_id", "n", name="uq_ir_scene_rehearsals_session_n"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    pericope: Mapped[str] = mapped_column(String(120))
+    n: Mapped[int] = mapped_column(Integer)
+    device_id: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    content_type: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The team's own label, one of the passage's scenes, and when they said it. The
+    #: classifier's guess never writes it.
+    scene: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    scene_said: Mapped[IRSceneSaid | None] = mapped_column(
+        Enum(
+            IRSceneSaid,
+            native_enum=False,
+            length=16,
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=True,
+    )
+    scene_guess: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    sent_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
