@@ -22,16 +22,19 @@ a re-pin cannot delete them without a word.
 Before it overwrites, `--sync` keeps the canon it replaces: `vendor/` as it stands, with its
 pin and manifest, and the element labels beside it, are copied to `canon/kept/<old pin>/`. A
 session keeps the canon it was opened with until its passage is approved, and that copy is
-the only place its canon still exists once the pin moves. A kept tree may be dropped only once
-no open session names its pin.
+the only place its canon still exists once the pin moves. Then it drops every kept tree whose
+pin it is not told to keep, the one it just made included: which pins an open session names
+needs a production read, and while production carries only tests the sync takes none.
 
 `--sync` refuses, exits 1 and writes nothing when the pin it was given is not on the
-compiler's main line, when the pin leaves no consumable passage at all, and when a names list's
-bytes differ from the sha256 her `_spec/pins.json` records for it.
+compiler's main line, when the pin leaves no consumable passage at all, when a names list's
+bytes differ from the sha256 her `_spec/pins.json` records for it, and when a pin given to
+`--keep` names neither a kept tree nor the pin this sync replaces.
 
     uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
     uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
     uv run python scripts/sync_internalization_canon.py --sync --pin <sha>   # re-pin to <sha>
+    uv run python scripts/sync_internalization_canon.py --sync --keep <sha>  # keep kept/<sha>/
 """
 
 from __future__ import annotations
@@ -164,7 +167,7 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def sync(pin: str | None = None) -> int:
+def sync(pin: str | None = None, keep: tuple[str, ...] = ()) -> int:
     if pin and not _on_main_line(pin):
         print(
             f"pin {pin} is not on the compiler's main line — "
@@ -192,8 +195,18 @@ def sync(pin: str | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-    if PIN_FILE.exists() and (held := pinned_commit(PIN_FILE.read_text())) != sha:
+    held = pinned_commit(PIN_FILE.read_text()) if PIN_FILE.exists() else sha
+    for kept in keep:
+        if not (kept == held != sha or (VENDOR.parent / "kept" / kept).is_dir()):
+            print(
+                f"--keep {kept} names no kept tree and not the pin this sync replaces — "
+                "refusing to drop the canon it was meant to keep",
+                file=sys.stderr,
+            )
+            return 1
+    if held != sha:
         _keep(held)
+    _prune(keep)
     files = []
     for kind in KINDS:
         target = VENDOR / kind
@@ -225,6 +238,17 @@ def _keep(pin: str) -> None:
     shutil.copytree(VENDOR, kept / "vendor", dirs_exist_ok=True)
     shutil.copytree(VENDOR.parent / "element-labels", kept / "element-labels", dirs_exist_ok=True)
     shutil.copy(VENDOR.parent / "ui-labels.pt.json", kept / "ui-labels.pt.json")
+
+
+def _prune(keep: tuple[str, ...]) -> None:
+    kept = VENDOR.parent / "kept"
+    if kept.is_dir():
+        for tree in sorted(kept.iterdir()):
+            if tree.name in keep:
+                print(f"  kept kept/{tree.name}")
+            else:
+                shutil.rmtree(tree)
+                print(f"  dropped kept/{tree.name}")
 
 
 def _pin_record(sha: str, maps: list[str]) -> str:
@@ -326,12 +350,17 @@ def main() -> int:
     group.add_argument("--sync", action="store_true")
     group.add_argument("--check", action="store_true")
     parser.add_argument("--pin", metavar="<sha>")
+    parser.add_argument("--keep", metavar="<sha>", action="append", default=[])
     args = parser.parse_args()
     if args.pin and not args.sync:
         parser.error("--pin needs --sync")
+    if args.keep and not args.sync:
+        parser.error("--keep needs --sync")
     if args.pin and not SHA_RE.fullmatch(args.pin):
         parser.error("--pin needs a full 40-character sha, not a ref")
-    return sync(pin=args.pin) if args.sync else check()
+    if not all(SHA_RE.fullmatch(keep) for keep in args.keep):
+        parser.error("--keep needs a full 40-character sha, the name of a kept tree")
+    return sync(pin=args.pin, keep=tuple(args.keep)) if args.sync else check()
 
 
 if __name__ == "__main__":
