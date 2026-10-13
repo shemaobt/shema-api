@@ -36,7 +36,8 @@ from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.names import registry_entry, verse_ranges
 from app.services.internalization_room.canon.parse_map import load_book, load_map
 from app.services.internalization_room.canon.titles import scene_title
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.coverage import CoverageStatus
+from app.services.internalization_room.sessions import apply_coverage, create_session
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -162,6 +163,26 @@ async def test_the_desk_necklace_of_a_team_whose_pin_lost_its_tree_is_refused_by
         "a Mesa ouvia 404, como se a passagem nunca tivesse existido no canon"
     )
     assert session.canon_pin in necklace.json()["detail"]
+
+
+async def test_the_page_of_a_team_whose_pin_lost_its_tree_is_drawn_without_what_its_canon_named(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    desk, (gone_team, _) = await _a_desk_over_two_teams(db_session)
+    session = await open_ir_session(db_session, pericope=P, project_id=gone_team.id)
+    await apply_coverage(db_session, session.id, {"scene:S1": CoverageStatus.ENGAGED.value})
+    shutil.rmtree(the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN))
+
+    async with desk_routes(db_session) as at_desk:
+        page = await at_desk.get(f"/api/facilitator/teams/{gone_team.id}", headers=desk)
+
+    assert page.status_code == 200, page.text[:300]
+    team = page.json()
+    assert team["active_passage"] == {"pericope": P, "reference": None}, (
+        "a página da equipe sem árvore respondia 409 inteira, até o nome e as mãos levantadas"
+    )
+    assert team["scene_the_team_is_in"] is None
+    assert team["name"] == "Equipe antes"
 
 
 async def test_the_team_list_names_every_other_teams_passage_when_one_teams_pin_lost_its_tree(

@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from sqlalchemy import Label, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import CanonNotKept
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession
 from app.db.models.project import Project
@@ -68,8 +69,11 @@ async def read_facilitator_team(
     closed = sum(1 for entry in standing(finished) if entry.position is PericopePosition.CLOSED)
     active = None
     if here is not None:
-        with reading_the_canon_of(row.canon_pin):
-            active = ActivePassageView(pericope=here, reference=load_map(here).reference)
+        try:
+            with reading_the_canon_of(row.canon_pin):
+                active = ActivePassageView(pericope=here, reference=load_map(here).reference)
+        except CanonNotKept:
+            active = ActivePassageView(pericope=here, reference=None)
 
     return FacilitatorTeamDetail(
         team_id=row.id,
@@ -128,8 +132,11 @@ async def _scene_they_are_in(
     if not history:
         return None
 
-    with reading_the_canon_of(pin):
-        answers = scene_of(pericope, book)
+    try:
+        with reading_the_canon_of(pin):
+            answers = scene_of(pericope, book)
+    except CanonNotKept:
+        return None
     moved = [key for key in history if key in answers]
     if not moved:
         return None
