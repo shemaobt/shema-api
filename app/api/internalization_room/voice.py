@@ -38,9 +38,10 @@ IMMUTABLE = "private, max-age=31536000, immutable"
 #: it of threads over a read nobody will ever receive. Past this many in flight, a request
 #: falls back to reading only once the gate has passed, exactly as it did before this route
 #: learned to race the two. Two, because that executor is ``min(32, cpu_count + 4)`` threads,
-#: five on a one-vCPU instance, and handles are unsigned: anyone who was ever handed one can
-#: mint another under the room's voice, so a junk credential can still buy a read that the
-#: gate then refuses. At most two of those at once leaves the uploads their threads.
+#: six on the two-vCPU instances both deploys run, and a signature never stops a handle from
+#: being replayed: one an old tablet still holds, sent with a junk credential, buys a read
+#: that the gate then refuses, and where no signing key is set a handle is still bare base64
+#: anyone can mint. At most two of those at once leaves the uploads four of the six threads.
 _SPECULATIVE_READS = asyncio.Semaphore(2)
 
 
@@ -161,10 +162,11 @@ async def clip(
     kept — and a 404 there left the team with a reply it could never hear and no way to ask
     for it again short of speaking again. Her audio route does the same: it voices the
     stored text when the tablet asks. The session, not the handle, decides what may be
-    voiced, because a handle is only a content key and anyone holding a device credential can
-    mint one for any words: only a guide line stored in that session, read through the
-    caller's own project, is spoken, so a forged key or another team's session answers 404
-    and never reaches the speech engine.
+    voiced, because a handle is only a content key and the `session` beside it is not signed:
+    a tablet can pair any address it was handed with any session id, and where no signing key
+    is set it can mint a handle for any words. Only a guide line stored in that session, read
+    through the caller's own project, is spoken, so a forged key or another team's session
+    answers 404 and never reaches the speech engine.
 
     The device check runs beside the read, not before it — the two are independent, and a
     tablet that is still welcome pays for whichever one is slower, not their sum. But the
