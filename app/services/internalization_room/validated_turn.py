@@ -92,8 +92,9 @@ class TurnOutcome:
     degraded: bool = False
     redrafts: int = 0
     issues: list[dict[str, Any]] = field(default_factory=list)
-    #: Which pre-approved line was spoken, when one was. The app ships these as audio, so a
-    #: fail-safe is named rather than synthesized — no TTS bill, no network, no waiting.
+    #: Which pre-approved line was spoken, when one was. The turn names it rather than voicing
+    #: it: the tablet asks `/fixed-lines/{line}`, which voices the line from the text this
+    #: server was deployed with.
     fixed_line: str = ""
     #: The last words the Guide drafted and the last verdict the Validator gave on them —
     #: empty when no draft was asked for, or when no reply could be read. `issues` above is

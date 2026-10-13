@@ -60,13 +60,13 @@ async def test_the_judge_reads_her_prompt_body_with_the_validators_map_and_the_s
         "o juiz antigo não conhecia a leitura da equipe confirmada como incidente"
     )
     assert "## PRESERVATION RULES — do_not_decide (HARD CONSTRAINTS)" in system, (
-        "o juiz recebe o mapa do Validador — com as proibições — e não o do Guia (run.ts:126)"
+        "o juiz recebe o mapa do Validador — com as proibições — e não o do Guia (run.ts:550)"
     )
     assert "## The session language\n\nBrazilian Portuguese" in system
     assert "{{" not in system, "um slot que sobrou chegaria ao juiz como texto"
     assert asked["user_content"] == (
         "Judge this session now. Return only the JSON object.\n\n" + TRANSCRIPT
-    ), "a linha de usuário é a dela, palavra por palavra (run.ts:132)"
+    ), "a linha de usuário é a dela, palavra por palavra (run.ts:554)"
 
 
 async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_on(
@@ -88,7 +88,7 @@ async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_
         "high",
         True,
     ), (
-        "effort high é o do run.ts dela (134); pensar é a regra dela; o teto é um que o juiz não "
+        "effort high é o do run.ts dela (556); pensar é a regra dela; o teto é um que o juiz não "
         "alcança — os 4000 dela cortaram um veredito em quatro nesta sala"
     )
     assert asked["schema"]["required"] == ["scores", "incidents", "pass", "summary"], (

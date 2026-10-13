@@ -26,7 +26,7 @@ _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
 
 #: The instant acknowledgements her app ever plays, in either language: it fetches the F lines
-#: with ``i < 3`` (``app/page.tsx:279`` at her freeze). Her file, kept byte for byte, carries a
+#: with ``i < 3`` (``app/page.tsx:280`` at her freeze). Her file, kept byte for byte, carries a
 #: fourth in each block, «Right.» and «Tá.», that the team could never hear from her, so the
 #: room reads no further than she does — the ruling of 2026-10-06.
 ACKNOWLEDGEMENTS_SHE_PLAYS = 3
@@ -192,10 +192,12 @@ PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
 def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
     """The line for one step of the telling-back or of the external check, and its name.
 
-    A fail-safe answers a failure and rotates, on the authored file's own instruction. A
-    process line marks a step, and her prose says of both families that *"the order is
-    fixed and read by position"*: rotating them would voice the thanks where the step means
-    the invitation. So there is no ``turn`` here, and the same step always answers the same.
+    A fail-safe answers a failure, so which of its lines is said follows the failure: the
+    draft that gave up for A, the wait for the untold stretch, her first line for the
+    inaudible. A process line marks a step, and her prose says of both families that *"the
+    order is fixed and read by position"*: rotating them would voice the thanks where the
+    step means the invitation. So there is no ``turn`` here, and the same step always
+    answers the same.
 
     The language resolution is ``choose``'s, unchanged — the code read through
     ``room_language``, so the region is dropped and a language the room does not speak lands
