@@ -33,7 +33,8 @@ Decided with the Definer on 2026-10-13:
   first.
 - The tablet's doors carry no words of the team and no classifier guess (ENG-1335). The
   frases' words, each restart's snapshot and every frase it set aside, the late ones
-  included, and the guess are the reader door's, which reads a session its Zerar archived
+  included, the frases still held for a restart that never landed, and the guess are the
+  reader door's, which reads a session its Zerar archived
   (ADR 0052).
 - The tablet's list covers the whole passage across its live sessions and names each item's
   session and its `n`, numbered per session, so a new session sees the passage's live

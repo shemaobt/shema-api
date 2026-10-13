@@ -900,3 +900,28 @@ async def test_a_restart_that_lands_before_the_one_it_closes_waits_for_it(
     (rehearsal,) = await read_by_b(room, session_id)
     assert rehearsal["after_restart"] == y
     assert current(rehearsal["frases"]) == [(0, 6000)]
+
+
+async def test_the_reader_reads_a_held_frase_whose_restart_never_landed(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    attempt = str(uuid.uuid4())
+    room.answers.append("esperando o recomeço")
+    held = await translate_after(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt
+    )
+    assert held.status_code == 200, held.text
+    await write(db_session, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+    refused = await restart(room, session_id, rehearsal_id, attempt)
+    assert refused.status_code == 409, refused.text
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    assert (read["frases"], read["restarts"]) == ([], [])
+    (waiting,) = read["held"]
+    assert waiting["attempt"] == attempt
+    assert [(f["starts_ms"], f["transcript"]) for f in waiting["frases"]] == [
+        (0, "esperando o recomeço")
+    ]

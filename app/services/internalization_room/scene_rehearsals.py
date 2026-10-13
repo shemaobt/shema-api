@@ -206,6 +206,33 @@ async def set_aside_frases(
     return set_aside
 
 
+async def held_frases(
+    db: AsyncSession, rehearsal_ids: Sequence[str]
+) -> dict[str, dict[str, list[IRSceneFrase]]]:
+    """By rehearsal and by attempt, the frases naming an attempt whose restart never landed."""
+    landed = {
+        restart.id
+        for restarts in (await restarts_of(db, rehearsal_ids)).values()
+        for restart in restarts
+    }
+    found = await db.scalars(
+        select(IRSceneFrase)
+        .where(
+            IRSceneFrase.rehearsal_id.in_(rehearsal_ids),
+            IRSceneFrase.restart_id.is_(None),
+            IRSceneFrase.attempt.is_not(None),
+        )
+        .order_by(IRSceneFrase.starts_ms, IRSceneFrase.created_at)
+    )
+    held: dict[str, dict[str, list[IRSceneFrase]]] = {
+        rehearsal_id: {} for rehearsal_id in rehearsal_ids
+    }
+    for frase in found:
+        if frase.attempt is not None and frase.attempt not in landed:
+            held[frase.rehearsal_id].setdefault(frase.attempt, []).append(frase)
+    return held
+
+
 def replaced_by(frases: Sequence[IRSceneFrase]) -> dict[str, str]:
     return {frase.replaces_id: frase.id for frase in frases if frase.replaces_id is not None}
 

@@ -20,6 +20,7 @@ from app.db.models.internalization_room import (
     IRSession,
 )
 from app.models.internalization_room import (
+    HeldAttemptView,
     ReaderSceneFraseView,
     ReaderSceneRehearsalsResponse,
     ReaderSceneRehearsalView,
@@ -103,6 +104,7 @@ def _reader_view(
     frases: list[IRSceneFrase],
     restarts: list[IRSceneRestart],
     set_aside: dict[str, list[IRSceneFrase]],
+    held: dict[str, list[IRSceneFrase]],
 ) -> ReaderSceneRehearsalView:
     replacing = scenes.replaced_by(frases)
     return ReaderSceneRehearsalView(
@@ -122,6 +124,15 @@ def _reader_view(
         scene_guess=rehearsal.scene_guess,
         archive_id=rehearsal.archive_id,
         restarts=[_restart_view(restart, set_aside.get(restart.id, [])) for restart in restarts],
+        held=[
+            HeldAttemptView(
+                attempt=attempt,
+                frases=[
+                    _reader_frase_view(frase, scenes.replaced_by(waiting)) for frase in waiting
+                ],
+            )
+            for attempt, waiting in held.items()
+        ],
     )
 
 
@@ -284,10 +295,17 @@ async def facilitator_scene_rehearsals(
     frases = await scenes.frases_of(db, ids)
     restarts = await scenes.restarts_of(db, ids)
     set_aside = await scenes.set_aside_frases(db, ids)
+    held = await scenes.held_frases(db, ids)
     return ReaderSceneRehearsalsResponse(
         session_id=session.id,
         scene_rehearsals=[
-            _reader_view(rehearsal, frases[rehearsal.id], restarts[rehearsal.id], set_aside)
+            _reader_view(
+                rehearsal,
+                frases[rehearsal.id],
+                restarts[rehearsal.id],
+                set_aside,
+                held[rehearsal.id],
+            )
             for rehearsal in rehearsals
         ],
     )

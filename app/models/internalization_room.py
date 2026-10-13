@@ -921,6 +921,13 @@ class SceneRestartView(BaseModel):
     frases: list[ReaderSceneFraseView]
 
 
+class HeldAttemptView(BaseModel):
+    """Frases naming an attempt whose restart has not landed, waiting for it."""
+
+    attempt: str
+    frases: list[ReaderSceneFraseView]
+
+
 class ReaderSceneRehearsalView(SceneRehearsalFacts):
     """The rehearsal for the Desk: the frases' words, its restarts and the classifier's guess."""
 
@@ -928,6 +935,7 @@ class ReaderSceneRehearsalView(SceneRehearsalFacts):
     scene_guess: str | None = None
     archive_id: str | None = None
     restarts: list[SceneRestartView]
+    held: list[HeldAttemptView]
 
 
 class ReaderSceneRehearsalsResponse(BaseModel):
