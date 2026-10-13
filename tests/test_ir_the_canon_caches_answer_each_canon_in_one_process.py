@@ -14,6 +14,7 @@ import pytest
 from app.services.internalization_room.canon import kept
 from app.services.internalization_room.canon.elements import scene_of
 from app.services.internalization_room.canon.kept import reading_the_canon_of
+from app.services.internalization_room.canon.labels import label_index
 from tests.canon_harness import the_canon_moves_on
 
 NEW_PIN = "a" * 40
@@ -26,6 +27,11 @@ def _the_kept_p02_has_no_first_scene(tree: Path) -> None:
     told = page.read_text(encoding="utf-8")
     first = told.index(FIRST_SCENE_HEADING)
     page.write_text(told[:first] + told[told.index(SECOND_SCENE_HEADING) :], encoding="utf-8")
+
+
+def _the_kept_canon_has_no_p03(tree: Path) -> None:
+    (page,) = (tree / "vendor" / "meaning-map").glob("P03-*.md")
+    page.unlink()
 
 
 def test_a_passage_read_under_two_canons_answers_each_canons_scenes_not_the_first_one_read(
@@ -44,3 +50,20 @@ def test_a_passage_read_under_two_canons_answers_each_canons_scenes_not_the_firs
         "o canon guardado respondeu as cenas do canon servido, lidas primeiro no mesmo processo"
     )
     assert kept_scenes.get("scene:S2") == 2
+
+
+def test_the_passages_a_canon_has_are_its_own_and_not_those_of_the_canon_read_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    old_pin = kept.deployed_pin()
+    the_canon_moves_on(monkeypatch, tmp_path, NEW_PIN, keeping=_the_kept_canon_has_no_p03)
+
+    with reading_the_canon_of(old_pin):
+        kept_index = label_index({"P03"})
+    with reading_the_canon_of(NEW_PIN):
+        served_index = label_index({"P03"})
+
+    assert kept_index == {}
+    assert ("P03", "scene:S1") in served_index, (
+        "o canon servido herdou do canon guardado, lido primeiro, a falta da P03"
+    )
