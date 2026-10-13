@@ -125,6 +125,58 @@ async def test_in_a_scenes_articulation_the_guide_hears_whether_its_block_was_gi
     )
 
 
+@pytest.mark.parametrize(
+    "moment",
+    [
+        {"at": "internalization", "part": 5},
+        {"at": "articulation", "part": 5, "fenced": False},
+        {"at": "articulation", "part": 5, "fenced": True},
+        {"at": "internalization", "part": 0},
+        {"at": "articulation", "part": 0, "fenced": False},
+    ],
+)
+async def test_a_stored_part_the_passage_does_not_have_gives_the_guide_no_moment_line(
+    recording: _Recording, moment: dict[str, Any]
+) -> None:
+    await _turn(_left_at(moment))
+
+    ledger = coverage_status_block(initial_state(P), P)
+    assert recording.guide[0].partition(CACHE_BREAK)[2] == ledger, (
+        "o Guia ouvia uma parte que a passagem não tem, depois que o número de cenas mudou"
+    )
+
+
+@pytest.mark.parametrize(
+    ("moment", "fact"),
+    [
+        (
+            {"at": "internalization", "part": 1},
+            f"MOMENT: Internalization of part 1 of 4 {EM} the part is open.",
+        ),
+        (
+            {"at": "internalization", "part": 4},
+            f"MOMENT: Internalization of part 4 of 4 {EM} the part is open.",
+        ),
+        (
+            {"at": "articulation", "part": 1, "fenced": False},
+            "MOMENT: Articulation of part 1 of 4.",
+        ),
+        (
+            {"at": "articulation", "part": 4, "fenced": False},
+            "MOMENT: Articulation of part 4 of 4.",
+        ),
+    ],
+)
+async def test_the_first_part_and_the_last_are_still_told_to_the_guide(
+    recording: _Recording, moment: dict[str, Any], fact: str
+) -> None:
+    await _turn(_left_at(moment))
+
+    assert recording.guide[0].endswith(f"\n\n{fact}"), (
+        "o Guia deixou de ouvir a primeira ou a última parte da passagem"
+    )
+
+
 async def test_a_session_begun_before_the_moment_was_read_tells_the_guide_no_moment(
     recording: _Recording,
 ) -> None:
