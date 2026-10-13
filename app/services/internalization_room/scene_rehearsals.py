@@ -352,14 +352,17 @@ async def keep_a_frase(
 
 
 async def restart_the_scene_translation(
-    db: AsyncSession, rehearsal: IRSceneRehearsal, *, attempt: str
+    db: AsyncSession, rehearsal: IRSceneRehearsal, *, attempt: str, closes: str | None
 ) -> IRSceneRestart:
     """«recomeçar a tradução» into the attempt the tablet minted: a numbered restart with the
     record as it was, the current attempt's frases stamped with it.
 
     The attempt is the restart's id, so the same restart sent again is the first one. Its
-    frases sent before it landed were held, and now count. Taken under the rehearsal's lock,
-    as a frase lands, and stamped with the rehearsal's archive when a Zerar got there first.
+    frases sent before it landed were held, and now count. It names the attempt it closes and
+    is refused while that is not the current one, so restarts that arrive out of order wait for
+    their predecessor instead of becoming current in arrival order. Taken under the rehearsal's
+    lock, as a frase lands, and stamped with the rehearsal's archive when a Zerar got there
+    first.
     """
     rehearsal = await _locked(db, rehearsal.id)
     already = await db.get(IRSceneRestart, attempt)
@@ -368,8 +371,10 @@ async def restart_the_scene_translation(
             raise ConflictError(f"Restart {attempt} belongs to another scene rehearsal")
         return already
     _refuse_a_sent(rehearsal)
-    frases = (await frases_of(db, [rehearsal.id]))[rehearsal.id]
     done = (await restarts_of(db, [rehearsal.id]))[rehearsal.id]
+    if closes != current_attempt(done):
+        raise ConflictError(f"Restart {attempt} closes {closes}, which is not the current attempt")
+    frases = (await frases_of(db, [rehearsal.id]))[rehearsal.id]
     restart = IRSceneRestart(
         id=attempt,
         rehearsal_id=rehearsal.id,

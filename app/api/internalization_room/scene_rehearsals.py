@@ -254,14 +254,19 @@ async def restart_scene_translation(
     session_id: str,
     rehearsal_id: str,
     attempt: uuid.UUID = Form(...),
+    closes: uuid.UUID | None = Form(default=None),
     project_id: str = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SceneRehearsalView:
     """«recomeçar a tradução» into the attempt the tablet minted, whose id the outbox resends
-    unchanged: the same restart sent twice is answered as the first."""
+    unchanged: the same restart sent twice is answered as the first. `closes` names the attempt
+    it ends, the rehearsal's `after_restart` when the tablet restarted; a restart closing any
+    other is refused with 409 and retried once its predecessor has landed."""
     session = await _session(db, session_id, project_id)
     rehearsal = await scenes.scene_rehearsal_in_session(db, session.id, rehearsal_id)
-    await scenes.restart_the_scene_translation(db, rehearsal, attempt=str(attempt))
+    await scenes.restart_the_scene_translation(
+        db, rehearsal, attempt=str(attempt), closes=None if closes is None else str(closes)
+    )
     return await _the_record(db, rehearsal)
 
 
