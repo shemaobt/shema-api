@@ -1164,6 +1164,21 @@ def test_a_case() -> None:
     forget(cached_local)
 """
 
+CLEARS_THROUGH_A_HELPER_CALLED_FROM_A_FUNCTION_INSIDE_THE_CASE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    def run() -> None:
+        forget(book_material.preservation_rules)
+
+    run()
+"""
+
 CLEARS_THROUGH_A_CHAIN_OF_HELPERS_THAT_NAME_THEIR_PARAMETER_ALIKE = """\
 from app.services.internalization_room.canon import book_material
 
@@ -1887,6 +1902,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_NAME_FED_BY_A_FUNCTIONS_VALUE, 11),
         (CLEARS_THROUGH_A_FUNCTION_THAT_RETURNS_ANOTHERS_VALUE, 13),
         (CLEARS_THROUGH_A_LOCAL_OF_THE_CALLER_HANDED_TO_A_HELPER, 5),
+        (CLEARS_THROUGH_A_HELPER_CALLED_FROM_A_FUNCTION_INSIDE_THE_CASE, 5),
         (CLEARS_THROUGH_A_CHAIN_OF_HELPERS_THAT_NAME_THEIR_PARAMETER_ALIKE, 5),
         (CLEARS_THROUGH_A_CHAIN_OF_HELPERS_HANDED_A_LOCAL_OF_THE_CALLER, 5),
     ],
@@ -1930,6 +1946,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a name a function's value feeds",
         "named by a function that returns another's value",
         "named by a local of the caller handed to a helper",
+        "named by a helper called from a function inside the case",
         "named by a chain of helpers that name their parameter alike",
         "named by a chain of helpers handed a local of the caller",
     ],
