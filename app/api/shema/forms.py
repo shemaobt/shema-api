@@ -205,9 +205,12 @@ async def pending_image_link(
 
     OBT-585: the coordination decides whether to import on the inbox, and the photograph is part
     of what it decides on. The item's link (``app/api/shema/media.py``) only exists after the
-    import; this one serves the upload before it, behind the same gates applied to the leader's
-    box instead of a recorded decision (``app/services/shema/_pending_image.py`` carries them and
-    the order). Minted per call, stored nowhere; the detail above says whether to ask.
+    import; this one serves the upload before it, behind the item's four gates in an order of
+    its own — scope, **reader**, object, the leader's box standing in for a recorded decision —
+    because here the reader has to be refused before the object is looked for, or an OBT Lab
+    would learn which Pulses of a withheld project carry a photograph
+    (``app/services/shema/_pending_image.py`` carries the gates and the argument). Minted per
+    call, stored nowhere; the detail above says whether to ask.
     """
     link = await pending_image_download_url(db, scope, submission_id, user=user, readership=reading)
     return ShemaMediaLink(url=link.url, expires_in_minutes=link.expires_in_minutes)

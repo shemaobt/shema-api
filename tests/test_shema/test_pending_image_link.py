@@ -2,9 +2,15 @@
 
 Until the import the photo is a ``ShemaIntakeImage`` and no media item, so neither the record
 nor the item's link can serve it. ``GET /forms/submissions/{id}/image/link`` does, behind four
-gates in the item's order — scope, object, the leader's box standing in for the decision nobody
-has recorded, and the reader — and the detail says, as a flag and never a URL, whether that call
-would answer. Held here per gate and per role (coordination, OBT Lab, Resource Circle), on a
+gates whose order is **not** the item's: the caller's scope, then **the reader**, then the object,
+then the leader's box standing in for the decision nobody has recorded. The reader comes before
+the object on purpose — the inbox detail hands the OBT Lab no answer of a withheld project, and
+a 404 for a Pulse without a photo next to a 403 for one with it would let that reader find out,
+Pulse by Pulse, which ones carry a photograph the detail hides; asked first, the reader's refusal
+depends on the withheld bit and the role alone
+(``test_on_a_withheld_project_the_answer_does_not_depend_on_what_the_pulse_holds``). The detail
+says, as a flag and never a URL, whether that call would answer, through the same gates in the
+same order. Held here per gate and per role (coordination, OBT Lab, Resource Circle), on a
 withheld and on a cleared project, with the bucket a fake that records what it signed: no URL is
 ever stored, and the surfaces that must keep not knowing the row — ficha, card, export, wall,
 Pulse — are checked once more before the import.
@@ -178,7 +184,7 @@ async def test_a_url_is_never_written_anywhere(client, db_session, shema_app, bu
     assert not image.storage_key.startswith("http")
 
 
-# --- gate two: an object to serve --------------------------------------------------------------
+# --- gate three: an object to serve --------------------------------------------------------------
 
 
 async def test_a_pulse_with_no_image_has_nothing_to_serve(
@@ -241,7 +247,7 @@ async def test_a_submission_outside_the_scope_is_not_found(
     assert bucket.signed == []
 
 
-# --- gate three: the leader's box ------------------------------------------------------------
+# --- gate four: the leader's box ------------------------------------------------------------
 
 
 @pytest.mark.parametrize("authorized", [False, None], ids=["unchecked", "absent"])
@@ -294,7 +300,7 @@ async def test_the_box_and_the_reader_refuse_with_one_sentence_and_two_log_lines
     assert bucket.signed == []
 
 
-# --- gate four: the reader, on a withheld and on a cleared project ---------------------------
+# --- gate two: the reader, on a withheld and on a cleared project ---------------------------
 
 
 @pytest.mark.parametrize("role", ["obtLab", "resourceCircle"])

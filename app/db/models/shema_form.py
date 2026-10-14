@@ -247,9 +247,11 @@ class ShemaIntakeImage(Base):
     **The one surface before the import is the inbox, and it is not the record** (OBT-585):
     the submission detail says whether there is a pending image to ask for, and
     ``GET /forms/submissions/{id}/image/link`` mints a fifteen-minute URL for it, behind the
-    media item's gates with the leader's box standing in for the decision nobody has recorded
-    yet (``app/services/shema/_pending_image.py``). The coordination decides whether to import
-    on that screen, and the photograph is part of what it decides on.
+    media item's four gates in an order of their own — scope, reader, object, then the leader's
+    box standing in for the decision nobody has recorded yet; the reader before the object, so
+    a reader the inbox hides a withheld project's answers from cannot learn which Pulses carry a
+    photograph (``app/services/shema/_pending_image.py``). The coordination decides whether to
+    import on that screen, and the photograph is part of what it decides on.
 
     ``intake_link_id`` is ``SET NULL`` for the link's own reason: revoking a credential must not
     be blocked by what came through it. The project reference restricts, as the submission's
