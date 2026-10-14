@@ -23,7 +23,7 @@ from tests.golden_spend_harness import (
     golden_shelf,
     the_room_answers,
 )
-from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, the_judge_answers
+from tests.text_seam_harness import A_VERDICT, GUIDE_LINE, Judge, the_judge_answers
 
 
 async def test_a_session_asked_for_by_name_that_the_shelf_does_not_hold_is_named_back(
@@ -385,7 +385,7 @@ async def test_a_script_with_no_turns_is_not_judged_and_its_row_says_it_is_empty
     ).read_text(encoding="utf-8"), "a sessão vazia é uma linha com o nome dela, não um PASS"
 
 
-async def test_a_script_with_no_turns_never_opens_a_session_in_the_room_nor_leaves_an_export(
+async def test_a_script_with_no_turns_never_opens_a_room_session_and_is_exported_marked_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     the_judge_answers(monkeypatch)
@@ -402,14 +402,16 @@ async def test_a_script_with_no_turns_never_opens_a_session_in_the_room_nor_leav
     await golden_runner.run(golden_args(sessions, out))
 
     assert asked == [], "a sessão sem turnos abria uma sessão na sala só para não jogar nada nela"
-    assert sorted(path.name for path in out.iterdir()) == ["README.md"], (
-        "um export sem turnos seria remontado como sessão inteira por um --rejudge"
+    exported = json.loads((out / f"P01-a.{STAMP}.json").read_text(encoding="utf-8"))
+    assert (exported["empty"], exported["turns"], exported["sessionId"]) == (True, [], None), (
+        "um export sem turnos e sem marca seria remontado como sessão inteira por um --rejudge"
     )
+    assert not list(out.glob("*.verdict.json"))
 
 
-def _a_room_that_plays_and_a_judge_that_approves(monkeypatch: pytest.MonkeyPatch) -> None:
+def _a_room_that_plays_and_a_judge_that_approves(monkeypatch: pytest.MonkeyPatch) -> Judge:
     approving = {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
-    the_judge_answers(monkeypatch, json.dumps(approving))
+    judge = the_judge_answers(monkeypatch, json.dumps(approving))
 
     def _room(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/golden/session"):
@@ -419,6 +421,7 @@ def _a_room_that_plays_and_a_judge_that_approves(monkeypatch: pytest.MonkeyPatch
         )
 
     the_room_answers(monkeypatch, _room)
+    return judge
 
 
 async def test_an_empty_session_is_counted_apart_and_is_neither_an_approval_nor_a_failure(
@@ -504,3 +507,26 @@ def test_turns_below_one_is_refused_with_a_sentence_before_anything_is_read_or_o
     ), "--turns 0 passava pelo parser, tocava zero turnos e entregava ao juiz um transcript vazio"
     assert asked == [], "a recusa vem antes de ler os roteiros e antes de abrir qualquer sessão"
     assert not (tmp_path / "reports").exists()
+
+
+async def test_a_rejudge_keeps_the_row_of_a_session_that_was_empty_and_never_judges_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+    earlier = tmp_path / "earlier"
+    await golden_runner.run(golden_args(sessions, earlier))
+    judge = _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(golden_args(sessions, again, rejudge=str(earlier)))
+
+    assert len(judge.asked) == 1 and GUIDE_LINE in judge.asked[0]["user_content"], (
+        "o --rejudge julgava a sessão vazia junto, ou julgava só a vazia"
+    )
+    readme = (again / "README.md").read_text(encoding="utf-8")
+    assert "| P02-b | — | vazia | nenhum turno a jogar; nada a julgar |" in readme, (
+        "o --rejudge só lê exports, e a sessão vazia não deixava nenhum: a linha sumia"
+    )
+    assert "**1/1 aprovadas pelo juiz, " in readme and "1 sessões vazias.**" in readme
+    assert exit_code == 1, "a rodada julgada de novo fechava o portão como se a vazia não existisse"

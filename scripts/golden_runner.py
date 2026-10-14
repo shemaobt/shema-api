@@ -154,7 +154,7 @@ class SessionResult:
 
     @property
     def whole(self) -> bool:
-        return self.refused is None and self.killed is None
+        return self.refused is None and self.killed is None and not self.empty
 
     @property
     def faults(self) -> list[str]:
@@ -446,13 +446,14 @@ def judge_transcript(played: list[Played]) -> str:
 def export(
     script: Script,
     *,
-    session_id: str,
+    session_id: str | None,
     base_url: str,
     played: list[Played],
     out: Path,
     stamp: str,
     refused: str | None = None,
     killed: str | None = None,
+    empty: bool = False,
 ) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     report = out / f"{script.name}.{stamp}.json"
@@ -467,6 +468,7 @@ def export(
                 "sessionId": session_id,
                 "refused": refused,
                 "killed": killed,
+                "empty": empty,
                 "turns": [asdict(turn) for turn in played],
             },
             ensure_ascii=False,
@@ -509,6 +511,9 @@ async def play_session(
     if not script.turns:
         print("  empty: no turn to play, nothing to judge")
         results.append(SessionResult(script.name, None, [], empty=True))
+        export(
+            script, session_id=None, base_url=base_url, played=[], out=out, stamp=stamp, empty=True
+        )
         return
     played: list[Played] = []
     try:
@@ -821,9 +826,9 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
 
     The turns' usage is left out on purpose: those calls were paid for by the run that
     exported them and are already in its README, and a re-judgement's money is the judge's.
-    A refusal and a death come back with the session, so a run cut short by the room or by
-    an error is not rebuilt as a whole one; an export older than the fields is read as
-    played whole, which is what those runs were.
+    A refusal, a death and an empty script come back with the session, so a run cut short by
+    the room or by an error, or one that had nothing to play, is not rebuilt as a whole one;
+    an export older than the fields is read as played whole, which is what those runs were.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
     script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
@@ -846,6 +851,7 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
         played,
         refused=raw.get("refused"),
         killed=raw.get("killed"),
+        empty=raw.get("empty", False),
     )
     return script, result, raw["baseUrl"]
 
