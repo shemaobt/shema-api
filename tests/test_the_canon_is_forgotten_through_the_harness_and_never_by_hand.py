@@ -67,18 +67,35 @@ def _got_by_getattr(node: ast.AST) -> tuple[ast.expr, str] | None:
 
 
 def _names_in(
-    expression: ast.AST, imports: dict[str, str], fed_by: dict[str, set[str]]
+    expression: ast.AST,
+    imports: dict[str, str],
+    sources: dict[str, list[ast.AST]],
+    reading: frozenset[str] = frozenset(),
 ) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(expression):
         if isinstance(node, ast.Name | ast.Attribute) and (chain := _chain(node)):
             root, path = chain
-            for base in fed_by.get(root, set()) | {imports.get(root, root)}:
-                names.add(base + path)
+            names.update(base + path for base in _origins(root, imports, sources, reading))
         elif got := _got_by_getattr(node):
             owner, attribute = got
-            names.update(f"{base}.{attribute}" for base in _names_in(owner, imports, fed_by))
+            names.update(
+                f"{base}.{attribute}" for base in _names_in(owner, imports, sources, reading)
+            )
     return names
+
+
+def _origins(
+    root: str,
+    imports: dict[str, str],
+    sources: dict[str, list[ast.AST]],
+    reading: frozenset[str],
+) -> set[str]:
+    origins = {imports.get(root, root)}
+    if root not in reading:
+        for source in sources.get(root, []):
+            origins |= _names_in(source, imports, sources, reading | {root})
+    return origins
 
 
 def _outermost_functions(node: ast.AST) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -104,9 +121,39 @@ def _bound_by(target: ast.expr) -> list[str]:
     ]
 
 
-def _bindings(nodes: Iterable[ast.AST]) -> Iterator[tuple[list[str], ast.AST]]:
+Bindings = list[tuple[list[str], ast.AST]]
+
+
+def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
+    defined = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    given: dict[ast.AST, Bindings] = {}
+    for call in ast.walk(tree):
+        if (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id in defined
+        ):
+            function = defined[call.func.id]
+            parameters = [parameter.arg for parameter in function.args.args]
+            bindings = given.setdefault(function, [])
+            bindings.extend(
+                ([parameter], argument)
+                for parameter, argument in zip(parameters, call.args, strict=False)
+            )
+    return given
+
+
+def _bindings(
+    nodes: Iterable[ast.AST], arguments: dict[ast.AST, Bindings]
+) -> Iterator[tuple[list[str], ast.AST]]:
     for node in nodes:
-        if isinstance(node, ast.For | ast.comprehension):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            yield from arguments.get(node, [])
+        elif isinstance(node, ast.For | ast.comprehension):
             yield _bound_by(node.target), node.iter
         elif isinstance(node, ast.Assign):
             for target in node.targets:
@@ -117,22 +164,12 @@ def _bindings(nodes: Iterable[ast.AST]) -> Iterator[tuple[list[str], ast.AST]]:
             yield _bound_by(node.optional_vars), node.context_expr
 
 
-def _fed_by(
-    nodes: Iterable[ast.AST], imports: dict[str, str], seed: dict[str, set[str]]
-) -> dict[str, set[str]]:
-    fed_by = {name: set(fed) for name, fed in seed.items()}
-    bindings = list(_bindings(nodes))
-    for _ in range(len(bindings) + 1):
-        grew = False
-        for bound, source in bindings:
-            fed = _names_in(source, imports, fed_by)
-            for name in bound:
-                before = len(fed_by.setdefault(name, set()))
-                fed_by[name] |= fed
-                grew = grew or len(fed_by[name]) != before
-        if not grew:
-            break
-    return fed_by
+def _sourced_by(bindings: Bindings, seed: dict[str, list[ast.AST]]) -> dict[str, list[ast.AST]]:
+    sources = {name: list(fed) for name, fed in seed.items()}
+    for bound, source in bindings:
+        for name in bound:
+            sources.setdefault(name, []).append(source)
+    return sources
 
 
 def _cleared_by(call: ast.Call) -> ast.expr | None:
@@ -146,17 +183,19 @@ def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], lis
     tree = ast.parse(module.read_text(encoding="utf-8"))
     imports = _imports_of(tree)
     at_the_top = list(_outside_every_function(tree))
-    at_the_top_fed = _fed_by(at_the_top, imports, {})
-    scopes = [(at_the_top, at_the_top_fed)]
+    arguments = _arguments_given(tree)
+    at_the_top_sources = _sourced_by(_bindings(at_the_top, arguments), {})
+    scopes = [(at_the_top, at_the_top_sources)]
     for function in _outermost_functions(tree):
         within = list(ast.walk(function))
-        scopes.append((within, _fed_by(within, imports, at_the_top_fed)))
+        within_sources = _sourced_by(_bindings(within, arguments), at_the_top_sources)
+        scopes.append((within, within_sources))
     of_the_canon: list[int] = []
     of_something_else: list[int] = []
-    for nodes, fed_by in scopes:
+    for nodes, sources in scopes:
         for node in nodes:
             if isinstance(node, ast.Call) and (cleared := _cleared_by(node)) is not None:
-                names = _names_in(cleared, imports, fed_by)
+                names = _names_in(cleared, imports, sources)
                 (of_the_canon if names & canon_caches else of_something_else).append(node.lineno)
     return sorted(of_the_canon), sorted(of_something_else)
 
@@ -261,6 +300,18 @@ from app.services.internalization_room.canon import book_material
 
 def test_a_case() -> None:
     getattr(book_material.preservation_rules, "cache_clear")()
+"""
+
+CLEARS_THROUGH_AN_ARGUMENT_OF_A_HELPER = """\
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached) -> None:
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    forget(book_material.preservation_rules)
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -502,6 +553,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_WALRUS_TARGET, 6),
         (CLEARS_THROUGH_A_NAME_GIVEN_TO_GETATTR, 5),
         (CLEARS_THROUGH_GETATTR_OF_CACHE_CLEAR, 5),
+        (CLEARS_THROUGH_AN_ARGUMENT_OF_A_HELPER, 5),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -522,6 +574,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a walrus target",
         "named by a string given to getattr",
         "cleared by getattr of cache_clear",
+        "named by the argument of a helper",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
