@@ -12,12 +12,12 @@ the bytes have, and the address expires.
 2. the row exists and holds an object — a video is an address on somebody else's service and
    a photo slot may carry a caption and no image yet, so both are *nothing to serve*.
 3. ``can_share_media`` — authorization, then audience, then the sensitive-country flag —
-   **and, when the caller is a console reader, whether that reader is the coordination of a
-   withheld project** (OBT-581; Daniel, 9/oct/2026, option b): an image of a withheld project
-   reaches the coordination **only**, until OBT-575 exists — the OBT Lab and the Resource
-   Circle are refused the bytes exactly as the export's ``publico`` is, with the same sentence.
-   OBT-571's *the Resource Circle reads the truth* covers the record and not these bytes; the
-   row is reopened when OBT-575 lands.
+   **and, when the caller is a console reader, ``reader_may_read_media``** (OBT-581; Daniel,
+   9/oct/2026, option b; a named predicate since OBT-583): an image of a withheld project
+   reaches the coordination **only**, until OBT-575 reopens the row — the OBT Lab and the
+   Resource Circle are refused the bytes exactly as the export's ``publico`` is, with the same
+   sentence. OBT-571's *the Resource Circle reads the truth* covers the record and not these
+   bytes.
 
 **The third refusal says nothing about which of its reasons fired.** An item nobody has
 decided on, an item refused, and an authorized item on a withheld project asked for by a
@@ -47,14 +47,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.models.auth import User
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
-from app.models.shema_privacy import ShemaAudience, ShemaReader
+from app.models.shema_privacy import ShemaAudience
 from app.services.oral_collector import gcs_utils
-from app.services.shema._media_sharing import can_share_media
+from app.services.shema._media_sharing import can_share_media, reader_may_read_media
 from app.services.shema._media_storage import (
     DOWNLOAD_URL_EXPIRY_MINUTES,
     GCS_SHEMA_BUCKET,
 )
-from app.services.shema._redaction import is_withheld, log_reference
+from app.services.shema._redaction import log_reference
 from app.services.shema._scope import Readership, RegionScope
 from app.services.shema.get_project import get_project
 
@@ -172,11 +172,12 @@ async def _link(
         logger.warning("shema file refused: not shared with this audience", extra=reference)
         raise AuthorizationError(NOT_SHARED)
     reader = None if readership is None else readership.reader_of(project.region_key)
-    if reader is not None and reader is not ShemaReader.COORDINATION and is_withheld(project):
+    if not reader_may_read_media(project, reader):
         # The wire says the same sentence for every gate; the log is not the wire, and an
         # operator reading *not shared with this audience* on an item the predicate just
         # released would be told the one reason that did not fire. The reader is a relation
         # to the region and names no place, so it travels — the place itself never does.
+        assert reader is not None  # the predicate only ever refuses a reader it was given
         logger.warning(
             "shema file refused: the reader is not the coordination of a withheld project",
             extra={**reference, "shema_reader": reader.value},
