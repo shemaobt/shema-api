@@ -1265,7 +1265,7 @@ class RetroverificationFile(BaseModel):
 
 
 class ConversationTurn(BaseModel):
-    role: Literal["team", "guide", "room"]
+    role: Literal["team", "guide"]
     text: str
     at: str | None
     fail_safe: bool
