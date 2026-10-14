@@ -401,6 +401,7 @@ def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
     def visible(scope: ast.ClassDef) -> list[ast.ClassDef]:
         return [*lineage(scope), *(visible(around[scope]) if scope in around else [])]
 
+    called_by_pytest = _called_by_pytest(tree)
     reach: dict[ast.AST, dict[str, ast.AST]] = {}
     for scope in ast.walk(tree):
         if isinstance(scope, ast.ClassDef):
@@ -412,7 +413,7 @@ def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
                 and function.name in _fixtures_of(each)
             }
             for function in scope.body:
-                if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+                if function in called_by_pytest:
                     reach[function] = fixtures
     return reach
 
@@ -1990,6 +1991,25 @@ class TestOuter:
             cached.cache_clear()
 """
 
+THE_CASE_WHOSE_HELPER_METHOD_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_THE_CLASS_FIXTURE = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def forget(self, cached) -> None:
+        cached.cache_clear()
+
+    def test_a_case(self) -> None:
+        self.forget(get_settings)
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -2907,6 +2927,11 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         (THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_METHOD_OF_ANOTHER_CLASS_TOO, [12], [17]),
         (THE_CASE_WHOSE_METHOD_ASKS_FOR_THE_FIXTURE_OF_ITS_BASE_CLASS, [14], []),
         (THE_CASE_WHOSE_NESTED_CLASS_ASKS_FOR_THE_FIXTURE_OF_THE_CLASS_AROUND_IT, [13], []),
+        (
+            THE_CASE_WHOSE_HELPER_METHOD_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_THE_CLASS_FIXTURE,
+            [],
+            [13],
+        ),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
@@ -2914,6 +2939,7 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         "a method of another class that asks for the name of the class's fixture",
         "a method of a subclass that asks for the fixture of its base class",
         "a method of a nested class that asks for the fixture of the class around it",
+        "a helper method that is handed another cache under the name of the class's fixture",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
