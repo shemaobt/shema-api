@@ -18,8 +18,7 @@ from tests.canon_harness import (
     THE_CACHES_THAT_READ_NO_CANON,
     THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT,
     the_caches_of_the_prompts,
-    the_caches_the_loader_holds,
-    the_names_the_prompts_are_reached_by,
+    the_names_the_forgotten_caches_are_reached_by,
 )
 
 TESTS = Path(__file__).resolve().parent
@@ -28,19 +27,41 @@ THE_CANON_PACKAGE = "app.services.internalization_room.canon."
 
 
 def _the_caches_the_harness_forgets() -> set[str]:
-    canon = {name for name, _ in the_caches_the_loader_holds()}
-    return canon | the_names_the_prompts_are_reached_by()
+    return the_names_the_forgotten_caches_are_reached_by()
 
 
-def _names_in(expression: ast.AST) -> set[str]:
+def _imports_of(tree: ast.AST) -> dict[str, str]:
+    imports: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.partition(".")[0]
+                imports[alias.asname or root] = alias.name if alias.asname else root
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                imports[alias.name] = f"{node.module}.{alias.name}"
+    return imports
+
+
+def _chain(node: ast.expr) -> tuple[str, str] | None:
+    attributes: list[str] = []
+    while isinstance(node, ast.Attribute):
+        attributes.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        return node.id, "".join(f".{attribute}" for attribute in reversed(attributes))
+    return None
+
+
+def _names_in(
+    expression: ast.AST, imports: dict[str, str], fed_by: dict[str, set[str]]
+) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(expression):
-        if isinstance(node, ast.Name):
-            names.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            names.add(node.attr)
-            if isinstance(node.value, ast.Name):
-                names.add(f"{node.value.id}.{node.attr}")
+        if isinstance(node, ast.Name | ast.Attribute) and (chain := _chain(node)):
+            root, path = chain
+            for base in fed_by.get(root, set()) | {imports.get(root, root)}:
+                names.add(base + path)
     return names
 
 
@@ -59,42 +80,52 @@ def _outside_every_function(node: ast.AST) -> Iterator[ast.AST]:
             yield from _outside_every_function(child)
 
 
-def _fed_by(nodes: Iterable[ast.AST]) -> dict[str, set[str]]:
-    fed_by: dict[str, set[str]] = {}
+def _bindings(nodes: Iterable[ast.AST]) -> Iterator[tuple[list[str], ast.AST]]:
     for node in nodes:
         if isinstance(node, ast.For):
-            for bound in ast.walk(node.target):
-                if isinstance(bound, ast.Name):
-                    fed_by.setdefault(bound.id, set()).update(_names_in(node.iter))
+            yield (
+                [bound.id for bound in ast.walk(node.target) if isinstance(bound, ast.Name)],
+                (node.iter),
+            )
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    fed_by.setdefault(target.id, set()).update(_names_in(node.value))
+                    yield [target.id], node.value
         elif (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and node.value is not None
         ):
-            fed_by.setdefault(node.target.id, set()).update(_names_in(node.value))
+            yield [node.target.id], node.value
+
+
+def _fed_by(
+    nodes: Iterable[ast.AST], imports: dict[str, str], seed: dict[str, set[str]]
+) -> dict[str, set[str]]:
+    fed_by = {name: set(fed) for name, fed in seed.items()}
+    bindings = list(_bindings(nodes))
+    for _ in range(len(bindings) + 1):
+        grew = False
+        for bound, source in bindings:
+            fed = _names_in(source, imports, fed_by)
+            for name in bound:
+                before = len(fed_by.setdefault(name, set()))
+                fed_by[name] |= fed
+                grew = grew or len(fed_by[name]) != before
+        if not grew:
+            break
     return fed_by
-
-
-def _resolved(names: set[str], fed_by: dict[str, set[str]]) -> set[str]:
-    resolved = set(names)
-    pending = set(names)
-    while pending:
-        pending = set().union(*(fed_by.get(name, set()) for name in pending)) - resolved
-        resolved |= pending
-    return resolved
 
 
 def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], list[int]]:
     tree = ast.parse(module.read_text(encoding="utf-8"))
+    imports = _imports_of(tree)
     at_the_top = list(_outside_every_function(tree))
-    scopes = [(at_the_top, _fed_by(at_the_top))]
+    at_the_top_fed = _fed_by(at_the_top, imports, {})
+    scopes = [(at_the_top, at_the_top_fed)]
     for function in _outermost_functions(tree):
         within = list(ast.walk(function))
-        scopes.append((within, _fed_by(at_the_top) | _fed_by(within)))
+        scopes.append((within, _fed_by(within, imports, at_the_top_fed)))
     of_the_canon: list[int] = []
     of_something_else: list[int] = []
     for nodes, fed_by in scopes:
@@ -104,7 +135,7 @@ def _the_clears_in(module: Path, canon_caches: set[str]) -> tuple[list[int], lis
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "cache_clear"
             ):
-                cleared = _resolved(_names_in(node.func.value), fed_by)
+                cleared = _names_in(node.func.value, imports, fed_by)
                 (of_the_canon if cleared & canon_caches else of_something_else).append(node.lineno)
     return sorted(of_the_canon), sorted(of_something_else)
 
@@ -203,6 +234,39 @@ def test_a_case() -> None:
     forget()
 """
 
+CLEARS_THROUGH_A_NAME_IMPORTED_FROM_ITS_MODULE = """\
+from app.services.internalization_room.canon.parse_map import load_map
+
+
+def test_a_case() -> None:
+    load_map.cache_clear()
+"""
+
+CLEARS_THROUGH_A_MODULE_UNDER_ANOTHER_NAME = """\
+import app.services.internalization_room.canon.parse_map as pm
+
+
+def test_a_case() -> None:
+    pm.load_map.cache_clear()
+"""
+
+CLEARS_THROUGH_THE_FULL_PATH = """\
+import app.services.internalization_room.canon.parse_map
+
+
+def test_a_case() -> None:
+    app.services.internalization_room.canon.parse_map.load_map.cache_clear()
+"""
+
+CLEARS_THROUGH_A_NAME_THAT_HOLDS_THE_MODULE = """\
+from app.services.internalization_room.canon import parse_map
+
+
+def test_a_case() -> None:
+    held = parse_map
+    held.load_map.cache_clear()
+"""
+
 CLEARS_THE_FAIL_SAFE_SECTIONS = """\
 from app.services.internalization_room import fail_safe
 
@@ -227,6 +291,14 @@ from app.services.internalization_room import fail_safe, passage_lines
 def test_a_case() -> None:
     passage_lines._sections.cache_clear()
     fail_safe._sections.cache_clear()
+"""
+
+CLEARS_A_CACHE_THAT_SHARES_A_CANON_NAME = """\
+from app.services.internalization_room import passage_lines
+
+
+def test_a_case() -> None:
+    passage_lines.verse_ranges.cache_clear()
 """
 
 CLEARS_THE_PROMPT_LOADER = """\
@@ -340,6 +412,10 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_THE_CASE_AROUND_IT, 8),
+        (CLEARS_THROUGH_A_NAME_IMPORTED_FROM_ITS_MODULE, 5),
+        (CLEARS_THROUGH_A_MODULE_UNDER_ANOTHER_NAME, 5),
+        (CLEARS_THROUGH_THE_FULL_PATH, 5),
+        (CLEARS_THROUGH_A_NAME_THAT_HOLDS_THE_MODULE, 6),
     ],
     ids=[
         "named at the clear",
@@ -349,6 +425,10 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a name that another name feeds",
         "named by the module that feeds it",
         "named by the case around the function that clears it",
+        "named by the name its module exports",
+        "named through a module imported under another name",
+        "named by the full path of its module",
+        "named through a name that holds the module",
     ],
 )
 def test_a_clear_of_a_canon_cache_is_read_whichever_way_it_names_it(
@@ -448,6 +528,17 @@ def test_a_cache_that_shares_the_name_of_a_prompt_cache_is_not_the_harness_to_fo
     )
 
     assert (of_the_harness, of_something_else) == ([6], [5])
+
+
+def test_a_cache_that_shares_the_name_of_a_canon_cache_is_not_the_canon_to_forget(
+    tmp_path: Path,
+) -> None:
+    of_the_canon, of_something_else = _the_clears_in(
+        _planted(tmp_path, CLEARS_A_CACHE_THAT_SHARES_A_CANON_NAME),
+        _the_caches_the_harness_forgets(),
+    )
+
+    assert (of_the_canon, of_something_else) == ([], [5])
 
 
 def test_no_test_clears_a_cache_the_harness_forgets_by_hand() -> None:
