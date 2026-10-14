@@ -676,6 +676,25 @@ async def test_a_rejudge_over_an_export_missing_a_turns_key_names_the_first_such
     assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
 
 
+async def test_a_rejudge_over_an_export_that_cannot_be_read_names_the_file_and_pays_for_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "earlier"
+    earlier.mkdir()
+    _export(earlier, "P01-a")
+    garbled = earlier / "P01-b.2026-09-16T21-13-26.json"
+    garbled.write_bytes(b"\xff\xfe{")
+
+    exit_code = await golden_runner.run(_args(earlier, tmp_path / "again", rejudge=str(earlier)))
+
+    assert exit_code == 2, "um export ilegível não é uma sessão reprovada: a re-julgação nem começa"
+    assert capsys.readouterr().err.startswith(f"golden: {garbled}: UnicodeDecodeError: "), (
+        "os bytes que não eram texto derrubavam a re-julgação sem dizer qual arquivo era"
+    )
+    assert judge.asked == [], "o P01-a estava bom, mas a pasta com um export ruim não gasta nada"
+
+
 async def test_a_rejudge_marks_the_judge_prompt_only_for_exports_that_share_a_passage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

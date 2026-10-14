@@ -867,7 +867,7 @@ async def rejudge(args: argparse.Namespace) -> int:
             continue
         try:
             earlier.append((path, *exported(path)))
-        except (json.JSONDecodeError, KeyError) as unreadable:
+        except Exception as unreadable:
             print(f"golden: {path}: {type(unreadable).__name__}: {unreadable}", file=sys.stderr)
             return 2
     if not earlier:
