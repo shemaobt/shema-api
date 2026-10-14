@@ -124,6 +124,22 @@ def _bound_by(target: ast.expr) -> list[str]:
 Bindings = list[tuple[list[str], ast.AST]]
 
 
+def _parametrized(decorator: ast.Call) -> tuple[list[str], ast.expr] | None:
+    given = {
+        **dict(zip(("argnames", "argvalues"), decorator.args, strict=False)),
+        **{keyword.arg: keyword.value for keyword in decorator.keywords},
+    }
+    if _decorator_name(decorator) != "parametrize" or not {"argnames", "argvalues"} <= given.keys():
+        return None
+    names = [
+        name.strip()
+        for spelled in ast.walk(given["argnames"])
+        if isinstance(spelled, ast.Constant)
+        for name in str(spelled.value).split(",")
+    ]
+    return names, given["argvalues"]
+
+
 def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
     defined = {
         node.name: node
@@ -133,14 +149,8 @@ def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
     given: dict[ast.AST, Bindings] = {function: [] for function in defined.values()}
     for function in defined.values():
         for decorator in function.decorator_list:
-            if (
-                isinstance(decorator, ast.Call)
-                and _decorator_name(decorator) == "parametrize"
-                and len(decorator.args) == 2
-                and isinstance(decorator.args[0], ast.Constant)
-            ):
-                names = str(decorator.args[0].value).split(",")
-                given[function].append(([name.strip() for name in names], decorator.args[1]))
+            if isinstance(decorator, ast.Call) and (parametrized := _parametrized(decorator)):
+                given[function].append(parametrized)
     for call in ast.walk(tree):
         if (
             isinstance(call, ast.Call)
@@ -361,6 +371,39 @@ def forget(cached, /) -> None:
 
 def test_a_case() -> None:
     forget(book_material.preservation_rules)
+"""
+
+CLEARS_THROUGH_PARAMETRIZE_WITH_TUPLE = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.mark.parametrize(("cached", "other"), [(book_material.preservation_rules, 1)])
+def test_a_case(cached) -> None:
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_PARAMETRIZE_WITH_LIST = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.mark.parametrize(["cached"], [book_material.preservation_rules])
+def test_a_case(cached) -> None:
+    cached.cache_clear()
+"""
+
+CLEARS_THROUGH_PARAMETRIZE_WITH_KEYWORD = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.mark.parametrize("cached", argvalues=[book_material.preservation_rules])
+def test_a_case(cached) -> None:
+    cached.cache_clear()
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -679,6 +722,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_PARAMETRIZED_ARGUMENT, 8),
         (CLEARS_THROUGH_A_KEYWORD_OF_A_HELPER, 5),
         (CLEARS_THROUGH_A_POSITIONAL_ONLY_PARAMETER, 5),
+        (CLEARS_THROUGH_PARAMETRIZE_WITH_TUPLE, 8),
+        (CLEARS_THROUGH_PARAMETRIZE_WITH_LIST, 8),
+        (CLEARS_THROUGH_PARAMETRIZE_WITH_KEYWORD, 8),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -703,6 +749,9 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a parametrized argument",
         "named by the keyword of a helper",
         "named by a positional-only parameter",
+        "named by a parametrize with a tuple of names",
+        "named by a parametrize with a list of names",
+        "named by a parametrize with an argvalues keyword",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
