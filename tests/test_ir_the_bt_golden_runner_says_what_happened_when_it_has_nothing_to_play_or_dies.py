@@ -291,3 +291,27 @@ async def test_a_script_cancelled_while_the_room_is_opening_it_is_a_killed_verdi
     )
     assert "\ncost US$ 3.00 — analyst US$ 2.00 · speaker US$ 1.00\n" in shown
     assert opened == ["P01", "P02"], "a rodada cancelada não tenta o terceiro roteiro"
+
+
+async def test_an_error_with_no_message_is_named_by_its_type_alone_on_the_killed_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    rounds: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        rounds.append(request.url.path)
+        if len(rounds) == 2:
+            raise httpx.ReadTimeout("", request=request)
+        return _a_round_that_costs_three_dollars()
+
+    the_room_answers(monkeypatch, _room)
+    bt_shelf(tmp_path, monkeypatch, ("P01-a", "P01", 2))
+
+    with pytest.raises(httpx.ReadTimeout):
+        await bt_golden_runner.run(bt_args(tmp_path / "reports"))
+
+    assert "  KILLED · ReadTimeout · 0 check(s) failed · s-1 · cost US$ 3.00\n" in (
+        capsys.readouterr().out
+    ), "um erro sem texto saía como «ReadTimeout: » e a linha terminava em dois-pontos"
