@@ -356,6 +356,7 @@ async def play(
         answered = await client.post("golden/turn", json=body)
         answered.raise_for_status()
         reply = answered.json()
+        sent = carried[idx]
         line = Played(
             idx=idx,
             team=reply.get("transcript") or expected,
@@ -367,9 +368,7 @@ async def play(
             appStatus=[
                 fact
                 for fact in (
-                    scene_rehearsals_fact(scene_ids, carried[idx])
-                    if carried[idx] is not None
-                    else "",
+                    scene_rehearsals_fact(scene_ids, sent) if sent is not None else "",
                     earlier,
                 )
                 if fact
