@@ -1170,14 +1170,26 @@ def _built_by_a_call(value: ast.expr | None) -> bool:
     )
 
 
-def _cache_declared_by(node: ast.AST) -> str | None:
+def _cache_declared_by(node: ast.AST, named: set[ast.AST]) -> str | None:
     if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
         kinds = {_decorator_name(decorator) for decorator in node.decorator_list}
         return node.name if kinds & CACHES else None
     if isinstance(node, ast.Assign | ast.AnnAssign) and _built_by_a_call(node.value):
         target = node.targets[0] if isinstance(node, ast.Assign) else node.target
         return ast.unparse(target)
+    if isinstance(node, ast.Call) and node not in named and _built_by_a_call(node):
+        return ast.unparse(node)
     return None
+
+
+def _named_or_decorating(tree: ast.AST) -> set[ast.AST]:
+    named: set[ast.AST] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
+            named.add(node.value)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            named.update(node.decorator_list)
+    return named
 
 
 def _unlisted_caches(root: Path, listed: set[str]) -> list[str]:
@@ -1185,8 +1197,10 @@ def _unlisted_caches(root: Path, listed: set[str]) -> list[str]:
     for module in sorted(root.rglob("*.py")):
         relative = module.relative_to(root.parent)
         dotted = ".".join(relative.with_suffix("").parts)
-        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
-            name = _cache_declared_by(node)
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        named = _named_or_decorating(tree)
+        for node in ast.walk(tree):
+            name = _cache_declared_by(node, named)
             qualified = f"{dotted}.{name}"
             if name is None or dotted.startswith(THE_CANON_PACKAGE) or qualified in listed:
                 continue
@@ -1250,6 +1264,51 @@ def _read() -> str:
 
 
 read_the_map_again = lru_cache(_read)
+"""
+
+A_CACHE_BUILT_BY_A_CALL_AND_RETURNED = """\
+from functools import lru_cache
+
+
+def _read() -> str:
+    return "the map"
+
+
+def keep_it():
+    return lru_cache(maxsize=1)(_read)
+"""
+
+A_CACHE_BUILT_BY_A_CALL_AND_HANDED_ON = """\
+import functools
+
+
+def _read() -> str:
+    return "the map"
+
+
+register(functools.cache(_read))
+"""
+
+A_CACHE_BUILT_BY_A_CALL_AND_LEFT_ALONE = """\
+from functools import lru_cache
+
+
+def _read() -> str:
+    return "the map"
+
+
+lru_cache(maxsize=1)(_read)
+"""
+
+A_DECORATOR_BUILT_BY_A_CALL_ON_A_FUNCTION = """\
+from functools import lru_cache
+
+SIZE = 1
+
+
+@lru_cache(SIZE)
+def read_the_map_again() -> str:
+    return "the map"
 """
 
 A_DECORATOR_KEPT_IN_A_NAME = """\
@@ -1462,6 +1521,37 @@ def test_a_cache_built_by_handing_the_function_to_the_decorator_is_reported(
     app = _an_app_holding(tmp_path, "services/a_new_cache.py", source)
 
     assert len(_unlisted_caches(app, set())) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "line", "name"),
+    [
+        (A_CACHE_BUILT_BY_A_CALL_AND_RETURNED, 9, "lru_cache(maxsize=1)(_read)"),
+        (A_CACHE_BUILT_BY_A_CALL_AND_HANDED_ON, 8, "functools.cache(_read)"),
+        (A_CACHE_BUILT_BY_A_CALL_AND_LEFT_ALONE, 8, "lru_cache(maxsize=1)(_read)"),
+    ],
+    ids=["returned", "handed to a call", "left alone"],
+)
+def test_a_cache_built_by_a_call_and_kept_under_no_name_is_reported_where_it_is(
+    tmp_path: Path, source: str, line: int, name: str
+) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", source)
+
+    (reported,) = _unlisted_caches(app, set())
+
+    assert reported.startswith(
+        f"app/services/a_new_cache.py:{line} `{name}` is a cache the harness does not know. "
+    )
+
+
+def test_a_decorator_built_by_a_call_is_one_cache_and_not_two(tmp_path: Path) -> None:
+    app = _an_app_holding(
+        tmp_path, "services/a_new_cache.py", A_DECORATOR_BUILT_BY_A_CALL_ON_A_FUNCTION
+    )
+
+    (reported,) = _unlisted_caches(app, set())
+
+    assert reported.startswith("app/services/a_new_cache.py:7 `read_the_map_again` is a cache ")
 
 
 def test_a_decorator_kept_in_a_name_is_not_a_cache(tmp_path: Path) -> None:
