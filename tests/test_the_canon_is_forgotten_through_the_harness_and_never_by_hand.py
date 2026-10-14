@@ -125,6 +125,19 @@ def _bound_by(target: ast.expr) -> list[str]:
 Bindings = list[tuple[list[str], ast.AST]]
 
 
+def _pairs(target: ast.expr, value: ast.AST) -> Iterator[tuple[list[str], ast.AST]]:
+    if (
+        isinstance(target, ast.Tuple | ast.List)
+        and isinstance(value, ast.Tuple | ast.List)
+        and len(target.elts) == len(value.elts)
+        and not any(isinstance(element, ast.Starred) for element in value.elts)
+    ):
+        for element, fed in zip(target.elts, value.elts, strict=True):
+            yield from _pairs(element, fed)
+    else:
+        yield _bound_by(target), value
+
+
 def _parametrized(decorator: ast.Call) -> tuple[list[str], ast.expr] | None:
     given = {
         **dict(zip(("argnames", "argvalues"), decorator.args, strict=False)),
@@ -139,6 +152,19 @@ def _parametrized(decorator: ast.Call) -> tuple[list[str], ast.expr] | None:
         for name in str(spelled.value).split(",")
     ]
     return names, given["argvalues"]
+
+
+def _parametrized_bindings(names: list[str], values: ast.AST) -> Bindings:
+    rows = values.elts if isinstance(values, ast.List | ast.Tuple) else []
+    if (
+        len(names) > 1
+        and rows
+        and all(
+            isinstance(row, ast.Tuple | ast.List) and len(row.elts) == len(names) for row in rows
+        )
+    ):
+        return [([name], row.elts[at]) for row in rows for at, name in enumerate(names)]
+    return [(names, values)]
 
 
 Functions = dict[str, ast.FunctionDef | ast.AsyncFunctionDef]
@@ -184,7 +210,7 @@ def _arguments_given(tree: ast.AST) -> dict[ast.AST, Bindings]:
     for function in given:
         for decorator in function.decorator_list:
             if isinstance(decorator, ast.Call) and (parametrized := _parametrized(decorator)):
-                given[function].append(parametrized)
+                given[function].extend(_parametrized_bindings(*parametrized))
     _read_the_calls(tree, _defined_in(tree), given)
     return given
 
@@ -199,7 +225,7 @@ def _bindings(
             yield _bound_by(node.target), node.iter
         elif isinstance(node, ast.Assign):
             for target in node.targets:
-                yield _bound_by(target), node.value
+                yield from _pairs(target, node.value)
         elif isinstance(node, ast.AnnAssign | ast.NamedExpr) and node.value is not None:
             yield _bound_by(node.target), node.value
         elif isinstance(node, ast.withitem) and node.optional_vars is not None:
@@ -520,6 +546,64 @@ def test_a_case(monkeypatch) -> None:
         empty_it()
 
     monkeypatch.setattr(cache, "cache_clear", empty_and_note)
+"""
+
+CLEARS_THE_SIBLING_OF_A_TUPLE_TARGET = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    cached, other = book_material.preservation_rules, 1
+    other.cache_clear()
+"""
+
+CLEARS_THE_SIBLING_OF_A_PARAMETRIZED_ARGUMENT = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.mark.parametrize(("cached", "other"), [(book_material.preservation_rules, 1)])
+def test_a_case(cached, other) -> None:
+    other.cache_clear()
+"""
+
+CLEARS_A_NAME_UNPACKED_FROM_A_CACHE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    first, second = book_material.preservation_rules
+    second.cache_clear()
+"""
+
+CLEARS_A_NAME_UNPACKED_FROM_A_LONGER_TUPLE = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    first, second = book_material.preservation_rules, 1, 2
+    second.cache_clear()
+"""
+
+CLEARS_A_NAME_UNPACKED_FROM_A_TUPLE_WITH_A_STAR = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    first, second = *book_material.preservation_rules, 1
+    second.cache_clear()
+"""
+
+CLEARS_A_PARAMETRIZED_ARGUMENT_OF_VALUES_NOT_SEEN_ROW_BY_ROW = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.mark.parametrize(("cached", "other"), book_material.preservation_rules)
+def test_a_case(cached, other) -> None:
+    other.cache_clear()
 """
 
 TWO_CASES_EACH_DEFINE_A_HELPER_OF_ONE_NAME = """\
@@ -991,12 +1075,27 @@ def test_a_spy_the_harness_calls_through_a_bound_cache_clear_is_not_a_clear_by_h
 @pytest.mark.parametrize(
     ("source", "of_the_canon", "of_something_else"),
     [
+        (CLEARS_THE_SIBLING_OF_A_TUPLE_TARGET, [], [6]),
+        (CLEARS_THE_SIBLING_OF_A_PARAMETRIZED_ARGUMENT, [], [8]),
+        (CLEARS_A_NAME_UNPACKED_FROM_A_CACHE, [6], []),
+        (CLEARS_A_NAME_UNPACKED_FROM_A_LONGER_TUPLE, [6], []),
+        (CLEARS_A_NAME_UNPACKED_FROM_A_TUPLE_WITH_A_STAR, [6], []),
+        (CLEARS_A_PARAMETRIZED_ARGUMENT_OF_VALUES_NOT_SEEN_ROW_BY_ROW, [8], []),
         (TWO_CASES_EACH_DEFINE_A_HELPER_OF_ONE_NAME, [7], [14]),
         (A_METHOD_AND_A_HELPER_OF_ONE_NAME, [5], [10]),
     ],
-    ids=["two cases each define a helper of one name", "a method and a helper of one name"],
+    ids=[
+        "the sibling of a tuple target",
+        "the sibling of a parametrized argument",
+        "a name unpacked from a cache, shapes not paired",
+        "a name unpacked from a longer tuple",
+        "a name unpacked from a tuple with a star",
+        "parametrized values not seen row by row",
+        "two cases each define a helper of one name",
+        "a method and a helper of one name",
+    ],
 )
-def test_a_helper_is_told_from_another_of_the_same_name_by_where_it_is_defined(
+def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole_where_they_do_not(
     tmp_path: Path, source: str, of_the_canon: list[int], of_something_else: list[int]
 ) -> None:
     clears = _the_clears_in(_planted(tmp_path, source), _the_caches_the_harness_forgets())
