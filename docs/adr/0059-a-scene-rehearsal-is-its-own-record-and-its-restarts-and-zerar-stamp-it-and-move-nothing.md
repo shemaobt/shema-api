@@ -42,9 +42,8 @@ Decided with the Definer on 2026-10-13:
   rehearsals before any turn. A sent rehearsal refuses new frases and restarts with 409.
 - A frase may name any version of the frase it replaces: an offline tablet can only name the
   version it had, so the server replaces that chain's current frase.
-- `ir_sessions.kept_takes`, written only as `{}` and read by nothing, is left out of the
-  mapper and defaults to `{}`, so no statement names it. A later migration drops it once no
-  revision still serving reads it: the deploy migrates before the new revision takes traffic.
+- `ir_sessions.kept_takes`, written only as `{}` and read by nothing, was left out of the
+  mapper first, so no statement named it, and then dropped by migration `20261014_scene05`.
 
 Rejected: copying the record into archive prefixes as her file stores do, for the reason ADR
 0047 gives, and a loudness-envelope route, since the tablet draws from the bytes it is served.
