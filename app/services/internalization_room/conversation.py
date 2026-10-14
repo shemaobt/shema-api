@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import ConversationResponse, ConversationTurn
@@ -32,5 +32,13 @@ def _turn_of(message: dict[str, Any]) -> ConversationTurn:
         at=message.get("at"),
         fail_safe=fail_safe,
         fail_safe_category=_CATEGORY_NAMES.get(letter) if fail_safe else None,
-        note_kind="opening" if message.get("opening_note") else None,
+        note_kind=_note_kind_of(message),
     )
+
+
+def _note_kind_of(message: dict[str, Any]) -> Literal["opening", "room"] | None:
+    if message.get("opening_note"):
+        return "opening"
+    if message.get("room_note"):
+        return "room"
+    return None

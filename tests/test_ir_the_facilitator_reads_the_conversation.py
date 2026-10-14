@@ -162,6 +162,21 @@ async def test_the_opening_note_is_marked_apart_from_the_words_the_team_said(
     ], "a Sala de Observação contava a nota de abertura como fala da equipe"
 
 
+async def test_the_mother_tongue_note_is_marked_a_room_note_and_the_lines_around_it_are_not(
+    client, db_session, room_app, script
+) -> None:
+    session_id, desk, _credential = await _a_conversation(client, db_session, room_app, script)
+
+    turns = await _turns(client, session_id, desk)
+
+    assert [(t["role"], t["note_kind"]) for t in turns[5:]] == [
+        ("guide", None),
+        ("team", "room"),
+        ("guide", None),
+    ], "a Sala de Observação contava a nota da língua materna como fala da equipe"
+    assert turns[6]["text"].startswith("[A equipe falou na língua materna")
+
+
 async def test_only_the_fail_safe_line_is_marked_and_names_its_category(
     client, db_session, room_app, script
 ) -> None:
