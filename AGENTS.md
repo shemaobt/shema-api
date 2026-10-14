@@ -93,8 +93,9 @@ carries only tests the sync takes none. Never edit vendored
 files, the pin or the record by hand: `--check` holds the copy to the record, and to a clone
 of the compiler at the pin where `TRIPOD_COMPILER_REPO` names one, and
 `scripts/smoke_internalization_canon.py` fails on what the room could not serve.
-`canon-sync.yml` runs the sync twice a week and opens a pull request for review when there
-is new canon; it never merges.
+`canon-sync.yml` runs the sync twice a week, fills the Portuguese title of every new scene her
+list has none for (`scripts/fill_scene_titles.py`), and opens a pull request for review when
+there is new canon; it never merges.
 
 `pin_committed` in our `VENDOR_PIN` is the commit's UTC date, because the sync reads the
 compiler through GitHub's API, which reports the committer's time in UTC and drops the

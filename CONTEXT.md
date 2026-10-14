@@ -263,8 +263,9 @@ _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part nev
 
 **Abandoned**:
 A superseded stretch that never got a replacement: what recording a **Part** again leaves
-behind on that part's stretches, and what a session told back and started over before
-2026-09-18 still carries as history.
+behind on that part's stretches, and what «recomeçar a tradução» on a session told back
+(`/back-translation/restart`) leaves behind on every current stretch, while the findings and kept
+check rounds are archived with the attempt it ends.
 _Avoid_: erased, discarded, cancelled, Abandonada, restart (a **Scene rehearsal**'s, not this)
 
 ### Verdict closings

@@ -92,7 +92,7 @@ class FacilitatorTeamDetail(FacilitatorTeamView):
     question nobody asked.
     """
 
-    #: Which scene of the active passage the team last actually moved a bead in — `scene:2`,
+    #: Which scene of the active passage the team last actually moved a bead in — `scene:S2`,
     #: not `2`, for the reason `ElementCoverage.scene` gives: a client that has to compose a
     #: key composes the wrong one the day the key's shape changes.
     #:
