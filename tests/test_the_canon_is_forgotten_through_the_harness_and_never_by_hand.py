@@ -783,6 +783,16 @@ def test_a_cache_that_is_listed_by_name_is_not_reported(tmp_path: Path) -> None:
     assert _unlisted_caches(app, {"app.services.a_new_cache.read_the_map_again"}) == []
 
 
+def test_a_cache_listed_under_the_same_name_in_another_module_does_not_hide_this_one(
+    tmp_path: Path,
+) -> None:
+    app = _an_app_holding(tmp_path, "services/a_new_cache.py", A_CACHE_NOBODY_LISTED)
+
+    reported = _unlisted_caches(app, {"app.services.another_cache.read_the_map_again"})
+
+    assert len(reported) == 1
+
+
 @pytest.mark.parametrize(
     ("at", "source"),
     [
