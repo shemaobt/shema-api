@@ -149,6 +149,18 @@ async def scene_rehearsals_of_the_passage(
     return list(found)
 
 
+async def scene_rehearsals_of_the_session(
+    db: AsyncSession, session_id: str
+) -> list[IRSceneRehearsal]:
+    """Every scene rehearsal recorded in this session, archived or not, for the reader."""
+    found = await db.scalars(
+        select(IRSceneRehearsal)
+        .where(IRSceneRehearsal.session_id == session_id)
+        .order_by(IRSceneRehearsal.n)
+    )
+    return list(found)
+
+
 async def scene_rehearsal_in_session(
     db: AsyncSession, session_id: str, rehearsal_id: str
 ) -> IRSceneRehearsal:
@@ -202,6 +214,48 @@ async def frases_of(
         if frase.attempt == attempts[frase.rehearsal_id]:
             frases[frase.rehearsal_id].append(frase)
     return frases
+
+
+async def set_aside_frases(
+    db: AsyncSession, rehearsal_ids: Sequence[str]
+) -> dict[str, list[IRSceneFrase]]:
+    """The frases each restart set aside, by restart, those that arrived after it included."""
+    found = await db.scalars(
+        select(IRSceneFrase)
+        .where(IRSceneFrase.rehearsal_id.in_(rehearsal_ids), IRSceneFrase.restart_id.is_not(None))
+        .order_by(IRSceneFrase.starts_ms, IRSceneFrase.created_at)
+    )
+    set_aside: dict[str, list[IRSceneFrase]] = {}
+    for frase in found:
+        set_aside.setdefault(str(frase.restart_id), []).append(frase)
+    return set_aside
+
+
+async def held_frases(
+    db: AsyncSession, restarts: dict[str, list[IRSceneRestart]]
+) -> dict[str, dict[str, list[IRSceneFrase]]]:
+    """By rehearsal and by attempt, the frases naming an attempt whose restart never landed,
+    measured against the restarts the caller already read."""
+    rehearsal_ids = list(restarts)
+    landed = {
+        rehearsal_id: {restart.id for restart in done} for rehearsal_id, done in restarts.items()
+    }
+    found = await db.scalars(
+        select(IRSceneFrase)
+        .where(
+            IRSceneFrase.rehearsal_id.in_(rehearsal_ids),
+            IRSceneFrase.restart_id.is_(None),
+            IRSceneFrase.attempt.is_not(None),
+        )
+        .order_by(IRSceneFrase.starts_ms, IRSceneFrase.created_at)
+    )
+    held: dict[str, dict[str, list[IRSceneFrase]]] = {
+        rehearsal_id: {} for rehearsal_id in rehearsal_ids
+    }
+    for frase in found:
+        if frase.attempt is not None and frase.attempt not in landed[frase.rehearsal_id]:
+            held[frase.rehearsal_id].setdefault(frase.attempt, []).append(frase)
+    return held
 
 
 def replaced_by(frases: Sequence[IRSceneFrase]) -> dict[str, str]:

@@ -877,6 +877,157 @@ async def test_a_restart_whose_attempt_is_another_scene_rehearsals_restart_is_re
     assert await count(db_session, "ir_scene_restarts", "rehearsal_id", rehearsal_id) == 0
 
 
+async def read_by_the_reader(room: Room, session_id: str) -> list[dict[str, Any]]:
+    listed = await room.client.get(
+        f"{IR}/facilitator/sessions/{session_id}/scene-rehearsals", headers=room.desk
+    )
+    assert listed.status_code == 200, listed.text
+    return list(listed.json()["scene_rehearsals"])
+
+
+async def test_the_reader_opens_a_zerada_sessions_scene_rehearsal_with_its_restart_and_its_words(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    two = await translated(room, session_id, rehearsal_id, [(0, 5000), (5000, 11000)])
+    await restarted(room, session_id, rehearsal_id)
+    archive_id = await zerar(room)
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    assert read["rehearsal_id"] == rehearsal_id
+    assert read["archive_id"] == archive_id
+    (restart_read,) = read["restarts"]
+    assert restart_read["restarted_at"]
+    assert [(f["frase_id"], f["transcript"]) for f in restart_read["snapshot"]["frases"]] == [
+        (two[0], SAID),
+        (two[1], SAID),
+    ]
+
+
+async def test_the_reader_reads_the_current_frases_words(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    room.answers.extend(["a primeira frase", "a segunda frase"])
+    await translated(room, session_id, rehearsal_id, [(0, 5000), (5000, 11000)])
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    assert [(f["starts_ms"], f["transcript"]) for f in read["frases"]] == [
+        (0, "a primeira frase"),
+        (5000, "a segunda frase"),
+    ]
+
+
+async def test_the_reader_shows_the_classifiers_guess_beside_the_teams_label(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert (read["scene"], read["scene_said"], read["scene_guess"]) == ("S2", "recording", None)
+
+    await write(db_session, "scene_guess", "S3", rehearsal_id)
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert (read["scene"], read["scene_guess"]) == ("S2", "S3")
+
+
+async def test_the_reader_reads_a_frase_that_arrived_after_its_restart_under_that_restart(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    room.answers.extend(["antes do recomeço", "chegou depois do recomeço"])
+    await translated(room, session_id, rehearsal_id, [(0, 5000)])
+    attempt = await restarted(room, session_id, rehearsal_id)
+    late = await translate(room, session_id, rehearsal_id, (5000, 11000), recording(1, 600))
+    assert late.status_code == 200, late.text
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    (restart_read,) = read["restarts"]
+    assert restart_read["restart_id"] == attempt
+    assert [(f["starts_ms"], f["transcript"]) for f in restart_read["frases"]] == [
+        (0, "antes do recomeço"),
+        (5000, "chegou depois do recomeço"),
+    ]
+    assert read["frases"] == []
+
+
+async def test_the_reader_reads_a_held_frase_whose_restart_never_landed(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    attempt = str(uuid.uuid4())
+    room.answers.append("esperando o recomeço")
+    held = await translate_after(
+        room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt
+    )
+    assert held.status_code == 200, held.text
+    await write(db_session, "sent_at", "2026-10-13 09:00:00", rehearsal_id)
+    refused = await restart(room, session_id, rehearsal_id, attempt)
+    assert refused.status_code == 409, refused.text
+
+    (read,) = await read_by_the_reader(room, session_id)
+
+    assert (read["frases"], read["restarts"]) == ([], [])
+    (waiting,) = read["held"]
+    assert waiting["attempt"] == attempt
+    assert [(f["starts_ms"], f["transcript"]) for f in waiting["frases"]] == [
+        (0, "esperando o recomeço")
+    ]
+
+
+async def test_the_readers_held_frases_leave_the_list_as_their_restarts_land(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    x, y = str(uuid.uuid4()), str(uuid.uuid4())
+    assert (await restart(room, session_id, rehearsal_id, y, closes=x)).status_code == 409
+    fy = await translate_after(room, session_id, rehearsal_id, (0, 6000), recording(1, 601), y)
+    assert (await restart(room, session_id, rehearsal_id, x)).status_code == 200
+    fx = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), x)
+    assert (fy.status_code, fx.status_code) == (200, 200)
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert [(h["attempt"], [f["ends_ms"] for f in h["frases"]]) for h in read["held"]] == [
+        (y, [6000])
+    ]
+
+    assert (await restart(room, session_id, rehearsal_id, y, closes=x)).status_code == 200
+
+    (read,) = await read_by_the_reader(room, session_id)
+    assert read["held"] == []
+    assert [f["ends_ms"] for f in read["frases"]] == [6000]
+
+
+async def test_a_held_frase_stays_held_when_a_sibling_rehearsals_restart_of_that_attempt_lands(
+    room: Room, db_session: AsyncSession
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    sibling_id = await recorded(room, session_id, recording(10, 2))
+    z = str(uuid.uuid4())
+    held = await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), z)
+    assert held.status_code == 200, held.text
+
+    assert (await restart(room, session_id, sibling_id, z)).status_code == 200
+
+    mine = next(
+        r for r in await read_by_the_reader(room, session_id) if r["rehearsal_id"] == rehearsal_id
+    )
+    assert [(h["attempt"], [f["ends_ms"] for f in h["frases"]]) for h in mine["held"]] == [
+        (z, [4000])
+    ]
+
+
 async def test_two_scenes_kept_at_once_in_one_session_take_the_next_two_numbers(
     room: Room, db_session: AsyncSession
 ) -> None:
@@ -934,6 +1085,27 @@ async def test_one_read_of_a_rehearsal_reads_its_restarts_once(
     event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
     try:
         await read_by_b(room, session_id)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
+
+    assert len([s for s in said if "FROM ir_scene_restarts" in s]) == 1
+
+
+async def test_one_read_at_the_desk_reads_the_restarts_once(
+    room: Room, db_session: AsyncSession, test_engine
+) -> None:
+    session_id = await a_session(db_session)
+    rehearsal_id = await recorded(room, session_id)
+    attempt = await restarted(room, session_id, rehearsal_id)
+    await translate_after(room, session_id, rehearsal_id, (0, 4000), recording(1, 600), attempt)
+    said: list[str] = []
+
+    def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+        said.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
+    try:
+        await read_by_the_reader(room, session_id)
     finally:
         event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
 

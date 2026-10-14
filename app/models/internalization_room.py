@@ -872,9 +872,7 @@ class SceneFraseView(BaseModel):
     replaced_by: str | None = None
 
 
-class SceneRehearsalView(BaseModel):
-    """A scene rehearsal as any tablet of the team resumes it, with no words and no guess."""
-
+class SceneRehearsalFacts(BaseModel):
     rehearsal_id: str
     session_id: str
     pericope: str
@@ -889,6 +887,11 @@ class SceneRehearsalView(BaseModel):
     #: The **Restart** the current frases follow, which a frase names to say it belongs to
     #: this attempt; null before the first restart.
     after_restart: str | None = None
+
+
+class SceneRehearsalView(SceneRehearsalFacts):
+    """A scene rehearsal as any tablet of the team resumes it, with no words and no guess."""
+
     frases: list[SceneFraseView]
 
 
@@ -915,6 +918,42 @@ class SceneRestartSnapshot(BaseModel):
     duration_ms: int | None
     sha256: str
     frases: list[SceneSnapshotFrase]
+
+
+class ReaderSceneFraseView(SceneFraseView):
+    transcript: str
+
+
+class SceneRestartView(BaseModel):
+    """A restart for the Desk: the record as it was, and every frase it set aside, the ones
+    that arrived after it included."""
+
+    restart_id: str
+    restarted_at: str
+    snapshot: SceneRestartSnapshot
+    frases: list[ReaderSceneFraseView]
+
+
+class HeldAttemptView(BaseModel):
+    """Frases naming an attempt whose restart has not landed, waiting for it."""
+
+    attempt: str
+    frases: list[ReaderSceneFraseView]
+
+
+class ReaderSceneRehearsalView(SceneRehearsalFacts):
+    """The rehearsal for the Desk: the frases' words, its restarts and the classifier's guess."""
+
+    frases: list[ReaderSceneFraseView]
+    scene_guess: str | None = None
+    archive_id: str | None = None
+    restarts: list[SceneRestartView]
+    held: list[HeldAttemptView]
+
+
+class ReaderSceneRehearsalsResponse(BaseModel):
+    session_id: str
+    scene_rehearsals: list[ReaderSceneRehearsalView]
 
 
 class ReleaseResponse(BaseModel):
