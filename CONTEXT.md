@@ -275,14 +275,14 @@ _Avoid_: ending, other, Fechamento
 The work of one team on one pericope in one language, with status in progress, done or needs a
 person. A session nobody entered — no turn, no take and no halt — is not yet a room of the team:
 the Desk's column and the team's last activity ignore it. The Desk uses the same word.
-_Avoid_: passage, round, visit, visita, Sessão
+_Avoid_: passage, round, visit, visita, attempt
 
 **Approved passage** (*passagem aprovada*):
 A passage of a team that has a release. The count the Desk shows a team is of approved passages; a finished session without a release approves nothing.
 _Avoid_: closed passage (a session done, which may hold no release), fechada, complete
 
 **Inactive team** (*equipe inativa*):
-A team with no activity for 21 days, as the Desk's team list marks it. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
+A team with no activity for 21 days, the «Inativas» of the Desk's team list. Inactive means the work stopped, not that the team is quiet: a team that closed every passage of the book is never inactive, however long ago it finished, and neither is a team that has never met. Not a halt: an inactive team's room is not stopped, and a halted room's team is not inactive.
 _Avoid_: stalled, parada, idle, dormant
 
 **Opening a session**:
@@ -306,7 +306,7 @@ A turn that carries the team's recording: what they said goes in, the Guide's ne
 _Avoid_: audio turn, retell turn
 
 **Attempt**:
-One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Visit.
+One draft of the Guide's or the Speaker's on a turn and what the Validator did with it: its verdict, its issues, the correction when it mended the draft, and the attempt note when something went wrong. A turn keeps every attempt, oldest first. Not a Session.
 _Avoid_: try, round, redraft (the count of drafts after the first), Tentativa
 
 **Attempt note**:
