@@ -378,14 +378,28 @@ def _called_by_pytest(tree: ast.Module) -> set[ast.AST]:
 
 
 def _fixtures_in_reach(tree: ast.Module) -> dict[ast.AST, dict[str, ast.AST]]:
+    classes = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+
+    def lineage(scope: ast.ClassDef) -> list[ast.ClassDef]:
+        return [
+            scope,
+            *(
+                each
+                for base in scope.bases
+                if isinstance(base, ast.Name) and base.id in classes
+                for each in lineage(classes[base.id])
+            ),
+        ]
+
     reach: dict[ast.AST, dict[str, ast.AST]] = {}
     for scope in ast.walk(tree):
         if isinstance(scope, ast.ClassDef):
             fixtures = {
                 function.name: function
-                for function in scope.body
+                for each in reversed(lineage(scope))
+                for function in each.body
                 if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
-                and function.name in _fixtures_of(scope)
+                and function.name in _fixtures_of(each)
             }
             for function in scope.body:
                 if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -1933,6 +1947,23 @@ class TestAnotherCase:
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_METHOD_ASKS_FOR_THE_FIXTURE_OF_ITS_BASE_CLASS = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class Base:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+
+class TestACase(Base):
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -2848,11 +2879,13 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
         (THE_CASE_WHOSE_CLASS_DEFINES_THE_FIXTURE_ITS_METHOD_ASKS_FOR, [12], []),
         (THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_TEST_OF_THE_MODULE_TOO, [12], [16]),
         (THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_METHOD_OF_ANOTHER_CLASS_TOO, [12], [17]),
+        (THE_CASE_WHOSE_METHOD_ASKS_FOR_THE_FIXTURE_OF_ITS_BASE_CLASS, [14], []),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
         "a test of the module that asks for the name of the class's fixture",
         "a method of another class that asks for the name of the class's fixture",
+        "a method of a subclass that asks for the fixture of its base class",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
