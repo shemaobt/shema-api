@@ -490,24 +490,39 @@ def _decorator_name(decorator: ast.expr) -> str | None:
     return target.id if isinstance(target, ast.Name) else None
 
 
+CACHES = {"lru_cache", "cache"}
+
+
+def _built_by_a_call(value: ast.expr | None) -> bool:
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Call)
+        and (_decorator_name(value.func) in CACHES)
+    )
+
+
+def _cache_declared_by(node: ast.AST) -> str | None:
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        kinds = {_decorator_name(decorator) for decorator in node.decorator_list}
+        return node.name if kinds & CACHES else None
+    if isinstance(node, ast.Assign | ast.AnnAssign) and _built_by_a_call(node.value):
+        target = node.targets[0] if isinstance(node, ast.Assign) else node.target
+        return ast.unparse(target)
+    return None
+
+
 def _unlisted_caches(root: Path, listed: set[str]) -> list[str]:
     unlisted: list[str] = []
     for module in sorted(root.rglob("*.py")):
         relative = module.relative_to(root.parent)
         dotted = ".".join(relative.with_suffix("").parts)
         for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                continue
-            kinds = {_decorator_name(decorator) for decorator in node.decorator_list}
-            qualified = f"{dotted}.{node.name}"
-            if (
-                not kinds & {"lru_cache", "cache"}
-                or dotted.startswith(THE_CANON_PACKAGE)
-                or qualified in listed
-            ):
+            name = _cache_declared_by(node)
+            qualified = f"{dotted}.{name}"
+            if name is None or dotted.startswith(THE_CANON_PACKAGE) or qualified in listed:
                 continue
             unlisted.append(
-                f"{relative.as_posix()}:{node.lineno} `{node.name}` is a cache the harness "
+                f"{relative.as_posix()}:{node.lineno} `{name}` is a cache the harness "
                 "does not know. Ask: does it read anything under canon/, directly or "
                 f'through a call? If it does, list "{qualified}" in '
                 "THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT in tests/canon_harness.py; "
@@ -534,6 +549,17 @@ def read_the_map_again() -> str:
     return "the map"
 """
 
+
+A_CACHE_BUILT_BY_A_CALL_NOBODY_LISTED = """\
+from functools import lru_cache
+
+
+def _read() -> str:
+    return "the map"
+
+
+read_the_map_again = lru_cache(maxsize=1)(_read)
+"""
 
 A_BARE_CACHE_NOBODY_LISTED = """\
 import functools
@@ -676,6 +702,21 @@ def test_a_cache_nobody_listed_is_reported_with_where_it_is_and_what_to_do(
         "THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT in tests/canon_harness.py; if it does "
         "not, list it in THE_CACHES_THAT_READ_NO_CANON, in the same file."
     ]
+
+
+def test_a_cache_built_by_a_call_is_reported_like_one_built_by_a_decorator(
+    tmp_path: Path,
+) -> None:
+    app = _an_app_holding(
+        tmp_path, "services/a_new_cache.py", A_CACHE_BUILT_BY_A_CALL_NOBODY_LISTED
+    )
+
+    (reported,) = _unlisted_caches(app, set())
+
+    assert reported.startswith(
+        "app/services/a_new_cache.py:8 `read_the_map_again` is a cache the harness does not know. "
+    )
+    assert 'list "app.services.a_new_cache.read_the_map_again" in ' in reported
 
 
 def test_a_bare_functools_cache_is_a_cache_too(tmp_path: Path) -> None:
