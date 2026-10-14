@@ -179,6 +179,11 @@ class SessionResult:
     verdict: dict[str, Any] | None = None
     unjudged: str | None = None
     judge_usage: list[Usage] = field(default_factory=list)
+    killed: str | None = None
+
+    @property
+    def whole(self) -> bool:
+        return self.refused is None and self.killed is None
 
     @property
     def faults(self) -> list[str]:
@@ -477,6 +482,7 @@ def export(
     out: Path,
     stamp: str,
     refused: str | None = None,
+    killed: str | None = None,
 ) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     report = out / f"{script.name}.{stamp}.json"
@@ -490,6 +496,7 @@ def export(
                 "baseUrl": base_url,
                 "sessionId": session_id,
                 "refused": refused,
+                "killed": killed,
                 "turns": [asdict(turn) for turn in played],
             },
             ensure_ascii=False,
@@ -546,6 +553,9 @@ async def play_session(
     except httpx.HTTPStatusError as refused:
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
         result.refused = _refusal(refused)
+    except Exception as dead:
+        result.killed = f"{type(dead).__name__}: {dead}"
+        raise
     finally:
         report, transcript = export(
             script,
@@ -555,6 +565,7 @@ async def play_session(
             out=out,
             stamp=stamp,
             refused=result.refused,
+            killed=result.killed,
         )
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
@@ -704,7 +715,10 @@ def summary(
         if result.refused and result.faults:
             column = f"recusada · {len(result.faults)}"
         noted = "; ".join(
-            ([result.refused] if result.refused else []) + result.faults + result.objections
+            ([result.refused] if result.refused else [])
+            + ([f"interrompida por {result.killed}"] if result.killed else [])
+            + result.faults
+            + result.objections
         )
         lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
@@ -816,9 +830,9 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
 
     The turns' usage is left out on purpose: those calls were paid for by the run that
     exported them and are already in its README, and a re-judgement's money is the judge's.
-    A refusal comes back with the session, so a run cut short by the room is not rebuilt
-    as a whole one; an export older than the field is read as played whole, which is what
-    those runs were.
+    A refusal and a death come back with the session, so a run cut short by the room or by
+    an error is not rebuilt as a whole one; an export older than the fields is read as
+    played whole, which is what those runs were.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
     script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
@@ -835,7 +849,13 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
         )
         for turn in raw["turns"]
     ]
-    result = SessionResult(script.name, raw["sessionId"], played, refused=raw.get("refused"))
+    result = SessionResult(
+        script.name,
+        raw["sessionId"],
+        played,
+        refused=raw.get("refused"),
+        killed=raw.get("killed"),
+    )
     return script, result, raw["baseUrl"]
 
 
@@ -847,10 +867,11 @@ async def rejudge(args: argparse.Namespace) -> int:
     again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
     pericope names today, and its verdict written under the same name and stamp into `--out`,
     so the file still says which transcript it judged. The mechanical column is the one the
-    run exported; the judge's column is this call's. A session the room refused is not
-    judged here either, and its row stays `recusada`. Writing into the directory being read
-    is refused: `--out` defaults to today's date, which on the day of the run is that very
-    directory, and `close` would replace the README that records what the run cost.
+    run exported; the judge's column is this call's. A session the room refused or an
+    error killed midway is not judged here either, and its row says so. Writing into the
+    directory being read is refused: `--out` defaults to today's date, which on the day of the
+    run is that very directory, and `close` would replace the README that records what the run
+    cost.
     """
     out = Path(args.out)
     if out.resolve() == Path(args.rejudge).resolve():
@@ -868,7 +889,7 @@ async def rejudge(args: argparse.Namespace) -> int:
     if not earlier:
         print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
         return 2
-    to_judge = [script for _, script, result, _ in earlier if result.refused is None]
+    to_judge = [script for _, script, result, _ in earlier if result.whole]
     base_url = earlier[-1][3]
     budget = budget_of(args)
     results: list[SessionResult] = []
@@ -879,7 +900,7 @@ async def rejudge(args: argparse.Namespace) -> int:
             break
         print(f"\n▶ {script.name} — judging {path.name} again")
         out.mkdir(parents=True, exist_ok=True)
-        if result.refused is None:
+        if result.whole:
             await judge(
                 script,
                 result,

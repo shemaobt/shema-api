@@ -192,3 +192,60 @@ async def test_a_run_that_dies_never_replaces_the_readme_a_finished_run_left_the
     assert f"README.{STAMP}.md" in capsys.readouterr().out, (
         "a tela diz onde ficou o relatório da rodada que morreu"
     )
+
+
+async def _a_session_killed_on_its_second_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out: Path
+) -> None:
+    turns: list[str] = []
+
+    def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 2:
+            raise httpx.ReadTimeout("the room did not answer", request=request)
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2))
+    with pytest.raises(httpx.ReadTimeout):
+        await golden_runner.run(golden_args(sessions, out))
+
+
+async def test_a_session_killed_midway_is_exported_marked_as_cut_short(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "reports"
+
+    await _a_session_killed_on_its_second_turn(tmp_path, monkeypatch, out)
+
+    exported = json.loads((out / f"P01-a.{STAMP}.json").read_text(encoding="utf-8"))
+    assert exported["killed"] == "ReadTimeout: the room did not answer", (
+        "a sessão morreu no segundo turno e o JSON exportado não dizia que ela ficou pela metade"
+    )
+    assert len(exported["turns"]) == 1
+
+
+async def test_a_rejudge_does_not_judge_a_session_that_was_cut_short_as_a_whole_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    earlier = tmp_path / "earlier"
+    await _a_session_killed_on_its_second_turn(tmp_path, monkeypatch, earlier)
+    judge = the_judge_answers(monkeypatch)
+    again = tmp_path / "again"
+
+    exit_code = await golden_runner.run(
+        golden_args(tmp_path / "sessions", again, rejudge=str(earlier))
+    )
+
+    assert judge.asked == [], (
+        "a sessão morreu no segundo turno e o --rejudge a julgava como se tivesse sido inteira"
+    )
+    assert not list(again.glob("*.verdict.json"))
+    assert "| P01-a | — | 0 | interrompida por ReadTimeout: the room did not answer |" in (
+        again / "README.md"
+    ).read_text(encoding="utf-8"), "a linha diz por que a sessão ficou sem juiz"
+    assert exit_code == 1
