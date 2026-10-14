@@ -930,8 +930,11 @@ def close(
         encoding="utf-8",
     )
     passed = sum(1 for result in results if result.passed)
+    empty = sum(1 for result in results if result.empty)
     for result in results:
         verdict = "REFUSED" if result.refused else ("PASS" if result.passed else "FAIL")
+        if result.empty:
+            verdict = "EMPTY"
         cost = sum(priced(_paid([result]))[0].values())
         print(
             f"  {verdict} · {result.name} · judge={result.judged.lower().replace('—', 'n/a')} "
@@ -941,7 +944,8 @@ def close(
     if by_role or unpriced:
         table = f" — {split(by_role)}" if by_role else ""
         print(f"\ncost US$ {sum(by_role.values()):.2f}{table}{uncounted(unpriced)}")
-    print(f"\n{passed}/{len(results)} golden sessions pass · {out / readme}")
+    note = f", {empty} empty" if empty else ""
+    print(f"\n{passed}/{len(results) - empty} golden sessions pass{note} · {out / readme}")
     return 0 if passed == len(results) else 1
 
 

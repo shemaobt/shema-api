@@ -438,3 +438,21 @@ async def test_an_empty_session_is_counted_apart_and_is_neither_an_approval_nor_
         "a sessão vazia entrava no denominador e a rodada dizia 1/2, como se uma sessão tivesse "
         "sido reprovada"
     )
+
+
+async def test_an_empty_session_has_its_own_line_on_the_console_and_is_left_out_of_the_pass_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _a_room_that_plays_and_a_judge_that_approves(monkeypatch)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 1), ("P02-b", "P02", 0))
+    out = tmp_path / "reports"
+
+    await golden_runner.run(golden_args(sessions, out))
+
+    printed = capsys.readouterr().out
+    assert "\n  EMPTY · P02-b · judge=n/a · mechanical=0 · cost US$ 0.00\n" in printed, (
+        "a sessão vazia saía como FAIL na tela, e a sala não tinha sido sequer tocada"
+    )
+    assert f"\n1/1 golden sessions pass, 1 empty · {out / 'README.md'}\n" in printed, (
+        "a contagem de aprovadas dizia 1/2 e não dizia que a segunda não teve turno nenhum"
+    )
