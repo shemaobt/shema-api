@@ -37,6 +37,7 @@ def _turn_of(message: dict[str, Any]) -> ConversationTurn:
 
 
 def _note_kind_of(message: dict[str, Any]) -> Literal["opening", "room"] | None:
+    # «(inaudible)» is the team's turn that was not heard, unmarked on purpose (sessions.py:582).
     if message.get("opening_note"):
         return "opening"
     if message.get("room_note") or message["role"] == "room":

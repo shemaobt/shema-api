@@ -177,6 +177,24 @@ async def test_the_mother_tongue_note_is_marked_a_room_note_and_the_lines_around
     assert turns[6]["text"].startswith("[A equipe falou na língua materna")
 
 
+async def test_a_take_the_room_could_not_hear_stays_the_teams_side_and_is_not_a_note(
+    client, db_session, room_app, script
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await the_room_opens(client, credential, session.id)
+    script.said = ""
+
+    await the_team_says(client, credential, session.id, "turno-1")
+
+    turns = await _turns(client, session.id, desk)
+    inaudible = [t for t in turns if t["text"] == "(inaudible)"]
+    assert [(t["role"], t["note_kind"]) for t in inaudible] == [("team", None)], (
+        "a vez da equipe que a sala não ouviu virava nota da sala e saía da conta da equipe"
+    )
+
+
 async def test_only_the_fail_safe_line_is_marked_and_names_its_category(
     client, db_session, room_app, script
 ) -> None:
