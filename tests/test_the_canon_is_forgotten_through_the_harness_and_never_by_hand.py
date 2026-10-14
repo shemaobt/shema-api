@@ -1731,6 +1731,25 @@ class TestACase:
         cached.cache_clear()
 """
 
+THE_CASE_WHOSE_NESTED_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_ITS_OWN_FIXTURE = """\
+import pytest
+
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+@pytest.fixture
+def cached():
+    return book_material.preservation_rules
+
+
+def test_a_case() -> None:
+    def forget(cached) -> None:
+        cached.cache_clear()
+
+    forget(get_settings)
+"""
+
 A_SPY_ON_A_CANON_CACHE_THE_HARNESS_CALLS = """\
 from app.services.internalization_room.canon import book_material
 
@@ -2652,11 +2671,17 @@ def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole
         (THE_CASE_WHOSE_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_ITS_OWN_FIXTURE, [], [13]),
         (THE_CASE_THAT_HANDS_ITS_OWN_FIXTURE_TO_A_HELPER, [12], []),
         (THE_CASE_WHOSE_TEST_METHOD_ASKS_FOR_ITS_OWN_FIXTURE, [13], []),
+        (
+            THE_CASE_WHOSE_NESTED_HELPER_IS_HANDED_ANOTHER_CACHE_UNDER_THE_NAME_OF_ITS_OWN_FIXTURE,
+            [],
+            [14],
+        ),
     ],
     ids=[
         "a helper that is handed another cache under the name of the case's fixture",
         "a case that hands its fixture to a helper",
         "a test method of a class that asks for the case's fixture",
+        "a nested helper that is handed another cache under the name of the case's fixture",
     ],
 )
 def test_a_fixture_of_the_case_feeds_only_what_pytest_calls_with_it(
