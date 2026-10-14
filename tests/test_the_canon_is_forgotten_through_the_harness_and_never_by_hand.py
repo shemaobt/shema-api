@@ -405,6 +405,7 @@ def _fed_by_what_functions_return(
     canon_caches: set[str],
     names_a_cache: bool,
     outside: dict[str, set[str]],
+    behind: dict[str, set[str]],
 ) -> tuple[dict[ast.AST, Bindings], dict[str, list[ast.AST]], dict[str, set[str]]]:
     functions = {
         function.name: function
@@ -416,6 +417,12 @@ def _fed_by_what_functions_return(
     fixtures = of_the_file - overridden
     called_by_pytest = _called_by_pytest(tree) if outside or fixtures else set()
     carried: dict[str, set[str]] = {}
+
+    def requested_by(node: ast.AST, parameter: str) -> set[str]:
+        if parameter in of_the_file and getattr(node, "name", None) == parameter:
+            return behind.get(parameter, set())
+        return (carried if parameter in fixtures else outside).get(parameter, set())
+
     for _ in range(len(functions) + 1):
         fed = {
             node: [
@@ -423,11 +430,7 @@ def _fed_by_what_functions_return(
                 *(
                     ([parameter.arg], value)
                     for parameter in _parameters_of(node)
-                    for value in _as_resolved(
-                        (carried if parameter.arg in fixtures else outside).get(
-                            parameter.arg, set()
-                        )
-                    )
+                    for value in _as_resolved(requested_by(node, parameter.arg))
                     if node in called_by_pytest
                 ),
             ]
@@ -609,7 +612,7 @@ def _conftests_above(module: Path, root: Path) -> list[Path]:
 
 def _fixtures_of_the_conftest(
     module: Path, tree: ast.Module, canon_caches: set[str], root: Path
-) -> dict[str, set[str]]:
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     conftests = [conftest for conftest in _conftests_above(module, root) if conftest.is_file()]
     texts = {conftest: conftest.read_text(encoding="utf-8") for conftest in conftests}
     if module not in conftests:
@@ -637,12 +640,13 @@ def _fixtures_of_the_conftest(
             and requests_a_fixture_of_the_case()
         )
     ):
-        return {}
+        return {}, {}
     trees = {file: tree if file == module else ast.parse(text) for file, text in texts.items()}
-    defined_by = {name: file for file, parsed in trees.items() for name in _fixtures_of(parsed)}
-    carried_by_name: dict[str, set[str]] = {}
+    own: dict[Path, dict[str, set[str]]] = {}
     while True:
-        now: dict[str, set[str]] = {}
+        nearest = {name: names for each in own.values() for name, names in each.items()}
+        now: dict[Path, dict[str, set[str]]] = {}
+        behind: dict[str, set[str]] = {}
         for file, parsed in trees.items():
             given, _ = _arguments_given(parsed)
             *_, carried = _fed_by_what_functions_return(
@@ -652,16 +656,15 @@ def _fixtures_of_the_conftest(
                 list(_outside_every_function(parsed)),
                 canon_caches,
                 True,
-                carried_by_name,
+                nearest,
+                behind,
             )
-            now |= {
-                name: carried.get(name, set())
-                for name in _fixtures_of(parsed)
-                if defined_by[name] == file
-            }
-        if now == carried_by_name:
-            return {name: names for name, names in now.items() if names}
-        carried_by_name = now
+            now[file] = {name: carried.get(name, set()) for name in _fixtures_of(parsed)}
+            if file != module:
+                behind = {**behind, **now[file]}
+        if now == own:
+            return {name: names for name, names in nearest.items() if names}, behind
+        own = now
 
 
 def _clears_in_tree(
@@ -674,7 +677,7 @@ def _clears_in_tree(
     follow: bool,
 ) -> tuple[list[int], list[int]]:
     text = module.read_text(encoding="utf-8")
-    outside = _fixtures_of_the_conftest(module, tree, canon_caches, root)
+    outside, behind = _fixtures_of_the_conftest(module, tree, canon_caches, root)
     names_a_cache = bool(outside) or any(cache.rpartition(".")[2] in text for cache in canon_caches)
     imports = _imports_of(tree, _package_of(module, root))
     spied_on = _inside_the_spies(tree)
@@ -695,6 +698,7 @@ def _clears_in_tree(
         canon_caches,
         names_a_cache,
         outside,
+        behind,
     )
     scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
     passed: set[tuple[ast.AST, str, str]] = set()
@@ -1544,6 +1548,15 @@ def cached():
 
 @pytest.fixture
 def derived(cached):
+    return cached
+"""
+
+THE_CONFTEST_WHOSE_FIXTURE_EXTENDS_THE_ONE_OF_ITS_OWN_NAME = """\
+import pytest
+
+
+@pytest.fixture
+def cached(cached):
     return cached
 """
 
@@ -2799,6 +2812,24 @@ def test_a_nearer_conftest_fixture_of_the_same_name_shadows_the_one_above(
     clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
 
     assert clears == ([], [2])
+
+
+def test_a_nearer_conftest_fixture_that_requests_its_own_name_is_followed_to_the_one_above(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
+    )
+    subdirectory = tmp_path / "test_a_subdirectory"
+    subdirectory.mkdir()
+    (subdirectory / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_EXTENDS_THE_ONE_OF_ITS_OWN_NAME, encoding="utf-8"
+    )
+    module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == ([2], [])
 
 
 def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
