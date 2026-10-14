@@ -90,7 +90,7 @@ def _bound_by(target: ast.expr) -> list[str]:
 
 def _bindings(nodes: Iterable[ast.AST]) -> Iterator[tuple[list[str], ast.AST]]:
     for node in nodes:
-        if isinstance(node, ast.For):
+        if isinstance(node, ast.For | ast.comprehension):
             yield _bound_by(node.target), node.iter
         elif isinstance(node, ast.Assign):
             for target in node.targets:
@@ -209,6 +209,14 @@ from app.services.internalization_room.canon import book_material
 def test_a_case() -> None:
     with book_material.preservation_rules as cached:
         cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_COMPREHENSION_TARGET = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    [cached.cache_clear() for cached in (book_material.preservation_rules,)]
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -446,6 +454,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_TUPLE_LOOP, 6),
         (CLEARS_THROUGH_A_TUPLE_TARGET, 6),
         (CLEARS_THROUGH_A_WITH_TARGET, 6),
+        (CLEARS_THROUGH_A_COMPREHENSION_TARGET, 5),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -462,6 +471,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by a tuple the loop unpacks",
         "named by a tuple target",
         "named by a with target",
+        "named by a comprehension target",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
