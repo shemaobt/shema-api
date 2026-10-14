@@ -264,6 +264,16 @@ class CoverageView(BaseModel):
 
 At = Literal["familiarization", "internalization", "articulation", "ensaio_final"]
 
+Cause = Literal[
+    "entrance",
+    "articulation_entrance",
+    "where_we_are",
+    "fence",
+    "part_closing",
+    "familiarization_closing",
+    "send_off",
+]
+
 
 class MomentView(BaseModel):
     at: At
@@ -1313,17 +1323,6 @@ class TurnTraceStep(BaseModel):
     note: str | None = None
 
 
-TurnMomentCause = Literal[
-    "entrance",
-    "articulation_entrance",
-    "where_we_are",
-    "fence",
-    "part_closing",
-    "familiarization_closing",
-    "send_off",
-]
-
-
 class TurnMoment(BaseModel):
     at: At
     part: int | None = None
@@ -1334,7 +1333,7 @@ class TurnMoment(BaseModel):
 class TurnMomentStep(BaseModel):
     before: TurnMoment
     after: TurnMoment
-    by: list[TurnMomentCause]
+    by: list[Cause]
     ignored: list[str] = Field(default_factory=list)
 
 
