@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from tests import canon_harness
 from tests.canon_harness import (
     THE_CACHES_THAT_READ_NO_CANON,
     THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT,
@@ -932,6 +933,18 @@ def test_a_spy_the_harness_calls_through_a_bound_cache_clear_is_not_a_clear_by_h
     )
 
     assert (of_the_canon, of_something_else) == ([], [])
+
+
+def test_a_cache_listed_from_outside_the_room_is_one_the_harness_forgets_by_its_own_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        canon_harness,
+        "THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT",
+        ("app.core.config.get_settings",),
+    )
+
+    assert "app.core.config.get_settings" in _the_caches_the_harness_forgets()
 
 
 def test_no_test_clears_a_cache_the_harness_forgets_by_hand() -> None:

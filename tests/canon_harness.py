@@ -97,12 +97,13 @@ def the_names_the_forgotten_caches_are_reached_by() -> set[str]:
     forgotten = {
         id(cache) for _, cache in [*the_caches_the_loader_holds(), *the_caches_of_the_prompts()]
     }
-    return {
+    reached = {
         f"{module.__name__}.{name}"
         for module in _the_modules_of_the_room()
         for name, value in vars(module).items()
         if id(value) in forgotten
     }
+    return reached | set(THE_CACHES_THAT_READ_THE_CANON_FROM_OUTSIDE_IT)
 
 
 def forget_the_prompts() -> None:
