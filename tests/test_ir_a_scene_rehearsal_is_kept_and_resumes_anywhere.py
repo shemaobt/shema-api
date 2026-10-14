@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.auth import Role
-from app.services.internalization_room.sessions import create_session, get_session
+from app.services.internalization_room.sessions import create_session
 from tests.baker import make_app, make_project_user_access, make_role, make_user, make_user_app_role
 from tests.device_harness import TABLET_TEAM, a_linked_tablet
 from tests.hard_stretch_harness import MemoryStore, a_session
@@ -559,26 +559,6 @@ async def test_a_frase_heard_while_the_passage_is_zerada_carries_the_archive_sta
     await translate(room, session_id, rehearsal_id, (0, 5000), recording(1, 700))
 
     assert await stamps(db_session, "ir_scene_frases", "rehearsal_id", rehearsal_id) == archived
-
-
-async def test_no_statement_of_a_session_read_or_create_names_the_unread_kept_takes(
-    room: Room, db_session: AsyncSession, test_engine
-) -> None:
-    said: list[str] = []
-
-    def _heard(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
-        said.append(statement)
-
-    event.listen(test_engine.sync_engine, "before_cursor_execute", _heard)
-    try:
-        session_id = await a_session(db_session)
-        await get_session(db_session, session_id)
-        await read_by_b(room, session_id)
-    finally:
-        event.remove(test_engine.sync_engine, "before_cursor_execute", _heard)
-
-    assert any("ir_sessions" in statement for statement in said)
-    assert [statement for statement in said if "kept_takes" in statement] == []
 
 
 async def restart(

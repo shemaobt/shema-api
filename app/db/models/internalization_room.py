@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import Mapped, declared_attr, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -48,10 +48,6 @@ class IRSession(Base):
     __tablename__ = "ir_sessions"
     __table_args__ = (Index("ix_ir_sessions_status_created", "status", "created_at"),)
 
-    @declared_attr.directive
-    def __mapper_args__(cls) -> dict[str, Any]:
-        return {"exclude_properties": ["kept_takes"]}
-
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     pericope: Mapped[str] = mapped_column(String(120))
     status: Mapped[IRSessionStatus] = mapped_column(
@@ -81,9 +77,6 @@ class IRSession(Base):
     #: stored on the opening (ADR 0054). Null while nothing is prepared.
     prepared_attempts: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    #: Written and read by nothing, and left out of the mapper so that no statement names it:
-    #: the revision serving while a later migration drops it must not ask for it (ADR 0059).
-    kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, server_default="{}")
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     #: Whose conversation this was. Null when the room app did not identify itself with a
     #: device credential, which is every session until ENG-454 ships that half — see the

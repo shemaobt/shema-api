@@ -1,4 +1,4 @@
-"""ENG-1312 — the scene rehearsal's tables, and the unread ``kept_takes`` left to a default.
+"""ENG-1312 — the scene rehearsal's tables, and the unread ``kept_takes`` dropped.
 
 Same constraint as the sibling migration tests: Alembic's full chain does not run on SQLite,
 so the schema is built from ``Base.metadata``, stamped at a revision and walked down and up.
@@ -6,7 +6,6 @@ so the schema is built from ``Base.metadata``, stamped at a revision and walked 
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
@@ -19,6 +18,7 @@ TABLES_REVISION = "20261013_scene01"
 DEFAULT_REVISION = "20261013_scene02"
 FRASES_REVISION = "20261013_scene03"
 RESTARTS_REVISION = "20261013_scene04"
+DROP_REVISION = "20261014_scene05"
 PREVIOUS_REVISION = "20261012_spine02"
 
 SCENE_TABLES = {"ir_scene_rehearsals"}
@@ -71,23 +71,6 @@ async def test_the_scene_rehearsal_table_comes_and_goes_with_its_migration(tmp_p
     assert not SCENE_TABLES & await tables_of(url)
 
 
-async def test_the_unread_kept_takes_column_fills_with_empty_when_a_session_leaves_it_out(
-    tmp_path,
-) -> None:
-    url = await _at(tmp_path, DEFAULT_REVISION)
-    down = run_alembic(url, "downgrade", TABLES_REVISION)
-    assert down.returncode == 0, down.stderr
-    with pytest.raises(IntegrityError):
-        await _execute(url, A_SESSION, {"session": SESSION})
-
-    up = run_alembic(url, "upgrade", DEFAULT_REVISION)
-
-    assert up.returncode == 0, up.stderr
-    await _execute(url, A_SESSION, {"session": SESSION})
-    kept = await scalar(url, "SELECT kept_takes FROM ir_sessions WHERE id = :s", {"s": SESSION})
-    assert kept == "{}"
-
-
 async def test_the_scene_frases_table_comes_and_goes_with_its_migration(tmp_path) -> None:
     url = await _at(tmp_path, FRASES_REVISION)
     down = run_alembic(url, "downgrade", DEFAULT_REVISION)
@@ -119,3 +102,23 @@ async def test_the_restarts_table_and_the_frases_restart_come_and_go_with_their_
         await columns_of(url, "ir_scene_restarts")
     )
     assert {"attempt", "restart_id"} <= await columns_of(url, "ir_scene_frases")
+
+
+async def test_the_kept_takes_column_is_gone_at_head_and_returns_as_empty_on_downgrade(
+    tmp_path,
+) -> None:
+    url = await _at(tmp_path, DROP_REVISION)
+    assert "kept_takes" not in await columns_of(url, "ir_sessions")
+    await _execute(url, A_SESSION, {"session": SESSION})
+
+    down = run_alembic(url, "downgrade", RESTARTS_REVISION)
+
+    assert down.returncode == 0, down.stderr
+    assert "kept_takes" in await columns_of(url, "ir_sessions")
+    kept = await scalar(url, "SELECT kept_takes FROM ir_sessions WHERE id = :s", {"s": SESSION})
+    assert kept == "{}"
+
+    up = run_alembic(url, "upgrade", DROP_REVISION)
+
+    assert up.returncode == 0, up.stderr
+    assert "kept_takes" not in await columns_of(url, "ir_sessions")

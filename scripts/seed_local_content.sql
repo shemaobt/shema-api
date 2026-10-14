@@ -15,9 +15,9 @@
 --
 -- Idempotent, and takes the team from :team_name — pass it bare, as -v team_name=Equipe Piloto
 -- is not bare enough; use -v team_name="Equipe Piloto" and let :'team_name' add the quotes.
-insert into ir_sessions (id, pericope, status, messages, coverage_state, kept_takes,
+insert into ir_sessions (id, pericope, status, messages, coverage_state,
                          back_translation, project_id, after_panorama)
-select 'sessao-local-1', 'P01', 'in_progress', '[]', '{}', '[]', '{}', p.id, false
+select 'sessao-local-1', 'P01', 'in_progress', '[]', '{}', '{}', p.id, false
 from projects p
 where p.name = :'team_name'
   and not exists (select 1 from ir_sessions where id = 'sessao-local-1');
