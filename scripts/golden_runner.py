@@ -37,10 +37,11 @@ earlier run again, without playing the room.
 
 The exit code is the gate, by her rule: a session passes when the judge passed it and no
 mechanical check tripped. 1 when any session failed, was refused or had no turn to play, 2
-when there was nothing to play, a script could not be read or `--turns` was below 1 — named on
-stderr before any session is played or paid for — and 0 when every session passed. A script
-with no turns is not opened or judged: it is a row of its own, `vazia`, counted neither as a
-pass nor as a failure in the README's totals. DOCTRINE.md §5.2 binds the release to it.
+when there was nothing to play, a script or an export could not be read or `--turns` was below
+1 — named on stderr before any session is played or paid for — and 0 when every session
+passed. A script with no turns is not opened or judged: it is a row of its own, `vazia`,
+counted neither as a pass nor as a failure in the README's totals. DOCTRINE.md §5.2 binds the
+release to it.
 
 A run stops before the next session once what it has spent reaches `--budget-usd`, or
 `GOLDEN_BUDGET_USD` when the flag is absent, or US$ 20 when both are: the session in flight
@@ -878,11 +879,15 @@ async def rejudge(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    earlier = [
-        (path, *exported(path))
-        for path in sorted(Path(args.rejudge).glob("*.json"))
-        if not path.name.endswith(".verdict.json")
-    ]
+    earlier = []
+    for path in sorted(Path(args.rejudge).glob("*.json")):
+        if path.name.endswith(".verdict.json"):
+            continue
+        try:
+            earlier.append((path, *exported(path)))
+        except Exception as unreadable:
+            print(f"golden: {path}: {type(unreadable).__name__}: {unreadable}", file=sys.stderr)
+            return 2
     if not earlier:
         print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
         return 2
