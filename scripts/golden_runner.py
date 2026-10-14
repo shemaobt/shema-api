@@ -47,9 +47,9 @@ unless a session failed, which keeps its 1.
 
 An error that kills the run — a timeout, a reply that is not JSON — still leaves its README and
 its cost total, the session that died among the rows and its paid turns in the sum, with a line
-saying what killed it; the error is then raised as it was. Where `--out` already holds a
-README, a finished run's, the dead run's goes beside it as `README.<stamp>.md` and the first is
-left as it was.
+saying what killed it; the error is then raised as it was, and a `--rejudge` that an error
+kills leaves the same. Where `--out` already holds a README, a finished run's, the dead
+run's goes beside it as `README.<stamp>.md` and the first is left as it was.
 """
 
 from __future__ import annotations
@@ -786,9 +786,7 @@ async def run(args: argparse.Namespace) -> int:
                     results=results,
                 )
     except Exception as killed:
-        halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
-        readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
-        close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
+        close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
         raise
     return finish(
         results,
@@ -798,6 +796,20 @@ async def run(args: argparse.Namespace) -> int:
         budget=budget,
         not_started=not_started,
     )
+
+
+def close_dead(
+    results: list[SessionResult],
+    killed: Exception,
+    *,
+    playing: str,
+    out: Path,
+    base_url: str,
+    stamp: str,
+) -> None:
+    halted = f"Rodada interrompida em {playing} por {type(killed).__name__}: {killed}."
+    readme = f"README.{stamp}.md" if (out / "README.md").exists() else "README.md"
+    close(results, out=out, base_url=base_url, stamp=stamp, halted=halted, readme=readme)
 
 
 def finish(
@@ -894,22 +906,28 @@ async def rejudge(args: argparse.Namespace) -> int:
     budget = budget_of(args)
     results: list[SessionResult] = []
     not_started: list[str] = []
-    for position, (path, script, result, _) in enumerate(earlier):
-        if _spent(results) >= budget:
-            not_started = [later.name for _, later, _, _ in earlier[position:]]
-            break
-        print(f"\n▶ {script.name} — judging {path.name} again")
-        out.mkdir(parents=True, exist_ok=True)
-        if result.whole:
-            await judge(
-                script,
-                result,
-                out=out,
-                stamp=path.stem[len(script.name) + 1 :],
-                prompt_repeats=shares_judge_prompt(script, to_judge),
-            )
-        results.append(result)
     stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+    playing = earlier[0][1].name
+    try:
+        for position, (path, script, result, _) in enumerate(earlier):
+            playing = script.name
+            if _spent(results) >= budget:
+                not_started = [later.name for _, later, _, _ in earlier[position:]]
+                break
+            print(f"\n▶ {script.name} — judging {path.name} again")
+            out.mkdir(parents=True, exist_ok=True)
+            results.append(result)
+            if result.whole:
+                await judge(
+                    script,
+                    result,
+                    out=out,
+                    stamp=path.stem[len(script.name) + 1 :],
+                    prompt_repeats=shares_judge_prompt(script, to_judge),
+                )
+    except Exception as killed:
+        close_dead(results, killed, playing=playing, out=out, base_url=base_url, stamp=stamp)
+        raise
     return finish(
         results,
         out=out,
