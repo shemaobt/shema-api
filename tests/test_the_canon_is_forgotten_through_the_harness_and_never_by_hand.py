@@ -579,27 +579,38 @@ def _handed_down(
     }
 
 
+def _conftests_above(module: Path, root: Path) -> list[Path]:
+    directory = module.parent
+    found = [directory / "conftest.py"]
+    while directory != root and directory.is_relative_to(root):
+        directory = directory.parent
+        found.append(directory / "conftest.py")
+    return found[::-1]
+
+
 def _fixtures_of_the_conftest(
     module: Path, canon_caches: set[str], root: Path
 ) -> dict[str, set[str]]:
-    conftest = module.with_name("conftest.py")
-    if not conftest.is_file():
-        return {}
-    text = conftest.read_text(encoding="utf-8")
-    if not any(cache.rpartition(".")[2] in text for cache in canon_caches):
-        return {}
-    tree = ast.parse(text)
-    given, _ = _arguments_given(tree)
-    *_, carried = _fed_by_what_functions_return(
-        tree,
-        _imports_of(tree, _package_of(conftest, root)),
-        given,
-        list(_outside_every_function(tree)),
-        canon_caches,
-        True,
-        {},
-    )
-    return {name: names for name, names in carried.items() if name in _fixtures_of(tree)}
+    outside: dict[str, set[str]] = {}
+    for conftest in _conftests_above(module, root):
+        if not conftest.is_file():
+            continue
+        text = conftest.read_text(encoding="utf-8")
+        if not any(cache.rpartition(".")[2] in text for cache in canon_caches):
+            continue
+        tree = ast.parse(text)
+        given, _ = _arguments_given(tree)
+        *_, carried = _fed_by_what_functions_return(
+            tree,
+            _imports_of(tree, _package_of(conftest, root)),
+            given,
+            list(_outside_every_function(tree)),
+            canon_caches,
+            True,
+            {},
+        )
+        outside |= {name: names for name, names in carried.items() if name in _fixtures_of(tree)}
+    return outside
 
 
 def _clears_in_tree(
@@ -2408,6 +2419,21 @@ def test_a_fixture_of_the_conftest_beside_the_case_feeds_the_parameter_of_its_na
     clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
 
     assert clears == (of_the_canon, of_something_else)
+
+
+def test_a_fixture_of_a_conftest_above_the_case_feeds_the_parameter_of_its_name(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "conftest.py").write_text(
+        THE_CONFTEST_WHOSE_FIXTURE_RETURNS_THE_CACHE, encoding="utf-8"
+    )
+    subdirectory = tmp_path / "test_a_subdirectory"
+    subdirectory.mkdir()
+    module = _planted(subdirectory, THE_CASE_THAT_ASKS_FOR_THE_FIXTURE)
+
+    clears = _the_clears_in(module, _the_caches_the_harness_forgets(), tmp_path)
+
+    assert clears == ([2], [])
 
 
 def test_a_cache_listed_from_outside_the_room_is_one_the_harness_forgets_by_its_own_path(
