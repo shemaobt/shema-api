@@ -1,5 +1,7 @@
 """ir_sessions.kept_takes is dropped: no revision still serving names it
 
+The downgrade restores the column as '{}' on every row, which is what every row held.
+
 Revision ID: 20261014_scene05
 Revises: 20261013_scene04
 """
