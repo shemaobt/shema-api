@@ -9,6 +9,7 @@ before this change, whose shape no route writes any more.
 from __future__ import annotations
 
 import json
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -113,7 +114,7 @@ class ElevenLabs:
 
 class Stopwatch:
     def __init__(self) -> None:
-        self.now = 0.0
+        self.now = time.monotonic()
 
     def monotonic(self) -> float:
         return self.now
@@ -126,16 +127,12 @@ class Anthropic:
     """The provider behind the real model ladder: one rung refused, every call a little slow."""
 
     def __init__(
-        self,
-        drafts: list[str],
-        refuses: str = "",
-        takes_s: float = 0.0,
-        stopwatch: Stopwatch | None = None,
+        self, drafts: list[str], stopwatch: Stopwatch, refuses: str = "", takes_s: float = 0.0
     ) -> None:
         self.drafts = drafts
+        self.stopwatch = stopwatch
         self.refuses = refuses
         self.takes_s = takes_s
-        self.stopwatch = stopwatch or Stopwatch()
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         if kwargs["model"] == self.refuses:
@@ -478,7 +475,7 @@ async def test_the_model_is_the_rung_that_answered_after_a_fallback(
     client, db_session, room_app, script, monkeypatch
 ) -> None:
     rungs = llm.voice_ladder(get_settings())
-    provider = Anthropic([OPENING, LINES[0]], refuses=rungs[0])
+    provider = Anthropic([OPENING, LINES[0]], Stopwatch(), refuses=rungs[0])
     monkeypatch.setattr(
         llm.anthropic, "AsyncAnthropic", lambda **_: SimpleNamespace(messages=provider)
     )
@@ -502,7 +499,7 @@ async def test_recognition_and_reply_times_are_kept_no_synthesis_time_is_invente
 ) -> None:
     stopwatch = Stopwatch()
     monkeypatch.setattr(stage_clock, "time", stopwatch)
-    provider = Anthropic([OPENING, LINES[0]], takes_s=0.15, stopwatch=stopwatch)
+    provider = Anthropic([OPENING, LINES[0]], stopwatch, takes_s=0.15)
     monkeypatch.setattr(
         llm.anthropic, "AsyncAnthropic", lambda **_: SimpleNamespace(messages=provider)
     )
