@@ -220,39 +220,33 @@ def _hand_over(
     function: Function,
     arguments: list[ast.expr],
     keywords: list[ast.keyword],
-    given: dict[ast.AST, Bindings],
     handed: Handed,
     caller: ast.AST,
 ) -> None:
-    for parameter, argument in _handed_to(function, arguments, keywords):
-        given[function].append(([parameter], argument))
-        handed.append((caller, function, parameter, argument))
+    handed.extend(
+        (caller, function, parameter, argument)
+        for parameter, argument in _handed_to(function, arguments, keywords)
+    )
 
 
-def _read_the_calls(
-    scope: ast.AST,
-    visible: Functions,
-    given: dict[ast.AST, Bindings],
-    handed: Handed,
-    caller: ast.AST,
-) -> None:
+def _read_the_calls(scope: ast.AST, visible: Functions, handed: Handed, caller: ast.AST) -> None:
     for child in ast.iter_child_nodes(scope):
         if isinstance(child, ast.Call):
             if isinstance(child.func, ast.Lambda):
-                _hand_over(child.func, child.args, child.keywords, given, handed, caller)
+                _hand_over(child.func, child.args, child.keywords, handed, caller)
             elif isinstance(child.func, ast.Name):
                 function = visible.get(child.func.id)
                 if function is not None:
-                    _hand_over(function, child.args, child.keywords, given, handed, caller)
+                    _hand_over(function, child.args, child.keywords, handed, caller)
                 elif (
                     child.func.id == "map" and child.args and isinstance(child.args[0], ast.Lambda)
                 ):
-                    _hand_over(child.args[0], child.args[1:], [], given, handed, caller)
+                    _hand_over(child.args[0], child.args[1:], [], handed, caller)
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
             within = child if isinstance(caller, ast.Module) else caller
-            _read_the_calls(child, visible | _defined_in(child), given, handed, within)
+            _read_the_calls(child, visible | _defined_in(child), handed, within)
         else:
-            _read_the_calls(child, visible, given, handed, caller)
+            _read_the_calls(child, visible, handed, caller)
 
 
 def _arguments_given(tree: ast.Module) -> tuple[dict[ast.AST, Bindings], Handed]:
@@ -264,7 +258,7 @@ def _arguments_given(tree: ast.Module) -> tuple[dict[ast.AST, Bindings], Handed]
             if isinstance(decorator, ast.Call) and (parametrized := _parametrized(decorator)):
                 given[function].extend(_parametrized_bindings(*parametrized))
     handed: Handed = []
-    _read_the_calls(tree, _defined_in(tree), given, handed, tree)
+    _read_the_calls(tree, _defined_in(tree), handed, tree)
     return given, handed
 
 
@@ -612,6 +606,8 @@ def _clears_in_tree(
         passed |= new
         for function, parameter, name in new:
             arguments[function].append(([parameter], ast.Name(id=name)))
+            if function in at_the_top:
+                at_the_top_sources.setdefault(parameter, []).append(ast.Name(id=name))
         scopes = _scopes(tree, arguments, at_the_top, at_the_top_sources)
         fed = {function for function, *_ in new}
         callers = {caller for caller, nodes, _ in scopes if fed.intersection(nodes)}
@@ -950,6 +946,12 @@ def test_a_case() -> None:
     holder.cached = book_material.preservation_rules
     holder.other = 1
     holder.other.cache_clear()
+"""
+
+CLEARS_THROUGH_A_LAMBDA_CALLED_AT_THE_TOP_OF_THE_MODULE = """\
+from app.services.internalization_room.canon import book_material
+
+(lambda cached: cached.cache_clear())(book_material.preservation_rules)
 """
 
 CLEARS_THROUGH_A_LAMBDA_CALLED_IN_PLACE = """\
@@ -1486,6 +1488,21 @@ def test_a_case() -> None:
     forget(book_material.preservation_rules)
 """
 
+CLEARS_WHAT_A_HELPER_IS_HANDED_UNDER_THE_NAME_OF_ONE_OF_ITS_OWN_LOCALS = """\
+from app.core.config import get_settings
+from app.services.internalization_room.canon import book_material
+
+
+def forget(cached) -> None:
+    held = book_material.preservation_rules
+    cached.cache_clear()
+
+
+def test_a_case() -> None:
+    held = get_settings
+    forget(held)
+"""
+
 CLEARS_THE_FAIL_SAFE_SECTIONS = """\
 from app.services.internalization_room import fail_safe
 
@@ -1778,6 +1795,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_BOUND_CLEAR_KEPT_IN_A_NAME, 7),
         (CLEARS_THROUGH_A_BOUND_CLEAR_GOT_BY_GETATTR, 6),
         (CLEARS_THROUGH_AN_ATTRIBUTE_TARGET, 9),
+        (CLEARS_THROUGH_A_LAMBDA_CALLED_AT_THE_TOP_OF_THE_MODULE, 3),
         (CLEARS_THROUGH_A_LAMBDA_CALLED_IN_PLACE, 5),
         (CLEARS_THROUGH_A_LAMBDA_KEPT_IN_A_NAME, 5),
         (CLEARS_THROUGH_A_LAMBDA_GIVEN_TO_MAP, 5),
@@ -1820,6 +1838,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "cleared by a bound cache_clear kept in a name",
         "cleared by a bound cache_clear got by getattr",
         "named by an attribute target",
+        "named by the parameter of a lambda called at the top of the module",
         "named by the parameter of a lambda called in place",
         "named by the parameter of a lambda kept in a name",
         "named by the parameter of a lambda given to map",
@@ -2215,6 +2234,7 @@ def test_a_method_that_clears_its_parameter_is_a_clear_at_the_call(
         (CLEARS_A_PARAMETRIZED_ARGUMENT_OF_VALUES_NOT_SEEN_ROW_BY_ROW, [8], []),
         (TWO_CASES_EACH_DEFINE_A_HELPER_OF_ONE_NAME, [7], [14]),
         (A_METHOD_AND_A_HELPER_OF_ONE_NAME, [5], [10]),
+        (CLEARS_WHAT_A_HELPER_IS_HANDED_UNDER_THE_NAME_OF_ONE_OF_ITS_OWN_LOCALS, [], [7]),
     ],
     ids=[
         "the sibling of a tuple target",
@@ -2229,6 +2249,7 @@ def test_a_method_that_clears_its_parameter_is_a_clear_at_the_call(
         "parametrized values not seen row by row",
         "two cases each define a helper of one name",
         "a method and a helper of one name",
+        "what a helper is handed under the name of one of its own locals",
     ],
 )
 def test_a_name_is_fed_by_its_own_element_where_the_shapes_pair_and_by_the_whole_where_they_do_not(
