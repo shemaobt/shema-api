@@ -32,4 +32,5 @@ def _turn_of(message: dict[str, Any]) -> ConversationTurn:
         at=message.get("at"),
         fail_safe=fail_safe,
         fail_safe_category=_CATEGORY_NAMES.get(letter) if fail_safe else None,
+        note_kind="opening" if message.get("opening_note") else None,
     )

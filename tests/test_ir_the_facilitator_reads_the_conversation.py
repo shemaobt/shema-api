@@ -146,6 +146,22 @@ async def test_a_facilitator_reads_the_conversation_as_turns_in_order(
     assert [t["at"] for t in turns] == sorted(t["at"] for t in turns)
 
 
+async def test_the_opening_note_is_marked_apart_from_the_words_the_team_said(
+    client, db_session, room_app, script
+) -> None:
+    session_id, desk, _credential = await _a_conversation(client, db_session, room_app, script)
+
+    turns = await _turns(client, session_id, desk)
+
+    assert [(t["text"], t["note_kind"]) for t in turns[:5]] == [
+        (NOTE_PT_P03, "opening"),
+        (GUIDE_OPENING, None),
+        (FIRST_ANSWER, None),
+        (GUIDE_LINE, None),
+        (SECOND_ANSWER, None),
+    ], "a Sala de Observação contava a nota de abertura como fala da equipe"
+
+
 async def test_only_the_fail_safe_line_is_marked_and_names_its_category(
     client, db_session, room_app, script
 ) -> None:
