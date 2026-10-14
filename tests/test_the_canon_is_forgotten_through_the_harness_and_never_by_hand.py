@@ -97,6 +97,8 @@ def _bindings(nodes: Iterable[ast.AST]) -> Iterator[tuple[list[str], ast.AST]]:
                 yield _bound_by(target), node.value
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             yield _bound_by(node.target), node.value
+        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+            yield _bound_by(node.optional_vars), node.context_expr
 
 
 def _fed_by(
@@ -198,6 +200,15 @@ from app.services.internalization_room.canon import book_material
 def test_a_case() -> None:
     cached, other = book_material.preservation_rules, 1
     cached.cache_clear()
+"""
+
+CLEARS_THROUGH_A_WITH_TARGET = """\
+from app.services.internalization_room.canon import book_material
+
+
+def test_a_case() -> None:
+    with book_material.preservation_rules as cached:
+        cached.cache_clear()
 """
 
 CLEARS_THROUGH_AN_ANNOTATED_NAME = """\
@@ -434,6 +445,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         (CLEARS_THROUGH_A_LOOP_VARIABLE, 6),
         (CLEARS_THROUGH_A_TUPLE_LOOP, 6),
         (CLEARS_THROUGH_A_TUPLE_TARGET, 6),
+        (CLEARS_THROUGH_A_WITH_TARGET, 6),
         (CLEARS_THROUGH_AN_ANNOTATED_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_BY_A_NAME, 7),
         (CLEARS_THROUGH_A_NAME_FED_AT_THE_TOP, 7),
@@ -449,6 +461,7 @@ def test_a_name_fed_from_the_canon_in_another_case_does_not_flag_this_ones_clear
         "named by the loop that feeds it",
         "named by a tuple the loop unpacks",
         "named by a tuple target",
+        "named by a with target",
         "named by an annotated assignment",
         "named by a name that another name feeds",
         "named by the module that feeds it",
