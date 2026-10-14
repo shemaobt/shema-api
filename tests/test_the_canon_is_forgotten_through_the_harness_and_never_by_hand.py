@@ -1913,6 +1913,26 @@ def test_another_case(cached) -> None:
     cached.cache_clear()
 """
 
+THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_METHOD_OF_ANOTHER_CLASS_TOO = """\
+import pytest
+
+from app.services.internalization_room.canon import book_material
+
+
+class TestACase:
+    @pytest.fixture
+    def cached(self):
+        return book_material.preservation_rules
+
+    def test_a_case(self, cached) -> None:
+        cached.cache_clear()
+
+
+class TestAnotherCase:
+    def test_another_case(self, cached) -> None:
+        cached.cache_clear()
+"""
+
 
 CACHES = {"lru_cache", "cache"}
 
@@ -2827,10 +2847,12 @@ def test_a_conftest_above_the_root_is_not_read(tmp_path: Path) -> None:
     [
         (THE_CASE_WHOSE_CLASS_DEFINES_THE_FIXTURE_ITS_METHOD_ASKS_FOR, [12], []),
         (THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_TEST_OF_THE_MODULE_TOO, [12], [16]),
+        (THE_CASE_WHOSE_CLASS_FIXTURE_IS_ASKED_FOR_BY_A_METHOD_OF_ANOTHER_CLASS_TOO, [12], [17]),
     ],
     ids=[
         "a method of the class that asks for the class's fixture",
         "a test of the module that asks for the name of the class's fixture",
+        "a method of another class that asks for the name of the class's fixture",
     ],
 )
 def test_a_fixture_defined_in_a_class_feeds_the_methods_that_can_reach_it(
