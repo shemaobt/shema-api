@@ -7,6 +7,7 @@ room is a wire this test owns, so the money and the failure are its own arithmet
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -249,3 +250,37 @@ async def test_a_rejudge_does_not_judge_a_session_that_was_cut_short_as_a_whole_
         again / "README.md"
     ).read_text(encoding="utf-8"), "a linha diz por que a sessão ficou sem juiz"
     assert exit_code == 1
+
+
+async def test_a_session_cancelled_midway_is_exported_marked_as_cut_short(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    turns: list[str] = []
+    silent = asyncio.Event()
+
+    async def _room(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/golden/session"):
+            return httpx.Response(200, json={"sessionId": "s-1"})
+        turns.append(request.url.path)
+        if len(turns) == 2:
+            silent.set()
+            await asyncio.Event().wait()
+        return httpx.Response(
+            200, json={"guideText": GUIDE_LINE, "outcome": "pass", "usage": GOLDEN_PRICED}
+        )
+
+    the_room_answers(monkeypatch, _room)
+    sessions = golden_shelf(tmp_path, ("P01-a", "P01", 2))
+    out = tmp_path / "reports"
+    playing = asyncio.create_task(golden_runner.run(golden_args(sessions, out)))
+    await silent.wait()
+
+    playing.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await playing
+    exported = json.loads((out / f"P01-a.{STAMP}.json").read_text(encoding="utf-8"))
+    assert exported["killed"] == "CancelledError", (
+        "o Ctrl-C cancelou a sessão no segundo turno e o JSON exportado dizia que ela foi inteira"
+    )
+    assert len(exported["turns"]) == 1

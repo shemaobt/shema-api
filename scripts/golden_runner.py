@@ -94,6 +94,7 @@ from scripts.golden_spend import (
     split,
     stopped,
     uncounted,
+    what_killed,
 )
 from scripts.sync_doctrine import FREEZE_FILE, read_pin
 
@@ -520,8 +521,8 @@ async def play_session(
     except httpx.HTTPStatusError as refused:
         print(f"  refused: {refused.response.status_code} {refused.response.text}")
         result.refused = _refusal(refused)
-    except Exception as dead:
-        result.killed = f"{type(dead).__name__}: {dead}"
+    except BaseException as dead:
+        result.killed = what_killed(dead)
         raise
     finally:
         report, transcript = export(
