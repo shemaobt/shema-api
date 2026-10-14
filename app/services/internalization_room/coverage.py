@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable
 from enum import StrEnum
 
@@ -19,6 +18,7 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.canon.kept import reading_the_canon_of
+from app.services.internalization_room.rounding import math_round
 
 PANORAMA_PREFIX = "OV-"
 
@@ -186,7 +186,7 @@ def coverage_view(session: IRSession) -> CoverageView:
         total=numbers["total"],
         absence_index=absence,
         beads_total=BEADS_TOTAL,
-        beads_filled=math.floor(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL + 0.5),
+        beads_filled=math_round(numbers["engaged"] / (numbers["total"] or 1) * BEADS_TOTAL),
     )
 
 

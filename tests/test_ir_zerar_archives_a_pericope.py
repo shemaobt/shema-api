@@ -277,7 +277,7 @@ async def test_the_archives_snapshot_holds_each_session_as_it_stood(
     )
     db_session.add(recorded_again)
     await db_session.commit()
-    spoken = await the_tablet_opens(client, tablet, {"pericope": P, "language": "pt"})
+    spoken = await the_tablet_opens(client, tablet, {"pericope": P, "language": "en"})
     assert spoken["session_id"] != approved.id
     kept = {approved.id: [{"part": None, "take_id": recorded_again.id}], spoken["session_id"]: []}
     stood: dict[str, dict[str, Any]] = {}

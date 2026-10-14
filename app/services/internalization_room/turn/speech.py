@@ -85,9 +85,9 @@ def what_the_guide_is_handed(
     return ForTheGuide(note=note, words="" if mother_tongue else words)
 
 
-def a_miss(messages: list[dict[str, Any]], language_code: str) -> TurnOutcome:
+def a_miss(language_code: str) -> TurnOutcome:
     """The turn for a take that was a miss: the ladder's line, and nothing reaches the Guide."""
-    line, fixed = inaudible_ladder(messages, language_code)
+    line, fixed = inaudible_ladder(language_code)
     return TurnOutcome(
         speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed
     )
@@ -140,7 +140,7 @@ async def speak_back(
         interrupted=interrupted,
     )
     if handed is None:
-        return a_miss(messages, language)
+        return a_miss(language)
     outcome = await run_turn(
         transcript=handed.spoken_to_the_guide,
         coverage_state=session.coverage_state or {},

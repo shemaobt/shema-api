@@ -29,7 +29,6 @@ async def test_the_prepared_opening_is_composed_and_voiced_with_its_session_let_
             status=IRSessionStatus.IN_PROGRESS,
             messages=[],
             coverage_state={},
-            kept_takes={},
             back_translation={},
             language="pt",
         )

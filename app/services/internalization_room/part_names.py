@@ -24,7 +24,7 @@ from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.canon.kept import reading_the_canon_of
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.canon.titles import scene_title
-from app.services.internalization_room.languages import FLOOR, room_language
+from app.services.internalization_room.languages import AUTHORED, room_language
 
 
 @dataclass(frozen=True)
@@ -55,8 +55,8 @@ _WORDS: dict[str, AddressWords] = {
 
 
 def words_for(language_code: str) -> AddressWords:
-    """What this session says an address in, falling back to the floor like every other table."""
-    return _WORDS.get(language_code, _WORDS[FLOOR])
+    """What this session says an address in, falling back to the authored English like the rest."""
+    return _WORDS.get(language_code, _WORDS[AUTHORED])
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class Addresses:
     """
 
     by_stretch: dict[str, str] = field(default_factory=dict)
-    words: AddressWords = _WORDS[FLOOR]
+    words: AddressWords = _WORDS[AUTHORED]
 
     def part_of(self, segment_id: str | None) -> str:
         return self.by_stretch.get(segment_id or "", "")

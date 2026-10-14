@@ -94,7 +94,7 @@ async def necklace_with_touches(
     again moved nothing; the session named is the one the bead last actually moved in.
 
     Scoped by project **and** passage. An element key belongs to the canon, not to a team —
-    two teams working Ruth both carry ``being:B3``, and Naomi appears in several passages —
+    two teams working Ruth both carry ``being:S1:B3``, and Naomi appears in several passages —
     so neither half alone names a bead. A session that never said whose it was carries a null
     ``project_id`` and is nobody's work rather than everybody's; it is filtered out by the
     same equality, which is the intended answer here and not a row lost in silence.
@@ -270,7 +270,7 @@ async def necklaces_of(
     would walk a bead backwards on the newer card.
 
     Scoped by project **and** passage, for the reason an element key is the canon's: two teams
-    working Ruth both carry ``being:B3``. Both scopes come free here — each session carries its
+    working Ruth both carry ``being:S1:B3``. Both scopes come free here — each session carries its
     own team and its own pericope, so one call folds one team's history or a page spanning many
     teams alike — which is also why this needs no query beyond the one it already makes.
 
@@ -380,7 +380,7 @@ async def last_session_to_touch(
     """Which session last moved one bead, or nothing if none ever did.
 
     Scoped by project and passage because an element key is the canon's, not a project's:
-    two teams working Ruth carry the same ``being:B3``, and answering without saying whose
+    two teams working Ruth carry the same ``being:S1:B3``, and answering without saying whose
     bead it is hands one team the other team's session.
     """
     result = await db.execute(
